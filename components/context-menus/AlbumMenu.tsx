@@ -1,0 +1,38 @@
+import React from 'react';
+import { Play, ListPlus, Mic2 } from 'lucide-react';
+import { useStore } from '../../store';
+import { MenuItem } from './MenuShared';
+import { useNavigate } from 'react-router-dom';
+import { Album } from '../../types';
+
+export const AlbumMenu: React.FC<{ album: Album; onClose: () => void }> = ({ album, onClose }) => {
+    const { songs, playSong, addToQueue } = useStore();
+    const navigate = useNavigate();
+    const albumSongs = songs.filter(s => s.album === album.name);
+
+    const handleAction = (action: () => void) => {
+        action();
+        onClose();
+    };
+
+    return (
+        <>
+            <div className="px-3 py-2 border-b border-[#333] mb-1">
+                <div className="font-bold text-white truncate text-sm">{album.name}</div>
+                <div className="text-xs text-gray-400 truncate">{album.artist}</div>
+            </div>
+
+            <MenuItem icon={Play} label="Play Album" onClick={() => handleAction(() => {
+                if (albumSongs.length > 0) playSong(albumSongs[0], albumSongs);
+            })} />
+            <MenuItem icon={ListPlus} label="Add to Queue" onClick={() => handleAction(() => addToQueue(albumSongs))} />
+            
+            <div className="border-t border-[#333] my-1"></div>
+            
+            <MenuItem icon={Mic2} label="Go to Artist" onClick={() => {
+                navigate('/artists');
+                onClose();
+            }} />
+        </>
+    );
+};
