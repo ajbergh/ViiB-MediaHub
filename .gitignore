@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Build output
+build/
+*.exe
+
+# Go
+backend/cmd/viib/dist/
+
+# Environment
+.env
+.env.local
+.env.*.local

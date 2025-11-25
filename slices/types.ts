@@ -32,6 +32,15 @@ export interface PlayerSlice {
   toggleEqPanel: () => void;
 }
 
+// Scan folder type (from backend)
+export interface ScanFolder {
+  id: string;
+  path: string;
+  addedAt: number;
+  lastScan?: number;
+  songCount: number;
+}
+
 export interface LibrarySlice {
   songs: Song[];
   playlists: Playlist[];
@@ -42,6 +51,8 @@ export interface LibrarySlice {
   fetchingAlbums: Set<string>;
   isScanning: boolean;
   scanProgress: string;
+  backendAvailable: boolean;
+  scanFolders: ScanFolder[];
   
   initLibrary: () => Promise<void>;
   addSongs: (newSongs: Song[]) => void;
@@ -59,6 +70,13 @@ export interface LibrarySlice {
   
   setScanning: (isScanning: boolean) => void;
   setScanProgress: (progress: string) => void;
+  
+  // Backend folder management
+  loadScanFolders: () => Promise<void>;
+  addScanFolder: (path: string) => Promise<void>;
+  removeScanFolder: (id: string) => Promise<void>;
+  startBackendScan: () => Promise<void>;
+  pollScanStatus: () => Promise<void>;
 }
 
 export interface SpotifySlice {

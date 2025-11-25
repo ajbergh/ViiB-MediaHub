@@ -8,6 +8,13 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        // Proxy API requests to Go backend during development
+        proxy: {
+          '/api': {
+            target: 'http://127.0.0.1:8080',
+            changeOrigin: true,
+          },
+        },
       },
       plugins: [react()],
       define: {
@@ -18,6 +25,11 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        outDir: 'dist',
+        sourcemap: false,
+        minify: 'esbuild',
       }
     };
 });

@@ -1,9 +1,10 @@
 
-import React, { useState, useRef } from 'react';
-import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff } from 'lucide-react';
 import { useStore } from '../store';
 import { VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
+import { api } from '../services/api';
 
 export const Settings: React.FC = () => {
   const { 
@@ -12,7 +13,8 @@ export const Settings: React.FC = () => {
       showSmartMixes, setShowSmartMixes,
       spotifyClientId, spotifyClientSecret, setSpotifyCredentials,
       logs, clearLogs, addSongs, resetLibrary,
-      isScanning, scanProgress, setScanning, setScanProgress
+      isScanning, scanProgress, setScanning, setScanProgress,
+      backendAvailable, scanFolders, loadScanFolders, addScanFolder, removeScanFolder, startBackendScan
   } = useStore();
 
   const [tempClientId, setTempClientId] = useState(spotifyClientId);
@@ -21,6 +23,19 @@ export const Settings: React.FC = () => {
   const [isResetting, setIsResetting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Folder browser state
+  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+  const [browserPath, setBrowserPath] = useState('');
+  const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
+  const [loadingBrowser, setLoadingBrowser] = useState(false);
+
+  // Load scan folders on mount if backend available
+  useEffect(() => {
+      if (backendAvailable) {
+          loadScanFolders();
+      }
+  }, [backendAvailable]);
+
   const handleSaveCredentials = () => {
       setSpotifyCredentials(tempClientId, tempClientSecret);
   };
@@ -34,6 +49,39 @@ export const Settings: React.FC = () => {
           setIsResetting(false);
           setShowResetConfirm(false);
           alert("An error occurred while resetting the library.");
+      }
+  };
+
+  // Folder browser functions
+  const openFolderBrowser = async () => {
+      setShowFolderBrowser(true);
+      setLoadingBrowser(true);
+      try {
+          const result = await api.browseFolder();
+          setBrowserPath(result.currentPath);
+          setBrowserEntries(result.entries);
+      } catch (e) {
+          console.error("Failed to browse folder", e);
+      }
+      setLoadingBrowser(false);
+  };
+
+  const navigateFolder = async (path: string) => {
+      setLoadingBrowser(true);
+      try {
+          const result = await api.browseFolder(path);
+          setBrowserPath(result.currentPath);
+          setBrowserEntries(result.entries);
+      } catch (e) {
+          console.error("Failed to navigate to folder", e);
+      }
+      setLoadingBrowser(false);
+  };
+
+  const selectCurrentFolder = async () => {
+      if (browserPath) {
+          await addScanFolder(browserPath);
+          setShowFolderBrowser(false);
       }
   };
 
@@ -254,29 +302,97 @@ export const Settings: React.FC = () => {
         <div className="flex items-center gap-3 mb-6 text-brand">
             <FolderOpen size={20} />
             <h2 className="text-lg font-bold text-text-main">Library Management</h2>
+            {backendAvailable ? (
+                <span className="flex items-center gap-1 text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full">
+                    <Server size={12} /> Backend Connected
+                </span>
+            ) : (
+                <span className="flex items-center gap-1 text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded-full">
+                    <MonitorOff size={12} /> Browser Mode
+                </span>
+            )}
         </div>
         
-        <div className="flex flex-col gap-4">
-            <p className="text-sm text-text-secondary">
-                Import music from your local folders. Supported formats: MP3, OGG.
-            </p>
-            
-            <div className="flex items-center gap-4">
-                <button 
-                    onClick={handleScanClick}
-                    disabled={isScanning}
-                    className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border disabled:opacity-50 disabled:cursor-not-allowed text-text-main font-bold py-3 px-6 rounded-full transition-all border border-surface-border hover:border-surface-slider"
-                >
-                    {isScanning ? <Loader2 size={20} className="animate-spin" /> : <FolderOpen size={20} />}
-                    {isScanning ? 'Scanning...' : 'Scan Local Directory'}
-                </button>
-                {isScanning && <span className="text-sm text-brand font-mono">{scanProgress}</span>}
+        {/* Backend Mode - Folder Management */}
+        {backendAvailable && (
+            <div className="mb-6">
+                <h3 className="text-sm font-bold text-text-main mb-3">Music Folders</h3>
+                <p className="text-sm text-text-secondary mb-4">
+                    Add folders containing your music files. The backend will scan these folders for audio files.
+                </p>
+                
+                {/* List of scan folders */}
+                <div className="space-y-2 mb-4">
+                    {scanFolders.length === 0 ? (
+                        <div className="text-text-subtle text-sm italic p-4 bg-surface-1 rounded-lg text-center">
+                            No folders added yet. Add a folder to start scanning.
+                        </div>
+                    ) : (
+                        scanFolders.map(folder => (
+                            <div key={folder.id} className="flex items-center justify-between bg-surface-1 p-3 rounded-lg border border-surface-border">
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-mono text-sm text-text-main truncate">{folder.path}</div>
+                                    <div className="text-xs text-text-subtle">
+                                        {folder.songCount} songs • Last scan: {folder.lastScan ? new Date(folder.lastScan).toLocaleDateString() : 'Never'}
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => removeScanFolder(folder.id)}
+                                    className="p-2 text-text-subtle hover:text-red-500 transition-colors"
+                                    title="Remove folder"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        ))
+                    )}
+                </div>
+                
+                {/* Add folder & Scan buttons */}
+                <div className="flex items-center gap-3">
+                    <button 
+                        onClick={openFolderBrowser}
+                        className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main font-bold py-2 px-4 rounded-lg transition-all border border-surface-border"
+                    >
+                        <Plus size={18} /> Add Folder
+                    </button>
+                    <button 
+                        onClick={startBackendScan}
+                        disabled={isScanning || scanFolders.length === 0}
+                        className="flex items-center gap-2 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-2 px-4 rounded-lg transition-all"
+                    >
+                        {isScanning ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+                        {isScanning ? 'Scanning...' : 'Scan All Folders'}
+                    </button>
+                </div>
+                {isScanning && <div className="text-sm text-brand font-mono mt-2">{scanProgress}</div>}
             </div>
-            
-            <div className="text-xs text-text-subtle mt-2">
-                Uses File System Access API where available. Fallback to standard upload in restricted environments.
+        )}
+
+        {/* Browser Mode - File Picker */}
+        {!backendAvailable && (
+            <div className="flex flex-col gap-4">
+                <p className="text-sm text-text-secondary">
+                    Import music from your local folders. Supported formats: MP3, OGG.
+                </p>
+                
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={handleScanClick}
+                        disabled={isScanning}
+                        className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border disabled:opacity-50 disabled:cursor-not-allowed text-text-main font-bold py-3 px-6 rounded-full transition-all border border-surface-border hover:border-surface-slider"
+                    >
+                        {isScanning ? <Loader2 size={20} className="animate-spin" /> : <FolderOpen size={20} />}
+                        {isScanning ? 'Scanning...' : 'Scan Local Directory'}
+                    </button>
+                    {isScanning && <span className="text-sm text-brand font-mono">{scanProgress}</span>}
+                </div>
+                
+                <div className="text-xs text-text-subtle mt-2">
+                    Uses File System Access API where available. Fallback to standard upload in restricted environments.
+                </div>
             </div>
-        </div>
+        )}
       </section>
 
       {/* Personalization */}
@@ -556,6 +672,70 @@ export const Settings: React.FC = () => {
                       >
                           {isResetting && <Loader2 size={16} className="animate-spin" />}
                           {isResetting ? 'Resetting...' : 'Yes, Delete Everything'}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Folder Browser Modal */}
+      {showFolderBrowser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full shadow-2xl max-h-[80vh] flex flex-col">
+                  <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xl font-bold text-white">Select Music Folder</h2>
+                      <button 
+                          onClick={() => setShowFolderBrowser(false)}
+                          className="p-2 hover:bg-surface-3 rounded-lg transition-colors"
+                      >
+                          <X size={20} />
+                      </button>
+                  </div>
+                  
+                  {/* Current Path */}
+                  <div className="bg-surface-1 border border-surface-border rounded-lg p-3 mb-4 font-mono text-sm text-text-main truncate">
+                      {browserPath || 'Loading...'}
+                  </div>
+                  
+                  {/* Folder List */}
+                  <div className="flex-1 overflow-y-auto bg-surface-1 border border-surface-border rounded-lg mb-4 min-h-[300px]">
+                      {loadingBrowser ? (
+                          <div className="flex items-center justify-center h-full">
+                              <Loader2 size={24} className="animate-spin text-brand" />
+                          </div>
+                      ) : (
+                          <div className="divide-y divide-surface-border">
+                              {browserEntries.map((entry, idx) => (
+                                  <button
+                                      key={idx}
+                                      onClick={() => navigateFolder(entry.path)}
+                                      className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
+                                  >
+                                      <FolderOpen size={18} className="text-brand flex-shrink-0" />
+                                      <span className="text-text-main truncate">{entry.name}</span>
+                                  </button>
+                              ))}
+                              {browserEntries.length === 0 && (
+                                  <div className="p-4 text-center text-text-subtle">No subfolders found</div>
+                              )}
+                          </div>
+                      )}
+                  </div>
+                  
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-3">
+                      <button 
+                          onClick={() => setShowFolderBrowser(false)}
+                          className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors"
+                      >
+                          Cancel
+                      </button>
+                      <button 
+                          onClick={selectCurrentFolder}
+                          disabled={!browserPath}
+                          className="px-6 py-2 rounded-lg font-bold bg-brand hover:bg-brand-hover disabled:opacity-50 text-black transition-colors flex items-center gap-2"
+                      >
+                          <Plus size={16} /> Add This Folder
                       </button>
                   </div>
               </div>
