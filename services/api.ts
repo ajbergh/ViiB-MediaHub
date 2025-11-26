@@ -172,6 +172,21 @@ export const api = {
   getCoverUrl(songId: string): string {
     return `${API_BASE}/cover/${songId}`;
   },
+
+  // Spotify Credentials
+  async saveSpotifyCredentials(creds: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number }) {
+    const response = await fetch(`${API_BASE}/spotify/credentials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(creds),
+    });
+    return handleResponse(response);
+  },
+
+  async getSpotifyCredentials() {
+    const response = await fetch(`${API_BASE}/spotify/credentials`);
+    return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number }>(response);
+  },
 };
 
 export default api;

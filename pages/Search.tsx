@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search as SearchIcon, Play, MoreHorizontal } from 'lucide-react';
+import { Search as SearchIcon, MoreHorizontal } from 'lucide-react';
 import { useStore, useAlbumCovers } from '../store';
 import { useLocation } from 'react-router-dom';
 import { generateGradient, formatTime } from '../utils';

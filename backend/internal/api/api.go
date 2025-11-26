@@ -68,6 +68,10 @@ func (a *API) Routes() chi.Router {
 	r.Get("/health", a.healthCheck)
 	r.Post("/browse", a.browseFolder)
 
+	// Spotify
+	r.Get("/spotify/credentials", a.getSpotifyCredentials)
+	r.Post("/spotify/credentials", a.saveSpotifyCredentials)
+
 	return r
 }
 

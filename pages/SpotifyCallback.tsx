@@ -4,6 +4,8 @@ import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
 import { Loader2, XCircle, CheckCircle } from 'lucide-react';
 
+import { api } from '../services/api';
+
 export const SpotifyCallback: React.FC = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -30,16 +32,41 @@ export const SpotifyCallback: React.FC = () => {
         const processAuth = async () => {
             try {
                 const redirectUri = `${window.location.origin}/callback`;
+                const codeVerifier = localStorage.getItem('spotify_code_verifier');
                 
+                if (!codeVerifier) {
+                    throw new Error("Missing code verifier. Please try logging in again.");
+                }
+
                 // Exchange Code
-                const data = await SpotifyService.exchangeCode(spotifyClientId, spotifyClientSecret, code, redirectUri);
+                const data = await SpotifyService.exchangeCode(spotifyClientId, spotifyClientSecret, code, redirectUri, codeVerifier);
+                
+                // Clear verifier
+                localStorage.removeItem('spotify_code_verifier');
+
+                const expiry = Date.now() + (data.expires_in * 1000);
                 
                 setSpotifyTokens(
                     data.access_token, 
                     data.refresh_token, 
-                    Date.now() + (data.expires_in * 1000)
+                    expiry
                 );
                 
+                // Sync to Backend
+                try {
+                    await api.saveSpotifyCredentials({
+                        clientId: spotifyClientId,
+                        clientSecret: spotifyClientSecret,
+                        accessToken: data.access_token,
+                        refreshToken: data.refresh_token,
+                        expiry: expiry
+                    });
+                    addLog('success', 'Spotify credentials synced to backend');
+                } catch (e) {
+                    console.error("Failed to sync credentials to backend", e);
+                    addLog('warn', 'Failed to sync Spotify credentials to backend');
+                }
+
                 // Fetch User Profile immediately to verify and store
                 const profile = await SpotifyService.getUserProfile();
                 if (profile) {
@@ -53,7 +80,7 @@ export const SpotifyCallback: React.FC = () => {
                              type: 'SPOTIFY_AUTH_SUCCESS',
                              accessToken: data.access_token,
                              refreshToken: data.refresh_token,
-                             expiry: Date.now() + (data.expires_in * 1000),
+                             expiry: expiry,
                              user: profile
                          }, window.location.origin);
                          

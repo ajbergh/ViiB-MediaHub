@@ -12,7 +12,7 @@ export const Settings: React.FC = () => {
       setVisualizerMode, setEqEnabled, toggleEqPanel,
       showSmartMixes, setShowSmartMixes,
       spotifyClientId, spotifyClientSecret, setSpotifyCredentials,
-      logs, clearLogs, addSongs, resetLibrary,
+      logs, clearLogs, addLog, addSongs, resetLibrary,
       isScanning, scanProgress, setScanning, setScanProgress,
       backendAvailable, scanFolders, loadScanFolders, addScanFolder, removeScanFolder, startBackendScan
   } = useStore();
@@ -21,6 +21,7 @@ export const Settings: React.FC = () => {
   const [tempClientSecret, setTempClientSecret] = useState(spotifyClientSecret);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Folder browser state
@@ -36,8 +37,25 @@ export const Settings: React.FC = () => {
       }
   }, [backendAvailable]);
 
-  const handleSaveCredentials = () => {
+  const handleSaveCredentials = async () => {
       setSpotifyCredentials(tempClientId, tempClientSecret);
+      
+      // Sync to backend immediately
+      try {
+          await api.saveSpotifyCredentials({
+              clientId: tempClientId,
+              clientSecret: tempClientSecret,
+              accessToken: useStore.getState().spotifyAccessToken || '',
+              refreshToken: useStore.getState().spotifyRefreshToken || '',
+              expiry: useStore.getState().spotifyTokenExpiry || 0
+          });
+          addLog('success', 'Spotify credentials saved and synced to backend');
+      } catch (e) {
+          addLog('warn', 'Saved locally but failed to sync to backend', e);
+      }
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   const confirmResetLibrary = async () => {
@@ -567,12 +585,19 @@ export const Settings: React.FC = () => {
                 <p className="text-xs text-text-subtle">
                     Create an app at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">developer.spotify.com</a> to get these keys.
                 </p>
-                <button 
-                    onClick={handleSaveCredentials}
-                    className="bg-brand hover:bg-brand-hover text-black font-bold py-2 px-6 rounded-full transition-colors text-sm"
-                >
-                    Save Credentials
-                </button>
+                <div className="flex items-center gap-3">
+                    {saveSuccess && (
+                        <span className="text-green-500 text-sm font-bold animate-in fade-in slide-in-from-right-4">
+                            Saved!
+                        </span>
+                    )}
+                    <button 
+                        onClick={handleSaveCredentials}
+                        className="bg-brand hover:bg-brand-hover text-black font-bold py-2 px-6 rounded-full transition-colors text-sm"
+                    >
+                        Save Credentials
+                    </button>
+                </div>
             </div>
         </div>
       </section>

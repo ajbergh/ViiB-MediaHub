@@ -1,6 +1,5 @@
 import { ArtistMetadata, AlbumMetadata, SpotifyProfile } from '../types';
 import { useStore } from '../store';
-import { Buffer } from 'buffer';
 
 const AUTH_URL = 'https://accounts.spotify.com/authorize';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
@@ -47,6 +46,25 @@ const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
 
 // --- Helpers ---
 
+const generateRandomString = (length: number) => {
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const values = crypto.getRandomValues(new Uint8Array(length));
+    return values.reduce((acc, x) => acc + possible[x % possible.length], "");
+}
+
+const sha256 = async (plain: string) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plain);
+    return window.crypto.subtle.digest('SHA-256', data);
+}
+
+const base64encode = (input: ArrayBuffer) => {
+    return btoa(String.fromCharCode(...new Uint8Array(input)))
+        .replace(/=/g, '')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_');
+}
+
 const cleanName = (str: string): string => {
     return str
         .replace(/[\(\[].*?[\)\]]/g, '') 
@@ -69,7 +87,11 @@ const getSimilarity = (s1: string, s2: string): number => {
 // --- Service Implementation ---
 
 export const SpotifyService = {
-    generateAuthUrl(clientId: string, redirectUri: string) {
+    async generateAuthUrl(clientId: string, redirectUri: string) {
+        const codeVerifier = generateRandomString(64);
+        const hashed = await sha256(codeVerifier);
+        const codeChallenge = base64encode(hashed);
+
         const scopes = [
             'streaming',
             'user-read-email',
@@ -85,24 +107,45 @@ export const SpotifyService = {
             client_id: clientId,
             scope: scopes,
             redirect_uri: redirectUri,
+            code_challenge_method: 'S256',
+            code_challenge: codeChallenge
         });
-        return `${AUTH_URL}?${params.toString()}`;
+
+        const url = `${AUTH_URL}?${params.toString()}`;
+        
+        // Log for debugging
+        console.log('[SpotifyService] Generated Auth URL:', url);
+        console.log('[SpotifyService] Redirect URI:', redirectUri);
+        console.log('[SpotifyService] Client ID:', clientId);
+        
+        return {
+            url,
+            codeVerifier
+        };
     },
 
-    async exchangeCode(clientId: string, clientSecret: string, code: string, redirectUri: string) {
-        const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-        
+    async exchangeCode(clientId: string, clientSecret: string, code: string, redirectUri: string, codeVerifier: string) {
+        const bodyParams: any = {
+            grant_type: 'authorization_code',
+            code,
+            redirect_uri: redirectUri,
+            client_id: clientId,
+            code_verifier: codeVerifier
+        };
+
+        const headers: any = {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        };
+
+        if (clientSecret) {
+             const credentials = btoa(`${clientId}:${clientSecret}`);
+             headers['Authorization'] = `Basic ${credentials}`;
+        }
+
         const response = await fetch(TOKEN_URL, {
             method: 'POST',
-            headers: {
-                'Authorization': `Basic ${credentials}`,
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: new URLSearchParams({
-                grant_type: 'authorization_code',
-                code,
-                redirect_uri: redirectUri
-            })
+            headers,
+            body: new URLSearchParams(bodyParams)
         });
 
         if (!response.ok) {
@@ -134,7 +177,7 @@ export const SpotifyService = {
             // Refresh User Token
             try {
                 store.addLog('info', 'Refreshing Spotify User Token...');
-                const credentials = Buffer.from(`${spotifyClientId}:${spotifyClientSecret}`).toString('base64');
+                const credentials = btoa(`${spotifyClientId}:${spotifyClientSecret}`);
                 const response = await fetch(TOKEN_URL, {
                     method: 'POST',
                     headers: {
@@ -161,7 +204,7 @@ export const SpotifyService = {
 
         // 2. Fallback: Client Credentials Flow
         try {
-            const credentials = Buffer.from(`${spotifyClientId}:${spotifyClientSecret}`).toString('base64');
+            const credentials = btoa(`${spotifyClientId}:${spotifyClientSecret}`);
             const response = await fetch(TOKEN_URL, {
                 method: 'POST',
                 headers: {
@@ -285,6 +328,30 @@ export const SpotifyService = {
 
             } catch (e) {
                 store.addLog('error', `Spotify Album Search Error: ${albumName}`, e);
+                return null;
+            }
+        });
+    },
+
+    async search(query: string, types: string[] = ['album', 'playlist', 'track', 'artist']): Promise<any> {
+        return enqueue(async () => {
+            const store = useStore.getState();
+            const token = await this.getAccessToken();
+            if (!token) return null;
+
+            try {
+                const typeStr = types.join(',');
+                const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}&type=${typeStr}&limit=20`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) {
+                    throw new Error(`Spotify API error: ${res.statusText}`);
+                }
+
+                return await res.json();
+            } catch (e) {
+                store.addLog('error', `Spotify Search Error: ${query}`, e);
                 return null;
             }
         });
