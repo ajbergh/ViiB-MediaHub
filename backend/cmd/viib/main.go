@@ -17,11 +17,15 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/api"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/server"
+	"github.com/getlantern/systray"
 	"github.com/pkg/browser"
 )
 
 //go:embed dist/*
 var frontendFS embed.FS
+
+//go:embed icon.ico
+var iconData []byte
 
 func main() {
 	// Command line flags
@@ -110,7 +114,35 @@ func main() {
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
+	// Run systray
+	systray.Run(onReady(serverURL, quit), onExit)
+}
+
+func onReady(serverURL string, quit chan os.Signal) func() {
+	return func() {
+		systray.SetIcon(iconData)
+		systray.SetTitle("ViiB MediaHub")
+		systray.SetTooltip("ViiB MediaHub")
+
+		mOpen := systray.AddMenuItem("Open ViiB", "Open ViiB in browser")
+		mQuit := systray.AddMenuItem("Quit", "Quit ViiB MediaHub")
+
+		go func() {
+			for {
+				select {
+				case <-mOpen.ClickedCh:
+					browser.OpenURL(serverURL)
+				case <-mQuit.ClickedCh:
+					systray.Quit()
+				case <-quit:
+					systray.Quit()
+				}
+			}
+		}()
+	}
+}
+
+func onExit() {
 	log.Println("Shutting down server...")
 }

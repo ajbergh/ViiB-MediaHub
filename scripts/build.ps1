@@ -43,6 +43,31 @@ try {
     # Get dependencies
     go mod tidy
     
+    # Check for icon
+    $iconPath = Join-Path $projectRoot "backend\cmd\viib\icon.ico"
+    if (-not (Test-Path $iconPath)) {
+        Write-Error "icon.ico not found in backend/cmd/viib. Please place the icon file there."
+        exit 1
+    }
+
+    # Install rsrc if needed
+    if (-not (Get-Command rsrc -ErrorAction SilentlyContinue)) {
+        Write-Host "Installing rsrc..."
+        go install github.com/akavel/rsrc@latest
+        # Add go bin to path for this session if needed
+        $goBin = Join-Path $env:USERPROFILE "go\bin"
+        $env:Path += ";$goBin"
+    }
+
+    # Generate syso
+    Write-Host "Generating Windows resources..."
+    Push-Location (Join-Path $projectRoot "backend\cmd\viib")
+    try {
+        rsrc -ico icon.ico -o rsrc.syso
+    } finally {
+        Pop-Location
+    }
+
     # Build for Windows
     $env:CGO_ENABLED = "1"
     $env:GOOS = "windows"
