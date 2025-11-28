@@ -3,6 +3,8 @@
 
 $ErrorActionPreference = "Stop"
 
+Write-Host "Stopping any existing running Viib MediaHub Process..." -ForegroundColor Cyan
+Stop-Process -Name "ViiB-MediaHub" -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1
 Write-Host "🎵 Building ViiB MediaHub..." -ForegroundColor Cyan
 
 # Get the script's directory (project root)

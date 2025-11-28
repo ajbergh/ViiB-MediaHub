@@ -91,6 +91,10 @@ export interface SpotifySlice {
   setSpotifyTokens: (accessToken: string, refreshToken: string, expiry: number) => void;
   setSpotifyUser: (user: SpotifyProfile | null) => void;
   logoutSpotify: () => void;
+  
+  // Download state
+  downloadCount: number;
+  setDownloadCount: (count: number) => void;
 }
 
 export interface UISlice {

@@ -21,5 +21,8 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       spotifyRefreshToken: null, 
       spotifyTokenExpiry: 0, 
       spotifyUser: null 
-  })
+  }),
+  
+  downloadCount: 0,
+  setDownloadCount: (count) => set({ downloadCount: count })
 });

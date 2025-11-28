@@ -1,20 +1,40 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music } from 'lucide-react';
 import { formatTime } from '../utils';
 import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
+import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
+import { api } from '../services/api';
 
 export const Spotify: React.FC = () => {
+  const navigate = useNavigate();
   const { 
       spotifyClientId, spotifyClientSecret, spotifyUser, 
       logoutSpotify, setSpotifyTokens, setSpotifyUser, addLog 
   } = useStore();
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'search' | 'recent' | 'albums' | 'playlists'>('search');
 
   // Search State
   const [inputValue, setInputValue] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [spotifyResults, setSpotifyResults] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+
+  // Library State
+  const [recentlyPlayed, setRecentlyPlayed] = useState<any>(null);
+  const [savedAlbums, setSavedAlbums] = useState<any>(null);
+  const [savedPlaylists, setSavedPlaylists] = useState<any>(null);
+  const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
+
+  // Download State - track which items are currently being queued
+  const [downloadingTracks, setDownloadingTracks] = useState<Set<string>>(new Set());
+  const [downloadingAlbums, setDownloadingAlbums] = useState<Set<string>>(new Set());
+  const [downloadingPlaylists, setDownloadingPlaylists] = useState<Set<string>>(new Set());
 
   useEffect(() => {
       const handleMessage = (event: MessageEvent) => {
@@ -49,18 +69,111 @@ export const Spotify: React.FC = () => {
           const searchSpotify = async () => {
               setIsSearching(true);
               try {
-                  const results = await SpotifyService.search(debouncedQuery, ['album', 'playlist', 'track']);
+                  const results = await SpotifyService.search(debouncedQuery, ['album', 'playlist', 'track'], 20, 0);
                   setSpotifyResults(results);
-              } catch (e) {
-                  console.error("Spotify search failed", e);
+                  
+                  // Check if there are more results
+                  const hasMoreAlbums = results.albums?.next !== null;
+                  const hasMorePlaylists = results.playlists?.next !== null;
+                  const hasMoreTracks = results.tracks?.next !== null;
+                  setHasMore(hasMoreAlbums || hasMorePlaylists || hasMoreTracks);
+              } catch (error) {
+                  if (error instanceof SpotifyRateLimitError) {
+                      addLog('warn', `Rate limited. Try again in ${error.retryAfter} seconds`);
+                  } else if (error instanceof SpotifyAuthError) {
+                      addLog('error', 'Authentication failed. Please reconnect to Spotify.');
+                      logoutSpotify();
+                  } else if (error instanceof SpotifyApiError) {
+                      addLog('error', `Spotify API Error: ${error.message}`);
+                  } else {
+                      addLog('error', 'Search failed. Please try again.');
+                      console.error("Spotify search failed", error);
+                  }
               }
               setIsSearching(false);
           };
           searchSpotify();
       } else if (!debouncedQuery) {
           setSpotifyResults(null);
+          setHasMore(false);
       }
-  }, [debouncedQuery, spotifyUser]);
+  }, [debouncedQuery, spotifyUser, addLog, logoutSpotify]);
+
+  const handleLoadMore = async () => {
+      if (!debouncedQuery || !spotifyResults || isLoadingMore) return;
+      
+      setIsLoadingMore(true);
+      try {
+          const currentOffset = spotifyResults.albums?.items?.length || 
+                               spotifyResults.playlists?.items?.length || 
+                               spotifyResults.tracks?.items?.length || 0;
+          
+          const moreResults = await SpotifyService.search(debouncedQuery, ['album', 'playlist', 'track'], 20, currentOffset);
+          
+          // Merge results
+          setSpotifyResults((prev: any) => ({
+              albums: prev.albums && moreResults.albums ? {
+                  ...moreResults.albums,
+                  items: [...prev.albums.items, ...moreResults.albums.items]
+              } : prev.albums || moreResults.albums,
+              playlists: prev.playlists && moreResults.playlists ? {
+                  ...moreResults.playlists,
+                  items: [...prev.playlists.items, ...moreResults.playlists.items]
+              } : prev.playlists || moreResults.playlists,
+              tracks: prev.tracks && moreResults.tracks ? {
+                  ...moreResults.tracks,
+                  items: [...prev.tracks.items, ...moreResults.tracks.items]
+              } : prev.tracks || moreResults.tracks
+          }));
+          
+          // Update hasMore
+          const hasMoreAlbums = moreResults.albums?.next !== null;
+          const hasMorePlaylists = moreResults.playlists?.next !== null;
+          const hasMoreTracks = moreResults.tracks?.next !== null;
+          setHasMore(hasMoreAlbums || hasMorePlaylists || hasMoreTracks);
+      } catch (error) {
+          addLog('error', 'Failed to load more results');
+          console.error("Load more failed", error);
+      }
+      setIsLoadingMore(false);
+  };
+
+  // Load library data when tabs change
+  useEffect(() => {
+      if (!spotifyUser) return;
+
+      const loadLibraryData = async () => {
+          setIsLoadingLibrary(true);
+          try {
+              if (activeTab === 'recent' && !recentlyPlayed) {
+                  const data = await SpotifyService.getRecentlyPlayed(50);
+                  setRecentlyPlayed(data);
+              } else if (activeTab === 'albums' && !savedAlbums) {
+                  const data = await SpotifyService.getSavedAlbums(20, 0);
+                  setSavedAlbums(data);
+              } else if (activeTab === 'playlists' && !savedPlaylists) {
+                  const data = await SpotifyService.getSavedPlaylists(20, 0);
+                  setSavedPlaylists(data);
+              }
+          } catch (error) {
+              if (error instanceof SpotifyRateLimitError) {
+                  addLog('warn', `Rate limited. Try again in ${error.retryAfter} seconds`);
+              } else if (error instanceof SpotifyAuthError) {
+                  addLog('error', 'Authentication failed. Please reconnect to Spotify.');
+              } else if (error instanceof SpotifyApiError) {
+                  addLog('error', `Spotify API Error: ${error.message}`);
+              } else {
+                  addLog('error', 'Failed to load library data');
+                  console.error('Library data error:', error);
+              }
+          }
+          setIsLoadingLibrary(false);
+      };
+
+      if (activeTab !== 'search') {
+          loadLibraryData();
+      }
+  }, [activeTab, spotifyUser, recentlyPlayed, savedAlbums, savedPlaylists, addLog]);
 
   const handleLogin = async () => {
     if (!spotifyClientId || !spotifyClientSecret) {
@@ -107,6 +220,74 @@ export const Spotify: React.FC = () => {
       logoutSpotify();
       setSpotifyResults(null);
       setInputValue('');
+  };
+
+  const handleDownloadTrack = async (track: any) => {
+      if (downloadingTracks.has(track.id)) return; // Already downloading
+      
+      setDownloadingTracks(prev => new Set(prev).add(track.id));
+      try {
+          await api.downloadTrack(
+              track.id,
+              track.name,
+              track.artists?.map((a: any) => a.name).join(', ') || 'Unknown Artist',
+              track.album?.name || 'Unknown Album',
+              Math.floor(track.duration_ms / 1000)
+          );
+          addLog('success', `Download queued: ${track.name}`);
+      } catch (error) {
+          addLog('error', `Failed to queue download: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+          setDownloadingTracks(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(track.id);
+              return newSet;
+          });
+      }
+  };
+
+  const handleDownloadAlbum = async (album: any) => {
+      if (downloadingAlbums.has(album.id)) return; // Already downloading
+      
+      setDownloadingAlbums(prev => new Set(prev).add(album.id));
+      try {
+          await api.downloadAlbum(
+              album.id,
+              album.name,
+              album.artists?.[0]?.name || 'Unknown Artist'
+          );
+          addLog('success', `Album download queued: ${album.name}`);
+      } catch (error) {
+          addLog('error', `Failed to queue album download: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+          setDownloadingAlbums(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(album.id);
+              return newSet;
+          });
+      }
+  };
+
+  const handleDownloadPlaylist = async (playlist: any) => {
+      if (downloadingPlaylists.has(playlist.id)) return; // Already downloading
+      
+      setDownloadingPlaylists(prev => new Set(prev).add(playlist.id));
+      try {
+          await api.downloadPlaylist(
+              playlist.id,
+              playlist.name,
+              playlist.owner?.display_name || 'Unknown Owner'
+          );
+          addLog('success', `Playlist download queued: ${playlist.name}`);
+      } catch (error) {
+          addLog('error', `Failed to queue playlist download: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+          setDownloadingPlaylists(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(playlist.id);
+              return newSet;
+          });
+      }
   };
 
   if (!spotifyUser) {
@@ -206,7 +387,56 @@ export const Spotify: React.FC = () => {
             </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-2 mb-8 border-b border-surface-border">
+            <button
+                onClick={() => setActiveTab('search')}
+                className={`px-6 py-3 font-bold transition-all border-b-2 ${
+                    activeTab === 'search'
+                        ? 'border-[#1db954] text-[#1db954]'
+                        : 'border-transparent text-text-secondary hover:text-text-main'
+                }`}
+            >
+                <div className="flex items-center gap-2">
+                    <SearchIcon size={18} />
+                    Search
+                </div>
+            </button>
+            <button
+                onClick={() => setActiveTab('recent')}
+                className={`px-6 py-3 font-bold transition-all border-b-2 ${
+                    activeTab === 'recent'
+                        ? 'border-[#1db954] text-[#1db954]'
+                        : 'border-transparent text-text-secondary hover:text-text-main'
+                }`}
+            >
+                Recently Played
+            </button>
+            <button
+                onClick={() => setActiveTab('albums')}
+                className={`px-6 py-3 font-bold transition-all border-b-2 ${
+                    activeTab === 'albums'
+                        ? 'border-[#1db954] text-[#1db954]'
+                        : 'border-transparent text-text-secondary hover:text-text-main'
+                }`}
+            >
+                Saved Albums
+            </button>
+            <button
+                onClick={() => setActiveTab('playlists')}
+                className={`px-6 py-3 font-bold transition-all border-b-2 ${
+                    activeTab === 'playlists'
+                        ? 'border-[#1db954] text-[#1db954]'
+                        : 'border-transparent text-text-secondary hover:text-text-main'
+                }`}
+            >
+                Saved Playlists
+            </button>
+        </div>
+
         {/* Search Section */}
+        {activeTab === 'search' && (
+        <>
         <div className="mb-8">
             <div className="relative w-full max-w-3xl">
                 <SearchIcon className="absolute left-5 top-1/2 -translate-y-1/2 text-text-secondary" size={22} />
@@ -234,16 +464,32 @@ export const Spotify: React.FC = () => {
                         <h2 className="text-xl font-bold mb-4">Albums</h2>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                             {spotifyResults.albums.items.filter((a: any) => a).map((album: any) => (
-                                <div key={album.id} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group cursor-pointer">
-                                    <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
-                                        <img src={album.images?.[0]?.url} alt={album.name} className="w-full h-full object-cover" />
-                                        <button className="absolute right-2 bottom-2 w-10 h-10 bg-[#1db954] rounded-full flex items-center justify-center shadow-xl translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all hover:scale-105 text-black">
-                                            <Play size={20} fill="black" />
-                                        </button>
+                                <div key={album.id} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group relative">
+                                    <div onClick={() => navigate(`/spotify/album/${album.id}`)} className="cursor-pointer">
+                                        <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
+                                            <img src={album.images?.[0]?.url} alt={album.name} className="w-full h-full object-cover" />
+                                            <button className="absolute right-2 bottom-2 w-10 h-10 bg-[#1db954] rounded-full flex items-center justify-center shadow-xl translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all hover:scale-105 text-black">
+                                                <Play size={20} fill="black" />
+                                            </button>
+                                        </div>
+                                        <h3 className="font-bold truncate text-text-main">{album.name}</h3>
+                                        <p className="text-sm text-text-secondary truncate">{album.artists?.map((a: any) => a.name).join(', ')}</p>
+                                        <p className="text-xs text-text-subtle mt-1">{album.release_date?.split('-')[0]} • Album</p>
                                     </div>
-                                    <h3 className="font-bold truncate text-text-main">{album.name}</h3>
-                                    <p className="text-sm text-text-secondary truncate">{album.artists?.map((a: any) => a.name).join(', ')}</p>
-                                    <p className="text-xs text-text-subtle mt-1">{album.release_date?.split('-')[0]} • Album</p>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleDownloadAlbum(album); }}
+                                        disabled={downloadingAlbums.has(album.id)}
+                                        className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title={downloadingAlbums.has(album.id) ? "Queueing..." : "Download album"}
+                                    >
+                                        {downloadingAlbums.has(album.id) ? (
+                                            <Loader2 className="w-4 h-4 text-white animate-spin" />
+                                        ) : (
+                                            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                                            </svg>
+                                        )}
+                                    </button>
                                 </div>
                             ))}
                         </div>
@@ -256,15 +502,31 @@ export const Spotify: React.FC = () => {
                         <h2 className="text-xl font-bold mb-4">Playlists</h2>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                             {spotifyResults.playlists.items.filter((p: any) => p).map((playlist: any) => (
-                                <div key={playlist.id} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group cursor-pointer">
-                                    <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
-                                        <img src={playlist.images?.[0]?.url} alt={playlist.name} className="w-full h-full object-cover" />
-                                        <button className="absolute right-2 bottom-2 w-10 h-10 bg-[#1db954] rounded-full flex items-center justify-center shadow-xl translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all hover:scale-105 text-black">
-                                            <Play size={20} fill="black" />
-                                        </button>
+                                <div key={playlist.id} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group relative">
+                                    <div onClick={() => navigate(`/spotify/playlist/${playlist.id}`)} className="cursor-pointer">
+                                        <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
+                                            <img src={playlist.images?.[0]?.url} alt={playlist.name} className="w-full h-full object-cover" />
+                                            <button className="absolute right-2 bottom-2 w-10 h-10 bg-[#1db954] rounded-full flex items-center justify-center shadow-xl translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all hover:scale-105 text-black">
+                                                <Play size={20} fill="black" />
+                                            </button>
+                                        </div>
+                                        <h3 className="font-bold truncate text-text-main">{playlist.name}</h3>
+                                        <p className="text-sm text-text-secondary truncate">By {playlist.owner?.display_name}</p>
                                     </div>
-                                    <h3 className="font-bold truncate text-text-main">{playlist.name}</h3>
-                                    <p className="text-sm text-text-secondary truncate">By {playlist.owner?.display_name}</p>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleDownloadPlaylist(playlist); }}
+                                        disabled={downloadingPlaylists.has(playlist.id)}
+                                        className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title={downloadingPlaylists.has(playlist.id) ? "Queueing..." : "Download playlist"}
+                                    >
+                                        {downloadingPlaylists.has(playlist.id) ? (
+                                            <Loader2 className="w-4 h-4 text-white animate-spin" />
+                                        ) : (
+                                            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                                            </svg>
+                                        )}
+                                    </button>
                                 </div>
                             ))}
                         </div>
@@ -287,8 +549,19 @@ export const Spotify: React.FC = () => {
                                         <div className="text-sm text-text-secondary truncate">{track.artists?.map((a: any) => a.name).join(', ')}</div>
                                     </div>
                                     <div className="text-sm text-text-subtle font-mono">{formatTime(track.duration_ms / 1000)}</div>
-                                    <button className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <MoreHorizontal size={18} />
+                                    <button 
+                                        onClick={() => handleDownloadTrack(track)}
+                                        disabled={downloadingTracks.has(track.id)}
+                                        className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title={downloadingTracks.has(track.id) ? "Queueing..." : "Download track"}
+                                    >
+                                        {downloadingTracks.has(track.id) ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                                            </svg>
+                                        )}
                                     </button>
                                 </div>
                             ))}
@@ -301,12 +574,135 @@ export const Spotify: React.FC = () => {
                         No results found on Spotify for "{debouncedQuery}"
                     </div>
                 )}
+                
+                {/* Load More Button */}
+                {hasMore && (spotifyResults.albums?.items?.length || spotifyResults.playlists?.items?.length || spotifyResults.tracks?.items?.length) && (
+                    <div className="flex justify-center mt-8">
+                        <button 
+                            onClick={handleLoadMore}
+                            disabled={isLoadingMore}
+                            className="bg-surface-2 hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed text-text-main font-bold py-3 px-8 rounded-full transition-all flex items-center gap-2"
+                        >
+                            {isLoadingMore ? (
+                                <>
+                                    <Loader2 className="animate-spin" size={20} />
+                                    Loading...
+                                </>
+                            ) : (
+                                'Load More'
+                            )}
+                        </button>
+                    </div>
+                )}
             </div>
         ) : (
             <div className="flex flex-col items-center justify-center py-20 opacity-50">
                 <SearchIcon size={64} className="mb-4 text-text-subtle" />
                 <h3 className="text-xl font-bold text-text-secondary">Search Spotify</h3>
                 <p className="text-text-subtle mt-2">Find your favorite music on Spotify</p>
+            </div>
+        )}
+        </>
+        )}
+
+        {/* Recently Played Tab */}
+        {activeTab === 'recent' && (
+            <div>
+                {isLoadingLibrary ? (
+                    <div className="flex items-center justify-center py-20">
+                        <Loader2 className="animate-spin text-[#1db954]" size={48} />
+                    </div>
+                ) : recentlyPlayed?.items && recentlyPlayed.items.length > 0 ? (
+                    <div className="bg-surface-1 rounded-xl overflow-hidden">
+                        {recentlyPlayed.items.map((item: any, idx: number) => (
+                            <div key={`${item.track.id}-${idx}`} className="flex items-center gap-4 p-3 hover:bg-surface-hover group transition-colors border-b border-surface-border last:border-0">
+                                <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                                    <img src={item.track.album?.images?.[2]?.url || item.track.album?.images?.[0]?.url} alt={item.track.name} className="w-full h-full object-cover" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-text-main truncate group-hover:text-[#1db954] transition-colors">
+                                        {item.track.name}
+                                    </div>
+                                    <div className="text-sm text-text-secondary truncate">{item.track.artists?.map((a: any) => a.name).join(', ')}</div>
+                                </div>
+                                <div className="text-sm text-text-subtle">{item.track.album.name}</div>
+                                <div className="text-sm text-text-subtle font-mono">{formatTime(item.track.duration_ms / 1000)}</div>
+                                <button className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <MoreHorizontal size={18} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-20 text-text-subtle">
+                        <Music size={64} className="mx-auto mb-4 opacity-50" />
+                        <p>No recently played tracks</p>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* Saved Albums Tab */}
+        {activeTab === 'albums' && (
+            <div>
+                {isLoadingLibrary ? (
+                    <div className="flex items-center justify-center py-20">
+                        <Loader2 className="animate-spin text-[#1db954]" size={48} />
+                    </div>
+                ) : savedAlbums?.items && savedAlbums.items.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        {savedAlbums.items.map((item: any) => (
+                            <div key={item.album.id} onClick={() => navigate(`/spotify/album/${item.album.id}`)} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group cursor-pointer">
+                                <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
+                                    <img src={item.album.images?.[0]?.url} alt={item.album.name} className="w-full h-full object-cover" />
+                                    <button className="absolute right-2 bottom-2 w-10 h-10 bg-[#1db954] rounded-full flex items-center justify-center shadow-xl translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all hover:scale-105 text-black">
+                                        <Play size={20} fill="black" />
+                                    </button>
+                                </div>
+                                <h3 className="font-bold truncate text-text-main">{item.album.name}</h3>
+                                <p className="text-sm text-text-secondary truncate">{item.album.artists?.map((a: any) => a.name).join(', ')}</p>
+                                <p className="text-xs text-text-subtle mt-1">{item.album.release_date?.split('-')[0]} • {item.album.total_tracks} tracks</p>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-20 text-text-subtle">
+                        <Music size={64} className="mx-auto mb-4 opacity-50" />
+                        <p>No saved albums</p>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* Saved Playlists Tab */}
+        {activeTab === 'playlists' && (
+            <div>
+                {isLoadingLibrary ? (
+                    <div className="flex items-center justify-center py-20">
+                        <Loader2 className="animate-spin text-[#1db954]" size={48} />
+                    </div>
+                ) : savedPlaylists?.items && savedPlaylists.items.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        {savedPlaylists.items.map((playlist: any) => (
+                            <div key={playlist.id} onClick={() => navigate(`/spotify/playlist/${playlist.id}`)} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group cursor-pointer">
+                                <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
+                                    <img src={playlist.images?.[0]?.url} alt={playlist.name} className="w-full h-full object-cover" />
+                                    <button className="absolute right-2 bottom-2 w-10 h-10 bg-[#1db954] rounded-full flex items-center justify-center shadow-xl translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all hover:scale-105 text-black">
+                                        <Play size={20} fill="black" />
+                                    </button>
+                                </div>
+                                <h3 className="font-bold truncate text-text-main">{playlist.name}</h3>
+                                <p className="text-sm text-text-secondary truncate">By {playlist.owner?.display_name}</p>
+                                <p className="text-xs text-text-subtle mt-1">{playlist.tracks.total} tracks</p>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-20 text-text-subtle">
+                        <Music size={64} className="mx-auto mb-4 opacity-50" />
+                        <p>No saved playlists</p>
+                    </div>
+                )}
             </div>
         )}
     </div>

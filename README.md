@@ -11,7 +11,8 @@ A modern local media player for audio files, built with React + TypeScript front
 - 🔀 **Crossfade** - Smooth transitions between tracks
 - 🧠 **Smart Mixes** - Auto-generated playlists based on your library
 - 📁 **Folder Scanning** - Add music folders and scan for new files
-- 🎧 **Spotify Integration** - Connect to enhance metadata (optional)
+- 🎧 **Spotify Integration** - Connect to enhance metadata and search Spotify catalog
+- ⬇️ **Spotify Downloads** - Download tracks, albums, and playlists from Spotify (Premium required)
 - 💾 **Local Database** - SQLite storage for your library
 
 ## Architecture
@@ -41,7 +42,8 @@ ViiB-MediaHub/
 
 - **Node.js** 18+ and npm
 - **Go** 1.22+
-- **GCC** (for SQLite CGO) - On Windows, install via [MSYS2](https://www.msys2.org/) or [TDM-GCC](https://jmeubank.github.io/tdm-gcc/)
+- **GCC** (for SQLite and librespot-go CGO) - On Windows, install via [MSYS2](https://www.msys2.org/) or [TDM-GCC](https://jmeubank.github.io/tdm-gcc/)
+- **CGO_ENABLED=1** environment variable required for Go builds
 
 ### Development Mode
 
@@ -115,6 +117,33 @@ The app will:
 | GET | `/api/audio/{id}` | Stream audio file |
 | GET | `/api/cover/{id}` | Get album cover |
 | POST | `/api/browse` | Browse folders |
+| POST | `/api/spotify/credentials` | Save Spotify OAuth credentials |
+| GET | `/api/spotify/credentials` | Get Spotify credentials |
+| GET | `/api/spotify/search` | Proxy Spotify search API |
+| POST | `/api/spotify/download/track` | Queue track download |
+| POST | `/api/spotify/download/album` | Queue album download |
+| POST | `/api/spotify/download/playlist` | Queue playlist download |
+| GET | `/api/spotify/downloads` | List all downloads |
+| GET | `/api/spotify/downloads/{id}` | Get download status |
+| DELETE | `/api/spotify/downloads/{id}` | Delete download |
+| GET | `/api/spotify/downloads/events` | SSE stream for download progress |
+
+## Spotify Downloads
+
+ViiB MediaHub can download tracks directly from Spotify (Premium account required):
+
+1. **Connect Spotify** - Navigate to the Spotify page and log in with OAuth
+2. **Search** - Search for tracks, albums, or playlists
+3. **Download** - Click the download button on any track, album, or playlist
+4. **Monitor** - Watch progress in the DownloadManager widget (bottom-right corner)
+5. **Play** - Downloaded files are saved as OGG Vorbis format
+
+**Technical Details:**
+- Uses `librespot-go` library for direct Spotify streaming
+- OAuth access tokens from Web API authentication (no separate login)
+- Queue-based download system with one concurrent download
+- Real-time progress via Server-Sent Events (SSE)
+- Files saved to `data/spotify_downloads/{artist}/{track}.ogg`
 
 ## Technology Stack
 
@@ -126,12 +155,15 @@ The app will:
 - Tailwind CSS
 - Lucide Icons
 - Web Audio API
+- IndexedDB (via idb)
 
 ### Backend
-- Go 1.22
+- Go 1.22+
 - Chi Router
 - SQLite (via go-sqlite3)
 - dhowden/tag (metadata extraction)
+- librespot-go (Spotify downloads)
+- amp.SDK (task management)
 
 ## Browser Support
 

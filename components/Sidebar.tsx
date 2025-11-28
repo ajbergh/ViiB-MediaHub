@@ -7,12 +7,12 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store';
 
-const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
+const SidebarItem = ({ to, icon: Icon, label, badge }: { to: string; icon: any; label: string; badge?: number }) => {
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-4 px-4 py-3 text-sm font-medium transition-colors duration-200 border-l-4 ${
+        `flex items-center gap-4 px-4 py-3 text-sm font-medium transition-colors duration-200 border-l-4 relative ${
           isActive
             ? 'border-brand bg-surface-highlight text-text-main'
             : 'border-transparent text-text-secondary hover:text-text-main hover:bg-surface-highlight/50'
@@ -20,13 +20,18 @@ const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: 
       }
     >
       <Icon size={20} />
-      <span>{label}</span>
+      <span className="flex-1">{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="bg-brand text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+          {badge}
+        </span>
+      )}
     </NavLink>
   );
 };
 
 export const Sidebar: React.FC = () => {
-  const { isScanning, scanProgress } = useStore();
+  const { isScanning, scanProgress, downloadCount } = useStore();
 
   return (
     <div className="w-64 h-full bg-surface-0 flex flex-col border-r border-surface-highlight">
@@ -53,7 +58,7 @@ export const Sidebar: React.FC = () => {
 
         <div className="space-y-1">
           <SidebarItem to="/spotify" icon={Wifi} label="Spotify" />
-          <SidebarItem to="/downloads" icon={Download} label="Downloads" />
+          <SidebarItem to="/downloads" icon={Download} label="Downloads" badge={downloadCount} />
           <SidebarItem to="/search" icon={Search} label="Search" />
         </div>
         

@@ -85,6 +85,8 @@ export interface SpotifyProfile {
   images: { url: string; height: number; width: number }[];
   product: string; // 'premium', 'free', 'open'
   country: string;
+  followers: { href: string | null; total: number };
+  external_urls: { spotify: string };
 }
 
 export interface LogEntry {

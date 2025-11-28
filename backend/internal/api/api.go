@@ -8,19 +8,22 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/go-chi/chi/v5"
 )
 
 type API struct {
-	db       *db.DB
-	dataDir  string
-	coverDir string
+	db              *db.DB
+	dataDir         string
+	coverDir        string
+	downloadManager *DownloadManager
 
 	// Scanning state
 	scanning     bool
@@ -29,13 +32,26 @@ type API struct {
 }
 
 func New(database *db.DB, dataDir string) *API {
+	logger.API("New: Starting with dataDir=%s", dataDir)
+
 	coverDir := filepath.Join(dataDir, "covers")
 	os.MkdirAll(coverDir, 0755)
 
+	downloadDir := filepath.Join(dataDir, "spotify_downloads")
+	os.MkdirAll(downloadDir, 0755)
+
+	logger.API("Creating download manager...")
+	// Create download manager - it will get access token from database when needed
+	dm := NewDownloadManager(database, downloadDir)
+	logger.API("Starting download manager...")
+	dm.Start()
+	logger.API("Download manager started")
+
 	return &API{
-		db:       database,
-		dataDir:  dataDir,
-		coverDir: coverDir,
+		db:              database,
+		dataDir:         dataDir,
+		coverDir:        coverDir,
+		downloadManager: dm,
 	}
 }
 
@@ -71,6 +87,25 @@ func (a *API) Routes() chi.Router {
 	// Spotify
 	r.Get("/spotify/credentials", a.getSpotifyCredentials)
 	r.Post("/spotify/credentials", a.saveSpotifyCredentials)
+	r.Get("/spotify/search", a.spotifySearch)
+	r.Get("/spotify/me", a.spotifyGetUserProfile)
+	r.Get("/spotify/proxy", a.spotifyProxy)
+	r.Post("/spotify/proxy", a.spotifyProxy)
+
+	// Spotify Downloads
+	r.Post("/spotify/download/track", a.downloadTrack)
+	r.Post("/spotify/download/album", a.downloadAlbum)
+	r.Post("/spotify/download/playlist", a.downloadPlaylist)
+	r.Get("/spotify/downloads", a.getDownloads)
+	r.Get("/spotify/downloads/{id}", a.getDownloadStatus)
+	r.Delete("/spotify/downloads/{id}", a.deleteDownload)
+	r.Post("/spotify/downloads/{id}/retry", a.retryDownload)
+	r.Delete("/spotify/downloads/completed", a.clearCompletedDownloads)
+	r.Get("/spotify/downloads/events", a.downloadProgressSSE)
+
+	// Settings
+	r.Get("/settings/{key}", a.getSetting)
+	r.Post("/settings/{key}", a.setSetting)
 
 	return r
 }
@@ -538,4 +573,64 @@ func (a *API) uploadSong(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, dbSong)
+}
+
+// Settings handlers
+
+func (a *API) getSetting(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if key == "" {
+		respondError(w, http.StatusBadRequest, "Setting key is required")
+		return
+	}
+
+	value, err := a.db.GetSetting(key)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to get setting")
+		return
+	}
+
+	respondJSON(w, map[string]string{"key": key, "value": value})
+}
+
+func (a *API) setSetting(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if key == "" {
+		respondError(w, http.StatusBadRequest, "Setting key is required")
+		return
+	}
+
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Special handling for concurrent_downloads - validate and update download manager
+	if key == "concurrent_downloads" {
+		n, err := strconv.Atoi(body.Value)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid value for concurrent_downloads")
+			return
+		}
+		if n < MinConcurrentDownloads || n > MaxConcurrentDownloads {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("concurrent_downloads must be between %d and %d", MinConcurrentDownloads, MaxConcurrentDownloads))
+			return
+		}
+		if a.downloadManager != nil {
+			if err := a.downloadManager.SetMaxConcurrent(n); err != nil {
+				respondError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+	}
+
+	if err := a.db.SetSetting(key, body.Value); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to save setting")
+		return
+	}
+
+	respondJSON(w, map[string]string{"status": "ok"})
 }

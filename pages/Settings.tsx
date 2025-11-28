@@ -30,12 +30,59 @@ export const Settings: React.FC = () => {
   const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingBrowser, setLoadingBrowser] = useState(false);
 
+  // Spotify download location
+  const [spotifyDownloadPath, setSpotifyDownloadPath] = useState('');
+  const [downloadPathSaved, setDownloadPathSaved] = useState(false);
+
+  // Concurrent downloads setting
+  const [concurrentDownloads, setConcurrentDownloads] = useState(3);
+  const [concurrentSaved, setConcurrentSaved] = useState(false);
+
   // Load scan folders on mount if backend available
   useEffect(() => {
       if (backendAvailable) {
           loadScanFolders();
       }
   }, [backendAvailable]);
+
+  // Load Spotify download path and concurrent downloads
+  useEffect(() => {
+      const loadDownloadSettings = async () => {
+          try {
+              const path = await api.getSetting('spotify_download_path');
+              if (path) {
+                  setSpotifyDownloadPath(path);
+              }
+          } catch (e) {
+              console.error('Failed to load download path:', e);
+          }
+          try {
+              const concurrent = await api.getSetting('concurrent_downloads');
+              if (concurrent) {
+                  const n = parseInt(concurrent, 10);
+                  if (n >= 1 && n <= 10) {
+                      setConcurrentDownloads(n);
+                  }
+              }
+          } catch (e) {
+              console.error('Failed to load concurrent downloads:', e);
+          }
+      };
+      if (backendAvailable) {
+          loadDownloadSettings();
+      }
+  }, [backendAvailable]);
+
+  const handleSaveConcurrentDownloads = async () => {
+      try {
+          await api.setSetting('concurrent_downloads', concurrentDownloads.toString());
+          addLog('success', `Concurrent downloads set to ${concurrentDownloads}`);
+          setConcurrentSaved(true);
+          setTimeout(() => setConcurrentSaved(false), 3000);
+      } catch (e) {
+          addLog('error', 'Failed to save concurrent downloads setting', e);
+      }
+  };
 
   const handleSaveCredentials = async () => {
       setSpotifyCredentials(tempClientId, tempClientSecret);
@@ -56,6 +103,17 @@ export const Settings: React.FC = () => {
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleSaveDownloadPath = async () => {
+      try {
+          await api.setSetting('spotify_download_path', spotifyDownloadPath);
+          addLog('success', 'Download location saved');
+          setDownloadPathSaved(true);
+          setTimeout(() => setDownloadPathSaved(false), 3000);
+      } catch (e) {
+          addLog('error', 'Failed to save download location', e);
+      }
   };
 
   const confirmResetLibrary = async () => {
@@ -609,6 +667,73 @@ export const Settings: React.FC = () => {
             <h2 className="text-lg font-bold text-text-main">Storage & Downloads</h2>
         </div>
 
+        {/* Spotify Download Location */}
+        {backendAvailable && (
+            <div className="mb-6">
+                <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Spotify Download Location</label>
+                <p className="text-xs text-text-subtle mb-3">
+                    Specify where Spotify downloads should be saved. Leave empty to use default (data/spotify_downloads).
+                </p>
+                <div className="flex items-center gap-3">
+                    <input 
+                        type="text" 
+                        value={spotifyDownloadPath}
+                        onChange={(e) => setSpotifyDownloadPath(e.target.value)}
+                        placeholder="C:\Music\Spotify Downloads"
+                        className="flex-1 bg-surface-1 border border-surface-border rounded px-4 py-3 text-text-main focus:border-brand outline-none font-mono text-sm"
+                    />
+                    {downloadPathSaved && (
+                        <span className="text-green-500 text-sm font-bold">
+                            Saved!
+                        </span>
+                    )}
+                    <button 
+                        onClick={handleSaveDownloadPath}
+                        className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-6 rounded-lg transition-colors text-sm"
+                    >
+                        Save
+                    </button>
+                </div>
+            </div>
+        )}
+
+        {/* Concurrent Downloads */}
+        {backendAvailable && (
+            <div className="mb-6">
+                <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Concurrent Downloads</label>
+                <p className="text-xs text-text-subtle mb-3">
+                    Number of tracks to download simultaneously. Higher values may improve speed on fast connections.
+                </p>
+                <div className="flex items-center gap-4">
+                    <div className="flex-1 flex items-center gap-4">
+                        <input 
+                            type="range"
+                            min={1}
+                            max={10}
+                            value={concurrentDownloads}
+                            onChange={(e) => setConcurrentDownloads(parseInt(e.target.value, 10))}
+                            className="flex-1 h-2 bg-surface-1 rounded-lg appearance-none cursor-pointer accent-brand"
+                        />
+                        <span className="text-text-main font-bold w-8 text-center">{concurrentDownloads}</span>
+                    </div>
+                    {concurrentSaved && (
+                        <span className="text-green-500 text-sm font-bold">
+                            Saved!
+                        </span>
+                    )}
+                    <button 
+                        onClick={handleSaveConcurrentDownloads}
+                        className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-6 rounded-lg transition-colors text-sm"
+                    >
+                        Save
+                    </button>
+                </div>
+                <p className="text-xs text-text-subtle mt-2">
+                    Recommended: 3 for most connections, up to 6-10 for high-speed connections (100+ Mbps).
+                </p>
+            </div>
+        )}
+
         <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg mb-4">
             <div>
                 <h3 className="text-sm text-text-secondary mb-1">Database & Cache</h3>
@@ -624,10 +749,11 @@ export const Settings: React.FC = () => {
 
         <div>
             <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Download Quality</label>
-            <select className="w-full bg-surface-1 border border-surface-border rounded px-4 py-3 text-text-main focus:border-brand outline-none">
+            <select className="w-full bg-surface-1 border border-surface-border rounded px-4 py-3 text-text-main focus:border-brand outline-none" disabled>
                 <option>High Quality (320kbps)</option>
-                <option>Normal (128kbps)</option>
+                <option>Normal (160kbps)</option>
             </select>
+            <p className="text-xs text-text-subtle mt-2">Downloads automatically use 320kbps when available.</p>
         </div>
       </section>
 

@@ -115,6 +115,27 @@ func (d *DB) migrate() error {
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS spotify_downloads (
+		id TEXT PRIMARY KEY,
+		spotify_id TEXT NOT NULL,
+		spotify_uri TEXT NOT NULL,
+		type TEXT NOT NULL,
+		title TEXT NOT NULL,
+		artist TEXT,
+		album TEXT,
+		status TEXT NOT NULL,
+		progress INTEGER DEFAULT 0,
+		error TEXT,
+		file_path TEXT,
+		added_at INTEGER NOT NULL,
+		started_at INTEGER,
+		completed_at INTEGER,
+		metadata TEXT
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_downloads_status ON spotify_downloads(status);
+	CREATE INDEX IF NOT EXISTS idx_downloads_added_at ON spotify_downloads(added_at);
 	`
 
 	_, err := d.conn.Exec(schema)
@@ -441,6 +462,265 @@ func (d *DB) UpdateScanFolder(id string, lastScan int64, songCount int) error {
 func (d *DB) RemoveScanFolder(id string) error {
 	_, err := d.conn.Exec("DELETE FROM scan_folders WHERE id = ?", id)
 	return err
+}
+
+// Spotify Download operations
+
+type SpotifyDownload struct {
+	ID          string `json:"id"`
+	SpotifyID   string `json:"spotifyId"`
+	SpotifyURI  string `json:"spotifyUri"`
+	Type        string `json:"type"` // "track", "album", "playlist"
+	Title       string `json:"title"`
+	Artist      string `json:"artist,omitempty"`
+	Album       string `json:"album,omitempty"`
+	Status      string `json:"status"` // "queued", "downloading", "completed", "failed"
+	Progress    int    `json:"progress"`
+	Error       string `json:"error,omitempty"`
+	FilePath    string `json:"filePath,omitempty"`
+	AddedAt     int64  `json:"addedAt"`
+	StartedAt   int64  `json:"startedAt,omitempty"`
+	CompletedAt int64  `json:"completedAt,omitempty"`
+	Metadata    string `json:"metadata,omitempty"` // JSON string for additional data
+}
+
+func (d *DB) AddDownload(download *SpotifyDownload) error {
+	_, err := d.conn.Exec(`
+		INSERT INTO spotify_downloads (
+			id, spotify_id, spotify_uri, type, title, artist, album,
+			status, progress, error, file_path, added_at, started_at,
+			completed_at, metadata
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, download.ID, download.SpotifyID, download.SpotifyURI, download.Type,
+		download.Title, download.Artist, download.Album, download.Status,
+		download.Progress, download.Error, download.FilePath, download.AddedAt,
+		download.StartedAt, download.CompletedAt, download.Metadata)
+	return err
+}
+
+func (d *DB) GetDownload(id string) (*SpotifyDownload, error) {
+	var dl SpotifyDownload
+	var artist, album, errorMsg, filePath, metadata sql.NullString
+	var startedAt, completedAt sql.NullInt64
+
+	err := d.conn.QueryRow(`
+		SELECT id, spotify_id, spotify_uri, type, title, artist, album,
+		       status, progress, error, file_path, added_at, started_at,
+		       completed_at, metadata
+		FROM spotify_downloads WHERE id = ?
+	`, id).Scan(
+		&dl.ID, &dl.SpotifyID, &dl.SpotifyURI, &dl.Type, &dl.Title,
+		&artist, &album, &dl.Status, &dl.Progress, &errorMsg, &filePath,
+		&dl.AddedAt, &startedAt, &completedAt, &metadata,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if artist.Valid {
+		dl.Artist = artist.String
+	}
+	if album.Valid {
+		dl.Album = album.String
+	}
+	if errorMsg.Valid {
+		dl.Error = errorMsg.String
+	}
+	if filePath.Valid {
+		dl.FilePath = filePath.String
+	}
+	if startedAt.Valid {
+		dl.StartedAt = startedAt.Int64
+	}
+	if completedAt.Valid {
+		dl.CompletedAt = completedAt.Int64
+	}
+	if metadata.Valid {
+		dl.Metadata = metadata.String
+	}
+
+	return &dl, nil
+}
+
+func (d *DB) GetAllDownloads() ([]SpotifyDownload, error) {
+	rows, err := d.conn.Query(`
+		SELECT id, spotify_id, spotify_uri, type, title, artist, album,
+		       status, progress, error, file_path, added_at, started_at,
+		       completed_at, metadata
+		FROM spotify_downloads
+		ORDER BY added_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	downloads := []SpotifyDownload{}
+	for rows.Next() {
+		var dl SpotifyDownload
+		var artist, album, errorMsg, filePath, metadata sql.NullString
+		var startedAt, completedAt sql.NullInt64
+
+		err := rows.Scan(
+			&dl.ID, &dl.SpotifyID, &dl.SpotifyURI, &dl.Type, &dl.Title,
+			&artist, &album, &dl.Status, &dl.Progress, &errorMsg, &filePath,
+			&dl.AddedAt, &startedAt, &completedAt, &metadata,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if artist.Valid {
+			dl.Artist = artist.String
+		}
+		if album.Valid {
+			dl.Album = album.String
+		}
+		if errorMsg.Valid {
+			dl.Error = errorMsg.String
+		}
+		if filePath.Valid {
+			dl.FilePath = filePath.String
+		}
+		if startedAt.Valid {
+			dl.StartedAt = startedAt.Int64
+		}
+		if completedAt.Valid {
+			dl.CompletedAt = completedAt.Int64
+		}
+		if metadata.Valid {
+			dl.Metadata = metadata.String
+		}
+
+		downloads = append(downloads, dl)
+	}
+
+	return downloads, rows.Err()
+}
+
+func (d *DB) GetQueuedDownloads() ([]SpotifyDownload, error) {
+	rows, err := d.conn.Query(`
+		SELECT id, spotify_id, spotify_uri, type, title, artist, album,
+		       status, progress, error, file_path, added_at, started_at,
+		       completed_at, metadata
+		FROM spotify_downloads
+		WHERE status = 'queued'
+		ORDER BY added_at ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	downloads := []SpotifyDownload{}
+	for rows.Next() {
+		var dl SpotifyDownload
+		var artist, album, errorMsg, filePath, metadata sql.NullString
+		var startedAt, completedAt sql.NullInt64
+
+		err := rows.Scan(
+			&dl.ID, &dl.SpotifyID, &dl.SpotifyURI, &dl.Type, &dl.Title,
+			&artist, &album, &dl.Status, &dl.Progress, &errorMsg, &filePath,
+			&dl.AddedAt, &startedAt, &completedAt, &metadata,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if artist.Valid {
+			dl.Artist = artist.String
+		}
+		if album.Valid {
+			dl.Album = album.String
+		}
+		if errorMsg.Valid {
+			dl.Error = errorMsg.String
+		}
+		if filePath.Valid {
+			dl.FilePath = filePath.String
+		}
+		if startedAt.Valid {
+			dl.StartedAt = startedAt.Int64
+		}
+		if completedAt.Valid {
+			dl.CompletedAt = completedAt.Int64
+		}
+		if metadata.Valid {
+			dl.Metadata = metadata.String
+		}
+
+		downloads = append(downloads, dl)
+	}
+
+	return downloads, rows.Err()
+}
+
+func (d *DB) UpdateDownloadStatus(id string, status string, progress int, errorMsg string) error {
+	_, err := d.conn.Exec(`
+		UPDATE spotify_downloads
+		SET status = ?, progress = ?, error = ?
+		WHERE id = ?
+	`, status, progress, errorMsg, id)
+	return err
+}
+
+func (d *DB) UpdateDownloadProgress(id string, progress int) error {
+	_, err := d.conn.Exec(`
+		UPDATE spotify_downloads SET progress = ? WHERE id = ?
+	`, progress, id)
+	return err
+}
+
+func (d *DB) MarkDownloadStarted(id string) error {
+	_, err := d.conn.Exec(`
+		UPDATE spotify_downloads
+		SET status = 'downloading', started_at = ?
+		WHERE id = ?
+	`, time.Now().Unix(), id)
+	return err
+}
+
+func (d *DB) MarkDownloadCompleted(id string, filePath string) error {
+	_, err := d.conn.Exec(`
+		UPDATE spotify_downloads
+		SET status = 'completed', progress = 100, file_path = ?, completed_at = ?
+		WHERE id = ?
+	`, filePath, time.Now().Unix(), id)
+	return err
+}
+
+func (d *DB) MarkDownloadFailed(id string, errorMsg string) error {
+	_, err := d.conn.Exec(`
+		UPDATE spotify_downloads
+		SET status = 'failed', error = ?, completed_at = ?
+		WHERE id = ?
+	`, errorMsg, time.Now().Unix(), id)
+	return err
+}
+
+func (d *DB) DeleteDownload(id string) error {
+	_, err := d.conn.Exec("DELETE FROM spotify_downloads WHERE id = ?", id)
+	return err
+}
+
+// ResetDownloadForRetry resets a failed download back to queued status
+func (d *DB) ResetDownloadForRetry(id string) error {
+	_, err := d.conn.Exec(`
+		UPDATE spotify_downloads
+		SET status = 'queued', progress = 0, error = NULL, completed_at = NULL, added_at = ?
+		WHERE id = ? AND status = 'failed'
+	`, time.Now().Unix(), id)
+	return err
+}
+
+// DeleteCompletedDownloads removes all downloads with status 'completed'
+func (d *DB) DeleteCompletedDownloads() (int64, error) {
+	result, err := d.conn.Exec("DELETE FROM spotify_downloads WHERE status = 'completed'")
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 // Settings operations

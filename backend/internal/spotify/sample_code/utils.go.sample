@@ -1,0 +1,366 @@
+// ********************************************************************************************************************
+// File utils.go
+// Purpose: Collection of small utility helpers used across the Spotify package:
+//   - sanitizeFilename: make file/dir names safe for Windows/Filesystem usage
+//   - parseTrackNumber: safe integer parsing for track/disc numbers
+//   - isOggFile: quick file checks
+//   - downloadAlbumArtwork: download and save cover.jpg into an album directory
+//   - writeOggMetadata: robustly write Vorbis/Ogg tags with a retry to handle Windows locks
+//   - maskString: mask sensitive strings for logging
+//   - generateRandomState: generate OAuth state tokens
+//   - parseRedirectURL: parse redirect URLs for port extraction
+//
+// ********************************************************************************************************************
+package spotify
+
+import (
+	"crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/dweymouth/supersonic/sharedutil"
+	"go.senan.xyz/taglib"
+)
+
+var (
+	// ErrMissingCredentials indicates missing Spotify API credentials
+	ErrMissingCredentials = fmt.Errorf("missing required Spotify credentials")
+)
+
+// sanitizeFilename removes/replaces invalid filename characters for Windows compatibility
+func sanitizeFilename(filename string) string {
+	// Windows reserved names
+	reservedNames := map[string]bool{
+		"CON": true, "PRN": true, "AUX": true, "NUL": true,
+		"COM1": true, "COM2": true, "COM3": true, "COM4": true,
+		"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true,
+	}
+
+	// Replace invalid characters
+	invalids := []string{"<", ">", ":", "\"", "/", "\\", "|", "?", "*"}
+	result := filename
+
+	// Replace invalid chars with underscore
+	for _, char := range invalids {
+		result = strings.ReplaceAll(result, char, "_")
+	}
+
+	// Convert to valid UTF-8 and normalize
+	result = strings.ToValidUTF8(result, "_")
+
+	// Trim spaces and dots from ends
+	result = strings.TrimSpace(result)
+	result = strings.Trim(result, ".")
+
+	// Check for reserved names
+	upperName := strings.ToUpper(result)
+	if reservedNames[upperName] {
+		result = "_" + result
+	}
+
+	// Handle empty filename
+	if result == "" {
+		result = "_unnamed_"
+	}
+
+	// Limit length to 255 characters (Windows MAX_PATH is 260, leaving room for path)
+	if len(result) > 255 {
+		result = result[:255]
+	}
+
+	return result
+}
+
+// parseTrackNumber safely parses track/disc numbers with fallback to 0.
+// Delegates to sharedutil.ParseIntOrDefault for consistent parsing across the application.
+func parseTrackNumber(s string) int {
+	return sharedutil.ParseIntOrDefault(s, 0)
+}
+
+// isOggFile checks if a file is an Ogg container by reading the magic bytes
+func isOggFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	magic := make([]byte, 4)
+	if _, err := io.ReadFull(f, magic); err != nil {
+		return false
+	}
+
+	return string(magic) == "OggS"
+}
+
+// writeOggMetadata validates the target file is an Ogg container and writes Vorbis tags
+func writeOggMetadata(filePath string, metadata TrackMetadata) error {
+	if !isOggFile(filePath) {
+		info, _ := os.Stat(filePath)
+		size := int64(-1)
+		if info != nil {
+			size = info.Size()
+		}
+		return fmt.Errorf("not an Ogg container (magic mismatch) size=%d", size)
+	}
+
+	// Sanitize metadata to valid UTF-8
+	metadata.Artist = strings.ToValidUTF8(metadata.Artist, "")
+	metadata.Title = strings.ToValidUTF8(metadata.Title, "")
+	metadata.Album = strings.ToValidUTF8(metadata.Album, "")
+	metadata.Genre = strings.ToValidUTF8(metadata.Genre, "")
+	metadata.AlbumArtist = strings.ToValidUTF8(metadata.AlbumArtist, "")
+
+	log.Printf("Writing metadata to %s: Artist='%s', Title='%s', Album='%s', TrackNumber=%d, DiscNumber=%d, AlbumArtist='%s'",
+		filePath, metadata.Artist, metadata.Title, metadata.Album, metadata.TrackNumber, metadata.DiscNumber, metadata.AlbumArtist)
+
+	tags := map[string][]string{
+		"ARTIST":      {metadata.Artist},
+		"TITLE":       {metadata.Title},
+		"ALBUM":       {metadata.Album},
+		"DATE":        {metadata.Date},
+		"GENRE":       {metadata.Genre},
+		"TRACKNUMBER": {strconv.Itoa(metadata.TrackNumber)},
+		"DISCNUMBER":  {strconv.Itoa(metadata.DiscNumber)},
+		"ALBUMARTIST": {metadata.AlbumArtist},
+	}
+
+	try := func() error {
+		return taglib.WriteTags(filePath, tags, 0)
+	}
+
+	if err := try(); err != nil {
+		// Possible Windows file lock latency – wait & retry once
+		time.Sleep(150 * time.Millisecond)
+		if err2 := try(); err2 != nil {
+			log.Printf("Failed to write metadata to %s: %v", filePath, err2)
+			return fmt.Errorf("failed to write tags using taglib after retry: %w", err2)
+		}
+	}
+
+	log.Printf("Successfully wrote metadata to %s", filePath)
+	return nil
+}
+
+// downloadAlbumArtwork downloads an image from imageURL and writes it
+// to albumPath/cover.jpg. The function uses a short HTTP client timeout.
+func downloadAlbumArtwork(imageURL string, albumPath string) error {
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Make GET request to image URL
+	resp, err := client.Get(imageURL)
+	if err != nil {
+		return fmt.Errorf("failed to download artwork: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download artwork: status %d", resp.StatusCode)
+	}
+
+	// Ensure album directory exists
+	if err := os.MkdirAll(albumPath, 0755); err != nil {
+		return fmt.Errorf("failed to create album directory: %v", err)
+	}
+
+	// Create output file
+	outputPath := filepath.Join(albumPath, "cover.jpg")
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create cover file: %v", err)
+	}
+	defer outputFile.Close()
+
+	// Copy image data
+	_, err = io.Copy(outputFile, resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to write cover image: %v", err)
+	}
+
+	return nil
+}
+
+// fileExists checks if a file exists and has a reasonable minimum size.
+// The 32KB threshold helps avoid treating tiny partial/incomplete files
+// as successfully downloaded tracks. This is specifically for validating
+// downloaded audio files where legitimate files should be larger.
+func fileExists(p string) bool {
+	const minAudioFileSize = 32 * 1024 // 32KB - minimum size for valid audio file
+	info, err := os.Stat(p)
+	if err != nil {
+		return false
+	}
+	// Check size sanity to avoid treating incomplete downloads as valid
+	if info.Size() < minAudioFileSize {
+		return false
+	}
+	return true
+}
+
+// removeVorbisTemp removes a small temp suffix used by the workflow
+func removeVorbisTemp(path string) {
+	temp := path + ".vctemp"
+	if _, err := os.Stat(temp); err == nil {
+		_ = os.Remove(temp)
+	}
+}
+
+// hasBasicOggTags checks that an Ogg file has minimally required tags
+// (ARTIST, TITLE). Returns (ok, nil) when present; otherwise false.
+func hasBasicOggTags(path string) (bool, error) {
+	if !isOggFile(path) {
+		return false, fmt.Errorf("not ogg")
+	}
+	tags, err := taglib.ReadTags(path)
+	if err != nil {
+		return false, err
+	}
+	// normalize keys to uppercase for quick lookup
+	norm := make(map[string][]string, len(tags))
+	for k, v := range tags {
+		norm[strings.ToUpper(strings.TrimSpace(k))] = v
+	}
+	get := func(key string) string {
+		if vs, ok := norm[key]; ok && len(vs) > 0 {
+			return strings.TrimSpace(vs[0])
+		}
+		return ""
+	}
+
+	artist := get("ARTIST")
+	title := get("TITLE")
+
+	return artist != "" && title != "", nil
+}
+
+// ensureOggMetadata checks and updates metadata for existing files
+func ensureOggMetadata(filePath string, metadata TrackMetadata) error {
+	if !isOggFile(filePath) {
+		return fmt.Errorf("not an Ogg file")
+	}
+
+	// Read existing tags
+	existingTags, err := taglib.ReadTags(filePath)
+	if err != nil {
+		return err
+	}
+
+	// Check if basic tags are missing
+	needsUpdate := false
+	if len(existingTags["ARTIST"]) == 0 || len(existingTags["TITLE"]) == 0 {
+		needsUpdate = true
+	}
+
+	// Check for missing ALBUMARTIST
+	if len(existingTags["ALBUMARTIST"]) == 0 && metadata.AlbumArtist != "" {
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		return writeOggMetadata(filePath, metadata)
+	}
+
+	return nil
+}
+
+// maskString masks a string for logging, showing only first and last few characters
+func maskString(s string) string {
+	if len(s) <= 8 {
+		return strings.Repeat("*", len(s))
+	}
+	return s[:4] + strings.Repeat("*", len(s)-8) + s[len(s)-4:]
+}
+
+// generateRandomState returns a base64-encoded random 16-byte string
+// used as OAuth state; falls back to a time-based value on RNG failure.
+func generateRandomState() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// fallback time-based
+		return base64.URLEncoding.EncodeToString([]byte(strconv.FormatInt(time.Now().UnixNano(), 10)))
+	}
+	return base64.URLEncoding.EncodeToString(b)
+}
+
+// parseRedirectURL parses a redirect URL and returns the port string (e.g., ":5000")
+func parseRedirectURL(redirectURL string) (string, error) {
+	parsedURL, err := url.Parse(redirectURL)
+	if err != nil {
+		return "", err
+	}
+
+	if p := parsedURL.Port(); p != "" {
+		return ":" + p, nil
+	}
+
+	// If URL missing explicit port, infer from scheme
+	if strings.EqualFold(parsedURL.Scheme, "https") {
+		return ":443", nil
+	}
+	return ":5000", nil
+}
+
+// parseRedirectURLToBindAddress extracts the port from a redirect URL and returns
+// a bindable address (0.0.0.0:port). This allows the server to listen on all interfaces
+// while Spotify's redirect URL validation still uses the full host:port.
+// Windows systems may not allow binding to specific IPs directly, so we bind to all interfaces.
+func parseRedirectURLToBindAddress(redirectURL string) (string, error) {
+	parsedURL, err := url.Parse(redirectURL)
+	if err != nil {
+		return "", err
+	}
+
+	if port := parsedURL.Port(); port != "" {
+		return "0.0.0.0:" + port, nil
+	}
+
+	// If URL missing explicit port, infer from scheme
+	if strings.EqualFold(parsedURL.Scheme, "https") {
+		return "0.0.0.0:443", nil
+	}
+	return "0.0.0.0:5000", nil
+}
+
+// openBrowser opens a URL in the default browser
+func openBrowser(url string) error {
+	var cmd string
+	var args []string
+
+	switch {
+	case isWindows():
+		cmd = "rundll32"
+		args = []string{"url.dll,FileProtocolHandler", url}
+	case isMacOS():
+		cmd = "open"
+		args = []string{url}
+	default: // Linux
+		cmd = "xdg-open"
+		args = []string{url}
+	}
+
+	return exec.Command(cmd, args...).Start()
+}
+
+// isWindows checks if the current OS is Windows
+func isWindows() bool {
+	return strings.Contains(strings.ToLower(os.Getenv("OS")), "windows")
+}
+
+// isMacOS checks if the current OS is macOS
+func isMacOS() bool {
+	return strings.Contains(strings.ToLower(os.Getenv("OS")), "darwin")
+}

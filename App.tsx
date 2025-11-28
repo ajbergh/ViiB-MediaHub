@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Component, ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
@@ -9,12 +9,37 @@ import { Artists } from './pages/Artists';
 import { Playlists } from './pages/Playlists';
 import { Spotify } from './pages/Spotify';
 import { SpotifyCallback } from './pages/SpotifyCallback';
+import { SpotifyAlbumDetail } from './pages/SpotifyAlbumDetail';
+import { SpotifyPlaylistDetail } from './pages/SpotifyPlaylistDetail';
 import { Downloads } from './pages/Downloads';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
 import { SmartMixDetail } from './pages/SmartMixDetail';
 import { useStore } from './store';
 import { api } from './services/api';
+import DownloadManager from './components/DownloadManager';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null; // Silently fail for DownloadManager
+    }
+    return this.props.children;
+  }
+}
 
 const App: React.FC = () => {
   const initLibrary = useStore(state => state.initLibrary);
@@ -60,12 +85,17 @@ const App: React.FC = () => {
           <Route path="/playlists" element={<Playlists />} />
           <Route path="/smart-mix/:mixId" element={<SmartMixDetail />} />
           <Route path="/spotify" element={<Spotify />} />
+          <Route path="/spotify/album/:id" element={<SpotifyAlbumDetail />} />
+          <Route path="/spotify/playlist/:id" element={<SpotifyPlaylistDetail />} />
           <Route path="/callback" element={<SpotifyCallback />} />
           <Route path="/downloads" element={<Downloads />} />
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        <ErrorBoundary>
+          <DownloadManager />
+        </ErrorBoundary>
       </Layout>
     </BrowserRouter>
   );
