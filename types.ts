@@ -30,6 +30,7 @@ export interface Album {
   artist: string;
   songCount: number;
   coverUrl?: string;
+  addedAt?: number; // Most recent addedAt from album's songs
 }
 
 export interface Artist {

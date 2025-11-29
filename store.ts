@@ -45,7 +45,8 @@ export const useAlbums = () => {
         name: song.album,
         artist: song.albumArtist || song.artist,
         songCount: 0,
-        coverUrl: song.coverUrl
+        coverUrl: song.coverUrl,
+        addedAt: song.addedAt || 0
       });
     }
     const album = albumsMap.get(key)!;
@@ -53,9 +54,14 @@ export const useAlbums = () => {
     if (!album.coverUrl && song.coverUrl) {
         album.coverUrl = song.coverUrl;
     }
+    // Track the most recent addedAt for this album
+    if (song.addedAt && song.addedAt > (album.addedAt || 0)) {
+      album.addedAt = song.addedAt;
+    }
   });
   
-  return Array.from(albumsMap.values());
+  // Sort by most recently added first
+  return Array.from(albumsMap.values()).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
 };
 
 export const useArtists = () => {

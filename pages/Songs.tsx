@@ -1,34 +1,92 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { Play, Clock, MoreHorizontal, Search } from 'lucide-react';
+import { Play, Clock, MoreHorizontal, Search, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
-import { ContextMenuType } from '../types';
+import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
+
+type SongSortOption = 'recent' | 'title-asc' | 'title-desc' | 'artist-asc' | 'artist-desc' | 'album-asc' | 'album-desc' | 'duration-asc' | 'duration-desc' | 'plays-desc';
+
+const sortLabels: Record<SongSortOption, string> = {
+  'recent': 'Recently Added',
+  'title-asc': 'Title (A-Z)',
+  'title-desc': 'Title (Z-A)',
+  'artist-asc': 'Artist (A-Z)',
+  'artist-desc': 'Artist (Z-A)',
+  'album-asc': 'Album (A-Z)',
+  'album-desc': 'Album (Z-A)',
+  'duration-asc': 'Duration (Short)',
+  'duration-desc': 'Duration (Long)',
+  'plays-desc': 'Most Played',
+};
 
 // Context interface for the Virtuoso list
 interface SongsContext {
     filter: string;
     setFilter: (val: string) => void;
+    sortBy: SongSortOption;
+    setSortBy: (val: SongSortOption) => void;
+    showSortMenu: boolean;
+    setShowSortMenu: (val: boolean) => void;
 }
 
 // Define Header outside to maintain stability
 const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
     // Safety check for context
-    const { filter, setFilter } = context || { filter: '', setFilter: () => {} };
+    const { filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu } = context || { 
+        filter: '', 
+        setFilter: () => {}, 
+        sortBy: 'recent' as SongSortOption, 
+        setSortBy: () => {},
+        showSortMenu: false,
+        setShowSortMenu: () => {}
+    };
 
     return (
         <div className="p-8 pb-0">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
                 <h1 className="text-3xl font-bold">All Songs</h1>
-                <div className="relative w-full md:w-96">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Search songs, artists, or albums..."
-                        value={filter}
-                        onChange={(e) => setFilter(e.target.value)}
-                        className="w-full bg-surface-highlight border border-transparent focus:border-surface-slider rounded-full py-2 pl-10 pr-4 text-sm text-text-main outline-none placeholder-text-subtle"
-                    />
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    {/* Sort Dropdown */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowSortMenu(!showSortMenu)}
+                            className="flex items-center gap-2 px-4 py-2 bg-surface-highlight hover:bg-surface-hover rounded-full text-sm text-text-main transition-colors border border-transparent hover:border-surface-slider whitespace-nowrap"
+                        >
+                            <ArrowUpDown size={16} className="text-text-secondary" />
+                            <span className="hidden sm:inline">{sortLabels[sortBy]}</span>
+                            <ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} />
+                        </button>
+                        
+                        {showSortMenu && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setShowSortMenu(false)} />
+                                <div className="absolute right-0 top-full mt-2 bg-surface-2 border border-surface-3 rounded-lg shadow-xl z-50 py-1 min-w-[180px]">
+                                    {(Object.keys(sortLabels) as SongSortOption[]).map((option) => (
+                                        <button
+                                            key={option}
+                                            onClick={() => { setSortBy(option); setShowSortMenu(false); }}
+                                            className={`w-full text-left px-4 py-2 text-sm hover:bg-surface-hover transition-colors ${sortBy === option ? 'text-brand font-medium' : 'text-text-main'}`}
+                                        >
+                                            {sortLabels[option]}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Search Input */}
+                    <div className="relative flex-1 md:w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+                        <input 
+                            type="text" 
+                            placeholder="Search songs..."
+                            value={filter}
+                            onChange={(e) => setFilter(e.target.value)}
+                            className="w-full bg-surface-highlight border border-transparent focus:border-surface-slider rounded-full py-2 pl-10 pr-4 text-sm text-text-main outline-none placeholder-text-subtle"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -51,6 +109,8 @@ export const Songs: React.FC = () => {
   const { songs, playSong, currentSong, isPlaying, openContextMenu } = useStore();
   const albumCovers = useAlbumCovers();
   const [filter, setFilter] = useState('');
+  const [sortBy, setSortBy] = useState<SongSortOption>('recent');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -58,11 +118,40 @@ export const Songs: React.FC = () => {
     setScrollParent(document.querySelector('main'));
   }, []);
 
-  const filteredSongs = useMemo(() => songs.filter(
-    s => s.title.toLowerCase().includes(filter.toLowerCase()) || 
-         s.artist.toLowerCase().includes(filter.toLowerCase()) ||
-         s.album.toLowerCase().includes(filter.toLowerCase())
-  ), [songs, filter]);
+  const sortedAndFilteredSongs = useMemo(() => {
+    // First filter
+    let result = songs.filter(
+      s => s.title.toLowerCase().includes(filter.toLowerCase()) || 
+           s.artist.toLowerCase().includes(filter.toLowerCase()) ||
+           s.album.toLowerCase().includes(filter.toLowerCase())
+    );
+    
+    // Then sort
+    switch (sortBy) {
+      case 'recent':
+        return result.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+      case 'title-asc':
+        return result.sort((a, b) => a.title.localeCompare(b.title));
+      case 'title-desc':
+        return result.sort((a, b) => b.title.localeCompare(a.title));
+      case 'artist-asc':
+        return result.sort((a, b) => a.artist.localeCompare(b.artist));
+      case 'artist-desc':
+        return result.sort((a, b) => b.artist.localeCompare(a.artist));
+      case 'album-asc':
+        return result.sort((a, b) => a.album.localeCompare(b.album));
+      case 'album-desc':
+        return result.sort((a, b) => b.album.localeCompare(a.album));
+      case 'duration-asc':
+        return result.sort((a, b) => a.duration - b.duration);
+      case 'duration-desc':
+        return result.sort((a, b) => b.duration - a.duration);
+      case 'plays-desc':
+        return result.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+      default:
+        return result;
+    }
+  }, [songs, filter, sortBy]);
 
   // Memoize components to prevent re-renders of the list structure
   const components: Components<any, any> = useMemo(() => ({
@@ -75,8 +164,8 @@ export const Songs: React.FC = () => {
         <Virtuoso
             useWindowScroll={false}
             customScrollParent={scrollParent}
-            data={filteredSongs}
-            context={{ filter, setFilter }}
+            data={sortedAndFilteredSongs}
+            context={{ filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu }}
             components={components}
             itemContent={(index, song) => {
                const isCurrent = currentSong?.id === song.id;
@@ -123,7 +212,7 @@ export const Songs: React.FC = () => {
             }}
         />
         
-        {filteredSongs.length === 0 && (
+        {sortedAndFilteredSongs.length === 0 && (
              <div className="p-12 text-center text-text-subtle absolute top-40 w-full pointer-events-none">
                 <p>No songs found.</p>
              </div>

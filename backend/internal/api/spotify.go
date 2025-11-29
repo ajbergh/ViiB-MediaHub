@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -25,6 +26,31 @@ type SpotifyCredentials struct {
 	AccessToken  string `json:"accessToken"`  // OAuth access token (expires in 1 hour)
 	RefreshToken string `json:"refreshToken"` // OAuth refresh token (used to get new access tokens)
 	Expiry       int64  `json:"expiry"`       // Unix timestamp when access token expires
+}
+
+// DownloadResponse extends SpotifyDownload with extracted metadata fields.
+// Used for API responses to include artwork URL without requiring clients
+// to parse the metadata JSON themselves.
+type DownloadResponse struct {
+	ID           string `json:"id"`
+	SpotifyID    string `json:"spotifyId"`
+	Type         string `json:"type"`
+	Title        string `json:"title"`
+	Artist       string `json:"artist,omitempty"`
+	Album        string `json:"album,omitempty"`
+	Status       string `json:"status"`
+	Progress     int    `json:"progress"`
+	ErrorMessage string `json:"errorMessage,omitempty"`
+	FilePath     string `json:"filePath,omitempty"`
+	AddedAt      int64  `json:"addedAt"`
+	StartedAt    int64  `json:"startedAt,omitempty"`
+	CompletedAt  int64  `json:"completedAt,omitempty"`
+	ArtworkUrl   string `json:"artworkUrl,omitempty"` // Extracted from metadata
+}
+
+// downloadMetadata is used to parse the Metadata JSON field
+type downloadMetadata struct {
+	ImageURL string `json:"imageUrl,omitempty"`
 }
 
 // saveSpotifyCredentials saves OAuth credentials to the database.
@@ -439,6 +465,376 @@ func (a *API) downloadPlaylist(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// downloadFromURL handles direct Spotify URL/URI downloads.
+// Accepts URLs like:
+//   - https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh
+//   - https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3
+//   - https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
+//   - spotify:track:4iV5W9uYEdYUVa79Axb7Rh
+//   - spotify:album:1DFixLWuPkv3KT3TnV35m3
+//   - spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
+//
+// POST /api/spotify/download/url
+func (a *API) downloadFromURL(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		URL string `json:"url"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.URL == "" {
+		respondError(w, http.StatusBadRequest, "URL is required")
+		return
+	}
+
+	// Parse the URL/URI to extract type and ID
+	contentType, spotifyID := parseSpotifyURL(req.URL)
+	if contentType == "" || spotifyID == "" {
+		respondError(w, http.StatusBadRequest, "Invalid Spotify URL or URI. Supported formats: https://open.spotify.com/{track|album|playlist}/ID or spotify:{track|album|playlist}:ID")
+		return
+	}
+
+	// Get access token for Spotify API calls
+	credsJSON, err := a.db.GetSetting("spotify_credentials")
+	if err != nil || credsJSON == "" {
+		respondError(w, http.StatusUnauthorized, "Spotify not configured. Please log in to Spotify first.")
+		return
+	}
+
+	var creds SpotifyCredentials
+	if err := json.Unmarshal([]byte(credsJSON), &creds); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to parse Spotify credentials")
+		return
+	}
+
+	if creds.AccessToken == "" {
+		respondError(w, http.StatusUnauthorized, "Not logged in to Spotify")
+		return
+	}
+
+	// Handle based on content type
+	switch contentType {
+	case "track":
+		a.downloadTrackByID(w, creds.AccessToken, spotifyID)
+	case "album":
+		a.downloadAlbumByID(w, creds.AccessToken, spotifyID)
+	case "playlist":
+		a.downloadPlaylistByID(w, creds.AccessToken, spotifyID)
+	default:
+		respondError(w, http.StatusBadRequest, "Unsupported content type: "+contentType)
+	}
+}
+
+// parseSpotifyURL extracts the content type and ID from a Spotify URL or URI.
+// Returns empty strings if the format is invalid.
+func parseSpotifyURL(input string) (contentType, spotifyID string) {
+	input = strings.TrimSpace(input)
+
+	// Handle Spotify URIs (spotify:track:ID, spotify:album:ID, spotify:playlist:ID)
+	if strings.HasPrefix(input, "spotify:") {
+		parts := strings.Split(input, ":")
+		if len(parts) == 3 {
+			contentType = parts[1]
+			spotifyID = parts[2]
+			// Validate content type
+			if contentType == "track" || contentType == "album" || contentType == "playlist" {
+				return contentType, spotifyID
+			}
+		}
+		return "", ""
+	}
+
+	// Handle Spotify URLs (https://open.spotify.com/track/ID?query)
+	// Also handle with /intl-xx/ path segment
+	if strings.Contains(input, "open.spotify.com") {
+		// Remove query string
+		if idx := strings.Index(input, "?"); idx != -1 {
+			input = input[:idx]
+		}
+
+		// Split path and find content type + ID
+		parts := strings.Split(input, "/")
+		for i, part := range parts {
+			if (part == "track" || part == "album" || part == "playlist") && i+1 < len(parts) {
+				contentType = part
+				spotifyID = parts[i+1]
+				return contentType, spotifyID
+			}
+		}
+	}
+
+	return "", ""
+}
+
+// downloadTrackByID fetches track metadata from Spotify and queues the download
+func (a *API) downloadTrackByID(w http.ResponseWriter, accessToken, spotifyID string) {
+	// Fetch track metadata from Spotify
+	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/tracks/%s", spotifyID), nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to fetch track metadata")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondError(w, resp.StatusCode, "Failed to fetch track from Spotify")
+		return
+	}
+
+	var track struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Artists []struct {
+			Name string `json:"name"`
+		} `json:"artists"`
+		Album struct {
+			Name   string `json:"name"`
+			Images []struct {
+				URL string `json:"url"`
+			} `json:"images"`
+		} `json:"album"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&track); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to parse track metadata")
+		return
+	}
+
+	artist := ""
+	if len(track.Artists) > 0 {
+		artist = track.Artists[0].Name
+	}
+
+	// Prepare metadata with artwork
+	var metadata *DownloadMetadata
+	if len(track.Album.Images) > 0 {
+		metadata = &DownloadMetadata{ImageURL: track.Album.Images[0].URL}
+	}
+
+	// Queue the download
+	downloadID, err := a.downloadManager.QueueDownload(
+		track.ID,
+		fmt.Sprintf("spotify:track:%s", track.ID),
+		"track",
+		track.Name,
+		artist,
+		track.Album.Name,
+		metadata,
+	)
+
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue download: %v", err))
+		return
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"id":      downloadID,
+		"status":  "queued",
+		"type":    "track",
+		"title":   track.Name,
+		"artist":  artist,
+		"album":   track.Album.Name,
+		"message": "Track download queued successfully",
+	})
+}
+
+// downloadAlbumByID fetches album metadata and all tracks, then queues downloads
+func (a *API) downloadAlbumByID(w http.ResponseWriter, accessToken, spotifyID string) {
+	// Fetch album metadata from Spotify
+	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/albums/%s", spotifyID), nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to fetch album metadata")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondError(w, resp.StatusCode, "Failed to fetch album from Spotify")
+		return
+	}
+
+	var album struct {
+		Name    string `json:"name"`
+		Artists []struct {
+			Name string `json:"name"`
+		} `json:"artists"`
+		Images []struct {
+			URL string `json:"url"`
+		} `json:"images"`
+		Tracks struct {
+			Items []struct {
+				ID      string `json:"id"`
+				Name    string `json:"name"`
+				Artists []struct {
+					Name string `json:"name"`
+				} `json:"artists"`
+				TrackNumber int `json:"track_number"`
+				DiscNumber  int `json:"disc_number"`
+			} `json:"items"`
+		} `json:"tracks"`
+		TotalTracks int `json:"total_tracks"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&album); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to parse album metadata")
+		return
+	}
+
+	albumArtist := ""
+	if len(album.Artists) > 0 {
+		albumArtist = album.Artists[0].Name
+	}
+
+	// Get artwork URL
+	imageURL := ""
+	if len(album.Images) > 0 {
+		imageURL = album.Images[0].URL
+	}
+
+	// Queue each track
+	queuedCount := 0
+	for _, track := range album.Tracks.Items {
+		trackArtist := albumArtist
+		if len(track.Artists) > 0 {
+			trackArtist = track.Artists[0].Name
+		}
+
+		metadata := &DownloadMetadata{
+			ImageURL:    imageURL,
+			TrackNumber: track.TrackNumber,
+			DiscNumber:  track.DiscNumber,
+			AlbumArtist: albumArtist,
+		}
+
+		_, err := a.downloadManager.QueueDownload(
+			track.ID,
+			fmt.Sprintf("spotify:track:%s", track.ID),
+			"track",
+			track.Name,
+			trackArtist,
+			album.Name,
+			metadata,
+		)
+		if err != nil {
+			log.Printf("Failed to queue track %s: %v", track.Name, err)
+			continue
+		}
+		queuedCount++
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"status":  "queued",
+		"type":    "album",
+		"title":   album.Name,
+		"artist":  albumArtist,
+		"message": fmt.Sprintf("Queued %d tracks from album", queuedCount),
+		"count":   queuedCount,
+	})
+}
+
+// downloadPlaylistByID fetches playlist metadata and all tracks, then queues downloads
+func (a *API) downloadPlaylistByID(w http.ResponseWriter, accessToken, spotifyID string) {
+	// Fetch playlist metadata from Spotify
+	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/playlists/%s", spotifyID), nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to fetch playlist metadata")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondError(w, resp.StatusCode, "Failed to fetch playlist from Spotify")
+		return
+	}
+
+	var playlist struct {
+		Name  string `json:"name"`
+		Owner struct {
+			DisplayName string `json:"display_name"`
+		} `json:"owner"`
+		Tracks struct {
+			Items []struct {
+				Track struct {
+					ID      string `json:"id"`
+					Name    string `json:"name"`
+					Artists []struct {
+						Name string `json:"name"`
+					} `json:"artists"`
+					Album struct {
+						Name   string `json:"name"`
+						Images []struct {
+							URL string `json:"url"`
+						} `json:"images"`
+					} `json:"album"`
+				} `json:"track"`
+			} `json:"items"`
+		} `json:"tracks"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&playlist); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to parse playlist metadata")
+		return
+	}
+
+	// Queue each track
+	queuedCount := 0
+	for _, item := range playlist.Tracks.Items {
+		track := item.Track
+		if track.ID == "" {
+			continue // Skip local tracks
+		}
+
+		artist := ""
+		if len(track.Artists) > 0 {
+			artist = track.Artists[0].Name
+		}
+
+		var metadata *DownloadMetadata
+		if len(track.Album.Images) > 0 {
+			metadata = &DownloadMetadata{ImageURL: track.Album.Images[0].URL}
+		}
+
+		_, err := a.downloadManager.QueueDownload(
+			track.ID,
+			fmt.Sprintf("spotify:track:%s", track.ID),
+			"track",
+			track.Name,
+			artist,
+			track.Album.Name,
+			metadata,
+		)
+		if err != nil {
+			log.Printf("Failed to queue track %s: %v", track.Name, err)
+			continue
+		}
+		queuedCount++
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"status":  "queued",
+		"type":    "playlist",
+		"title":   playlist.Name,
+		"owner":   playlist.Owner.DisplayName,
+		"message": fmt.Sprintf("Queued %d tracks from playlist", queuedCount),
+		"count":   queuedCount,
+	})
+}
+
 func (a *API) getDownloads(w http.ResponseWriter, r *http.Request) {
 	log.Printf("getDownloads called")
 	downloads, err := a.downloadManager.GetAllDownloads()
@@ -449,7 +845,35 @@ func (a *API) getDownloads(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("getDownloads returning %d downloads", len(downloads))
 
-	respondJSON(w, downloads)
+	// Convert to response format with extracted artwork URL
+	responses := make([]DownloadResponse, len(downloads))
+	for i, dl := range downloads {
+		responses[i] = DownloadResponse{
+			ID:           dl.ID,
+			SpotifyID:    dl.SpotifyID,
+			Type:         dl.Type,
+			Title:        dl.Title,
+			Artist:       dl.Artist,
+			Album:        dl.Album,
+			Status:       dl.Status,
+			Progress:     dl.Progress,
+			ErrorMessage: dl.Error,
+			FilePath:     dl.FilePath,
+			AddedAt:      dl.AddedAt,
+			StartedAt:    dl.StartedAt,
+			CompletedAt:  dl.CompletedAt,
+		}
+
+		// Extract artwork URL from metadata if present
+		if dl.Metadata != "" {
+			var meta downloadMetadata
+			if err := json.Unmarshal([]byte(dl.Metadata), &meta); err == nil {
+				responses[i].ArtworkUrl = meta.ImageURL
+			}
+		}
+	}
+
+	respondJSON(w, responses)
 }
 
 func (a *API) getDownloadStatus(w http.ResponseWriter, r *http.Request) {

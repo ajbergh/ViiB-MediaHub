@@ -122,6 +122,7 @@ export interface ApiSpotifyDownload {
   addedAt: number;               // Unix timestamp when queued
   startedAt?: number;            // Unix timestamp when download started
   completedAt?: number;          // Unix timestamp when completed
+  artworkUrl?: string;           // Album/playlist artwork URL from Spotify
 }
 
 // API Functions
@@ -323,6 +324,39 @@ export const api = {
       body: JSON.stringify({ spotifyId, name, owner }),
     });
     return handleResponse<{ id: string; message: string }>(response);
+  },
+
+  /**
+   * Downloads content directly from a Spotify URL or URI.
+   * Supports tracks, albums, and playlists.
+   * 
+   * Accepted formats:
+   * - https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh
+   * - https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3
+   * - https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
+   * - spotify:track:4iV5W9uYEdYUVa79Axb7Rh
+   * - spotify:album:1DFixLWuPkv3KT3TnV35m3
+   * - spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
+   * 
+   * @param url - Spotify URL or URI
+   * @returns Promise with download result including type, title, and count (for albums/playlists)
+   */
+  async downloadFromURL(url: string) {
+    const response = await fetch(`${API_BASE}/spotify/download/url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    return handleResponse<{ 
+      status: string; 
+      type: string;
+      title: string; 
+      artist?: string;
+      owner?: string;
+      album?: string;
+      message: string; 
+      count?: number;
+    }>(response);
   },
 
   /**

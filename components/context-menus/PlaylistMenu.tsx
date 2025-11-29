@@ -5,12 +5,26 @@ import { MenuItem } from './MenuShared';
 import { Playlist } from '../../types';
 
 export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }> = ({ playlist, onClose }) => {
-    const { songs, playSong, addToQueue, deletePlaylist } = useStore();
+    const { songs, playSong, addToQueue, deletePlaylist, showConfirmDialog, closeConfirmDialog } = useStore();
     const playlistSongs = songs.filter(s => playlist.songIds.includes(s.id));
 
     const handleAction = (action: () => void) => {
         action();
         onClose();
+    };
+
+    const handleDeletePlaylist = () => {
+        onClose();
+        showConfirmDialog({
+            title: 'Delete Playlist?',
+            message: `Are you sure you want to delete "${playlist.name}"?`,
+            confirmLabel: 'Delete',
+            variant: 'danger',
+            onConfirm: () => {
+                deletePlaylist(playlist.id);
+                closeConfirmDialog();
+            },
+        });
     };
 
     return (
@@ -27,11 +41,7 @@ export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }>
             
             <div className="border-t border-[#333] my-1"></div>
             
-            <MenuItem icon={Trash2} label="Delete Playlist" onClick={() => handleAction(() => {
-                if (confirm(`Delete playlist "${playlist.name}"?`)) {
-                    deletePlaylist(playlist.id);
-                }
-            })} />
+            <MenuItem icon={Trash2} label="Delete Playlist" onClick={handleDeletePlaylist} />
         </>
     );
 };

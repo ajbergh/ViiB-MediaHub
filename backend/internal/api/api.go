@@ -4,18 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -24,11 +23,7 @@ type API struct {
 	dataDir         string
 	coverDir        string
 	downloadManager *DownloadManager
-
-	// Scanning state
-	scanning     bool
-	scanProgress string
-	scanMutex    sync.RWMutex
+	scanner         *scanner.Scanner
 }
 
 func New(database *db.DB, dataDir string) *API {
@@ -37,22 +32,44 @@ func New(database *db.DB, dataDir string) *API {
 	coverDir := filepath.Join(dataDir, "covers")
 	os.MkdirAll(coverDir, 0755)
 
+	// Get download directory from settings, or use default
 	downloadDir := filepath.Join(dataDir, "spotify_downloads")
+	if customPath, err := database.GetSetting("spotify_download_path"); err == nil && customPath != "" {
+		downloadDir = customPath
+		logger.API("Using custom Spotify download path: %s", downloadDir)
+	}
 	os.MkdirAll(downloadDir, 0755)
+
+	// Create scanner
+	logger.API("Creating scanner...")
+	sc := scanner.New(database, dataDir)
+
+	// Set Spotify download directory for auto-rescan feature
+	sc.SetSpotifyDownloadDir(downloadDir)
 
 	logger.API("Creating download manager...")
 	// Create download manager - it will get access token from database when needed
 	dm := NewDownloadManager(database, downloadDir)
+
+	// Set scanner reference for download notifications
+	dm.SetScanner(sc)
+
 	logger.API("Starting download manager...")
 	dm.Start()
 	logger.API("Download manager started")
 
-	return &API{
+	api := &API{
 		db:              database,
 		dataDir:         dataDir,
 		coverDir:        coverDir,
 		downloadManager: dm,
+		scanner:         sc,
 	}
+
+	// Trigger scan on startup (in background)
+	go api.scanOnStartup()
+
+	return api
 }
 
 func (a *API) Routes() chi.Router {
@@ -76,6 +93,9 @@ func (a *API) Routes() chi.Router {
 	r.Post("/scan", a.startScan)
 	r.Get("/scan/status", a.getScanStatus)
 
+	// Library events SSE
+	r.Get("/library/events", a.libraryEventsSSE)
+
 	// File serving
 	r.Get("/audio/*", a.serveAudio)
 	r.Get("/cover/*", a.serveCover)
@@ -96,6 +116,7 @@ func (a *API) Routes() chi.Router {
 	r.Post("/spotify/download/track", a.downloadTrack)
 	r.Post("/spotify/download/album", a.downloadAlbum)
 	r.Post("/spotify/download/playlist", a.downloadPlaylist)
+	r.Post("/spotify/download/url", a.downloadFromURL)
 	r.Get("/spotify/downloads", a.getDownloads)
 	r.Get("/spotify/downloads/{id}", a.getDownloadStatus)
 	r.Delete("/spotify/downloads/{id}", a.deleteDownload)
@@ -289,143 +310,91 @@ func (a *API) removeScanFolder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) startScan(w http.ResponseWriter, r *http.Request) {
-	a.scanMutex.Lock()
-	if a.scanning {
-		a.scanMutex.Unlock()
+	if a.scanner.IsScanning() {
 		respondError(w, http.StatusConflict, "Scan already in progress")
 		return
 	}
-	a.scanning = true
-	a.scanProgress = "Starting scan..."
-	a.scanMutex.Unlock()
 
-	go a.performScan()
+	go func() {
+		_, err := a.scanner.ScanAll()
+		if err != nil {
+			logger.API("Scan error: %v", err)
+		}
+	}()
 
 	respondJSON(w, map[string]string{"status": "started"})
 }
 
 func (a *API) getScanStatus(w http.ResponseWriter, r *http.Request) {
-	a.scanMutex.RLock()
-	defer a.scanMutex.RUnlock()
-
 	respondJSON(w, map[string]interface{}{
-		"scanning": a.scanning,
-		"progress": a.scanProgress,
+		"scanning": a.scanner.IsScanning(),
+		"progress": a.scanner.GetProgress(),
 	})
 }
 
-func (a *API) performScan() {
-	defer func() {
-		a.scanMutex.Lock()
-		a.scanning = false
-		a.scanMutex.Unlock()
-	}()
+// libraryEventsSSE streams library events (scan complete, etc.) to the frontend via SSE
+func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
+	logger.API("libraryEventsSSE: Connection started")
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		logger.API("libraryEventsSSE: Streaming not supported")
+		respondError(w, http.StatusInternalServerError, "Streaming not supported")
+		return
+	}
+
+	// Subscribe to library events
+	eventChan := a.scanner.Subscribe()
+	defer a.scanner.Unsubscribe(eventChan)
+
+	logger.API("libraryEventsSSE: Subscribed and entering event loop")
+	for {
+		select {
+		case <-r.Context().Done():
+			logger.API("libraryEventsSSE: Client disconnected")
+			return
+		case event, ok := <-eventChan:
+			if !ok {
+				logger.API("libraryEventsSSE: Event channel closed")
+				return
+			}
+			logger.API("libraryEventsSSE: Sending event: %s", event.Type)
+			data, _ := json.Marshal(event)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
+// scanOnStartup triggers a library scan when the application starts
+func (a *API) scanOnStartup() {
+	// Wait for application to fully initialize
+	time.Sleep(3 * time.Second)
 
 	folders, err := a.db.GetScanFolders()
 	if err != nil {
-		log.Printf("Failed to get scan folders: %v", err)
+		logger.API("Error getting scan folders for startup scan: %v", err)
 		return
 	}
 
 	if len(folders) == 0 {
-		a.setProgress("No folders configured")
+		logger.API("No folders configured, skipping startup scan")
 		return
 	}
 
-	totalSongs := 0
-	for _, folder := range folders {
-		a.setProgress(fmt.Sprintf("Scanning: %s", folder.Path))
-
-		songs, err := a.scanFolder(folder.Path)
-		if err != nil {
-			log.Printf("Error scanning %s: %v", folder.Path, err)
-			continue
-		}
-
-		if len(songs) > 0 {
-			if err := a.db.SaveSongs(songs); err != nil {
-				log.Printf("Error saving songs: %v", err)
-			}
-		}
-
-		totalSongs += len(songs)
-		a.db.UpdateScanFolder(folder.ID, time.Now().UnixMilli(), len(songs))
+	logger.API("Starting automatic library scan on startup...")
+	result, err := a.scanner.ScanAll()
+	if err != nil {
+		logger.API("Startup scan error: %v", err)
+		return
 	}
 
-	a.setProgress(fmt.Sprintf("Scan complete: %d songs found", totalSongs))
-}
-
-func (a *API) setProgress(msg string) {
-	a.scanMutex.Lock()
-	a.scanProgress = msg
-	a.scanMutex.Unlock()
-	log.Printf("Scan: %s", msg)
-}
-
-func (a *API) scanFolder(folderPath string) ([]db.Song, error) {
-	var songs []db.Song
-
-	audioExtensions := map[string]bool{
-		".mp3":  true,
-		".flac": true,
-		".m4a":  true,
-		".aac":  true,
-		".ogg":  true,
-		".opus": true,
-		".wav":  true,
-		".wma":  true,
-	}
-
-	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors
-		}
-
-		if info.IsDir() {
-			return nil
-		}
-
-		ext := strings.ToLower(filepath.Ext(path))
-		if !audioExtensions[ext] {
-			return nil
-		}
-
-		song, err := audio.ExtractMetadata(path)
-		if err != nil {
-			log.Printf("Failed to extract metadata from %s: %v", path, err)
-			return nil
-		}
-
-		// Save cover art if present
-		if song.CoverData != nil {
-			coverPath := filepath.Join(a.coverDir, song.ID+".jpg")
-			if err := os.WriteFile(coverPath, song.CoverData, 0644); err == nil {
-				song.CoverPath = coverPath
-			}
-			song.CoverData = nil // Don't store in DB
-		}
-
-		dbSong := db.Song{
-			ID:          song.ID,
-			Title:       song.Title,
-			Artist:      song.Artist,
-			Album:       song.Album,
-			AlbumArtist: song.AlbumArtist,
-			TrackNumber: song.TrackNumber,
-			DiscNumber:  song.DiscNumber,
-			Genre:       song.Genre,
-			Year:        song.Year,
-			Duration:    song.Duration,
-			FilePath:    path,
-			CoverPath:   song.CoverPath,
-			AddedAt:     time.Now().UnixMilli(),
-		}
-
-		songs = append(songs, dbSong)
-		return nil
-	})
-
-	return songs, err
+	logger.API("Startup scan complete: %d files, %d new, %d updated (%s)",
+		result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.Duration)
 }
 
 func (a *API) serveAudio(w http.ResponseWriter, r *http.Request) {
@@ -451,14 +420,25 @@ func (a *API) serveAudio(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) serveCover(w http.ResponseWriter, r *http.Request) {
 	songID := strings.TrimPrefix(r.URL.Path, "/api/cover/")
-	coverPath := filepath.Join(a.coverDir, songID+".jpg")
 
-	if _, err := os.Stat(coverPath); os.IsNotExist(err) {
-		respondError(w, http.StatusNotFound, "Cover not found")
+	// First, try to get the song to find its cover path
+	song, err := a.db.GetSongByID(songID)
+	if err == nil && song.CoverPath != "" {
+		// Song has a cover path set - serve that file
+		if _, err := os.Stat(song.CoverPath); err == nil {
+			http.ServeFile(w, r, song.CoverPath)
+			return
+		}
+	}
+
+	// Fallback: try legacy per-song cover file
+	coverPath := filepath.Join(a.coverDir, songID+".jpg")
+	if _, err := os.Stat(coverPath); err == nil {
+		http.ServeFile(w, r, coverPath)
 		return
 	}
 
-	http.ServeFile(w, r, coverPath)
+	respondError(w, http.StatusNotFound, "Cover not found")
 }
 
 func (a *API) browseFolder(w http.ResponseWriter, r *http.Request) {
@@ -625,6 +605,28 @@ func (a *API) setSetting(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	// Special handling for spotify_download_path - update download manager and scanner
+	if key == "spotify_download_path" {
+		downloadDir := body.Value
+		if downloadDir == "" {
+			// Use default if empty
+			downloadDir = filepath.Join(a.dataDir, "spotify_downloads")
+		}
+		// Create the directory if it doesn't exist
+		if err := os.MkdirAll(downloadDir, 0755); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Failed to create download directory: %v", err))
+			return
+		}
+		// Update the download manager
+		if a.downloadManager != nil {
+			if err := a.downloadManager.SetDownloadDir(downloadDir); err != nil {
+				respondError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+		logger.API("Updated Spotify download path to: %s", downloadDir)
 	}
 
 	if err := a.db.SetSetting(key, body.Value); err != nil {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
 	"github.com/google/uuid"
 )
@@ -45,6 +46,7 @@ type DownloadManager struct {
 	downloadDir     string                        // Root directory for downloaded files
 	sessionManager  *spotify.SessionManager       // Manages librespot session lifecycle
 	downloader      *spotify.Downloader           // Handles actual track downloads
+	scanner         *scanner.Scanner              // Scanner for auto-rescan on download complete
 	isRunning       bool                          // Whether the background processor is active
 	activeDownloads map[string]context.CancelFunc // Map of download ID -> cancel function
 	activeCount     int32                         // Atomic counter for active downloads
@@ -134,6 +136,11 @@ func NewDownloadManager(database *db.DB, downloadDir string) *DownloadManager {
 	return dm
 }
 
+// SetScanner sets the scanner reference for auto-rescan on download complete
+func (dm *DownloadManager) SetScanner(sc *scanner.Scanner) {
+	dm.scanner = sc
+}
+
 // Start begins processing the download queue with a pool of worker goroutines.
 // This method is idempotent - calling it multiple times has no effect.
 // The background processor runs with a 1-second ticker, dispatching queued
@@ -198,6 +205,35 @@ func (dm *DownloadManager) SetMaxConcurrent(n int) error {
 // GetMaxConcurrent returns the current max concurrent downloads setting.
 func (dm *DownloadManager) GetMaxConcurrent() int {
 	return int(atomic.LoadInt32(&dm.maxConcurrent))
+}
+
+// SetDownloadDir updates the download directory for new downloads.
+// Existing active downloads will continue to their original destination.
+// The scanner is also updated if one is configured.
+func (dm *DownloadManager) SetDownloadDir(dir string) error {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+
+	oldDir := dm.downloadDir
+	dm.downloadDir = dir
+
+	// Update the downloader with the new directory
+	dm.downloader = spotify.NewDownloader(dm.sessionManager, dir)
+
+	// Update the scanner if configured
+	if dm.scanner != nil {
+		dm.scanner.SetSpotifyDownloadDir(dir)
+	}
+
+	dmLog("Updated download directory: %s -> %s", oldDir, dir)
+	return nil
+}
+
+// GetDownloadDir returns the current download directory
+func (dm *DownloadManager) GetDownloadDir() string {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+	return dm.downloadDir
 }
 
 // ensureSession ensures the Spotify session is initialized with current access token.
@@ -732,6 +768,12 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 	}
 
 	dmLog("Download completed: %s -> %s", download.Title, filePath)
+
+	// Notify scanner of completed download for auto-rescan feature
+	if dm.scanner != nil {
+		dm.scanner.NotifyDownloadComplete()
+	}
+
 	return nil
 }
 

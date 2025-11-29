@@ -62,6 +62,27 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       }
   },
 
+  refreshLibrary: async () => {
+      const { backendAvailable } = get();
+      
+      if (backendAvailable) {
+          try {
+              console.log('🔄 Refreshing library from backend...');
+              const [songs, playlists, scanFolders] = await Promise.all([
+                  backendService.getAllSongs(),
+                  backendService.getAllPlaylists(),
+                  backendService.getFolders()
+              ]);
+              
+              const mixes = generateSmartMixes(songs);
+              set({ songs, playlists, smartMixes: mixes, scanFolders });
+              console.log(`✅ Library refreshed: ${songs.length} songs`);
+          } catch (e) {
+              console.error("Failed to refresh library from backend", e);
+          }
+      }
+  },
+
   addSongs: (newSongs) => {
     const { backendAvailable } = get();
     

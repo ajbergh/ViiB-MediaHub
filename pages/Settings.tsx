@@ -30,6 +30,12 @@ export const Settings: React.FC = () => {
   const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingBrowser, setLoadingBrowser] = useState(false);
 
+  // Download folder browser state
+  const [showDownloadFolderBrowser, setShowDownloadFolderBrowser] = useState(false);
+  const [downloadBrowserPath, setDownloadBrowserPath] = useState('');
+  const [downloadBrowserEntries, setDownloadBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
+  const [loadingDownloadBrowser, setLoadingDownloadBrowser] = useState(false);
+
   // Spotify download location
   const [spotifyDownloadPath, setSpotifyDownloadPath] = useState('');
   const [downloadPathSaved, setDownloadPathSaved] = useState(false);
@@ -158,6 +164,58 @@ export const Settings: React.FC = () => {
       if (browserPath) {
           await addScanFolder(browserPath);
           setShowFolderBrowser(false);
+      }
+  };
+
+  // Download folder browser functions
+  const openDownloadFolderBrowser = async () => {
+      setShowDownloadFolderBrowser(true);
+      setLoadingDownloadBrowser(true);
+      try {
+          // Start from current download path if set, otherwise home
+          const startPath = spotifyDownloadPath || undefined;
+          const result = await api.browseFolder(startPath);
+          setDownloadBrowserPath(result.currentPath);
+          setDownloadBrowserEntries(result.entries);
+      } catch (e) {
+          console.error("Failed to browse folder", e);
+          // Try without a path on error
+          try {
+              const result = await api.browseFolder();
+              setDownloadBrowserPath(result.currentPath);
+              setDownloadBrowserEntries(result.entries);
+          } catch (e2) {
+              console.error("Failed to browse folder", e2);
+          }
+      }
+      setLoadingDownloadBrowser(false);
+  };
+
+  const navigateDownloadFolder = async (path: string) => {
+      setLoadingDownloadBrowser(true);
+      try {
+          const result = await api.browseFolder(path);
+          setDownloadBrowserPath(result.currentPath);
+          setDownloadBrowserEntries(result.entries);
+      } catch (e) {
+          console.error("Failed to navigate to folder", e);
+      }
+      setLoadingDownloadBrowser(false);
+  };
+
+  const selectDownloadFolder = async () => {
+      if (downloadBrowserPath) {
+          setSpotifyDownloadPath(downloadBrowserPath);
+          setShowDownloadFolderBrowser(false);
+          // Auto-save when selected via browser
+          try {
+              await api.setSetting('spotify_download_path', downloadBrowserPath);
+              addLog('success', `Download location set to: ${downloadBrowserPath}`);
+              setDownloadPathSaved(true);
+              setTimeout(() => setDownloadPathSaved(false), 3000);
+          } catch (e) {
+              addLog('error', 'Failed to save download location', e);
+          }
       }
   };
 
@@ -672,16 +730,23 @@ export const Settings: React.FC = () => {
             <div className="mb-6">
                 <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Spotify Download Location</label>
                 <p className="text-xs text-text-subtle mb-3">
-                    Specify where Spotify downloads should be saved. Leave empty to use default (data/spotify_downloads).
+                    Specify where Spotify downloads should be saved. Leave empty to use default location.
                 </p>
                 <div className="flex items-center gap-3">
                     <input 
                         type="text" 
                         value={spotifyDownloadPath}
                         onChange={(e) => setSpotifyDownloadPath(e.target.value)}
-                        placeholder="C:\Music\Spotify Downloads"
+                        placeholder="Default: AppData/ViiB-MediaHub/spotify_downloads"
                         className="flex-1 bg-surface-1 border border-surface-border rounded px-4 py-3 text-text-main focus:border-brand outline-none font-mono text-sm"
                     />
+                    <button 
+                        onClick={openDownloadFolderBrowser}
+                        className="bg-surface-1 border border-surface-border hover:bg-surface-hover text-text-main font-bold py-3 px-4 rounded-lg transition-colors flex items-center gap-2"
+                        title="Browse folders"
+                    >
+                        <FolderOpen size={18} />
+                    </button>
                     {downloadPathSaved && (
                         <span className="text-green-500 text-sm font-bold">
                             Saved!
@@ -887,6 +952,70 @@ export const Settings: React.FC = () => {
                           className="px-6 py-2 rounded-lg font-bold bg-brand hover:bg-brand-hover disabled:opacity-50 text-black transition-colors flex items-center gap-2"
                       >
                           <Plus size={16} /> Add This Folder
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Download Folder Browser Modal */}
+      {showDownloadFolderBrowser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full shadow-2xl max-h-[80vh] flex flex-col">
+                  <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xl font-bold text-white">Select Download Folder</h2>
+                      <button 
+                          onClick={() => setShowDownloadFolderBrowser(false)}
+                          className="p-2 hover:bg-surface-3 rounded-lg transition-colors"
+                      >
+                          <X size={20} />
+                      </button>
+                  </div>
+                  
+                  {/* Current Path */}
+                  <div className="bg-surface-1 border border-surface-border rounded-lg p-3 mb-4 font-mono text-sm text-text-main truncate">
+                      {downloadBrowserPath || 'Loading...'}
+                  </div>
+                  
+                  {/* Folder List */}
+                  <div className="flex-1 overflow-y-auto bg-surface-1 border border-surface-border rounded-lg mb-4 min-h-[300px]">
+                      {loadingDownloadBrowser ? (
+                          <div className="flex items-center justify-center h-full">
+                              <Loader2 size={24} className="animate-spin text-brand" />
+                          </div>
+                      ) : (
+                          <div className="divide-y divide-surface-border">
+                              {downloadBrowserEntries.map((entry, idx) => (
+                                  <button
+                                      key={idx}
+                                      onClick={() => navigateDownloadFolder(entry.path)}
+                                      className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
+                                  >
+                                      <FolderOpen size={18} className="text-brand flex-shrink-0" />
+                                      <span className="text-text-main truncate">{entry.name}</span>
+                                  </button>
+                              ))}
+                              {downloadBrowserEntries.length === 0 && (
+                                  <div className="p-4 text-center text-text-subtle">No subfolders found</div>
+                              )}
+                          </div>
+                      )}
+                  </div>
+                  
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-3">
+                      <button 
+                          onClick={() => setShowDownloadFolderBrowser(false)}
+                          className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors"
+                      >
+                          Cancel
+                      </button>
+                      <button 
+                          onClick={selectDownloadFolder}
+                          disabled={!downloadBrowserPath}
+                          className="px-6 py-2 rounded-lg font-bold bg-brand hover:bg-brand-hover disabled:opacity-50 text-black transition-colors flex items-center gap-2"
+                      >
+                          <FolderOpen size={16} /> Select This Folder
                       </button>
                   </div>
               </div>

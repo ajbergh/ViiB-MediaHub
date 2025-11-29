@@ -1,10 +1,23 @@
 
-import React, { useEffect, useState, forwardRef } from 'react';
+import React, { useEffect, useState, forwardRef, useMemo } from 'react';
 import { useAlbums, useStore } from '../store';
 import { generateGradient } from '../utils';
 import { useNavigate } from 'react-router-dom';
-import { ContextMenuType } from '../types';
+import { ContextMenuType, Album } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
+import { ChevronDown, ArrowUpDown } from 'lucide-react';
+
+type AlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc' | 'songs-desc' | 'songs-asc';
+
+const sortLabels: Record<AlbumSortOption, string> = {
+  'recent': 'Recently Added',
+  'name-asc': 'Name (A-Z)',
+  'name-desc': 'Name (Z-A)',
+  'artist-asc': 'Artist (A-Z)',
+  'artist-desc': 'Artist (Z-A)',
+  'songs-desc': 'Most Songs',
+  'songs-asc': 'Fewest Songs',
+};
 
 // Define Grid Components outside to prevent re-renders
 const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
@@ -29,6 +42,8 @@ export const Albums: React.FC = () => {
   const { openContextMenu, fetchAlbumMetadata, albumMetadata } = useStore();
   const navigate = useNavigate();
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
+  const [sortBy, setSortBy] = useState<AlbumSortOption>('recent');
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   useEffect(() => {
     setScrollParent(document.querySelector('main'));
@@ -44,14 +59,67 @@ export const Albums: React.FC = () => {
     });
   }, [albums.length]);
 
+  const sortedAlbums = useMemo(() => {
+    const sorted = [...albums];
+    switch (sortBy) {
+      case 'recent':
+        return sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+      case 'name-asc':
+        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+      case 'name-desc':
+        return sorted.sort((a, b) => b.name.localeCompare(a.name));
+      case 'artist-asc':
+        return sorted.sort((a, b) => a.artist.localeCompare(b.artist));
+      case 'artist-desc':
+        return sorted.sort((a, b) => b.artist.localeCompare(a.artist));
+      case 'songs-desc':
+        return sorted.sort((a, b) => b.songCount - a.songCount);
+      case 'songs-asc':
+        return sorted.sort((a, b) => a.songCount - b.songCount);
+      default:
+        return sorted;
+    }
+  }, [albums, sortBy]);
+
   return (
     <div className="p-8 h-full">
-        <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Albums</h1>
-            <p className="text-text-secondary">{albums.length} albums</p>
+        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <h1 className="text-3xl font-bold mb-2">Albums</h1>
+                <p className="text-text-secondary">{albums.length} albums</p>
+            </div>
+            
+            {/* Sort Dropdown */}
+            <div className="relative">
+                <button
+                    onClick={() => setShowSortMenu(!showSortMenu)}
+                    className="flex items-center gap-2 px-4 py-2 bg-surface-highlight hover:bg-surface-hover rounded-full text-sm text-text-main transition-colors border border-transparent hover:border-surface-slider"
+                >
+                    <ArrowUpDown size={16} className="text-text-secondary" />
+                    <span>{sortLabels[sortBy]}</span>
+                    <ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {showSortMenu && (
+                    <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowSortMenu(false)} />
+                        <div className="absolute right-0 top-full mt-2 bg-surface-2 border border-surface-3 rounded-lg shadow-xl z-50 py-1 min-w-[180px]">
+                            {(Object.keys(sortLabels) as AlbumSortOption[]).map((option) => (
+                                <button
+                                    key={option}
+                                    onClick={() => { setSortBy(option); setShowSortMenu(false); }}
+                                    className={`w-full text-left px-4 py-2 text-sm hover:bg-surface-hover transition-colors ${sortBy === option ? 'text-brand font-medium' : 'text-text-main'}`}
+                                >
+                                    {sortLabels[option]}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </div>
         </div>
 
-        {albums.length === 0 ? (
+        {sortedAlbums.length === 0 ? (
              <div className="flex flex-col items-center justify-center py-20 text-text-subtle">
                 <p>No albums found.</p>
             </div>
@@ -59,7 +127,7 @@ export const Albums: React.FC = () => {
             <VirtuosoGrid
                 useWindowScroll={false}
                 customScrollParent={scrollParent}
-                data={albums}
+                data={sortedAlbums}
                 components={{
                     List: ListContainer,
                     Item: ItemContainer

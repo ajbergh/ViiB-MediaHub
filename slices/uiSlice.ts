@@ -13,6 +13,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
     type: null,
     data: null,
   },
+  confirmDialog: null,
 
   setQueueOpen: (isOpen) => set({ isQueueOpen: isOpen }),
   setNowPlayingOpen: (isOpen) => set({ isNowPlayingOpen: isOpen }),
@@ -27,6 +28,9 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
   closeContextMenu: () => set((state) => ({ 
     contextMenu: { ...state.contextMenu, isOpen: false } 
   })),
+
+  showConfirmDialog: (config) => set({ confirmDialog: config }),
+  closeConfirmDialog: () => set({ confirmDialog: null }),
 
   addLog: (level, message, details) => set((state) => ({
       logs: [{

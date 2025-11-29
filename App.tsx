@@ -18,6 +18,8 @@ import { SmartMixDetail } from './pages/SmartMixDetail';
 import { useStore } from './store';
 import { api } from './services/api';
 import DownloadManager from './components/DownloadManager';
+import LibraryEventListener from './components/LibraryEventListener';
+import ConfirmDialog from './components/ConfirmDialog';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -44,6 +46,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 const App: React.FC = () => {
   const initLibrary = useStore(state => state.initLibrary);
   const { spotifyAccessToken, setSpotifyTokens, setSpotifyCredentials } = useStore();
+  const confirmDialog = useStore(state => state.confirmDialog);
+  const closeConfirmDialog = useStore(state => state.closeConfirmDialog);
 
   useEffect(() => {
     initLibrary();
@@ -96,7 +100,19 @@ const App: React.FC = () => {
         <ErrorBoundary>
           <DownloadManager />
         </ErrorBoundary>
+        <LibraryEventListener />
       </Layout>
+      {/* Global Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!confirmDialog}
+        title={confirmDialog?.title || ''}
+        message={confirmDialog?.message || ''}
+        confirmLabel={confirmDialog?.confirmLabel}
+        cancelLabel={confirmDialog?.cancelLabel}
+        variant={confirmDialog?.variant}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={closeConfirmDialog}
+      />
     </BrowserRouter>
   );
 };

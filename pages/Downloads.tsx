@@ -1,12 +1,18 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Download, Loader2, CheckCircle, XCircle, Clock, Trash2, Music, RefreshCw, RotateCcw } from 'lucide-react';
+import { Download, Loader2, CheckCircle, XCircle, Clock, Trash2, Music, RefreshCw, RotateCcw, Link2 } from 'lucide-react';
 import api, { ApiSpotifyDownload } from '../services/api';
+import ConfirmDialog from '../components/ConfirmDialog';
+import DirectDownloadDialog from '../components/DirectDownloadDialog';
 
 export const Downloads: React.FC = () => {
   const [downloads, setDownloads] = useState<ApiSpotifyDownload[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'failed'>('all');
+  const [confirmDialog, setConfirmDialog] = useState<{
+    type: 'clearQueue' | 'clearCompleted' | null;
+  }>({ type: null });
+  const [showDirectDownload, setShowDirectDownload] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -132,22 +138,20 @@ export const Downloads: React.FC = () => {
   };
 
   const handleClearQueue = async () => {
-    if (!window.confirm('Are you sure you want to clear all queued downloads?')) return;
-    
     const queued = downloads.filter(d => d.status === 'queued');
     // Delete in parallel
     await Promise.all(queued.map(d => handleDelete(d.id)));
+    setConfirmDialog({ type: null });
   };
 
   const handleClearCompleted = async () => {
-    if (!window.confirm('Are you sure you want to clear all completed downloads? (Files will not be deleted)')) return;
-    
     try {
       await api.clearCompletedDownloads();
       setDownloads(prev => prev.filter(d => d.status !== 'completed'));
     } catch (error) {
       console.error('Failed to clear completed downloads:', error);
     }
+    setConfirmDialog({ type: null });
   };
 
   const handleRetryAllFailed = async () => {
@@ -214,9 +218,20 @@ export const Downloads: React.FC = () => {
           <Download size={80} />
         </div>
         <h1 className="text-2xl font-bold mb-2">No Downloads Yet</h1>
-        <p className="text-[#6f7480] text-center max-w-sm">
+        <p className="text-[#6f7480] text-center max-w-sm mb-6">
           Download songs, albums, or playlists from Spotify to listen offline. Look for the download button on any track.
         </p>
+        <button
+          onClick={() => setShowDirectDownload(true)}
+          className="px-6 py-3 bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
+        >
+          <Link2 size={20} />
+          Download from URL
+        </button>
+        <DirectDownloadDialog
+          isOpen={showDirectDownload}
+          onClose={() => setShowDirectDownload(false)}
+        />
       </div>
     );
   }
@@ -234,6 +249,13 @@ export const Downloads: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowDirectDownload(true)}
+            className="px-4 py-2 bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
+          >
+            <Link2 size={18} />
+            Direct Download
+          </button>
           {stats.failed > 0 && (
             <button
               onClick={handleRetryAllFailed}
@@ -243,9 +265,9 @@ export const Downloads: React.FC = () => {
               Retry All Failed
             </button>
           )}
-          {stats.completed > 0 && (
+          {downloads.some(d => d.status === 'completed') && (
             <button
-              onClick={handleClearCompleted}
+              onClick={() => setConfirmDialog({ type: 'clearCompleted' })}
               className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-green-400 rounded-lg transition-colors flex items-center gap-2"
             >
               <CheckCircle size={18} />
@@ -254,7 +276,7 @@ export const Downloads: React.FC = () => {
           )}
           {downloads.some(d => d.status === 'queued') && (
             <button
-              onClick={handleClearQueue}
+              onClick={() => setConfirmDialog({ type: 'clearQueue' })}
               className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-red-400 rounded-lg transition-colors flex items-center gap-2"
             >
               <Trash2 size={18} />
@@ -344,7 +366,7 @@ export const Downloads: React.FC = () => {
       {downloads.some(d => d.status === 'queued') && (
         <div className="mt-6">
           <button
-            onClick={handleClearQueue}
+            onClick={() => setConfirmDialog({ type: 'clearQueue' })}
             className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <Trash2 size={18} />
@@ -352,6 +374,32 @@ export const Downloads: React.FC = () => {
           </button>
         </div>
       )}
+
+      {/* Confirm Dialogs */}
+      <ConfirmDialog
+        isOpen={confirmDialog.type === 'clearQueue'}
+        title="Clear Download Queue?"
+        message="Are you sure you want to clear all queued downloads?"
+        confirmLabel="Clear Queue"
+        variant="danger"
+        onConfirm={handleClearQueue}
+        onCancel={() => setConfirmDialog({ type: null })}
+      />
+      <ConfirmDialog
+        isOpen={confirmDialog.type === 'clearCompleted'}
+        title="Clear Completed Downloads?"
+        message="Are you sure you want to clear all completed downloads? (Files will not be deleted)"
+        confirmLabel="Clear Completed"
+        variant="default"
+        onConfirm={handleClearCompleted}
+        onCancel={() => setConfirmDialog({ type: null })}
+      />
+
+      {/* Direct Download Dialog */}
+      <DirectDownloadDialog
+        isOpen={showDirectDownload}
+        onClose={() => setShowDirectDownload(false)}
+      />
     </div>
   );
 };
@@ -407,9 +455,17 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
   return (
     <div className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors">
       <div className="flex items-start gap-4">
-        {/* Icon */}
-        <div className="w-12 h-12 bg-surface-3 rounded flex items-center justify-center flex-shrink-0">
-          <Music className="text-text-muted" size={20} />
+        {/* Album Artwork */}
+        <div className="w-12 h-12 bg-surface-3 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
+          {download.artworkUrl ? (
+            <img 
+              src={download.artworkUrl} 
+              alt={download.album || download.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <Music className="text-text-muted" size={20} />
+          )}
         </div>
 
         {/* Info */}

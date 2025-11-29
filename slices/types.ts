@@ -55,6 +55,7 @@ export interface LibrarySlice {
   scanFolders: ScanFolder[];
   
   initLibrary: () => Promise<void>;
+  refreshLibrary: () => Promise<void>;
   addSongs: (newSongs: Song[]) => void;
   resetLibrary: () => Promise<void>;
   createPlaylist: (name: string) => void;
@@ -97,6 +98,15 @@ export interface SpotifySlice {
   setDownloadCount: (count: number) => void;
 }
 
+export interface ConfirmDialogConfig {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: 'danger' | 'warning' | 'default';
+  onConfirm: () => void;
+}
+
 export interface UISlice {
   isQueueOpen: boolean;
   isNowPlayingOpen: boolean;
@@ -108,6 +118,7 @@ export interface UISlice {
     type: ContextMenuType | null;
     data: any;
   };
+  confirmDialog: ConfirmDialogConfig | null;
   logs: LogEntry[];
 
   setQueueOpen: (isOpen: boolean) => void;
@@ -116,6 +127,9 @@ export interface UISlice {
   
   openContextMenu: (e: React.MouseEvent, type: ContextMenuType, data: any) => void;
   closeContextMenu: () => void;
+  
+  showConfirmDialog: (config: ConfirmDialogConfig) => void;
+  closeConfirmDialog: () => void;
   
   addLog: (level: LogEntry['level'], message: string, details?: any) => void;
   clearLogs: () => void;

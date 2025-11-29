@@ -108,3 +108,8 @@ func SpotifyDownloader(format string, v ...interface{}) {
 func Main(format string, v ...interface{}) {
 	Log("Main", format, v...)
 }
+
+// Scanner logs a message with [Scanner] prefix
+func Scanner(format string, v ...interface{}) {
+	Log("Scanner", format, v...)
+}

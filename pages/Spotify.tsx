@@ -11,8 +11,12 @@ export const Spotify: React.FC = () => {
   const navigate = useNavigate();
   const { 
       spotifyClientId, spotifyClientSecret, spotifyUser, 
+      spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiry,
       logoutSpotify, setSpotifyTokens, setSpotifyUser, addLog 
   } = useStore();
+
+  // Session restoration state
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'search' | 'recent' | 'albums' | 'playlists'>('search');
@@ -51,6 +55,78 @@ export const Spotify: React.FC = () => {
       window.addEventListener('message', handleMessage);
       return () => window.removeEventListener('message', handleMessage);
   }, [setSpotifyTokens, setSpotifyUser, addLog]);
+
+  // Session restoration effect - runs once on mount to restore cached session
+  useEffect(() => {
+      const restoreSession = async () => {
+          // Check if we have cached tokens to validate
+          if (!spotifyAccessToken || !spotifyRefreshToken) {
+              console.log('[Spotify] No cached tokens found');
+              // If we have a stale user without tokens, clear it
+              if (spotifyUser) {
+                  console.log('[Spotify] Clearing stale user without tokens');
+                  logoutSpotify();
+              }
+              return;
+          }
+          
+          // If we already have a user and token is not expired, assume valid for now
+          // This provides a faster initial load - token will be validated on first API call anyway
+          if (spotifyUser && spotifyTokenExpiry && Date.now() < spotifyTokenExpiry) {
+              console.log('[Spotify] Session appears valid (token not expired), skipping validation');
+              return;
+          }
+          
+          console.log('[Spotify] Validating cached session...');
+          setIsRestoringSession(true);
+          
+          try {
+              // Try to get a valid access token (will refresh if expired)
+              const accessToken = await SpotifyService.getAccessToken();
+              
+              if (!accessToken) {
+                  console.log('[Spotify] Could not get valid access token');
+                  logoutSpotify();
+                  setIsRestoringSession(false);
+                  return;
+              }
+              
+              // Fetch user profile to validate token and restore/update user
+              const userProfile = await SpotifyService.getUserProfile();
+              
+              if (userProfile) {
+                  console.log('[Spotify] Session validated successfully for:', userProfile.display_name);
+                  setSpotifyUser(userProfile);
+                  addLog('success', `Session restored for ${userProfile.display_name}`);
+                  
+                  // Sync refreshed tokens to backend
+                  try {
+                      const currentState = useStore.getState();
+                      await api.saveSpotifyCredentials({
+                          clientId: currentState.spotifyClientId || '',
+                          clientSecret: currentState.spotifyClientSecret || '',
+                          accessToken: currentState.spotifyAccessToken || '',
+                          refreshToken: currentState.spotifyRefreshToken || '',
+                          expiry: currentState.spotifyTokenExpiry || 0,
+                      });
+                  } catch (e) {
+                      console.warn('[Spotify] Failed to sync tokens to backend:', e);
+                  }
+              } else {
+                  console.log('[Spotify] Failed to fetch user profile');
+                  logoutSpotify();
+              }
+          } catch (error) {
+              console.error('[Spotify] Session restoration failed:', error);
+              // Clear invalid cached credentials
+              logoutSpotify();
+          } finally {
+              setIsRestoringSession(false);
+          }
+      };
+      
+      restoreSession();
+  }, []); // Empty dependency array - runs once on mount
 
   // Debounce Logic
   useEffect(() => {
@@ -289,6 +365,19 @@ export const Spotify: React.FC = () => {
           });
       }
   };
+
+  // Show loading screen while restoring session
+  if (isRestoringSession) {
+    return (
+        <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+            <div className="w-24 h-24 bg-[#1db954] rounded-full flex items-center justify-center mb-6 shadow-lg shadow-[#1db954]/20">
+                <Loader2 size={48} className="text-black animate-spin" />
+            </div>
+            <h1 className="text-2xl font-bold mb-2">Restoring Session</h1>
+            <p className="text-text-secondary">Connecting to Spotify...</p>
+        </div>
+    );
+  }
 
   if (!spotifyUser) {
     return (
