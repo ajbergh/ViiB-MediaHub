@@ -1,3 +1,20 @@
+/**
+ * ViiB MediaHub - Confirm Dialog Component
+ * 
+ * Modal dialog for user confirmation of destructive or important actions.
+ * 
+ * Features:
+ * - Customizable title and message
+ * - Danger, warning, and default variants
+ * - Loading state with spinner
+ * - Escape key and backdrop click dismissal
+ * - Accessible focus management
+ * 
+ * Used for actions like library reset, playlist delete, etc.
+ * 
+ * @module ConfirmDialog
+ */
+
 import React from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 

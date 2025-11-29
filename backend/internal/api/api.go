@@ -1,3 +1,15 @@
+// Package api provides REST API handlers for ViiB MediaHub.
+//
+// This package implements the complete REST API including:
+//   - Library management: songs, playlists, folders
+//   - Media serving: audio streaming, cover art
+//   - Spotify integration: OAuth, search proxy, downloads
+//   - Metadata caching: album and artist enrichment
+//   - Settings: key-value configuration storage
+//   - SSE endpoints: real-time download progress and library events
+//
+// All endpoints return JSON responses with consistent error handling.
+// Audio and cover files are served with appropriate caching headers.
 package api
 
 import (

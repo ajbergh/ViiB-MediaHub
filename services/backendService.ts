@@ -1,3 +1,22 @@
+/**
+ * ViiB MediaHub - Backend Service
+ * 
+ * Unified interface for communicating with the Go backend API.
+ * Provides abstraction layer that works in both backend and browser-only modes.
+ * 
+ * Modes:
+ * - Backend Mode: Routes all operations through Go API endpoints
+ * - Browser-Only Mode: Falls back to IndexedDB via libraryService
+ * 
+ * Features:
+ * - Song and playlist CRUD operations
+ * - Folder scanning and library management
+ * - Automatic backend availability detection
+ * - Type conversion between API and frontend formats
+ * 
+ * @module backendService
+ */
+
 // Backend service - communicates with Go backend API
 // This provides a unified interface that works with both:
 // - Browser-only mode (using IndexedDB directly)

@@ -1,6 +1,18 @@
 // Package scanner provides media library scanning functionality.
-// It scans configured folders for audio files, extracts metadata using taglib,
-// and caches album artwork efficiently (one cover per album).
+//
+// The Scanner recursively scans configured folders for audio files,
+// extracts metadata using the audio package, and updates the database.
+//
+// Features:
+//   - Incremental scanning: skips unchanged files based on path
+//   - Album artwork caching: one cover per album to save disk space
+//   - Removal detection: removes songs when source files are deleted
+//   - SSE event broadcasting: notifies frontend of scan progress
+//   - Spotify download monitoring: auto-rescans after downloads complete
+//
+// Supported audio extensions:
+//
+//	.mp3, .flac, .m4a, .aac, .ogg, .opus, .wav, .wma
 package scanner
 
 import (
@@ -44,10 +56,11 @@ var coverFilenames = []string{
 
 // LibraryEvent represents an event that can be sent to frontend clients
 type LibraryEvent struct {
-	Type       string `json:"type"`                 // "scan_complete", "scan_started", "scan_progress"
-	Message    string `json:"message"`              // Human-readable message
-	NewSongs   int    `json:"newSongs,omitempty"`   // Number of new songs added (for scan_complete)
-	TotalSongs int    `json:"totalSongs,omitempty"` // Total songs in library (for scan_complete)
+	Type         string `json:"type"`                   // "scan_complete", "scan_started", "scan_progress"
+	Message      string `json:"message"`                // Human-readable message
+	NewSongs     int    `json:"newSongs,omitempty"`     // Number of new songs added (for scan_complete)
+	RemovedSongs int    `json:"removedSongs,omitempty"` // Number of songs removed (for scan_complete)
+	TotalSongs   int    `json:"totalSongs,omitempty"`   // Total songs in library (for scan_complete)
 }
 
 // Scanner handles media library scanning with progress tracking
@@ -82,6 +95,7 @@ type ScanResult struct {
 	TotalFiles   int
 	NewSongs     int
 	UpdatedSongs int
+	RemovedSongs int
 	Errors       int
 	Duration     time.Duration
 }
@@ -263,6 +277,23 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		return &ScanResult{Duration: time.Since(startTime)}, nil
 	}
 
+	// Get all existing file paths from the database before scanning
+	s.setProgress("Checking for removed files...")
+	existingPaths, err := s.db.GetAllFilePaths()
+	if err != nil {
+		logger.Scanner("Failed to get existing file paths: %v", err)
+		existingPaths = []string{}
+	}
+
+	// Build a set of paths that should exist (within configured folders)
+	validFolderPaths := make(map[string]bool)
+	for _, folder := range folders {
+		validFolderPaths[strings.ToLower(filepath.Clean(folder.Path))] = true
+	}
+
+	// Track which existing paths are still valid (file exists and is within a scan folder)
+	foundPaths := make(map[string]bool)
+
 	// Clear the album cover cache for fresh scan
 	s.albumCoverMutex.Lock()
 	s.albumCovers = make(map[string]string)
@@ -273,11 +304,16 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 	for _, folder := range folders {
 		s.setProgress(fmt.Sprintf("Scanning: %s", folder.Path))
 
-		folderResult, err := s.ScanFolder(folder.Path)
+		folderResult, scannedPaths, err := s.ScanFolderWithPaths(folder.Path)
 		if err != nil {
 			logger.Scanner("Error scanning %s: %v", folder.Path, err)
 			result.Errors++
 			continue
+		}
+
+		// Mark all scanned paths as found
+		for _, path := range scannedPaths {
+			foundPaths[path] = true
 		}
 
 		result.TotalFiles += folderResult.TotalFiles
@@ -289,9 +325,41 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		s.db.UpdateScanFolder(folder.ID, time.Now().UnixMilli(), folderResult.TotalFiles)
 	}
 
+	// Find and remove songs that no longer exist
+	s.setProgress("Removing deleted files from library...")
+	var pathsToRemove []string
+	for _, existingPath := range existingPaths {
+		// Check if the file was found during scanning
+		if !foundPaths[existingPath] {
+			// Also verify the file is within one of our configured scan folders
+			// (don't remove songs from folders that were removed from config)
+			pathLower := strings.ToLower(filepath.Clean(existingPath))
+			isInScanFolder := false
+			for folderPath := range validFolderPaths {
+				if strings.HasPrefix(pathLower, folderPath) {
+					isInScanFolder = true
+					break
+				}
+			}
+			if isInScanFolder {
+				pathsToRemove = append(pathsToRemove, existingPath)
+			}
+		}
+	}
+
+	if len(pathsToRemove) > 0 {
+		removed, err := s.db.DeleteSongsByFilePaths(pathsToRemove)
+		if err != nil {
+			logger.Scanner("Error removing deleted songs: %v", err)
+		} else {
+			result.RemovedSongs = removed
+			logger.Scanner("Removed %d songs that no longer exist", removed)
+		}
+	}
+
 	result.Duration = time.Since(startTime)
-	s.setProgress(fmt.Sprintf("Scan complete: %d files found, %d new, %d updated (%s)",
-		result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.Duration.Round(time.Millisecond)))
+	s.setProgress(fmt.Sprintf("Scan complete: %d files found, %d new, %d updated, %d removed (%s)",
+		result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.RemovedSongs, result.Duration.Round(time.Millisecond)))
 
 	// Reset download counter after scan
 	s.rescanMutex.Lock()
@@ -306,10 +374,11 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 
 	// Emit scan complete event to notify frontend
 	s.emitEvent(LibraryEvent{
-		Type:       "scan_complete",
-		Message:    fmt.Sprintf("Scan complete: %d new songs added", result.NewSongs),
-		NewSongs:   result.NewSongs,
-		TotalSongs: totalSongs,
+		Type:         "scan_complete",
+		Message:      fmt.Sprintf("Scan complete: %d new, %d removed", result.NewSongs, result.RemovedSongs),
+		NewSongs:     result.NewSongs,
+		RemovedSongs: result.RemovedSongs,
+		TotalSongs:   totalSongs,
 	})
 
 	return result, nil
@@ -317,8 +386,15 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 
 // ScanFolder scans a single folder for audio files
 func (s *Scanner) ScanFolder(folderPath string) (*ScanResult, error) {
+	result, _, err := s.ScanFolderWithPaths(folderPath)
+	return result, err
+}
+
+// ScanFolderWithPaths scans a single folder for audio files and returns the list of scanned file paths
+func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string, error) {
 	result := &ScanResult{}
 	var songs []db.Song
+	var scannedPaths []string
 
 	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -335,6 +411,7 @@ func (s *Scanner) ScanFolder(folderPath string) (*ScanResult, error) {
 		}
 
 		result.TotalFiles++
+		scannedPaths = append(scannedPaths, path)
 
 		song, err := s.extractMetadata(path)
 		if err != nil {
@@ -368,13 +445,13 @@ func (s *Scanner) ScanFolder(folderPath string) (*ScanResult, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Save songs to database
 	if len(songs) > 0 {
 		if err := s.db.SaveSongs(songs); err != nil {
-			return nil, fmt.Errorf("failed to save songs: %w", err)
+			return nil, nil, fmt.Errorf("failed to save songs: %w", err)
 		}
 		result.NewSongs = len(songs) // SimpliSfied - SaveSongs handles upsert
 
@@ -382,7 +459,7 @@ func (s *Scanner) ScanFolder(folderPath string) (*ScanResult, error) {
 		s.createAlbumMetadataEntries(songs)
 	}
 
-	return result, nil
+	return result, scannedPaths, nil
 }
 
 // SongMetadata holds extracted metadata from an audio file

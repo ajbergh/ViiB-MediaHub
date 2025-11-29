@@ -1,3 +1,25 @@
+/**
+ * ViiB MediaHub - Audio Engine
+ * 
+ * Web Audio API abstraction for audio processing and effects.
+ * Manages the audio graph including EQ, volume, and visualization.
+ * 
+ * Audio Graph Architecture:
+ * [Audio Elements] -> [Input Gains] -> [10-Band EQ] -> [Analyser] -> [Master Gain] -> [Destination]
+ * 
+ * Features:
+ * - 10-band parametric equalizer (32Hz - 16kHz)
+ * - Smooth crossfade transitions between tracks
+ * - Real-time frequency analysis for visualizer
+ * - Volume control with scheduled value changes
+ * - Multiple audio source registration (for dual-player crossfade)
+ * 
+ * Note: Requires user interaction before AudioContext can be resumed
+ * due to browser autoplay policies.
+ * 
+ * @module audio
+ */
+
 import { EQ_FREQUENCIES } from "../utils";
 
 class AudioEngine {

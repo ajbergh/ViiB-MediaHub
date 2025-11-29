@@ -1,3 +1,21 @@
+/**
+ * ViiB MediaHub - Settings Page
+ * 
+ * Comprehensive settings interface for application configuration.
+ * 
+ * Sections:
+ * - Backend Status: Connection status indicator
+ * - Library: Scan folders management, library reset
+ * - Audio: Crossfade, gapless, normalization, visualizer, EQ
+ * - Spotify: OAuth credentials, download location, concurrent downloads
+ * - Activity Log: Debug log viewer
+ * 
+ * Folder browser dialogs allow navigation and selection of:
+ * - Music scan directories
+ * - Spotify download destination
+ * 
+ * @module Settings
+ */
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff } from 'lucide-react';

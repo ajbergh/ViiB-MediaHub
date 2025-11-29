@@ -1,3 +1,17 @@
+/**
+ * ViiB MediaHub - Albums Page
+ * 
+ * Displays the album library in a responsive grid with virtualized scrolling.
+ * 
+ * Features:
+ * - Virtualized grid using react-virtuoso for large libraries
+ * - Album covers with gradient fallbacks
+ * - Multiple sort options (name, artist, song count, recently added)
+ * - Click to navigate to album detail page
+ * - Context menu support for each album
+ * 
+ * @module Albums
+ */
 
 import React, { useEffect, useState, forwardRef, useMemo } from 'react';
 import { useAlbums, useStore } from '../store';

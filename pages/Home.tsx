@@ -1,3 +1,17 @@
+/**
+ * ViiB MediaHub - Home Page
+ * 
+ * Landing page displaying personalized content and quick navigation.
+ * 
+ * Sections:
+ * - Global search bar for songs, albums, artists
+ * - Smart Mixes: Auto-generated playlists based on listening habits
+ * - Recently Added: Latest additions to the library
+ * - Recently Played: Recently listened albums
+ * - Top Artists: Most listened artists
+ * 
+ * @module Home
+ */
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';

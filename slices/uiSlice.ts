@@ -1,3 +1,22 @@
+/**
+ * ViiB MediaHub - UI State Slice
+ * 
+ * Zustand slice managing UI state and user interactions.
+ * 
+ * State:
+ * - isQueueOpen: Queue panel visibility
+ * - isNowPlayingOpen: Full-screen now playing view
+ * - showSmartMixes: Smart mix section visibility on home
+ * - logs: Application log entries
+ * - contextMenu: Right-click menu state and position
+ * - confirmDialog: Modal confirmation dialog state
+ * - downloadCount: Active download badge count
+ * 
+ * Provides actions for context menus, dialogs, and logging.
+ * 
+ * @module uiSlice
+ */
+
 import { StateCreator } from 'zustand';
 import { AppState, UISlice } from './types';
 

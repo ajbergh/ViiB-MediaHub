@@ -1,3 +1,20 @@
+/**
+ * ViiB MediaHub - Library Event Listener Component
+ * 
+ * Background component maintaining SSE connection for library updates.
+ * 
+ * Events:
+ * - scan_started: Library scan initiated
+ * - scan_progress: Scan progress update
+ * - scan_complete: Scan finished with new/removed song counts
+ * 
+ * Automatically refreshes library state when scan completes,
+ * ensuring UI stays synchronized without manual reload.
+ * Includes reconnection logic for dropped SSE connections.
+ * 
+ * @module LibraryEventListener
+ */
+
 import { useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../store';
 
@@ -12,6 +29,7 @@ interface LibraryEvent {
   type: 'scan_started' | 'scan_complete' | 'scan_progress';
   message: string;
   newSongs?: number;
+  removedSongs?: number;
   totalSongs?: number;
 }
 
@@ -46,7 +64,9 @@ const LibraryEventListener = () => {
           setScanning(false);
           setScanProgress('');
           // Always refresh the library when scan completes
-          console.log(`🎵 Scan complete (${libraryEvent.newSongs || 0} new songs), refreshing library...`);
+          const added = libraryEvent.newSongs || 0;
+          const removed = libraryEvent.removedSongs || 0;
+          console.log(`🎵 Scan complete (${added} new, ${removed} removed), refreshing library...`);
           refreshLibrary();
           break;
 

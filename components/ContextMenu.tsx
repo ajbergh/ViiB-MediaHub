@@ -1,3 +1,22 @@
+/**
+ * ViiB MediaHub - Context Menu Component
+ * 
+ * Global context menu layer rendering appropriate menus for different item types.
+ * 
+ * Supported Types:
+ * - SONG: Play, add to queue/playlist, go to album/artist
+ * - ALBUM: Play, add to queue, go to artist
+ * - ARTIST: Play all, shuffle all
+ * - PLAYLIST: Play, rename, delete
+ * - SMART_MIX: Play, shuffle, save as playlist
+ * - QUEUE_ITEM: Remove from queue, play next
+ * 
+ * Handles click-outside and escape key dismissal.
+ * Position auto-adjusts to stay within viewport.
+ * 
+ * @module ContextMenu
+ */
+
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { ContextMenuType } from '../types';

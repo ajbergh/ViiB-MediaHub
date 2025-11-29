@@ -1,3 +1,24 @@
+/**
+ * ViiB MediaHub - Global State Store
+ * 
+ * Zustand-based state management combining multiple slices:
+ * - PlayerSlice: Playback state, queue, audio settings, EQ
+ * - LibrarySlice: Songs, playlists, smart mixes, metadata cache
+ * - SpotifySlice: OAuth tokens, user profile, Spotify integration
+ * - UISlice: Context menus, dialogs, download count, panel states
+ * 
+ * Persistence:
+ * - Audio settings and Spotify credentials persisted to localStorage
+ * - Song library stored in IndexedDB (via libraryService) for large libraries
+ * 
+ * Selectors:
+ * - useAlbums: Derives album list with song counts from songs
+ * - useArtists: Derives artist list with intelligent name splitting
+ * - useAlbumCovers: Maps album names to cover URLs
+ * 
+ * @module store
+ */
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Album, Artist } from './types';

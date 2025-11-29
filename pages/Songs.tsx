@@ -1,3 +1,18 @@
+/**
+ * ViiB MediaHub - Songs Page
+ * 
+ * Displays the complete song library with virtualized scrolling for performance.
+ * 
+ * Features:
+ * - Virtualized list using react-virtuoso for large libraries
+ * - Multiple sort options (title, artist, album, duration, plays)
+ * - Search/filter functionality
+ * - Header with play all button
+ * - Context menu support for each song
+ * 
+ * @module Songs
+ */
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore, useAlbumCovers } from '../store';
 import { Play, Clock, MoreHorizontal, Search, ChevronDown, ArrowUpDown } from 'lucide-react';

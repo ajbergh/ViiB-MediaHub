@@ -1,3 +1,22 @@
+/**
+ * ViiB MediaHub - Spotify OAuth Callback Page
+ * 
+ * Handles the OAuth 2.0 PKCE callback from Spotify authorization.
+ * 
+ * Flow:
+ * 1. User redirected here after Spotify login
+ * 2. Extracts authorization code from URL params
+ * 3. Exchanges code for access/refresh tokens
+ * 4. Fetches user profile
+ * 5. Saves credentials to backend for download functionality
+ * 6. Posts success message to parent window (if popup)
+ * 7. Redirects to Spotify page or closes popup
+ * 
+ * Handles errors gracefully with visual feedback.
+ * 
+ * @module SpotifyCallback
+ */
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useStore } from '../store';

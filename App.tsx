@@ -1,3 +1,16 @@
+/**
+ * ViiB MediaHub - Main Application Component
+ * 
+ * Entry point for the React frontend. Handles:
+ * - Route configuration using react-router-dom
+ * - Global state initialization (library, Spotify credentials sync)
+ * - Error boundary for graceful component failure handling
+ * - Background metadata enrichment startup
+ * - Global UI overlays (ConfirmDialog, DownloadManager)
+ * 
+ * @module App
+ */
+
 import React, { useEffect, Component, ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';

@@ -1,3 +1,17 @@
+/**
+ * ViiB MediaHub - Artists Page
+ * 
+ * Displays all artists in the library with virtualized grid layout.
+ * 
+ * Features:
+ * - Virtualized grid using react-virtuoso for large libraries
+ * - Artist images from Spotify (via background enrichment) or gradient fallback
+ * - Shows song and album count per artist
+ * - Click to navigate to artist detail page
+ * - Context menu support for each artist
+ * 
+ * @module Artists
+ */
 
 import React, { useEffect, useState, forwardRef, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';

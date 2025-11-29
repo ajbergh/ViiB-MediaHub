@@ -1,3 +1,19 @@
+/**
+ * ViiB MediaHub - Layout Component
+ * 
+ * Root layout wrapper providing the application structure:
+ * - Sidebar navigation (left)
+ * - Main content area (center, scrollable)
+ * - Floating queue panel (right, toggleable)
+ * - Player controls (bottom, fixed)
+ * - Global context menu layer
+ * 
+ * Handles right-click prevention on the main container to enable
+ * custom context menus throughout the application.
+ * 
+ * @module Layout
+ */
+
 import React from 'react';
 import { Sidebar } from './Sidebar';
 import { Player } from './Player';

@@ -1,3 +1,24 @@
+/**
+ * ViiB MediaHub - Browser-Side Metadata Extraction
+ * 
+ * Provides audio metadata parsing using music-metadata in a Web Worker.
+ * Used for browser-only mode when Go backend is unavailable.
+ * 
+ * Features:
+ * - Web Worker for non-blocking parsing
+ * - Supports common audio formats via music-metadata
+ * - Album artwork extraction from embedded tags
+ * - Fallback artwork search in same folder
+ * - Automatic track info parsing from filename
+ * 
+ * The worker code is inlined as a Blob to avoid module bundling issues.
+ * 
+ * Note: When backend is available, metadata is extracted server-side
+ * using taglib-go for better performance and format support.
+ * 
+ * @module metadata
+ */
+
 import { Song } from './types';
 
 // Inline Worker Code

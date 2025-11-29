@@ -1,3 +1,18 @@
+/**
+ * ViiB MediaHub - Playlists Page
+ * 
+ * Manages user-created playlists with creation and editing capabilities.
+ * 
+ * Features:
+ * - Create new playlists with custom names
+ * - Display playlist grid with cover art
+ * - Click to navigate to playlist detail
+ * - Context menu for rename/delete operations
+ * - Empty state for new users
+ * 
+ * @module Playlists
+ */
+
 import React, { useState } from 'react';
 import { useStore } from '../store';
 import { ListMusic, Plus } from 'lucide-react';

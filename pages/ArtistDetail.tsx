@@ -1,3 +1,21 @@
+/**
+ * ViiB MediaHub - Artist Detail Page
+ * 
+ * Detailed view of a single artist with discography and stats.
+ * 
+ * Features:
+ * - Artist header with image (from Spotify or gradient fallback)
+ * - Complete discography organized by album
+ * - Track counts and total duration statistics
+ * - Play all, shuffle all actions
+ * - Album grouping with collapsible track lists
+ * - Smart artist name splitting for featured artists
+ * 
+ * Uses the same splitArtistNames logic as store.ts for consistency.
+ * 
+ * @module ArtistDetail
+ */
+
 import React, { useMemo, useEffect, useState, forwardRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store';

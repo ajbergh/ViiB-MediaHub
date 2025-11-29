@@ -1,4 +1,32 @@
-
+/**
+ * ViiB MediaHub - Core Type Definitions
+ * 
+ * Defines TypeScript interfaces and types used throughout the application:
+ * 
+ * Core Entities:
+ * - Song: Audio file with metadata, URLs, and usage metrics
+ * - Album: Aggregated from songs, includes cover and addedAt
+ * - Artist: Aggregated from songs with smart name splitting
+ * - Playlist: User-created collections with song references
+ * - SmartMix: Auto-generated playlists based on rules
+ * 
+ * Metadata:
+ * - ArtistMetadata: Spotify-enriched artist info with images
+ * - AlbumMetadata: Spotify-enriched album info with high-res covers
+ * - SpotifyProfile: User's Spotify account information
+ * 
+ * Audio:
+ * - AudioSettings: EQ, crossfade, visualizer, normalization config
+ * - EqPreset: Named equalizer band configuration
+ * - VisualizerMode: Visualization display options
+ * 
+ * UI:
+ * - ViewState: Navigation view identifiers
+ * - ContextMenuType: Right-click menu types
+ * - LogEntry: Application log entry for debugging
+ * 
+ * @module types
+ */
 
 export interface Song {
   id: string;

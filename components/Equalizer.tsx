@@ -1,3 +1,21 @@
+/**
+ * ViiB MediaHub - Equalizer Panel Component
+ * 
+ * Floating 10-band parametric equalizer with preset support.
+ * 
+ * Features:
+ * - 10 frequency bands (32Hz - 16kHz)
+ * - Adjustable gain per band (-12dB to +12dB)
+ * - Multiple presets (Flat, Rock, Jazz, Pop, etc.)
+ * - Enable/disable toggle
+ * - Reset to flat button
+ * - Smooth value transitions
+ * 
+ * Integrates with AudioEngine for real-time EQ adjustment.
+ * 
+ * @module Equalizer
+ */
+
 import React from 'react';
 import { useStore } from '../store';
 import { EQ_FREQUENCIES, EQ_PRESETS } from '../utils';

@@ -1,3 +1,18 @@
+/**
+ * ViiB MediaHub - Search Page
+ * 
+ * Global search across the local music library.
+ * 
+ * Features:
+ * - Real-time search with debounced input
+ * - Searches across song title, artist, and album
+ * - Virtualized results list for performance
+ * - Play directly from search results
+ * - Context menu support for each result
+ * - Receives initial query from Home page search bar
+ * 
+ * @module Search
+ */
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search as SearchIcon, MoreHorizontal } from 'lucide-react';

@@ -1,3 +1,19 @@
+/**
+ * ViiB MediaHub - Library Service
+ * 
+ * Provides IndexedDB operations for local song and playlist storage.
+ * Used as a fallback when the Go backend is unavailable (browser-only mode).
+ * 
+ * Features:
+ * - CRUD operations for songs and playlists
+ * - Database reset functionality with fallback strategies
+ * - File System Access API permission management for local files
+ * 
+ * Note: When backend is available, this service is primarily used for
+ * the verifyPermission helper and as a fallback storage layer.
+ * 
+ * @module libraryService
+ */
 
 import { getDB, closeDB } from './db';
 import { deleteDB } from 'idb';

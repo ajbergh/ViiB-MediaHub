@@ -1,3 +1,20 @@
+/**
+ * ViiB MediaHub - Spotify State Slice
+ * 
+ * Zustand slice managing Spotify integration state.
+ * 
+ * State:
+ * - spotifyClientId/Secret: OAuth application credentials
+ * - spotifyAccessToken/RefreshToken: User authentication tokens
+ * - spotifyTokenExpiry: Token expiration timestamp
+ * - spotifyUser: Authenticated user profile
+ * 
+ * These values are persisted to localStorage via Zustand persist
+ * middleware and synced with the Go backend for download functionality.
+ * 
+ * @module spotifySlice
+ */
+
 import { StateCreator } from 'zustand';
 import { AppState, SpotifySlice } from './types';
 

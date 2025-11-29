@@ -1,5 +1,30 @@
+/**
+ * ViiB MediaHub - Utility Functions
+ * 
+ * Collection of helper functions used throughout the application:
+ * 
+ * Time/Formatting:
+ * - formatTime: Converts seconds to MM:SS format
+ * - generateId: Creates random alphanumeric IDs
+ * 
+ * Styling:
+ * - generateGradient: Creates HSL gradients from seed strings
+ * - cssUrl: Escapes URLs for CSS url() usage
+ * - coverBackground: Returns cover image or gradient fallback
+ * 
+ * Audio:
+ * - EQ_FREQUENCIES: 10-band equalizer center frequencies (32Hz-16kHz)
+ * - EQ_PRESETS: Named equalizer presets (Flat, Rock, Jazz, etc.)
+ * 
+ * @module utils
+ */
+
 import { EqPreset } from "./types";
 
+/**
+ * Formats seconds into MM:SS display format.
+ * Returns '0:00' for invalid input.
+ */
 export const formatTime = (seconds: number): string => {
   if (isNaN(seconds)) return '0:00';
   const mins = Math.floor(seconds / 60);

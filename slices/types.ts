@@ -1,3 +1,20 @@
+/**
+ * ViiB MediaHub - Slice Type Definitions
+ * 
+ * TypeScript interfaces defining the shape of each Zustand slice.
+ * These interfaces ensure type safety across state management.
+ * 
+ * Slices:
+ * - PlayerSlice: Playback, queue, and audio settings
+ * - LibrarySlice: Songs, playlists, metadata, scanning
+ * - SpotifySlice: OAuth tokens and user profile
+ * - UISlice: Context menus, dialogs, logs, panel states
+ * 
+ * AppState combines all slices into the complete store type.
+ * 
+ * @module slices/types
+ */
+
 import React from 'react';
 import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType } from '../types';
 

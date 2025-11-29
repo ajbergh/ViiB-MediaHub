@@ -1,3 +1,20 @@
+/**
+ * ViiB MediaHub - Smart Mix Detail Page
+ * 
+ * Detailed view of an auto-generated smart mix playlist.
+ * 
+ * Features:
+ * - Mix header with gradient background matching mix colors
+ * - Track listing from the generated mix
+ * - Play all, shuffle, add to queue actions
+ * - Save as regular playlist functionality
+ * - Mix description and rule information
+ * 
+ * Smart mixes are regenerated when library changes.
+ * 
+ * @module SmartMixDetail
+ */
+
 import React, { useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore, useAlbumCovers } from '../store';

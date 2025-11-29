@@ -1,3 +1,15 @@
+// Package db provides SQLite database access for ViiB MediaHub.
+//
+// Schema includes tables for:
+//   - songs: Audio file metadata with paths and usage stats
+//   - playlists: User-created playlists with song references
+//   - scan_folders: Configured directories to scan for music
+//   - settings: Key-value store for application configuration
+//   - spotify_downloads: Download queue with status tracking
+//   - album_metadata: Cached Spotify album metadata
+//   - artist_metadata: Cached Spotify artist metadata
+//
+// Uses SQLite with WAL mode for concurrent access and foreign keys enabled.
 package db
 
 import (
@@ -330,6 +342,59 @@ func (d *DB) DeleteSong(id string) error {
 func (d *DB) ClearSongs() error {
 	_, err := d.conn.Exec("DELETE FROM songs")
 	return err
+}
+
+// GetAllFilePaths returns all file paths currently in the songs table
+func (d *DB) GetAllFilePaths() ([]string, error) {
+	rows, err := d.conn.Query("SELECT file_path FROM songs")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, rows.Err()
+}
+
+// DeleteSongsByFilePaths deletes songs with the given file paths and returns the count deleted
+func (d *DB) DeleteSongsByFilePaths(paths []string) (int, error) {
+	if len(paths) == 0 {
+		return 0, nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("DELETE FROM songs WHERE file_path = ?")
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+
+	deleted := 0
+	for _, path := range paths {
+		result, err := stmt.Exec(path)
+		if err != nil {
+			return deleted, err
+		}
+		affected, _ := result.RowsAffected()
+		deleted += int(affected)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return deleted, nil
 }
 
 func (d *DB) GetSongByID(id string) (*Song, error) {

@@ -1,3 +1,22 @@
+/**
+ * ViiB MediaHub - Smart Mix Generator
+ * 
+ * Automatically generates intelligent playlists based on listening habits,
+ * metadata, and temporal patterns. Provides personalized music discovery
+ * without requiring manual curation.
+ * 
+ * Generated Mixes:
+ * - Heavy Rotation: Most played tracks from last 90 days
+ * - Rediscover Favorites: High play count but not heard in 30+ days
+ * - Fresh Finds: Recently added to library
+ * - Chill Acoustic Evening: Genre-based (acoustic, folk, jazz, ambient)
+ * - 90s Alternative Mix: Year + genre filtering (1990-1999 rock/alternative)
+ * 
+ * Each mix contains up to 50 songs and updates when library changes.
+ * 
+ * @module smartMix
+ */
+
 import { Song, SmartMix } from '../types';
 
 export const generateSmartMixes = (songs: Song[]): SmartMix[] => {

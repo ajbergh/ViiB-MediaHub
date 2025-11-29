@@ -1,3 +1,25 @@
+/**
+ * ViiB MediaHub - Player State Slice
+ * 
+ * Zustand slice managing audio playback state and settings.
+ * 
+ * State:
+ * - isPlaying: Current playback state
+ * - currentSong: Currently loaded song object
+ * - queue: Array of songs in playback queue
+ * - volume: Master volume level (0-1)
+ * - audioSettings: EQ, crossfade, visualizer configuration
+ * 
+ * Features:
+ * - Song playback with automatic file handle resolution
+ * - Queue management (add, remove, clear, shuffle)
+ * - Auto-EQ based on song genre
+ * - Navigation between songs (next/prev)
+ * - Play count recording
+ * 
+ * @module playerSlice
+ */
+
 import { StateCreator } from 'zustand';
 import { AppState, PlayerSlice } from './types';
 import { EQ_PRESETS } from '../utils';

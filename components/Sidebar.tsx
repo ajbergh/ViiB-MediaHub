@@ -1,3 +1,22 @@
+/**
+ * ViiB MediaHub - Sidebar Navigation Component
+ * 
+ * Fixed left sidebar providing navigation between application sections.
+ * 
+ * Sections:
+ * - Home: Landing page with smart mixes
+ * - Songs: Complete song library
+ * - Albums: Album grid view
+ * - Artists: Artist grid view
+ * - Playlists: User playlists
+ * - Spotify: Spotify integration hub
+ * - Downloads: Download queue (with active count badge)
+ * - Settings: Application configuration
+ * 
+ * Highlights active route and shows loading indicator during scans.
+ * 
+ * @module Sidebar
+ */
 
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';

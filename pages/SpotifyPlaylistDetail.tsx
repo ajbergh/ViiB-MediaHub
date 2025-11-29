@@ -1,3 +1,21 @@
+/**
+ * ViiB MediaHub - Spotify Playlist Detail Page
+ * 
+ * Browse and download playlists from the Spotify catalog.
+ * 
+ * Features:
+ * - Full playlist metadata from Spotify API
+ * - Track listing with artist and album info
+ * - Download entire playlist button
+ * - Download individual tracks
+ * - Playlist owner and track count display
+ * - External link to Spotify
+ * 
+ * Requires Spotify authentication and Premium for downloads.
+ * 
+ * @module SpotifyPlaylistDetail
+ */
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download } from 'lucide-react';

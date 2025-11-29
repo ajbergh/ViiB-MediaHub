@@ -1,3 +1,21 @@
+/**
+ * ViiB MediaHub - Album Detail Page
+ * 
+ * Detailed view of a single album with track listing and metadata.
+ * 
+ * Features:
+ * - Album header with cover art and metadata
+ * - Spotify-enriched metadata (description, genre, release date)
+ * - Track listing with disc organization for multi-disc albums
+ * - Play all, shuffle, add to queue actions
+ * - Individual track playback and context menus
+ * - Navigation back to albums list
+ * 
+ * Fetches enhanced metadata from Spotify when connected.
+ * 
+ * @module AlbumDetail
+ */
+
 import React, { useMemo, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore, useAlbumCovers } from '../store';

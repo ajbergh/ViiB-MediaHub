@@ -1,3 +1,21 @@
+/**
+ * ViiB MediaHub - Spotify Album Detail Page
+ * 
+ * Browse and download albums from the Spotify catalog.
+ * 
+ * Features:
+ * - Full album metadata from Spotify API
+ * - Track listing with duration
+ * - Download entire album button
+ * - Download individual tracks
+ * - External link to Spotify
+ * - Album artwork display
+ * 
+ * Requires Spotify authentication and Premium for downloads.
+ * 
+ * @module SpotifyAlbumDetail
+ */
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download } from 'lucide-react';

@@ -1,3 +1,24 @@
+/**
+ * ViiB MediaHub - Audio Player Hook
+ * 
+ * Custom React hook for managing dual-audio-element playback with crossfading.
+ * Integrates with the AudioEngine for Web Audio API effects processing.
+ * 
+ * Features:
+ * - Dual audio element management for seamless crossfading
+ * - Current time and duration tracking for progress display
+ * - Automatic song advancement and play count recording
+ * - EQ band synchronization with audio settings
+ * - Volume control through master gain node
+ * 
+ * Architecture:
+ * - Uses two <audio> elements (primary/secondary) for transitions
+ * - activePlayerIndex tracks which element is currently playing
+ * - AudioEngine processes audio through EQ -> Analyser -> Master chain
+ * 
+ * @module useAudioPlayer
+ */
+
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useStore } from '../store';
 import { audioEngine } from '../lib/audio';

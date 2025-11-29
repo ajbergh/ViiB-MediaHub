@@ -1,3 +1,21 @@
+/**
+ * ViiB MediaHub - Queue Panel Component
+ * 
+ * Floating side panel displaying the current playback queue.
+ * 
+ * Features:
+ * - Drag-and-drop reordering
+ * - Remove individual items
+ * - Clear entire queue
+ * - Click to play specific track
+ * - Current song highlight
+ * - Smooth slide-in animation
+ * 
+ * Accessible via queue button in player or keyboard shortcut.
+ * 
+ * @module Queue
+ */
+
 import React, { useState, useRef } from 'react';
 import { useStore, useAlbumCovers } from '../store';
 import { X, Trash2, GripVertical, Play, ListMusic } from 'lucide-react';

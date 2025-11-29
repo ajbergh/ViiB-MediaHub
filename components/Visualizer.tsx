@@ -1,3 +1,20 @@
+/**
+ * ViiB MediaHub - Audio Visualizer Component
+ * 
+ * Canvas-based audio visualization using Web Audio API analyzer data.
+ * 
+ * Modes:
+ * - OFF: No visualization
+ * - WAVE: Waveform display (time domain)
+ * - SPECTRUM: Frequency bar graph (FFT)
+ * - AURORA: Animated gradient wave effect
+ * 
+ * Uses requestAnimationFrame for smooth 60fps rendering.
+ * Automatically cleans up animation on unmount or mode change.
+ * 
+ * @module Visualizer
+ */
+
 import React, { useEffect, useRef } from 'react';
 import { audioEngine } from '../lib/audio';
 import { VisualizerMode } from '../types';

@@ -1,3 +1,23 @@
+/**
+ * ViiB MediaHub - Player Component
+ * 
+ * Main audio player interface displayed at the bottom of the screen.
+ * Provides playback controls, progress bar, volume, and quick access to features.
+ * 
+ * Features:
+ * - Dual audio elements for crossfade transitions
+ * - Album artwork with Now Playing expansion
+ * - Play/pause, next/previous, shuffle, repeat controls
+ * - Seekable progress bar with time display
+ * - Volume slider with mute toggle
+ * - Queue and equalizer panel toggles
+ * - Visualizer display (when enabled)
+ * 
+ * Integrates with useAudioPlayer hook for audio state management.
+ * 
+ * @module Player
+ */
+
 import React from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';

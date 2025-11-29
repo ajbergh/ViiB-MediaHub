@@ -1,3 +1,21 @@
+/**
+ * ViiB MediaHub - Download Manager Component
+ * 
+ * Background component managing Spotify download state and progress.
+ * Does not render any UI - only manages download count in global state.
+ * 
+ * Features:
+ * - Fetches initial download list from backend on mount
+ * - Maintains SSE connection for real-time progress updates
+ * - Polling fallback when SSE connection fails
+ * - Updates global download count for sidebar badge
+ * 
+ * The actual download progress UI is displayed on the Downloads page.
+ * This component ensures download state is synchronized globally.
+ * 
+ * @module DownloadManager
+ */
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import api, { ApiSpotifyDownload } from '../services/api';
 import { useStore } from '../store';

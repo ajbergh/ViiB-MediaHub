@@ -1,3 +1,22 @@
+/**
+ * ViiB MediaHub - Downloads Page
+ * 
+ * Manages and displays Spotify download queue with real-time progress.
+ * 
+ * Features:
+ * - Real-time progress updates via SSE (Server-Sent Events)
+ * - Filter by status (all, active, completed, failed)
+ * - Retry failed downloads
+ * - Clear completed downloads
+ * - Direct URL download dialog
+ * - Status indicators with progress bars
+ * 
+ * Download statuses: queued, downloading, completed, failed
+ * Files saved as OGG Vorbis format.
+ * 
+ * @module Downloads
+ */
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Download, Loader2, CheckCircle, XCircle, Clock, Trash2, Music, RefreshCw, RotateCcw, Link2 } from 'lucide-react';
 import api, { ApiSpotifyDownload } from '../services/api';

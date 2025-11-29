@@ -1,3 +1,22 @@
+/**
+ * ViiB MediaHub - IndexedDB Database Service
+ * 
+ * Provides IndexedDB initialization and connection management for
+ * browser-only storage mode. Uses the 'idb' library for a modern
+ * Promise-based IndexedDB wrapper.
+ * 
+ * Schema:
+ * - songs: Stores Song objects with indexes on album and artist
+ * - playlists: Stores Playlist objects
+ * 
+ * Database: 'mediahub-db' version 1
+ * 
+ * Note: Primary storage is SQLite via Go backend when available.
+ * IndexedDB is used as fallback for browser-only mode.
+ * 
+ * @module db
+ */
+
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Song, Playlist } from '../types';
 

@@ -1,3 +1,26 @@
+/**
+ * ViiB MediaHub - Library State Slice
+ * 
+ * Zustand slice managing the music library, playlists, and metadata.
+ * 
+ * State:
+ * - songs: Complete song library
+ * - playlists: User-created playlists
+ * - smartMixes: Auto-generated playlists
+ * - artistMetadata/albumMetadata: Spotify-enriched metadata cache
+ * - scanFolders: Configured music directories
+ * - isScanning: Library scan status
+ * 
+ * Features:
+ * - Library initialization from backend or IndexedDB
+ * - Spotify metadata fetching with rate limiting
+ * - Smart mix generation based on listening patterns
+ * - Folder management and backend scanning
+ * - Playlist CRUD operations
+ * 
+ * @module librarySlice
+ */
+
 import { StateCreator } from 'zustand';
 import { AppState, LibrarySlice, ScanFolder } from './types';
 import { generateSmartMixes } from '../lib/smartMix';

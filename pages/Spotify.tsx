@@ -1,3 +1,22 @@
+/**
+ * ViiB MediaHub - Spotify Page
+ * 
+ * Spotify integration hub for browsing and downloading from Spotify catalog.
+ * 
+ * Features:
+ * - OAuth login with PKCE flow
+ * - Search Spotify catalog (tracks, albums, artists, playlists)
+ * - Browse user's saved albums and playlists
+ * - View recently played tracks
+ * - Queue downloads for tracks, albums, and playlists
+ * - Session restoration from cached tokens
+ * 
+ * Requires Spotify Premium for download functionality.
+ * Uses Web API for search/browse, librespot for downloads.
+ * 
+ * @module Spotify
+ */
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music } from 'lucide-react';

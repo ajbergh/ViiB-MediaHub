@@ -1,3 +1,17 @@
+// Package server configures the HTTP server with routing and middleware.
+//
+// Uses chi router with the following middleware stack:
+//   - Logger: Request logging for debugging
+//   - Recoverer: Panic recovery to prevent crashes
+//   - Compress: Response compression (level 5)
+//   - CORS: Cross-origin support for development mode
+//
+// Routes are organized as:
+//   - /api/* : REST API handlers (delegated to api.API)
+//   - /* : Frontend static file serving with SPA fallback
+//
+// The frontend is served from an embedded filesystem, with SPA routing
+// fallback that serves index.html for non-file requests.
 package server
 
 import (

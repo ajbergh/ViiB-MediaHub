@@ -1,3 +1,18 @@
+// Package audio provides audio file metadata extraction functionality.
+//
+// This package handles reading ID3 tags, Vorbis comments, and other metadata
+// formats from audio files. It uses two libraries for maximum compatibility:
+//   - taglib-go (go.senan.xyz/taglib): Primary extractor with duration support
+//   - dhowden/tag: Fallback for files taglib can't handle
+//
+// Supported formats:
+//   - MP3 (ID3v1, ID3v2)
+//   - FLAC (Vorbis comments)
+//   - M4A/AAC (iTunes metadata)
+//   - OGG/Opus (Vorbis comments)
+//   - WAV, WMA
+//
+// Album artwork is extracted and saved separately to the covers directory.
 package audio
 
 import (

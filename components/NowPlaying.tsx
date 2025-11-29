@@ -1,3 +1,23 @@
+/**
+ * ViiB MediaHub - Now Playing View Component
+ * 
+ * Full-screen overlay showing currently playing track with enhanced controls.
+ * 
+ * Features:
+ * - Large album artwork display
+ * - Playback controls (play/pause, next/prev, shuffle, repeat)
+ * - Progress bar with seeking
+ * - Volume control
+ * - Visualizer toggle (off, wave, spectrum, aurora)
+ * - Lyrics view (placeholder)
+ * - Mini queue list
+ * - Like button (placeholder)
+ * 
+ * Activated by clicking album art in the player bar.
+ * 
+ * @module NowPlaying
+ */
+
 import React, { useState } from 'react';
 import { useStore, useAlbumCovers } from '../store';
 import { X, Play, Pause, SkipBack, SkipForward, Shuffle, Heart, ListMusic, Activity, SlidersHorizontal, Image as ImageIcon, Volume2 } from 'lucide-react';
