@@ -446,6 +446,236 @@ export const api = {
     });
     await handleResponse(response);
   },
+
+  // Album Metadata Cache
+
+  /**
+   * Gets all cached album metadata from the backend.
+   * Used for fast startup to avoid re-fetching from Spotify.
+   * 
+   * @returns Promise with all cached album metadata
+   */
+  async getAllAlbumMetadata(): Promise<ApiAlbumMetadata[]> {
+    const response = await fetch(`${API_BASE}/albums/metadata`);
+    return handleResponse<ApiAlbumMetadata[]>(response);
+  },
+
+  /**
+   * Gets cached metadata for a specific album.
+   * 
+   * @param albumKey - Album key in "albumName::artistName" format
+   * @returns Promise with album metadata or null if not found
+   */
+  async getAlbumMetadata(albumKey: string): Promise<ApiAlbumMetadata | null> {
+    try {
+      const response = await fetch(`${API_BASE}/albums/metadata/${encodeURIComponent(albumKey)}`);
+      if (response.status === 404) return null;
+      return handleResponse<ApiAlbumMetadata>(response);
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Saves album metadata to the backend cache.
+   * Also marks whether Spotify was checked and if data was found.
+   * 
+   * @param metadata - Album metadata to save
+   */
+  async saveAlbumMetadata(metadata: ApiAlbumMetadata): Promise<void> {
+    const response = await fetch(`${API_BASE}/albums/metadata`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(metadata),
+    });
+    await handleResponse(response);
+  },
+
+  /**
+   * Downloads album artwork to the album's folder as cover.jpg.
+   * Uses the first song in the album to determine the folder path.
+   * 
+   * @param albumKey - Album key in "albumName::artistName" format
+   * @param imageUrl - URL of the image to download
+   * @returns Promise with the local cover path
+   */
+  async downloadAlbumCover(albumKey: string, imageUrl: string): Promise<{ coverPath: string }> {
+    const response = await fetch(`${API_BASE}/albums/metadata/download-cover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ albumKey, imageUrl }),
+    });
+    return handleResponse<{ status: string; coverPath: string }>(response);
+  },
+
+  /**
+   * Resets the Spotify check status for an album to force re-fetch.
+   * Call this when user wants to manually refresh metadata from Spotify.
+   * 
+   * @param albumKey - Album key in "albumName::artistName" format
+   */
+  async resetAlbumMetadata(albumKey: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/albums/metadata/${encodeURIComponent(albumKey)}`, {
+      method: 'DELETE',
+    });
+    await handleResponse(response);
+  },
+
+  /**
+   * Gets metadata for multiple albums in a single request.
+   * More efficient than calling getAlbumMetadata for each album.
+   * 
+   * @param albumKeys - Array of album keys in "albumName::artistName" format
+   * @returns Promise with array of album metadata
+   */
+  async batchGetAlbumMetadata(albumKeys: string[]): Promise<ApiAlbumMetadata[]> {
+    if (albumKeys.length === 0) return [];
+    const response = await fetch(`${API_BASE}/albums/metadata/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ albumKeys }),
+    });
+    return handleResponse<ApiAlbumMetadata[]>(response);
+  },
+
+  /**
+   * Gets albums that haven't been checked on Spotify yet.
+   * Used for background metadata enrichment.
+   * 
+   * @returns Promise with albums needing Spotify check
+   */
+  async getUncheckedAlbumMetadata(): Promise<ApiAlbumMetadata[]> {
+    const response = await fetch(`${API_BASE}/albums/metadata/unchecked`);
+    return handleResponse<ApiAlbumMetadata[]>(response);
+  },
+
+  /**
+   * Gets albums that were checked but not found, and are past expiration.
+   * These should be re-checked as Spotify catalog changes over time.
+   * 
+   * @returns Promise with expired album metadata needing re-check
+   */
+  async getExpiredAlbumMetadata(): Promise<ApiAlbumMetadata[]> {
+    const response = await fetch(`${API_BASE}/albums/metadata/expired`);
+    return handleResponse<ApiAlbumMetadata[]>(response);
+  },
+
+  // Artist metadata endpoints
+
+  /**
+   * Gets all cached artist metadata from the backend.
+   * 
+   * @returns Promise with all cached artist metadata
+   */
+  async getAllArtistMetadata(): Promise<ApiArtistMetadata[]> {
+    const response = await fetch(`${API_BASE}/artists/metadata`);
+    return handleResponse<ApiArtistMetadata[]>(response);
+  },
+
+  /**
+   * Gets cached metadata for a specific artist.
+   * 
+   * @param artistName - Artist name
+   * @returns Promise with artist metadata or null if not found
+   */
+  async getArtistMetadata(artistName: string): Promise<ApiArtistMetadata | null> {
+    try {
+      const response = await fetch(`${API_BASE}/artists/metadata/${encodeURIComponent(artistName)}`);
+      if (response.status === 404) return null;
+      return handleResponse<ApiArtistMetadata>(response);
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Saves artist metadata to the backend cache.
+   * 
+   * @param metadata - Artist metadata to save
+   */
+  async saveArtistMetadata(metadata: ApiArtistMetadata): Promise<void> {
+    const response = await fetch(`${API_BASE}/artists/metadata`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(metadata),
+    });
+    await handleResponse(response);
+  },
+
+  /**
+   * Downloads artist image to local cache.
+   * 
+   * @param artistName - Artist name
+   * @param imageUrl - URL of the image to download
+   * @returns Promise with the local image path
+   */
+  async downloadArtistImage(artistName: string, imageUrl: string): Promise<{ imagePath: string }> {
+    const response = await fetch(`${API_BASE}/artists/metadata/download-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artistName, imageUrl }),
+    });
+    return handleResponse<{ status: string; imagePath: string }>(response);
+  },
+
+  /**
+   * Resets the Spotify check status for an artist to force re-fetch.
+   * 
+   * @param artistName - Artist name
+   */
+  async resetArtistMetadata(artistName: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/artists/metadata/${encodeURIComponent(artistName)}`, {
+      method: 'DELETE',
+    });
+    await handleResponse(response);
+  },
+
+  /**
+   * Gets artists that haven't been checked on Spotify yet.
+   * 
+   * @returns Promise with artists needing Spotify check
+   */
+  async getUncheckedArtistMetadata(): Promise<ApiArtistMetadata[]> {
+    const response = await fetch(`${API_BASE}/artists/metadata/unchecked`);
+    return handleResponse<ApiArtistMetadata[]>(response);
+  },
 };
+
+/**
+ * Cached album metadata from the backend.
+ * Used to persist Spotify lookup results and prevent redundant API calls.
+ */
+export interface ApiAlbumMetadata {
+  albumKey: string;           // "{album}::{artist}" format
+  albumName: string;
+  artistName: string;
+  spotifyId?: string;
+  coverUrl?: string;          // Spotify artwork URL
+  localCoverPath?: string;    // Local path to downloaded cover.jpg
+  description?: string;
+  genre?: string;
+  releaseDate?: string;
+  spotifyUrl?: string;
+  copyright?: string;
+  spotifyChecked: boolean;    // True if we've queried Spotify (even if not found)
+  spotifyFound: boolean;      // True if Spotify returned results
+  fetchedAt?: number;
+  updatedAt?: number;
+}
+
+/**
+ * Cached artist metadata from the backend.
+ */
+export interface ApiArtistMetadata {
+  artistName: string;
+  spotifyId?: string;
+  imageUrl?: string;          // Spotify image URL
+  localImagePath?: string;    // Local path to cached image
+  spotifyUrl?: string;
+  spotifyChecked: boolean;
+  spotifyFound: boolean;
+  fetchedAt?: number;
+  updatedAt?: number;
+}
 
 export default api;

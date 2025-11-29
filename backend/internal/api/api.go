@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -123,6 +124,24 @@ func (a *API) Routes() chi.Router {
 	r.Post("/spotify/downloads/{id}/retry", a.retryDownload)
 	r.Delete("/spotify/downloads/completed", a.clearCompletedDownloads)
 	r.Get("/spotify/downloads/events", a.downloadProgressSSE)
+
+	// Album metadata cache
+	r.Get("/albums/metadata", a.getAllAlbumMetadata)
+	r.Get("/albums/metadata/expired", a.getExpiredAlbumMetadata)
+	r.Get("/albums/metadata/unchecked", a.getUncheckedAlbumMetadata)
+	r.Get("/albums/metadata/{key}", a.getAlbumMetadata)
+	r.Post("/albums/metadata", a.saveAlbumMetadata)
+	r.Post("/albums/metadata/batch", a.batchGetAlbumMetadata)
+	r.Post("/albums/metadata/download-cover", a.downloadAlbumCover)
+	r.Delete("/albums/metadata/{key}", a.resetAlbumMetadata)
+
+	// Artist metadata cache
+	r.Get("/artists/metadata", a.getAllArtistMetadata)
+	r.Get("/artists/metadata/unchecked", a.getUncheckedArtistMetadata)
+	r.Get("/artists/metadata/{name}", a.getArtistMetadata)
+	r.Post("/artists/metadata", a.saveArtistMetadata)
+	r.Post("/artists/metadata/download-image", a.downloadArtistImage)
+	r.Delete("/artists/metadata/{name}", a.resetArtistMetadata)
 
 	// Settings
 	r.Get("/settings/{key}", a.getSetting)
@@ -419,10 +438,58 @@ func (a *API) serveAudio(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) serveCover(w http.ResponseWriter, r *http.Request) {
-	songID := strings.TrimPrefix(r.URL.Path, "/api/cover/")
+	pathOrID := strings.TrimPrefix(r.URL.Path, "/api/cover/")
 
-	// First, try to get the song to find its cover path
-	song, err := a.db.GetSongByID(songID)
+	// URL-decode the path (handles %5C for backslashes, %3A for colons, etc.)
+	decodedPath, err := url.PathUnescape(pathOrID)
+	if err != nil {
+		logger.API("Failed to URL-decode cover path: %s, error: %v", pathOrID, err)
+		decodedPath = pathOrID // Fall back to original if decode fails
+	}
+	pathOrID = decodedPath
+
+	// Check if the path looks like an absolute file path (for album/artist covers)
+	// Windows paths start with a drive letter (e.g., C:) or UNC (\\)
+	// Unix paths start with /
+	isAbsolutePath := strings.HasPrefix(pathOrID, "/") ||
+		(len(pathOrID) > 1 && pathOrID[1] == ':') ||
+		strings.HasPrefix(pathOrID, "\\\\")
+
+	if isAbsolutePath {
+		// Normalize path separators for comparison
+		normalizedPath := filepath.Clean(pathOrID)
+		normalizedCoverDir := filepath.Clean(a.coverDir)
+
+		// Security check: verify path is within allowed directories
+		// 1. Check if within covers directory (for downloaded Spotify images)
+		// 2. Check if within configured scan folders (for embedded album art)
+		isAllowed := strings.HasPrefix(strings.ToLower(normalizedPath), strings.ToLower(normalizedCoverDir))
+
+		if !isAllowed {
+			// Check if path is within any configured scan folder
+			scanFolders, _ := a.db.GetScanFolders()
+			for _, folder := range scanFolders {
+				normalizedFolder := filepath.Clean(folder.Path)
+				if strings.HasPrefix(strings.ToLower(normalizedPath), strings.ToLower(normalizedFolder)) {
+					isAllowed = true
+					break
+				}
+			}
+		}
+
+		if isAllowed {
+			if _, err := os.Stat(normalizedPath); err == nil {
+				http.ServeFile(w, r, normalizedPath)
+				return
+			}
+			logger.API("Cover file not found at path: %s", normalizedPath)
+		} else {
+			logger.API("Cover path security check failed - path %s not in allowed directories", normalizedPath)
+		}
+	}
+
+	// Try as song ID - get the song to find its cover path
+	song, err := a.db.GetSongByID(pathOrID)
 	if err == nil && song.CoverPath != "" {
 		// Song has a cover path set - serve that file
 		if _, err := os.Stat(song.CoverPath); err == nil {
@@ -432,12 +499,13 @@ func (a *API) serveCover(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fallback: try legacy per-song cover file
-	coverPath := filepath.Join(a.coverDir, songID+".jpg")
+	coverPath := filepath.Join(a.coverDir, pathOrID+".jpg")
 	if _, err := os.Stat(coverPath); err == nil {
 		http.ServeFile(w, r, coverPath)
 		return
 	}
 
+	logger.API("Cover not found for: %s (isAbsPath=%v)", pathOrID, isAbsolutePath)
 	respondError(w, http.StatusNotFound, "Cover not found")
 }
 
@@ -635,4 +703,396 @@ func (a *API) setSetting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, map[string]string{"status": "ok"})
+}
+
+// Album metadata handlers
+
+func (a *API) getAllAlbumMetadata(w http.ResponseWriter, r *http.Request) {
+	metadata, err := a.db.GetAllAlbumMetadata()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get album metadata: %v", err))
+		return
+	}
+	if metadata == nil {
+		metadata = []db.AlbumMetadata{}
+	}
+	respondJSON(w, metadata)
+}
+
+func (a *API) getAlbumMetadata(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if key == "" {
+		respondError(w, http.StatusBadRequest, "Album key is required")
+		return
+	}
+
+	metadata, err := a.db.GetAlbumMetadata(key)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get album metadata: %v", err))
+		return
+	}
+	if metadata == nil {
+		respondError(w, http.StatusNotFound, "Album metadata not found")
+		return
+	}
+	respondJSON(w, metadata)
+}
+
+func (a *API) saveAlbumMetadata(w http.ResponseWriter, r *http.Request) {
+	var m db.AlbumMetadata
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if m.AlbumKey == "" || m.AlbumName == "" || m.ArtistName == "" {
+		respondError(w, http.StatusBadRequest, "albumKey, albumName, and artistName are required")
+		return
+	}
+
+	if err := a.db.SaveAlbumMetadata(&m); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save album metadata: %v", err))
+		return
+	}
+
+	respondJSON(w, map[string]string{"status": "ok"})
+}
+
+// downloadAlbumCover downloads album artwork from a URL and saves it as cover.jpg
+// in the album's folder (determined from the first song in that album)
+func (a *API) downloadAlbumCover(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AlbumKey string `json:"albumKey"`
+		ImageURL string `json:"imageUrl"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.AlbumKey == "" || req.ImageURL == "" {
+		respondError(w, http.StatusBadRequest, "albumKey and imageUrl are required")
+		return
+	}
+
+	// Parse album key to get album name and artist
+	parts := strings.Split(req.AlbumKey, "::")
+	if len(parts) != 2 {
+		respondError(w, http.StatusBadRequest, "Invalid album key format (expected album::artist)")
+		return
+	}
+	albumName := parts[0]
+	// artistName := parts[1]
+
+	// Find a song from this album to get the folder path
+	songs, err := a.db.GetAllSongs()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to get songs")
+		return
+	}
+
+	var albumFolder string
+	for _, song := range songs {
+		if song.Album == albumName {
+			albumFolder = filepath.Dir(song.FilePath)
+			break
+		}
+	}
+
+	if albumFolder == "" {
+		respondError(w, http.StatusNotFound, "No songs found for this album")
+		return
+	}
+
+	// Download the image
+	resp, err := http.Get(req.ImageURL)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download image: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download image: HTTP %d", resp.StatusCode))
+		return
+	}
+
+	// Save as cover.jpg
+	coverPath := filepath.Join(albumFolder, "cover.jpg")
+	file, err := os.Create(coverPath)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create cover file: %v", err))
+		return
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to write cover file: %v", err))
+		return
+	}
+
+	// Update the database with the local cover path
+	if err := a.db.UpdateAlbumLocalCover(req.AlbumKey, coverPath); err != nil {
+		logger.API("Warning: Failed to update album local cover in database: %v", err)
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"status":    "ok",
+		"coverPath": coverPath,
+	})
+}
+
+// resetAlbumMetadata resets the spotify_checked flag for an album to force re-fetch
+func (a *API) resetAlbumMetadata(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if key == "" {
+		respondError(w, http.StatusBadRequest, "Album key is required")
+		return
+	}
+
+	if err := a.db.ResetAlbumSpotifyCheck(key); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reset album metadata: %v", err))
+		return
+	}
+
+	respondJSON(w, map[string]string{"status": "ok"})
+}
+
+// batchGetAlbumMetadata returns metadata for multiple albums at once
+func (a *API) batchGetAlbumMetadata(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AlbumKeys []string `json:"albumKeys"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.AlbumKeys) == 0 {
+		respondJSON(w, []db.AlbumMetadata{})
+		return
+	}
+
+	// Limit batch size to prevent abuse
+	if len(req.AlbumKeys) > 100 {
+		respondError(w, http.StatusBadRequest, "Maximum 100 album keys per batch request")
+		return
+	}
+
+	metadata, err := a.db.GetAlbumMetadataBatch(req.AlbumKeys)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get album metadata: %v", err))
+		return
+	}
+
+	if metadata == nil {
+		metadata = []db.AlbumMetadata{}
+	}
+
+	respondJSON(w, metadata)
+}
+
+// getExpiredAlbumMetadata returns albums that were checked more than 30 days ago and not found
+func (a *API) getExpiredAlbumMetadata(w http.ResponseWriter, r *http.Request) {
+	metadata, err := a.db.GetExpiredAlbumMetadata(30) // 30 days expiration
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get expired album metadata: %v", err))
+		return
+	}
+
+	if metadata == nil {
+		metadata = []db.AlbumMetadata{}
+	}
+
+	respondJSON(w, metadata)
+}
+
+// getUncheckedAlbumMetadata returns albums that haven't been checked yet
+func (a *API) getUncheckedAlbumMetadata(w http.ResponseWriter, r *http.Request) {
+	metadata, err := a.db.GetAlbumsNeedingMetadata()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get unchecked album metadata: %v", err))
+		return
+	}
+
+	if metadata == nil {
+		metadata = []db.AlbumMetadata{}
+	}
+
+	respondJSON(w, metadata)
+}
+
+// Artist metadata handlers
+
+func (a *API) getAllArtistMetadata(w http.ResponseWriter, r *http.Request) {
+	metadata, err := a.db.GetAllArtistMetadata()
+	if err != nil {
+		logger.API("getAllArtistMetadata: Error fetching metadata: %v", err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get artist metadata: %v", err))
+		return
+	}
+	if metadata == nil {
+		metadata = []db.ArtistMetadata{}
+	}
+
+	// Count how many have local images
+	withLocalImage := 0
+	for _, m := range metadata {
+		if m.LocalImagePath != "" {
+			withLocalImage++
+		}
+	}
+	logger.API("getAllArtistMetadata: Returning %d artists (%d with local images)", len(metadata), withLocalImage)
+
+	respondJSON(w, metadata)
+}
+
+func (a *API) getArtistMetadata(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "Artist name is required")
+		return
+	}
+
+	metadata, err := a.db.GetArtistMetadata(name)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get artist metadata: %v", err))
+		return
+	}
+	if metadata == nil {
+		respondError(w, http.StatusNotFound, "Artist metadata not found")
+		return
+	}
+	respondJSON(w, metadata)
+}
+
+func (a *API) saveArtistMetadata(w http.ResponseWriter, r *http.Request) {
+	var m db.ArtistMetadata
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if m.ArtistName == "" {
+		respondError(w, http.StatusBadRequest, "artistName is required")
+		return
+	}
+
+	if err := a.db.SaveArtistMetadata(&m); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save artist metadata: %v", err))
+		return
+	}
+
+	respondJSON(w, map[string]string{"status": "ok"})
+}
+
+func (a *API) resetArtistMetadata(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "Artist name is required")
+		return
+	}
+
+	if err := a.db.ResetArtistSpotifyCheck(name); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reset artist metadata: %v", err))
+		return
+	}
+
+	respondJSON(w, map[string]string{"status": "ok"})
+}
+
+func (a *API) getUncheckedArtistMetadata(w http.ResponseWriter, r *http.Request) {
+	metadata, err := a.db.GetArtistsNeedingMetadata()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get unchecked artist metadata: %v", err))
+		return
+	}
+
+	if metadata == nil {
+		metadata = []db.ArtistMetadata{}
+	}
+
+	respondJSON(w, metadata)
+}
+
+// downloadArtistImage downloads artist image from URL and saves it locally
+func (a *API) downloadArtistImage(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ArtistName string `json:"artistName"`
+		ImageURL   string `json:"imageUrl"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.API("downloadArtistImage: Invalid request body: %v", err)
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.ArtistName == "" || req.ImageURL == "" {
+		logger.API("downloadArtistImage: Missing required fields - artistName=%q, imageUrl=%q", req.ArtistName, req.ImageURL)
+		respondError(w, http.StatusBadRequest, "artistName and imageUrl are required")
+		return
+	}
+
+	logger.API("downloadArtistImage: Downloading image for artist %q from %s", req.ArtistName, req.ImageURL)
+
+	// Create artists image directory
+	artistImagesDir := filepath.Join(a.coverDir, "artists")
+	if err := os.MkdirAll(artistImagesDir, 0755); err != nil {
+		logger.API("downloadArtistImage: Failed to create artists directory: %v", err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create artists directory: %v", err))
+		return
+	}
+
+	// Generate filename from artist name (sanitize for filesystem)
+	safeArtistName := strings.ReplaceAll(req.ArtistName, "/", "_")
+	safeArtistName = strings.ReplaceAll(safeArtistName, "\\", "_")
+	safeArtistName = strings.ReplaceAll(safeArtistName, ":", "_")
+	imagePath := filepath.Join(artistImagesDir, safeArtistName+".jpg")
+
+	// Download the image
+	resp, err := http.Get(req.ImageURL)
+	if err != nil {
+		logger.API("downloadArtistImage: Failed to download image for %q: %v", req.ArtistName, err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download image: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.API("downloadArtistImage: HTTP error downloading image for %q: status %d", req.ArtistName, resp.StatusCode)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download image: HTTP %d", resp.StatusCode))
+		return
+	}
+
+	// Save the image
+	file, err := os.Create(imagePath)
+	if err != nil {
+		logger.API("downloadArtistImage: Failed to create image file for %q at %s: %v", req.ArtistName, imagePath, err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create image file: %v", err))
+		return
+	}
+	defer file.Close()
+
+	bytesWritten, err := io.Copy(file, resp.Body)
+	if err != nil {
+		logger.API("downloadArtistImage: Failed to write image file for %q: %v", req.ArtistName, err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to write image file: %v", err))
+		return
+	}
+
+	logger.API("downloadArtistImage: Successfully saved %d bytes for artist %q to %s", bytesWritten, req.ArtistName, imagePath)
+
+	// Update the database with the local image path
+	if err := a.db.UpdateArtistLocalImage(req.ArtistName, imagePath); err != nil {
+		logger.API("downloadArtistImage: Failed to update artist local image in database for %q: %v", req.ArtistName, err)
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"status":    "ok",
+		"imagePath": imagePath,
+	})
 }

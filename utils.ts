@@ -19,6 +19,27 @@ export const generateGradient = (seed: string) => {
 
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
+/**
+ * Escapes a URL for use in CSS url() function.
+ * Wraps the URL in quotes and escapes special characters.
+ */
+export const cssUrl = (url: string): string => {
+  if (!url) return '';
+  // Escape backslashes and quotes, then wrap in quotes for CSS
+  const escaped = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `url("${escaped}")`;
+};
+
+/**
+ * Generates a CSS background property with a cover image or gradient fallback.
+ */
+export const coverBackground = (coverUrl: string | undefined, fallbackSeed: string): string => {
+  if (coverUrl) {
+    return `${cssUrl(coverUrl)} center/cover no-repeat`;
+  }
+  return generateGradient(fallbackSeed);
+};
+
 // --- EQ Presets ---
 
 export const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];

@@ -1,10 +1,11 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore, useAlbumCovers } from '../store';
-import { Play, Clock, ArrowLeft, Disc, Download, Heart, MoreHorizontal, ExternalLink, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Clock, ArrowLeft, Disc, Download, Heart, MoreHorizontal, ExternalLink, Info, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
+import api from '../services/api';
 
 // Separate Header Component to be stable
 const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
@@ -26,7 +27,9 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
         durationSec,
         playSong,
         showFullDesc,
-        setShowFullDesc
+        setShowFullDesc,
+        isRefreshing,
+        handleRefreshMetadata,
     } = context;
 
     return (
@@ -136,6 +139,15 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                             <ExternalLink size={14} /> Spotify
                         </a>
                     )}
+                    <button
+                        onClick={handleRefreshMetadata}
+                        disabled={isRefreshing}
+                        className={`${metadata?.url ? '' : 'ml-auto'} flex items-center gap-2 text-xs font-bold text-[#b3b8c1] hover:text-white bg-white/5 hover:bg-white/10 px-4 py-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+                        title="Refresh metadata from Spotify"
+                    >
+                        <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> 
+                        {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                    </button>
                 </div>
 
                 {metadata?.description && (
@@ -181,10 +193,11 @@ const AlbumFooter: React.FC<{ context?: any }> = ({ context }) => {
 export const AlbumDetail: React.FC = () => {
     const { albumName } = useParams<{ albumName: string }>();
     const navigate = useNavigate();
-    const { songs, playSong, currentSong, isPlaying, openContextMenu, fetchAlbumMetadata, albumMetadata } = useStore();
+    const { songs, playSong, currentSong, isPlaying, openContextMenu, fetchAlbumMetadata, albumMetadata, clearAlbumMetadata } = useStore();
     const albumCovers = useAlbumCovers();
     const [showFullDesc, setShowFullDesc] = useState(false);
     const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     useEffect(() => {
         setScrollParent(document.querySelector('main'));
@@ -225,6 +238,25 @@ export const AlbumDetail: React.FC = () => {
     // Merge local cover with metadata cover (prefer metadata)
     const metadataKey = `${decodedAlbumName}::${artist}`;
     const metadata = albumMetadata[metadataKey];
+    
+    // Handler to refresh metadata from Spotify
+    const handleRefreshMetadata = async () => {
+        if (!decodedAlbumName || !artist || isRefreshing) return;
+        
+        setIsRefreshing(true);
+        try {
+            // Reset the backend cache for this album
+            await api.resetAlbumMetadata(metadataKey);
+            // Clear from frontend store
+            clearAlbumMetadata(metadataKey);
+            // Re-fetch from Spotify
+            await fetchAlbumMetadata(decodedAlbumName, artist);
+        } catch (error) {
+            console.error('Failed to refresh album metadata:', error);
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
     
     const coverUrl = metadata?.coverUrl || firstSong?.coverUrl || albumCovers[decodedAlbumName];
     
@@ -303,7 +335,9 @@ export const AlbumDetail: React.FC = () => {
         durationSec,
         playSong,
         showFullDesc,
-        setShowFullDesc
+        setShowFullDesc,
+        isRefreshing,
+        handleRefreshMetadata,
     };
 
     const components: Components<any, any> = {

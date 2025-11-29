@@ -68,6 +68,7 @@ export interface LibrarySlice {
   
   fetchArtistMetadata: (artistName: string) => Promise<void>;
   fetchAlbumMetadata: (albumName: string, artistName: string) => Promise<void>;
+  clearAlbumMetadata: (albumKey: string) => void;
   
   setScanning: (isScanning: boolean) => void;
   setScanProgress: (progress: string) => void;

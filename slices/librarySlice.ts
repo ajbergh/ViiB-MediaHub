@@ -4,7 +4,8 @@ import { generateSmartMixes } from '../lib/smartMix';
 import { SpotifyService } from '../services/spotifyService';
 import { libraryService } from '../services/libraryService';
 import { backendService } from '../services/backendService';
-import { Playlist, Song } from '../types';
+import api, { ApiAlbumMetadata, ApiArtistMetadata } from '../services/api';
+import { Playlist, Song, AlbumMetadata, ArtistMetadata } from '../types';
 
 export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = (set, get) => ({
   songs: [],
@@ -27,15 +28,60 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       if (backendAvailable) {
           // Load from Go backend
           try {
-              const [songs, playlists, scanFolders] = await Promise.all([
+              const [songs, playlists, scanFolders, cachedAlbumMetadata, cachedArtistMetadata] = await Promise.all([
                   backendService.getAllSongs(),
                   backendService.getAllPlaylists(),
-                  backendService.getFolders()
+                  backendService.getFolders(),
+                  api.getAllAlbumMetadata().catch(() => [] as ApiAlbumMetadata[]),
+                  api.getAllArtistMetadata().catch(() => [] as ApiArtistMetadata[])
               ]);
               
+              // Convert cached album metadata to the format used by the store
+              const albumMetadata: Record<string, AlbumMetadata> = {};
+              for (const cached of cachedAlbumMetadata) {
+                  if (cached.spotifyFound && cached.coverUrl) {
+                      albumMetadata[cached.albumKey] = {
+                          spotifyId: cached.spotifyId,
+                          name: cached.albumName,
+                          artist: cached.artistName,
+                          coverUrl: cached.localCoverPath 
+                              ? `/api/cover/${encodeURIComponent(cached.localCoverPath)}` 
+                              : cached.coverUrl || '',
+                          description: cached.description,
+                          genre: cached.genre,
+                          releaseDate: cached.releaseDate || '',
+                          url: cached.spotifyUrl || '',
+                          copyright: cached.copyright,
+                          fetchedAt: cached.fetchedAt || Date.now()
+                      };
+                  }
+              }
+
+              // Convert cached artist metadata to the format used by the store
+              const artistMetadata: Record<string, ArtistMetadata> = {};
+              console.log(`📦 Processing ${cachedArtistMetadata.length} cached artist metadata entries`);
+              for (const cached of cachedArtistMetadata) {
+                  if (cached.spotifyFound && (cached.localImagePath || cached.imageUrl)) {
+                      // Prefer local image path if available, fallback to Spotify URL
+                      let imageUrl = cached.imageUrl || '';  // Start with Spotify URL as fallback
+                      if (cached.localImagePath) {
+                          imageUrl = `/api/cover/${encodeURIComponent(cached.localImagePath)}`;
+                      }
+                      
+                      artistMetadata[cached.artistName] = {
+                          spotifyId: cached.spotifyId,
+                          name: cached.artistName,
+                          imageUrl,
+                          url: cached.spotifyUrl || '',
+                          fetchedAt: cached.fetchedAt || Date.now()
+                      };
+                      console.log(`📦 Loaded cached artist "${cached.artistName}" imageUrl: ${imageUrl.substring(0, 60)}...`);
+                  }
+              }
+              
               const mixes = generateSmartMixes(songs);
-              set({ songs, playlists, smartMixes: mixes, scanFolders });
-              console.log(`✅ Loaded ${songs.length} songs from backend`);
+              set({ songs, playlists, smartMixes: mixes, scanFolders, albumMetadata, artistMetadata });
+              console.log(`✅ Loaded ${songs.length} songs, ${Object.keys(albumMetadata).length} cached album metadata, ${Object.keys(artistMetadata).length} cached artist metadata from backend`);
           } catch (e) {
               console.error("Failed to initialize library from backend", e);
           }
@@ -226,31 +272,135 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       const state = get();
       if (state.artistMetadata[artistName] || state.fetchingArtists.has(artistName)) return;
 
+      // Check if we've already checked Spotify and found nothing (cached "not found")
+      try {
+          const cached = await api.getArtistMetadata(artistName);
+          if (cached?.spotifyChecked && !cached.spotifyFound) {
+              // Already checked, Spotify had nothing - don't re-query
+              console.log(`📦 Artist "${artistName}" already checked - Spotify had no results`);
+              return;
+          }
+          // If we have cached data with an image, use it
+          if (cached?.spotifyFound && (cached.localImagePath || cached.imageUrl)) {
+              const imageUrl = cached.localImagePath 
+                  ? `/api/cover/${encodeURIComponent(cached.localImagePath)}` 
+                  : cached.imageUrl || '';
+              console.log(`📦 Using cached artist image for "${artistName}": ${imageUrl}`);
+              set((s) => ({
+                  artistMetadata: { 
+                      ...s.artistMetadata, 
+                      [artistName]: {
+                          spotifyId: cached.spotifyId,
+                          name: cached.artistName,
+                          imageUrl,
+                          url: cached.spotifyUrl || '',
+                          fetchedAt: cached.fetchedAt || Date.now()
+                      }
+                  }
+              }));
+              return;
+          }
+      } catch (e) {
+          console.warn(`Cache lookup error for artist "${artistName}":`, e);
+      }
+
       set((s) => {
           const newSet = new Set(s.fetchingArtists);
           newSet.add(artistName);
           return { fetchingArtists: newSet };
       });
 
-      const data = await SpotifyService.searchArtist(artistName);
-      
-      set((s) => {
-          const newFetching = new Set(s.fetchingArtists);
-          newFetching.delete(artistName);
+      try {
+          console.log(`🔍 Searching Spotify for artist: "${artistName}"`);
+          const data = await SpotifyService.searchArtist(artistName);
+
+          // Save result to backend cache (whether found or not)
+          const cacheEntry: import('../services/api').ApiArtistMetadata = {
+              artistName,
+              spotifyChecked: true,
+              spotifyFound: !!data,
+              fetchedAt: Date.now(),
+          };
+
           if (data) {
-              return { 
-                  artistMetadata: { ...s.artistMetadata, [artistName]: data },
-                  fetchingArtists: newFetching
-              };
+              console.log(`✅ Found artist "${artistName}" on Spotify, imageUrl: ${data.imageUrl}`);
+              cacheEntry.spotifyId = data.spotifyId;
+              cacheEntry.imageUrl = data.imageUrl;
+              cacheEntry.spotifyUrl = data.url;
+          } else {
+              console.log(`❌ No Spotify match found for artist: "${artistName}"`);
           }
-          return { fetchingArtists: newFetching };
-      });
+
+          // Save to backend cache
+          api.saveArtistMetadata(cacheEntry).catch(e => {
+              console.error(`Failed to cache artist metadata for "${artistName}":`, e);
+          });
+
+          // If we got image URL and backend is available, download image locally
+          if (data?.imageUrl && state.backendAvailable) {
+              console.log(`📥 Downloading artist image for "${artistName}" from ${data.imageUrl}`);
+              api.downloadArtistImage(artistName, data.imageUrl).then(result => {
+                  console.log(`✅ Artist image saved for "${artistName}" at: ${result.imagePath}`);
+                  // Update the store with local image path
+                  set((s) => {
+                      const existing = s.artistMetadata[artistName];
+                      if (existing) {
+                          return {
+                              artistMetadata: {
+                                  ...s.artistMetadata,
+                                  [artistName]: {
+                                      ...existing,
+                                      imageUrl: `/api/cover/${encodeURIComponent(result.imagePath)}`
+                                  }
+                              }
+                          };
+                      }
+                      return {};
+                  });
+              }).catch(e => {
+                  console.error(`Failed to download artist image for "${artistName}":`, e);
+              });
+          }
+
+          set((s) => {
+              const newFetching = new Set(s.fetchingArtists);
+              newFetching.delete(artistName);
+              if (data) {
+                  return { 
+                      artistMetadata: { ...s.artistMetadata, [artistName]: data },
+                      fetchingArtists: newFetching
+                  };
+              }
+              return { fetchingArtists: newFetching };
+          });
+      } catch (error) {
+          console.error(`Failed to fetch artist metadata for "${artistName}":`, error);
+          set((s) => {
+              const newFetching = new Set(s.fetchingArtists);
+              newFetching.delete(artistName);
+              return { fetchingArtists: newFetching };
+          });
+      }
   },
 
   fetchAlbumMetadata: async (albumName, artistName) => {
       const key = `${albumName}::${artistName}`;
       const state = get();
+      
+      // Skip if already have metadata or currently fetching
       if (state.albumMetadata[key] || state.fetchingAlbums.has(key)) return;
+
+      // Check if we've already checked Spotify and found nothing (cached "not found")
+      try {
+          const cached = await api.getAlbumMetadata(key);
+          if (cached?.spotifyChecked && !cached.spotifyFound) {
+              // Already checked, Spotify had nothing - don't re-query
+              console.log(`📦 Album "${albumName}" already checked - Spotify had no results`);
+              return;
+          }
+      } catch {
+          // Ignore cache lookup errors
+      }
 
       set((s) => {
           const newSet = new Set(s.fetchingAlbums);
@@ -258,18 +408,67 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           return { fetchingAlbums: newSet };
       });
 
-      const data = await SpotifyService.searchAlbum(albumName, artistName);
+      try {
+          const data = await SpotifyService.searchAlbum(albumName, artistName);
 
-      set((s) => {
-          const newFetching = new Set(s.fetchingAlbums);
-          newFetching.delete(key);
+          // Save result to backend cache (whether found or not)
+          const cacheEntry: ApiAlbumMetadata = {
+              albumKey: key,
+              albumName,
+              artistName,
+              spotifyChecked: true,
+              spotifyFound: !!data,
+              fetchedAt: Date.now(),
+          };
+
           if (data) {
-              return {
-                  albumMetadata: { ...s.albumMetadata, [key]: data },
-                  fetchingAlbums: newFetching
-              };
+              cacheEntry.spotifyId = data.spotifyId;
+              cacheEntry.coverUrl = data.coverUrl;
+              cacheEntry.description = data.description;
+              cacheEntry.genre = data.genre;
+              cacheEntry.releaseDate = data.releaseDate;
+              cacheEntry.spotifyUrl = data.url;
+              cacheEntry.copyright = data.copyright;
           }
-          return { fetchingAlbums: newFetching };
+
+          // Save to backend cache (fire and forget)
+          api.saveAlbumMetadata(cacheEntry).catch(e => {
+              console.warn('Failed to cache album metadata:', e);
+          });
+
+          // If we got artwork URL and backend is available, download cover.jpg to album folder
+          if (data?.coverUrl && state.backendAvailable) {
+              api.downloadAlbumCover(key, data.coverUrl).catch(e => {
+                  console.warn('Failed to download album cover:', e);
+              });
+          }
+
+          set((s) => {
+              const newFetching = new Set(s.fetchingAlbums);
+              newFetching.delete(key);
+              if (data) {
+                  return {
+                      albumMetadata: { ...s.albumMetadata, [key]: data },
+                      fetchingAlbums: newFetching
+                  };
+              }
+              return { fetchingAlbums: newFetching };
+          });
+      } catch (error) {
+          console.error(`Failed to fetch album metadata for "${albumName}":`, error);
+          set((s) => {
+              const newFetching = new Set(s.fetchingAlbums);
+              newFetching.delete(key);
+              return { fetchingAlbums: newFetching };
+          });
+      }
+  },
+
+  clearAlbumMetadata: (albumKey) => {
+      set((s) => {
+          const newMetadata = { ...s.albumMetadata };
+          delete newMetadata[albumKey];
+          return { albumMetadata: newMetadata };
       });
   },
 

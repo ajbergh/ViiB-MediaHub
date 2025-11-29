@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, forwardRef, useMemo } from 'react';
 import { useAlbums, useStore } from '../store';
-import { generateGradient } from '../utils';
+import { generateGradient, coverBackground } from '../utils';
 import { useNavigate } from 'react-router-dom';
 import { ContextMenuType, Album } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
@@ -50,14 +50,23 @@ export const Albums: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Lazily fetch metadata for albums to get better covers
-    // We only trigger this for the first 50 to avoid network spam on load
-    albums.slice(0, 50).forEach((album, idx) => {
+    // Only fetch metadata for albums that are MISSING artwork
+    // This prevents unnecessary Spotify API calls for albums that already have covers
+    const albumsMissingArt = albums.filter(album => {
+        const metadataKey = `${album.name}::${album.artist}`;
+        // Skip if we already have metadata OR if album has embedded cover
+        const hasMetadata = !!albumMetadata[metadataKey];
+        const hasEmbeddedCover = !!album.coverUrl;
+        return !hasMetadata && !hasEmbeddedCover;
+    });
+
+    // Limit to first 30 to avoid rate limiting, with staggered requests
+    albumsMissingArt.slice(0, 30).forEach((album, idx) => {
         setTimeout(() => {
             fetchAlbumMetadata(album.name, album.artist);
-        }, idx * 100);
+        }, idx * 200); // 200ms between requests to be gentle on Spotify API
     });
-  }, [albums.length]);
+  }, [albums.length, albumMetadata]);
 
   const sortedAlbums = useMemo(() => {
     const sorted = [...albums];
@@ -145,7 +154,7 @@ export const Albums: React.FC = () => {
                         >
                             <div 
                                 className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-5xl font-bold text-white/20 relative overflow-hidden bg-surface-3"
-                                style={{ background: coverUrl ? `url(${coverUrl}) center/cover no-repeat` : generateGradient(album.name) }}
+                                style={{ background: coverBackground(coverUrl, album.name) }}
                             >
                                 {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}
                                 

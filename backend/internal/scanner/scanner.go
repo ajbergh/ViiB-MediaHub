@@ -377,6 +377,9 @@ func (s *Scanner) ScanFolder(folderPath string) (*ScanResult, error) {
 			return nil, fmt.Errorf("failed to save songs: %w", err)
 		}
 		result.NewSongs = len(songs) // SimpliSfied - SaveSongs handles upsert
+
+		// Create album_metadata entries for new albums discovered during scan
+		s.createAlbumMetadataEntries(songs)
 	}
 
 	return result, nil
@@ -655,4 +658,68 @@ func (s *Scanner) CleanOrphanedCovers() (int, error) {
 	}
 
 	return deleted, nil
+}
+
+// createAlbumMetadataEntries creates album_metadata entries for albums found during scan
+// This populates the cache with album info and local cover paths for later Spotify enrichment
+func (s *Scanner) createAlbumMetadataEntries(songs []db.Song) {
+	// Track albums we've already processed in this batch
+	processedAlbums := make(map[string]bool)
+
+	for _, song := range songs {
+		// Create album key in the same format as frontend: "album::artist"
+		albumKey := fmt.Sprintf("%s::%s", song.Album, song.Artist)
+
+		// Skip if already processed in this batch
+		if processedAlbums[albumKey] {
+			continue
+		}
+		processedAlbums[albumKey] = true
+
+		// Check if album_metadata entry already exists
+		existing, _ := s.db.GetAlbumMetadata(albumKey)
+		if existing != nil {
+			// Update local_cover_path if we found a local cover and it's not set
+			if song.CoverPath != "" && existing.LocalCoverPath == "" {
+				// Find the original local cover file path
+				localCover := s.findLocalCoverForSong(song.FilePath)
+				if localCover != "" {
+					if err := s.db.UpdateAlbumLocalCover(albumKey, localCover); err != nil {
+						logger.Scanner("Failed to update local cover path for %s: %v", albumKey, err)
+					}
+				}
+			}
+			continue
+		}
+
+		// Find local cover file path (the original file, not the cached copy)
+		localCoverPath := ""
+		if song.CoverPath != "" {
+			// Check if there's a local cover.jpg/folder.jpg in the song's directory
+			localCoverPath = s.findLocalCoverForSong(song.FilePath)
+		}
+
+		// Create new album_metadata entry with local info only
+		metadata := &db.AlbumMetadata{
+			AlbumKey:       albumKey,
+			AlbumName:      song.Album,
+			ArtistName:     song.Artist,
+			LocalCoverPath: localCoverPath,
+			SpotifyChecked: false, // Not yet checked Spotify
+			SpotifyFound:   false,
+			FetchedAt:      0, // Not fetched from Spotify yet
+		}
+
+		if err := s.db.SaveAlbumMetadata(metadata); err != nil {
+			logger.Scanner("Failed to save album metadata for %s: %v", albumKey, err)
+		} else {
+			logger.Scanner("Created album_metadata entry: %s (local cover: %s)", albumKey, localCoverPath)
+		}
+	}
+}
+
+// findLocalCoverForSong finds the original local cover file path for a song
+func (s *Scanner) findLocalCoverForSong(audioFilePath string) string {
+	folderPath := filepath.Dir(audioFilePath)
+	return s.findLocalCover(folderPath)
 }

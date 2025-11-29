@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore, useAlbums, useArtists } from '../store';
 import { Sparkles, Search, Play } from 'lucide-react';
-import { generateGradient } from '../utils';
+import { generateGradient, coverBackground } from '../utils';
 import { ContextMenuType } from '../types';
 
 export const Home: React.FC = () => {
@@ -153,7 +153,7 @@ export const Home: React.FC = () => {
                 >
                 <div 
                     className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-4xl font-bold text-white/20 relative overflow-hidden bg-surface-3"
-                    style={{ background: album.coverUrl ? `url(${album.coverUrl}) center/cover no-repeat` : generateGradient(album.name) }}
+                    style={{ background: coverBackground(album.coverUrl, album.name) }}
                 >
                      {!album.coverUrl && album.name.charAt(0)}
                 </div>

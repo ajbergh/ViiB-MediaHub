@@ -1,7 +1,8 @@
 
-import React, { useEffect, useState, forwardRef } from 'react';
+import React, { useEffect, useState, forwardRef, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useArtists, useStore } from '../store';
-import { generateGradient } from '../utils';
+import { generateGradient, cssUrl } from '../utils';
 import { ContextMenuType } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
 
@@ -24,22 +25,70 @@ const ItemContainer = forwardRef<HTMLDivElement, any>(({ children, ...props }, r
 ));
 
 export const Artists: React.FC = () => {
+  const navigate = useNavigate();
   const artists = useArtists();
   const { openContextMenu, fetchArtistMetadata, artistMetadata } = useStore();
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
+  const fetchedArtistsRef = useRef<Set<string>>(new Set());
+  const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debug: Log artistMetadata on first render and when it changes
+  useEffect(() => {
+    console.log(`🎨 Artists page: artistMetadata has ${Object.keys(artistMetadata).length} entries`);
+    if (Object.keys(artistMetadata).length > 0) {
+      const sample = Object.entries(artistMetadata).slice(0, 3);
+      sample.forEach(([name, meta]) => {
+        console.log(`   📷 "${name}": imageUrl = ${meta.imageUrl?.substring(0, 80)}...`);
+      });
+    }
+  }, [artistMetadata]);
 
   useEffect(() => {
     setScrollParent(document.querySelector('main'));
   }, []);
 
+  // Background fetching for ALL artists (slowly, with rate limiting)
   useEffect(() => {
-      // Trigger background fetches for visible artists (limited initial batch)
-      artists.slice(0, 50).forEach((artist, idx) => {
-          setTimeout(() => {
-            fetchArtistMetadata(artist.name);
-          }, idx * 100);
-      });
-  }, [artists.length]); 
+      // Clear any pending timer
+      if (batchTimerRef.current) {
+          clearTimeout(batchTimerRef.current);
+      }
+
+      // Get artists that haven't been fetched yet
+      const artistsToFetch = artists.filter(a => 
+          !fetchedArtistsRef.current.has(a.name) && 
+          !artistMetadata[a.name]
+      );
+
+      if (artistsToFetch.length === 0) return;
+
+      let currentIndex = 0;
+
+      const fetchNext = () => {
+          if (currentIndex >= artistsToFetch.length) return;
+
+          const artist = artistsToFetch[currentIndex];
+          fetchedArtistsRef.current.add(artist.name);
+          fetchArtistMetadata(artist.name);
+          currentIndex++;
+
+          // Slower rate: 500ms between each fetch to be gentle on Spotify API
+          batchTimerRef.current = setTimeout(fetchNext, 500);
+      };
+
+      // Start fetching after 2 seconds to let UI settle
+      batchTimerRef.current = setTimeout(fetchNext, 2000);
+
+      return () => {
+          if (batchTimerRef.current) {
+              clearTimeout(batchTimerRef.current);
+          }
+      };
+  }, [artists.length, artistMetadata]); 
+
+  const handleArtistClick = useCallback((artistName: string) => {
+      navigate(`/artist/${encodeURIComponent(artistName)}`);
+  }, [navigate]);
 
   return (
     <div className="p-8 h-full">
@@ -64,10 +113,16 @@ export const Artists: React.FC = () => {
                 itemContent={(index, artist) => {
                     const metadata = artistMetadata[artist.name];
                     const displayImage = metadata?.imageUrl || artist.imageUrl;
+                    
+                    // Debug first few artists
+                    if (index < 3) {
+                        console.log(`🎨 Artist "${artist.name}": metadata=${!!metadata}, imageUrl=${displayImage?.substring(0, 50)}...`);
+                    }
 
                     return (
                         <div 
                             className="bg-surface-2 p-6 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer flex flex-col items-center text-center relative overflow-hidden h-full"
+                            onClick={() => handleArtistClick(artist.name)}
                             onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, artist)}
                         >
                             {/* Background blur effect for metadata enhancement hint */}
@@ -76,13 +131,11 @@ export const Artists: React.FC = () => {
                             )}
 
                             <div 
-                                className="w-40 h-40 rounded-full mb-4 shadow-lg flex items-center justify-center text-5xl font-bold text-white/20 relative overflow-hidden bg-center bg-cover border-4 border-surface-3 group-hover:border-surface-border transition-colors flex-shrink-0"
+                                className="w-40 h-40 rounded-full mb-4 shadow-lg flex items-center justify-center text-5xl font-bold text-white/20 relative overflow-hidden border-4 border-surface-3 group-hover:border-surface-border transition-colors flex-shrink-0"
                                 style={{ 
                                     background: displayImage
-                                        ? `url(${displayImage})` 
-                                        : generateGradient(artist.name),
-                                    backgroundSize: 'cover',
-                                    backgroundPosition: 'center'
+                                        ? `${cssUrl(displayImage)} center/cover no-repeat` 
+                                        : generateGradient(artist.name)
                                 }}
                             >
                                 {!displayImage && artist.name.charAt(0)}

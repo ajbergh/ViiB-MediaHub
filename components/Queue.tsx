@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useStore, useAlbumCovers } from '../store';
 import { X, Trash2, GripVertical, Play, ListMusic } from 'lucide-react';
-import { generateGradient, formatTime } from '../utils';
+import { generateGradient, formatTime, cssUrl } from '../utils';
 import { ContextMenuType } from '../types';
 
 export const Queue: React.FC = () => {
@@ -137,7 +137,7 @@ export const Queue: React.FC = () => {
                             {/* Cover */}
                             <div 
                                 className="w-10 h-10 rounded bg-surface-3 bg-center bg-cover flex-shrink-0 relative"
-                                style={{ background: displayCover ? `url(${displayCover})` : generateGradient(song.album) }}
+                                style={{ background: displayCover ? cssUrl(displayCover) : generateGradient(song.album) }}
                             >
                                 {/* Play overlay on hover */}
                                 <div 

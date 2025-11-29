@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -136,6 +137,38 @@ func (d *DB) migrate() error {
 
 	CREATE INDEX IF NOT EXISTS idx_downloads_status ON spotify_downloads(status);
 	CREATE INDEX IF NOT EXISTS idx_downloads_added_at ON spotify_downloads(added_at);
+
+	CREATE TABLE IF NOT EXISTS album_metadata (
+		album_key TEXT PRIMARY KEY,
+		album_name TEXT NOT NULL,
+		artist_name TEXT NOT NULL,
+		spotify_id TEXT,
+		cover_url TEXT,
+		local_cover_path TEXT,
+		description TEXT,
+		genre TEXT,
+		release_date TEXT,
+		spotify_url TEXT,
+		copyright TEXT,
+		spotify_checked INTEGER DEFAULT 0,
+		spotify_found INTEGER DEFAULT 0,
+		fetched_at INTEGER,
+		updated_at INTEGER
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_album_metadata_artist ON album_metadata(artist_name);
+
+	CREATE TABLE IF NOT EXISTS artist_metadata (
+		artist_name TEXT PRIMARY KEY,
+		spotify_id TEXT,
+		image_url TEXT,
+		local_image_path TEXT,
+		spotify_url TEXT,
+		spotify_checked INTEGER DEFAULT 0,
+		spotify_found INTEGER DEFAULT 0,
+		fetched_at INTEGER,
+		updated_at INTEGER
+	);
 	`
 
 	_, err := d.conn.Exec(schema)
@@ -740,4 +773,598 @@ func (d *DB) SetSetting(key, value string) error {
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value
 	`, key, value)
 	return err
+}
+
+// AlbumMetadata operations
+
+// AlbumMetadata represents cached metadata for an album from Spotify
+type AlbumMetadata struct {
+	AlbumKey       string `json:"albumKey"` // "{album}::{artist}" format
+	AlbumName      string `json:"albumName"`
+	ArtistName     string `json:"artistName"`
+	SpotifyID      string `json:"spotifyId,omitempty"`
+	CoverURL       string `json:"coverUrl,omitempty"`
+	LocalCoverPath string `json:"localCoverPath,omitempty"`
+	Description    string `json:"description,omitempty"`
+	Genre          string `json:"genre,omitempty"`
+	ReleaseDate    string `json:"releaseDate,omitempty"`
+	SpotifyURL     string `json:"spotifyUrl,omitempty"`
+	Copyright      string `json:"copyright,omitempty"`
+	SpotifyChecked bool   `json:"spotifyChecked"` // True if we've checked Spotify (even if not found)
+	SpotifyFound   bool   `json:"spotifyFound"`   // True if Spotify returned results
+	FetchedAt      int64  `json:"fetchedAt,omitempty"`
+	UpdatedAt      int64  `json:"updatedAt,omitempty"`
+}
+
+// GetAlbumMetadata retrieves cached metadata for an album
+func (d *DB) GetAlbumMetadata(albumKey string) (*AlbumMetadata, error) {
+	var m AlbumMetadata
+	var spotifyID, coverURL, localCoverPath, description, genre, releaseDate, spotifyURL, copyright sql.NullString
+	var fetchedAt, updatedAt sql.NullInt64
+	var spotifyChecked, spotifyFound sql.NullInt64
+
+	err := d.conn.QueryRow(`
+		SELECT album_key, album_name, artist_name, spotify_id, cover_url, local_cover_path,
+		       description, genre, release_date, spotify_url, copyright,
+		       spotify_checked, spotify_found, fetched_at, updated_at
+		FROM album_metadata WHERE album_key = ?
+	`, albumKey).Scan(
+		&m.AlbumKey, &m.AlbumName, &m.ArtistName, &spotifyID, &coverURL, &localCoverPath,
+		&description, &genre, &releaseDate, &spotifyURL, &copyright,
+		&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if spotifyID.Valid {
+		m.SpotifyID = spotifyID.String
+	}
+	if coverURL.Valid {
+		m.CoverURL = coverURL.String
+	}
+	if localCoverPath.Valid {
+		m.LocalCoverPath = localCoverPath.String
+	}
+	if description.Valid {
+		m.Description = description.String
+	}
+	if genre.Valid {
+		m.Genre = genre.String
+	}
+	if releaseDate.Valid {
+		m.ReleaseDate = releaseDate.String
+	}
+	if spotifyURL.Valid {
+		m.SpotifyURL = spotifyURL.String
+	}
+	if copyright.Valid {
+		m.Copyright = copyright.String
+	}
+	if spotifyChecked.Valid {
+		m.SpotifyChecked = spotifyChecked.Int64 == 1
+	}
+	if spotifyFound.Valid {
+		m.SpotifyFound = spotifyFound.Int64 == 1
+	}
+	if fetchedAt.Valid {
+		m.FetchedAt = fetchedAt.Int64
+	}
+	if updatedAt.Valid {
+		m.UpdatedAt = updatedAt.Int64
+	}
+
+	return &m, nil
+}
+
+// GetAllAlbumMetadata retrieves all cached album metadata
+func (d *DB) GetAllAlbumMetadata() ([]AlbumMetadata, error) {
+	rows, err := d.conn.Query(`
+		SELECT album_key, album_name, artist_name, spotify_id, cover_url, local_cover_path,
+		       description, genre, release_date, spotify_url, copyright,
+		       spotify_checked, spotify_found, fetched_at, updated_at
+		FROM album_metadata
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []AlbumMetadata
+	for rows.Next() {
+		var m AlbumMetadata
+		var spotifyID, coverURL, localCoverPath, description, genre, releaseDate, spotifyURL, copyright sql.NullString
+		var fetchedAt, updatedAt sql.NullInt64
+		var spotifyChecked, spotifyFound sql.NullInt64
+
+		err := rows.Scan(
+			&m.AlbumKey, &m.AlbumName, &m.ArtistName, &spotifyID, &coverURL, &localCoverPath,
+			&description, &genre, &releaseDate, &spotifyURL, &copyright,
+			&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if spotifyID.Valid {
+			m.SpotifyID = spotifyID.String
+		}
+		if coverURL.Valid {
+			m.CoverURL = coverURL.String
+		}
+		if localCoverPath.Valid {
+			m.LocalCoverPath = localCoverPath.String
+		}
+		if description.Valid {
+			m.Description = description.String
+		}
+		if genre.Valid {
+			m.Genre = genre.String
+		}
+		if releaseDate.Valid {
+			m.ReleaseDate = releaseDate.String
+		}
+		if spotifyURL.Valid {
+			m.SpotifyURL = spotifyURL.String
+		}
+		if copyright.Valid {
+			m.Copyright = copyright.String
+		}
+		if spotifyChecked.Valid {
+			m.SpotifyChecked = spotifyChecked.Int64 == 1
+		}
+		if spotifyFound.Valid {
+			m.SpotifyFound = spotifyFound.Int64 == 1
+		}
+		if fetchedAt.Valid {
+			m.FetchedAt = fetchedAt.Int64
+		}
+		if updatedAt.Valid {
+			m.UpdatedAt = updatedAt.Int64
+		}
+
+		results = append(results, m)
+	}
+
+	return results, nil
+}
+
+// SaveAlbumMetadata saves or updates album metadata
+func (d *DB) SaveAlbumMetadata(m *AlbumMetadata) error {
+	now := time.Now().Unix()
+	spotifyChecked := 0
+	spotifyFound := 0
+	if m.SpotifyChecked {
+		spotifyChecked = 1
+	}
+	if m.SpotifyFound {
+		spotifyFound = 1
+	}
+
+	_, err := d.conn.Exec(`
+		INSERT INTO album_metadata (
+			album_key, album_name, artist_name, spotify_id, cover_url, local_cover_path,
+			description, genre, release_date, spotify_url, copyright,
+			spotify_checked, spotify_found, fetched_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(album_key) DO UPDATE SET
+			spotify_id = excluded.spotify_id,
+			cover_url = excluded.cover_url,
+			local_cover_path = COALESCE(excluded.local_cover_path, album_metadata.local_cover_path),
+			description = excluded.description,
+			genre = excluded.genre,
+			release_date = excluded.release_date,
+			spotify_url = excluded.spotify_url,
+			copyright = excluded.copyright,
+			spotify_checked = excluded.spotify_checked,
+			spotify_found = excluded.spotify_found,
+			fetched_at = COALESCE(excluded.fetched_at, album_metadata.fetched_at),
+			updated_at = excluded.updated_at
+	`, m.AlbumKey, m.AlbumName, m.ArtistName, m.SpotifyID, m.CoverURL, m.LocalCoverPath,
+		m.Description, m.Genre, m.ReleaseDate, m.SpotifyURL, m.Copyright,
+		spotifyChecked, spotifyFound, m.FetchedAt, now)
+	return err
+}
+
+// UpdateAlbumLocalCover updates just the local cover path for an album
+func (d *DB) UpdateAlbumLocalCover(albumKey, localCoverPath string) error {
+	_, err := d.conn.Exec(`
+		UPDATE album_metadata SET local_cover_path = ?, updated_at = ?
+		WHERE album_key = ?
+	`, localCoverPath, time.Now().Unix(), albumKey)
+	return err
+}
+
+// GetAlbumsNeedingMetadata returns albums that haven't been checked yet
+func (d *DB) GetAlbumsNeedingMetadata() ([]AlbumMetadata, error) {
+	rows, err := d.conn.Query(`
+		SELECT DISTINCT album_key, album_name, artist_name
+		FROM album_metadata
+		WHERE spotify_checked = 0
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []AlbumMetadata
+	for rows.Next() {
+		var m AlbumMetadata
+		err := rows.Scan(&m.AlbumKey, &m.AlbumName, &m.ArtistName)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, m)
+	}
+
+	return results, nil
+}
+
+// ResetAlbumSpotifyCheck resets the spotify_checked flag for an album to force re-fetch
+func (d *DB) ResetAlbumSpotifyCheck(albumKey string) error {
+	_, err := d.conn.Exec(`
+		UPDATE album_metadata 
+		SET spotify_checked = 0, spotify_found = 0, fetched_at = NULL, updated_at = ?
+		WHERE album_key = ?
+	`, time.Now().Unix(), albumKey)
+	return err
+}
+
+// GetAlbumMetadataBatch returns metadata for multiple albums at once
+func (d *DB) GetAlbumMetadataBatch(albumKeys []string) ([]AlbumMetadata, error) {
+	if len(albumKeys) == 0 {
+		return nil, nil
+	}
+
+	// Build query with placeholders
+	placeholders := make([]string, len(albumKeys))
+	args := make([]interface{}, len(albumKeys))
+	for i, key := range albumKeys {
+		placeholders[i] = "?"
+		args[i] = key
+	}
+
+	query := fmt.Sprintf(`
+		SELECT album_key, album_name, artist_name, spotify_id, cover_url, local_cover_path,
+		       description, genre, release_date, spotify_url, copyright,
+		       spotify_checked, spotify_found, fetched_at, updated_at
+		FROM album_metadata
+		WHERE album_key IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []AlbumMetadata
+	for rows.Next() {
+		var m AlbumMetadata
+		var spotifyID, coverURL, localCoverPath, description, genre, releaseDate, spotifyURL, copyright sql.NullString
+		var fetchedAt, updatedAt sql.NullInt64
+		var spotifyChecked, spotifyFound sql.NullInt64
+
+		err := rows.Scan(
+			&m.AlbumKey, &m.AlbumName, &m.ArtistName, &spotifyID, &coverURL, &localCoverPath,
+			&description, &genre, &releaseDate, &spotifyURL, &copyright,
+			&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if spotifyID.Valid {
+			m.SpotifyID = spotifyID.String
+		}
+		if coverURL.Valid {
+			m.CoverURL = coverURL.String
+		}
+		if localCoverPath.Valid {
+			m.LocalCoverPath = localCoverPath.String
+		}
+		if description.Valid {
+			m.Description = description.String
+		}
+		if genre.Valid {
+			m.Genre = genre.String
+		}
+		if releaseDate.Valid {
+			m.ReleaseDate = releaseDate.String
+		}
+		if spotifyURL.Valid {
+			m.SpotifyURL = spotifyURL.String
+		}
+		if copyright.Valid {
+			m.Copyright = copyright.String
+		}
+		if spotifyChecked.Valid {
+			m.SpotifyChecked = spotifyChecked.Int64 == 1
+		}
+		if spotifyFound.Valid {
+			m.SpotifyFound = spotifyFound.Int64 == 1
+		}
+		if fetchedAt.Valid {
+			m.FetchedAt = fetchedAt.Int64
+		}
+		if updatedAt.Valid {
+			m.UpdatedAt = updatedAt.Int64
+		}
+
+		results = append(results, m)
+	}
+
+	return results, nil
+}
+
+// GetExpiredAlbumMetadata returns albums that need re-checking
+// (checked more than X days ago AND spotify was not found)
+func (d *DB) GetExpiredAlbumMetadata(expirationDays int) ([]AlbumMetadata, error) {
+	expirationTime := time.Now().AddDate(0, 0, -expirationDays).Unix()
+
+	rows, err := d.conn.Query(`
+		SELECT album_key, album_name, artist_name, local_cover_path
+		FROM album_metadata
+		WHERE spotify_checked = 1 
+		  AND spotify_found = 0 
+		  AND fetched_at IS NOT NULL 
+		  AND fetched_at < ?
+	`, expirationTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []AlbumMetadata
+	for rows.Next() {
+		var m AlbumMetadata
+		var localCoverPath sql.NullString
+		err := rows.Scan(&m.AlbumKey, &m.AlbumName, &m.ArtistName, &localCoverPath)
+		if err != nil {
+			return nil, err
+		}
+		if localCoverPath.Valid {
+			m.LocalCoverPath = localCoverPath.String
+		}
+		results = append(results, m)
+	}
+
+	return results, nil
+}
+
+// ArtistMetadata operations
+
+// ArtistMetadata represents cached metadata for an artist from Spotify
+type ArtistMetadata struct {
+	ArtistName     string `json:"artistName"`
+	SpotifyID      string `json:"spotifyId,omitempty"`
+	ImageURL       string `json:"imageUrl,omitempty"`
+	LocalImagePath string `json:"localImagePath,omitempty"`
+	SpotifyURL     string `json:"spotifyUrl,omitempty"`
+	SpotifyChecked bool   `json:"spotifyChecked"` // True if we've checked Spotify (even if not found)
+	SpotifyFound   bool   `json:"spotifyFound"`   // True if Spotify returned results
+	FetchedAt      int64  `json:"fetchedAt,omitempty"`
+	UpdatedAt      int64  `json:"updatedAt,omitempty"`
+}
+
+// GetArtistMetadata retrieves cached metadata for an artist
+func (d *DB) GetArtistMetadata(artistName string) (*ArtistMetadata, error) {
+	var m ArtistMetadata
+	var spotifyID, imageURL, localImagePath, spotifyURL sql.NullString
+	var fetchedAt, updatedAt sql.NullInt64
+	var spotifyChecked, spotifyFound sql.NullInt64
+
+	err := d.conn.QueryRow(`
+		SELECT artist_name, spotify_id, image_url, local_image_path, spotify_url,
+		       spotify_checked, spotify_found, fetched_at, updated_at
+		FROM artist_metadata WHERE artist_name = ?
+	`, artistName).Scan(
+		&m.ArtistName, &spotifyID, &imageURL, &localImagePath, &spotifyURL,
+		&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if spotifyID.Valid {
+		m.SpotifyID = spotifyID.String
+	}
+	if imageURL.Valid {
+		m.ImageURL = imageURL.String
+	}
+	if localImagePath.Valid {
+		m.LocalImagePath = localImagePath.String
+	}
+	if spotifyURL.Valid {
+		m.SpotifyURL = spotifyURL.String
+	}
+	if spotifyChecked.Valid {
+		m.SpotifyChecked = spotifyChecked.Int64 == 1
+	}
+	if spotifyFound.Valid {
+		m.SpotifyFound = spotifyFound.Int64 == 1
+	}
+	if fetchedAt.Valid {
+		m.FetchedAt = fetchedAt.Int64
+	}
+	if updatedAt.Valid {
+		m.UpdatedAt = updatedAt.Int64
+	}
+
+	return &m, nil
+}
+
+// GetAllArtistMetadata retrieves all cached artist metadata
+func (d *DB) GetAllArtistMetadata() ([]ArtistMetadata, error) {
+	rows, err := d.conn.Query(`
+		SELECT artist_name, spotify_id, image_url, local_image_path, spotify_url,
+		       spotify_checked, spotify_found, fetched_at, updated_at
+		FROM artist_metadata
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []ArtistMetadata
+	for rows.Next() {
+		var m ArtistMetadata
+		var spotifyID, imageURL, localImagePath, spotifyURL sql.NullString
+		var fetchedAt, updatedAt sql.NullInt64
+		var spotifyChecked, spotifyFound sql.NullInt64
+
+		err := rows.Scan(
+			&m.ArtistName, &spotifyID, &imageURL, &localImagePath, &spotifyURL,
+			&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if spotifyID.Valid {
+			m.SpotifyID = spotifyID.String
+		}
+		if imageURL.Valid {
+			m.ImageURL = imageURL.String
+		}
+		if localImagePath.Valid {
+			m.LocalImagePath = localImagePath.String
+		}
+		if spotifyURL.Valid {
+			m.SpotifyURL = spotifyURL.String
+		}
+		if spotifyChecked.Valid {
+			m.SpotifyChecked = spotifyChecked.Int64 == 1
+		}
+		if spotifyFound.Valid {
+			m.SpotifyFound = spotifyFound.Int64 == 1
+		}
+		if fetchedAt.Valid {
+			m.FetchedAt = fetchedAt.Int64
+		}
+		if updatedAt.Valid {
+			m.UpdatedAt = updatedAt.Int64
+		}
+
+		results = append(results, m)
+	}
+
+	return results, nil
+}
+
+// SaveArtistMetadata saves or updates artist metadata
+func (d *DB) SaveArtistMetadata(m *ArtistMetadata) error {
+	now := time.Now().Unix()
+	spotifyChecked := 0
+	spotifyFound := 0
+	if m.SpotifyChecked {
+		spotifyChecked = 1
+	}
+	if m.SpotifyFound {
+		spotifyFound = 1
+	}
+
+	_, err := d.conn.Exec(`
+		INSERT INTO artist_metadata (
+			artist_name, spotify_id, image_url, local_image_path, spotify_url,
+			spotify_checked, spotify_found, fetched_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(artist_name) DO UPDATE SET
+			spotify_id = excluded.spotify_id,
+			image_url = excluded.image_url,
+			local_image_path = COALESCE(excluded.local_image_path, artist_metadata.local_image_path),
+			spotify_url = excluded.spotify_url,
+			spotify_checked = excluded.spotify_checked,
+			spotify_found = excluded.spotify_found,
+			fetched_at = COALESCE(excluded.fetched_at, artist_metadata.fetched_at),
+			updated_at = excluded.updated_at
+	`, m.ArtistName, m.SpotifyID, m.ImageURL, m.LocalImagePath, m.SpotifyURL,
+		spotifyChecked, spotifyFound, m.FetchedAt, now)
+	return err
+}
+
+// UpdateArtistLocalImage updates just the local image path for an artist
+func (d *DB) UpdateArtistLocalImage(artistName, localImagePath string) error {
+	_, err := d.conn.Exec(`
+		UPDATE artist_metadata SET local_image_path = ?, updated_at = ?
+		WHERE artist_name = ?
+	`, localImagePath, time.Now().Unix(), artistName)
+	return err
+}
+
+// ResetArtistSpotifyCheck resets the spotify_checked flag for an artist
+func (d *DB) ResetArtistSpotifyCheck(artistName string) error {
+	_, err := d.conn.Exec(`
+		UPDATE artist_metadata 
+		SET spotify_checked = 0, spotify_found = 0, fetched_at = NULL, updated_at = ?
+		WHERE artist_name = ?
+	`, time.Now().Unix(), artistName)
+	return err
+}
+
+// GetArtistsNeedingMetadata returns artists that haven't been checked yet
+func (d *DB) GetArtistsNeedingMetadata() ([]ArtistMetadata, error) {
+	rows, err := d.conn.Query(`
+		SELECT artist_name
+		FROM artist_metadata
+		WHERE spotify_checked = 0
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []ArtistMetadata
+	for rows.Next() {
+		var m ArtistMetadata
+		err := rows.Scan(&m.ArtistName)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, m)
+	}
+
+	return results, nil
+}
+
+// GetExpiredArtistMetadata returns artists that need re-checking
+func (d *DB) GetExpiredArtistMetadata(expirationDays int) ([]ArtistMetadata, error) {
+	expirationTime := time.Now().AddDate(0, 0, -expirationDays).Unix()
+
+	rows, err := d.conn.Query(`
+		SELECT artist_name, local_image_path
+		FROM artist_metadata
+		WHERE spotify_checked = 1 
+		  AND spotify_found = 0 
+		  AND fetched_at IS NOT NULL 
+		  AND fetched_at < ?
+	`, expirationTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []ArtistMetadata
+	for rows.Next() {
+		var m ArtistMetadata
+		var localImagePath sql.NullString
+		err := rows.Scan(&m.ArtistName, &localImagePath)
+		if err != nil {
+			return nil, err
+		}
+		if localImagePath.Valid {
+			m.LocalImagePath = localImagePath.String
+		}
+		results = append(results, m)
+	}
+
+	return results, nil
 }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore, useAlbumCovers } from '../store';
 import { X, Play, Pause, SkipBack, SkipForward, Shuffle, Heart, ListMusic, Activity, SlidersHorizontal, Image as ImageIcon, Volume2 } from 'lucide-react';
-import { formatTime, generateGradient } from '../utils';
+import { formatTime, generateGradient, cssUrl } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { Visualizer } from './Visualizer';
 import { LyricsView } from './now-playing/LyricsView';
@@ -51,7 +51,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
             <div 
                 className="absolute inset-0 z-0 opacity-30 blur-3xl scale-110 pointer-events-none transition-all duration-1000"
                 style={{ 
-                    background: coverUrl ? `url(${coverUrl}) center/cover` : generateGradient(currentSong.album),
+                    background: coverUrl ? `${cssUrl(coverUrl)} center/cover` : generateGradient(currentSong.album),
                 }}
             />
             
