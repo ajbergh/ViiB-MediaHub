@@ -84,7 +84,8 @@ const ArtistHeader: React.FC<{ context?: any }> = ({ context }) => {
             <div className="relative z-10 p-8 pt-16 flex flex-col md:flex-row gap-8 items-end">
                 <button 
                     onClick={() => navigate(-1)} 
-                    className="absolute top-6 left-6 w-8 h-8 bg-black/40 rounded-full flex items-center justify-center hover:bg-black/60 text-white transition-colors z-20"
+                    className="absolute top-6 left-6 w-8 h-8 bg-black/40 rounded-full flex items-center justify-center hover:bg-black/60 text-white transition-all duration-200 z-20"
+                    aria-label="Go back"
                 >
                     <ArrowLeft size={20} />
                 </button>
@@ -130,18 +131,20 @@ const ArtistHeader: React.FC<{ context?: any }> = ({ context }) => {
             </div>
 
             {/* Actions Container */}
-            <div className="bg-[#121212]/60 p-8 pt-6 backdrop-blur-lg relative z-10">
+            <div className="bg-surface-1/60 p-8 pt-6 backdrop-blur-lg relative z-10">
                 <div className="flex items-center gap-6 mb-8 relative">
                     <button 
                         onClick={() => playSong(artistSongs[0], artistSongs)}
-                        className="w-14 h-14 bg-[#1db954] hover:bg-[#1ed760] rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-black/40 text-black"
+                        className="w-14 h-14 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 shadow-lg shadow-black/40 text-black"
+                        aria-label="Play all"
                     >
                         <Play size={28} className="fill-current ml-1" />
                     </button>
                     <div className="relative">
                         <button 
                             onClick={(e) => openContextMenu(e, ContextMenuType.ARTIST, artistObject)}
-                            className="text-[#b3b8c1] hover:text-white transition-colors"
+                            className="text-text-secondary hover:text-white transition-all duration-200"
+                            aria-label="More options"
                         >
                             <MoreHorizontal size={32} />
                         </button>
@@ -151,7 +154,7 @@ const ArtistHeader: React.FC<{ context?: any }> = ({ context }) => {
                             href={metadata.url} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="ml-auto flex items-center gap-2 text-xs font-bold text-[#b3b8c1] hover:text-white bg-white/5 hover:bg-white/10 px-4 py-2 rounded-full transition-colors"
+                            className="ml-auto flex items-center gap-2 text-xs font-bold text-text-secondary hover:text-white bg-white/5 hover:bg-white/10 px-4 py-2 rounded-full transition-all duration-200"
                         >
                             <ExternalLink size={14} /> Spotify
                         </a>
@@ -159,7 +162,7 @@ const ArtistHeader: React.FC<{ context?: any }> = ({ context }) => {
                 </div>
 
                 {/* Table Header */}
-                <div className="grid grid-cols-[40px_4fr_2fr_60px] gap-4 px-4 py-2 border-b border-[#282828] text-[#b3b8c1] text-xs uppercase tracking-wider font-medium mb-2 sticky top-0 bg-[#121212] z-20">
+                <div className="grid grid-cols-[40px_4fr_2fr_60px] gap-4 px-4 py-2 border-b border-surface-3 text-text-secondary text-xs uppercase tracking-wider font-medium mb-2 sticky top-0 bg-surface-1 z-20">
                     <div className="text-center">#</div>
                     <div>Title</div>
                     <div className="hidden md:block">Album</div>
@@ -178,7 +181,7 @@ const ArtistFooter: React.FC<{ context?: any }> = ({ context }) => {
     const minutes = Math.floor((totalDuration % 3600) / 60);
     
     return (
-        <div className="pb-32 px-4 pt-12 text-xs text-[#6f7480] bg-[#121212]/60">
+        <div className="pb-32 px-4 pt-12 text-xs text-text-subtle bg-surface-1/60">
             <p>{artistSongs.length} songs, {hours > 0 ? `${hours} hr ` : ''}{minutes} min</p>
         </div>
     );
@@ -236,7 +239,7 @@ export const ArtistDetail: React.FC = () => {
 
     if (!artistName || artistSongs.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center h-full text-[#6f7480]">
+            <div className="flex flex-col items-center justify-center h-full text-text-subtle">
                 <User size={64} className="mb-4 opacity-50" />
                 <h2 className="text-xl font-bold mb-2">Artist not found</h2>
                 <button onClick={() => navigate('/artists')} className="text-green-500 hover:underline">
@@ -251,9 +254,9 @@ export const ArtistDetail: React.FC = () => {
         const match = gradient.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
         if (match) {
             const [_, h, s, l] = match;
-            return `linear-gradient(to bottom, hsl(${h}, ${s}%, ${Math.max(20, parseInt(l)) / 2}%) 0%, #121212 100%)`;
+            return `linear-gradient(to bottom, hsl(${h}, ${s}%, ${Math.max(20, parseInt(l)) / 2}%) 0%, rgb(18, 18, 18) 100%)`;
         }
-        return 'linear-gradient(to bottom, #404040 0%, #121212 100%)';
+        return 'linear-gradient(to bottom, rgb(64, 64, 64) 0%, rgb(18, 18, 18) 100%)';
     };
   
     const artistObject = {
@@ -294,18 +297,18 @@ export const ArtistDetail: React.FC = () => {
                     const isCurrent = currentSong?.id === song.id;
 
                     return (
-                        <div className="bg-[#121212]/60 px-8">
+                        <div className="bg-surface-1/60 px-8">
                             <div 
-                                className={`grid grid-cols-[40px_4fr_2fr_60px] gap-4 px-4 py-3 rounded-md hover:bg-[#2a2a2a] group transition-colors cursor-pointer items-center relative ${isCurrent ? 'bg-[#2a2a2a]' : ''}`}
+                                className={`grid grid-cols-[40px_4fr_2fr_60px] gap-4 px-4 py-3 rounded-lg hover:bg-surface-hover group transition-all duration-200 cursor-pointer items-center relative ${isCurrent ? 'bg-surface-hover' : ''}`}
                                 onClick={() => playSong(song, artistSongs)}
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                             >
-                                <div className="text-center text-[#b3b8c1] font-mono text-sm w-full flex justify-center items-center h-full">
+                                <div className="text-center text-text-secondary font-mono text-sm w-full flex justify-center items-center h-full">
                                         {isCurrent && isPlaying ? (
-                                            <div className="w-3 h-3 bg-[#1db954] rounded-full animate-pulse shadow-[0_0_8px_#1db954]" />
+                                            <div className="w-3 h-3 bg-brand rounded-full animate-pulse shadow-[0_0_8px_rgb(29,185,84)]" />
                                         ) : (
                                             <>
-                                            <span className={`group-hover:hidden ${isCurrent ? 'text-[#1db954]' : ''}`}>{index + 1}</span>
+                                            <span className={`group-hover:hidden ${isCurrent ? 'text-brand' : ''}`}>{index + 1}</span>
                                             <Play size={14} className="hidden group-hover:block text-white fill-current" />
                                             </>
                                         )}
@@ -316,13 +319,13 @@ export const ArtistDetail: React.FC = () => {
                                         <img src={song.coverUrl} alt="" className="w-10 h-10 rounded flex-shrink-0" />
                                     )}
                                     <div className="flex flex-col min-w-0">
-                                        <span className={`text-base font-medium truncate ${isCurrent ? 'text-[#1db954]' : 'text-white'}`}>{song.title}</span>
-                                        <span className="text-sm text-[#b3b8c1] group-hover:text-white truncate transition-colors">{song.artist}</span>
+                                        <span className={`text-base font-medium truncate ${isCurrent ? 'text-brand' : 'text-white'}`}>{song.title}</span>
+                                        <span className="text-sm text-text-secondary group-hover:text-white truncate transition-all duration-200">{song.artist}</span>
                                     </div>
                                 </div>
 
                                 <div 
-                                    className="hidden md:block text-[#b3b8c1] text-sm truncate hover:underline cursor-pointer"
+                                    className="hidden md:block text-text-secondary text-sm truncate hover:underline cursor-pointer"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         navigate(`/album/${encodeURIComponent(song.album)}`);
@@ -331,14 +334,15 @@ export const ArtistDetail: React.FC = () => {
                                     {song.album}
                                 </div>
 
-                                <div className="text-right pr-4 text-[#b3b8c1] text-sm font-mono group-hover:hidden">
+                                <div className="text-right pr-4 text-text-secondary text-sm font-mono group-hover:hidden">
                                     {formatTime(song.duration)}
                                 </div>
 
                                 <div className="hidden group-hover:flex justify-end pr-2 absolute right-2">
                                         <button 
                                         onClick={(e) => { e.stopPropagation(); openContextMenu(e, ContextMenuType.SONG, song); }}
-                                        className={`text-[#b3b8c1] hover:text-white transition-colors`}
+                                        className="text-text-secondary hover:text-white transition-all duration-200"
+                                        aria-label="More options"
                                     >
                                         <MoreHorizontal size={20} />
                                     </button>

@@ -7,12 +7,16 @@
  * - isQueueOpen: Queue panel visibility
  * - isNowPlayingOpen: Full-screen now playing view
  * - showSmartMixes: Smart mix section visibility on home
- * - logs: Application log entries
+ * - hasCompletedSetup: First-launch wizard completion flag
+ * - logs: Application log entries for debugging
+ * - toasts: User-visible toast notifications (success, error, info, warning)
  * - contextMenu: Right-click menu state and position
  * - confirmDialog: Modal confirmation dialog state
- * - downloadCount: Active download badge count
  * 
- * Provides actions for context menus, dialogs, and logging.
+ * Toast System:
+ * - showToast({ type, message, duration?, action? }): Display notification
+ * - dismissToast(id): Manually dismiss a toast
+ * - Auto-dismisses after duration (default 4s), max 5 toasts displayed
  * 
  * @module uiSlice
  */
@@ -26,6 +30,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
   showSmartMixes: true,
   hasCompletedSetup: false,
   logs: [],
+  toasts: [],
   contextMenu: {
     isOpen: false,
     x: 0,
@@ -52,6 +57,14 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
 
   showConfirmDialog: (config) => set({ confirmDialog: config }),
   closeConfirmDialog: () => set({ confirmDialog: null }),
+
+  showToast: (toast) => set((state) => ({
+    toasts: [...state.toasts, { ...toast, id: Math.random().toString(36).substr(2, 9) }].slice(-5) // Max 5 toasts
+  })),
+  
+  dismissToast: (id) => set((state) => ({
+    toasts: state.toasts.filter(t => t.id !== id)
+  })),
 
   addLog: (level, message, details) => set((state) => ({
       logs: [{

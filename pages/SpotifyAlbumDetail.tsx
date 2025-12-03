@@ -134,7 +134,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="animate-spin text-[#1db954]" size={48} />
+        <Loader2 className="animate-spin text-brand" size={48} />
       </div>
     );
   }
@@ -159,7 +159,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
   return (
     <div className="h-full overflow-y-auto">
       {/* Header */}
-      <div className="bg-gradient-to-b from-[#1db954]/20 to-transparent">
+      <div className="bg-gradient-to-b from-brand/20 to-transparent">
         <div className="p-8">
           <button 
             onClick={() => navigate('/spotify')}
@@ -201,13 +201,17 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
       {/* Actions */}
       <div className="px-8 py-6 flex items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
-        <button className="w-14 h-14 bg-[#1db954] hover:bg-[#1ed760] rounded-full flex items-center justify-center shadow-xl hover:scale-105 transition-all text-black">
+        <button 
+          className="w-14 h-14 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center shadow-xl hover:scale-105 transition-all duration-200 text-black"
+          aria-label="Play album"
+        >
           <Play size={24} fill="black" />
         </button>
         <button 
           onClick={handleDownload}
           disabled={isDownloading}
-          className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-3 rounded-full text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-3 rounded-full text-sm font-bold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label="Download album"
         >
           {isDownloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
           Download
@@ -223,7 +227,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
       </div>
 
       {/* Track List */}
-      <div className="px-8 pb-20">
+      <div className="px-8 pb-32">
         <div className="bg-surface-1 rounded-xl overflow-hidden">
           {/* Header */}
           <div className="grid grid-cols-[40px_1fr_1fr_80px_40px] gap-4 px-4 py-3 border-b border-surface-border text-text-subtle text-sm font-bold">
@@ -240,14 +244,14 @@ export const SpotifyAlbumDetail: React.FC = () => {
           {album.tracks.items.map((track, idx) => (
             <div 
               key={track.id}
-              className="grid grid-cols-[40px_1fr_1fr_80px_40px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-colors border-b border-surface-border last:border-0"
+              className="grid grid-cols-[40px_1fr_1fr_80px_40px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0"
             >
               <div className="text-center text-text-subtle flex items-center justify-center">
                 <span className="group-hover:hidden">{track.track_number}</span>
                 <Play size={16} className="hidden group-hover:block text-text-main" />
               </div>
               <div className="flex flex-col justify-center min-w-0">
-                <div className="font-medium text-text-main truncate group-hover:text-[#1db954] transition-colors">
+                <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200">
                   {track.name}
                 </div>
                 {track.explicit && (

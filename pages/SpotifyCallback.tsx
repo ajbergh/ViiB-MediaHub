@@ -124,20 +124,20 @@ export const SpotifyCallback: React.FC = () => {
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white p-8">
-            <div className="bg-[#181818] p-8 rounded-xl border border-[#333] max-w-md w-full text-center shadow-2xl">
+            <div className="bg-surface-2 p-8 rounded-xl border border-surface-3 max-w-md w-full text-center shadow-2xl">
                 {status === 'processing' && (
                     <>
-                        <Loader2 size={48} className="animate-spin text-green-500 mx-auto mb-4" />
+                        <Loader2 size={48} className="animate-spin text-brand mx-auto mb-4" />
                         <h2 className="text-xl font-bold mb-2">Connecting to Spotify...</h2>
-                        <p className="text-[#b3b8c1]">Exchanging keys and fetching profile.</p>
+                        <p className="text-text-secondary">Exchanging keys and fetching profile.</p>
                     </>
                 )}
                 
                 {status === 'success' && (
                     <>
-                        <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
+                        <CheckCircle size={48} className="text-brand mx-auto mb-4" />
                         <h2 className="text-xl font-bold mb-2">Success!</h2>
-                        <p className="text-[#b3b8c1]">
+                        <p className="text-text-secondary">
                             {window.opener ? 'This window will close automatically.' : 'Redirecting you back to the app...'}
                         </p>
                     </>
@@ -150,7 +150,7 @@ export const SpotifyCallback: React.FC = () => {
                         <p className="text-red-400 mb-6">{errorMsg}</p>
                         <button 
                             onClick={() => window.close()}
-                            className="bg-[#333] hover:bg-[#444] text-white font-bold py-2 px-6 rounded-full transition-colors"
+                            className="bg-surface-3 hover:bg-surface-hover text-white font-bold py-2 px-6 rounded-full transition-all duration-200"
                         >
                             Close
                         </button>

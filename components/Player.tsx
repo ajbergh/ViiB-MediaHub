@@ -12,7 +12,10 @@
  * - Volume slider with mute toggle
  * - Queue and equalizer panel toggles
  * - Visualizer display (when enabled)
+ * - Responsive layout: stacks controls on narrow screens
+ * - Hidden secondary controls on mobile (shuffle, repeat, EQ)
  * 
+ * Keyboard shortcuts are handled by useKeyboardNavigation hook in Layout.
  * Integrates with useAudioPlayer hook for audio state management.
  * 
  * @module Player
@@ -53,7 +56,7 @@ export const Player: React.FC = () => {
 
   return (
     <>
-        <div className="h-24 bg-surface-0 border-t border-surface-highlight px-4 grid grid-cols-3 items-center z-50 relative">
+        <div className="h-24 bg-surface-0 border-t border-surface-highlight px-2 md:px-4 grid grid-cols-[1fr_auto_1fr] md:grid-cols-3 items-center z-50 relative gap-2 md:gap-4">
         {/* Dual Audio Elements for Crossfading */}
         <audio
             ref={primaryRef}
@@ -69,9 +72,9 @@ export const Player: React.FC = () => {
         />
 
         {/* Song Info */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4 min-w-0">
             <div 
-                className="w-14 h-14 rounded overflow-hidden flex-shrink-0 shadow-lg cursor-pointer group relative"
+                className="w-12 h-12 md:w-14 md:h-14 rounded overflow-hidden flex-shrink-0 shadow-lg cursor-pointer group relative"
                 style={{ background: currentSong.coverUrl ? cssUrl(currentSong.coverUrl) : generateGradient(currentSong.album) }}
                 onClick={() => setNowPlayingOpen(true)}
                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
@@ -85,14 +88,14 @@ export const Player: React.FC = () => {
             </div>
             <div className="flex flex-col min-w-0">
             <span 
-                className="text-text-main font-medium truncate text-sm hover:underline cursor-pointer"
+                className="text-text-main font-medium truncate text-xs md:text-sm hover:underline cursor-pointer"
                 onClick={() => setNowPlayingOpen(true)}
                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
             >
                 {currentSong.title}
             </span>
             <span 
-                className="text-text-secondary text-xs truncate hover:underline cursor-pointer"
+                className="text-text-secondary text-xs truncate hover:underline cursor-pointer hidden sm:block"
                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, { name: currentSong.artist })}
             >
                 {currentSong.artist}
@@ -101,28 +104,29 @@ export const Player: React.FC = () => {
         </div>
 
         {/* Controls */}
-        <div className="flex flex-col items-center gap-2">
-            <div className="flex items-center gap-6">
-            <button className="text-text-secondary hover:text-text-main transition-colors" title="Shuffle">
+        <div className="flex flex-col items-center gap-1 md:gap-2">
+            <div className="flex items-center gap-3 md:gap-6">
+            <button className="text-text-secondary hover:text-text-main transition-colors hidden md:block" title="Shuffle" aria-label="Shuffle">
                 <Shuffle size={18} />
             </button>
-            <button onClick={prevSong} className="text-text-secondary hover:text-text-main transition-colors">
-                <SkipBack size={24} className="fill-current" />
+            <button onClick={prevSong} className="text-text-secondary hover:text-text-main transition-colors" aria-label="Previous track">
+                <SkipBack size={20} className="md:w-6 md:h-6 fill-current" />
             </button>
             
             <div className="relative">
                 <button
                     onClick={togglePlay}
-                    className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform z-10 relative"
+                    className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform z-10 relative"
+                    aria-label={isPlaying ? 'Pause' : 'Play'}
                 >
-                    {isPlaying ? <Pause size={20} className="fill-current" /> : <Play size={20} className="fill-current ml-1" />}
+                    {isPlaying ? <Pause size={18} className="md:w-5 md:h-5 fill-current" /> : <Play size={18} className="md:w-5 md:h-5 fill-current ml-0.5" />}
                 </button>
             </div>
 
-            <button onClick={nextSong} className="text-text-secondary hover:text-text-main transition-colors">
-                <SkipForward size={24} className="fill-current" />
+            <button onClick={nextSong} className="text-text-secondary hover:text-text-main transition-colors" aria-label="Next track">
+                <SkipForward size={20} className="md:w-6 md:h-6 fill-current" />
             </button>
-            <button className="text-text-secondary hover:text-text-main transition-colors" title="Repeat">
+            <button className="text-text-secondary hover:text-text-main transition-colors hidden md:block" title="Repeat" aria-label="Repeat">
                 <Repeat size={18} />
             </button>
             </div>
@@ -141,8 +145,8 @@ export const Player: React.FC = () => {
             </div>
         </div>
 
-        {/* Volume & Extras */}
-        <div className="flex items-center justify-end gap-3">
+        {/* Volume & Extras - Hidden on mobile, shown on tablet+ */}
+        <div className="hidden md:flex items-center justify-end gap-3">
             {/* EQ Toggle */}
             <button 
                 onClick={toggleEqPanel}
@@ -152,8 +156,8 @@ export const Player: React.FC = () => {
                 <SlidersHorizontal size={18} />
             </button>
 
-            {/* Mini Visualizer */}
-            <div className="w-20 h-8 mx-1 flex items-end opacity-90 pb-1" title="Spectrum Analyzer">
+            {/* Mini Visualizer - Hidden on smaller screens */}
+            <div className="hidden lg:flex w-20 h-8 mx-1 items-end opacity-90 pb-1" title="Spectrum Analyzer">
                 {audioSettings.visualizerEnabled && (
                     <Visualizer mode="SPECTRUM" barColor="#22c55e" />
                 )}

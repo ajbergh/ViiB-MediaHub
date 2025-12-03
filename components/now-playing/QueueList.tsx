@@ -56,7 +56,7 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
                             <GripVertical size={20} />
                         </div>
                         
-                        <div className="w-12 h-12 rounded bg-[#282828] relative flex-shrink-0 overflow-hidden">
+                        <div className="w-12 h-12 rounded bg-surface-3 relative flex-shrink-0 overflow-hidden">
                                 <img 
                                 src={displayCover || ''} 
                                 className="w-full h-full object-cover"

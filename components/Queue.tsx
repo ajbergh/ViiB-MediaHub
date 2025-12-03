@@ -166,7 +166,7 @@ export const Queue: React.FC = () => {
                                 </div>
                                 {isCurrent && (
                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                        <div className="w-3 h-3 bg-brand rounded-full animate-pulse shadow-[0_0_8px_#1db954]"></div>
+                                        <div className="w-3 h-3 bg-brand rounded-full animate-pulse shadow-[0_0_8px_rgb(29,185,84)]"></div>
                                     </div>
                                 )}
                             </div>

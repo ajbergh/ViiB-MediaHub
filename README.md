@@ -16,6 +16,21 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
 - **Auto-EQ** - Automatic preset selection based on genre tags
 - **Real-time Visualizer** - Waveform, Spectrum, and Aurora modes
 
+### 🎨 User Experience
+- **Keyboard Navigation** - Full keyboard control for power users:
+  - Space: Play/Pause
+  - Arrow Up/Down: Volume control (±5%)
+  - Shift+Arrow Left/Right: Previous/Next track
+  - M: Toggle mute
+  - Q: Toggle queue panel
+  - E: Toggle equalizer
+  - N: Toggle now playing view
+  - Escape: Close panels and dialogs
+- **Toast Notifications** - Non-intrusive feedback for actions and errors
+- **Loading Skeletons** - Smooth shimmer animations while content loads
+- **Empty States** - Helpful guidance when no content is available
+- **Responsive Design** - Collapsible sidebar and adaptive player controls
+
 ### 📚 Library Management
 - **Folder Scanning** - Add multiple music folders with incremental scanning
 - **Smart Mixes** - Auto-generated playlists based on listening patterns:
@@ -48,11 +63,17 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
 ViiB-MediaHub/
 ├── components/         # React UI components
 │   ├── context-menus/  # Right-click menu components
-│   └── now-playing/    # Full-screen player components
+│   ├── now-playing/    # Full-screen player components
+│   ├── Skeleton.tsx    # Loading skeleton components
+│   ├── Toast.tsx       # Toast notification system
+│   └── EmptyState.tsx  # Empty state displays
 ├── pages/              # Route page components
 ├── services/           # API client, backend service, Spotify service
 ├── slices/             # Zustand state slices (player, library, spotify, ui)
-├── hooks/              # Custom React hooks (audio player, background enrichment)
+├── hooks/              # Custom React hooks
+│   ├── useAudioPlayer.ts       # Audio playback management
+│   ├── useBackgroundEnrichment.ts  # Metadata enrichment
+│   └── useKeyboardNavigation.ts    # Global keyboard shortcuts
 ├── lib/                # Audio engine, smart mix generator, parsers
 ├── workers/            # Web workers for background tasks
 │
@@ -261,6 +282,21 @@ ViiB-MediaHub/
 ├── viib.log           # Application log
 └── crash.log          # Crash recovery log
 ```
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| Space | Play/Pause current track |
+| Arrow Up | Increase volume 5% |
+| Arrow Down | Decrease volume 5% |
+| Shift + Left | Previous track |
+| Shift + Right | Next track |
+| M | Toggle mute |
+| Q | Toggle queue panel |
+| E | Toggle equalizer panel |
+| N | Toggle now playing view |
+| Escape | Close active panel or dialog |
 
 ## Browser Support
 

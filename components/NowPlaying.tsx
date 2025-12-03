@@ -66,7 +66,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     };
 
     return (
-        <div className="fixed inset-0 z-[100] bg-[#050505] text-white flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-10 duration-300">
+        <div className="fixed inset-0 z-[100] bg-surface-0 text-white flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-10 duration-300">
             {/* Dynamic Background */}
             <div 
                 className="absolute inset-0 z-0 opacity-30 blur-3xl scale-110 pointer-events-none transition-all duration-1000"

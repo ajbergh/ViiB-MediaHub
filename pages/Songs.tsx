@@ -9,16 +9,21 @@
  * - Search/filter functionality
  * - Header with play all button
  * - Context menu support for each song
+ * - Empty state for new users
+ * - Loading skeleton during initial load
  * 
  * @module Songs
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { Play, Clock, MoreHorizontal, Search, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { Play, Clock, MoreHorizontal, Search, ChevronDown, ArrowUpDown, FolderPlus } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
+import { EmptyLibrary } from '../components/EmptyState';
+import { SkeletonTrackList } from '../components/Skeleton';
+import { useNavigate } from 'react-router-dom';
 
 type SongSortOption = 'recent' | 'title-asc' | 'title-desc' | 'artist-asc' | 'artist-desc' | 'album-asc' | 'album-desc' | 'duration-asc' | 'duration-desc' | 'plays-desc';
 
@@ -121,6 +126,7 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
 const Footer = () => <div className="h-32 bg-transparent" />;
 
 export const Songs: React.FC = () => {
+  const navigate = useNavigate();
   const { songs, playSong, currentSong, isPlaying, openContextMenu } = useStore();
   const albumCovers = useAlbumCovers();
   const [filter, setFilter] = useState('');
@@ -217,6 +223,7 @@ export const Songs: React.FC = () => {
                             <button 
                                 onClick={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                                 className={`text-text-subtle hover:text-text-main transition-opacity opacity-0 group-hover:opacity-100`}
+                                aria-label="More options"
                             >
                                 <MoreHorizontal size={20} />
                             </button>
@@ -227,10 +234,16 @@ export const Songs: React.FC = () => {
             }}
         />
         
-        {sortedAndFilteredSongs.length === 0 && (
-             <div className="p-12 text-center text-text-subtle absolute top-40 w-full pointer-events-none">
-                <p>No songs found.</p>
-             </div>
+        {songs.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pt-20">
+            <EmptyLibrary onAddMusic={() => navigate('/settings')} />
+          </div>
+        )}
+        
+        {songs.length > 0 && sortedAndFilteredSongs.length === 0 && filter && (
+          <div className="p-12 text-center text-text-subtle absolute top-40 w-full pointer-events-none">
+            <p>No songs match "{filter}"</p>
+          </div>
         )}
     </div>
   );

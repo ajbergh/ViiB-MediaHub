@@ -223,7 +223,7 @@ export const Downloads: React.FC = () => {
           <XCircle size={80} className="text-red-400" />
         </div>
         <h1 className="text-2xl font-bold mb-2">Unable to Load Downloads</h1>
-        <p className="text-[#6f7480] text-center max-w-sm">
+        <p className="text-text-subtle text-center max-w-sm">
           Could not connect to the backend. Make sure the server is running.
         </p>
       </div>
@@ -237,7 +237,7 @@ export const Downloads: React.FC = () => {
           <Download size={80} />
         </div>
         <h1 className="text-2xl font-bold mb-2">No Downloads Yet</h1>
-        <p className="text-[#6f7480] text-center max-w-sm mb-6">
+        <p className="text-text-subtle text-center max-w-sm mb-6">
           Download songs, albums, or playlists from Spotify to listen offline. Look for the download button on any track.
         </p>
         <button

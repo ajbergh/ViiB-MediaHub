@@ -8,7 +8,12 @@
  * - PlayerSlice: Playback, queue, and audio settings
  * - LibrarySlice: Songs, playlists, metadata, scanning
  * - SpotifySlice: OAuth tokens and user profile
- * - UISlice: Context menus, dialogs, logs, panel states
+ * - UISlice: Context menus, dialogs, logs, panel states, toast notifications
+ * 
+ * Key Types:
+ * - ToastConfig: Toast notification structure (type, message, action, duration)
+ * - ConfirmDialogConfig: Confirmation dialog options
+ * - ScanFolder: Music folder for library scanning
  * 
  * AppState combines all slices into the complete store type.
  * 
@@ -125,6 +130,17 @@ export interface ConfirmDialogConfig {
   onConfirm: () => void;
 }
 
+export interface ToastConfig {
+  id: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+  message: string;
+  duration?: number;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+}
+
 export interface UISlice {
   isQueueOpen: boolean;
   isNowPlayingOpen: boolean;
@@ -139,6 +155,7 @@ export interface UISlice {
   };
   confirmDialog: ConfirmDialogConfig | null;
   logs: LogEntry[];
+  toasts: ToastConfig[];
 
   setQueueOpen: (isOpen: boolean) => void;
   setNowPlayingOpen: (isOpen: boolean) => void;
@@ -150,6 +167,9 @@ export interface UISlice {
   
   showConfirmDialog: (config: ConfirmDialogConfig) => void;
   closeConfirmDialog: () => void;
+  
+  showToast: (toast: Omit<ToastConfig, 'id'>) => void;
+  dismissToast: (id: string) => void;
   
   addLog: (level: LogEntry['level'], message: string, details?: any) => void;
   clearLogs: () => void;

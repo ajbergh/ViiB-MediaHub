@@ -7,7 +7,7 @@ ViiB MediaHub is a local media player application with a React frontend and Go b
 - **Frontend**: React 19, TypeScript, Vite.
   - **State Management**: Zustand (`store.ts`, `slices/`).
   - **Data Persistence**: IndexedDB (via `idb`) for the song library; `localStorage` (via Zustand persist) for settings.
-  - **Styling**: Tailwind CSS via CDN (configured in `index.html`).
+  - **Styling**: Tailwind CSS via CDN (configured in `index.html` with shimmer animations).
   - **Routing**: `react-router-dom` with `MemoryRouter`.
 - **Backend**: Go 1.22.
   - **Server**: `chi` router.
@@ -30,6 +30,10 @@ ViiB MediaHub is a local media player application with a React frontend and Go b
   - Use `useStore` from `store.ts` for global UI state.
   - **Do not** store the full song library in Zustand state if possible; it is managed via IndexedDB to handle large libraries.
 - **Components**: Functional components with TypeScript interfaces for props.
+- **Toast Notifications**: Use `showToast({ type, message })` from the store for user feedback.
+- **Loading States**: Use skeleton components from `components/Skeleton.tsx`.
+- **Empty States**: Use empty state components from `components/EmptyState.tsx`.
+- **Keyboard Navigation**: Global shortcuts handled by `hooks/useKeyboardNavigation.ts`.
 
 ### Backend
 - **Structure**: Follow Standard Go Project Layout.
@@ -45,3 +49,9 @@ ViiB MediaHub is a local media player application with a React frontend and Go b
 - `backend/cmd/viib/main.go`: Backend entry point.
 - `backend/internal/db/db.go`: Database schema and methods.
 - `index.html`: Tailwind configuration and entry point.
+
+## UX Components
+- `components/Skeleton.tsx`: Loading skeleton components (SkeletonAlbumCard, SkeletonTrackRow, etc.)
+- `components/Toast.tsx`: Toast notification system (ToastContainer, showToast)
+- `components/EmptyState.tsx`: Empty state displays (EmptyLibrary, EmptyPlaylists, etc.)
+- `hooks/useKeyboardNavigation.ts`: Global keyboard shortcuts (Space, arrows, Q, E, Escape)
