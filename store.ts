@@ -42,6 +42,7 @@ export const useStore = create<AppState>()(
       partialize: (state) => ({ 
           audioSettings: state.audioSettings,
           showSmartMixes: state.showSmartMixes,
+          hasCompletedSetup: state.hasCompletedSetup,
           spotifyClientId: state.spotifyClientId,
           spotifyClientSecret: state.spotifyClientSecret,
           spotifyAccessToken: state.spotifyAccessToken,

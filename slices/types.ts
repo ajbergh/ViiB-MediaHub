@@ -129,6 +129,7 @@ export interface UISlice {
   isQueueOpen: boolean;
   isNowPlayingOpen: boolean;
   showSmartMixes: boolean;
+  hasCompletedSetup: boolean;
   contextMenu: {
     isOpen: boolean;
     x: number;
@@ -142,6 +143,7 @@ export interface UISlice {
   setQueueOpen: (isOpen: boolean) => void;
   setNowPlayingOpen: (isOpen: boolean) => void;
   setShowSmartMixes: (show: boolean) => void;
+  setHasCompletedSetup: (completed: boolean) => void;
   
   openContextMenu: (e: React.MouseEvent, type: ContextMenuType, data: any) => void;
   closeContextMenu: () => void;

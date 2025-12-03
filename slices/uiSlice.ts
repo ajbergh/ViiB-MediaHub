@@ -24,6 +24,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
   isQueueOpen: false,
   isNowPlayingOpen: false,
   showSmartMixes: true,
+  hasCompletedSetup: false,
   logs: [],
   contextMenu: {
     isOpen: false,
@@ -37,6 +38,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
   setQueueOpen: (isOpen) => set({ isQueueOpen: isOpen }),
   setNowPlayingOpen: (isOpen) => set({ isNowPlayingOpen: isOpen }),
   setShowSmartMixes: (show) => set({ showSmartMixes: show }),
+  setHasCompletedSetup: (completed) => set({ hasCompletedSetup: completed }),
 
   openContextMenu: (e, type, data) => {
     e.preventDefault();

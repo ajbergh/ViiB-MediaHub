@@ -3,9 +3,31 @@
 
 $ErrorActionPreference = "Stop"
 
+# Preflight checks for common tooling
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Error "Node is not installed. Please install Node.js (LTS) and retry: https://nodejs.org/"
+    exit 1
+}
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Write-Error "npm not found. Please ensure npm is installed with Node.js and in PATH."
+    exit 1
+}
+if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
+    Write-Error "Go (golang) not found. Please install Go and retry: https://go.dev/dl/"
+    exit 1
+}
+if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
+    Write-Host "Warning: 'gcc' not found in PATH. If build fails due to CGO, install a suitable gcc (mingw64) for windows build." -ForegroundColor Yellow
+}
+
+# Warn user about PowerShell version/encoding concerns
+if ($PSVersionTable.PSVersion.Major -lt 6) {
+    Write-Host "Note: Running Windows PowerShell < 6 detected. Ensure this file is saved as 'UTF-8 with BOM' or run with PowerShell 7+ (pwsh) to avoid encoding issues." -ForegroundColor Yellow
+}
+
 Write-Host "Stopping any existing running Viib MediaHub Process..." -ForegroundColor Cyan
 Stop-Process -Name "ViiB-MediaHub" -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1
-Write-Host "🎵 Building ViiB MediaHub..." -ForegroundColor Cyan
+Write-Host "Building ViiB MediaHub..." -ForegroundColor Cyan
 
 # Get the script's directory (project root)
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -16,7 +38,7 @@ if (-not $projectRoot) {
 Write-Host "Project root: $projectRoot"
 
 # Step 1: Build Frontend
-Write-Host "`n📦 Building frontend..." -ForegroundColor Yellow
+Write-Host "`n[Frontend] Building..." -ForegroundColor Yellow
 Push-Location $projectRoot
 try {
     npm run build
@@ -28,7 +50,7 @@ try {
 }
 
 # Step 2: Copy frontend dist to backend embed location
-Write-Host "`n📋 Copying frontend to backend..." -ForegroundColor Yellow
+Write-Host "`n[Copy] Copying frontend to backend..." -ForegroundColor Yellow
 $distSource = Join-Path $projectRoot "dist"
 $distDest = Join-Path $projectRoot "backend\cmd\viib\dist"
 
@@ -39,7 +61,7 @@ if (Test-Path $distDest) {
 Copy-Item -Recurse $distSource $distDest
 
 # Step 3: Build Go backend
-Write-Host "`n🔨 Building Go backend..." -ForegroundColor Yellow
+Write-Host "`n[Go] Building Go backend..." -ForegroundColor Yellow
 Push-Location (Join-Path $projectRoot "backend")
 try {
     # Get dependencies
@@ -88,7 +110,7 @@ try {
         throw "Go build failed"
     }
     
-    Write-Host "`n✅ Build complete!" -ForegroundColor Green
+    Write-Host "`nBuild complete!" -ForegroundColor Green
     Write-Host "Output: $outputPath" -ForegroundColor Cyan
     
     # Get file size
@@ -99,4 +121,4 @@ try {
     Pop-Location
 }
 
-Write-Host "`n🚀 To run: .\build\ViiB-MediaHub.exe" -ForegroundColor Magenta
+Write-Host "`nTo run: .\build\ViiB-MediaHub.exe" -ForegroundColor Magenta

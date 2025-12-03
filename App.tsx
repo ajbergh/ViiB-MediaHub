@@ -34,6 +34,7 @@ import { api } from './services/api';
 import DownloadManager from './components/DownloadManager';
 import LibraryEventListener from './components/LibraryEventListener';
 import ConfirmDialog from './components/ConfirmDialog';
+import FirstLaunchDialog from './components/FirstLaunchDialog';
 import { useBackgroundEnrichment } from './hooks/useBackgroundEnrichment';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -63,6 +64,9 @@ const App: React.FC = () => {
   const { spotifyAccessToken, setSpotifyTokens, setSpotifyCredentials } = useStore();
   const confirmDialog = useStore(state => state.confirmDialog);
   const closeConfirmDialog = useStore(state => state.closeConfirmDialog);
+  const hasCompletedSetup = useStore(state => state.hasCompletedSetup);
+  const setHasCompletedSetup = useStore(state => state.setHasCompletedSetup);
+  const backendAvailable = useStore(state => state.backendAvailable);
 
   // Background metadata enrichment for unchecked albums
   useBackgroundEnrichment();
@@ -70,6 +74,37 @@ const App: React.FC = () => {
   useEffect(() => {
     initLibrary();
   }, [initLibrary]);
+
+  // Check for existing configuration and auto-complete setup if data exists
+  useEffect(() => {
+      const checkExistingConfig = async () => {
+          if (!backendAvailable || hasCompletedSetup) {
+              return;
+          }
+
+          try {
+              // Check if database has existing configuration data
+              const [folders, creds, songs] = await Promise.all([
+                  api.getFolders().catch(() => []),
+                  api.getSpotifyCredentials().catch(() => null),
+                  api.getSongs().catch(() => [])
+              ]);
+
+              // If we have scan folders or songs or Spotify credentials, mark setup as complete
+              const hasExistingData = folders.length > 0 || songs.length > 0 || 
+                                     (creds && creds.clientId && creds.clientSecret);
+              
+              if (hasExistingData) {
+                  console.log("Existing configuration detected, skipping first launch dialog");
+                  setHasCompletedSetup(true);
+              }
+          } catch (e) {
+              console.error("Failed to check existing configuration", e);
+          }
+      };
+
+      checkExistingConfig();
+  }, [backendAvailable, hasCompletedSetup, setHasCompletedSetup]);
 
   // Sync Spotify credentials from backend on startup
   useEffect(() => {
@@ -131,6 +166,11 @@ const App: React.FC = () => {
         variant={confirmDialog?.variant}
         onConfirm={() => confirmDialog?.onConfirm()}
         onCancel={closeConfirmDialog}
+      />
+      {/* First Launch Setup Dialog */}
+      <FirstLaunchDialog
+        isOpen={backendAvailable && !hasCompletedSetup}
+        onComplete={() => setHasCompletedSetup(true)}
       />
     </BrowserRouter>
   );
