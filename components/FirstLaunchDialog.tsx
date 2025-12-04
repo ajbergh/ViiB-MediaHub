@@ -33,29 +33,29 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
   const [step, setStep] = useState(1);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState('');
-  
+
   // Folder browser state
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
   const [browserPath, setBrowserPath] = useState('');
   const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingBrowser, setLoadingBrowser] = useState(false);
-  
+
   // Spotify credentials state
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [savingCredentials, setSavingCredentials] = useState(false);
-  
+
   // Spotify download folder browser state
   const [showDownloadFolderBrowser, setShowDownloadFolderBrowser] = useState(false);
   const [downloadBrowserPath, setDownloadBrowserPath] = useState('');
   const [downloadBrowserEntries, setDownloadBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingDownloadBrowser, setLoadingDownloadBrowser] = useState(false);
   const [spotifyDownloadPath, setSpotifyDownloadPath] = useState('');
-  
-  const { 
-    scanFolders, 
-    loadScanFolders, 
-    addScanFolder, 
+
+  const {
+    scanFolders,
+    loadScanFolders,
+    addScanFolder,
     removeScanFolder,
     setSpotifyCredentials,
     addLog
@@ -148,7 +148,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
     if (!clientId.trim() || !clientSecret.trim()) {
       return;
     }
-    
+
     setSavingCredentials(true);
     try {
       setSpotifyCredentials(clientId, clientSecret);
@@ -160,7 +160,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         expiry: 0
       });
       addLog('success', 'Spotify credentials saved');
-      
+
       // Save download path if specified
       if (spotifyDownloadPath.trim()) {
         try {
@@ -170,7 +170,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           addLog('warn', 'Failed to save download location', e);
         }
       }
-      
+
       setStep(4);
     } catch (e) {
       addLog('error', 'Failed to save Spotify credentials', e);
@@ -184,19 +184,19 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       addLog('warn', 'No folders to scan');
       return;
     }
-    
+
     setIsScanning(true);
     setScanProgress('Starting scan...');
-    
+
     try {
       await api.startScan();
-      
+
       // Poll for scan status
       const pollInterval = setInterval(async () => {
         try {
           const status = await api.getScanStatus();
           setScanProgress(status.progress);
-          
+
           if (!status.scanning) {
             clearInterval(pollInterval);
             setIsScanning(false);
@@ -207,14 +207,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           console.error('Failed to poll scan status', e);
         }
       }, 500);
-      
+
       // Safety timeout after 5 minutes
       setTimeout(() => {
         clearInterval(pollInterval);
         setIsScanning(false);
         onComplete();
       }, 300000);
-      
+
     } catch (e) {
       addLog('error', 'Failed to start scan', e);
       setIsScanning(false);
@@ -232,73 +232,79 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
 
   // Step 1: Welcome
   const renderWelcome = () => (
-    <div className="text-center py-8">
-      <div className="flex justify-center mb-6">
-        <div className="p-6 bg-gradient-to-br from-brand/20 to-brand/5 rounded-full">
-          <Music size={64} className="text-brand" />
+    <div className="text-center py-8 animate-fade-in">
+      <div className="flex justify-center mb-8">
+        <div className="relative">
+          <div className="absolute inset-0 bg-brand blur-3xl opacity-20 rounded-full"></div>
+          <div className="relative p-8 bg-gradient-to-br from-surface-2 to-surface-1 border border-surface-border rounded-full shadow-2xl shadow-black/50">
+            <Music size={64} className="text-brand drop-shadow-lg" />
+          </div>
         </div>
       </div>
-      
-      <h1 className="text-4xl font-bold text-white mb-4">
-        Welcome to ViiB MediaHub
+
+      <h1 className="text-5xl font-bold text-white mb-6 tracking-tight">
+        Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-brand-hover">ViiB MediaHub</span>
       </h1>
-      
-      <p className="text-lg text-text-secondary max-w-lg mx-auto mb-8 leading-relaxed">
+
+      <p className="text-xl text-text-secondary max-w-2xl mx-auto mb-12 leading-relaxed font-light">
         Your personal music player with powerful library management and Spotify integration.
         Let's get you set up in just a few steps.
       </p>
-      
-      <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto mb-10">
-        <div className="bg-surface-1 border border-surface-border rounded-xl p-5">
-          <div className="flex justify-center mb-3">
-            <div className="p-3 bg-brand/10 rounded-lg">
-              <FolderOpen size={28} className="text-brand" />
+
+      <div className="grid grid-cols-3 gap-6 max-w-3xl mx-auto mb-12">
+        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
+          <div className="flex justify-center mb-4">
+            <div className="p-4 bg-surface-2 rounded-xl group-hover:bg-brand/10 transition-colors">
+              <FolderOpen size={32} className="text-brand" />
             </div>
           </div>
-          <h3 className="font-bold text-white mb-2">Add Music</h3>
-          <p className="text-sm text-text-subtle">
+          <h3 className="text-lg font-bold text-white mb-2">Add Music</h3>
+          <p className="text-sm text-text-subtle group-hover:text-text-secondary transition-colors">
             Select folders containing your music collection
           </p>
         </div>
-        
-        <div className="bg-surface-1 border border-surface-border rounded-xl p-5">
-          <div className="flex justify-center mb-3">
-            <div className="p-3 bg-brand/10 rounded-lg">
-              <Wifi size={28} className="text-brand" />
+
+        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
+          <div className="flex justify-center mb-4">
+            <div className="p-4 bg-surface-2 rounded-xl group-hover:bg-brand/10 transition-colors">
+              <Wifi size={32} className="text-brand" />
             </div>
           </div>
-          <h3 className="font-bold text-white mb-2">Spotify Sync</h3>
-          <p className="text-sm text-text-subtle">
+          <h3 className="text-lg font-bold text-white mb-2">Spotify Sync</h3>
+          <p className="text-sm text-text-subtle group-hover:text-text-secondary transition-colors">
             Optional metadata enrichment and downloads
           </p>
         </div>
-        
-        <div className="bg-surface-1 border border-surface-border rounded-xl p-5">
-          <div className="flex justify-center mb-3">
-            <div className="p-3 bg-brand/10 rounded-lg">
-              <Sparkles size={28} className="text-brand" />
+
+        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
+          <div className="flex justify-center mb-4">
+            <div className="p-4 bg-surface-2 rounded-xl group-hover:bg-brand/10 transition-colors">
+              <Sparkles size={32} className="text-brand" />
             </div>
           </div>
-          <h3 className="font-bold text-white mb-2">Start Listening</h3>
-          <p className="text-sm text-text-subtle">
+          <h3 className="text-lg font-bold text-white mb-2">Start Listening</h3>
+          <p className="text-sm text-text-subtle group-hover:text-text-secondary transition-colors">
             Enjoy your music with powerful features
           </p>
         </div>
       </div>
-      
-      <button
-        onClick={() => setStep(2)}
-        className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-8 rounded-full transition-all shadow-lg shadow-brand/20 flex items-center gap-2 mx-auto"
-      >
-        Let's Get Started <ChevronRight size={20} />
-      </button>
-      
-      <button
-        onClick={handleFinish}
-        className="mt-4 text-text-subtle hover:text-text-secondary text-sm underline"
-      >
-        Skip setup for now
-      </button>
+
+      <div className="flex flex-col items-center gap-4">
+        <button
+          onClick={() => setStep(2)}
+          className="group relative bg-brand hover:bg-brand-hover text-black font-bold py-4 px-10 rounded-full transition-all shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105 flex items-center gap-3 text-lg"
+        >
+          <span>Let's Get Started</span>
+          <ChevronRight size={24} className="group-hover:translate-x-1 transition-transform" />
+        </button>
+
+        <button
+          onClick={handleFinish}
+          className="text-text-subtle hover:text-text-secondary text-sm hover:underline transition-colors"
+        >
+          Skip setup for now
+        </button>
+      </div>
     </div>
   );
 
@@ -314,12 +320,12 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <p className="text-text-secondary">Select folders containing your audio files</p>
         </div>
       </div>
-      
+
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
         <p className="text-sm text-text-secondary mb-4">
           ViiB MediaHub will scan these folders for MP3 and OGG files. You can add multiple folders and manage them later in Settings.
         </p>
-        
+
         {/* List of scan folders */}
         <div className="space-y-2 mb-4">
           {scanFolders.length === 0 ? (
@@ -335,7 +341,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                     <div className="font-mono text-sm text-text-main truncate">{folder.path}</div>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => removeScanFolder(folder.id)}
                   className="p-2 text-text-subtle hover:text-red-500 transition-colors ml-2"
                   title="Remove folder"
@@ -346,15 +352,15 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
             ))
           )}
         </div>
-        
-        <button 
+
+        <button
           onClick={openFolderBrowser}
           className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main font-bold py-3 px-5 rounded-lg transition-all border border-surface-border w-full justify-center"
         >
           <Plus size={18} /> Add Folder
         </button>
       </div>
-      
+
       <div className="flex items-center justify-between">
         <button
           onClick={() => setStep(1)}
@@ -362,7 +368,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         >
           ← Back
         </button>
-        
+
         <div className="flex items-center gap-3">
           <button
             onClick={handleSkipToEnd}
@@ -394,13 +400,13 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <p className="text-text-secondary">Optional - Enhance your library with metadata</p>
         </div>
       </div>
-      
+
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
         <p className="text-sm text-text-secondary mb-4">
-          Connect your Spotify Developer account to automatically fetch high-quality album artwork, 
+          Connect your Spotify Developer account to automatically fetch high-quality album artwork,
           artist images, and metadata for your local music library.
         </p>
-        
+
         <div className="bg-surface-2 border border-brand/30 rounded-lg p-4 mb-6">
           <h4 className="text-sm font-bold text-white mb-2">What you'll get:</h4>
           <ul className="text-sm text-text-secondary space-y-1">
@@ -418,34 +424,34 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
             </li>
           </ul>
         </div>
-        
+
         <div className="space-y-4 mb-4">
           <div>
             <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
               Spotify Client ID
             </label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               placeholder="Enter your Client ID"
               className="w-full bg-surface-2 border border-surface-border rounded-lg px-4 py-3 text-text-main focus:border-brand outline-none transition-colors"
             />
           </div>
-          
+
           <div>
             <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
               Spotify Client Secret
             </label>
-            <input 
-              type="password" 
+            <input
+              type="password"
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
               placeholder="Enter your Client Secret"
               className="w-full bg-surface-2 border border-surface-border rounded-lg px-4 py-3 text-text-main focus:border-brand outline-none transition-colors"
             />
           </div>
-          
+
           <div>
             <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
               Download Location (Optional)
@@ -454,14 +460,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
               Where should Spotify downloads be saved? Leave empty for default location.
             </p>
             <div className="flex items-center gap-2">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={spotifyDownloadPath}
                 onChange={(e) => setSpotifyDownloadPath(e.target.value)}
                 placeholder="Default: AppData/ViiB-MediaHub/spotify_downloads"
                 className="flex-1 bg-surface-2 border border-surface-border rounded-lg px-4 py-3 text-text-main focus:border-brand outline-none font-mono text-sm"
               />
-              <button 
+              <button
                 onClick={openDownloadFolderBrowser}
                 className="bg-surface-2 border border-surface-border hover:bg-surface-hover text-text-main font-bold py-3 px-4 rounded-lg transition-colors flex items-center gap-2"
                 title="Browse folders"
@@ -471,20 +477,20 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
             </div>
           </div>
         </div>
-        
+
         <div className="text-xs text-text-subtle">
           Don't have credentials? Create a free app at{' '}
-          <a 
-            href="https://developer.spotify.com/dashboard" 
-            target="_blank" 
-            rel="noreferrer" 
+          <a
+            href="https://developer.spotify.com/dashboard"
+            target="_blank"
+            rel="noreferrer"
             className="text-brand hover:underline"
           >
             developer.spotify.com/dashboard
           </a>
         </div>
       </div>
-      
+
       <div className="flex items-center justify-between">
         <button
           onClick={() => setStep(2)}
@@ -492,7 +498,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         >
           ← Back
         </button>
-        
+
         <div className="flex items-center gap-3">
           <button
             onClick={() => setStep(4)}
@@ -529,17 +535,17 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <Check size={64} className="text-green-500" />
         </div>
       </div>
-      
+
       <h2 className="text-3xl font-bold text-white mb-4">
         You're All Set!
       </h2>
-      
+
       <p className="text-lg text-text-secondary max-w-lg mx-auto mb-8 leading-relaxed">
-        {scanFolders.length > 0 
+        {scanFolders.length > 0
           ? `Ready to scan ${scanFolders.length} folder${scanFolders.length > 1 ? 's' : ''} and build your music library.`
           : 'You can add music folders anytime from Settings.'}
       </p>
-      
+
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 max-w-md mx-auto mb-8">
         <h3 className="font-bold text-white mb-4">What's Next?</h3>
         <div className="space-y-3 text-left">
@@ -580,7 +586,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           </div>
         </div>
       </div>
-      
+
       <div className="flex items-center justify-center gap-4">
         {scanFolders.length > 0 ? (
           <>
@@ -618,7 +624,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           </button>
         )}
       </div>
-      
+
       {isScanning && scanProgress && (
         <div className="mt-6 bg-surface-2 border border-surface-border rounded-lg p-4 max-w-md mx-auto">
           <p className="text-sm text-brand font-mono">{scanProgress}</p>
@@ -639,14 +645,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                 <span className="text-xs text-text-subtle">Step {step - 1} of 3</span>
               </div>
               <div className="h-2 bg-surface-1 rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-brand transition-all duration-500 ease-out rounded-full"
                   style={{ width: `${((step - 1) / 3) * 100}%` }}
                 />
               </div>
             </div>
           )}
-          
+
           {/* Step Content */}
           {step === 1 && renderWelcome()}
           {step === 2 && renderFolderSetup()}
@@ -661,19 +667,19 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">Select Music Folder</h2>
-              <button 
+              <button
                 onClick={() => setShowFolderBrowser(false)}
                 className="p-2 hover:bg-surface-3 rounded-lg transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
-            
+
             {/* Current Path */}
             <div className="bg-surface-1 border border-surface-border rounded-lg p-3 mb-4 font-mono text-sm text-text-main truncate">
               {browserPath || 'Loading...'}
             </div>
-            
+
             {/* Folder List */}
             <div className="flex-1 overflow-y-auto bg-surface-1 border border-surface-border rounded-lg mb-4 min-h-[300px]">
               {loadingBrowser ? (
@@ -698,16 +704,16 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                 </div>
               )}
             </div>
-            
+
             {/* Actions */}
             <div className="flex items-center justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setShowFolderBrowser(false)}
                 className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={selectCurrentFolder}
                 disabled={!browserPath}
                 className="px-6 py-2 rounded-lg font-bold bg-brand hover:bg-brand-hover disabled:opacity-50 text-black transition-colors flex items-center gap-2"
@@ -725,19 +731,19 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">Select Download Folder</h2>
-              <button 
+              <button
                 onClick={() => setShowDownloadFolderBrowser(false)}
                 className="p-2 hover:bg-surface-3 rounded-lg transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
-            
+
             {/* Current Path */}
             <div className="bg-surface-1 border border-surface-border rounded-lg p-3 mb-4 font-mono text-sm text-text-main truncate">
               {downloadBrowserPath || 'Loading...'}
             </div>
-            
+
             {/* Folder List */}
             <div className="flex-1 overflow-y-auto bg-surface-1 border border-surface-border rounded-lg mb-4 min-h-[300px]">
               {loadingDownloadBrowser ? (
@@ -762,16 +768,16 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                 </div>
               )}
             </div>
-            
+
             {/* Actions */}
             <div className="flex items-center justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setShowDownloadFolderBrowser(false)}
                 className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={selectDownloadFolder}
                 disabled={!downloadBrowserPath}
                 className="px-6 py-2 rounded-lg font-bold bg-brand hover:bg-brand-hover disabled:opacity-50 text-black transition-colors flex items-center gap-2"
