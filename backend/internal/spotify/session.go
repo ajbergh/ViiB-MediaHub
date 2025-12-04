@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"sync"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/art-media-platform/amp.SDK/stdlib/task"
@@ -26,6 +28,7 @@ func sLog(format string, v ...interface{}) {
 //   - Session lifecycle management (initialization, login, cleanup)
 //   - Integration with amp.SDK task context for proper resource management
 //   - Session state tracking to prevent duplicate initializations
+//   - Session refresh when token changes
 //
 // Usage:
 //
@@ -35,11 +38,14 @@ func sLog(format string, v ...interface{}) {
 //	session, err := sm.GetSession()
 //	defer sm.Close()
 type SessionManager struct {
-	session     respot.Session // Active librespot session
-	accessToken string         // OAuth access token from Spotify Web API
-	cacheDir    string         // Directory for librespot cache files
-	taskCtx     task.Context   // amp.SDK task context for resource management
-	initialized bool           // Whether session has been initialized
+	session       respot.Session // Active librespot session
+	accessToken   string         // OAuth access token from Spotify Web API
+	lastTokenUsed string         // Track which token was used to init session
+	cacheDir      string         // Directory for librespot cache files
+	taskCtx       task.Context   // amp.SDK task context for resource management
+	initialized   bool           // Whether session has been initialized
+	initTime      int64          // Unix timestamp when session was initialized
+	mu            sync.RWMutex   // Protects session state
 }
 
 // NewSessionManager creates a new Spotify session manager.
@@ -61,17 +67,20 @@ func NewSessionManager(accessToken, cacheDir string) *SessionManager {
 
 // UpdateAccessToken updates the access token for the session.
 // This should be called if the OAuth token is refreshed or changed.
-// Note: The session must be re-initialized after updating the token.
+// Note: If the token has changed since last initialization, the session
+// will be re-initialized with the new token.
 //
 // Parameters:
 //   - accessToken: New OAuth access token from Spotify Web API
 func (sm *SessionManager) UpdateAccessToken(accessToken string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	sm.accessToken = accessToken
 }
 
 // Initialize creates and authenticates a Spotify session using OAuth.
-// This method is idempotent - calling it multiple times has no effect if
-// already initialized.
+// If the session is already initialized with a different token, it will
+// be re-initialized with the new token.
 //
 // The initialization process:
 //  1. Creates cache directory if it doesn't exist
@@ -84,9 +93,28 @@ func (sm *SessionManager) UpdateAccessToken(accessToken string) {
 // Returns:
 //   - error if any step fails (cache creation, token validation, session start, login)
 func (sm *SessionManager) Initialize() (err error) {
-	if sm.initialized {
-		sLog("Session already initialized, skipping")
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Check if already initialized with the same token
+	if sm.initialized && sm.lastTokenUsed == sm.accessToken {
+		sLog("Session already initialized with current token, skipping")
 		return nil
+	}
+
+	// If initialized with a different token, we need to re-initialize
+	if sm.initialized && sm.lastTokenUsed != sm.accessToken {
+		sLog("Token changed, re-initializing session...")
+		// Close existing session
+		if sm.session != nil {
+			sm.session.Close()
+			sm.session = nil
+		}
+		if sm.taskCtx != nil {
+			sm.taskCtx.Close()
+			sm.taskCtx = nil
+		}
+		sm.initialized = false
 	}
 
 	sLog("Starting session initialization...")
@@ -104,6 +132,7 @@ func (sm *SessionManager) Initialize() (err error) {
 			}
 			sm.session = nil
 			sm.initialized = false
+			sm.lastTokenUsed = ""
 		}
 	}()
 
@@ -161,6 +190,8 @@ func (sm *SessionManager) Initialize() (err error) {
 
 	sm.session = sess
 	sm.initialized = true
+	sm.lastTokenUsed = sm.accessToken
+	sm.initTime = time.Now().Unix()
 	sLog("Session initialized and logged in successfully!")
 	return nil
 }
@@ -178,10 +209,28 @@ func (sm *SessionManager) Initialize() (err error) {
 //	if err != nil { ... }
 //	asset, err := session.PinTrack(spotifyID, opts)
 func (sm *SessionManager) GetSession() (respot.Session, error) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
 	if !sm.initialized {
 		return nil, fmt.Errorf("session not initialized")
 	}
 	return sm.session, nil
+}
+
+// IsInitialized returns whether the session is currently initialized.
+func (sm *SessionManager) IsInitialized() bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.initialized
+}
+
+// GetInitTime returns the Unix timestamp when the session was initialized.
+// Returns 0 if not initialized.
+func (sm *SessionManager) GetInitTime() int64 {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.initTime
 }
 
 // Close closes the Spotify session and releases resources.
@@ -196,14 +245,21 @@ func (sm *SessionManager) GetSession() (respot.Session, error) {
 // Returns:
 //   - error: Only if session close fails (logged as warning, not returned)
 func (sm *SessionManager) Close() error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
 	if sm.session != nil {
 		if err := sm.session.Close(); err != nil {
 			sLog("Warning: Failed to close session: %v", err)
 		}
+		sm.session = nil
 		sm.initialized = false
+		sm.lastTokenUsed = ""
+		sm.initTime = 0
 	}
 	if sm.taskCtx != nil {
 		sm.taskCtx.Close()
+		sm.taskCtx = nil
 	}
 	return nil
 }

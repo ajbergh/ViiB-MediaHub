@@ -10,6 +10,8 @@
  * - Automatic song advancement and play count recording
  * - EQ band synchronization with audio settings
  * - Volume control through master gain node
+ * - Pre-buffering of next track for smooth transitions
+ * - Buffering state management for streaming tracks
  * 
  * Architecture:
  * - Uses two <audio> elements (primary/secondary) for transitions
@@ -22,6 +24,42 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useStore } from '../store';
 import { audioEngine } from '../lib/audio';
+import { StreamingErrorType } from '../slices/types';
+
+// Pre-buffer threshold: start preloading next track when X seconds remain
+const PRELOAD_THRESHOLD_SECONDS = 15;
+
+// Helper to determine error type from audio element error
+const getStreamingErrorType = (error: MediaError | null): StreamingErrorType => {
+    if (!error) return 'unknown';
+    
+    switch (error.code) {
+        case MediaError.MEDIA_ERR_NETWORK:
+            return 'network';
+        case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            return 'unavailable';
+        case MediaError.MEDIA_ERR_DECODE:
+            return 'unavailable';
+        case MediaError.MEDIA_ERR_ABORTED:
+            return 'unknown';
+        default:
+            return 'unknown';
+    }
+};
+
+// Helper to get user-friendly error message
+const getErrorMessage = (errorType: StreamingErrorType): string => {
+    switch (errorType) {
+        case 'network':
+            return 'Network connection lost. Check your internet connection.';
+        case 'auth':
+            return 'Spotify session expired. Please log in again.';
+        case 'unavailable':
+            return 'This track is not available for streaming.';
+        default:
+            return 'An error occurred during playback.';
+    }
+};
 
 export const useAudioPlayer = () => {
     // Dual Refs for Crossfading
@@ -29,13 +67,21 @@ export const useAudioPlayer = () => {
     const secondaryRef = useRef<HTMLAudioElement>(null);
     const activePlayerIndex = useRef<number>(0); // 0 or 1
     
+    // Track if we've already triggered preload for current song
+    const hasTriggeredPreload = useRef<string | null>(null);
+    
     // Local state for UI updates
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
+    
+    // Track buffering start time for duration calculation
+    const bufferStartTime = useRef<number | null>(null);
 
     const { 
         currentSong, isPlaying, volume, audioSettings,
-        nextSong, recordPlay
+        nextSong, recordPlay, preloadNextTrack, setBuffering, setBufferProgress,
+        setStreamError, retryStream, clearStreamError, showToast, retryCount,
+        recordStreamEvent
     } = useStore();
 
     // Init Engine & EQ
@@ -57,6 +103,213 @@ export const useAudioPlayer = () => {
     useEffect(() => {
         audioEngine.setVolume(volume);
     }, [volume]);
+    
+    // Network recovery detection
+    useEffect(() => {
+        const handleOnline = () => {
+            const { streamError, retryCount } = useStore.getState();
+            
+            // If we had a network error and network is back, offer to retry
+            if (streamError?.type === 'network' && currentSong?.isStreaming) {
+                console.log('[AudioPlayer] Network recovered, attempting to resume playback');
+                showToast({
+                    type: 'info',
+                    message: 'Connection restored. Resuming playback...',
+                    duration: 3000
+                });
+                
+                // Auto-retry if we haven't exceeded max attempts
+                if (retryCount < 3) {
+                    retryStream();
+                }
+            }
+        };
+        
+        const handleOffline = () => {
+            if (currentSong?.isStreaming) {
+                console.warn('[AudioPlayer] Network went offline');
+                showToast({
+                    type: 'warning',
+                    message: 'Network connection lost',
+                    duration: 3000
+                });
+            }
+        };
+        
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, [currentSong?.isStreaming, showToast, retryStream]);
+    
+    // Buffering and error event handlers for streaming tracks
+    useEffect(() => {
+        const primary = primaryRef.current;
+        const secondary = secondaryRef.current;
+        if (!primary || !secondary) return;
+        
+        const handleWaiting = () => {
+            // Only show buffering for streaming tracks
+            if (currentSong?.isStreaming) {
+                console.log('[AudioPlayer] Buffering started...');
+                setBuffering(true);
+                
+                // Track buffer start time for duration calculation
+                bufferStartTime.current = Date.now();
+                
+                // Record buffering event
+                recordStreamEvent({
+                    type: 'buffer_start',
+                    trackId: currentSong.spotifyId || currentSong.id,
+                    trackTitle: currentSong.title,
+                    timestamp: Date.now()
+                });
+            }
+        };
+        
+        const handleCanPlay = () => {
+            if (currentSong?.isStreaming) {
+                console.log('[AudioPlayer] Buffering complete, can play');
+                setBuffering(false);
+                // Clear any previous errors on successful playback
+                clearStreamError();
+                
+                // Record buffer end with duration
+                if (bufferStartTime.current) {
+                    const bufferDuration = Date.now() - bufferStartTime.current;
+                    recordStreamEvent({
+                        type: 'buffer_end',
+                        trackId: currentSong.spotifyId || currentSong.id,
+                        trackTitle: currentSong.title,
+                        duration: bufferDuration,
+                        timestamp: Date.now()
+                    });
+                    bufferStartTime.current = null;
+                }
+            }
+        };
+        
+        const handleProgress = (e: Event) => {
+            const audio = e.target as HTMLAudioElement;
+            if (audio.buffered.length > 0 && audio.duration > 0) {
+                // Get the buffered range that includes current time
+                const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
+                const progress = Math.round((bufferedEnd / audio.duration) * 100);
+                setBufferProgress(progress);
+            }
+        };
+        
+        // Error handler for streaming failures
+        const handleError = (e: Event) => {
+            const audio = e.target as HTMLAudioElement;
+            
+            // Only handle errors for streaming tracks
+            if (!currentSong?.isStreaming) return;
+            
+            const errorType = getStreamingErrorType(audio.error);
+            const message = getErrorMessage(errorType);
+            
+            console.error('[AudioPlayer] Stream error:', errorType, audio.error?.message);
+            
+            // Record error event for analytics
+            recordStreamEvent({
+                type: 'error',
+                trackId: currentSong.spotifyId || currentSong.id,
+                trackTitle: currentSong.title,
+                errorType,
+                timestamp: Date.now()
+            });
+            
+            setBuffering(false);
+            setStreamError({
+                type: errorType,
+                message,
+                canRetry: errorType === 'network' || errorType === 'unknown',
+                timestamp: Date.now()
+            });
+            
+            // Auto-retry for network errors (up to max attempts)
+            if (errorType === 'network' && retryCount < 3) {
+                console.log('[AudioPlayer] Auto-retrying after network error...');
+                showToast({
+                    type: 'warning',
+                    message: 'Connection interrupted. Retrying...',
+                    duration: 3000
+                });
+                retryStream();
+            } else if (errorType === 'network') {
+                showToast({
+                    type: 'error',
+                    message: 'Unable to stream. Check your connection or try downloading the track.',
+                    duration: 5000
+                });
+            } else if (errorType === 'auth') {
+                showToast({
+                    type: 'error',
+                    message: 'Spotify session expired. Please log in again.',
+                    duration: 5000
+                });
+            } else if (errorType === 'unavailable') {
+                showToast({
+                    type: 'error',
+                    message: 'This track is not available for streaming.',
+                    duration: 4000
+                });
+                // Record skip event
+                recordStreamEvent({
+                    type: 'skip',
+                    trackId: currentSong.spotifyId || currentSong.id,
+                    trackTitle: currentSong.title,
+                    errorType: 'unavailable',
+                    timestamp: Date.now()
+                });
+                // Skip to next track after a short delay
+                setTimeout(() => nextSong(), 2000);
+            }
+        };
+        
+        // Stall handler - detect when stream stops unexpectedly
+        const handleStalled = () => {
+            if (currentSong?.isStreaming) {
+                console.warn('[AudioPlayer] Stream stalled');
+                setBuffering(true);
+            }
+        };
+        
+        // Add listeners to both audio elements
+        primary.addEventListener('waiting', handleWaiting);
+        primary.addEventListener('canplay', handleCanPlay);
+        primary.addEventListener('canplaythrough', handleCanPlay);
+        primary.addEventListener('progress', handleProgress);
+        primary.addEventListener('error', handleError);
+        primary.addEventListener('stalled', handleStalled);
+        
+        secondary.addEventListener('waiting', handleWaiting);
+        secondary.addEventListener('canplay', handleCanPlay);
+        secondary.addEventListener('canplaythrough', handleCanPlay);
+        secondary.addEventListener('progress', handleProgress);
+        secondary.addEventListener('error', handleError);
+        secondary.addEventListener('stalled', handleStalled);
+        
+        return () => {
+            primary.removeEventListener('waiting', handleWaiting);
+            primary.removeEventListener('canplay', handleCanPlay);
+            primary.removeEventListener('canplaythrough', handleCanPlay);
+            primary.removeEventListener('progress', handleProgress);
+            primary.removeEventListener('error', handleError);
+            primary.removeEventListener('stalled', handleStalled);
+            
+            secondary.removeEventListener('waiting', handleWaiting);
+            secondary.removeEventListener('canplay', handleCanPlay);
+            secondary.removeEventListener('canplaythrough', handleCanPlay);
+            secondary.removeEventListener('progress', handleProgress);
+            secondary.removeEventListener('error', handleError);
+            secondary.removeEventListener('stalled', handleStalled);
+        };
+    }, [currentSong, setBuffering, setBufferProgress, setStreamError, clearStreamError, retryStream, showToast, retryCount, nextSong, recordStreamEvent]);
 
     // Playback Logic (Transition Handling)
     useEffect(() => {
@@ -84,6 +337,26 @@ export const useAudioPlayer = () => {
             const nextIndex = (currentIndex + 1) % 2;
             const nextPlayer = nextIndex === 0 ? primary : secondary;
             
+            // Reset preload trigger for new song
+            hasTriggeredPreload.current = null;
+            
+            // Reset buffering state for new track
+            if (currentSong.isStreaming) {
+                setBuffering(true);
+                setBufferProgress(0);
+                
+                // Record stream start event
+                recordStreamEvent({
+                    type: 'start',
+                    trackId: currentSong.spotifyId || currentSong.id,
+                    trackTitle: currentSong.title,
+                    timestamp: Date.now()
+                });
+            } else {
+                setBuffering(false);
+                setBufferProgress(100);
+            }
+            
             nextPlayer.src = currentSong.url;
             nextPlayer.load();
 
@@ -110,7 +383,7 @@ export const useAudioPlayer = () => {
             }
         }
 
-    }, [currentSong, isPlaying, audioSettings.crossfadeDuration]);
+    }, [currentSong, isPlaying, audioSettings.crossfadeDuration, setBuffering, setBufferProgress, recordStreamEvent]);
 
     // Handlers
     const handleTimeUpdate = (playerIndex: number) => {
@@ -118,8 +391,21 @@ export const useAudioPlayer = () => {
         
         const player = playerIndex === 0 ? primaryRef.current : secondaryRef.current;
         if (player) {
-            setCurrentTime(player.currentTime);
-            setDuration(player.duration || 0);
+            const time = player.currentTime;
+            const dur = player.duration || 0;
+            
+            setCurrentTime(time);
+            setDuration(dur);
+            
+            // Trigger pre-buffering of next track when approaching end of current track
+            if (dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
+                // Only trigger once per song
+                if (hasTriggeredPreload.current !== currentSong?.id) {
+                    hasTriggeredPreload.current = currentSong?.id || null;
+                    console.log('[AudioPlayer] Triggering pre-buffer of next track');
+                    preloadNextTrack();
+                }
+            }
         }
     };
 
@@ -128,6 +414,16 @@ export const useAudioPlayer = () => {
         
         if (currentSong) {
             recordPlay(currentSong.id);
+            
+            // Record stream complete event for streaming tracks
+            if (currentSong.isStreaming) {
+                recordStreamEvent({
+                    type: 'complete',
+                    trackId: currentSong.spotifyId || currentSong.id,
+                    trackTitle: currentSong.title,
+                    timestamp: Date.now()
+                });
+            }
         }
         nextSong();
     };

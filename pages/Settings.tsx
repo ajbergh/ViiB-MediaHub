@@ -18,7 +18,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff } from 'lucide-react';
+import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3 } from 'lucide-react';
 import { useStore } from '../store';
 import { VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
@@ -30,6 +30,9 @@ export const Settings: React.FC = () => {
       setVisualizerMode, setEqEnabled, toggleEqPanel,
       showSmartMixes, setShowSmartMixes,
       spotifyClientId, spotifyClientSecret, setSpotifyCredentials,
+      streamingEnabled, streamingQuality, setStreamingEnabled, setStreamingQuality,
+      preferLocalPlayback, setPreferLocalPlayback,
+      streamingStats, resetStreamingStats,
       logs, clearLogs, addLog, addSongs, resetLibrary,
       isScanning, scanProgress, setScanning, setScanProgress,
       backendAvailable, scanFolders, loadScanFolders, addScanFolder, removeScanFolder, startBackendScan
@@ -816,6 +819,161 @@ export const Settings: React.FC = () => {
                 </p>
             </div>
         )}
+
+        {/* Spotify Streaming Settings */}
+        <div className="mb-6">
+            <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Spotify Streaming</label>
+            <p className="text-xs text-text-subtle mb-3">
+                Stream Spotify tracks directly without downloading first. Requires Spotify Premium.
+            </p>
+            
+            {/* Enable/Disable Streaming Toggle */}
+            <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg mb-3">
+                <div>
+                    <h3 className="text-sm text-text-main font-medium">Enable Streaming</h3>
+                    <p className="text-xs text-text-subtle">Play Spotify tracks instantly without downloading</p>
+                </div>
+                <button
+                    onClick={() => setStreamingEnabled(!streamingEnabled)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${streamingEnabled ? 'bg-brand' : 'bg-surface-3'}`}
+                >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${streamingEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                </button>
+            </div>
+            
+            {/* Streaming Quality Selector */}
+            <div className="bg-surface-1 p-4 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                    <div>
+                        <h3 className="text-sm text-text-main font-medium">Streaming Quality</h3>
+                        <p className="text-xs text-text-subtle">Higher quality uses more bandwidth</p>
+                    </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                    <button
+                        onClick={() => setStreamingQuality('high')}
+                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
+                            streamingQuality === 'high' 
+                                ? 'bg-brand text-black' 
+                                : 'bg-surface-2 text-text-secondary hover:bg-surface-3'
+                        }`}
+                    >
+                        High (320kbps)
+                    </button>
+                    <button
+                        onClick={() => setStreamingQuality('medium')}
+                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
+                            streamingQuality === 'medium' 
+                                ? 'bg-brand text-black' 
+                                : 'bg-surface-2 text-text-secondary hover:bg-surface-3'
+                        }`}
+                    >
+                        Medium (160kbps)
+                    </button>
+                    <button
+                        onClick={() => setStreamingQuality('low')}
+                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
+                            streamingQuality === 'low' 
+                                ? 'bg-brand text-black' 
+                                : 'bg-surface-2 text-text-secondary hover:bg-surface-3'
+                        }`}
+                    >
+                        Low (96kbps)
+                    </button>
+                </div>
+            </div>
+            
+            {/* Prefer Local Playback Toggle */}
+            <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg mt-3">
+                <div>
+                    <h3 className="text-sm text-text-main font-medium">Prefer Local Files</h3>
+                    <p className="text-xs text-text-subtle">When enabled, downloaded tracks play locally instead of streaming</p>
+                </div>
+                <button
+                    onClick={() => setPreferLocalPlayback(!preferLocalPlayback)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${preferLocalPlayback ? 'bg-brand' : 'bg-surface-3'}`}
+                >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${preferLocalPlayback ? 'translate-x-7' : 'translate-x-1'}`} />
+                </button>
+            </div>
+            
+            {/* Streaming Statistics */}
+            <div className="bg-surface-1 p-4 rounded-lg mt-3">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <BarChart3 size={16} className="text-brand" />
+                        <h3 className="text-sm text-text-main font-medium">Streaming Statistics</h3>
+                    </div>
+                    <button
+                        onClick={resetStreamingStats}
+                        className="text-xs text-text-subtle hover:text-text-secondary transition-colors"
+                    >
+                        Reset Stats
+                    </button>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {/* Total Streams */}
+                    <div className="bg-surface-2 p-3 rounded-lg">
+                        <div className="text-lg font-bold text-brand">{streamingStats.totalStreams}</div>
+                        <div className="text-xs text-text-subtle">Total Streams</div>
+                    </div>
+                    
+                    {/* Success Rate */}
+                    <div className="bg-surface-2 p-3 rounded-lg">
+                        <div className="text-lg font-bold text-green-500">
+                            {streamingStats.totalStreams > 0 
+                                ? Math.round((streamingStats.successfulStreams / streamingStats.totalStreams) * 100)
+                                : 100}%
+                        </div>
+                        <div className="text-xs text-text-subtle">Success Rate</div>
+                    </div>
+                    
+                    {/* Buffering Events */}
+                    <div className="bg-surface-2 p-3 rounded-lg">
+                        <div className="text-lg font-bold text-yellow-500">{streamingStats.bufferingEvents}</div>
+                        <div className="text-xs text-text-subtle">Buffer Events</div>
+                    </div>
+                    
+                    {/* Average Buffer Time */}
+                    <div className="bg-surface-2 p-3 rounded-lg">
+                        <div className="text-lg font-bold text-text-main">
+                            {streamingStats.averageBufferingDuration.toFixed(1)}s
+                        </div>
+                        <div className="text-xs text-text-subtle">Avg Buffer Time</div>
+                    </div>
+                </div>
+                
+                {/* Error Breakdown (if any errors) */}
+                {streamingStats.failedStreams > 0 && (
+                    <div className="mt-3 pt-3 border-t border-surface-3">
+                        <div className="text-xs text-text-subtle mb-2">Errors by Type</div>
+                        <div className="flex gap-4 text-xs">
+                            {streamingStats.errorsByType.network > 0 && (
+                                <span className="text-red-400">Network: {streamingStats.errorsByType.network}</span>
+                            )}
+                            {streamingStats.errorsByType.auth > 0 && (
+                                <span className="text-orange-400">Auth: {streamingStats.errorsByType.auth}</span>
+                            )}
+                            {streamingStats.errorsByType.unavailable > 0 && (
+                                <span className="text-yellow-400">Unavailable: {streamingStats.errorsByType.unavailable}</span>
+                            )}
+                            {streamingStats.errorsByType.unknown > 0 && (
+                                <span className="text-gray-400">Unknown: {streamingStats.errorsByType.unknown}</span>
+                            )}
+                        </div>
+                    </div>
+                )}
+                
+                {/* Last Streamed Track */}
+                {streamingStats.lastStreamedTrack && (
+                    <div className="mt-3 pt-3 border-t border-surface-3">
+                        <div className="text-xs text-text-subtle">Last Streamed</div>
+                        <div className="text-sm text-text-main truncate">{streamingStats.lastStreamedTrack}</div>
+                    </div>
+                )}
+            </div>
+        </div>
 
         <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg mb-4">
             <div>

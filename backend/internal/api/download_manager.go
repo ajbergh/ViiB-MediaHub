@@ -6,7 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -244,8 +247,9 @@ func (dm *DownloadManager) GetDownloadDir() string {
 // The method performs the following steps:
 //  1. Retrieves spotify_credentials from database settings
 //  2. Parses the JSON to extract the access token
-//  3. Updates the SessionManager with the current token
-//  4. Initializes the librespot session (if not already initialized)
+//  3. Checks for token expiry and refreshes if needed
+//  4. Updates the SessionManager with the current token
+//  5. Initializes the librespot session (if not already initialized)
 //
 // Returns:
 //   - error if credentials are missing, invalid, or session initialization fails
@@ -265,6 +269,8 @@ func (dm *DownloadManager) ensureSession() error {
 	dmLog("Got credentials from database (length: %d)", len(val))
 
 	var creds struct {
+		ClientId     string `json:"clientId"`
+		ClientSecret string `json:"clientSecret"`
 		AccessToken  string `json:"accessToken"`
 		RefreshToken string `json:"refreshToken"`
 		Expiry       int64  `json:"expiry"`
@@ -279,12 +285,36 @@ func (dm *DownloadManager) ensureSession() error {
 		return fmt.Errorf("access token not found in credentials")
 	}
 
-	// Check if token might be expired
+	// Check if token is expired or about to expire (within 5 minutes)
 	if creds.Expiry > 0 {
 		expiryTime := time.Unix(creds.Expiry/1000, 0) // Expiry is in milliseconds
+		expiryBuffer := 5 * time.Minute
 		dmLog("Token expiry: %s (now: %s)", expiryTime.Format(time.RFC3339), time.Now().Format(time.RFC3339))
-		if time.Now().After(expiryTime) {
-			dmLog("WARNING: Access token appears to be expired!")
+
+		if time.Now().Add(expiryBuffer).After(expiryTime) {
+			dmLog("Access token expired or expiring soon, attempting refresh...")
+
+			// Attempt token refresh if we have refresh token and client credentials
+			if creds.RefreshToken != "" && creds.ClientId != "" && creds.ClientSecret != "" {
+				newToken, newExpiry, err := dm.refreshAccessToken(creds.ClientId, creds.ClientSecret, creds.RefreshToken)
+				if err != nil {
+					dmLog("Failed to refresh token: %v", err)
+					// If refresh fails, we'll try with the old token anyway
+					// The frontend will need to re-authenticate
+				} else {
+					dmLog("Token refreshed successfully, new expiry: %s", time.Unix(newExpiry/1000, 0).Format(time.RFC3339))
+					creds.AccessToken = newToken
+					creds.Expiry = newExpiry
+
+					// Save the refreshed credentials back to database
+					updatedCreds, _ := json.Marshal(creds)
+					if err := dm.db.SetSetting("spotify_credentials", string(updatedCreds)); err != nil {
+						dmLog("Warning: Failed to save refreshed credentials: %v", err)
+					}
+				}
+			} else {
+				dmLog("Cannot refresh: missing refresh token or client credentials")
+			}
 		}
 	}
 
@@ -302,6 +332,75 @@ func (dm *DownloadManager) ensureSession() error {
 
 	dmLog("Session ready!")
 	return nil
+}
+
+// refreshAccessToken refreshes an expired OAuth access token using the refresh token.
+// This implements the Spotify OAuth token refresh flow.
+//
+// Parameters:
+//   - clientId: Spotify OAuth client ID
+//   - clientSecret: Spotify OAuth client secret
+//   - refreshToken: Refresh token from previous authorization
+//
+// Returns:
+//   - newAccessToken: Fresh access token
+//   - newExpiry: New expiry timestamp in milliseconds
+//   - error: If refresh fails
+func (dm *DownloadManager) refreshAccessToken(clientId, clientSecret, refreshToken string) (string, int64, error) {
+	dmLog("Refreshing Spotify access token...")
+
+	// Make token refresh request to Spotify
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	data := fmt.Sprintf("grant_type=refresh_token&refresh_token=%s&client_id=%s&client_secret=%s",
+		refreshToken, clientId, clientSecret)
+
+	req, err := http.NewRequest("POST", "https://accounts.spotify.com/api/token",
+		strings.NewReader(data))
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to create refresh request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", 0, fmt.Errorf("token refresh request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", 0, fmt.Errorf("token refresh failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return "", 0, fmt.Errorf("failed to parse token response: %w", err)
+	}
+
+	// Calculate new expiry timestamp (in milliseconds, with small buffer)
+	newExpiry := time.Now().Add(time.Duration(tokenResp.ExpiresIn-60) * time.Second).UnixMilli()
+
+	dmLog("Token refresh successful, expires in %d seconds", tokenResp.ExpiresIn)
+	return tokenResp.AccessToken, newExpiry, nil
+}
+
+// EnsureSession is an exported wrapper for ensureSession.
+// Used by the streaming API to initialize the session before streaming.
+func (dm *DownloadManager) EnsureSession() error {
+	return dm.ensureSession()
+}
+
+// GetSessionManager returns the session manager for use by the streaming API.
+// The session manager must be initialized via EnsureSession before use.
+func (dm *DownloadManager) GetSessionManager() *spotify.SessionManager {
+	return dm.sessionManager
 }
 
 // Stop halts download processing and waits for workers to finish
@@ -534,7 +633,7 @@ func (dm *DownloadManager) dispatchDownloads() {
 			dm.mu.Unlock()
 			continue // Already being processed
 		}
-		ctx, cancel := context.WithCancel(dm.ctx)
+		_, cancel := context.WithCancel(dm.ctx)
 		dm.activeDownloads[download.ID] = cancel
 		dm.mu.Unlock()
 
@@ -568,9 +667,7 @@ func (dm *DownloadManager) dispatchDownloads() {
 			delete(dm.activeDownloads, download.ID)
 			dm.mu.Unlock()
 			atomic.AddInt32(&dm.activeCount, -1)
-			ctx.Done() // Avoid context leak
-			_ = ctx    // Suppress unused warning
-			break
+			cancel() // Cancel context to avoid leak
 		}
 	}
 }

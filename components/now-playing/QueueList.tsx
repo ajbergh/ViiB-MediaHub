@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Play, GripVertical, Trash2 } from 'lucide-react';
+import { Play, GripVertical, Trash2, Download, CheckCircle, Loader2 } from 'lucide-react';
 import { useStore, useAlbumCovers } from '../../store';
 import { formatTime, generateGradient } from '../../utils';
 import { ContextMenuType } from '../../types';
+import { api } from '../../services/api';
 
 interface Props {
     queue: any[];
@@ -10,9 +11,36 @@ interface Props {
 }
 
 export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
-    const { playQueueItem, removeFromQueue, reorderQueue, openContextMenu } = useStore();
+    const { playQueueItem, removeFromQueue, reorderQueue, openContextMenu, showToast } = useStore();
     const albumCovers = useAlbumCovers();
     const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
+    const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
+    
+    const handleDownloadTrack = async (song: any, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!song.spotifyId || downloadingIds.has(song.spotifyId)) return;
+        
+        setDownloadingIds(prev => new Set(prev).add(song.spotifyId));
+        try {
+            await api.downloadTrack(
+                song.spotifyId,
+                song.title,
+                song.artist,
+                song.album,
+                song.duration
+            );
+            showToast({ type: 'success', message: `Queued: ${song.title}` });
+        } catch (error) {
+            console.error('Failed to queue download:', error);
+            showToast({ type: 'error', message: 'Failed to queue download' });
+        } finally {
+            setDownloadingIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(song.spotifyId);
+                return newSet;
+            });
+        }
+    };
 
     const handleDragStart = (e: React.DragEvent, index: number) => {
         setDraggedItemIndex(index);
@@ -77,6 +105,28 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
                         </div>
                         
                         <div className="text-sm font-mono text-white/30">{formatTime(song.duration)}</div>
+
+                        {/* Download button for streaming Spotify tracks */}
+                        {song.spotifyId && song.isStreaming && (
+                            <button 
+                                onClick={(e) => handleDownloadTrack(song, e)}
+                                disabled={downloadingIds.has(song.spotifyId)}
+                                className="p-2 text-white/30 hover:text-brand opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                                title="Download for offline"
+                            >
+                                {downloadingIds.has(song.spotifyId) ? (
+                                    <Loader2 size={18} className="animate-spin" />
+                                ) : (
+                                    <Download size={18} />
+                                )}
+                            </button>
+                        )}
+                        {/* Show downloaded indicator */}
+                        {song.spotifyId && !song.isStreaming && (
+                            <div className="p-2 text-brand" title="Downloaded">
+                                <CheckCircle size={18} />
+                            </div>
+                        )}
 
                         <button 
                             onClick={(e) => { e.stopPropagation(); removeFromQueue(idx); }}

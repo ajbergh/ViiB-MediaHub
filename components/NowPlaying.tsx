@@ -20,9 +20,10 @@
 
 import React, { useState } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { X, Play, Pause, SkipBack, SkipForward, Shuffle, Heart, ListMusic, Activity, SlidersHorizontal, Image as ImageIcon, Volume2 } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, Shuffle, Heart, ListMusic, Activity, SlidersHorizontal, Image as ImageIcon, Volume2, Download, Loader2, CheckCircle } from 'lucide-react';
 import { formatTime, generateGradient, cssUrl } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
+import { api } from '../services/api';
 import { Visualizer } from './Visualizer';
 import { LyricsView } from './now-playing/LyricsView';
 import { QueueList } from './now-playing/QueueList';
@@ -48,15 +49,41 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
         openContextMenu,
         audioSettings,
         setVisualizerMode,
-        toggleEqPanel
+        toggleEqPanel,
+        showToast
     } = useStore();
     
     const albumCovers = useAlbumCovers();
     const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS'>('LYRICS');
+    const [isDownloading, setIsDownloading] = useState(false);
 
     if (!currentSong) return null;
 
     const coverUrl = currentSong.coverUrl || albumCovers[currentSong.album];
+    
+    // Check if current track is a streaming Spotify track (not downloaded)
+    const isSpotifyStreaming = currentSong.spotifyId && currentSong.isStreaming;
+    
+    const handleDownloadTrack = async () => {
+        if (!currentSong.spotifyId || isDownloading) return;
+        
+        setIsDownloading(true);
+        try {
+            await api.downloadTrack(
+                currentSong.spotifyId,
+                currentSong.title,
+                currentSong.artist,
+                currentSong.album,
+                currentSong.duration
+            );
+            showToast({ type: 'success', message: `Queued for download: ${currentSong.title}` });
+        } catch (error) {
+            console.error('Failed to queue download:', error);
+            showToast({ type: 'error', message: 'Failed to queue download' });
+        } finally {
+            setIsDownloading(false);
+        }
+    };
     
     const cycleVisualizer = () => {
         const modes: VisualizerMode[] = ['OFF', 'WAVE', 'SPECTRUM', 'AURORA'];
@@ -148,9 +175,32 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                 {currentSong.artist}
                             </h2>
                         </div>
-                        <button className="text-white/50 hover:text-green-500 hover:scale-110 transition-all">
-                            <Heart size={32} />
-                        </button>
+                        <div className="flex items-center gap-3">
+                            {/* Download button for streaming Spotify tracks */}
+                            {isSpotifyStreaming && (
+                                <button 
+                                    onClick={handleDownloadTrack}
+                                    disabled={isDownloading}
+                                    className="text-white/50 hover:text-brand hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Download for offline"
+                                >
+                                    {isDownloading ? (
+                                        <Loader2 size={28} className="animate-spin" />
+                                    ) : (
+                                        <Download size={28} />
+                                    )}
+                                </button>
+                            )}
+                            {/* Show checkmark if track is downloaded (has spotifyId but not streaming) */}
+                            {currentSong.spotifyId && !currentSong.isStreaming && (
+                                <div className="text-brand" title="Downloaded">
+                                    <CheckCircle size={28} />
+                                </div>
+                            )}
+                            <button className="text-white/50 hover:text-green-500 hover:scale-110 transition-all">
+                                <Heart size={32} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 

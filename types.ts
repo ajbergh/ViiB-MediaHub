@@ -39,14 +39,18 @@ export interface Song {
   genre?: string[];
   year?: number;
   duration: number; // in seconds
-  url: string; // Ephemeral Blob URL
+  url: string; // Ephemeral Blob URL or streaming URL
   fileHandle?: FileSystemFileHandle; // Persisted handle
   coverUrl?: string;
   coverData?: Blob; // Persisted artwork data
   addedAt: number;
   path?: string; // relative path for folder association
   fileHash?: string; // placeholder for hash
-  
+
+  // Spotify streaming support
+  spotifyId?: string; // Spotify track ID for direct streaming
+  isStreaming?: boolean; // True if currently streaming from Spotify (not downloaded)
+
   // Usage Metrics
   playCount?: number;
   lastPlayed?: number; // timestamp

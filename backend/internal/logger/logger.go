@@ -104,6 +104,11 @@ func SpotifyDownloader(format string, v ...interface{}) {
 	Log("SpotifyDownloader", format, v...)
 }
 
+// SpotifyStreamer logs a message with [SpotifyStreamer] prefix
+func SpotifyStreamer(format string, v ...interface{}) {
+	Log("SpotifyStreamer", format, v...)
+}
+
 // Main logs a message with [Main] prefix
 func Main(format string, v ...interface{}) {
 	Log("Main", format, v...)

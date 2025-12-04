@@ -32,6 +32,15 @@ export interface PlayerSlice {
   audioSettings: AudioSettings;
   isEqOpen: boolean;
   
+  // Buffering state for streaming
+  isBuffering: boolean;
+  bufferProgress: number; // 0-100 percentage
+  preloadedTrackId: string | null; // ID of preloaded next track
+  
+  // Streaming error state
+  streamError: StreamingError | null;
+  retryCount: number;
+  
   playSong: (song: Song, context?: Song[]) => Promise<void>;
   togglePlay: () => void;
   nextSong: () => void;
@@ -52,6 +61,56 @@ export interface PlayerSlice {
   setGapless: (enabled: boolean) => void;
   setNormalization: (enabled: boolean) => void;
   toggleEqPanel: () => void;
+  
+  // Buffering actions
+  setBuffering: (isBuffering: boolean) => void;
+  setBufferProgress: (progress: number) => void;
+  preloadNextTrack: () => Promise<void>;
+  setPreloadedTrackId: (id: string | null) => void;
+  
+  // Error recovery actions
+  setStreamError: (error: StreamingError | null) => void;
+  retryStream: () => Promise<void>;
+  clearStreamError: () => void;
+  
+  // Streaming analytics
+  streamingStats: StreamingStats;
+  recordStreamEvent: (event: StreamingEvent) => void;
+  resetStreamingStats: () => void;
+}
+
+// Streaming error types
+export type StreamingErrorType = 'network' | 'auth' | 'unavailable' | 'unknown';
+
+export interface StreamingError {
+  type: StreamingErrorType;
+  message: string;
+  canRetry: boolean;
+  timestamp: number;
+}
+
+// Streaming analytics types
+export interface StreamingStats {
+  totalStreams: number;
+  successfulStreams: number;
+  failedStreams: number;
+  totalBufferingTime: number; // in seconds
+  bufferingEvents: number;
+  averageBufferingDuration: number; // in seconds
+  errorsByType: Record<StreamingErrorType, number>;
+  lastStreamedTrack: string | null;
+  sessionStartTime: number;
+}
+
+export type StreamingEventType = 'start' | 'complete' | 'error' | 'buffer_start' | 'buffer_end' | 'retry' | 'skip';
+
+export interface StreamingEvent {
+  type: StreamingEventType;
+  trackId?: string;
+  trackTitle?: string;
+  errorType?: StreamingErrorType;
+  duration?: number; // for buffer events, duration in ms
+  timestamp: number;
 }
 
 // Scan folder type (from backend)
@@ -119,6 +178,14 @@ export interface SpotifySlice {
   // Download state
   downloadCount: number;
   setDownloadCount: (count: number) => void;
+  
+  // Streaming settings
+  streamingEnabled: boolean;
+  streamingQuality: 'high' | 'medium' | 'low';
+  preferLocalPlayback: boolean; // When true, prefer downloaded files over streaming
+  setStreamingEnabled: (enabled: boolean) => void;
+  setStreamingQuality: (quality: 'high' | 'medium' | 'low') => void;
+  setPreferLocalPlayback: (prefer: boolean) => void;
 }
 
 export interface ConfirmDialogConfig {

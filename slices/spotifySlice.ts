@@ -41,5 +41,13 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
   }),
   
   downloadCount: 0,
-  setDownloadCount: (count) => set({ downloadCount: count })
+  setDownloadCount: (count) => set({ downloadCount: count }),
+  
+  // Streaming settings - persisted via Zustand persist
+  streamingEnabled: true, // Default: streaming enabled
+  streamingQuality: 'high', // Default: high quality (320kbps)
+  preferLocalPlayback: true, // Default: prefer downloaded files over streaming
+  setStreamingEnabled: (enabled) => set({ streamingEnabled: enabled }),
+  setStreamingQuality: (quality) => set({ streamingQuality: quality }),
+  setPreferLocalPlayback: (prefer) => set({ preferLocalPlayback: prefer })
 });

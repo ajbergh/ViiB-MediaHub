@@ -137,6 +137,9 @@ func (a *API) Routes() chi.Router {
 	r.Delete("/spotify/downloads/completed", a.clearCompletedDownloads)
 	r.Get("/spotify/downloads/events", a.downloadProgressSSE)
 
+	// Spotify Streaming
+	r.Get("/spotify/stream/{id}", a.streamSpotifyTrack)
+
 	// Album metadata cache
 	r.Get("/albums/metadata", a.getAllAlbumMetadata)
 	r.Get("/albums/metadata/expired", a.getExpiredAlbumMetadata)

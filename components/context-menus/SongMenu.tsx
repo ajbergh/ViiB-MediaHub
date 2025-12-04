@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Play, SkipForward, ListPlus, ListMusic, ArrowRight, Disc, Mic2, FolderOpen } from 'lucide-react';
+import { Play, SkipForward, ListPlus, ListMusic, ArrowRight, Disc, Mic2, FolderOpen, Download, CheckCircle } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem, PlaylistsSubmenu } from './MenuShared';
 import { useNavigate } from 'react-router-dom';
 import { Song } from '../../types';
+import { api } from '../../services/api';
 
 export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, onClose }) => {
-    const { playSong, playNext, addToQueue } = useStore();
+    const { playSong, playNext, addToQueue, showToast } = useStore();
     const navigate = useNavigate();
     const [playlistsSubmenuOpen, setPlaylistsSubmenuOpen] = useState(false);
 
@@ -19,6 +20,29 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
         navigate(path);
         onClose();
     };
+    
+    const handleDownloadTrack = async () => {
+        if (!song.spotifyId) return;
+        
+        try {
+            await api.downloadTrack(
+                song.spotifyId,
+                song.title,
+                song.artist,
+                song.album,
+                song.duration
+            );
+            showToast({ type: 'success', message: `Queued for download: ${song.title}` });
+        } catch (error) {
+            console.error('Failed to queue download:', error);
+            showToast({ type: 'error', message: 'Failed to queue download' });
+        }
+        onClose();
+    };
+    
+    // Check if this is a streaming Spotify track
+    const isSpotifyStreaming = song.spotifyId && song.isStreaming;
+    const isSpotifyDownloaded = song.spotifyId && !song.isStreaming;
 
     return (
         <>
@@ -52,6 +76,19 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
             <MenuItem icon={Mic2} label="Go to Artist" onClick={() => navigateTo(`/artists`)} /> 
             
             <div className="border-t border-[#333] my-1"></div>
+            
+            {/* Download option for streaming Spotify tracks */}
+            {isSpotifyStreaming && (
+                <MenuItem icon={Download} label="Download for Offline" onClick={handleDownloadTrack} />
+            )}
+            {/* Show downloaded indicator for Spotify tracks */}
+            {isSpotifyDownloaded && (
+                <div className="px-4 py-2 text-sm text-gray-400 flex items-center gap-3">
+                    <CheckCircle size={16} className="text-brand" />
+                    <span>Downloaded</span>
+                </div>
+            )}
+            
             <MenuItem icon={FolderOpen} label="Show in Files" onClick={() => alert(`Path: ${song.path || 'Unknown'}`)} />
         </>
     );

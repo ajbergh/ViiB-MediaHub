@@ -783,6 +783,105 @@ export const SpotifyService = {
                 throw new SpotifyNetworkError('Network error fetching saved playlists', error);
             }
         });
+    },
+
+    /**
+     * Get an artist's top tracks.
+     * Returns the artist's most popular tracks for streaming.
+     * 
+     * @param artistId - Spotify artist ID
+     * @param market - ISO 3166-1 alpha-2 country code (defaults to US)
+     * @returns Promise resolving to artist's top tracks
+     */
+    async getArtistTopTracks(artistId: string, market: string = 'US'): Promise<any> {
+        return enqueue(async () => {
+            const store = useStore.getState();
+            const token = await this.getAccessToken();
+            if (!token) {
+                throw new SpotifyAuthError('No access token available');
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/artists/${artistId}/top-tracks?market=${market}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (res.status === 429) {
+                    const retryAfter = res.headers.get('Retry-After');
+                    throw new SpotifyRateLimitError(
+                        'Rate limited while fetching artist top tracks',
+                        retryAfter ? parseInt(retryAfter) : 60
+                    );
+                }
+
+                if (res.status === 401 || res.status === 403) {
+                    throw new SpotifyAuthError('Unauthorized - requires user authentication', res.status);
+                }
+
+                if (!res.ok) {
+                    throw new SpotifyApiError(
+                        `Failed to fetch artist top tracks: ${res.statusText}`,
+                        res.status
+                    );
+                }
+
+                return await res.json();
+            } catch (error) {
+                if (error instanceof SpotifyAuthError || error instanceof SpotifyRateLimitError || error instanceof SpotifyApiError) {
+                    store.addLog('error', 'Spotify Artist Top Tracks Error', error);
+                    throw error;
+                }
+                store.addLog('error', 'Spotify Artist Top Tracks Error', error);
+                throw new SpotifyNetworkError('Network error fetching artist top tracks', error);
+            }
+        });
+    },
+
+    /**
+     * Get artist details.
+     * Returns artist profile information including images, followers, genres.
+     * 
+     * @param artistId - Spotify artist ID
+     * @returns Promise resolving to artist object
+     */
+    async getArtist(artistId: string): Promise<any> {
+        return enqueue(async () => {
+            const store = useStore.getState();
+            const token = await this.getAccessToken();
+            if (!token) {
+                throw new SpotifyAuthError('No access token available');
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/artists/${artistId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (res.status === 429) {
+                    const retryAfter = res.headers.get('Retry-After');
+                    throw new SpotifyRateLimitError(
+                        'Rate limited while fetching artist',
+                        retryAfter ? parseInt(retryAfter) : 60
+                    );
+                }
+
+                if (!res.ok) {
+                    throw new SpotifyApiError(
+                        `Failed to fetch artist: ${res.statusText}`,
+                        res.status
+                    );
+                }
+
+                return await res.json();
+            } catch (error) {
+                if (error instanceof SpotifyAuthError || error instanceof SpotifyRateLimitError || error instanceof SpotifyApiError) {
+                    store.addLog('error', 'Spotify Artist Error', error);
+                    throw error;
+                }
+                store.addLog('error', 'Spotify Artist Error', error);
+                throw new SpotifyNetworkError('Network error fetching artist', error);
+            }
+        });
     }
 };
 

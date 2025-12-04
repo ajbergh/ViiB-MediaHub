@@ -230,8 +230,16 @@ export const api = {
     return `${API_BASE}/cover/${songId}`;
   },
 
+  // Helper to get Spotify stream URL
+  // Used for direct streaming of Spotify tracks without downloading
+  // Quality parameter: 'high' (320kbps), 'medium' (160kbps), 'low' (96kbps)
+  getSpotifyStreamUrl(spotifyId: string, quality?: 'high' | 'medium' | 'low'): string {
+    const qualityParam = quality ? `?quality=${quality}` : '';
+    return `${API_BASE}/spotify/stream/${spotifyId}${qualityParam}`;
+  },
+
   // Spotify Credentials
-  
+
   /**
    * Saves Spotify OAuth credentials to backend database.
    * Credentials are stored in the spotify_credentials setting as JSON.
@@ -261,7 +269,7 @@ export const api = {
   },
 
   // Spotify Downloads
-  
+
   /**
    * Queues a single track for download from Spotify.
    * Requires Spotify Premium account and valid OAuth authentication.
@@ -347,14 +355,14 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
-    return handleResponse<{ 
-      status: string; 
+    return handleResponse<{
+      status: string;
       type: string;
-      title: string; 
+      title: string;
       artist?: string;
       owner?: string;
       album?: string;
-      message: string; 
+      message: string;
       count?: number;
     }>(response);
   },

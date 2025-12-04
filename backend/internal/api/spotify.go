@@ -11,7 +11,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/spotify"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 // SpotifyCredentials represents OAuth 2.0 credentials for Spotify Web API.
@@ -1207,4 +1210,165 @@ func (a *API) fetchPlaylistTracks(playlistID string, playlistName *string) ([]Pl
 	}
 
 	return tracks, playlist.Name, imageURL, nil
+}
+
+// streamSpotifyTrack streams audio directly from Spotify without saving to disk.
+// This enables real-time playback of Spotify tracks within the player.
+//
+// The endpoint supports HTTP Range requests for seeking within the stream.
+// Audio is streamed as OGG Vorbis format (320kbps when available).
+//
+// GET /api/spotify/stream/{id}
+//
+// Response Headers:
+//   - Content-Type: audio/ogg
+//   - Accept-Ranges: bytes
+//   - Content-Range: bytes start-end/total (for 206 responses)
+//
+// Response Codes:
+//   - 200 OK: Full content
+//   - 206 Partial Content: Range request
+//   - 401 Unauthorized: No valid Spotify session
+//   - 403 Forbidden: Premium required
+//   - 404 Not Found: Track not available
+func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
+	spotifyID := chi.URLParam(r, "id")
+	if spotifyID == "" {
+		respondError(w, http.StatusBadRequest, "Missing track ID")
+		return
+	}
+
+	// Get quality parameter (default to high)
+	quality := r.URL.Query().Get("quality")
+	if quality == "" {
+		quality = "high"
+	}
+	// Validate quality parameter
+	if quality != "high" && quality != "medium" && quality != "low" {
+		quality = "high"
+	}
+
+	logger.SpotifyStreamer("Stream request for track: %s (quality: %s)", spotifyID, quality)
+
+	// Get access token and initialize session
+	if err := a.downloadManager.EnsureSession(); err != nil {
+		logger.SpotifyStreamer("Session error: %v", err)
+		// Check if this looks like an expired/invalid token error
+		if strings.Contains(err.Error(), "expired") || strings.Contains(err.Error(), "refresh") {
+			respondError(w, http.StatusUnauthorized, "Spotify session expired. Token refresh required.")
+		} else {
+			respondError(w, http.StatusUnauthorized, "Spotify session not available. Please log in.")
+		}
+		return
+	}
+
+	// Get the session manager from download manager
+	sessionManager := a.downloadManager.GetSessionManager()
+	if sessionManager == nil {
+		logger.SpotifyStreamer("No session manager available")
+		respondError(w, http.StatusInternalServerError, "Streaming not initialized")
+		return
+	}
+
+	// Create a streamer for this request
+	streamer := spotify.NewStreamer(sessionManager)
+
+	// Generate unique request ID for tracking
+	requestID := uuid.New().String()
+
+	// Stream the track with specified quality
+	stream, err := streamer.StreamTrackWithQuality(r.Context(), spotifyID, requestID, quality)
+	if err != nil {
+		logger.SpotifyStreamer("Failed to start stream: %v", err)
+		// Check for specific errors
+		if strings.Contains(err.Error(), "session") || strings.Contains(err.Error(), "token") {
+			respondError(w, http.StatusUnauthorized, "Spotify session expired. Please log in again.")
+		} else if strings.Contains(err.Error(), "premium") {
+			respondError(w, http.StatusForbidden, "Spotify Premium required for streaming")
+		} else {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to stream track: %v", err))
+		}
+		return
+	}
+	defer stream.Close()
+
+	// Get stream size for Range request support
+	// Seek to end to get total size
+	totalSize, err := stream.Seek(0, io.SeekEnd)
+	if err != nil {
+		logger.SpotifyStreamer("Failed to get stream size: %v", err)
+		totalSize = 0 // Unknown size
+	}
+
+	// Seek back to beginning
+	if _, err := stream.Seek(0, io.SeekStart); err != nil {
+		logger.SpotifyStreamer("Failed to seek to start: %v", err)
+	}
+
+	// Set common response headers
+	w.Header().Set("Content-Type", stream.Info().ContentType)
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Handle Range requests for seeking
+	rangeHeader := r.Header.Get("Range")
+	if rangeHeader != "" && totalSize > 0 {
+		// Parse range header (e.g., "bytes=0-1048575" or "bytes=1000-")
+		var start, end int64
+		if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-%d", &start, &end); err != nil {
+			// Try parsing without end (e.g., "bytes=1000-")
+			if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-", &start); err != nil {
+				logger.SpotifyStreamer("Invalid Range header: %s", rangeHeader)
+				// Fall through to normal response
+			} else {
+				end = totalSize - 1
+			}
+		}
+
+		// Validate range
+		if start >= 0 && start < totalSize {
+			if end <= 0 || end >= totalSize {
+				end = totalSize - 1
+			}
+			if end >= start {
+				// Seek to start position
+				if _, err := stream.Seek(start, io.SeekStart); err != nil {
+					logger.SpotifyStreamer("Failed to seek to %d: %v", start, err)
+				} else {
+					contentLength := end - start + 1
+					w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, totalSize))
+					w.Header().Set("Content-Length", fmt.Sprintf("%d", contentLength))
+					w.WriteHeader(http.StatusPartialContent)
+
+					logger.SpotifyStreamer("Range request: bytes=%d-%d/%d", start, end, totalSize)
+
+					// Stream the requested range
+					written, err := io.CopyN(w, stream, contentLength)
+					if err != nil && err != io.EOF {
+						logger.SpotifyStreamer("Range stream ended: %v (wrote %d/%d bytes)", err, written, contentLength)
+					} else {
+						logger.SpotifyStreamer("Range stream completed: %d bytes", written)
+					}
+					return
+				}
+			}
+		}
+	}
+
+	// Full content response
+	if totalSize > 0 {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", totalSize))
+	}
+
+	logger.SpotifyStreamer("Starting full audio stream for track: %s", spotifyID)
+
+	// Stream the audio data to the response
+	written, err := io.Copy(w, stream)
+	if err != nil {
+		// Client may have disconnected - this is normal
+		logger.SpotifyStreamer("Stream ended: %v (wrote %d bytes)", err, written)
+	} else {
+		logger.SpotifyStreamer("Stream completed: %d bytes", written)
+	}
 }

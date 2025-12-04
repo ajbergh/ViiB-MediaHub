@@ -25,6 +25,18 @@ export const libraryService = {
     return db.getAll('songs');
   },
 
+  /**
+   * Find a song by its Spotify ID.
+   * Used to check if a track has been downloaded from Spotify.
+   * @param spotifyId - The Spotify track ID to search for
+   * @returns The downloaded song or undefined if not found
+   */
+  async getSongBySpotifyId(spotifyId: string): Promise<Song | undefined> {
+    const db = await getDB();
+    const allSongs = await db.getAll('songs');
+    return allSongs.find(song => song.spotifyId === spotifyId);
+  },
+
   async saveSongs(songs: Song[]): Promise<void> {
     const db = await getDB();
     const tx = db.transaction('songs', 'readwrite');

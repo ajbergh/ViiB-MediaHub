@@ -24,7 +24,7 @@
 import React from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, SlidersHorizontal } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi } from 'lucide-react';
 import { formatTime, generateGradient, cssUrl } from '../utils';
 import { NowPlaying } from './NowPlaying';
 import { ContextMenuType } from '../types';
@@ -35,7 +35,8 @@ export const Player: React.FC = () => {
   const { 
       currentSong, isPlaying, togglePlay, nextSong, prevSong, volume, setVolume, 
       isQueueOpen, setQueueOpen, queue, isNowPlayingOpen, setNowPlayingOpen, 
-      openContextMenu, audioSettings, toggleEqPanel
+      openContextMenu, audioSettings, toggleEqPanel, isBuffering, bufferProgress,
+      streamError, retryStream, clearStreamError
   } = useStore();
   
   const { 
@@ -114,12 +115,24 @@ export const Player: React.FC = () => {
             </button>
             
             <div className="relative">
+                {/* Buffering indicator */}
+                {isBuffering && currentSong.isStreaming && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-11 h-11 md:w-12 md:h-12 rounded-full border-2 border-brand/30 border-t-brand animate-spin" />
+                    </div>
+                )}
                 <button
                     onClick={togglePlay}
                     className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform z-10 relative"
                     aria-label={isPlaying ? 'Pause' : 'Play'}
                 >
-                    {isPlaying ? <Pause size={18} className="md:w-5 md:h-5 fill-current" /> : <Play size={18} className="md:w-5 md:h-5 fill-current ml-0.5" />}
+                    {isBuffering && currentSong.isStreaming ? (
+                        <Loader2 size={18} className="md:w-5 md:h-5 animate-spin text-gray-600" />
+                    ) : isPlaying ? (
+                        <Pause size={18} className="md:w-5 md:h-5 fill-current" />
+                    ) : (
+                        <Play size={18} className="md:w-5 md:h-5 fill-current ml-0.5" />
+                    )}
                 </button>
             </div>
 
@@ -131,22 +144,65 @@ export const Player: React.FC = () => {
             </button>
             </div>
             
+            {/* Progress bar with buffer indication */}
             <div className="w-full max-w-md flex items-center gap-2 text-xs text-text-secondary">
             <span className="w-10 text-right font-mono" aria-hidden="true">{formatTime(currentTime)}</span>
-            <input
-                type="range"
-                min="0"
-                max={duration || 100}
-                value={currentTime}
-                onChange={(e) => seek(Number(e.target.value))}
-                aria-label="Seek position"
-                aria-valuemin={0}
-                aria-valuemax={duration || 100}
-                aria-valuenow={currentTime}
-                aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
-                className="flex-1 h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-110"
-            />
+            
+            {/* Error state - show error with retry */}
+            {streamError && currentSong?.isStreaming ? (
+                <div className="flex-1 flex items-center gap-2 px-2">
+                    <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
+                    <span className="text-red-400 text-xs truncate">{streamError.message}</span>
+                    {streamError.canRetry && (
+                        <button
+                            onClick={() => retryStream()}
+                            className="flex items-center gap-1 px-2 py-0.5 bg-surface-hover hover:bg-surface-highlight rounded text-xs text-text-main transition-colors"
+                            title="Retry playback"
+                        >
+                            <RefreshCw size={12} />
+                            Retry
+                        </button>
+                    )}
+                </div>
+            ) : (
+                <div className="flex-1 relative h-4 flex items-center">
+                    {/* Buffer progress background for streaming tracks */}
+                    {currentSong?.isStreaming && bufferProgress < 100 && (
+                        <div 
+                            className="absolute h-1 bg-brand/20 rounded-lg transition-all duration-300"
+                            style={{ width: `${bufferProgress}%` }}
+                        />
+                    )}
+                    
+                    {/* Main progress slider */}
+                    <input
+                        type="range"
+                        min="0"
+                        max={duration || 100}
+                        value={currentTime}
+                        onChange={(e) => seek(Number(e.target.value))}
+                        aria-label="Seek position"
+                        aria-valuemin={0}
+                        aria-valuemax={duration || 100}
+                        aria-valuenow={currentTime}
+                        aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
+                        className="w-full h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-110 relative z-10"
+                    />
+                </div>
+            )}
+            
             <span className="w-10 font-mono" aria-hidden="true">{formatTime(duration)}</span>
+            
+            {/* Streaming indicator */}
+            {currentSong?.isStreaming && !streamError && (
+                <div className="flex items-center gap-1 text-brand" title={isBuffering ? 'Buffering...' : 'Streaming'}>
+                    {isBuffering ? (
+                        <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                        <Wifi size={12} />
+                    )}
+                </div>
+            )}
             </div>
         </div>
 
