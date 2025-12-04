@@ -41,6 +41,7 @@ const SidebarItem = ({ to, icon: Icon, label, badge, collapsed }: SidebarItemPro
     <NavLink
       to={to}
       title={collapsed ? label : undefined}
+      aria-label={label}
       className={({ isActive }) =>
         `flex items-center gap-4 px-4 py-3 text-sm font-medium transition-all duration-200 border-l-4 relative ${
           isActive
@@ -49,15 +50,15 @@ const SidebarItem = ({ to, icon: Icon, label, badge, collapsed }: SidebarItemPro
         } ${collapsed ? 'justify-center px-2' : ''}`
       }
     >
-      <Icon size={20} className="flex-shrink-0" />
+      <Icon size={20} className="flex-shrink-0" aria-hidden="true" />
       {!collapsed && <span className="flex-1">{label}</span>}
       {!collapsed && badge !== undefined && badge > 0 && (
-        <span className="bg-brand text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+        <span className="bg-brand text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center" aria-label={`${badge} items`}>
           {badge}
         </span>
       )}
       {collapsed && badge !== undefined && badge > 0 && (
-        <span className="absolute -top-1 -right-1 bg-brand text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+        <span className="absolute -top-1 -right-1 bg-brand text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center" aria-label={`${badge} items`}>
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -99,7 +100,7 @@ export const Sidebar: React.FC = () => {
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-2">
+      <nav className="flex-1 overflow-y-auto py-2" role="navigation" aria-label="Main navigation">
         <div className="space-y-1">
           <SidebarItem to="/" icon={Home} label="Home" collapsed={collapsed} />
           <SidebarItem to="/songs" icon={Music} label="Songs" collapsed={collapsed} />
@@ -108,7 +109,7 @@ export const Sidebar: React.FC = () => {
           <SidebarItem to="/playlists" icon={ListMusic} label="Playlists" collapsed={collapsed} />
         </div>
 
-        <div className={`my-4 border-t border-surface-highlight ${collapsed ? 'mx-2' : 'mx-4'}`}></div>
+        <div className={`my-4 border-t border-surface-highlight ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>
 
         <div className="space-y-1">
           <SidebarItem to="/spotify" icon={Wifi} label="Spotify" collapsed={collapsed} />

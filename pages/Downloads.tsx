@@ -256,7 +256,7 @@ export const Downloads: React.FC = () => {
   }
 
   return (
-    <div className="p-8 pb-32">
+    <div className="p-8 pb-32 animate-fade-in">
       <div className="mb-8 flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">

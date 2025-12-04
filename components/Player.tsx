@@ -132,16 +132,21 @@ export const Player: React.FC = () => {
             </div>
             
             <div className="w-full max-w-md flex items-center gap-2 text-xs text-text-secondary">
-            <span className="w-10 text-right font-mono">{formatTime(currentTime)}</span>
+            <span className="w-10 text-right font-mono" aria-hidden="true">{formatTime(currentTime)}</span>
             <input
                 type="range"
                 min="0"
                 max={duration || 100}
                 value={currentTime}
                 onChange={(e) => seek(Number(e.target.value))}
+                aria-label="Seek position"
+                aria-valuemin={0}
+                aria-valuemax={duration || 100}
+                aria-valuenow={currentTime}
+                aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
                 className="flex-1 h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-110"
             />
-            <span className="w-10 font-mono">{formatTime(duration)}</span>
+            <span className="w-10 font-mono" aria-hidden="true">{formatTime(duration)}</span>
             </div>
         </div>
 
@@ -152,6 +157,8 @@ export const Player: React.FC = () => {
                 onClick={toggleEqPanel}
                 className={`p-2 rounded-full transition-colors ${audioSettings.eqEnabled ? 'text-brand' : 'text-text-secondary hover:text-text-main'}`}
                 title="Equalizer"
+                aria-label={`Equalizer ${audioSettings.eqEnabled ? 'enabled' : 'disabled'}`}
+                aria-pressed={audioSettings.eqEnabled}
             >
                 <SlidersHorizontal size={18} />
             </button>

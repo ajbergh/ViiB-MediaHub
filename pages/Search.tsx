@@ -21,6 +21,7 @@ import { useLocation } from 'react-router-dom';
 import { generateGradient, formatTime } from '../utils';
 import { ContextMenuType } from '../types';
 import { Virtuoso } from 'react-virtuoso';
+import { EmptySearchResults } from '../components/EmptyState';
 
 export const Search: React.FC = () => {
     const location = useLocation();
@@ -69,7 +70,7 @@ export const Search: React.FC = () => {
     const hasResults = debouncedQuery.length > 0;
 
     return (
-        <div className="p-8 h-full flex flex-col">
+        <div className="p-8 h-full flex flex-col animate-fade-in">
             <h1 className="text-3xl font-bold mb-6 flex-shrink-0">Search</h1>
             
             <div className="relative w-full max-w-3xl mb-8 flex-shrink-0">
@@ -95,9 +96,7 @@ export const Search: React.FC = () => {
                      <div className="text-text-secondary mb-4 font-medium flex-shrink-0">Found {filteredSongs.length} tracks</div>
                      
                      {filteredSongs.length === 0 ? (
-                        <div className="text-center p-8 bg-surface-2 rounded-xl text-text-subtle">
-                            No matches found for "{debouncedQuery}"
-                        </div>
+                        <EmptySearchResults query={debouncedQuery} />
                      ) : (
                         <div className="flex-1">
                              <Virtuoso

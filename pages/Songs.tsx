@@ -181,7 +181,7 @@ export const Songs: React.FC = () => {
   }), []);
 
   return (
-    <div className="h-full">
+    <div className="h-full animate-fade-in">
         <Virtuoso
             useWindowScroll={false}
             customScrollParent={scrollParent}

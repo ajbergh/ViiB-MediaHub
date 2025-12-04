@@ -20,6 +20,8 @@ import { useNavigate } from 'react-router-dom';
 import { ContextMenuType, Album } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { ChevronDown, ArrowUpDown } from 'lucide-react';
+import { EmptyAlbums } from '../components/EmptyState';
+import { SkeletonAlbumGrid } from '../components/Skeleton';
 
 type AlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc' | 'songs-desc' | 'songs-asc';
 
@@ -105,7 +107,7 @@ export const Albums: React.FC = () => {
   }, [albums, sortBy]);
 
   return (
-    <div className="p-8 h-full">
+    <div className="p-8 h-full animate-fade-in">
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
                 <h1 className="text-3xl font-bold mb-2">Albums</h1>
@@ -143,9 +145,7 @@ export const Albums: React.FC = () => {
         </div>
 
         {sortedAlbums.length === 0 ? (
-             <div className="flex flex-col items-center justify-center py-20 text-text-subtle">
-                <p>No albums found.</p>
-            </div>
+            <EmptyAlbums />
         ) : (
             <VirtuosoGrid
                 useWindowScroll={false}

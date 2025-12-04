@@ -19,6 +19,7 @@ import { useArtists, useStore } from '../store';
 import { generateGradient, cssUrl } from '../utils';
 import { ContextMenuType } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
+import { EmptyArtists } from '../components/EmptyState';
 
 // Define Grid Components
 const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
@@ -105,16 +106,14 @@ export const Artists: React.FC = () => {
   }, [navigate]);
 
   return (
-    <div className="p-8 h-full">
+    <div className="p-8 h-full animate-fade-in">
         <div className="mb-8">
             <h1 className="text-3xl font-bold mb-2">Artists</h1>
             <p className="text-text-secondary">{artists.length} artists</p>
         </div>
 
         {artists.length === 0 ? (
-             <div className="flex flex-col items-center justify-center py-20 text-text-subtle">
-                <p>No artists found.</p>
-            </div>
+            <EmptyArtists />
         ) : (
              <VirtuosoGrid
                 useWindowScroll={false}

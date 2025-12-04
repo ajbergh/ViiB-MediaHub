@@ -30,6 +30,9 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
 - **Loading Skeletons** - Smooth shimmer animations while content loads
 - **Empty States** - Helpful guidance when no content is available
 - **Responsive Design** - Collapsible sidebar and adaptive player controls
+- **Page Transitions** - Smooth fade-in animations between pages
+- **Drag & Drop** - Reorder queue items by dragging
+- **Accessibility** - ARIA labels, focus indicators, screen reader support
 
 ### 📚 Library Management
 - **Folder Scanning** - Add multiple music folders with incremental scanning

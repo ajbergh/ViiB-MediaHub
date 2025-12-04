@@ -434,7 +434,7 @@ export const Settings: React.FC = () => {
   };
 
   return (
-    <div className="p-8 pb-32 max-w-4xl mx-auto">
+    <div className="p-8 pb-32 max-w-4xl mx-auto animate-fade-in">
       <h1 className="text-3xl font-bold mb-10">Settings</h1>
 
       {/* Hidden Fallback Input */}

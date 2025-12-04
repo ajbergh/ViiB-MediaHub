@@ -17,6 +17,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import { ListMusic, Plus } from 'lucide-react';
 import { ContextMenuType } from '../types';
+import { EmptyPlaylists } from '../components/EmptyState';
 
 export const Playlists: React.FC = () => {
   const { playlists, createPlaylist, openContextMenu } = useStore();
@@ -32,7 +33,7 @@ export const Playlists: React.FC = () => {
   };
 
   return (
-    <div className="p-8 pb-32">
+    <div className="p-8 pb-32 animate-fade-in">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Playlists</h1>
         <button 
@@ -60,17 +61,7 @@ export const Playlists: React.FC = () => {
       )}
 
       {playlists.length === 0 ? (
-        <div className="flex flex-col items-center justify-center mt-20 text-center">
-            <ListMusic size={64} className="text-surface-border mb-4" />
-            <h3 className="text-xl font-bold text-text-main mb-2">No playlists yet</h3>
-            <p className="text-text-subtle mb-6">Create your first playlist to organize your collection.</p>
-            <button 
-                onClick={() => setShowInput(true)}
-                className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-8 rounded-full transition-all"
-            >
-                Create Playlist
-            </button>
-        </div>
+        <EmptyPlaylists onCreate={() => setShowInput(true)} />
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
             {playlists.map((pl) => (

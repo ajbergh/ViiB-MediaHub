@@ -51,7 +51,7 @@ export const Home: React.FC = () => {
   };
 
   return (
-    <div className="p-8 pb-32">
+    <div className="p-8 pb-32 animate-fade-in">
       {/* Header Section */}
       <section className="mb-12 flex flex-col items-center justify-center pt-8">
         <h1 className="text-4xl md:text-5xl font-bold mb-8 text-center bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">Let's ViiB</h1>

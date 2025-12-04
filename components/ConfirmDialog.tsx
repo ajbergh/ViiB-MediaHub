@@ -68,22 +68,31 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   return (
     <div 
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-dialog-title"
+      aria-describedby="confirm-dialog-description"
       onClick={(e) => {
         // Close on backdrop click unless loading
         if (e.target === e.currentTarget && !isLoading) {
           onCancel();
         }
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !isLoading) {
+          onCancel();
+        }
+      }}
     >
-      <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+      <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-scale-in">
         <div className="flex items-center gap-4 mb-4">
           {variant !== 'default' && (
-            <AlertTriangle size={28} className={styles.iconColor} />
+            <AlertTriangle size={28} className={styles.iconColor} aria-hidden="true" />
           )}
-          <h2 className="text-lg font-bold text-white">{title}</h2>
+          <h2 id="confirm-dialog-title" className="text-lg font-bold text-white">{title}</h2>
         </div>
         
-        <div className="text-text-secondary mb-6 leading-relaxed">
+        <div id="confirm-dialog-description" className="text-text-secondary mb-6 leading-relaxed">
           {message}
         </div>
         
@@ -91,16 +100,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button 
             onClick={onCancel}
             disabled={isLoading}
-            className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors disabled:opacity-50"
+            className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-surface-2"
           >
             {cancelLabel}
           </button>
           <button 
             onClick={onConfirm}
             disabled={isLoading}
-            className={`px-5 py-2 rounded-lg font-bold text-white transition-colors flex items-center gap-2 disabled:opacity-50 ${styles.buttonBg}`}
+            className={`px-5 py-2 rounded-lg font-bold text-white transition-colors flex items-center gap-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-surface-2 ${styles.buttonBg}`}
+            autoFocus
           >
-            {isLoading && <Loader2 size={16} className="animate-spin" />}
+            {isLoading && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
             {confirmLabel}
           </button>
         </div>
