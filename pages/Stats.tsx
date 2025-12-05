@@ -33,6 +33,14 @@ interface StatCardProps {
     color?: string;
 }
 
+/**
+ * StatCard - Reusable card component used in the stats dashboard.
+ * Props:
+ *  - icon: Icon node displayed above the value
+ *  - label: Card label
+ *  - value: Primary value to display (string or number)
+ *  - subtext: Optional secondary text
+ */
 const StatCard: React.FC<StatCardProps> = ({ icon, label, value, subtext, color = 'brand' }) => (
     <div className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors group relative overflow-hidden">
         <div className="relative z-10">
@@ -55,6 +63,10 @@ interface TopItemProps {
     onClick?: () => void;
 }
 
+/**
+ * TopItem - Row component for top lists (artists, albums) in the stats dashboard.
+ * Displays rank, image, title/artist and play count.
+ */
 const TopItem: React.FC<TopItemProps> = ({ rank, title, subtitle, plays, imageUrl, fallbackGradient, onClick }) => (
     <div 
         className="flex items-center gap-4 p-3 hover:bg-surface-hover rounded-lg transition-colors cursor-pointer group"

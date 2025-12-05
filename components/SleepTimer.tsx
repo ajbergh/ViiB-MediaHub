@@ -33,7 +33,18 @@ export interface SleepTimerState {
     originalVolume: number | null;
 }
 
-// Hook for managing sleep timer state
+/**
+ * useSleepTimer - React hook to manage the sleep timer lifecycle.
+ *
+ * Returns:
+ *  - timerState: SleepTimerState - Current state of the sleep timer
+ *  - setTimer(minutes): void - Set a time-based sleep timer
+ *  - setTimerBySongs(count): void - Set a song-count based sleep timer
+ *  - setTimerEndOfSong(): void - Stop playback at the end of the current song
+ *  - cancelTimer(): void - Cancel any active timers and restore volume
+ *  - onSongEnd(): boolean - To be invoked when a song ends; returns true to stop playback if timer completes
+ *  - getRemainingTime(): number | null - Remaining seconds for time-based timer
+ */
 export function useSleepTimer() {
     const { isPlaying, volume, setVolume, currentSong, showToast } = useStore();
     const [timerState, setTimerState] = useState<SleepTimerState>({

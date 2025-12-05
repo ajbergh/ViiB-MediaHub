@@ -1,7 +1,19 @@
+/**
+ * Shared Context Menu Utilities
+ *
+ * Common elements used across multiple context menus such as MenuItem and PlaylistsSubmenu.
+ */
 import React from 'react';
 import { Plus, ListMusic } from 'lucide-react';
 import { useStore } from '../../store';
 
+/**
+ * MenuItem - Button element used within context menus.
+ * Props:
+ *  - icon: Icon component to display on the left
+ *  - label: Text label for the menu item
+ *  - onClick: Handler for activation
+ */
 export const MenuItem: React.FC<{ icon: any; label: string; onClick: () => void }> = ({ icon: Icon, label, onClick }) => (
     <button 
         onClick={(e) => { e.stopPropagation(); onClick(); }}
@@ -12,6 +24,12 @@ export const MenuItem: React.FC<{ icon: any; label: string; onClick: () => void 
     </button>
 );
 
+/**
+ * PlaylistsSubmenu - Submenu used to add a song to an existing playlist or create a new playlist.
+ * Props:
+ *  - songId: ID of the song being added
+ *  - onClose: Callback when the submenu closes
+ */
 export const PlaylistsSubmenu: React.FC<{ songId: string; onClose: () => void }> = ({ songId, onClose }) => {
     const { playlists, addToPlaylist, createPlaylist } = useStore();
 

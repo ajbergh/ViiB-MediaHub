@@ -34,6 +34,26 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
 - **Drag & Drop** - Reorder queue items by dragging
 - **Accessibility** - ARIA labels, focus indicators, screen reader support
 
+### ⏱️ Sleep Timer (New)
+- Set a timer to stop playback after a preset or custom time (15-120 minutes), after X songs, or at the end of the current song.
+- Optionally fades volume in the last 30 seconds before pausing to make for a smooth fall-asleep experience.
+- Accessible via the moon icon on the player controls.
+
+### ⏮️ Play Next vs Add to Queue (New)
+- Right-click context menus now support "Play Next" which inserts selected songs immediately after the current track, as well as "Add to Queue" which appends to the end.
+
+### 🕒 Recently Played (New)
+- The Home page shows a Recently Played section with the last 10 tracks and human-friendly relative timestamps (e.g., "2h ago").
+- Useful for quickly returning to what you were listening to.
+
+### 📊 Listening Stats (New)
+- New `Stats` dashboard (accessible from the sidebar) provides listening insights:
+  - Total listening time, total plays
+  - Top artists, albums, genres
+  - Most played song highlight
+  - Library overview (total songs, albums, artists)
+  - Weekly/monthly play counts
+
 ### 📚 Library Management
 - **Folder Scanning** - Add multiple music folders with incremental scanning
 - **Smart Mixes** - Auto-generated playlists based on listening patterns:
@@ -42,6 +62,7 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
   - Fresh Finds (recently added)
   - Genre-based mixes (Chill Acoustic, 90s Alternative, etc.)
 - **Playlists** - Create, edit, and manage custom playlists
+  - Playlists are persisted to the backend when available. When running in browser-only mode, playlists are stored in IndexedDB.
 - **Background Enrichment** - Automatic Spotify metadata enhancement for albums/artists
 
 ### 🎧 Spotify Integration
@@ -57,6 +78,10 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
 - **SQLite Database** - Persistent storage for library, playlists, and settings
 - **System Tray** - Minimize to tray on Windows
 - **Configurable Data Directory** - Choose where your data is stored
+
+Persistence notes:
+- Play counts and timestamps (used for the Stats dashboard) are saved to the backend database when running with the backend server. If running in browser-only mode (no backend), these values are persisted in IndexedDB.
+- Playlists and library changes are synced to the backend when available; otherwise they are stored locally via IndexedDB.
 
 ## Architecture
 
@@ -121,6 +146,25 @@ npm run dev
 ```
 
 The Vite dev server proxies `/api` requests to the backend.
+
+### Quick Tips: Using New Features
+- Sleep Timer: Open the player and click the moon icon. Set a preset or custom duration, or set the timer to "End of current song" or "After X songs". The volume fades over the last 30 seconds before pausing.
+- Play Next vs Add to Queue: Right-click (context menu) on a song/album/playlist or mix to select "Play Next" (insert after current song) or "Add to Queue" (append to end).
+- Recently Played: Access the Home page to view your last 10 played tracks, with a quick click to resume playback.
+- Stats Dashboard: Click "Stats" in the sidebar to view your listening history and insights.
+
+### Verification: Persistence Checks
+If you're running with the backend server (default dev mode), the following can be used to validate persistence:
+
+1) Verify play count updates
+  - Play a song until it ends. The frontend will record the play count to the backend.
+  - Verify via API: `curl http://127.0.0.1:8080/api/songs` and inspect the `playCount` and `lastPlayed` fields for the track.
+
+2) Verify playlist persistence
+  - Create a playlist via the UI or using the `Playlists` page.
+  - Verify via API: `curl http://127.0.0.1:8080/api/playlists` and ensure the new playlist is present.
+
+If you're running in browser-only mode (backend not available), the application persists to IndexedDB. Use developer tools -> Application -> IndexedDB -> `mediahub-db` to inspect `songs` and `playlists` stores.
 
 ### Build for Production
 

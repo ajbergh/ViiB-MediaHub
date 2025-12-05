@@ -1,9 +1,19 @@
+/**
+ * SmartMix Context Menu
+ *
+ * Actions available for Smart Mixes such as Play, Play Next, Add to Queue, Save as Playlist, and Refresh.
+ */
 import React from 'react';
 import { Play, SkipForward, ListPlus, Save, RefreshCw, Sparkles } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
 import { SmartMix } from '../../types';
 
+/**
+ * SmartMixMenu props:
+ *  - mix: SmartMix object for menu actions
+ *  - onClose: Callback invoked when the menu closes
+ */
 export const SmartMixMenu: React.FC<{ mix: SmartMix; onClose: () => void }> = ({ mix, onClose }) => {
     const { songs, playSong, playNext, addToQueue, saveSmartMixAsPlaylist, refreshSmartMixes } = useStore();
     const mixSongs = mix.songIds.map((id: string) => songs.find(s => s.id === id)).filter(Boolean) as any[];

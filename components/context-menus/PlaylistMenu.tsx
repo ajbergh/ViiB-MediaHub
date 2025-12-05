@@ -1,9 +1,19 @@
+/**
+ * Playlist Context Menu
+ *
+ * Provides contextual actions for playlists such as Play, Play Next, Add to Queue and Delete.
+ */
 import React from 'react';
 import { Play, SkipForward, ListPlus, Trash2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
 import { Playlist } from '../../types';
 
+/**
+ * PlaylistMenu props:
+ *  - playlist: Playlist object for menu actions
+ *  - onClose: Callback invoked when the menu closes
+ */
 export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }> = ({ playlist, onClose }) => {
     const { songs, playSong, playNext, addToQueue, deletePlaylist, showConfirmDialog, closeConfirmDialog } = useStore();
     const playlistSongs = songs.filter(s => playlist.songIds.includes(s.id));

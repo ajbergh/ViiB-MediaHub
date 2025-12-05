@@ -1,3 +1,9 @@
+/**
+ * Song Context Menu
+ *
+ * Provides contextual actions for songs including Play, Play Next, Add to Queue, Add to Playlist,
+ * navigation to album/artist, and download options for streaming Spotify tracks.
+ */
 import React, { useState } from 'react';
 import { Play, SkipForward, ListPlus, ListMusic, ArrowRight, Disc, Mic2, FolderOpen, Download, CheckCircle } from 'lucide-react';
 import { useStore } from '../../store';
@@ -6,6 +12,11 @@ import { useNavigate } from 'react-router-dom';
 import { Song } from '../../types';
 import { api } from '../../services/api';
 
+/**
+ * SongMenu props:
+ *  - song: Song object for which to show the menu
+ *  - onClose: Callback invoked when the menu closes
+ */
 export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, onClose }) => {
     const { playSong, playNext, addToQueue, showToast } = useStore();
     const navigate = useNavigate();

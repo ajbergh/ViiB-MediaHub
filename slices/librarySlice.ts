@@ -217,36 +217,70 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       }
   },
 
-  createPlaylist: (name) => {
-    const newPlaylist: Playlist = {
-      id: Math.random().toString(36).substr(2, 9),
-      name,
-      songIds: [],
-      createdAt: Date.now()
-    };
+    /**
+     * createPlaylist - Create a new playlist.
+     * When backend is available, the playlist is created on the server and the
+     * server-generated ID is used. When backend is not available, the playlist
+     * is stored in IndexedDB and a local ID is generated.
+     */
+    createPlaylist: async (name) => {
+        const { backendAvailable } = get();
+        if (backendAvailable) {
+            try {
+                const created = await backendService.createPlaylist(name, []);
+                set((state) => ({ playlists: [...state.playlists, created] }));
+                return created;
+            } catch (e) {
+                console.error('Failed to create playlist on backend, falling back to local:', e);
+            }
+        }
+
+        const newPlaylist: Playlist = {
+            id: Math.random().toString(36).substr(2, 9),
+            name,
+            songIds: [],
+            createdAt: Date.now()
+        };
     
-    libraryService.savePlaylist(newPlaylist);
+        libraryService.savePlaylist(newPlaylist).catch(console.error);
     
-    set((state) => ({
-      playlists: [...state.playlists, newPlaylist]
-    }));
-  },
+        set((state) => ({
+            playlists: [...state.playlists, newPlaylist]
+        }));
+        return newPlaylist;
+    },
 
   addToPlaylist: (playlistId, songId) => {
+      const { backendAvailable } = get();
       set((state) => {
           const updated = state.playlists.map(p => 
             p.id === playlistId ? { ...p, songIds: [...p.songIds, songId] } : p
           );
           // Sync with DB
           const playlist = updated.find(p => p.id === playlistId);
-          if (playlist) libraryService.savePlaylist(playlist);
+          if (playlist) {
+              if (backendAvailable) {
+                  backendService.updatePlaylist(playlist).catch(e => console.error('Failed to update playlist on backend:', e));
+              } else {
+                  libraryService.savePlaylist(playlist).catch(console.error);
+              }
+          }
 
           return { playlists: updated };
       });
   },
 
-  deletePlaylist: (playlistId) => {
-      libraryService.deletePlaylist(playlistId);
+  deletePlaylist: async (playlistId) => {
+      const { backendAvailable } = get();
+      try {
+          if (backendAvailable) {
+              await backendService.deletePlaylist(playlistId);
+          } else {
+              await libraryService.deletePlaylist(playlistId);
+          }
+      } catch (e) {
+          console.error('Failed to delete playlist:', e);
+      }
       set((state) => ({
         playlists: state.playlists.filter(p => p.id !== playlistId)
       }));
@@ -256,40 +290,61 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       smartMixes: generateSmartMixes(state.songs)
   })),
 
-  saveSmartMixAsPlaylist: (mixId) => {
-      set((state) => {
-        const mix = state.smartMixes.find(m => m.id === mixId);
-        if (!mix) return state;
-        
-        const newPlaylist: Playlist = {
-            id: Math.random().toString(36).substr(2, 9),
-            name: mix.name,
-            songIds: [...mix.songIds],
-            createdAt: Date.now()
-        };
-        
-        libraryService.savePlaylist(newPlaylist);
-        
-        return { playlists: [...state.playlists, newPlaylist] };
-      });
+  saveSmartMixAsPlaylist: async (mixId) => {
+      const { backendAvailable } = get();
+      const mix = get().smartMixes.find(m => m.id === mixId);
+      if (!mix) return;
+
+      if (backendAvailable) {
+        try {
+            const created = await backendService.createPlaylist(mix.name, mix.songIds);
+            set((state) => ({ playlists: [...state.playlists, created] }));
+            return created;
+        } catch (e) {
+            console.error('Failed to create playlist on backend, falling back to local:', e);
+        }
+      }
+
+      const newPlaylist: Playlist = {
+          id: Math.random().toString(36).substr(2, 9),
+          name: mix.name,
+          songIds: [...mix.songIds],
+          createdAt: Date.now()
+      };
+
+      libraryService.savePlaylist(newPlaylist).catch(console.error);
+      set((state) => ({ playlists: [...state.playlists, newPlaylist] }));
+      return newPlaylist;
   },
 
-  recordPlay: (songId) => set((state) => {
-      const updatedSongs = state.songs.map(s => {
-          if (s.id === songId) {
-              const updated = {
-                  ...s,
-                  playCount: (s.playCount || 0) + 1,
-                  lastPlayed: Date.now()
-              };
-              // Persist the play count
-              libraryService.saveSongs([updated]);
-              return updated;
-          }
-          return s;
+    /**
+     * recordPlay - Increment local play count and optionally persist to backend.
+     * - When backend is available: call backend API to increment DB play_count and last_played
+     * - When backend is not available: update IndexedDB via libraryService
+     */
+    recordPlay: (songId) => {
+      const { backendAvailable } = get();
+      set((state) => {
+          const updatedSongs = state.songs.map(s => {
+              if (s.id === songId) {
+                  const updated = {
+                      ...s,
+                      playCount: (s.playCount || 0) + 1,
+                      lastPlayed: Date.now()
+                  };
+                  // Persist the play count
+                  if (backendAvailable) {
+                      backendService.recordPlay(songId).catch(e => console.error('Failed to record play on backend:', e));
+                  } else {
+                      libraryService.saveSongs([updated]);
+                  }
+                  return updated;
+              }
+              return s;
+          });
+          return { songs: updatedSongs };
       });
-      return { songs: updatedSongs };
-  }),
+  },
 
   fetchArtistMetadata: async (artistName) => {
       const state = get();

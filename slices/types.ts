@@ -139,12 +139,12 @@ export interface LibrarySlice {
   refreshLibrary: () => Promise<void>;
   addSongs: (newSongs: Song[]) => void;
   resetLibrary: () => Promise<void>;
-  createPlaylist: (name: string) => void;
+  createPlaylist: (name: string) => Promise<Playlist | void>;
   addToPlaylist: (playlistId: string, songId: string) => void;
-  deletePlaylist: (playlistId: string) => void;
+  deletePlaylist: (playlistId: string) => Promise<void>;
   
   refreshSmartMixes: () => void;
-  saveSmartMixAsPlaylist: (mixId: string) => void;
+  saveSmartMixAsPlaylist: (mixId: string) => Promise<Playlist | void>;
   recordPlay: (songId: string) => void;
   
   fetchArtistMetadata: (artistName: string) => Promise<void>;

@@ -1,3 +1,9 @@
+/**
+ * Album Context Menu
+ *
+ * Provides contextual actions for an album such as Play, Play Next, and Add to Queue.
+ * Integrated into the right-click context menu system.
+ */
 import React from 'react';
 import { Play, SkipForward, ListPlus, Mic2 } from 'lucide-react';
 import { useStore } from '../../store';
@@ -5,6 +11,11 @@ import { MenuItem } from './MenuShared';
 import { useNavigate } from 'react-router-dom';
 import { Album } from '../../types';
 
+/**
+ * AlbumMenu props:
+ *  - album: Album object for which to show the menu
+ *  - onClose: Callback invoked when the menu closes
+ */
 export const AlbumMenu: React.FC<{ album: Album; onClose: () => void }> = ({ album, onClose }) => {
     const { songs, playSong, playNext, addToQueue } = useStore();
     const navigate = useNavigate();
