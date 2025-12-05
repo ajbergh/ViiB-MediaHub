@@ -1,7 +1,7 @@
 ﻿/**
  * ViiB MediaHub - Spotify Page
  * 
- * Spotify integration hub for browsing and downloading from Spotify catalog.
+ * Spotify integration hub for browsing, streaming, and downloading from Spotify catalog.
  * 
  * Features:
  * - OAuth login with PKCE flow
@@ -11,8 +11,8 @@
  * - Queue downloads for tracks, albums, and playlists
  * - Session restoration from cached tokens
  * 
- * Requires Spotify Premium for download functionality.
- * Uses Web API for search/browse, librespot for downloads.
+ * Requires Spotify Premium for streaming and download functionality.
+ * Uses Web API for search/browse, librespot for streaming and downloads.
  * 
  * @module Spotify
  */
@@ -27,6 +27,7 @@ import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib
 import { api } from '../services/api';
 import { libraryService } from '../services/libraryService';
 import { spotifyTrackToSong, spotifyTracksToSongs, spotifyAlbumToSongs } from '../lib/spotifyHelpers';
+import { ContextMenuType } from '../types';
 
 export const Spotify: React.FC = () => {
     const navigate = useNavigate();
@@ -34,22 +35,37 @@ export const Spotify: React.FC = () => {
         spotifyClientId, spotifyClientSecret, spotifyUser,
         spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiry,
         logoutSpotify, setSpotifyTokens, setSpotifyUser, addLog,
-        playSong, addToQueue, showToast
+        playSong, addToQueue, showToast, openContextMenu,
+        // Search persistence from store
+        spotifySearchQuery, spotifySearchResults, spotifyActiveTab,
+        setSpotifySearchQuery, setSpotifySearchResults, setSpotifyActiveTab
     } = useStore();
 
     // Session restoration state
     const [isRestoringSession, setIsRestoringSession] = useState(false);
 
-    // Tab State
-    const [activeTab, setActiveTab] = useState<'search' | 'recent' | 'albums' | 'playlists'>('search');
+    // Tab State - initialize from persisted store
+    const [activeTab, setActiveTabLocal] = useState<'search' | 'recent' | 'albums' | 'playlists'>(spotifyActiveTab);
 
-    // Search State
-    const [inputValue, setInputValue] = useState('');
-    const [debouncedQuery, setDebouncedQuery] = useState('');
-    const [spotifyResults, setSpotifyResults] = useState<any>(null);
+    // Search State - initialize from persisted store
+    const [inputValue, setInputValue] = useState(spotifySearchQuery);
+    const [debouncedQuery, setDebouncedQuery] = useState(spotifySearchQuery);
+    const [spotifyResults, setSpotifyResultsLocal] = useState<any>(spotifySearchResults);
     const [isSearching, setIsSearching] = useState(false);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(false);
+    
+    // Wrapper to persist tab changes
+    const setActiveTab = (tab: 'search' | 'recent' | 'albums' | 'playlists') => {
+        setActiveTabLocal(tab);
+        setSpotifyActiveTab(tab);
+    };
+    
+    // Wrapper to persist search results
+    const setSpotifyResults = (results: any) => {
+        setSpotifyResultsLocal(results);
+        setSpotifySearchResults(results);
+    };
 
     // Library State
     const [recentlyPlayed, setRecentlyPlayed] = useState<any>(null);
@@ -174,12 +190,13 @@ export const Spotify: React.FC = () => {
     useEffect(() => {
         const handler = setTimeout(() => {
             setDebouncedQuery(inputValue);
+            setSpotifySearchQuery(inputValue); // Persist the search query
         }, 500); // 500ms delay for API calls
 
         return () => {
             clearTimeout(handler);
         };
-    }, [inputValue]);
+    }, [inputValue, setSpotifySearchQuery]);
 
     // Search Effect
     useEffect(() => {
@@ -1064,10 +1081,28 @@ export const Spotify: React.FC = () => {
                                     <div className="bg-surface-1 rounded-xl overflow-hidden">
                                         {spotifyResults.tracks.items.filter((t: any) => t).map((track: any, idx: number) => {
                                             const isDownloaded = downloadedSpotifyIds.has(track.id);
+                                            const song = spotifyTrackToSong(track);
                                             return (
-                                            <div key={track.id} className="flex items-center gap-4 p-3 hover:bg-surface-hover group transition-colors border-b border-surface-border last:border-0 cursor-pointer" onClick={() => handlePlayTrack(track, spotifyResults.tracks.items.filter((t: any) => t))}>
+                                            <div 
+                                                key={track.id} 
+                                                className="flex items-center gap-4 p-3 hover:bg-surface-hover group transition-colors border-b border-surface-border last:border-0 cursor-pointer" 
+                                                onClick={() => handlePlayTrack(track, spotifyResults.tracks.items.filter((t: any) => t))}
+                                                onContextMenu={(e) => {
+                                                    e.preventDefault();
+                                                    openContextMenu(e, ContextMenuType.SONG, song);
+                                                }}
+                                            >
                                                 <div className="w-8 text-center text-text-subtle text-sm relative"><span className="group-hover:hidden">{idx + 1}</span><Play size={14} className="hidden group-hover:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-brand fill-current" /></div>
-                                                <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 relative">
+                                                <div 
+                                                    className="w-10 h-10 rounded overflow-hidden flex-shrink-0 relative cursor-pointer"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (track.album?.id) {
+                                                            navigate(`/spotify/album/${track.album.id}`);
+                                                        }
+                                                    }}
+                                                    title="Go to album"
+                                                >
                                                     <img src={track.album?.images?.[2]?.url || track.album?.images?.[0]?.url} alt={track.name} className="w-full h-full object-cover" />
                                                     {isDownloaded && (
                                                         <div className="absolute -bottom-1 -right-1 bg-brand rounded-full p-0.5" title="Downloaded">
@@ -1077,7 +1112,19 @@ export const Spotify: React.FC = () => {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200">{track.name}</div>
-                                                    <div className="text-sm text-text-secondary truncate">{track.artists?.map((a: any) => a.name).join(', ')}</div>
+                                                    <div className="text-sm text-text-secondary truncate">
+                                                        {track.artists?.map((artist: any, i: number) => (
+                                                            <span key={artist.id}>
+                                                                <span 
+                                                                    className="hover:underline cursor-pointer"
+                                                                    onClick={(e) => { e.stopPropagation(); navigate(`/spotify?artist=${artist.id}`); }}
+                                                                >
+                                                                    {artist.name}
+                                                                </span>
+                                                                {i < track.artists.length - 1 && ', '}
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                                 <div className="text-sm text-text-subtle font-mono">{formatTime(track.duration_ms / 1000)}</div>
                                                 
@@ -1161,10 +1208,31 @@ export const Spotify: React.FC = () => {
                         </div>
                     ) : recentlyPlayed?.items && recentlyPlayed.items.length > 0 ? (
                         <div className="bg-surface-1 rounded-xl overflow-hidden">
-                            {recentlyPlayed.items.map((item: any, idx: number) => (
-                                <div key={`${item.track.id}-${idx}`} className="flex items-center gap-4 p-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0">
-                                    <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                            {recentlyPlayed.items.map((item: any, idx: number) => {
+                                const allTracks = recentlyPlayed.items.map((i: any) => i.track);
+                                const isDownloaded = downloadedSpotifyIds.has(item.track.id);
+                                return (
+                                <div 
+                                    key={`${item.track.id}-${idx}`} 
+                                    className="flex items-center gap-4 p-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer"
+                                    onClick={() => handlePlayTrack(item.track, allTracks)}
+                                    onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        const song = spotifyTrackToSong(item.track);
+                                        openContextMenu(e, ContextMenuType.SONG, song);
+                                    }}
+                                >
+                                    <div className="w-8 text-center text-text-subtle text-sm relative">
+                                        <span className="group-hover:hidden">{idx + 1}</span>
+                                        <Play size={14} className="hidden group-hover:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-brand fill-current" />
+                                    </div>
+                                    <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 relative">
                                         <img src={item.track.album?.images?.[2]?.url || item.track.album?.images?.[0]?.url} alt={item.track.name} className="w-full h-full object-cover" />
+                                        {isDownloaded && (
+                                            <div className="absolute -bottom-1 -right-1 bg-brand rounded-full p-0.5" title="Downloaded">
+                                                <CheckCircle size={12} className="text-black" />
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200">
@@ -1172,13 +1240,56 @@ export const Spotify: React.FC = () => {
                                         </div>
                                         <div className="text-sm text-text-secondary truncate">{item.track.artists?.map((a: any) => a.name).join(', ')}</div>
                                     </div>
-                                    <div className="text-sm text-text-subtle">{item.track.album.name}</div>
+                                    <div 
+                                        className="text-sm text-text-subtle hover:text-brand hover:underline cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/spotify/album/${item.track.album.id}`); }}
+                                    >
+                                        {item.track.album.name}
+                                    </div>
                                     <div className="text-sm text-text-subtle font-mono">{formatTime(item.track.duration_ms / 1000)}</div>
-                                    <button className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                    
+                                    {/* Add to Queue button */}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleAddTrackToQueue(item.track); }}
+                                        className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Add to queue"
+                                    >
+                                        <ListPlus size={16} />
+                                    </button>
+                                    
+                                    {/* Download button */}
+                                    {isDownloaded ? (
+                                        <div className="p-2 text-brand opacity-0 group-hover:opacity-100 transition-opacity" title="Downloaded">
+                                            <CheckCircle size={16} />
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleDownloadTrack(item.track); }}
+                                            disabled={downloadingTracks.has(item.track.id)}
+                                            className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                                            title="Download for offline"
+                                        >
+                                            {downloadingTracks.has(item.track.id) ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <Download size={16} />
+                                            )}
+                                        </button>
+                                    )}
+                                    
+                                    <button 
+                                        onClick={(e) => { 
+                                            e.stopPropagation();
+                                            const song = spotifyTrackToSong(item.track);
+                                            openContextMenu(e, ContextMenuType.SONG, song);
+                                        }}
+                                        className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
                                         <MoreHorizontal size={18} />
                                     </button>
                                 </div>
-                            ))}
+                            );
+                            })}
                         </div>
                     ) : (
                         <div className="text-center py-20 text-text-subtle">

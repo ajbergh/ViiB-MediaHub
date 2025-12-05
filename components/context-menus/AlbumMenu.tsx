@@ -1,12 +1,12 @@
 import React from 'react';
-import { Play, ListPlus, Mic2 } from 'lucide-react';
+import { Play, SkipForward, ListPlus, Mic2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
 import { useNavigate } from 'react-router-dom';
 import { Album } from '../../types';
 
 export const AlbumMenu: React.FC<{ album: Album; onClose: () => void }> = ({ album, onClose }) => {
-    const { songs, playSong, addToQueue } = useStore();
+    const { songs, playSong, playNext, addToQueue } = useStore();
     const navigate = useNavigate();
     const albumSongs = songs.filter(s => s.album === album.name);
 
@@ -25,6 +25,7 @@ export const AlbumMenu: React.FC<{ album: Album; onClose: () => void }> = ({ alb
             <MenuItem icon={Play} label="Play Album" onClick={() => handleAction(() => {
                 if (albumSongs.length > 0) playSong(albumSongs[0], albumSongs);
             })} />
+            <MenuItem icon={SkipForward} label="Play Next" onClick={() => handleAction(() => playNext(albumSongs))} />
             <MenuItem icon={ListPlus} label="Add to Queue" onClick={() => handleAction(() => addToQueue(albumSongs))} />
             
             <div className="border-t border-[#333] my-1"></div>

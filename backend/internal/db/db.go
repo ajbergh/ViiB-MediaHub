@@ -22,10 +22,15 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// DB is the primary SQLite database wrapper used by the application. It
+// provides higher-level methods for managing songs, playlists, scan folders,
+// and Spotify download queue entries.
 type DB struct {
 	conn *sql.DB
 }
 
+// Song represents a persisted audio track with metadata and file locations
+// stored in the database.
 type Song struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
@@ -46,6 +51,7 @@ type Song struct {
 	FileHash    string   `json:"fileHash,omitempty"`
 }
 
+// Playlist represents a user-defined playlist persisted in the database.
 type Playlist struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
@@ -54,6 +60,8 @@ type Playlist struct {
 	CreatedAt int64    `json:"createdAt"`
 }
 
+// ScanFolder represents a configured filesystem folder to scan for music
+// files and their scan status.
 type ScanFolder struct {
 	ID        string `json:"id"`
 	Path      string `json:"path"`
@@ -62,6 +70,8 @@ type ScanFolder struct {
 	SongCount int    `json:"songCount"`
 }
 
+// New opens the SQLite database located at dbPath and returns a configured
+// DB instance ready for queries and updates.
 func New(dbPath string) (*DB, error) {
 	conn, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on&_journal_mode=WAL")
 	if err != nil {
@@ -78,6 +88,7 @@ func New(dbPath string) (*DB, error) {
 	return db, nil
 }
 
+// Close releases the underlying database connection.
 func (d *DB) Close() error {
 	return d.conn.Close()
 }
@@ -189,6 +200,7 @@ func (d *DB) migrate() error {
 
 // Song operations
 
+// GetAllSongs returns all songs currently persisted in the library.
 func (d *DB) GetAllSongs() ([]Song, error) {
 	rows, err := d.conn.Query(`
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
@@ -257,6 +269,7 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 	return songs, rows.Err()
 }
 
+// SaveSong inserts or updates a single Song record in the database.
 func (d *DB) SaveSong(s *Song) error {
 	genreJSON, _ := json.Marshal(s.Genre)
 
@@ -289,6 +302,7 @@ func (d *DB) SaveSong(s *Song) error {
 	return err
 }
 
+// SaveSongs inserts or updates multiple Song records in a transaction.
 func (d *DB) SaveSongs(songs []Song) error {
 	tx, err := d.conn.Begin()
 	if err != nil {
@@ -334,11 +348,13 @@ func (d *DB) SaveSongs(songs []Song) error {
 	return tx.Commit()
 }
 
+// DeleteSong removes a Song record by ID.
 func (d *DB) DeleteSong(id string) error {
 	_, err := d.conn.Exec("DELETE FROM songs WHERE id = ?", id)
 	return err
 }
 
+// ClearSongs deletes all songs from the database (dangerous).
 func (d *DB) ClearSongs() error {
 	_, err := d.conn.Exec("DELETE FROM songs")
 	return err
@@ -397,6 +413,7 @@ func (d *DB) DeleteSongsByFilePaths(paths []string) (int, error) {
 	return deleted, nil
 }
 
+// GetSongByID returns a Song by its ID or nil if not found.
 func (d *DB) GetSongByID(id string) (*Song, error) {
 	var s Song
 	var genreJSON sql.NullString
@@ -453,6 +470,7 @@ func (d *DB) GetSongByID(id string) (*Song, error) {
 	return &s, nil
 }
 
+// UpdatePlayCount increments the play count for the given song ID.
 func (d *DB) UpdatePlayCount(id string) error {
 	_, err := d.conn.Exec(`
 		UPDATE songs 
@@ -464,6 +482,7 @@ func (d *DB) UpdatePlayCount(id string) error {
 
 // Playlist operations
 
+// GetAllPlaylists returns all persisted playlists.
 func (d *DB) GetAllPlaylists() ([]Playlist, error) {
 	rows, err := d.conn.Query(`SELECT id, name, song_ids, cover_path, created_at FROM playlists ORDER BY name`)
 	if err != nil {
@@ -493,6 +512,7 @@ func (d *DB) GetAllPlaylists() ([]Playlist, error) {
 	return playlists, rows.Err()
 }
 
+// SavePlaylist creates or updates a playlist record.
 func (d *DB) SavePlaylist(p *Playlist) error {
 	songIDsJSON, _ := json.Marshal(p.SongIDs)
 
@@ -507,6 +527,7 @@ func (d *DB) SavePlaylist(p *Playlist) error {
 	return err
 }
 
+// DeletePlaylist deletes a playlist by ID.
 func (d *DB) DeletePlaylist(id string) error {
 	_, err := d.conn.Exec("DELETE FROM playlists WHERE id = ?", id)
 	return err
@@ -514,6 +535,7 @@ func (d *DB) DeletePlaylist(id string) error {
 
 // Scan folder operations
 
+// GetScanFolders returns the configured scan folders for the library.
 func (d *DB) GetScanFolders() ([]ScanFolder, error) {
 	rows, err := d.conn.Query(`SELECT id, path, added_at, last_scan, song_count FROM scan_folders ORDER BY path`)
 	if err != nil {
@@ -541,6 +563,7 @@ func (d *DB) GetScanFolders() ([]ScanFolder, error) {
 	return folders, rows.Err()
 }
 
+// AddScanFolder adds a new folder to be scanned for music files.
 func (d *DB) AddScanFolder(f *ScanFolder) error {
 	_, err := d.conn.Exec(`
 		INSERT INTO scan_folders (id, path, added_at, song_count)
@@ -550,6 +573,7 @@ func (d *DB) AddScanFolder(f *ScanFolder) error {
 	return err
 }
 
+// UpdateScanFolder updates the scan timestamp and song count for a folder.
 func (d *DB) UpdateScanFolder(id string, lastScan int64, songCount int) error {
 	_, err := d.conn.Exec(`
 		UPDATE scan_folders SET last_scan = ?, song_count = ? WHERE id = ?
@@ -557,6 +581,7 @@ func (d *DB) UpdateScanFolder(id string, lastScan int64, songCount int) error {
 	return err
 }
 
+// RemoveScanFolder removes a configured scan folder.
 func (d *DB) RemoveScanFolder(id string) error {
 	_, err := d.conn.Exec("DELETE FROM scan_folders WHERE id = ?", id)
 	return err
@@ -564,6 +589,9 @@ func (d *DB) RemoveScanFolder(id string) error {
 
 // Spotify Download operations
 
+// SpotifyDownload represents an item in the Spotify download queue persisted
+// in the database. It contains metadata about the requested download and
+// its current progress/status.
 type SpotifyDownload struct {
 	ID          string `json:"id"`
 	SpotifyID   string `json:"spotifyId"`
@@ -582,6 +610,8 @@ type SpotifyDownload struct {
 	Metadata    string `json:"metadata,omitempty"` // JSON string for additional data
 }
 
+// AddDownload inserts a new SpotifyDownload into the download queue.
+// AddDownload inserts a new SpotifyDownload into the download queue table.
 func (d *DB) AddDownload(download *SpotifyDownload) error {
 	_, err := d.conn.Exec(`
 		INSERT INTO spotify_downloads (
@@ -596,6 +626,8 @@ func (d *DB) AddDownload(download *SpotifyDownload) error {
 	return err
 }
 
+// GetDownload retrieves a single SpotifyDownload by ID.
+// GetDownload retrieves a SpotifyDownload by ID.
 func (d *DB) GetDownload(id string) (*SpotifyDownload, error) {
 	var dl SpotifyDownload
 	var artist, album, errorMsg, filePath, metadata sql.NullString
@@ -641,6 +673,8 @@ func (d *DB) GetDownload(id string) (*SpotifyDownload, error) {
 	return &dl, nil
 }
 
+// GetAllDownloads returns all Spotify downloads (completed, queued, failed).
+// GetAllDownloads returns all Spotify downloads stored in the DB.
 func (d *DB) GetAllDownloads() ([]SpotifyDownload, error) {
 	rows, err := d.conn.Query(`
 		SELECT id, spotify_id, spotify_uri, type, title, artist, album,
@@ -697,6 +731,7 @@ func (d *DB) GetAllDownloads() ([]SpotifyDownload, error) {
 	return downloads, rows.Err()
 }
 
+// GetQueuedDownloads returns queued Spotify downloads ordered by added time.
 func (d *DB) GetQueuedDownloads() ([]SpotifyDownload, error) {
 	rows, err := d.conn.Query(`
 		SELECT id, spotify_id, spotify_uri, type, title, artist, album,
@@ -754,6 +789,8 @@ func (d *DB) GetQueuedDownloads() ([]SpotifyDownload, error) {
 	return downloads, rows.Err()
 }
 
+// UpdateDownloadStatus sets the status, progress, and optional error message
+// for the given SpotifyDownload ID.
 func (d *DB) UpdateDownloadStatus(id string, status string, progress int, errorMsg string) error {
 	_, err := d.conn.Exec(`
 		UPDATE spotify_downloads
@@ -763,6 +800,7 @@ func (d *DB) UpdateDownloadStatus(id string, status string, progress int, errorM
 	return err
 }
 
+// UpdateDownloadProgress updates the progress percentage for a download.
 func (d *DB) UpdateDownloadProgress(id string, progress int) error {
 	_, err := d.conn.Exec(`
 		UPDATE spotify_downloads SET progress = ? WHERE id = ?
@@ -770,6 +808,7 @@ func (d *DB) UpdateDownloadProgress(id string, progress int) error {
 	return err
 }
 
+// MarkDownloadStarted marks a download as started and records a timestamp.
 func (d *DB) MarkDownloadStarted(id string) error {
 	_, err := d.conn.Exec(`
 		UPDATE spotify_downloads
@@ -779,6 +818,7 @@ func (d *DB) MarkDownloadStarted(id string) error {
 	return err
 }
 
+// MarkDownloadCompleted marks a download as complete and stores the file path.
 func (d *DB) MarkDownloadCompleted(id string, filePath string) error {
 	_, err := d.conn.Exec(`
 		UPDATE spotify_downloads
@@ -788,6 +828,7 @@ func (d *DB) MarkDownloadCompleted(id string, filePath string) error {
 	return err
 }
 
+// MarkDownloadFailed marks a download as failed and records an error message.
 func (d *DB) MarkDownloadFailed(id string, errorMsg string) error {
 	_, err := d.conn.Exec(`
 		UPDATE spotify_downloads
@@ -797,6 +838,7 @@ func (d *DB) MarkDownloadFailed(id string, errorMsg string) error {
 	return err
 }
 
+// DeleteDownload removes a download record from the database.
 func (d *DB) DeleteDownload(id string) error {
 	_, err := d.conn.Exec("DELETE FROM spotify_downloads WHERE id = ?", id)
 	return err
@@ -823,6 +865,7 @@ func (d *DB) DeleteCompletedDownloads() (int64, error) {
 
 // Settings operations
 
+// GetSetting retrieves a value for a configuration key from the settings table.
 func (d *DB) GetSetting(key string) (string, error) {
 	var value string
 	err := d.conn.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
@@ -832,6 +875,7 @@ func (d *DB) GetSetting(key string) (string, error) {
 	return value, err
 }
 
+// SetSetting sets a value for a configuration key in the settings table.
 func (d *DB) SetSetting(key, value string) error {
 	_, err := d.conn.Exec(`
 		INSERT INTO settings (key, value) VALUES (?, ?)

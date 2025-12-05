@@ -18,12 +18,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download } from 'lucide-react';
+import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, CheckCircle } from 'lucide-react';
 import { SpotifyService } from '../services/spotifyService';
 import { useStore } from '../store';
 import { formatTime } from '../utils';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
 import api from '../services/api';
+import { spotifyAlbumToSongs, spotifyTrackToSong } from '../lib/spotifyHelpers';
+import { ContextMenuType } from '../types';
 
 interface SpotifyAlbumFull {
   id: string;
@@ -53,12 +55,14 @@ interface SpotifyAlbumFull {
 export const SpotifyAlbumDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { addLog } = useStore();
+  const { addLog, playSong, addToQueue, showToast, openContextMenu } = useStore();
   
   const [album, setAlbum] = useState<SpotifyAlbumFull | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadingTracks, setDownloadingTracks] = useState<Set<string>>(new Set());
+  const [downloadedSpotifyIds, setDownloadedSpotifyIds] = useState<Set<string>>(new Set());
 
   const handleDownload = async () => {
     if (!album) return;
@@ -73,6 +77,82 @@ export const SpotifyAlbumDetail: React.FC = () => {
     } finally {
       setIsDownloading(false);
     }
+  };
+
+  // Play the entire album
+  const handlePlayAlbum = () => {
+    if (!album) return;
+    const songs = spotifyAlbumToSongs(album);
+    if (songs.length > 0) {
+      playSong(songs[0], songs);
+      addLog('info', `▶ Playing album: ${album.name}`);
+    }
+  };
+
+  // Shuffle play the album
+  const handleShuffleAlbum = () => {
+    if (!album) return;
+    const songs = spotifyAlbumToSongs(album);
+    if (songs.length > 0) {
+      const shuffled = [...songs].sort(() => Math.random() - 0.5);
+      playSong(shuffled[0], shuffled);
+      addLog('info', `🔀 Shuffling album: ${album.name}`);
+    }
+  };
+
+  // Add album to queue
+  const handleAddAlbumToQueue = () => {
+    if (!album) return;
+    const songs = spotifyAlbumToSongs(album);
+    if (songs.length > 0) {
+      addToQueue(songs);
+      showToast({ type: 'success', message: `Added ${songs.length} tracks to queue` });
+    }
+  };
+
+  // Play a specific track (with rest of album as context)
+  const handlePlayTrack = (trackIndex: number) => {
+    if (!album) return;
+    const songs = spotifyAlbumToSongs(album);
+    if (songs.length > 0 && trackIndex < songs.length) {
+      playSong(songs[trackIndex], songs);
+    }
+  };
+
+  // Download a single track
+  const handleDownloadTrack = async (track: SpotifyAlbumFull['tracks']['items'][0]) => {
+    if (downloadingTracks.has(track.id)) return;
+    
+    setDownloadingTracks(prev => new Set(prev).add(track.id));
+    try {
+      await api.downloadTrack(
+        track.id,
+        track.name,
+        track.artists?.map(a => a.name).join(', ') || album?.artists[0]?.name || 'Unknown Artist',
+        album?.name || 'Unknown Album',
+        Math.floor(track.duration_ms / 1000)
+      );
+      showToast({ type: 'success', message: `Queued for download: ${track.name}` });
+    } catch (error) {
+      console.error('Failed to queue download:', error);
+      showToast({ type: 'error', message: 'Failed to queue download' });
+    } finally {
+      setDownloadingTracks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(track.id);
+        return newSet;
+      });
+    }
+  };
+
+  // Open context menu for a track
+  const handleTrackContextMenu = (e: React.MouseEvent, track: SpotifyAlbumFull['tracks']['items'][0]) => {
+    e.preventDefault();
+    const song = spotifyTrackToSong({
+      ...track,
+      album: { name: album?.name || '', images: album?.images }
+    });
+    openContextMenu(e, ContextMenuType.SONG, song);
   };
 
   useEffect(() => {
@@ -202,10 +282,27 @@ export const SpotifyAlbumDetail: React.FC = () => {
       {/* Actions */}
       <div className="px-8 py-6 flex items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
         <button 
+          onClick={handlePlayAlbum}
           className="w-14 h-14 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center shadow-xl hover:scale-105 transition-all duration-200 text-black"
           aria-label="Play album"
         >
           <Play size={24} fill="black" />
+        </button>
+        <button 
+          onClick={handleShuffleAlbum}
+          className="w-10 h-10 bg-surface-2 hover:bg-surface-3 rounded-full flex items-center justify-center transition-all duration-200"
+          aria-label="Shuffle album"
+          title="Shuffle"
+        >
+          <Shuffle size={18} />
+        </button>
+        <button 
+          onClick={handleAddAlbumToQueue}
+          className="w-10 h-10 bg-surface-2 hover:bg-surface-3 rounded-full flex items-center justify-center transition-all duration-200"
+          aria-label="Add to queue"
+          title="Add to queue"
+        >
+          <ListPlus size={18} />
         </button>
         <button 
           onClick={handleDownload}
@@ -230,7 +327,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
       <div className="px-8 pb-32">
         <div className="bg-surface-1 rounded-xl overflow-hidden">
           {/* Header */}
-          <div className="grid grid-cols-[40px_1fr_1fr_80px_40px] gap-4 px-4 py-3 border-b border-surface-border text-text-subtle text-sm font-bold">
+          <div className="grid grid-cols-[40px_1fr_1fr_80px_80px] gap-4 px-4 py-3 border-b border-surface-border text-text-subtle text-sm font-bold">
             <div className="text-center">#</div>
             <div>Title</div>
             <div>Artist</div>
@@ -241,14 +338,18 @@ export const SpotifyAlbumDetail: React.FC = () => {
           </div>
 
           {/* Tracks */}
-          {album.tracks.items.map((track, idx) => (
+          {album.tracks.items.map((track, idx) => {
+            const isDownloaded = downloadedSpotifyIds.has(track.id);
+            return (
             <div 
               key={track.id}
-              className="grid grid-cols-[40px_1fr_1fr_80px_40px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0"
+              onClick={() => handlePlayTrack(idx)}
+              onContextMenu={(e) => handleTrackContextMenu(e, track)}
+              className="grid grid-cols-[40px_1fr_1fr_80px_80px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer"
             >
               <div className="text-center text-text-subtle flex items-center justify-center">
                 <span className="group-hover:hidden">{track.track_number}</span>
-                <Play size={16} className="hidden group-hover:block text-text-main" />
+                <Play size={16} className="hidden group-hover:block text-brand fill-current" />
               </div>
               <div className="flex flex-col justify-center min-w-0">
                 <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200">
@@ -266,13 +367,35 @@ export const SpotifyAlbumDetail: React.FC = () => {
               <div className="text-text-subtle font-mono text-sm flex items-center justify-center">
                 {formatTime(track.duration_ms / 1000)}
               </div>
-              <div className="flex items-center justify-center">
-                <button className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex items-center justify-center gap-1">
+                {isDownloaded ? (
+                  <div className="p-2 text-brand" title="Downloaded">
+                    <CheckCircle size={16} />
+                  </div>
+                ) : (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDownloadTrack(track); }}
+                    disabled={downloadingTracks.has(track.id)}
+                    className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                    title="Download"
+                  >
+                    {downloadingTracks.has(track.id) ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Download size={16} />
+                    )}
+                  </button>
+                )}
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleTrackContextMenu(e, track); }}
+                  className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                >
                   <MoreHorizontal size={18} />
                 </button>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
 
         {/* Copyright */}

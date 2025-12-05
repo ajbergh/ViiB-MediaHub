@@ -170,10 +170,20 @@ export interface SpotifySlice {
   spotifyTokenExpiry: number;
   spotifyUser: SpotifyProfile | null;
   
+  // Search persistence
+  spotifySearchQuery: string;
+  spotifySearchResults: any | null;
+  spotifyActiveTab: 'search' | 'recent' | 'albums' | 'playlists';
+  
   setSpotifyCredentials: (clientId: string, clientSecret: string) => void;
   setSpotifyTokens: (accessToken: string, refreshToken: string, expiry: number) => void;
   setSpotifyUser: (user: SpotifyProfile | null) => void;
   logoutSpotify: () => void;
+  
+  // Search persistence actions
+  setSpotifySearchQuery: (query: string) => void;
+  setSpotifySearchResults: (results: any | null) => void;
+  setSpotifyActiveTab: (tab: 'search' | 'recent' | 'albums' | 'playlists') => void;
   
   // Download state
   downloadCount: number;

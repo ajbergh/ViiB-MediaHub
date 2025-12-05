@@ -11,6 +11,7 @@
  * - Seekable progress bar with time display
  * - Volume slider with mute toggle
  * - Queue and equalizer panel toggles
+ * - Sleep timer with volume fade
  * - Visualizer display (when enabled)
  * - Responsive layout: stacks controls on narrow screens
  * - Hidden secondary controls on mobile (shuffle, repeat, EQ)
@@ -21,15 +22,16 @@
  * @module Player
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon } from 'lucide-react';
 import { formatTime, generateGradient, cssUrl } from '../utils';
 import { NowPlaying } from './NowPlaying';
 import { ContextMenuType } from '../types';
 import { Visualizer } from './Visualizer';
 import { EqualizerPanel } from './Equalizer';
+import { SleepTimer, useSleepTimer } from './SleepTimer';
 
 export const Player: React.FC = () => {
   const { 
@@ -43,6 +45,10 @@ export const Player: React.FC = () => {
       primaryRef, secondaryRef,
       currentTime, duration, handleTimeUpdate, handleEnded, seek 
   } = useAudioPlayer();
+
+  // Sleep timer state
+  const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
+  const sleepTimer = useSleepTimer();
 
   if (!currentSong) {
       return (
@@ -208,6 +214,16 @@ export const Player: React.FC = () => {
 
         {/* Volume & Extras - Hidden on mobile, shown on tablet+ */}
         <div className="hidden md:flex items-center justify-end gap-3">
+            {/* Sleep Timer Toggle */}
+            <button 
+                onClick={() => setIsSleepTimerOpen(true)}
+                className={`p-2 rounded-full transition-colors ${sleepTimer.timerState.mode !== 'off' ? 'text-purple-400' : 'text-text-secondary hover:text-text-main'}`}
+                title="Sleep Timer"
+                aria-label={`Sleep Timer ${sleepTimer.timerState.mode !== 'off' ? 'active' : ''}`}
+            >
+                <Moon size={18} />
+            </button>
+
             {/* EQ Toggle */}
             <button 
                 onClick={toggleEqPanel}
@@ -263,6 +279,17 @@ export const Player: React.FC = () => {
         )}
         
         <EqualizerPanel />
+        
+        <SleepTimer 
+            isOpen={isSleepTimerOpen}
+            onClose={() => setIsSleepTimerOpen(false)}
+            timerState={sleepTimer.timerState}
+            setTimer={sleepTimer.setTimer}
+            setTimerBySongs={sleepTimer.setTimerBySongs}
+            setTimerEndOfSong={sleepTimer.setTimerEndOfSong}
+            cancelTimer={sleepTimer.cancelTimer}
+            getRemainingTime={sleepTimer.getRemainingTime}
+        />
     </>
   );
 };

@@ -1,11 +1,11 @@
 import React from 'react';
-import { Play, ListPlus, Save, RefreshCw, Sparkles } from 'lucide-react';
+import { Play, SkipForward, ListPlus, Save, RefreshCw, Sparkles } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
 import { SmartMix } from '../../types';
 
 export const SmartMixMenu: React.FC<{ mix: SmartMix; onClose: () => void }> = ({ mix, onClose }) => {
-    const { songs, playSong, addToQueue, saveSmartMixAsPlaylist, refreshSmartMixes } = useStore();
+    const { songs, playSong, playNext, addToQueue, saveSmartMixAsPlaylist, refreshSmartMixes } = useStore();
     const mixSongs = mix.songIds.map((id: string) => songs.find(s => s.id === id)).filter(Boolean) as any[];
 
     const handleAction = (action: () => void) => {
@@ -26,7 +26,8 @@ export const SmartMixMenu: React.FC<{ mix: SmartMix; onClose: () => void }> = ({
             <MenuItem icon={Play} label="Play Mix" onClick={() => handleAction(() => {
                 if (mixSongs.length > 0) playSong(mixSongs[0], mixSongs);
             })} />
-            <MenuItem icon={ListPlus} label="Add Mix to Queue" onClick={() => handleAction(() => addToQueue(mixSongs))} />
+            <MenuItem icon={SkipForward} label="Play Next" onClick={() => handleAction(() => playNext(mixSongs))} />
+            <MenuItem icon={ListPlus} label="Add to Queue" onClick={() => handleAction(() => addToQueue(mixSongs))} />
             
             <div className="border-t border-[#333] my-1"></div>
             

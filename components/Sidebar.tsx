@@ -24,7 +24,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { 
   Home, Music, Disc, Mic2, ListMusic, 
   Wifi, Download, Search, Settings, Library, Sparkles, Loader2,
-  ChevronLeft, ChevronRight, Menu
+  ChevronLeft, ChevronRight, Menu, BarChart3
 } from 'lucide-react';
 import { useStore } from '../store';
 
@@ -115,6 +115,7 @@ export const Sidebar: React.FC = () => {
           <SidebarItem to="/spotify" icon={Wifi} label="Spotify" collapsed={collapsed} />
           <SidebarItem to="/downloads" icon={Download} label="Downloads" badge={downloadCount} collapsed={collapsed} />
           <SidebarItem to="/search" icon={Search} label="Search" collapsed={collapsed} />
+          <SidebarItem to="/stats" icon={BarChart3} label="Stats" collapsed={collapsed} />
         </div>
         
         <div className="space-y-1 mt-4">

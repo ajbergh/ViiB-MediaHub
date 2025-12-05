@@ -28,6 +28,8 @@ import (
 	taglib "go.senan.xyz/taglib"
 )
 
+// SongMetadata represents metadata extracted from an audio file including
+// title/artist/album, track numbers, duration, and cover data.
 type SongMetadata struct {
 	ID          string
 	Title       string
@@ -44,6 +46,9 @@ type SongMetadata struct {
 	CoverData   []byte
 }
 
+// ExtractMetadata reads metadata from the audio file located at filePath.
+// It prefers taglib extraction for duration support with a fallback to
+// dhowden/tag when needed. Returns a populated SongMetadata or an error.
 func ExtractMetadata(filePath string) (*SongMetadata, error) {
 	// Get file info for hash
 	info, err := os.Stat(filePath)

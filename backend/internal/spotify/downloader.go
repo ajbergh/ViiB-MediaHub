@@ -51,6 +51,9 @@ type DownloadMetadata struct {
 //   - Filename sanitization (removes invalid characters)
 //   - Duplicate detection (skips if file already exists)
 //   - Atomic writes (temp file renamed on completion)
+//
+// Downloader handles downloading tracks from Spotify using librespot.
+// It streams audio from Spotify servers and writes OGG files to disk.
 type Downloader struct {
 	sessionManager *SessionManager // Session for Spotify authentication
 	downloadDir    string          // Root directory for downloads
@@ -64,6 +67,10 @@ type Downloader struct {
 //
 // Returns:
 //   - Ready-to-use Downloader instance
+//
+// NewDownloader constructs a Downloader which uses the provided
+// SessionManager for Spotify authentication and writes files to
+// the specified download directory.
 func NewDownloader(sessionManager *SessionManager, downloadDir string) *Downloader {
 	return &Downloader{
 		sessionManager: sessionManager,
@@ -77,6 +84,9 @@ func NewDownloader(sessionManager *SessionManager, downloadDir string) *Download
 // Parameters:
 //   - bytesRead: Number of bytes downloaded so far
 //   - totalBytes: Total file size (may be -1 if unknown)
+//
+// ProgressCallback is invoked with the current bytes read and total bytes
+// during a track download so callers may report progress.
 type ProgressCallback func(bytesRead int64, totalBytes int64)
 
 // DownloadTrack downloads a single Spotify track and saves as OGG Vorbis.
@@ -117,6 +127,10 @@ type ProgressCallback func(bytesRead int64, totalBytes int64)
 // Returns:
 //   - string: Full path to downloaded file
 //   - error: If any step fails
+//
+// DownloadTrack downloads a single Spotify track to an OGG file using the
+// provided metadata to organize file location. The function returns the
+// full path to the saved file or an error if the download failed.
 func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist string, title string, album string, metadata *DownloadMetadata, progressCallback ProgressCallback) (string, error) {
 	dLog("Getting session for download...")
 	sess, err := d.sessionManager.GetSession()

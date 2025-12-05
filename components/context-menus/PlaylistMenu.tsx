@@ -1,11 +1,11 @@
 import React from 'react';
-import { Play, ListPlus, Trash2 } from 'lucide-react';
+import { Play, SkipForward, ListPlus, Trash2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
 import { Playlist } from '../../types';
 
 export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }> = ({ playlist, onClose }) => {
-    const { songs, playSong, addToQueue, deletePlaylist, showConfirmDialog, closeConfirmDialog } = useStore();
+    const { songs, playSong, playNext, addToQueue, deletePlaylist, showConfirmDialog, closeConfirmDialog } = useStore();
     const playlistSongs = songs.filter(s => playlist.songIds.includes(s.id));
 
     const handleAction = (action: () => void) => {
@@ -37,6 +37,7 @@ export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }>
             <MenuItem icon={Play} label="Play Playlist" onClick={() => handleAction(() => {
                 if (playlistSongs.length > 0) playSong(playlistSongs[0], playlistSongs);
             })} />
+            <MenuItem icon={SkipForward} label="Play Next" onClick={() => handleAction(() => playNext(playlistSongs))} />
             <MenuItem icon={ListPlus} label="Add to Queue" onClick={() => handleAction(() => addToQueue(playlistSongs))} />
             
             <div className="border-t border-[#333] my-1"></div>

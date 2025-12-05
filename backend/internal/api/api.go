@@ -31,6 +31,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// API provides the REST API handlers and dependencies for the ViiB MediaHub backend.
+// It contains references to the database, server logger, and other shared
+// components required by handler implementations.
 type API struct {
 	db              *db.DB
 	dataDir         string
@@ -39,6 +42,9 @@ type API struct {
 	scanner         *scanner.Scanner
 }
 
+// New constructs a new API instance using the given database and
+// download manager dependencies. The returned API implements handler
+// methods that are later bound to HTTP routes.
 func New(database *db.DB, dataDir string) *API {
 	logger.API("New: Starting with dataDir=%s", dataDir)
 
@@ -85,6 +91,7 @@ func New(database *db.DB, dataDir string) *API {
 	return api
 }
 
+// Routes registers all API HTTP routes and middleware on the provided chi Router.
 func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
 
@@ -544,6 +551,8 @@ func (a *API) browseFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// FolderEntry represents a single folder entry returned by the browse API
+	// used for selecting scan folders through the filesystem browser.
 	type FolderEntry struct {
 		Name  string `json:"name"`
 		Path  string `json:"path"`

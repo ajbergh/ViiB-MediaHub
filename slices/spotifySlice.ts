@@ -26,6 +26,11 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
   spotifyTokenExpiry: 0,
   spotifyUser: null,
   
+  // Search persistence state
+  spotifySearchQuery: '',
+  spotifySearchResults: null,
+  spotifyActiveTab: 'search',
+  
   setSpotifyCredentials: (id, secret) => set({ spotifyClientId: id, spotifyClientSecret: secret }),
   setSpotifyTokens: (accessToken, refreshToken, expiry) => set({ 
       spotifyAccessToken: accessToken, 
@@ -39,6 +44,11 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       spotifyTokenExpiry: 0, 
       spotifyUser: null 
   }),
+  
+  // Search persistence actions
+  setSpotifySearchQuery: (query) => set({ spotifySearchQuery: query }),
+  setSpotifySearchResults: (results) => set({ spotifySearchResults: results }),
+  setSpotifyActiveTab: (tab) => set({ spotifyActiveTab: tab }),
   
   downloadCount: 0,
   setDownloadCount: (count) => set({ downloadCount: count }),

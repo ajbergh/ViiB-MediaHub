@@ -21,7 +21,7 @@ The first launch dialog consists of 4 steps:
 - **Spotify Setup**: Optional configuration for:
   - Album artwork enrichment
   - Artist metadata and images
-  - Spotify Premium downloads
+  - Spotify Premium streaming and downloads
 - **Progress Tracking**: Visual progress bar showing setup completion
 - **Persistent State**: Setup completion is saved to localStorage
 
@@ -52,7 +52,7 @@ The first launch dialog consists of 4 steps:
 - Explains benefits of Spotify integration:
   - High-resolution album artwork
   - Rich metadata (genres, release dates, descriptions)
-  - Spotify Premium downloads
+  - Spotify Premium streaming and downloads
 - Input fields for:
   - Spotify Client ID
   - Spotify Client Secret

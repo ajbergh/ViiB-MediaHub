@@ -45,14 +45,12 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
 - **Background Enrichment** - Automatic Spotify metadata enhancement for albums/artists
 
 ### 🎧 Spotify Integration
-- **OAuth PKCE Authentication** - Secure login without exposing client secrets
-- **Catalog Search** - Search Spotify for tracks, albums, artists, and playlists
-- **Library Access** - Browse your saved albums, playlists, and recently played
-- **Metadata Enhancement** - High-resolution artwork and artist images from Spotify
-- **Direct Downloads** - Download tracks, albums, and playlists (Premium required)
+**Streaming & Direct Downloads** - Stream and download Spotify tracks (Premium required)
+  - **Direct Streaming**: Stream tracks directly from Spotify with configurable quality (High/Medium/Low) and HTTP Range support for seeking.
+  - **Direct Downloads**: Download tracks, albums, and playlists to OGG Vorbis for offline playback.
   - Configurable concurrent downloads (1-10)
   - Real-time progress via Server-Sent Events
-  - Organized file structure: `{Artist}/{Album}/{Track}.ogg`
+  - Organized file structure for downloads: `{Artist}/{Album}/{Track}.ogg`
   - Auto-rescan after downloads complete
 
 ### 💾 Data & Settings
@@ -212,6 +210,7 @@ The app will:
 | DELETE | `/api/spotify/downloads/{id}` | Delete download |
 | POST | `/api/spotify/downloads/{id}/retry` | Retry failed download |
 | DELETE | `/api/spotify/downloads/completed` | Clear completed downloads |
+| GET | `/api/spotify/stream/{id}` | Stream audio for Spotify track (GET parameter: `?quality=high|medium|low`) |
 | GET | `/api/spotify/downloads/events` | SSE stream for download progress |
 
 ### Settings
@@ -221,9 +220,9 @@ The app will:
 | GET | `/api/settings/{key}` | Get setting value |
 | POST | `/api/settings/{key}` | Set setting value |
 
-## Spotify Downloads
+## Spotify Streaming & Downloads
 
-ViiB MediaHub can download tracks directly from Spotify (Premium account required).
+ViiB MediaHub can stream and download tracks directly from Spotify (Premium account required).
 
 ### Setup
 
@@ -236,9 +235,9 @@ ViiB MediaHub can download tracks directly from Spotify (Premium account require
 
 1. **Search** - Search for tracks, albums, artists, or playlists
 2. **Browse** - View your saved albums, playlists, or recently played
-3. **Download** - Click the download button on any item
+3. **Download / Play** - Click the download button on any item to save it, or click the Play button to stream directly from Spotify
 4. **Monitor** - Track progress on the Downloads page
-5. **Play** - Downloads auto-scan into your library
+5. **Play** - Downloads auto-scan into your library; streaming does not require a download
 
 ### Technical Details
 

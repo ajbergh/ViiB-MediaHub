@@ -28,6 +28,7 @@ import { SpotifyPlaylistDetail } from './pages/SpotifyPlaylistDetail';
 import { Downloads } from './pages/Downloads';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
+import { Stats } from './pages/Stats';
 import { SmartMixDetail } from './pages/SmartMixDetail';
 import { useStore } from './store';
 import { api } from './services/api';
@@ -148,6 +149,7 @@ const App: React.FC = () => {
           <Route path="/callback" element={<SpotifyCallback />} />
           <Route path="/downloads" element={<Downloads />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/stats" element={<Stats />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

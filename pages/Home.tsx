@@ -6,19 +6,19 @@
  * Sections:
  * - Global search bar for songs, albums, artists
  * - Smart Mixes: Auto-generated playlists based on listening habits
+ * - Recently Played: Last 20 played tracks with timestamps
  * - Recently Added: Latest additions to the library
- * - Recently Played: Recently listened albums
  * - Top Artists: Most listened artists
  * 
  * @module Home
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore, useAlbums, useArtists } from '../store';
-import { Sparkles, Search, Play } from 'lucide-react';
-import { generateGradient, coverBackground } from '../utils';
-import { ContextMenuType } from '../types';
+import { Sparkles, Search, Play, Clock, History } from 'lucide-react';
+import { generateGradient, coverBackground, formatTime } from '../utils';
+import { ContextMenuType, Song } from '../types';
 
 export const Home: React.FC = () => {
   const { songs, smartMixes, refreshSmartMixes, playSong, openContextMenu, showSmartMixes } = useStore();
@@ -26,6 +26,30 @@ export const Home: React.FC = () => {
   const artists = useArtists();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Get recently played songs (sorted by lastPlayed, descending)
+  const recentlyPlayed = useMemo(() => {
+    return [...songs]
+      .filter(s => s.lastPlayed && s.lastPlayed > 0)
+      .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))
+      .slice(0, 20);
+  }, [songs]);
+
+  // Format relative time (e.g., "2 hours ago", "Yesterday")
+  const formatRelativeTime = (timestamp: number): string => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days}d ago`;
+    return new Date(timestamp).toLocaleDateString();
+  };
 
   // Initial refresh of smart mixes just in case
   useEffect(() => {
@@ -149,6 +173,72 @@ export const Home: React.FC = () => {
             <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-blue-500/20"></div>
         </div>
       </section>
+
+      {/* Recently Played Section */}
+      {recentlyPlayed.length > 0 && (
+        <section className="mb-12">
+          <div className="flex items-center gap-2 mb-6">
+            <History className="text-blue-400" size={24} />
+            <h2 className="text-2xl font-bold">Recently Played</h2>
+          </div>
+          
+          <div className="bg-surface-2 rounded-xl border border-surface-3 overflow-hidden">
+            <div className="divide-y divide-surface-3">
+              {recentlyPlayed.slice(0, 10).map((song, idx) => (
+                <div 
+                  key={`${song.id}-${idx}`}
+                  className="flex items-center gap-4 p-3 hover:bg-surface-hover transition-colors cursor-pointer group"
+                  onClick={() => playSong(song)}
+                  onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
+                >
+                  {/* Album Art */}
+                  <div 
+                    className="w-12 h-12 rounded-md flex-shrink-0 relative overflow-hidden bg-surface-3"
+                    style={{ background: coverBackground(song.coverUrl, song.album) }}
+                  >
+                    {song.coverUrl && (
+                      <img src={song.coverUrl} alt="" className="w-full h-full object-cover" />
+                    )}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                      <Play size={20} className="text-white fill-current" />
+                    </div>
+                  </div>
+
+                  {/* Song Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-text-main truncate group-hover:text-brand transition-colors">
+                      {song.title}
+                    </p>
+                    <p className="text-sm text-text-secondary truncate">
+                      {song.artist}
+                    </p>
+                  </div>
+
+                  {/* Duration */}
+                  <div className="hidden md:block text-sm text-text-secondary font-mono">
+                    {formatTime(song.duration)}
+                  </div>
+
+                  {/* Time Ago */}
+                  <div className="flex items-center gap-1 text-xs text-text-subtle min-w-[80px] justify-end">
+                    <Clock size={12} />
+                    <span>{formatRelativeTime(song.lastPlayed!)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {recentlyPlayed.length > 10 && (
+              <button 
+                onClick={() => navigate('/songs', { state: { sortBy: 'lastPlayed' } })}
+                className="w-full py-3 text-sm text-text-secondary hover:text-text-main hover:bg-surface-hover transition-colors border-t border-surface-3"
+              >
+                View all recently played →
+              </button>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Recently Added Albums */}
       <section>

@@ -20,7 +20,7 @@ import (
 // SpotifyCredentials represents OAuth 2.0 credentials for Spotify Web API.
 // These credentials are stored in the database and used for:
 //   - Web API calls (search, metadata, user profile)
-//   - librespot authentication for downloads
+//   - librespot authentication for downloads and streaming
 //
 // The access token is refreshed by the frontend when it expires.
 type SpotifyCredentials struct {
@@ -62,7 +62,7 @@ type downloadMetadata struct {
 //
 // The access token is used for:
 //   - Spotify Web API calls (proxied through this backend)
-//   - librespot-go authentication for direct downloads
+//   - librespot-go authentication for direct downloads and streaming
 //
 // POST /api/spotify/credentials
 // Request body: SpotifyCredentials JSON

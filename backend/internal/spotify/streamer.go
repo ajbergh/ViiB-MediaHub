@@ -28,6 +28,9 @@ type StreamInfo struct {
 
 // ActiveStream represents an active audio stream from Spotify.
 // It wraps the librespot asset reader and provides additional metadata.
+// ActiveStream wraps a librespot asset reader and implements Read/Seek/Close
+// semantics for streaming audio to an HTTP response. It also exposes
+// metadata (Info) about the stream and uses a cancel function for cleanup.
 type ActiveStream struct {
 	reader    io.ReadSeekCloser  // Underlying audio data reader
 	info      StreamInfo         // Stream metadata
@@ -37,6 +40,8 @@ type ActiveStream struct {
 }
 
 // Read implements io.Reader for streaming audio data.
+// Read reads audio bytes from the underlying asset reader. It returns io.EOF
+// if the stream is closed.
 func (s *ActiveStream) Read(p []byte) (n int, err error) {
 	s.mu.RLock()
 	if s.closed {
@@ -49,6 +54,8 @@ func (s *ActiveStream) Read(p []byte) (n int, err error) {
 
 // Seek implements io.Seeker for seeking within the audio stream.
 // This enables HTTP Range request support for seeking during playback.
+// Seek implements io.Seeker for ActiveStream and allows seeking within
+// the open audio stream supporting HTTP Range requests.
 func (s *ActiveStream) Seek(offset int64, whence int) (int64, error) {
 	s.mu.RLock()
 	if s.closed {
@@ -60,6 +67,8 @@ func (s *ActiveStream) Seek(offset int64, whence int) (int64, error) {
 }
 
 // Close releases resources associated with the stream.
+// Close releases resources associated with the active stream and
+// cancels any internal context used for cleanup.
 func (s *ActiveStream) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -80,6 +89,8 @@ func (s *ActiveStream) Close() error {
 }
 
 // Info returns metadata about the stream.
+// Info returns stream-level metadata such as SpotifyID and format
+// which can be used to set HTTP headers for streaming responses.
 func (s *ActiveStream) Info() StreamInfo {
 	return s.info
 }
@@ -94,6 +105,10 @@ func (s *ActiveStream) Info() StreamInfo {
 //   - Seek support for HTTP Range requests
 //   - Concurrent stream management
 //   - Automatic cleanup on context cancellation
+//
+// Streamer manages active Spotify audio streams and coordinates session
+// usage and cleanup. It exposes StreamTrack methods to open streams
+// and CloseAllStreams for cleanup.
 type Streamer struct {
 	sessionManager *SessionManager          // Session for Spotify authentication
 	activeStreams  map[string]*ActiveStream // Track active streams by request ID
@@ -107,6 +122,9 @@ type Streamer struct {
 //
 // Returns:
 //   - Ready-to-use Streamer instance
+//
+// NewStreamer creates a new Streamer instance which uses the provided
+// SessionManager for Spotify session authentication and asset pinning.
 func NewStreamer(sessionManager *SessionManager) *Streamer {
 	return &Streamer{
 		sessionManager: sessionManager,
@@ -130,6 +148,10 @@ func NewStreamer(sessionManager *SessionManager) *Streamer {
 // Returns:
 //   - *ActiveStream: Audio stream with Read/Seek/Close methods
 //   - error: If session or track pinning fails
+//
+// StreamTrack opens an audio stream for the given Spotify ID using the
+// default quality preference and returns an ActiveStream for consumption
+// by an HTTP handler.
 func (s *Streamer) StreamTrack(ctx context.Context, spotifyID string, requestID string) (*ActiveStream, error) {
 	return s.StreamTrackWithQuality(ctx, spotifyID, requestID, "high")
 }
@@ -149,6 +171,10 @@ func (s *Streamer) StreamTrack(ctx context.Context, spotifyID string, requestID 
 // Returns:
 //   - *ActiveStream: Audio stream
 //   - error: If streaming fails
+//
+// StreamTrackWithQuality opens a Spotify track stream using the specified
+// quality preference ("high"/"medium"/"low") and returns an ActiveStream
+// which supports seeking.
 func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string, requestID string, quality string) (*ActiveStream, error) {
 	stLog("Starting stream for track: %s (request: %s, quality: %s)", spotifyID, requestID, quality)
 
@@ -245,6 +271,8 @@ func (s *Streamer) GetActiveStreamCount() int {
 
 // CloseAllStreams closes all active streams.
 // This should be called during application shutdown.
+// CloseAllStreams terminates all active streams managed by the Streamer
+// and releases associated resources.
 func (s *Streamer) CloseAllStreams() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

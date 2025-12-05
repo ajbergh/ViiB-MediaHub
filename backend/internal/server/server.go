@@ -25,6 +25,9 @@ import (
 	"github.com/go-chi/cors"
 )
 
+// New constructs an HTTP handler configured with routing and middleware
+// for the application. The returned handler mounts the API routes at /api
+// and serves the embedded frontend assets for all other routes.
 func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	r := chi.NewRouter()
 
