@@ -26,7 +26,7 @@ import { useStore } from '../store';
  * automatically refreshes the library data so the UI updates without manual reload.
  */
 interface LibraryEvent {
-  type: 'scan_started' | 'scan_complete' | 'scan_progress';
+  type: 'scan_started' | 'scan_complete' | 'scan_progress' | 'enrichment_complete' | 'library_updated';
   message: string;
   newSongs?: number;
   removedSongs?: number;
@@ -72,6 +72,16 @@ const LibraryEventListener = () => {
 
         case 'scan_progress':
           setScanProgress(libraryEvent.message);
+          break;
+
+        case 'library_updated':
+          console.log(`📚 Library updated: ${libraryEvent.message}, refreshing view...`);
+          refreshLibrary();
+          break;
+
+        case 'enrichment_complete':
+          console.log(`✨ Enrichment complete: ${libraryEvent.message}`);
+          refreshLibrary();
           break;
       }
     } catch (error) {

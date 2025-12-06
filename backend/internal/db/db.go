@@ -1554,3 +1554,27 @@ func (d *DB) UpdateSongGenres(songID string, genres []string) error {
 
 	return nil
 }
+
+// GetSongsWithMissingGenres returns songs that have no genre information.
+func (d *DB) GetSongsWithMissingGenres(limit int) ([]Song, error) {
+	query := `SELECT id, title, artist, album, genre FROM songs WHERE genre IS NULL OR genre = '[]' OR genre = '' LIMIT ?`
+	rows, err := d.conn.Query(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var songs []Song
+	for rows.Next() {
+		var s Song
+		var genreJSON sql.NullString
+		if err := rows.Scan(&s.ID, &s.Title, &s.Artist, &s.Album, &genreJSON); err != nil {
+			return nil, err
+		}
+		if genreJSON.Valid && genreJSON.String != "" {
+			json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+		}
+		songs = append(songs, s)
+	}
+	return songs, rows.Err()
+}

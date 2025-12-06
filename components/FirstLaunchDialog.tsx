@@ -20,7 +20,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Music, FolderOpen, Wifi, Check, Loader2, X, Plus, ChevronRight, Sparkles } from 'lucide-react';
+import { Music, FolderOpen, Wifi, Check, Loader2, X, Plus, ChevronRight, Sparkles, HardDrive } from 'lucide-react';
 import { useStore } from '../store';
 import { api } from '../services/api';
 
@@ -44,6 +44,10 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [savingCredentials, setSavingCredentials] = useState(false);
+
+  // Gemini API key state
+  const [geminiKey, setGeminiKey] = useState('');
+  const [savingGemini, setSavingGemini] = useState(false);
 
   // Spotify download folder browser state
   const [showDownloadFolderBrowser, setShowDownloadFolderBrowser] = useState(false);
@@ -70,12 +74,19 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
+  // Helper to determine if an entry is a drive letter (e.g., "C:")
+  const isDriveLetter = (name: string): boolean => {
+      return /^[A-Z]:$/.test(name);
+  };
+
   // Folder browser functions
   const openFolderBrowser = async () => {
     setShowFolderBrowser(true);
     setLoadingBrowser(true);
     try {
-      const result = await api.browseFolder();
+      // Start from drives on Windows, home on others
+      const startPath = navigator.platform.toLowerCase().includes('win') ? 'drives' : undefined;
+      const result = await api.browseFolder(startPath);
       setBrowserPath(result.currentPath);
       setBrowserEntries(result.entries);
     } catch (e) {
@@ -108,7 +119,11 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
     setShowDownloadFolderBrowser(true);
     setLoadingDownloadBrowser(true);
     try {
-      const startPath = spotifyDownloadPath || undefined;
+      // Start from drives on Windows if no download path set, otherwise use current path
+      let startPath: string | undefined = spotifyDownloadPath;
+      if (!startPath && navigator.platform.toLowerCase().includes('win')) {
+        startPath = 'drives';
+      }
       const result = await api.browseFolder(startPath);
       setDownloadBrowserPath(result.currentPath);
       setDownloadBrowserEntries(result.entries);
@@ -179,6 +194,32 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
     }
   };
 
+  const handleSaveGeminiKey = async () => {
+    if (!geminiKey.trim()) return;
+    setSavingGemini(true);
+    try {
+      await api.setSetting('gemini_api_key', geminiKey);
+      addLog('success', 'Gemini API key saved');
+      setStep(5);
+    } catch (e) {
+      addLog('error', 'Failed to save Gemini API key', e);
+    } finally {
+      setSavingGemini(false);
+    }
+  };
+
+  const handleStartScanAndClose = async () => {
+    if (scanFolders.length > 0) {
+      try {
+        await api.startScan();
+        addLog('success', 'Library scan started in background');
+      } catch (e) {
+        addLog('error', 'Failed to start scan', e);
+      }
+    }
+    onComplete();
+  };
+
   const handleStartScan = async () => {
     if (scanFolders.length === 0) {
       addLog('warn', 'No folders to scan');
@@ -223,7 +264,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
   };
 
   const handleSkipToEnd = () => {
-    setStep(4);
+    setStep(5);
   };
 
   const handleFinish = () => {
@@ -251,39 +292,51 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         Let's get you set up in just a few steps.
       </p>
 
-      <div className="grid grid-cols-3 gap-6 max-w-3xl mx-auto mb-12">
-        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
+      <div className="grid grid-cols-4 gap-4 max-w-4xl mx-auto mb-12">
+        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
           <div className="flex justify-center mb-4">
             <div className="p-4 bg-surface-2 rounded-xl group-hover:bg-brand/10 transition-colors">
               <FolderOpen size={32} className="text-brand" />
             </div>
           </div>
           <h3 className="text-lg font-bold text-white mb-2">Add Music</h3>
-          <p className="text-sm text-text-subtle group-hover:text-text-secondary transition-colors">
+          <p className="text-xs text-text-subtle group-hover:text-text-secondary transition-colors">
             Select folders containing your music collection
           </p>
         </div>
 
-        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
+        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
           <div className="flex justify-center mb-4">
             <div className="p-4 bg-surface-2 rounded-xl group-hover:bg-brand/10 transition-colors">
               <Wifi size={32} className="text-brand" />
             </div>
           </div>
           <h3 className="text-lg font-bold text-white mb-2">Spotify Sync</h3>
-          <p className="text-sm text-text-subtle group-hover:text-text-secondary transition-colors">
+          <p className="text-xs text-text-subtle group-hover:text-text-secondary transition-colors">
             Optional metadata enrichment and downloads
           </p>
         </div>
 
-        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
+        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
           <div className="flex justify-center mb-4">
             <div className="p-4 bg-surface-2 rounded-xl group-hover:bg-brand/10 transition-colors">
               <Sparkles size={32} className="text-brand" />
             </div>
           </div>
+          <h3 className="text-lg font-bold text-white mb-2">AI Enrichment</h3>
+          <p className="text-xs text-text-subtle group-hover:text-text-secondary transition-colors">
+            Auto-tag genres and moods with Gemini AI
+          </p>
+        </div>
+
+        <div className="group bg-surface-1/50 backdrop-blur-sm border border-surface-border hover:border-brand/50 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/5">
+          <div className="flex justify-center mb-4">
+            <div className="p-4 bg-surface-2 rounded-xl group-hover:bg-brand/10 transition-colors">
+              <Music size={32} className="text-brand" />
+            </div>
+          </div>
           <h3 className="text-lg font-bold text-white mb-2">Start Listening</h3>
-          <p className="text-sm text-text-subtle group-hover:text-text-secondary transition-colors">
+          <p className="text-xs text-text-subtle group-hover:text-text-secondary transition-colors">
             Enjoy your music with powerful features
           </p>
         </div>
@@ -527,7 +580,107 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
     </div>
   );
 
-  // Step 4: Complete Setup
+  // Step 4: Gemini Integration (Optional)
+  const renderGeminiSetup = () => (
+    <div className="py-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-3 bg-brand/10 rounded-lg">
+          <Sparkles size={28} className="text-brand" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-white">AI Enrichment</h2>
+          <p className="text-text-secondary">Optional - Enhance metadata with Google Gemini</p>
+        </div>
+      </div>
+
+      <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
+        <p className="text-sm text-text-secondary mb-4">
+          Connect your Google Gemini API key to automatically fill in missing genres, moods, and other metadata using AI analysis.
+        </p>
+
+        <div className="bg-surface-2 border border-brand/30 rounded-lg p-4 mb-6">
+          <h4 className="text-sm font-bold text-white mb-2">Capabilities:</h4>
+          <ul className="text-sm text-text-secondary space-y-1">
+            <li className="flex items-start gap-2">
+              <Check size={16} className="text-brand mt-0.5 flex-shrink-0" />
+              <span>Intelligent genre classification</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Check size={16} className="text-brand mt-0.5 flex-shrink-0" />
+              <span>Mood and style detection</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Check size={16} className="text-brand mt-0.5 flex-shrink-0" />
+              <span>Contextual metadata enrichment</span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="space-y-4 mb-4">
+          <div>
+            <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
+              Gemini API Key
+            </label>
+            <input
+              type="password"
+              value={geminiKey}
+              onChange={(e) => setGeminiKey(e.target.value)}
+              placeholder="Enter your Gemini API Key"
+              className="w-full bg-surface-2 border border-surface-border rounded-lg px-4 py-3 text-text-main focus:border-brand outline-none transition-colors"
+            />
+          </div>
+        </div>
+
+        <div className="text-xs text-text-subtle">
+          Don't have a key? Get one at{' '}
+          <a
+            href="https://makersuite.google.com/app/apikey"
+            target="_blank"
+            rel="noreferrer"
+            className="text-brand hover:underline"
+          >
+            makersuite.google.com
+          </a>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setStep(3)}
+          className="px-5 py-2 text-text-secondary hover:text-text-main transition-colors"
+        >
+          ← Back
+        </button>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setStep(5)}
+            className="px-5 py-2 text-text-subtle hover:text-text-secondary transition-colors underline"
+          >
+            Skip for now
+          </button>
+          <button
+            onClick={handleSaveGeminiKey}
+            disabled={!geminiKey.trim() || savingGemini}
+            className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2"
+          >
+            {savingGemini ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                Save & Continue <ChevronRight size={18} />
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Step 5: Complete Setup
   const renderComplete = () => (
     <div className="text-center py-8">
       <div className="flex justify-center mb-6">
@@ -587,33 +740,15 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-4">
+      <div className="flex flex-col items-center gap-4">
         {scanFolders.length > 0 ? (
-          <>
-            <button
-              onClick={handleFinish}
-              className="px-6 py-3 text-text-secondary hover:text-text-main transition-colors border border-surface-border hover:border-surface-slider rounded-lg"
-            >
-              I'll Scan Later
-            </button>
-            <button
-              onClick={handleStartScan}
-              disabled={isScanning}
-              className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold py-3 px-8 rounded-full transition-all shadow-lg shadow-brand/20 flex items-center gap-2"
-            >
-              {isScanning ? (
-                <>
-                  <Loader2 size={20} className="animate-spin" />
-                  Scanning...
-                </>
-              ) : (
-                <>
-                  <Music size={20} />
-                  Start Scanning
-                </>
-              )}
-            </button>
-          </>
+          <button
+            onClick={handleStartScanAndClose}
+            className="bg-brand hover:bg-brand-hover text-black font-bold py-4 px-10 rounded-full transition-all shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105 flex items-center gap-3 text-lg"
+          >
+            <Music size={24} />
+            Start Scanning & Launch
+          </button>
         ) : (
           <button
             onClick={handleFinish}
@@ -623,13 +758,13 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
             Start Using ViiB MediaHub
           </button>
         )}
+        
+        {scanFolders.length > 0 && (
+          <p className="text-sm text-text-subtle">
+            Scanning will continue in the background while you use the app.
+          </p>
+        )}
       </div>
-
-      {isScanning && scanProgress && (
-        <div className="mt-6 bg-surface-2 border border-surface-border rounded-lg p-4 max-w-md mx-auto">
-          <p className="text-sm text-brand font-mono">{scanProgress}</p>
-        </div>
-      )}
     </div>
   );
 
@@ -638,16 +773,16 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
         <div className="bg-surface-2 border border-surface-3 rounded-2xl p-8 max-w-3xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
           {/* Progress Indicator */}
-          {step > 1 && step < 4 && (
+          {step > 1 && step < 5 && (
             <div className="mb-8">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-text-subtle uppercase">Setup Progress</span>
-                <span className="text-xs text-text-subtle">Step {step - 1} of 3</span>
+                <span className="text-xs text-text-subtle">Step {step - 1} of 4</span>
               </div>
               <div className="h-2 bg-surface-1 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-brand transition-all duration-500 ease-out rounded-full"
-                  style={{ width: `${((step - 1) / 3) * 100}%` }}
+                  style={{ width: `${((step - 1) / 4) * 100}%` }}
                 />
               </div>
             </div>
@@ -657,7 +792,8 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           {step === 1 && renderWelcome()}
           {step === 2 && renderFolderSetup()}
           {step === 3 && renderSpotifySetup()}
-          {step === 4 && renderComplete()}
+          {step === 4 && renderGeminiSetup()}
+          {step === 5 && renderComplete()}
         </div>
       </div>
 
@@ -688,16 +824,24 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                 </div>
               ) : (
                 <div className="divide-y divide-surface-border">
-                  {browserEntries.map((entry, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => navigateFolder(entry.path)}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
-                    >
-                      <FolderOpen size={18} className="text-brand flex-shrink-0" />
-                      <span className="text-text-main truncate">{entry.name}</span>
-                    </button>
-                  ))}
+                  {browserEntries.map((entry, idx) => {
+                    const isRoot = isDriveLetter(entry.name);
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => navigateFolder(entry.path)}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
+                      >
+                        {isRoot ? (
+                          <HardDrive size={18} className="text-brand flex-shrink-0" />
+                        ) : (
+                          <FolderOpen size={18} className="text-brand flex-shrink-0" />
+                        )}
+                        <span className="text-text-main truncate font-medium">{entry.name}</span>
+                        {isRoot && <span className="text-xs text-text-subtle ml-auto">Drive</span>}
+                      </button>
+                    );
+                  })}
                   {browserEntries.length === 0 && (
                     <div className="p-4 text-center text-text-subtle">No subfolders found</div>
                   )}
@@ -752,16 +896,24 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                 </div>
               ) : (
                 <div className="divide-y divide-surface-border">
-                  {downloadBrowserEntries.map((entry, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => navigateDownloadFolder(entry.path)}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
-                    >
-                      <FolderOpen size={18} className="text-brand flex-shrink-0" />
-                      <span className="text-text-main truncate">{entry.name}</span>
-                    </button>
-                  ))}
+                  {downloadBrowserEntries.map((entry, idx) => {
+                    const isRoot = isDriveLetter(entry.name);
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => navigateDownloadFolder(entry.path)}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
+                      >
+                        {isRoot ? (
+                          <HardDrive size={18} className="text-brand flex-shrink-0" />
+                        ) : (
+                          <FolderOpen size={18} className="text-brand flex-shrink-0" />
+                        )}
+                        <span className="text-text-main truncate font-medium">{entry.name}</span>
+                        {isRoot && <span className="text-xs text-text-subtle ml-auto">Drive</span>}
+                      </button>
+                    );
+                  })}
                   {downloadBrowserEntries.length === 0 && (
                     <div className="p-4 text-center text-text-subtle">No subfolders found</div>
                   )}

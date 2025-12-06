@@ -50,11 +50,30 @@ export const Settings: React.FC = () => {
   const [browserPath, setBrowserPath] = useState('');
   
   // Gemini Enrichment State
+  const [geminiKey, setGeminiKey] = useState('');
+  const [keySaved, setKeySaved] = useState(false);
+  const [showKeySavedMessage, setShowKeySavedMessage] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichStatus, setEnrichStatus] = useState('');
   const [forceEnrichment, setForceEnrichment] = useState(false);
   const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingBrowser, setLoadingBrowser] = useState(false);
+
+  // Load Gemini Key
+  useEffect(() => {
+      const loadGeminiKey = async () => {
+          try {
+              const key = await api.getSetting('gemini_api_key');
+              if (key) {
+                  setGeminiKey(key);
+                  setKeySaved(true);
+              }
+          } catch (e) {
+              console.error('Failed to load Gemini key:', e);
+          }
+      };
+      loadGeminiKey();
+  }, []);
 
   // Download folder browser state
   const [showDownloadFolderBrowser, setShowDownloadFolderBrowser] = useState(false);
@@ -165,7 +184,9 @@ export const Settings: React.FC = () => {
       setShowFolderBrowser(true);
       setLoadingBrowser(true);
       try {
-          const result = await api.browseFolder();
+          // Start from drives on Windows, home on others
+          const startPath = navigator.platform.toLowerCase().includes('win') ? 'drives' : undefined;
+          const result = await api.browseFolder(startPath);
           setBrowserPath(result.currentPath);
           setBrowserEntries(result.entries);
       } catch (e) {
@@ -193,19 +214,27 @@ export const Settings: React.FC = () => {
       }
   };
 
+  // Helper to determine if an entry is a drive letter (e.g., "C:")
+  const isDriveLetter = (name: string): boolean => {
+      return /^[A-Z]:$/.test(name);
+  };
+
   // Download folder browser functions
   const openDownloadFolderBrowser = async () => {
       setShowDownloadFolderBrowser(true);
       setLoadingDownloadBrowser(true);
       try {
-          // Start from current download path if set, otherwise home
-          const startPath = spotifyDownloadPath || undefined;
+          // Start from drives on Windows if no download path set, otherwise use current path
+          let startPath: string | undefined = spotifyDownloadPath;
+          if (!startPath && navigator.platform.toLowerCase().includes('win')) {
+              startPath = 'drives';
+          }
           const result = await api.browseFolder(startPath);
           setDownloadBrowserPath(result.currentPath);
           setDownloadBrowserEntries(result.entries);
       } catch (e) {
           console.error("Failed to browse folder", e);
-          // Try without a path on error
+          // Fallback: try without a path on error
           try {
               const result = await api.browseFolder();
               setDownloadBrowserPath(result.currentPath);
@@ -1096,13 +1125,43 @@ export const Settings: React.FC = () => {
                 <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
                   Gemini API Key
                 </label>
-                <input
-                  type="password"
-                  placeholder="Enter your Gemini API Key (optional if already saved)"
-                  className="w-full bg-surface-3 border border-surface-border rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-brand transition-colors"
-                  id="gemini-api-key"
-                  disabled={isEnriching}
-                />
+                <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={geminiKey}
+                      onChange={(e) => {
+                          setGeminiKey(e.target.value);
+                          setKeySaved(false);
+                      }}
+                      placeholder={keySaved ? "API Key Saved (Hidden)" : "Enter your Gemini API Key"}
+                      className="flex-1 bg-surface-3 border border-surface-border rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-brand transition-colors"
+                      disabled={isEnriching}
+                    />
+                    <button
+                        onClick={async () => {
+                            try {
+                                await api.setSetting('gemini_api_key', geminiKey);
+                                setKeySaved(true);
+                                setShowKeySavedMessage(true);
+                                setTimeout(() => setShowKeySavedMessage(false), 3000);
+                            } catch (e) {
+                                console.error('Failed to save key:', e);
+                            }
+                        }}
+                        className="bg-surface-2 hover:bg-surface-3 text-text-main font-bold py-2 px-4 rounded-lg transition-colors text-sm border border-surface-border"
+                    >
+                        Save
+                    </button>
+                </div>
+                {showKeySavedMessage && (
+                    <p className="text-green-500 text-xs mt-1 font-bold">API Key saved successfully!</p>
+                )}
+                {keySaved && !showKeySavedMessage && (
+                    <p className="text-brand text-xs mt-1 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-brand inline-block"></span>
+                        Key saved & active. Enrichment will run during library scans.
+                    </p>
+                )}
                 <p className="text-xs text-text-subtle mt-1">
                   Get a key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-brand hover:underline">Google AI Studio</a>.
                 </p>
@@ -1124,9 +1183,11 @@ export const Settings: React.FC = () => {
 
               <button
                 onClick={async () => {
-                  const input = document.getElementById('gemini-api-key') as HTMLInputElement;
-                  const apiKey = input.value;
-                  
+                  if (!geminiKey && !keySaved) {
+                      alert("Please enter or save an API Key first.");
+                      return;
+                  }
+
                   try {
                     setIsEnriching(true);
                     setEnrichStatus('Starting enrichment process...');
@@ -1138,7 +1199,7 @@ export const Settings: React.FC = () => {
                     while (keepGoing) {
                         setEnrichStatus(`Processing batch starting at ${offset}... (Total enriched: ${totalEnriched})`);
                         
-                        const res = await api.enrichGenres(apiKey, forceEnrichment, offset);
+                        const res = await api.enrichGenres(geminiKey, forceEnrichment, offset);
                         
                         if (res.status === 'error') {
                             throw new Error(res.message);
@@ -1162,9 +1223,9 @@ export const Settings: React.FC = () => {
                     setIsEnriching(false);
                   }
                 }}
-                disabled={isEnriching}
+                disabled={isEnriching || (!geminiKey && !keySaved)}
                 className={`self-start px-4 py-2 font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
-                    isEnriching 
+                    isEnriching || (!geminiKey && !keySaved)
                         ? 'bg-surface-2 text-text-subtle' 
                         : 'bg-brand text-black hover:bg-brand-hover'
                 }`}
@@ -1218,16 +1279,24 @@ export const Settings: React.FC = () => {
                           </div>
                       ) : (
                           <div className="divide-y divide-surface-border">
-                              {browserEntries.map((entry, idx) => (
-                                  <button
-                                      key={idx}
-                                      onClick={() => navigateFolder(entry.path)}
-                                      className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
-                                  >
-                                      <FolderOpen size={18} className="text-brand flex-shrink-0" />
-                                      <span className="text-text-main truncate">{entry.name}</span>
-                                  </button>
-                              ))}
+                              {browserEntries.map((entry, idx) => {
+                                  const isRoot = isDriveLetter(entry.name);
+                                  return (
+                                      <button
+                                          key={idx}
+                                          onClick={() => navigateFolder(entry.path)}
+                                          className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
+                                      >
+                                          {isRoot ? (
+                                              <HardDrive size={18} className="text-brand flex-shrink-0" />
+                                          ) : (
+                                              <FolderOpen size={18} className="text-brand flex-shrink-0" />
+                                          )}
+                                          <span className="text-text-main truncate font-medium">{entry.name}</span>
+                                          {isRoot && <span className="text-xs text-text-subtle ml-auto">Drive</span>}
+                                      </button>
+                                  );
+                              })}
                               {browserEntries.length === 0 && (
                                   <div className="p-4 text-center text-text-subtle">No subfolders found</div>
                               )}
@@ -1282,16 +1351,24 @@ export const Settings: React.FC = () => {
                           </div>
                       ) : (
                           <div className="divide-y divide-surface-border">
-                              {downloadBrowserEntries.map((entry, idx) => (
-                                  <button
-                                      key={idx}
-                                      onClick={() => navigateDownloadFolder(entry.path)}
-                                      className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
-                                  >
-                                      <FolderOpen size={18} className="text-brand flex-shrink-0" />
-                                      <span className="text-text-main truncate">{entry.name}</span>
-                                  </button>
-                              ))}
+                              {downloadBrowserEntries.map((entry, idx) => {
+                                  const isRoot = isDriveLetter(entry.name);
+                                  return (
+                                      <button
+                                          key={idx}
+                                          onClick={() => navigateDownloadFolder(entry.path)}
+                                          className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
+                                      >
+                                          {isRoot ? (
+                                              <HardDrive size={18} className="text-brand flex-shrink-0" />
+                                          ) : (
+                                              <FolderOpen size={18} className="text-brand flex-shrink-0" />
+                                          )}
+                                          <span className="text-text-main truncate font-medium">{entry.name}</span>
+                                          {isRoot && <span className="text-xs text-text-subtle ml-auto">Drive</span>}
+                                      </button>
+                                  );
+                              })}
                               {downloadBrowserEntries.length === 0 && (
                                   <div className="p-4 text-center text-text-subtle">No subfolders found</div>
                               )}

@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -125,6 +126,8 @@ func (a *API) Routes() chi.Router {
 	// System
 	r.Get("/health", a.healthCheck)
 	r.Post("/browse", a.browseFolder)
+	r.Get("/settings/{key}", a.getSetting)
+	r.Post("/settings/{key}", a.setSetting)
 
 	// Spotify
 	r.Get("/spotify/credentials", a.getSpotifyCredentials)
@@ -547,12 +550,6 @@ func (a *API) browseFolder(w http.ResponseWriter, r *http.Request) {
 		req.Path = home
 	}
 
-	entries, err := os.ReadDir(req.Path)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
 	// FolderEntry represents a single folder entry returned by the browse API
 	// used for selecting scan folders through the filesystem browser.
 	type FolderEntry struct {
@@ -563,14 +560,57 @@ func (a *API) browseFolder(w http.ResponseWriter, r *http.Request) {
 
 	var result []FolderEntry
 
-	// Add parent directory
+	// Check if we need to list available drives on Windows
+	// This happens when path is "drives" or when on root and requesting drive list
+	if req.Path == "drives" || req.Path == "/" || req.Path == "\\" {
+		// List available drives on Windows
+		if runtime.GOOS == "windows" {
+			for drive := 'A'; drive <= 'Z'; drive++ {
+				drivePath := string(drive) + ":"
+				// Check if the drive is accessible
+				if _, err := os.Stat(drivePath); err == nil {
+					result = append(result, FolderEntry{
+						Name:  drivePath,
+						Path:  drivePath + "\\",
+						IsDir: true,
+					})
+				}
+			}
+			respondJSON(w, map[string]interface{}{
+				"currentPath": "Drives",
+				"entries":     result,
+			})
+			return
+		}
+		// On non-Windows systems, default to home directory
+		home, _ := os.UserHomeDir()
+		req.Path = home
+	}
+
+	entries, err := os.ReadDir(req.Path)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Add parent directory (or drive list on Windows if at root)
 	parent := filepath.Dir(req.Path)
 	if parent != req.Path {
-		result = append(result, FolderEntry{
-			Name:  "..",
-			Path:  parent,
-			IsDir: true,
-		})
+		// Check if parent is root on Windows
+		if runtime.GOOS == "windows" && (parent == "\\" || parent == "/") {
+			// Going up from root shows drive list
+			result = append(result, FolderEntry{
+				Name:  "Drives",
+				Path:  "drives",
+				IsDir: true,
+			})
+		} else {
+			result = append(result, FolderEntry{
+				Name:  "..",
+				Path:  parent,
+				IsDir: true,
+			})
+		}
 	}
 
 	for _, entry := range entries {

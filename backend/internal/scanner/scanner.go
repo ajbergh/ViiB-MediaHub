@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/gemini"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	taglib "go.senan.xyz/taglib"
 )
@@ -88,6 +89,9 @@ type Scanner struct {
 	// Event broadcasting to multiple SSE clients
 	subscribers     map[chan LibraryEvent]struct{}
 	subscriberMutex sync.RWMutex
+
+	// Background enrichment
+	enrichmentQueue chan []db.Song
 }
 
 // ScanResult contains the results of a scan operation
@@ -105,14 +109,20 @@ func New(database *db.DB, dataDir string) *Scanner {
 	coverDir := filepath.Join(dataDir, "covers")
 	os.MkdirAll(coverDir, 0755)
 
-	return &Scanner{
+	s := &Scanner{
 		db:              database,
 		coverDir:        coverDir,
 		dataDir:         dataDir,
 		albumCovers:     make(map[string]string),
 		rescanThreshold: 5, // Default: rescan after 5 downloads
 		subscribers:     make(map[chan LibraryEvent]struct{}),
+		enrichmentQueue: make(chan []db.Song, 1000), // Buffer for pending batches
 	}
+
+	// Start background enrichment worker
+	go s.processEnrichmentQueue()
+
+	return s
 }
 
 // Subscribe creates a new channel for receiving library events
@@ -240,6 +250,11 @@ func (s *Scanner) setProgress(msg string) {
 	s.scanProgress = msg
 	s.scanMutex.Unlock()
 	logger.Scanner("%s", msg)
+
+	s.emitEvent(LibraryEvent{
+		Type:    "scan_progress",
+		Message: msg,
+	})
 }
 
 // ScanAll scans all configured folders
@@ -361,6 +376,36 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 	s.setProgress(fmt.Sprintf("Scan complete: %d files found, %d new, %d updated, %d removed (%s)",
 		result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.RemovedSongs, result.Duration.Round(time.Millisecond)))
 
+	// Check for Gemini API key and trigger enrichment
+	apiKey, err := s.db.GetSetting("gemini_api_key")
+	if err == nil && apiKey != "" {
+		s.setProgress("Enriching missing genres with Gemini...")
+		// Fetch songs with missing genres
+		songsToEnrich, err := s.db.GetSongsWithMissingGenres(50) // Limit to 50 per scan to be safe
+		if err == nil && len(songsToEnrich) > 0 {
+			logger.Scanner("Found %d songs with missing genres, enriching...", len(songsToEnrich))
+			client := gemini.NewClient(apiKey)
+			enrichedGenres, err := client.EnrichGenres(songsToEnrich)
+			if err == nil {
+				count := 0
+				for songID, genres := range enrichedGenres {
+					if err := s.db.UpdateSongGenres(songID, genres); err == nil {
+						count++
+					}
+				}
+				if count > 0 {
+					s.emitEvent(LibraryEvent{
+						Type:    "enrichment_complete",
+						Message: fmt.Sprintf("Enriched %d songs with genres", count),
+					})
+					logger.Scanner("Enriched %d songs with genres via Gemini", count)
+				}
+			} else {
+				logger.Scanner("Gemini enrichment failed: %v", err)
+			}
+		}
+	}
+
 	// Reset download counter after scan
 	s.rescanMutex.Lock()
 	s.downloadsSinceLastScan = 0
@@ -395,10 +440,14 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 	result := &ScanResult{}
 	var songs []db.Song
 	var scannedPaths []string
+	fileCount := 0
+	const batchSize = 50
 
 	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip errors
+			// Log directory access errors but continue
+			logger.Scanner("Error accessing %s: %v", path, err)
+			return nil // Skip errors and continue walking
 		}
 
 		if info.IsDir() {
@@ -411,6 +460,13 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 		}
 
 		result.TotalFiles++
+		fileCount++
+
+		// Log progress every 50 files
+		if fileCount%50 == 0 {
+			logger.Scanner("Scanned %d files so far in %s", fileCount, folderPath)
+		}
+
 		scannedPaths = append(scannedPaths, path)
 
 		song, err := s.extractMetadata(path)
@@ -438,27 +494,82 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 			FilePath:    path,
 			CoverPath:   song.CoverPath,
 			AddedAt:     time.Now().UnixMilli(),
+			FileHash:    song.ID, // Use the file hash we generated
 		}
 
 		songs = append(songs, dbSong)
+
+		// Save batch if we reached the limit
+		if len(songs) >= batchSize {
+			logger.Scanner("Saving batch of %d songs...", len(songs))
+			if err := s.db.SaveSongs(songs); err != nil {
+				logger.Scanner("ERROR saving batch to database: %v", err)
+				// Continue scanning even if save fails
+			} else {
+				result.NewSongs += len(songs)
+				s.createAlbumMetadataEntries(songs)
+
+				// Queue for background enrichment
+				// Create a copy of the slice to avoid race conditions as 'songs' is reused
+				batchCopy := make([]db.Song, len(songs))
+				copy(batchCopy, songs)
+
+				select {
+				case s.enrichmentQueue <- batchCopy:
+					logger.Scanner("Queued batch of %d songs for background enrichment", len(batchCopy))
+				default:
+					logger.Scanner("Enrichment queue full, skipping batch")
+				}
+
+				// Emit update event for real-time UI updates
+				s.emitEvent(LibraryEvent{
+					Type:     "library_updated",
+					Message:  fmt.Sprintf("Added %d songs", len(songs)),
+					NewSongs: len(songs),
+				})
+			}
+			// Reset batch
+			songs = []db.Song{}
+		}
+
 		return nil
 	})
 
 	if err != nil {
-		return nil, nil, err
+		logger.Scanner("Error during folder walk of %s: %v", folderPath, err)
+		return nil, nil, fmt.Errorf("failed to walk folder: %w", err)
 	}
 
-	// Save songs to database
+	// Save any remaining songs
 	if len(songs) > 0 {
+		logger.Scanner("Saving final batch of %d songs...", len(songs))
 		if err := s.db.SaveSongs(songs); err != nil {
-			return nil, nil, fmt.Errorf("failed to save songs: %w", err)
+			logger.Scanner("ERROR saving final batch to database: %v", err)
+			return nil, nil, fmt.Errorf("failed to save songs batch: %w", err)
 		}
-		result.NewSongs = len(songs) // SimpliSfied - SaveSongs handles upsert
-
-		// Create album_metadata entries for new albums discovered during scan
+		result.NewSongs += len(songs)
 		s.createAlbumMetadataEntries(songs)
+
+		// Queue for background enrichment
+		batchCopy := make([]db.Song, len(songs))
+		copy(batchCopy, songs)
+
+		select {
+		case s.enrichmentQueue <- batchCopy:
+			logger.Scanner("Queued final batch of %d songs for background enrichment", len(batchCopy))
+		default:
+			logger.Scanner("Enrichment queue full, skipping final batch")
+		}
+
+		// Emit final update
+		s.emitEvent(LibraryEvent{
+			Type:     "library_updated",
+			Message:  fmt.Sprintf("Added %d songs", len(songs)),
+			NewSongs: len(songs),
+		})
 	}
 
+	logger.Scanner("Completed scan of %s: %d files, %d errors", folderPath, fileCount, result.Errors)
 	return result, scannedPaths, nil
 }
 
@@ -480,24 +591,140 @@ type SongMetadata struct {
 }
 
 // extractMetadata extracts metadata from an audio file using taglib
+// Uses a timeout to prevent hanging on inaccessible or problematic files
 func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
-	// Get file info for ID generation
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat file: %w", err)
+	// Use a channel to handle timeouts
+	type metadataResult struct {
+		metadata *SongMetadata
+		err      error
 	}
+	resultChan := make(chan metadataResult, 1)
 
-	// Generate ID from file path and size
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", filePath, info.Size())))
-	id := hex.EncodeToString(hash[:8])
+	// Run metadata extraction in a goroutine with timeout
+	go func() {
+		// Get file info for ID generation
+		info, err := os.Stat(filePath)
+		if err != nil {
+			resultChan <- metadataResult{nil, fmt.Errorf("failed to stat file: %w", err)}
+			return
+		}
 
-	// Try to read tags with taglib
-	tags, err := taglib.ReadTags(filePath)
-	if err != nil {
-		// If we can't read tags, create minimal metadata from filename
+		// Generate ID from file path and size
+		hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", filePath, info.Size())))
+		id := hex.EncodeToString(hash[:8])
+
+		// Try to read tags with taglib
+		tags, err := taglib.ReadTags(filePath)
+		if err != nil {
+			// If we can't read tags, create minimal metadata from filename
+			baseName := filepath.Base(filePath)
+			title := strings.TrimSuffix(baseName, filepath.Ext(baseName))
+
+			resultChan <- metadataResult{&SongMetadata{
+				ID:       id,
+				Title:    title,
+				Artist:   "Unknown Artist",
+				Album:    "Unknown Album",
+				FilePath: filePath,
+			}, nil}
+			return
+		}
+
+		// Read properties for duration
+		props, err := taglib.ReadProperties(filePath)
+		if err != nil {
+			// Continue without duration
+			props = taglib.Properties{}
+		}
+
+		// Helper to get first tag value
+		getTag := func(key string) string {
+			if vals, ok := tags[key]; ok && len(vals) > 0 {
+				return vals[0]
+			}
+			return ""
+		}
+
+		// Get basic metadata
+		song := &SongMetadata{
+			ID:       id,
+			Title:    getTag(taglib.Title),
+			Artist:   getTag(taglib.Artist),
+			Album:    getTag(taglib.Album),
+			Duration: float64(props.Length) / float64(time.Second),
+			FilePath: filePath,
+		}
+
+		// Year
+		if yearStr := getTag(taglib.Date); yearStr != "" {
+			// Parse year from date (might be YYYY or YYYY-MM-DD)
+			if len(yearStr) >= 4 {
+				if y, err := strconv.Atoi(yearStr[:4]); err == nil {
+					song.Year = y
+				}
+			}
+		}
+
+		// Fallback title to filename
+		if song.Title == "" {
+			baseName := filepath.Base(filePath)
+			song.Title = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+		}
+
+		// Fallback artist/album
+		if song.Artist == "" {
+			song.Artist = "Unknown Artist"
+		}
+		if song.Album == "" {
+			song.Album = "Unknown Album"
+		}
+
+		// Album artist
+		if aa := getTag(taglib.AlbumArtist); aa != "" {
+			song.AlbumArtist = aa
+		}
+
+		// Track number
+		if trackStr := getTag(taglib.TrackNumber); trackStr != "" {
+			// Handle "1/12" format
+			if idx := strings.Index(trackStr, "/"); idx > 0 {
+				trackStr = trackStr[:idx]
+			}
+			if t, err := strconv.Atoi(trackStr); err == nil {
+				song.TrackNumber = t
+			}
+		}
+
+		// Disc number
+		if discStr := getTag(taglib.DiscNumber); discStr != "" {
+			// Handle "1/2" format
+			if idx := strings.Index(discStr, "/"); idx > 0 {
+				discStr = discStr[:idx]
+			}
+			if d, err := strconv.Atoi(discStr); err == nil {
+				song.DiscNumber = d
+			}
+		}
+
+		// Genre
+		if genre := getTag(taglib.Genre); genre != "" {
+			song.Genre = []string{genre}
+		}
+
+		resultChan <- metadataResult{song, nil}
+	}()
+
+	// Wait for result or timeout (30 seconds per file)
+	select {
+	case result := <-resultChan:
+		return result.metadata, result.err
+	case <-time.After(30 * time.Second):
+		logger.Scanner("Timeout reading metadata from %s (30s), skipping file", filePath)
+		// Return minimal metadata to allow scan to continue
 		baseName := filepath.Base(filePath)
 		title := strings.TrimSuffix(baseName, filepath.Ext(baseName))
-
+		hash := sha256.Sum256([]byte(fmt.Sprintf("%s:timeout", filePath)))
+		id := hex.EncodeToString(hash[:8])
 		return &SongMetadata{
 			ID:       id,
 			Title:    title,
@@ -506,89 +733,6 @@ func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
 			FilePath: filePath,
 		}, nil
 	}
-
-	// Read properties for duration
-	props, err := taglib.ReadProperties(filePath)
-	if err != nil {
-		// Continue without duration
-		props = taglib.Properties{}
-	}
-
-	// Helper to get first tag value
-	getTag := func(key string) string {
-		if vals, ok := tags[key]; ok && len(vals) > 0 {
-			return vals[0]
-		}
-		return ""
-	}
-
-	// Get basic metadata
-	song := &SongMetadata{
-		ID:       id,
-		Title:    getTag(taglib.Title),
-		Artist:   getTag(taglib.Artist),
-		Album:    getTag(taglib.Album),
-		Duration: float64(props.Length) / float64(time.Second),
-		FilePath: filePath,
-	}
-
-	// Year
-	if yearStr := getTag(taglib.Date); yearStr != "" {
-		// Parse year from date (might be YYYY or YYYY-MM-DD)
-		if len(yearStr) >= 4 {
-			if y, err := strconv.Atoi(yearStr[:4]); err == nil {
-				song.Year = y
-			}
-		}
-	}
-
-	// Fallback title to filename
-	if song.Title == "" {
-		baseName := filepath.Base(filePath)
-		song.Title = strings.TrimSuffix(baseName, filepath.Ext(baseName))
-	}
-
-	// Fallback artist/album
-	if song.Artist == "" {
-		song.Artist = "Unknown Artist"
-	}
-	if song.Album == "" {
-		song.Album = "Unknown Album"
-	}
-
-	// Album artist
-	if aa := getTag(taglib.AlbumArtist); aa != "" {
-		song.AlbumArtist = aa
-	}
-
-	// Track number
-	if trackStr := getTag(taglib.TrackNumber); trackStr != "" {
-		// Handle "1/12" format
-		if idx := strings.Index(trackStr, "/"); idx > 0 {
-			trackStr = trackStr[:idx]
-		}
-		if t, err := strconv.Atoi(trackStr); err == nil {
-			song.TrackNumber = t
-		}
-	}
-
-	// Disc number
-	if discStr := getTag(taglib.DiscNumber); discStr != "" {
-		// Handle "1/2" format
-		if idx := strings.Index(discStr, "/"); idx > 0 {
-			discStr = discStr[:idx]
-		}
-		if d, err := strconv.Atoi(discStr); err == nil {
-			song.DiscNumber = d
-		}
-	}
-
-	// Genre
-	if genre := getTag(taglib.Genre); genre != "" {
-		song.Genre = []string{genre}
-	}
-
-	return song, nil
 }
 
 // getAlbumCover gets or creates album artwork for a song
@@ -799,4 +943,57 @@ func (s *Scanner) createAlbumMetadataEntries(songs []db.Song) {
 func (s *Scanner) findLocalCoverForSong(audioFilePath string) string {
 	folderPath := filepath.Dir(audioFilePath)
 	return s.findLocalCover(folderPath)
+}
+
+// processEnrichmentQueue handles background enrichment of songs
+func (s *Scanner) processEnrichmentQueue() {
+	logger.Scanner("Enrichment worker started")
+
+	for batch := range s.enrichmentQueue {
+		// Check for API key (reload each time to catch updates)
+		apiKey, err := s.db.GetSetting("gemini_api_key")
+		if err != nil || apiKey == "" {
+			continue
+		}
+
+		client := gemini.NewClient(apiKey)
+
+		// Retry loop for rate limits
+		maxRetries := 3
+		for i := 0; i < maxRetries; i++ {
+			enrichedGenres, err := client.EnrichGenres(batch)
+			if err == nil {
+				// Success - update DB
+				count := 0
+				for songID, genres := range enrichedGenres {
+					if err := s.db.UpdateSongGenres(songID, genres); err == nil {
+						count++
+					}
+				}
+
+				if count > 0 {
+					logger.Scanner("Background enrichment: Updated %d songs", count)
+					s.emitEvent(LibraryEvent{
+						Type:    "enrichment_complete",
+						Message: fmt.Sprintf("Enriched %d songs", count),
+					})
+				}
+				break // Done with this batch
+			}
+
+			// Check if it's a rate limit error (429)
+			if strings.Contains(err.Error(), "429") || strings.Contains(strings.ToLower(err.Error()), "quota") {
+				logger.Scanner("Gemini rate limit hit, waiting 30s (attempt %d/%d)...", i+1, maxRetries)
+				time.Sleep(30 * time.Second)
+				continue
+			}
+
+			// Other error
+			logger.Scanner("Gemini enrichment failed: %v", err)
+			break
+		}
+
+		// Small delay between batches to be nice to the API
+		time.Sleep(2 * time.Second)
+	}
 }
