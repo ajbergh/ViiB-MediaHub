@@ -23,10 +23,11 @@ import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { 
   Home, Music, Disc, Mic2, ListMusic, 
-  Wifi, Download, Search, Settings, Library, Sparkles, Loader2,
+  Download, Search, Settings, Library, Sparkles, Loader2,
   ChevronLeft, ChevronRight, Menu, BarChart3
 } from 'lucide-react';
 import { useStore } from '../store';
+import { SpotifyIcon } from './icons/SpotifyIcon';
 
 interface SidebarItemProps {
   to: string;
@@ -93,10 +94,10 @@ export const Sidebar: React.FC = () => {
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className={`p-1.5 rounded-lg text-text-subtle hover:text-text-main hover:bg-surface-hover transition-colors ${collapsed ? 'absolute right-1 top-4' : ''}`}
+          className={`p-1.5 rounded-lg text-text-subtle hover:text-text-main hover:bg-surface-hover transition-colors ${collapsed ? 'mx-auto block' : ''}`}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
         </button>
       </div>
 
@@ -112,7 +113,7 @@ export const Sidebar: React.FC = () => {
         <div className={`my-4 border-t border-surface-highlight ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>
 
         <div className="space-y-1">
-          <SidebarItem to="/spotify" icon={Wifi} label="Spotify" collapsed={collapsed} />
+          <SidebarItem to="/spotify" icon={SpotifyIcon} label="Spotify" collapsed={collapsed} />
           <SidebarItem to="/downloads" icon={Download} label="Downloads" badge={downloadCount} collapsed={collapsed} />
           <SidebarItem to="/search" icon={Search} label="Search" collapsed={collapsed} />
           <SidebarItem to="/stats" icon={BarChart3} label="Stats" collapsed={collapsed} />

@@ -152,7 +152,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
                     >
                          {coverUrl ? (
-                            <img src={coverUrl} alt="Album Art" className="w-full h-full object-cover" />
+                            <img src={coverUrl} alt="Album Art" className="w-full h-full object-contain" />
                          ) : (
                              <div 
                                 className="w-full h-full flex items-center justify-center text-8xl font-bold text-white/20"

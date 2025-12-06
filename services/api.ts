@@ -647,6 +647,23 @@ export const api = {
     const response = await fetch(`${API_BASE}/artists/metadata/unchecked`);
     return handleResponse<ApiArtistMetadata[]>(response);
   },
+  /**
+   * Triggers the Gemini genre enrichment process.
+   * @param apiKey - Optional Gemini API key. If not provided, backend will use stored key.
+   * @param force - If true, re-checks all songs. If false, only checks songs with missing genres.
+   * @param offset - Pagination offset for processing large libraries in batches.
+   * @returns Result of the enrichment process.
+   */
+  async enrichGenres(apiKey?: string, force: boolean = false, offset: number = 0): Promise<{ status: string; message: string; count: number }> {
+    const response = await fetch(`${API_BASE}/library/enrich-genres`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ apiKey, force, offset }),
+    });
+    return handleResponse(response);
+  },
 };
 
 /**

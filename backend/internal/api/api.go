@@ -26,6 +26,7 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/gemini"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/go-chi/chi/v5"
@@ -98,6 +99,7 @@ func (a *API) Routes() chi.Router {
 	// Library endpoints
 	r.Get("/songs", a.getSongs)
 	r.Delete("/songs", a.clearSongs)
+	r.Post("/library/enrich-genres", a.enrichGenres)
 	r.Post("/songs/{id}/play", a.recordPlay)
 
 	// Playlist endpoints
@@ -1118,5 +1120,70 @@ func (a *API) downloadArtistImage(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]interface{}{
 		"status":    "ok",
 		"imagePath": imagePath,
+	})
+}
+
+type enrichGenresRequest struct {
+	APIKey string `json:"apiKey"`
+	Force  bool   `json:"force"`
+	Offset int    `json:"offset"`
+}
+
+func (a *API) enrichGenres(w http.ResponseWriter, r *http.Request) {
+	var req enrichGenresRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// It's okay if body is empty, we might have key in settings
+	}
+
+	if req.APIKey == "" {
+		// Try to get from settings if not provided
+		key, err := a.db.GetSetting("gemini_api_key")
+		if err != nil || key == "" {
+			respondError(w, http.StatusBadRequest, "API key is required")
+			return
+		}
+		req.APIKey = key
+	} else {
+		// Save for future use
+		a.db.SetSetting("gemini_api_key", req.APIKey)
+	}
+
+	// Get songs for enrichment
+	// Limit to 50 to avoid hitting token limits
+	songs, err := a.db.GetSongsForEnrichment(50, req.Force, req.Offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get songs: %v", err))
+		return
+	}
+
+	if len(songs) == 0 {
+		respondJSON(w, map[string]interface{}{
+			"status":  "ok",
+			"message": "No songs found for enrichment",
+			"count":   0,
+		})
+		return
+	}
+
+	client := gemini.NewClient(req.APIKey)
+	genresMap, err := client.EnrichGenres(songs)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Gemini API error: %v", err))
+		return
+	}
+
+	updatedCount := 0
+	for id, genres := range genresMap {
+		if err := a.db.UpdateSongGenres(id, genres); err != nil {
+			logger.API("Failed to update genres for song %s: %v", id, err)
+			continue
+		}
+		updatedCount++
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"status":  "ok",
+		"message": fmt.Sprintf("Successfully enriched %d songs", updatedCount),
+		"count":   updatedCount,
 	})
 }

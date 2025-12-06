@@ -41,6 +41,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
         artist,
         year,
         albumSongs,
+        durationHours,
         durationMin,
         durationSec,
         playSong,
@@ -92,7 +93,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                     </div>
                     
                     <h1 
-                        className="text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-tight line-clamp-2 drop-shadow-lg"
+                        className="text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-snug line-clamp-2 drop-shadow-lg"
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, albumObject)}
                     >
                         {decodedAlbumName}
@@ -116,7 +117,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
                         <span>{metadata?.releaseDate ? new Date(metadata.releaseDate).getFullYear() : (year || 'Unknown Year')}</span>
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
-                        <span>{albumSongs.length} songs, <span className="text-gray-300">{durationMin} hr {durationSec} min</span></span>
+                        <span>{albumSongs.length} songs, <span className="text-gray-300">{durationHours > 0 ? `${durationHours} hr ` : ''}{durationMin} min</span></span>
                         
                         {metadata?.genre && (
                             <>
@@ -280,7 +281,8 @@ export const AlbumDetail: React.FC = () => {
     const coverUrl = metadata?.coverUrl || firstSong?.coverUrl || albumCovers[decodedAlbumName];
     
     const totalDuration = albumSongs.reduce((acc, s) => acc + s.duration, 0);
-    const durationMin = Math.floor(totalDuration / 60);
+    const durationHours = Math.floor(totalDuration / 3600);
+    const durationMin = Math.floor((totalDuration % 3600) / 60);
     const durationSec = Math.floor(totalDuration % 60);
 
     // Flatten logic for virtualization (Handling Discs)
@@ -350,6 +352,7 @@ export const AlbumDetail: React.FC = () => {
         artist,
         year,
         albumSongs,
+        durationHours,
         durationMin,
         durationSec,
         playSong,
@@ -411,7 +414,7 @@ export const AlbumDetail: React.FC = () => {
                                 </div>
 
                                 <div className="hidden md:block text-right pr-8 text-text-secondary text-sm font-mono opacity-0 group-hover:opacity-100 transition-all duration-200">
-                                    {(Math.floor(song.duration * 1234)).toLocaleString()}
+                                    {song.playCount || 0}
                                 </div>
 
                                 <div className="text-right pr-4 text-text-secondary text-sm font-mono group-hover:hidden">

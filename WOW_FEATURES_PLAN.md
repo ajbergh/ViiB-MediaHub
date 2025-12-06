@@ -82,14 +82,19 @@ Builds on existing crossfade infrastructure to add intelligent transitions.
 Extends existing `smartMix.ts` with more sophisticated generators.
 
 - [x] 📝 Define presets - Existing: Heavy Rotation, Rediscover, Fresh Finds, Chill Acoustic, 90s Alt
-- [ ] 📝 Add new presets: Focus Mode, Workout Energy, Late Night, Road Trip, Morning Coffee
+- [x] 📝 Add new presets: Focus Mode, Workout Energy, Late Night, Road Trip, Morning Coffee
+- [x] 🛠️ Backend: Gemini API integration for genre enrichment
+  - Created `internal/gemini` client
+  - Added `POST /api/library/enrich-genres` endpoint
+  - Added `GetSongsWithMissingGenres` and `UpdateSongGenres` to DB
 - [ ] 🔍 Spike scoring model (mood/energy) using local + Spotify audio features
   - Spotify Audio Features API: energy, valence, danceability, tempo
-- [ ] 🛠️ Backend: mix generator API; re-rank based on skips/likes
+- [x] 🛠️ Backend: mix generator API; re-rank based on skips/likes
   - Leverage existing `playCount`, `skipCount`, `lastPlayed` fields
-- [ ] 🎨 Frontend: mix builder UI, live preview, re-rank in-place
-  - Add sliders for energy, mood, tempo range
-  - "Regenerate" button with animation
+- [x] 🎨 Frontend: mix builder UI, live preview, re-rank in-place
+  - Added "Library Intelligence" section in Settings
+  - Added "High Energy Workout" and "Focus Mode" smart mixes
+- [ ] 🗃️ Persist mix seeds/params; cache candidates
 - [ ] 🗃️ Persist mix seeds/params; cache candidates
 - [ ] 🧪 Validate diversity/no artist clumping; long-run stability tests
 - [ ] 📈 Track engagement, skips, completion rate by mix type

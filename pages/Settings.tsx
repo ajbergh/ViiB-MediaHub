@@ -48,6 +48,11 @@ export const Settings: React.FC = () => {
   // Folder browser state
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
   const [browserPath, setBrowserPath] = useState('');
+  
+  // Gemini Enrichment State
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [enrichStatus, setEnrichStatus] = useState('');
+  const [forceEnrichment, setForceEnrichment] = useState(false);
   const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingBrowser, setLoadingBrowser] = useState(false);
 
@@ -1069,6 +1074,122 @@ export const Settings: React.FC = () => {
               </div>
           </div>
       )}
+
+      {/* Smart Features Section */}
+      <div className="bg-surface-2 rounded-xl p-6 border border-surface-border">
+        <div className="flex items-center gap-3 mb-6">
+          <Sparkles className="text-brand" size={24} />
+          <h2 className="text-xl font-bold text-text-main">Library Intelligence</h2>
+        </div>
+
+        <div className="space-y-6">
+          {/* Gemini Integration */}
+          <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
+            <h3 className="text-lg font-bold text-text-main mb-2">Generative Genre Enrichment</h3>
+            <p className="text-text-subtle text-sm mb-4">
+              Use Google's Gemini AI to automatically populate detailed genre information for your songs. 
+              This enables smarter "Vibe" mixes and better organization.
+            </p>
+            
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
+                  Gemini API Key
+                </label>
+                <input
+                  type="password"
+                  placeholder="Enter your Gemini API Key (optional if already saved)"
+                  className="w-full bg-surface-3 border border-surface-border rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-brand transition-colors"
+                  id="gemini-api-key"
+                  disabled={isEnriching}
+                />
+                <p className="text-xs text-text-subtle mt-1">
+                  Get a key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-brand hover:underline">Google AI Studio</a>.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="force-enrich"
+                  checked={forceEnrichment}
+                  onChange={(e) => setForceEnrichment(e.target.checked)}
+                  disabled={isEnriching}
+                  className="rounded border-surface-border bg-surface-3 text-brand focus:ring-brand"
+                />
+                <label htmlFor="force-enrich" className="text-sm text-text-main cursor-pointer select-none">
+                  Force re-check all songs (slower, overwrites existing genres)
+                </label>
+              </div>
+
+              <button
+                onClick={async () => {
+                  const input = document.getElementById('gemini-api-key') as HTMLInputElement;
+                  const apiKey = input.value;
+                  
+                  try {
+                    setIsEnriching(true);
+                    setEnrichStatus('Starting enrichment process...');
+                    
+                    let offset = 0;
+                    let totalEnriched = 0;
+                    let keepGoing = true;
+
+                    while (keepGoing) {
+                        setEnrichStatus(`Processing batch starting at ${offset}... (Total enriched: ${totalEnriched})`);
+                        
+                        const res = await api.enrichGenres(apiKey, forceEnrichment, offset);
+                        
+                        if (res.status === 'error') {
+                            throw new Error(res.message);
+                        }
+
+                        totalEnriched += res.count;
+                        
+                        // If we processed less than 50 songs, we're done
+                        if (res.count < 50) {
+                            keepGoing = false;
+                        } else {
+                            // Move to next batch
+                            offset += 50;
+                        }
+                    }
+                    
+                    setEnrichStatus(`Success! Enriched ${totalEnriched} songs total.`);
+                  } catch (e: any) {
+                    setEnrichStatus(`Error: ${e.message}`);
+                  } finally {
+                    setIsEnriching(false);
+                  }
+                }}
+                disabled={isEnriching}
+                className={`self-start px-4 py-2 font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
+                    isEnriching 
+                        ? 'bg-surface-2 text-text-subtle' 
+                        : 'bg-brand text-black hover:bg-brand-hover'
+                }`}
+              >
+                {isEnriching ? (
+                    <>
+                        <span className="animate-spin mr-2">⏳</span> Processing Library...
+                    </>
+                ) : (
+                    <>✨ Enrich Library Genres</>
+                )}
+              </button>
+              {enrichStatus && (
+                  <div className={`text-sm mt-2 ${
+                      enrichStatus.startsWith('Error') ? 'text-red-400' : 
+                      enrichStatus.startsWith('Success') ? 'text-green-400' : 
+                      'text-text-subtle'
+                  }`}>
+                      {enrichStatus}
+                  </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Folder Browser Modal */}
       {showFolderBrowser && (

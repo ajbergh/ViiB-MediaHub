@@ -1477,3 +1477,80 @@ func (d *DB) GetExpiredArtistMetadata(expirationDays int) ([]ArtistMetadata, err
 
 	return results, nil
 }
+
+// GetSongsForEnrichment returns a list of songs for genre enrichment.
+// If force is true, it returns all songs (paginated by offset).
+// If force is false, it returns only songs with missing genres.
+func (d *DB) GetSongsForEnrichment(limit int, force bool, offset int) ([]Song, error) {
+	var query string
+	var args []interface{}
+
+	baseQuery := `
+		SELECT id, title, artist, album, album_artist, track_number, disc_number, genre, year, duration, file_path, cover_path, added_at, play_count, last_played, skip_count, file_hash
+		FROM songs
+	`
+
+	if force {
+		query = baseQuery + ` ORDER BY added_at DESC LIMIT ? OFFSET ?`
+		args = []interface{}{limit, offset}
+	} else {
+		query = baseQuery + `
+			WHERE genre IS NULL OR genre = '' OR genre = '[]' OR genre = 'null'
+			LIMIT ?
+		`
+		args = []interface{}{limit}
+	}
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query songs for enrichment: %w", err)
+	}
+	defer rows.Close()
+
+	var songs []Song
+	for rows.Next() {
+		var s Song
+		var genreJSON sql.NullString
+		var trackNum, discNum sql.NullInt64
+
+		err := rows.Scan(
+			&s.ID, &s.Title, &s.Artist, &s.Album, &s.AlbumArtist,
+			&trackNum, &discNum, &genreJSON, &s.Year, &s.Duration,
+			&s.FilePath, &s.CoverPath, &s.AddedAt, &s.PlayCount,
+			&s.LastPlayed, &s.SkipCount, &s.FileHash,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan song row: %w", err)
+		}
+
+		if trackNum.Valid {
+			s.TrackNumber = int(trackNum.Int64)
+		}
+		if discNum.Valid {
+			s.DiscNumber = int(discNum.Int64)
+		}
+		if genreJSON.Valid && genreJSON.String != "" {
+			json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+		}
+
+		songs = append(songs, s)
+	}
+
+	return songs, nil
+}
+
+// UpdateSongGenres updates the genre list for a specific song.
+func (d *DB) UpdateSongGenres(songID string, genres []string) error {
+	genreJSON, err := json.Marshal(genres)
+	if err != nil {
+		return fmt.Errorf("failed to marshal genres: %w", err)
+	}
+
+	query := `UPDATE songs SET genre = ? WHERE id = ?`
+	_, err = d.conn.Exec(query, string(genreJSON), songID)
+	if err != nil {
+		return fmt.Errorf("failed to update song genres: %w", err)
+	}
+
+	return nil
+}

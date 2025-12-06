@@ -11,6 +11,8 @@
  * - Fresh Finds: Recently added to library
  * - Chill Acoustic Evening: Genre-based (acoustic, folk, jazz, ambient)
  * - 90s Alternative Mix: Year + genre filtering (1990-1999 rock/alternative)
+ * - High Energy Workout: Upbeat genres (pop, dance, electronic, rock)
+ * - Focus Mode: Instrumental and calm (classical, ambient, lo-fi)
  * 
  * Each mix contains up to 50 songs and updates when library changes.
  * 
@@ -121,6 +123,54 @@ export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
         rules: '90s-alt',
         updatedAt: now
     });
+
+    // 6. High Energy Workout: Upbeat genres
+    const workoutKeywords = ['pop', 'dance', 'electronic', 'hip hop', 'rock', 'metal', 'techno', 'house', 'drum and bass', 'edm', 'workout', 'energy', 'upbeat'];
+    const workoutIds = [...songs]
+        .filter(s => {
+            if (!s.genre || s.genre.length === 0) return false;
+            const genres = s.genre.join(' ').toLowerCase();
+            return workoutKeywords.some(k => genres.includes(k));
+        })
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 50)
+        .map(s => s.id);
+
+    if (workoutIds.length > 5) {
+        mixes.push({
+            id: 'workout-energy',
+            name: 'High Energy Workout',
+            description: 'Pump up the volume with these energetic tracks.',
+            coverColors: ['#FF416C', '#FF4B2B'],
+            songIds: workoutIds,
+            rules: 'workout-energy',
+            updatedAt: now
+        });
+    }
+
+    // 7. Focus Mode: Instrumental and calm
+    const focusKeywords = ['instrumental', 'soundtrack', 'ambient', 'classical', 'jazz', 'lo-fi', 'study', 'focus', 'piano', 'score', 'cinematic'];
+    const focusIds = [...songs]
+        .filter(s => {
+            if (!s.genre || s.genre.length === 0) return false;
+            const genres = s.genre.join(' ').toLowerCase();
+            return focusKeywords.some(k => genres.includes(k));
+        })
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 50)
+        .map(s => s.id);
+
+    if (focusIds.length > 5) {
+        mixes.push({
+            id: 'focus-mode',
+            name: 'Focus Mode',
+            description: 'Instrumental and ambient tracks for deep work.',
+            coverColors: ['#00c6ff', '#0072ff'],
+            songIds: focusIds,
+            rules: 'focus-mode',
+            updatedAt: now
+        });
+    }
 
     return mixes;
 };

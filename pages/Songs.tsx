@@ -111,11 +111,12 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
             </div>
 
             {/* Table Header */}
-            <div className="bg-surface-1 rounded-t-lg sticky top-0 z-10 border-b border-surface-3 grid grid-cols-[50px_4fr_3fr_3fr_100px_50px] gap-4 px-4 py-3 text-text-secondary text-xs uppercase tracking-wider font-medium shadow-md">
+            <div className="bg-surface-1 rounded-t-lg sticky top-0 z-10 border-b border-surface-3 grid grid-cols-[50px_4fr_3fr_3fr_60px_60px_50px] gap-4 px-4 py-3 text-text-secondary text-xs uppercase tracking-wider font-medium shadow-md">
                 <div className="text-center">#</div>
                 <div>Title</div>
                 <div>Album</div>
                 <div>Artist</div>
+                <div className="flex justify-center">Plays</div>
                 <div className="flex justify-end pr-2"><Clock size={16} /></div>
                 <div></div>
             </div>
@@ -195,7 +196,7 @@ export const Songs: React.FC = () => {
                return (
                 <div className="bg-surface-1 px-8"> {/* Wrapper to match page padding visually for bg */}
                     <div 
-                        className={`grid grid-cols-[50px_4fr_3fr_3fr_100px_50px] gap-4 px-4 py-3 items-center hover:bg-surface-hover group transition-colors cursor-pointer border-b border-transparent hover:border-surface-highlight ${isCurrent ? 'bg-surface-hover' : 'bg-surface-1'}`}
+                        className={`grid grid-cols-[50px_4fr_3fr_3fr_60px_60px_50px] gap-4 px-4 py-3 items-center hover:bg-surface-hover group transition-colors cursor-pointer border-b border-transparent hover:border-surface-highlight ${isCurrent ? 'bg-surface-hover' : 'bg-surface-1'}`}
                         onClick={() => playSong(song)}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                     >
@@ -217,6 +218,7 @@ export const Songs: React.FC = () => {
                         </div>
                         <div className="text-text-secondary text-sm truncate">{song.album}</div>
                         <div className="text-text-secondary text-sm truncate">{song.artist}</div>
+                        <div className="text-text-secondary text-sm font-mono text-center">{song.playCount || 0}</div>
                         <div className="text-text-secondary text-sm font-mono text-right pr-2">{formatTime(song.duration)}</div>
                         
                         <div className="flex justify-center relative">
