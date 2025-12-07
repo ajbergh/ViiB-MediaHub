@@ -57,11 +57,17 @@ var coverFilenames = []string{
 
 // LibraryEvent represents an event that can be sent to frontend clients
 type LibraryEvent struct {
-	Type         string `json:"type"`                   // "scan_complete", "scan_started", "scan_progress"
-	Message      string `json:"message"`                // Human-readable message
-	NewSongs     int    `json:"newSongs,omitempty"`     // Number of new songs added (for scan_complete)
-	RemovedSongs int    `json:"removedSongs,omitempty"` // Number of songs removed (for scan_complete)
-	TotalSongs   int    `json:"totalSongs,omitempty"`   // Total songs in library (for scan_complete)
+	Type         string                 `json:"type"`                   // "scan_complete", "scan_started", "scan_progress", "enrichment_started", "enrichment_progress", "enrichment_complete", "mood_started", "mood_progress", "mood_complete"
+	Message      string                 `json:"message"`                // Human-readable message
+	NewSongs     int                    `json:"newSongs,omitempty"`     // Number of new songs added (for scan_complete)
+	RemovedSongs int                    `json:"removedSongs,omitempty"` // Number of songs removed (for scan_complete)
+	TotalSongs   int                    `json:"totalSongs,omitempty"`   // Total songs in library (for scan_complete)
+	Data         map[string]interface{} `json:"data,omitempty"`         // Additional event-specific data
+}
+
+// EmitEvent allows external packages (like api) to emit events through the scanner's broadcast system
+func (s *Scanner) EmitEvent(event LibraryEvent) {
+	s.emitEvent(event)
 }
 
 // Scanner handles media library scanning with progress tracking
@@ -91,7 +97,13 @@ type Scanner struct {
 	subscriberMutex sync.RWMutex
 
 	// Background enrichment
-	enrichmentQueue chan []db.Song
+	enrichmentQueue        chan []db.Song
+	enrichmentMutex        sync.Mutex
+	enrichmentTotal        int
+	enrichmentProcessed    int
+	enrichmentBatchNum     int
+	enrichmentTotalBatches int
+	enrichmentActive       bool
 }
 
 // ScanResult contains the results of a scan operation
@@ -379,29 +391,91 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 	// Check for Gemini API key and trigger enrichment
 	apiKey, err := s.db.GetSetting("gemini_api_key")
 	if err == nil && apiKey != "" {
-		s.setProgress("Enriching missing genres with Gemini...")
-		// Fetch songs with missing genres
-		songsToEnrich, err := s.db.GetSongsWithMissingGenres(50) // Limit to 50 per scan to be safe
-		if err == nil && len(songsToEnrich) > 0 {
-			logger.Scanner("Found %d songs with missing genres, enriching...", len(songsToEnrich))
+		// Get total count of songs needing enrichment
+		allSongsToEnrich, err := s.db.GetSongsWithMissingGenres(10000)
+		if err == nil && len(allSongsToEnrich) > 0 {
+			totalToEnrich := len(allSongsToEnrich)
+			batchSize := 50
+			totalBatches := (totalToEnrich + batchSize - 1) / batchSize
+
+			logger.Scanner("Found %d songs with missing genres, starting enrichment (%d batches)...", totalToEnrich, totalBatches)
+
+			// Emit enrichment started event
+			s.emitEvent(LibraryEvent{
+				Type:    "enrichment_started",
+				Message: fmt.Sprintf("Starting genre enrichment for %d songs", totalToEnrich),
+				Data: map[string]interface{}{
+					"totalSongs":   totalToEnrich,
+					"totalBatches": totalBatches,
+				},
+			})
+
 			client := gemini.NewClient(apiKey)
-			enrichedGenres, err := client.EnrichGenres(songsToEnrich)
-			if err == nil {
-				count := 0
+			totalEnriched := 0
+
+			for batch := 0; batch < totalBatches; batch++ {
+				start := batch * batchSize
+				end := start + batchSize
+				if end > totalToEnrich {
+					end = totalToEnrich
+				}
+
+				songsToEnrich := allSongsToEnrich[start:end]
+
+				// Emit progress event before processing
+				s.emitEvent(LibraryEvent{
+					Type:    "enrichment_progress",
+					Message: fmt.Sprintf("Enriching batch %d of %d", batch+1, totalBatches),
+					Data: map[string]interface{}{
+						"currentBatch":   batch + 1,
+						"totalBatches":   totalBatches,
+						"processedSongs": totalEnriched,
+						"totalSongs":     totalToEnrich,
+					},
+				})
+
+				enrichedGenres, err := client.EnrichGenres(songsToEnrich)
+				if err != nil {
+					logger.Scanner("Gemini enrichment failed for batch %d: %v", batch+1, err)
+					continue
+				}
+
+				batchEnriched := 0
 				for songID, genres := range enrichedGenres {
 					if err := s.db.UpdateSongGenres(songID, genres); err == nil {
-						count++
+						totalEnriched++
+						batchEnriched++
 					}
 				}
-				if count > 0 {
-					s.emitEvent(LibraryEvent{
-						Type:    "enrichment_complete",
-						Message: fmt.Sprintf("Enriched %d songs with genres", count),
-					})
-					logger.Scanner("Enriched %d songs with genres via Gemini", count)
-				}
-			} else {
-				logger.Scanner("Gemini enrichment failed: %v", err)
+
+				logger.Scanner("Batch %d/%d: Enriched %d songs (total: %d/%d)", batch+1, totalBatches, batchEnriched, totalEnriched, totalToEnrich)
+
+				// Emit progress event after batch completes with updated count
+				s.emitEvent(LibraryEvent{
+					Type:    "enrichment_progress",
+					Message: fmt.Sprintf("Completed batch %d of %d (%d songs)", batch+1, totalBatches, batchEnriched),
+					Data: map[string]interface{}{
+						"currentBatch":   batch + 1,
+						"totalBatches":   totalBatches,
+						"processedSongs": totalEnriched,
+						"totalSongs":     totalToEnrich,
+					},
+				})
+			}
+
+			if totalEnriched > 0 {
+				s.emitEvent(LibraryEvent{
+					Type:    "enrichment_complete",
+					Message: fmt.Sprintf("Enriched %d songs with genres", totalEnriched),
+					Data: map[string]interface{}{
+						"enrichedSongs": totalEnriched,
+						"totalSongs":    totalToEnrich,
+					},
+				})
+				logger.Scanner("Enriched %d songs with genres via Gemini", totalEnriched)
+
+				// Update stats after enrichment
+				s.db.UpdateGenreStats()
 			}
 		}
 	}
@@ -410,6 +484,12 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 	s.rescanMutex.Lock()
 	s.downloadsSinceLastScan = 0
 	s.rescanMutex.Unlock()
+
+	// Update genre stats cache
+	s.setProgress("Updating genre statistics...")
+	if err := s.db.UpdateGenreStats(); err != nil {
+		logger.Scanner("Failed to update genre stats: %v", err)
+	}
 
 	// Get total song count for the event
 	totalSongs := 0
@@ -509,17 +589,8 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 				result.NewSongs += len(songs)
 				s.createAlbumMetadataEntries(songs)
 
-				// Queue for background enrichment
-				// Create a copy of the slice to avoid race conditions as 'songs' is reused
-				batchCopy := make([]db.Song, len(songs))
-				copy(batchCopy, songs)
-
-				select {
-				case s.enrichmentQueue <- batchCopy:
-					logger.Scanner("Queued batch of %d songs for background enrichment", len(batchCopy))
-				default:
-					logger.Scanner("Enrichment queue full, skipping batch")
-				}
+				// Note: Genre enrichment is handled after scan completes in ScanAll
+				// by querying the database for songs with missing genres
 
 				// Emit update event for real-time UI updates
 				s.emitEvent(LibraryEvent{
@@ -527,6 +598,9 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 					Message:  fmt.Sprintf("Added %d songs", len(songs)),
 					NewSongs: len(songs),
 				})
+
+				// Update genre stats periodically during scan
+				go s.db.UpdateGenreStats()
 			}
 			// Reset batch
 			songs = []db.Song{}
@@ -550,16 +624,8 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 		result.NewSongs += len(songs)
 		s.createAlbumMetadataEntries(songs)
 
-		// Queue for background enrichment
-		batchCopy := make([]db.Song, len(songs))
-		copy(batchCopy, songs)
-
-		select {
-		case s.enrichmentQueue <- batchCopy:
-			logger.Scanner("Queued final batch of %d songs for background enrichment", len(batchCopy))
-		default:
-			logger.Scanner("Enrichment queue full, skipping final batch")
-		}
+		// Note: Genre enrichment is handled after scan completes in ScanAll
+		// by querying the database for songs with missing genres
 
 		// Emit final update
 		s.emitEvent(LibraryEvent{
@@ -706,9 +772,22 @@ func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
 			}
 		}
 
-		// Genre
+		// Genre - split comma-separated genres into individual elements
+		// Many audio files store genres as "Rock, Alternative Rock, Grunge" in a single tag
+		// We split these into separate array elements for proper individual genre tracking
 		if genre := getTag(taglib.Genre); genre != "" {
-			song.Genre = []string{genre}
+			// Split by comma and trim whitespace from each genre
+			genreParts := strings.Split(genre, ",")
+			genres := make([]string, 0, len(genreParts))
+			for _, g := range genreParts {
+				trimmed := strings.TrimSpace(g)
+				if trimmed != "" {
+					genres = append(genres, trimmed)
+				}
+			}
+			if len(genres) > 0 {
+				song.Genre = genres
+			}
 		}
 
 		resultChan <- metadataResult{song, nil}
@@ -945,6 +1024,54 @@ func (s *Scanner) findLocalCoverForSong(audioFilePath string) string {
 	return s.findLocalCover(folderPath)
 }
 
+// queueForEnrichment adds a batch to the enrichment queue with tracking
+// Only queues songs that are missing genre information
+func (s *Scanner) queueForEnrichment(batch []db.Song) {
+	// Filter to only songs that need genre enrichment
+	var songsNeedingGenres []db.Song
+	for _, song := range batch {
+		// Check if song has empty or missing genres
+		if len(song.Genre) == 0 {
+			songsNeedingGenres = append(songsNeedingGenres, song)
+		}
+	}
+
+	// Skip if no songs need enrichment
+	if len(songsNeedingGenres) == 0 {
+		logger.Scanner("No songs in batch need genre enrichment, skipping")
+		return
+	}
+
+	s.enrichmentMutex.Lock()
+
+	// Start new enrichment session if not active
+	if !s.enrichmentActive {
+		s.enrichmentActive = true
+		s.enrichmentTotal = 0
+		s.enrichmentProcessed = 0
+		s.enrichmentBatchNum = 0
+		s.enrichmentTotalBatches = 0
+	}
+
+	s.enrichmentTotal += len(songsNeedingGenres)
+	s.enrichmentTotalBatches++
+	totalSongs := s.enrichmentTotal
+	totalBatches := s.enrichmentTotalBatches
+	s.enrichmentMutex.Unlock()
+
+	select {
+	case s.enrichmentQueue <- songsNeedingGenres:
+		logger.Scanner("Queued %d songs (of %d in batch) for genre enrichment (total needing genres: %d, batches: %d)",
+			len(songsNeedingGenres), len(batch), totalSongs, totalBatches)
+	default:
+		logger.Scanner("Enrichment queue full, skipping batch")
+		s.enrichmentMutex.Lock()
+		s.enrichmentTotal -= len(songsNeedingGenres)
+		s.enrichmentTotalBatches--
+		s.enrichmentMutex.Unlock()
+	}
+}
+
 // processEnrichmentQueue handles background enrichment of songs
 func (s *Scanner) processEnrichmentQueue() {
 	logger.Scanner("Enrichment worker started")
@@ -954,6 +1081,28 @@ func (s *Scanner) processEnrichmentQueue() {
 		apiKey, err := s.db.GetSetting("gemini_api_key")
 		if err != nil || apiKey == "" {
 			continue
+		}
+
+		// Update batch counter and get current state
+		s.enrichmentMutex.Lock()
+		s.enrichmentBatchNum++
+		currentBatch := s.enrichmentBatchNum
+		totalBatches := s.enrichmentTotalBatches
+		totalSongs := s.enrichmentTotal
+		isFirstBatch := currentBatch == 1
+		s.enrichmentMutex.Unlock()
+
+		// Emit enrichment_started on first batch
+		if isFirstBatch {
+			logger.Scanner("Starting enrichment of %d songs needing genres across %d batches", totalSongs, totalBatches)
+			s.emitEvent(LibraryEvent{
+				Type:    "enrichment_started",
+				Message: fmt.Sprintf("Enriching %d songs", totalSongs),
+				Data: map[string]interface{}{
+					"totalSongs":   totalSongs,
+					"totalBatches": totalBatches,
+				},
+			})
 		}
 
 		client := gemini.NewClient(apiKey)
@@ -973,10 +1122,48 @@ func (s *Scanner) processEnrichmentQueue() {
 
 				if count > 0 {
 					logger.Scanner("Background enrichment: Updated %d songs", count)
+
+					// Update progress tracking
+					s.enrichmentMutex.Lock()
+					s.enrichmentProcessed += count
+					processedNow := s.enrichmentProcessed
+					s.enrichmentMutex.Unlock()
+
+					// Update genre stats after enriching songs
+					if err := s.db.UpdateGenreStats(); err != nil {
+						logger.Scanner("Failed to update genre stats after enrichment: %v", err)
+					}
+
+					// Emit progress event
 					s.emitEvent(LibraryEvent{
-						Type:    "enrichment_complete",
-						Message: fmt.Sprintf("Enriched %d songs", count),
+						Type:    "enrichment_progress",
+						Message: fmt.Sprintf("Enriched batch %d/%d (%d songs)", currentBatch, totalBatches, count),
+						Data: map[string]interface{}{
+							"processedSongs": processedNow,
+							"totalSongs":     totalSongs,
+							"currentBatch":   currentBatch,
+							"totalBatches":   totalBatches,
+						},
 					})
+
+					// Check if this was the last batch
+					s.enrichmentMutex.Lock()
+					isComplete := s.enrichmentBatchNum >= s.enrichmentTotalBatches
+					if isComplete {
+						s.enrichmentActive = false
+					}
+					s.enrichmentMutex.Unlock()
+
+					if isComplete {
+						s.emitEvent(LibraryEvent{
+							Type:    "enrichment_complete",
+							Message: fmt.Sprintf("Genre enrichment complete: %d songs", processedNow),
+							Data: map[string]interface{}{
+								"processedSongs": processedNow,
+								"totalSongs":     totalSongs,
+							},
+						})
+					}
 				}
 				break // Done with this batch
 			}

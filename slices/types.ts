@@ -122,6 +122,16 @@ export interface ScanFolder {
   songCount: number;
 }
 
+// Genre enrichment progress
+export interface EnrichmentStatus {
+  isEnriching: boolean;
+  totalSongs: number;
+  processedSongs: number;
+  currentBatch: number;
+  totalBatches: number;
+  message: string;
+}
+
 export interface LibrarySlice {
   songs: Song[];
   playlists: Playlist[];
@@ -135,11 +145,14 @@ export interface LibrarySlice {
   backendAvailable: boolean;
   scanFolders: ScanFolder[];
   
+  // Genre enrichment state
+  enrichmentStatus: EnrichmentStatus;
+  
   initLibrary: () => Promise<void>;
   refreshLibrary: () => Promise<void>;
   addSongs: (newSongs: Song[]) => void;
   resetLibrary: () => Promise<void>;
-  createPlaylist: (name: string) => Promise<Playlist | void>;
+  createPlaylist: (name: string, songIds?: string[]) => Promise<Playlist | void>;
   addToPlaylist: (playlistId: string, songId: string) => void;
   deletePlaylist: (playlistId: string) => Promise<void>;
   
@@ -153,6 +166,7 @@ export interface LibrarySlice {
   
   setScanning: (isScanning: boolean) => void;
   setScanProgress: (progress: string) => void;
+  setEnrichmentStatus: (status: Partial<EnrichmentStatus>) => void;
   
   // Backend folder management
   loadScanFolders: () => Promise<void>;

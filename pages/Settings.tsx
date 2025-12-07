@@ -8,11 +8,19 @@
  * - Library: Scan folders management, library reset
  * - Audio: Crossfade, gapless, normalization, visualizer, EQ
  * - Spotify: OAuth credentials, download location, concurrent downloads
+ * - Library Intelligence: AI-powered features
+ *   - Generative Genre Enrichment: Uses Gemini AI to populate genre metadata
+ *   - Mood & Energy Analysis: Analyzes mood, energy, tempo, BPM for AI DJ
  * - Activity Log: Debug log viewer
  * 
  * Folder browser dialogs allow navigation and selection of:
  * - Music scan directories
  * - Spotify download destination
+ * 
+ * AI Features (requires Gemini API key):
+ * - Genre enrichment runs during library scans or can be triggered manually
+ * - Mood analysis detects emotional characteristics without audio processing
+ * - Results are stored in the songs table for AI DJ playlist generation
  * 
  * @module Settings
  */
@@ -56,6 +64,23 @@ export const Settings: React.FC = () => {
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichStatus, setEnrichStatus] = useState('');
   const [forceEnrichment, setForceEnrichment] = useState(false);
+  const [enrichProgress, setEnrichProgress] = useState<{
+    processedSongs: number;
+    totalSongs: number;
+    currentBatch: number;
+    totalBatches: number;
+  } | null>(null);
+
+  // Mood Analysis State
+  const [isMoodAnalyzing, setIsMoodAnalyzing] = useState(false);
+  const [moodStatus, setMoodStatus] = useState('');
+  const [moodProgress, setMoodProgress] = useState<{
+    processedSongs: number;
+    totalSongs: number;
+    currentBatch: number;
+    totalBatches: number;
+  } | null>(null);
+
   const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingBrowser, setLoadingBrowser] = useState(false);
 
@@ -1182,46 +1207,43 @@ export const Settings: React.FC = () => {
               </div>
 
               <button
-                onClick={async () => {
+                onClick={() => {
                   if (!geminiKey && !keySaved) {
                       alert("Please enter or save an API Key first.");
                       return;
                   }
 
-                  try {
-                    setIsEnriching(true);
-                    setEnrichStatus('Starting enrichment process...');
+                  setIsEnriching(true);
+                  setEnrichStatus('Connecting to enrichment service...');
+                  setEnrichProgress(null);
+
+                  const eventSource = api.enrichGenresStream(forceEnrichment, (progress) => {
+                    setEnrichStatus(progress.message);
                     
-                    let offset = 0;
-                    let totalEnriched = 0;
-                    let keepGoing = true;
-
-                    while (keepGoing) {
-                        setEnrichStatus(`Processing batch starting at ${offset}... (Total enriched: ${totalEnriched})`);
-                        
-                        const res = await api.enrichGenres(geminiKey, forceEnrichment, offset);
-                        
-                        if (res.status === 'error') {
-                            throw new Error(res.message);
-                        }
-
-                        totalEnriched += res.count;
-                        
-                        // If we processed less than 50 songs, we're done
-                        if (res.count < 50) {
-                            keepGoing = false;
-                        } else {
-                            // Move to next batch
-                            offset += 50;
-                        }
+                    if (progress.status === 'started' || progress.status === 'processing' || progress.status === 'batch_complete') {
+                      setEnrichProgress({
+                        processedSongs: progress.processedSongs,
+                        totalSongs: progress.totalSongs,
+                        currentBatch: progress.currentBatch,
+                        totalBatches: progress.totalBatches,
+                      });
                     }
                     
-                    setEnrichStatus(`Success! Enriched ${totalEnriched} songs total.`);
-                  } catch (e: any) {
-                    setEnrichStatus(`Error: ${e.message}`);
-                  } finally {
-                    setIsEnriching(false);
-                  }
+                    if (progress.status === 'complete') {
+                      setIsEnriching(false);
+                      // Keep progress visible for a moment
+                      setTimeout(() => setEnrichProgress(null), 5000);
+                    }
+                    
+                    if (progress.status === 'error') {
+                      setIsEnriching(false);
+                      setEnrichProgress(null);
+                      setEnrichStatus(`Error: ${progress.error || progress.message}`);
+                    }
+                  });
+
+                  // Store eventSource for cleanup if needed
+                  return () => eventSource.close();
                 }}
                 disabled={isEnriching || (!geminiKey && !keySaved)}
                 className={`self-start px-4 py-2 font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
@@ -1238,14 +1260,125 @@ export const Settings: React.FC = () => {
                     <>✨ Enrich Library Genres</>
                 )}
               </button>
+              
+              {/* Progress Bar */}
+              {enrichProgress && enrichProgress.totalSongs > 0 && (
+                <div className="w-full">
+                  <div className="flex justify-between text-xs text-text-subtle mb-1">
+                    <span>Batch {enrichProgress.currentBatch} of {enrichProgress.totalBatches}</span>
+                    <span>{enrichProgress.processedSongs} / {enrichProgress.totalSongs} songs</span>
+                  </div>
+                  <div className="w-full bg-surface-3 rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="bg-brand h-full rounded-full transition-all duration-300 ease-out"
+                      style={{ 
+                        width: `${Math.round((enrichProgress.processedSongs / enrichProgress.totalSongs) * 100)}%` 
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
               {enrichStatus && (
                   <div className={`text-sm mt-2 ${
                       enrichStatus.startsWith('Error') ? 'text-red-400' : 
-                      enrichStatus.startsWith('Success') ? 'text-green-400' : 
+                      enrichStatus.includes('complete') || enrichStatus.startsWith('Success') ? 'text-green-400' : 
                       'text-text-subtle'
                   }`}>
                       {enrichStatus}
                   </div>
+              )}
+            </div>
+          </div>
+
+          {/* Mood/Energy Analysis */}
+          <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
+            <h3 className="text-lg font-bold text-text-main mb-2">Mood & Energy Analysis</h3>
+            <p className="text-text-subtle text-sm mb-4">
+              Analyze your library to detect mood, energy level, tempo, and estimated BPM for each song. 
+              This enables the AI DJ to create better playlists matching your vibe.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  if (!geminiKey && !keySaved) {
+                    alert("Please enter or save an API Key first.");
+                    return;
+                  }
+
+                  setIsMoodAnalyzing(true);
+                  setMoodStatus('Connecting to mood analysis service...');
+                  setMoodProgress(null);
+
+                  const eventSource = api.enrichMoodStream((progress) => {
+                    setMoodStatus(progress.message);
+                    
+                    if (progress.status === 'started' || progress.status === 'processing' || progress.status === 'batch_complete') {
+                      setMoodProgress({
+                        processedSongs: progress.processedSongs,
+                        totalSongs: progress.totalSongs,
+                        currentBatch: progress.currentBatch,
+                        totalBatches: progress.totalBatches,
+                      });
+                    }
+                    
+                    if (progress.status === 'complete') {
+                      setIsMoodAnalyzing(false);
+                      setTimeout(() => setMoodProgress(null), 5000);
+                    }
+                    
+                    if (progress.status === 'error') {
+                      setIsMoodAnalyzing(false);
+                      setMoodProgress(null);
+                      setMoodStatus(`Error: ${progress.error || progress.message}`);
+                    }
+                  });
+
+                  return () => eventSource.close();
+                }}
+                disabled={isMoodAnalyzing || (!geminiKey && !keySaved)}
+                className={`self-start px-4 py-2 font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
+                  isMoodAnalyzing || (!geminiKey && !keySaved)
+                    ? 'bg-surface-2 text-text-subtle' 
+                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                }`}
+              >
+                {isMoodAnalyzing ? (
+                  <>
+                    <span className="animate-spin mr-2">⏳</span> Analyzing Moods...
+                  </>
+                ) : (
+                  <>🎭 Analyze Library Moods</>
+                )}
+              </button>
+              
+              {/* Progress Bar */}
+              {moodProgress && moodProgress.totalSongs > 0 && (
+                <div className="w-full">
+                  <div className="flex justify-between text-xs text-text-subtle mb-1">
+                    <span>Batch {moodProgress.currentBatch} of {moodProgress.totalBatches}</span>
+                    <span>{moodProgress.processedSongs} / {moodProgress.totalSongs} songs</span>
+                  </div>
+                  <div className="w-full bg-surface-3 rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="bg-purple-600 h-full rounded-full transition-all duration-300 ease-out"
+                      style={{ 
+                        width: `${Math.round((moodProgress.processedSongs / moodProgress.totalSongs) * 100)}%` 
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {moodStatus && (
+                <div className={`text-sm mt-2 ${
+                  moodStatus.startsWith('Error') ? 'text-red-400' : 
+                  moodStatus.includes('complete') || moodStatus.startsWith('Success') ? 'text-green-400' : 
+                  'text-text-subtle'
+                }`}>
+                  {moodStatus}
+                </div>
               )}
             </div>
           </div>

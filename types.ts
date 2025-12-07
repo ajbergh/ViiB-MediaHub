@@ -55,6 +55,14 @@ export interface Song {
   playCount?: number;
   lastPlayed?: number; // timestamp
   skipCount?: number;
+
+  // AI-analyzed mood/energy fields (from Gemini)
+  mood?: string; // e.g., "happy", "sad", "energetic", "calm"
+  energy?: string; // e.g., "high", "medium", "low"
+  tempo?: string; // e.g., "fast", "medium", "slow"
+  bpm?: number; // Beats per minute
+  instrumental?: boolean; // true if song has no vocals
+  moodAnalyzedAt?: number; // timestamp of mood analysis
 }
 
 export interface Album {

@@ -20,6 +20,9 @@ import { Albums } from './pages/Albums';
 import { AlbumDetail } from './pages/AlbumDetail';
 import { Artists } from './pages/Artists';
 import { ArtistDetail } from './pages/ArtistDetail';
+import { Genres } from './pages/Genres';
+import { GenreDetail } from './pages/GenreDetail';
+import { SmartPlaylists } from './pages/SmartPlaylists';
 import { Playlists } from './pages/Playlists';
 import { Spotify } from './pages/Spotify';
 import { SpotifyCallback } from './pages/SpotifyCallback';
@@ -141,6 +144,9 @@ const App: React.FC = () => {
           <Route path="/album/:albumName" element={<AlbumDetail />} />
           <Route path="/artists" element={<Artists />} />
           <Route path="/artist/:artistName" element={<ArtistDetail />} />
+          <Route path="/genres" element={<Genres />} />
+          <Route path="/genres/:genreId" element={<GenreDetail />} />
+          <Route path="/smart-playlists" element={<SmartPlaylists />} />
           <Route path="/playlists" element={<Playlists />} />
           <Route path="/smart-mix/:mixId" element={<SmartMixDetail />} />
           <Route path="/spotify" element={<Spotify />} />

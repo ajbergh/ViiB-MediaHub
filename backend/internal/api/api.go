@@ -90,6 +90,13 @@ func New(database *db.DB, dataDir string) *API {
 	// Trigger scan on startup (in background)
 	go api.scanOnStartup()
 
+	// Ensure genre stats are populated on startup
+	go func() {
+		if err := database.UpdateGenreStats(); err != nil {
+			logger.API("Failed to update genre stats on startup: %v", err)
+		}
+	}()
+
 	return api
 }
 
@@ -99,8 +106,13 @@ func (a *API) Routes() chi.Router {
 
 	// Library endpoints
 	r.Get("/songs", a.getSongs)
+	r.Get("/genres", a.getGenres)
+	r.Post("/smart-playlist", a.handleGenerateSmartPlaylist)
 	r.Delete("/songs", a.clearSongs)
 	r.Post("/library/enrich-genres", a.enrichGenres)
+	r.Get("/library/enrich-genres/stream", a.enrichGenresStream) // SSE streaming enrichment
+	r.Post("/library/enrich-mood", a.enrichMood)                 // Mood/energy enrichment
+	r.Get("/library/enrich-mood/stream", a.enrichMoodStream)     // SSE streaming mood enrichment
 	r.Post("/songs/{id}/play", a.recordPlay)
 
 	// Playlist endpoints
@@ -1226,4 +1238,417 @@ func (a *API) enrichGenres(w http.ResponseWriter, r *http.Request) {
 		"message": fmt.Sprintf("Successfully enriched %d songs", updatedCount),
 		"count":   updatedCount,
 	})
+}
+
+// EnrichmentProgress represents a progress update during genre enrichment
+type EnrichmentProgress struct {
+	Status         string `json:"status"` // "started", "processing", "batch_complete", "complete", "error"
+	Message        string `json:"message"`
+	TotalSongs     int    `json:"totalSongs"`
+	ProcessedSongs int    `json:"processedSongs"`
+	CurrentBatch   int    `json:"currentBatch"`
+	TotalBatches   int    `json:"totalBatches"`
+	Error          string `json:"error,omitempty"`
+}
+
+// enrichGenresStream provides SSE streaming for genre enrichment progress
+func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Get parameters from query string
+	force := r.URL.Query().Get("force") == "true"
+
+	// Helper to send SSE event
+	sendEvent := func(progress EnrichmentProgress) {
+		data, _ := json.Marshal(progress)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	// Get API key
+	apiKey, err := a.db.GetSetting("gemini_api_key")
+	if err != nil || apiKey == "" {
+		sendEvent(EnrichmentProgress{
+			Status:  "error",
+			Message: "Gemini API key not configured",
+			Error:   "API key is required. Configure it in Settings.",
+		})
+		return
+	}
+
+	// Get total songs needing enrichment
+	allSongs, err := a.db.GetSongsForEnrichment(10000, force, 0) // Get all for counting
+	if err != nil {
+		sendEvent(EnrichmentProgress{
+			Status:  "error",
+			Message: "Failed to query songs",
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	totalSongs := len(allSongs)
+	if totalSongs == 0 {
+		sendEvent(EnrichmentProgress{
+			Status:     "complete",
+			Message:    "No songs need genre enrichment",
+			TotalSongs: 0,
+		})
+		return
+	}
+
+	// Calculate batches
+	batchSize := 50
+	totalBatches := (totalSongs + batchSize - 1) / batchSize
+
+	sendEvent(EnrichmentProgress{
+		Status:       "started",
+		Message:      fmt.Sprintf("Starting enrichment of %d songs in %d batches", totalSongs, totalBatches),
+		TotalSongs:   totalSongs,
+		TotalBatches: totalBatches,
+	})
+
+	client := gemini.NewClient(apiKey)
+	processedSongs := 0
+	updatedTotal := 0
+
+	// Process in batches
+	for batch := 0; batch < totalBatches; batch++ {
+		// Check if client disconnected
+		select {
+		case <-r.Context().Done():
+			logger.API("enrichGenresStream: Client disconnected")
+			return
+		default:
+		}
+
+		offset := batch * batchSize
+		songs, err := a.db.GetSongsForEnrichment(batchSize, force, offset)
+		if err != nil {
+			sendEvent(EnrichmentProgress{
+				Status:         "error",
+				Message:        "Failed to get song batch",
+				Error:          err.Error(),
+				ProcessedSongs: processedSongs,
+				CurrentBatch:   batch + 1,
+				TotalBatches:   totalBatches,
+			})
+			return
+		}
+
+		if len(songs) == 0 {
+			break
+		}
+
+		sendEvent(EnrichmentProgress{
+			Status:         "processing",
+			Message:        fmt.Sprintf("Processing batch %d of %d (%d songs)", batch+1, totalBatches, len(songs)),
+			TotalSongs:     totalSongs,
+			ProcessedSongs: processedSongs,
+			CurrentBatch:   batch + 1,
+			TotalBatches:   totalBatches,
+		})
+
+		genresMap, err := client.EnrichGenres(songs)
+		if err != nil {
+			sendEvent(EnrichmentProgress{
+				Status:         "error",
+				Message:        "Gemini API error",
+				Error:          err.Error(),
+				ProcessedSongs: processedSongs,
+				CurrentBatch:   batch + 1,
+				TotalBatches:   totalBatches,
+			})
+			return
+		}
+
+		// Update songs in database
+		batchUpdated := 0
+		for id, genres := range genresMap {
+			if err := a.db.UpdateSongGenres(id, genres); err != nil {
+				logger.API("Failed to update genres for song %s: %v", id, err)
+				continue
+			}
+			batchUpdated++
+		}
+
+		processedSongs += len(songs)
+		updatedTotal += batchUpdated
+
+		sendEvent(EnrichmentProgress{
+			Status:         "batch_complete",
+			Message:        fmt.Sprintf("Batch %d complete: enriched %d songs", batch+1, batchUpdated),
+			TotalSongs:     totalSongs,
+			ProcessedSongs: processedSongs,
+			CurrentBatch:   batch + 1,
+			TotalBatches:   totalBatches,
+		})
+
+		// Small delay between batches to avoid rate limiting
+		if batch < totalBatches-1 {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	sendEvent(EnrichmentProgress{
+		Status:         "complete",
+		Message:        fmt.Sprintf("Enrichment complete! Updated genres for %d songs", updatedTotal),
+		TotalSongs:     totalSongs,
+		ProcessedSongs: processedSongs,
+		TotalBatches:   totalBatches,
+		CurrentBatch:   totalBatches,
+	})
+}
+
+// enrichMood triggers mood/energy/tempo analysis for songs without mood data
+func (a *API) enrichMood(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Use /api/library/enrich-mood/stream for streaming progress",
+	})
+}
+
+// enrichMoodStream provides SSE streaming for mood enrichment progress
+// The analysis runs in a background goroutine and continues even if the client disconnects
+func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
+	logger.API("enrichMoodStream: Starting mood analysis stream")
+	
+	apiKey, err := a.db.GetSetting("gemini_api_key")
+	if err != nil || apiKey == "" {
+		logger.API("enrichMoodStream: Gemini API key not configured")
+		http.Error(w, "Gemini API key not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Setup SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "SSE not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Get songs without mood analysis
+	songs, err := a.db.GetSongsWithoutMood(1000)
+	if err != nil {
+		logger.API("enrichMoodStream: Failed to get songs: %v", err)
+		jsonData, _ := json.Marshal(EnrichmentProgress{
+			Status:  "error",
+			Message: "Failed to get songs",
+			Error:   err.Error(),
+		})
+		fmt.Fprintf(w, "data: %s\n\n", jsonData)
+		flusher.Flush()
+		return
+	}
+
+	totalSongs := len(songs)
+	if totalSongs == 0 {
+		logger.API("enrichMoodStream: All songs already have mood analysis")
+		jsonData, _ := json.Marshal(EnrichmentProgress{
+			Status:  "complete",
+			Message: "All songs already have mood analysis",
+		})
+		fmt.Fprintf(w, "data: %s\n\n", jsonData)
+		flusher.Flush()
+		return
+	}
+
+	batchSize := 50
+	totalBatches := (totalSongs + batchSize - 1) / batchSize
+
+	logger.API("enrichMoodStream: Starting analysis of %d songs in %d batches", totalSongs, totalBatches)
+	
+	// Send initial event to client
+	jsonData, _ := json.Marshal(EnrichmentProgress{
+		Status:       "started",
+		Message:      fmt.Sprintf("Starting mood analysis of %d songs in %d batches", totalSongs, totalBatches),
+		TotalSongs:   totalSongs,
+		TotalBatches: totalBatches,
+	})
+	fmt.Fprintf(w, "data: %s\n\n", jsonData)
+	flusher.Flush()
+	
+	// Broadcast to sidebar
+	a.scanner.EmitEvent(scanner.LibraryEvent{
+		Type:    "mood_started",
+		Message: fmt.Sprintf("Analyzing mood for %d songs", totalSongs),
+		Data: map[string]interface{}{
+			"processedSongs": 0,
+			"totalSongs":     totalSongs,
+			"currentBatch":   0,
+			"totalBatches":   totalBatches,
+		},
+	})
+
+	// Create channels for communication between goroutine and SSE sender
+	type progressUpdate struct {
+		data     EnrichmentProgress
+		done     bool
+	}
+	progressChan := make(chan progressUpdate, 100)
+
+	// Start background goroutine for processing (continues even if client disconnects)
+	go func() {
+		defer close(progressChan)
+		
+		client := gemini.NewClient(apiKey)
+		processedSongs := 0
+		updatedTotal := 0
+
+		// broadcastMoodEvent emits to the scanner's event system for sidebar updates
+		broadcastMoodEvent := func(eventType, message string, processed, total, currentBatch, batches int) {
+			a.scanner.EmitEvent(scanner.LibraryEvent{
+				Type:    eventType,
+				Message: message,
+				Data: map[string]interface{}{
+					"processedSongs": processed,
+					"totalSongs":     total,
+					"currentBatch":   currentBatch,
+					"totalBatches":   batches,
+				},
+			})
+		}
+
+		for batch := 0; batch < totalBatches; batch++ {
+			start := batch * batchSize
+			end := start + batchSize
+			if end > totalSongs {
+				end = totalSongs
+			}
+			batchSongs := songs[start:end]
+
+			logger.API("enrichMoodStream: Processing batch %d/%d (%d songs)", batch+1, totalBatches, len(batchSongs))
+
+			// Send progress update (non-blocking)
+			select {
+			case progressChan <- progressUpdate{
+				data: EnrichmentProgress{
+					Status:         "processing",
+					Message:        fmt.Sprintf("Analyzing mood for batch %d of %d (%d songs)", batch+1, totalBatches, len(batchSongs)),
+					TotalSongs:     totalSongs,
+					ProcessedSongs: processedSongs,
+					CurrentBatch:   batch + 1,
+					TotalBatches:   totalBatches,
+				},
+			}:
+			default:
+				// Channel full, skip SSE update but continue processing
+			}
+			
+			// Always broadcast to sidebar
+			broadcastMoodEvent("mood_progress", fmt.Sprintf("Analyzing batch %d/%d", batch+1, totalBatches), processedSongs, totalSongs, batch+1, totalBatches)
+
+			moodMap, err := client.AnalyzeSongMood(batchSongs)
+			if err != nil {
+				logger.API("enrichMoodStream: Gemini API error on batch %d: %v", batch+1, err)
+				select {
+				case progressChan <- progressUpdate{
+					data: EnrichmentProgress{
+						Status:         "error",
+						Message:        "Gemini API error",
+						Error:          err.Error(),
+						ProcessedSongs: processedSongs,
+						CurrentBatch:   batch + 1,
+						TotalBatches:   totalBatches,
+					},
+					done: true,
+				}:
+				default:
+				}
+				broadcastMoodEvent("mood_complete", fmt.Sprintf("Mood analysis error: %v", err), processedSongs, totalSongs, batch+1, totalBatches)
+				return
+			}
+
+			batchUpdated := 0
+			for id, analysis := range moodMap {
+				if err := a.db.UpdateSongMood(id, analysis.Mood, analysis.Energy, analysis.Tempo, analysis.BPM, analysis.Instrumental); err != nil {
+					logger.API("enrichMoodStream: Failed to update mood for song %s: %v", id, err)
+					continue
+				}
+				batchUpdated++
+			}
+
+			processedSongs += len(batchSongs)
+			updatedTotal += batchUpdated
+
+			logger.API("enrichMoodStream: Batch %d complete - analyzed %d songs (total: %d/%d)", batch+1, batchUpdated, processedSongs, totalSongs)
+
+			// Send batch completion (non-blocking)
+			select {
+			case progressChan <- progressUpdate{
+				data: EnrichmentProgress{
+					Status:         "batch_complete",
+					Message:        fmt.Sprintf("Batch %d complete: analyzed %d songs", batch+1, batchUpdated),
+					TotalSongs:     totalSongs,
+					ProcessedSongs: processedSongs,
+					CurrentBatch:   batch + 1,
+					TotalBatches:   totalBatches,
+				},
+			}:
+			default:
+			}
+			
+			// Always broadcast to sidebar
+			broadcastMoodEvent("mood_progress", fmt.Sprintf("Batch %d complete: %d songs analyzed", batch+1, batchUpdated), processedSongs, totalSongs, batch+1, totalBatches)
+
+			if batch < totalBatches-1 {
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+
+		logger.API("enrichMoodStream: Mood analysis complete - analyzed %d songs total", updatedTotal)
+
+		// Send completion (non-blocking)
+		select {
+		case progressChan <- progressUpdate{
+			data: EnrichmentProgress{
+				Status:         "complete",
+				Message:        fmt.Sprintf("Mood analysis complete! Analyzed %d songs", updatedTotal),
+				TotalSongs:     totalSongs,
+				ProcessedSongs: processedSongs,
+				TotalBatches:   totalBatches,
+				CurrentBatch:   totalBatches,
+			},
+			done: true,
+		}:
+		default:
+		}
+		
+		// Always broadcast completion to sidebar
+		broadcastMoodEvent("mood_complete", fmt.Sprintf("Mood analysis complete! %d songs", updatedTotal), processedSongs, totalSongs, totalBatches, totalBatches)
+	}()
+
+	// SSE event loop - reads from progress channel until done or client disconnects
+	for {
+		select {
+		case <-r.Context().Done():
+			logger.API("enrichMoodStream: Client disconnected, but background analysis continues")
+			return
+		case update, ok := <-progressChan:
+			if !ok {
+				// Channel closed, processing complete
+				return
+			}
+			jsonData, _ := json.Marshal(update.data)
+			fmt.Fprintf(w, "data: %s\n\n", jsonData)
+			flusher.Flush()
+			if update.done {
+				return
+			}
+		}
+	}
 }

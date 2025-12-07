@@ -22,7 +22,7 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { 
-  Home, Music, Disc, Mic2, ListMusic, 
+  Home, Music, Disc, Mic2, ListMusic, Tags,
   Download, Search, Settings, Library, Sparkles, Loader2,
   ChevronLeft, ChevronRight, Menu, BarChart3
 } from 'lucide-react';
@@ -68,8 +68,15 @@ const SidebarItem = ({ to, icon: Icon, label, badge, collapsed }: SidebarItemPro
 };
 
 export const Sidebar: React.FC = () => {
-  const { isScanning, scanProgress, downloadCount } = useStore();
+  const { isScanning, scanProgress, downloadCount, enrichmentStatus } = useStore();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Debug: Log enrichment status changes
+  console.log('🎨 Sidebar render - enrichmentStatus:', { 
+    isEnriching: enrichmentStatus.isEnriching, 
+    totalSongs: enrichmentStatus.totalSongs,
+    processedSongs: enrichmentStatus.processedSongs 
+  });
 
   return (
     <div 
@@ -106,8 +113,10 @@ export const Sidebar: React.FC = () => {
           <SidebarItem to="/" icon={Home} label="Home" collapsed={collapsed} />
           <SidebarItem to="/songs" icon={Music} label="Songs" collapsed={collapsed} />
           <SidebarItem to="/albums" icon={Disc} label="Albums" collapsed={collapsed} />
-          <SidebarItem to="/artists" icon={Mic2} label="Artists" collapsed={collapsed} />
-          <SidebarItem to="/playlists" icon={ListMusic} label="Playlists" collapsed={collapsed} />
+        <SidebarItem to="/artists" icon={Mic2} label="Artists" collapsed={collapsed} />
+        <SidebarItem to="/genres" icon={Tags} label="Genres" collapsed={collapsed} />
+        <SidebarItem to="/smart-playlists" icon={Sparkles} label="AI DJ" collapsed={collapsed} />
+        <SidebarItem to="/playlists" icon={ListMusic} label="Playlists" collapsed={collapsed} />
         </div>
 
         <div className={`my-4 border-t border-surface-highlight ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>
@@ -132,6 +141,46 @@ export const Sidebar: React.FC = () => {
               {!collapsed && <span className="text-sm font-semibold">Importing...</span>}
             </div>
             {!collapsed && <span className="text-[10px] font-mono text-text-subtle line-clamp-1">{scanProgress}</span>}
+          </div>
+        ) : enrichmentStatus.isEnriching ? (
+          <div className={`flex flex-col gap-2 text-text-secondary ${collapsed ? 'items-center' : ''}`}>
+            <div className={`flex items-center gap-3 text-purple-400 ${collapsed ? 'justify-center' : ''}`}>
+              <Sparkles size={20} className="animate-pulse" />
+              {!collapsed && (
+                <span className="text-sm font-semibold">
+                  {enrichmentStatus.message?.toLowerCase().includes('mood') ? 'Analyzing Moods...' : 'Enriching Genres...'}
+                </span>
+              )}
+            </div>
+            {!collapsed && (
+              <>
+                <div className="w-full bg-surface-3 rounded-full h-1.5 overflow-hidden">
+                  <div 
+                    className="bg-purple-400 h-full rounded-full transition-all duration-300 ease-out"
+                    style={{ 
+                      width: enrichmentStatus.totalSongs > 0 
+                        ? `${Math.round((enrichmentStatus.processedSongs / enrichmentStatus.totalSongs) * 100)}%` 
+                        : '0%' 
+                    }}
+                  />
+                </div>
+                <span className="text-[10px] font-mono text-text-subtle">
+                  {enrichmentStatus.processedSongs}/{enrichmentStatus.totalSongs} songs
+                </span>
+              </>
+            )}
+          </div>
+        ) : enrichmentStatus.message && enrichmentStatus.message.includes('complete') ? (
+          <div className={`flex flex-col gap-2 text-text-secondary ${collapsed ? 'items-center' : ''}`}>
+            <div className={`flex items-center gap-3 text-green-400 ${collapsed ? 'justify-center' : ''}`}>
+              <Sparkles size={20} />
+              {!collapsed && (
+                <span className="text-sm font-semibold">
+                  {enrichmentStatus.message?.toLowerCase().includes('mood') ? 'Moods Updated!' : 'Genres Updated!'}
+                </span>
+              )}
+            </div>
+            {!collapsed && <span className="text-[10px] text-text-subtle line-clamp-1">{enrichmentStatus.message}</span>}
           </div>
         ) : (
           <div className={`flex items-center gap-3 text-text-secondary hover:text-text-main cursor-pointer transition-colors ${collapsed ? 'justify-center' : ''}`}>

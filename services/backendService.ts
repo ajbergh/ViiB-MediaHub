@@ -44,7 +44,7 @@ export async function isBackendAvailable(): Promise<boolean> {
 }
 
 // Convert API song format to frontend Song format
-function apiSongToSong(apiSong: ApiSong): Song {
+export function apiSongToSong(apiSong: ApiSong): Song {
   return {
     id: apiSong.id,
     title: apiSong.title,

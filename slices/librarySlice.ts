@@ -42,6 +42,14 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   scanProgress: '',
   backendAvailable: false,
   scanFolders: [],
+  enrichmentStatus: {
+    isEnriching: false,
+    totalSongs: 0,
+    processedSongs: 0,
+    currentBatch: 0,
+    totalBatches: 0,
+    message: '',
+  },
 
   initLibrary: async () => {
       // First, check if backend is available
@@ -223,11 +231,11 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
      * server-generated ID is used. When backend is not available, the playlist
      * is stored in IndexedDB and a local ID is generated.
      */
-    createPlaylist: async (name) => {
+    createPlaylist: async (name, songIds = []) => {
         const { backendAvailable } = get();
         if (backendAvailable) {
             try {
-                const created = await backendService.createPlaylist(name, []);
+                const created = await backendService.createPlaylist(name, songIds);
                 set((state) => ({ playlists: [...state.playlists, created] }));
                 return created;
             } catch (e) {
@@ -238,7 +246,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
         const newPlaylist: Playlist = {
             id: Math.random().toString(36).substr(2, 9),
             name,
-            songIds: [],
+            songIds,
             createdAt: Date.now()
         };
     
@@ -552,6 +560,9 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 
   setScanning: (isScanning) => set({ isScanning }),
   setScanProgress: (scanProgress) => set({ scanProgress }),
+  setEnrichmentStatus: (status) => set((state) => ({
+    enrichmentStatus: { ...state.enrichmentStatus, ...status }
+  })),
 
   // Backend folder management
   loadScanFolders: async () => {

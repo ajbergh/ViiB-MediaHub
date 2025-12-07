@@ -16,6 +16,18 @@
  * - Spotify OAuth credential storage
  * - Spotify download queue management
  * - Real-time download progress via SSE (handled by DownloadManager component)
+ * 
+ * AI DJ Features:
+ * - generateSmartPlaylist: Natural language playlist generation with multi-tier matching
+ * - enrichGenresStream: SSE-based genre enrichment using Gemini AI
+ * - enrichMoodStream: SSE-based mood/energy/tempo analysis using Gemini AI
+ * 
+ * Smart Playlist Options:
+ * - blendMode: 'single' or 'mixed' for genre blending
+ * - discoverMode: 'balanced', 'discover', 'favorites' for play history preferences
+ * - avoidRecentlyHours: Exclude recently played songs
+ * - onePerArtist: Limit to one song per artist for variety
+ * - useTimeContext: Add time-of-day context to recommendations
  */
 
 const API_BASE = '/api';
@@ -79,6 +91,19 @@ export interface ScanFolder {
   songCount: number;
 }
 
+/**
+ * Progress update from genre enrichment SSE stream
+ */
+export interface EnrichmentProgress {
+  status: 'started' | 'processing' | 'batch_complete' | 'complete' | 'error';
+  message: string;
+  totalSongs: number;
+  processedSongs: number;
+  currentBatch: number;
+  totalBatches: number;
+  error?: string;
+}
+
 export interface FolderEntry {
   name: string;
   path: string;
@@ -93,6 +118,13 @@ export interface BrowseResult {
 export interface ScanStatus {
   scanning: boolean;
   progress: string;
+}
+
+export interface GenreStat {
+  name: string;
+  count: number;
+  topArtists: string[];
+  coverUrl?: string;
 }
 
 /**
@@ -131,6 +163,11 @@ export const api = {
   // Songs
   async getSongs(): Promise<ApiSong[]> {
     const response = await fetch(`${API_BASE}/songs`);
+    return handleResponse(response);
+  },
+
+  async getGenres(): Promise<GenreStat[]> {
+    const response = await fetch(`${API_BASE}/genres`);
     return handleResponse(response);
   },
 
@@ -664,7 +701,181 @@ export const api = {
     });
     return handleResponse(response);
   },
+
+  /**
+   * Streams genre enrichment progress via SSE.
+   * @param force - If true, re-checks all songs.
+   * @param onProgress - Callback for progress updates.
+   * @returns EventSource instance for cleanup.
+   */
+  enrichGenresStream(
+    force: boolean = false,
+    onProgress: (progress: EnrichmentProgress) => void
+  ): EventSource {
+    const url = `${API_BASE}/library/enrich-genres/stream?force=${force}`;
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const progress = JSON.parse(event.data) as EnrichmentProgress;
+        onProgress(progress);
+        
+        // Auto-close on completion or error
+        if (progress.status === 'complete' || progress.status === 'error') {
+          eventSource.close();
+        }
+      } catch (e) {
+        console.error('Failed to parse enrichment progress:', e);
+      }
+    };
+
+    eventSource.onerror = () => {
+      onProgress({
+        status: 'error',
+        message: 'Connection lost',
+        error: 'SSE connection failed',
+        totalSongs: 0,
+        processedSongs: 0,
+        currentBatch: 0,
+        totalBatches: 0,
+      });
+      eventSource.close();
+    };
+
+    return eventSource;
+  },
+
+  /**
+   * Streams mood/energy/tempo/BPM analysis progress via SSE.
+   * 
+   * Uses Gemini AI to analyze songs based on metadata (artist, title, album, genre).
+   * This approach leverages Gemini's knowledge of music styles rather than audio analysis.
+   * Results are stored in the songs table for use by the AI DJ.
+   * 
+   * Analysis values:
+   * - mood: happy, sad, energetic, calm, melancholic, uplifting, aggressive, romantic, chill, intense, dreamy, nostalgic
+   * - energy: high, medium, low
+   * - tempo: fast, medium, slow
+   * - bpm: Estimated beats per minute (integer)
+   * 
+   * @param onProgress - Callback for progress updates with batch status
+   * @returns EventSource instance (auto-closes on completion/error)
+   */
+  enrichMoodStream(
+    onProgress: (progress: EnrichmentProgress) => void
+  ): EventSource {
+    const url = `${API_BASE}/library/enrich-mood/stream`;
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const progress = JSON.parse(event.data) as EnrichmentProgress;
+        onProgress(progress);
+        
+        // Auto-close on completion or error
+        if (progress.status === 'complete' || progress.status === 'error') {
+          eventSource.close();
+        }
+      } catch (e) {
+        console.error('Failed to parse mood analysis progress:', e);
+      }
+    };
+
+    eventSource.onerror = () => {
+      onProgress({
+        status: 'error',
+        message: 'Connection lost',
+        error: 'SSE connection failed',
+        totalSongs: 0,
+        processedSongs: 0,
+        currentBatch: 0,
+        totalBatches: 0,
+      });
+      eventSource.close();
+    };
+
+    return eventSource;
+  },
+
+  /**
+   * Generate a smart playlist using the AI DJ feature.
+   * 
+   * The backend uses a three-tier matching system:
+   * 1. Artist-based matching: For "more like [artist]" prompts
+   * 2. Local genre matching: Direct match against indexed genres
+   * 3. Gemini AI fallback: For complex prompts requiring AI interpretation
+   * 
+   * @param prompt - Natural language description of desired playlist
+   * @param options.blendMode - 'single' for one genre, 'mixed' for multi-genre blending
+   * @param options.targetSongs - Number of songs to return (default: 50, max: 100)
+   * @param options.discoverMode - 'balanced', 'discover' (underplayed), or 'favorites'
+   * @param options.avoidRecentlyHours - Exclude songs played within N hours (0 = off)
+   * @param options.onePerArtist - Limit to one song per artist for variety
+   * @param options.useTimeContext - Add time-of-day context to AI recommendations
+   * @returns Playlist filter and matching songs
+   */
+  async generateSmartPlaylist(
+    prompt: string, 
+    options?: { 
+      blendMode?: 'single' | 'mixed';
+      targetSongs?: number;
+      discoverMode?: 'balanced' | 'discover' | 'favorites';
+      avoidRecentlyHours?: number;
+      onePerArtist?: boolean;
+      useTimeContext?: boolean;
+    }
+  ): Promise<SmartPlaylistResponse> {
+    const response = await fetch(`${API_BASE}/smart-playlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        prompt,
+        blendMode: options?.blendMode || 'single',
+        targetSongs: options?.targetSongs || 50,
+        discoverMode: options?.discoverMode || 'balanced',
+        avoidRecentlyHours: options?.avoidRecentlyHours || 0,
+        onePerArtist: options?.onePerArtist || false,
+        useTimeContext: options?.useTimeContext || false,
+      }),
+    });
+    return handleResponse(response);
+  },
 };
+
+/**
+ * Matched genre from AI DJ with scoring information.
+ */
+export interface MatchedGenre {
+  name: string;
+  score: number;
+  songCount: number;
+  proportion: number; // 0.0-1.0
+}
+
+/**
+ * Smart playlist filter returned by AI DJ.
+ */
+export interface SmartPlaylistFilter {
+  genres: string[];
+  artists?: string[];
+  minYear?: number;
+  maxYear?: number;
+  description?: string;
+  mood?: string;
+  energy?: string;
+  tempo?: string;
+  localMatch?: boolean;
+  blendMode?: 'single' | 'mixed';
+  matchedGenres?: MatchedGenre[];
+}
+
+/**
+ * Response from the smart playlist API.
+ */
+export interface SmartPlaylistResponse {
+  filter: SmartPlaylistFilter;
+  songs: ApiSong[];
+}
 
 /**
  * Cached album metadata from the backend.

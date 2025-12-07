@@ -1,13 +1,21 @@
 // Package db provides SQLite database access for ViiB MediaHub.
 //
 // Schema includes tables for:
-//   - songs: Audio file metadata with paths and usage stats
+//   - songs: Audio file metadata with paths, usage stats, and AI analysis fields
 //   - playlists: User-created playlists with song references
+//   - plays: Play history with timestamps for tracking listening patterns
 //   - scan_folders: Configured directories to scan for music
 //   - settings: Key-value store for application configuration
 //   - spotify_downloads: Download queue with status tracking
 //   - album_metadata: Cached Spotify album metadata
 //   - artist_metadata: Cached Spotify artist metadata
+//   - indexed_genres: Pre-computed genre lists for fast lookup
+//
+// AI DJ Support:
+//   - Mood/energy/tempo/BPM fields in songs table (populated by Gemini AI)
+//   - Play history queries for discovery mode and recently played filtering
+//   - Artist preference tracking based on cumulative play counts
+//   - Genre indexing for fast local matching without API calls
 //
 // Uses SQLite with WAL mode for concurrent access and foreign keys enabled.
 package db
@@ -22,9 +30,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// DB is the primary SQLite database wrapper used by the application. It
-// provides higher-level methods for managing songs, playlists, scan folders,
-// and Spotify download queue entries.
+// DB is the primary SQLite database wrapper. It provides methods for managing
+// songs, playlists, scan folders, Spotify downloads, and AI DJ features
+// including play history tracking and mood analysis.
 type DB struct {
 	conn *sql.DB
 }
@@ -32,23 +40,29 @@ type DB struct {
 // Song represents a persisted audio track with metadata and file locations
 // stored in the database.
 type Song struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Artist      string   `json:"artist"`
-	Album       string   `json:"album"`
-	AlbumArtist string   `json:"albumArtist,omitempty"`
-	TrackNumber int      `json:"trackNumber,omitempty"`
-	DiscNumber  int      `json:"discNumber,omitempty"`
-	Genre       []string `json:"genre,omitempty"`
-	Year        int      `json:"year,omitempty"`
-	Duration    float64  `json:"duration"`
-	FilePath    string   `json:"filePath"`
-	CoverPath   string   `json:"coverPath,omitempty"`
-	AddedAt     int64    `json:"addedAt"`
-	PlayCount   int      `json:"playCount,omitempty"`
-	LastPlayed  int64    `json:"lastPlayed,omitempty"`
-	SkipCount   int      `json:"skipCount,omitempty"`
-	FileHash    string   `json:"fileHash,omitempty"`
+	ID             string   `json:"id"`
+	Title          string   `json:"title"`
+	Artist         string   `json:"artist"`
+	Album          string   `json:"album"`
+	AlbumArtist    string   `json:"albumArtist,omitempty"`
+	TrackNumber    int      `json:"trackNumber,omitempty"`
+	DiscNumber     int      `json:"discNumber,omitempty"`
+	Genre          []string `json:"genre,omitempty"`
+	Year           int      `json:"year,omitempty"`
+	Duration       float64  `json:"duration"`
+	FilePath       string   `json:"filePath"`
+	CoverPath      string   `json:"coverPath,omitempty"`
+	AddedAt        int64    `json:"addedAt"`
+	PlayCount      int      `json:"playCount,omitempty"`
+	LastPlayed     int64    `json:"lastPlayed,omitempty"`
+	SkipCount      int      `json:"skipCount,omitempty"`
+	FileHash       string   `json:"fileHash,omitempty"`
+	Mood           string   `json:"mood,omitempty"`           // e.g., "happy", "sad", "energetic", "calm"
+	Energy         string   `json:"energy,omitempty"`         // e.g., "high", "medium", "low"
+	Tempo          string   `json:"tempo,omitempty"`          // e.g., "fast", "medium", "slow"
+	BPM            int      `json:"bpm,omitempty"`            // Beats per minute (if analyzed)
+	Instrumental   bool     `json:"instrumental,omitempty"`   // true if song has no vocals
+	MoodAnalyzedAt int64    `json:"moodAnalyzedAt,omitempty"` // Timestamp of mood analysis
 }
 
 // Playlist represents a user-defined playlist persisted in the database.
@@ -112,7 +126,13 @@ func (d *DB) migrate() error {
 		play_count INTEGER DEFAULT 0,
 		last_played INTEGER,
 		skip_count INTEGER DEFAULT 0,
-		file_hash TEXT
+		file_hash TEXT,
+		mood TEXT,
+		energy TEXT,
+		tempo TEXT,
+		bpm INTEGER,
+		instrumental INTEGER DEFAULT 0,
+		mood_analyzed_at INTEGER
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_songs_album ON songs(album);
@@ -138,6 +158,13 @@ func (d *DB) migrate() error {
 	CREATE TABLE IF NOT EXISTS settings (
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS genre_stats (
+		name TEXT PRIMARY KEY,
+		count INTEGER NOT NULL,
+		artists TEXT NOT NULL, -- JSON array of top artists
+		cover_url TEXT
 	);
 
 	CREATE TABLE IF NOT EXISTS spotify_downloads (
@@ -195,7 +222,56 @@ func (d *DB) migrate() error {
 	`
 
 	_, err := d.conn.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Run column migrations for existing databases
+	return d.migrateColumns()
+}
+
+// migrateColumns adds new columns to existing tables if they don't exist.
+// SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first.
+func (d *DB) migrateColumns() error {
+	// Check for mood column and add mood/energy/tempo columns if missing
+	var count int
+	err := d.conn.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name='mood'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		migrations := []string{
+			`ALTER TABLE songs ADD COLUMN mood TEXT`,
+			`ALTER TABLE songs ADD COLUMN energy TEXT`,
+			`ALTER TABLE songs ADD COLUMN tempo TEXT`,
+			`ALTER TABLE songs ADD COLUMN bpm INTEGER`,
+			`ALTER TABLE songs ADD COLUMN instrumental INTEGER DEFAULT 0`,
+			`ALTER TABLE songs ADD COLUMN mood_analyzed_at INTEGER`,
+		}
+		for _, m := range migrations {
+			if _, err := d.conn.Exec(m); err != nil {
+				// Ignore "duplicate column" errors
+				if !strings.Contains(err.Error(), "duplicate column") {
+					return err
+				}
+			}
+		}
+	}
+
+	// Check for instrumental column (added later) and add if missing
+	err = d.conn.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name='instrumental'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		if _, err := d.conn.Exec(`ALTER TABLE songs ADD COLUMN instrumental INTEGER DEFAULT 0`); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // Song operations
@@ -205,7 +281,8 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 	rows, err := d.conn.Query(`
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
 		       genre, year, duration, file_path, cover_path, added_at,
-		       play_count, last_played, skip_count, file_hash
+		       play_count, last_played, skip_count, file_hash,
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
 		FROM songs
 		ORDER BY album, disc_number, track_number, title
 	`)
@@ -221,12 +298,15 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 		var albumArtist, coverPath, fileHash sql.NullString
 		var trackNum, discNum, year, playCount, skipCount sql.NullInt64
 		var lastPlayed sql.NullInt64
+		var mood, energy, tempo sql.NullString
+		var bpm, instrumental, moodAnalyzedAt sql.NullInt64
 
 		err := rows.Scan(
 			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
 			&trackNum, &discNum, &genreJSON, &year,
 			&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
 			&playCount, &lastPlayed, &skipCount, &fileHash,
+			&mood, &energy, &tempo, &bpm, &instrumental, &moodAnalyzedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -261,6 +341,24 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 		}
 		if fileHash.Valid {
 			s.FileHash = fileHash.String
+		}
+		if mood.Valid {
+			s.Mood = mood.String
+		}
+		if energy.Valid {
+			s.Energy = energy.String
+		}
+		if tempo.Valid {
+			s.Tempo = tempo.String
+		}
+		if bpm.Valid {
+			s.BPM = int(bpm.Int64)
+		}
+		if instrumental.Valid {
+			s.Instrumental = instrumental.Int64 == 1
+		}
+		if moodAnalyzedAt.Valid {
+			s.MoodAnalyzedAt = moodAnalyzedAt.Int64
 		}
 
 		songs = append(songs, s)
@@ -303,6 +401,8 @@ func (d *DB) SaveSong(s *Song) error {
 }
 
 // SaveSongs inserts or updates multiple Song records in a transaction.
+// Note: On conflict, we preserve existing genre data if the new genre is empty,
+// to avoid overwriting enriched genres with empty metadata from file scans.
 func (d *DB) SaveSongs(songs []Song) error {
 	tx, err := d.conn.Begin()
 	if err != nil {
@@ -323,7 +423,11 @@ func (d *DB) SaveSongs(songs []Song) error {
 			album_artist = excluded.album_artist,
 			track_number = excluded.track_number,
 			disc_number = excluded.disc_number,
-			genre = excluded.genre,
+			genre = CASE 
+				WHEN excluded.genre IS NULL OR excluded.genre = '' OR excluded.genre = '[]' OR excluded.genre = 'null'
+				THEN songs.genre 
+				ELSE excluded.genre 
+			END,
 			year = excluded.year,
 			duration = excluded.duration,
 			cover_path = excluded.cover_path
@@ -352,6 +456,196 @@ func (d *DB) SaveSongs(songs []Song) error {
 func (d *DB) DeleteSong(id string) error {
 	_, err := d.conn.Exec("DELETE FROM songs WHERE id = ?", id)
 	return err
+}
+
+// UpdateSongMood updates the mood/energy/tempo/instrumental metadata for a song.
+func (d *DB) UpdateSongMood(songID, mood, energy, tempo string, bpm int, instrumental bool) error {
+	_, err := d.conn.Exec(`
+		UPDATE songs SET
+			mood = ?,
+			energy = ?,
+			tempo = ?,
+			bpm = ?,
+			instrumental = ?,
+			mood_analyzed_at = ?
+		WHERE id = ?
+	`, mood, energy, tempo, bpm, instrumental, time.Now().Unix(), songID)
+	return err
+}
+
+// GetSongsWithoutMood returns songs that haven't been analyzed for mood yet.
+func (d *DB) GetSongsWithoutMood(limit int) ([]Song, error) {
+	rows, err := d.conn.Query(`
+		SELECT id, title, artist, album, album_artist, track_number, disc_number,
+		       genre, year, duration, file_path, cover_path, added_at,
+		       play_count, last_played, skip_count, file_hash,
+		       mood, energy, tempo, bpm, mood_analyzed_at
+		FROM songs
+		WHERE mood IS NULL OR mood = ''
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var songs []Song
+	for rows.Next() {
+		var s Song
+		var genreJSON sql.NullString
+		var albumArtist, coverPath, fileHash sql.NullString
+		var trackNum, discNum, year, playCount, skipCount sql.NullInt64
+		var lastPlayed sql.NullInt64
+		var mood, energy, tempo sql.NullString
+		var bpm, moodAnalyzedAt sql.NullInt64
+
+		err := rows.Scan(
+			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
+			&trackNum, &discNum, &genreJSON, &year,
+			&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
+			&playCount, &lastPlayed, &skipCount, &fileHash,
+			&mood, &energy, &tempo, &bpm, &moodAnalyzedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if albumArtist.Valid {
+			s.AlbumArtist = albumArtist.String
+		}
+		if trackNum.Valid {
+			s.TrackNumber = int(trackNum.Int64)
+		}
+		if discNum.Valid {
+			s.DiscNumber = int(discNum.Int64)
+		}
+		if genreJSON.Valid && genreJSON.String != "" {
+			json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+		}
+		if year.Valid {
+			s.Year = int(year.Int64)
+		}
+		if coverPath.Valid {
+			s.CoverPath = coverPath.String
+		}
+		if fileHash.Valid {
+			s.FileHash = fileHash.String
+		}
+
+		songs = append(songs, s)
+	}
+
+	return songs, rows.Err()
+}
+
+// GetSongsByMoodCriteria returns songs matching mood/energy/tempo criteria.
+func (d *DB) GetSongsByMoodCriteria(mood, energy, tempo string, genreNames []string) ([]Song, error) {
+	query := `
+		SELECT id, title, artist, album, album_artist, track_number, disc_number,
+		       genre, year, duration, file_path, cover_path, added_at,
+		       play_count, last_played, skip_count, file_hash,
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
+		FROM songs
+		WHERE 1=1
+	`
+	args := []any{}
+
+	if mood != "" {
+		query += " AND mood = ?"
+		args = append(args, mood)
+	}
+	if energy != "" {
+		query += " AND energy = ?"
+		args = append(args, energy)
+	}
+	if tempo != "" {
+		query += " AND tempo = ?"
+		args = append(args, tempo)
+	}
+
+	// Add genre filter if specified
+	if len(genreNames) > 0 {
+		genreConditions := []string{}
+		for _, g := range genreNames {
+			genreConditions = append(genreConditions, "genre LIKE ?")
+			args = append(args, "%\""+g+"\"%")
+		}
+		query += " AND (" + strings.Join(genreConditions, " OR ") + ")"
+	}
+
+	query += " LIMIT 50"
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var songs []Song
+	for rows.Next() {
+		var s Song
+		var genreJSON sql.NullString
+		var albumArtist, coverPath, fileHash sql.NullString
+		var trackNum, discNum, year, playCount, skipCount sql.NullInt64
+		var lastPlayed sql.NullInt64
+		var moodVal, energyVal, tempoVal sql.NullString
+		var bpm, instrumental, moodAnalyzedAt sql.NullInt64
+
+		err := rows.Scan(
+			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
+			&trackNum, &discNum, &genreJSON, &year,
+			&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
+			&playCount, &lastPlayed, &skipCount, &fileHash,
+			&moodVal, &energyVal, &tempoVal, &bpm, &instrumental, &moodAnalyzedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if albumArtist.Valid {
+			s.AlbumArtist = albumArtist.String
+		}
+		if trackNum.Valid {
+			s.TrackNumber = int(trackNum.Int64)
+		}
+		if discNum.Valid {
+			s.DiscNumber = int(discNum.Int64)
+		}
+		if genreJSON.Valid && genreJSON.String != "" {
+			json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+		}
+		if year.Valid {
+			s.Year = int(year.Int64)
+		}
+		if coverPath.Valid {
+			s.CoverPath = coverPath.String
+		}
+		if fileHash.Valid {
+			s.FileHash = fileHash.String
+		}
+		if moodVal.Valid {
+			s.Mood = moodVal.String
+		}
+		if energyVal.Valid {
+			s.Energy = energyVal.String
+		}
+		if tempoVal.Valid {
+			s.Tempo = tempoVal.String
+		}
+		if bpm.Valid {
+			s.BPM = int(bpm.Int64)
+		}
+		if instrumental.Valid {
+			s.Instrumental = instrumental.Int64 == 1
+		}
+		if moodAnalyzedAt.Valid {
+			s.MoodAnalyzedAt = moodAnalyzedAt.Int64
+		}
+
+		songs = append(songs, s)
+	}
+
+	return songs, rows.Err()
 }
 
 // ClearSongs deletes all songs from the database (dangerous).
@@ -478,6 +772,305 @@ func (d *DB) UpdatePlayCount(id string) error {
 		WHERE id = ?
 	`, time.Now().UnixMilli(), id)
 	return err
+}
+
+// GetRecentlyPlayedSongIDs returns IDs of songs played in the last N hours.
+func (d *DB) GetRecentlyPlayedSongIDs(hours int) ([]string, error) {
+	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour).UnixMilli()
+	rows, err := d.conn.Query(`
+		SELECT id FROM songs 
+		WHERE last_played > ?
+		ORDER BY last_played DESC
+	`, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// GetFrequentlyPlayedSongs returns songs ordered by play count (most played first).
+func (d *DB) GetFrequentlyPlayedSongs(limit int) ([]Song, error) {
+	rows, err := d.conn.Query(`
+		SELECT id, title, artist, album, album_artist, track_number, disc_number,
+		       genre, year, duration, file_path, cover_path, added_at,
+		       play_count, last_played, skip_count, file_hash,
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
+		FROM songs
+		WHERE play_count > 0
+		ORDER BY play_count DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return d.scanSongsWithMood(rows)
+}
+
+// GetUnderplayedSongs returns songs with low play counts that match criteria.
+func (d *DB) GetUnderplayedSongs(genreNames []string, maxPlayCount int, limit int) ([]Song, error) {
+	query := `
+		SELECT id, title, artist, album, album_artist, track_number, disc_number,
+		       genre, year, duration, file_path, cover_path, added_at,
+		       play_count, last_played, skip_count, file_hash,
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
+		FROM songs
+		WHERE play_count <= ?
+	`
+	args := []any{maxPlayCount}
+
+	if len(genreNames) > 0 {
+		genreConditions := []string{}
+		for _, g := range genreNames {
+			genreConditions = append(genreConditions, "genre LIKE ?")
+			args = append(args, "%\""+g+"\"%")
+		}
+		query += " AND (" + strings.Join(genreConditions, " OR ") + ")"
+	}
+
+	query += " ORDER BY RANDOM() LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return d.scanSongsWithMood(rows)
+}
+
+// GetFavoriteArtists returns artist names ordered by total play count across all songs.
+// Used by the AI DJ to identify user preferences for artist-aware recommendations.
+func (d *DB) GetFavoriteArtists(limit int) ([]string, error) {
+	rows, err := d.conn.Query(`
+		SELECT artist, SUM(play_count) as total_plays
+		FROM songs
+		WHERE play_count > 0
+		GROUP BY artist
+		ORDER BY total_plays DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var artists []string
+	for rows.Next() {
+		var artist string
+		var totalPlays int
+		if err := rows.Scan(&artist, &totalPlays); err != nil {
+			return nil, err
+		}
+		artists = append(artists, artist)
+	}
+	return artists, rows.Err()
+}
+
+// ArtistPlayStats holds aggregated play statistics for an artist.
+// Used to calculate artist affinity bonuses in playlist scoring.
+type ArtistPlayStats struct {
+	Artist     string // Artist name
+	TotalPlays int    // Sum of play_count across all songs
+	SongCount  int    // Number of songs by this artist
+}
+
+// GetArtistPlayStats returns play statistics for all artists that have been played.
+// Returns a map keyed by artist name for O(1) lookups during playlist generation.
+func (d *DB) GetArtistPlayStats() (map[string]ArtistPlayStats, error) {
+	rows, err := d.conn.Query(`
+		SELECT artist, SUM(play_count) as total_plays, COUNT(*) as song_count
+		FROM songs
+		WHERE play_count > 0
+		GROUP BY artist
+		ORDER BY total_plays DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := make(map[string]ArtistPlayStats)
+	for rows.Next() {
+		var s ArtistPlayStats
+		if err := rows.Scan(&s.Artist, &s.TotalPlays, &s.SongCount); err != nil {
+			return nil, err
+		}
+		stats[s.Artist] = s
+	}
+	return stats, rows.Err()
+}
+
+// GetSongsByArtist returns all songs by a specific artist (case-insensitive match).
+// Used for "more like [artist]" prompts to seed artist-based playlists.
+func (d *DB) GetSongsByArtist(artistName string) ([]Song, error) {
+	rows, err := d.conn.Query(`
+		SELECT id, title, artist, album, album_artist, track_number, disc_number,
+		       genre, year, duration, file_path, cover_path, added_at,
+		       play_count, last_played, skip_count, file_hash,
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
+		FROM songs
+		WHERE LOWER(artist) = LOWER(?)
+		ORDER BY album, track_number
+	`, artistName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return d.scanSongsWithMood(rows)
+}
+
+// GetSimilarArtists finds other artists in the library that share genres with
+// the given artist. Used to expand artist-based playlists with similar music.
+// Returns up to 'limit' artists, ordered by play count (most played first).
+func (d *DB) GetSimilarArtists(artistName string, limit int) ([]string, error) {
+	// First get genres for the given artist
+	var genreJSON sql.NullString
+	err := d.conn.QueryRow(`
+		SELECT genre FROM songs 
+		WHERE LOWER(artist) = LOWER(?) AND genre IS NOT NULL 
+		LIMIT 1
+	`, artistName).Scan(&genreJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	if !genreJSON.Valid || genreJSON.String == "" {
+		return nil, nil
+	}
+
+	var genres []string
+	if err := json.Unmarshal([]byte(genreJSON.String), &genres); err != nil {
+		return nil, nil
+	}
+
+	if len(genres) == 0 {
+		return nil, nil
+	}
+
+	// Find other artists with similar genres
+	genreConditions := []string{}
+	args := []any{}
+	for _, g := range genres {
+		genreConditions = append(genreConditions, "genre LIKE ?")
+		args = append(args, "%\""+g+"\"%")
+	}
+	args = append(args, artistName, limit)
+
+	query := fmt.Sprintf(`
+		SELECT DISTINCT artist 
+		FROM songs 
+		WHERE (%s) AND LOWER(artist) != LOWER(?)
+		ORDER BY play_count DESC
+		LIMIT ?
+	`, strings.Join(genreConditions, " OR "))
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var artists []string
+	for rows.Next() {
+		var artist string
+		if err := rows.Scan(&artist); err != nil {
+			return nil, err
+		}
+		artists = append(artists, artist)
+	}
+	return artists, rows.Err()
+}
+
+// scanSongsWithMood is a helper to scan song rows including mood fields.
+func (d *DB) scanSongsWithMood(rows *sql.Rows) ([]Song, error) {
+	var songs []Song
+	for rows.Next() {
+		var s Song
+		var genreJSON sql.NullString
+		var albumArtist, coverPath, fileHash sql.NullString
+		var trackNum, discNum, year, playCount, skipCount sql.NullInt64
+		var lastPlayed sql.NullInt64
+		var mood, energy, tempo sql.NullString
+		var bpm, instrumental, moodAnalyzedAt sql.NullInt64
+
+		err := rows.Scan(
+			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
+			&trackNum, &discNum, &genreJSON, &year,
+			&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
+			&playCount, &lastPlayed, &skipCount, &fileHash,
+			&mood, &energy, &tempo, &bpm, &instrumental, &moodAnalyzedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if albumArtist.Valid {
+			s.AlbumArtist = albumArtist.String
+		}
+		if trackNum.Valid {
+			s.TrackNumber = int(trackNum.Int64)
+		}
+		if discNum.Valid {
+			s.DiscNumber = int(discNum.Int64)
+		}
+		if genreJSON.Valid && genreJSON.String != "" {
+			json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+		}
+		if year.Valid {
+			s.Year = int(year.Int64)
+		}
+		if coverPath.Valid {
+			s.CoverPath = coverPath.String
+		}
+		if playCount.Valid {
+			s.PlayCount = int(playCount.Int64)
+		}
+		if lastPlayed.Valid {
+			s.LastPlayed = lastPlayed.Int64
+		}
+		if skipCount.Valid {
+			s.SkipCount = int(skipCount.Int64)
+		}
+		if fileHash.Valid {
+			s.FileHash = fileHash.String
+		}
+		if mood.Valid {
+			s.Mood = mood.String
+		}
+		if energy.Valid {
+			s.Energy = energy.String
+		}
+		if tempo.Valid {
+			s.Tempo = tempo.String
+		}
+		if bpm.Valid {
+			s.BPM = int(bpm.Int64)
+		}
+		if instrumental.Valid {
+			s.Instrumental = instrumental.Int64 == 1
+		}
+		if moodAnalyzedAt.Valid {
+			s.MoodAnalyzedAt = moodAnalyzedAt.Int64
+		}
+
+		songs = append(songs, s)
+	}
+
+	return songs, rows.Err()
 }
 
 // Playlist operations
@@ -1557,7 +2150,7 @@ func (d *DB) UpdateSongGenres(songID string, genres []string) error {
 
 // GetSongsWithMissingGenres returns songs that have no genre information.
 func (d *DB) GetSongsWithMissingGenres(limit int) ([]Song, error) {
-	query := `SELECT id, title, artist, album, genre FROM songs WHERE genre IS NULL OR genre = '[]' OR genre = '' LIMIT ?`
+	query := `SELECT id, title, artist, album, genre FROM songs WHERE genre IS NULL OR genre = '[]' OR genre = '' OR genre = 'null' LIMIT ?`
 	rows, err := d.conn.Query(query, limit)
 	if err != nil {
 		return nil, err
@@ -1573,6 +2166,81 @@ func (d *DB) GetSongsWithMissingGenres(limit int) ([]Song, error) {
 		}
 		if genreJSON.Valid && genreJSON.String != "" {
 			json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+		}
+		songs = append(songs, s)
+	}
+	return songs, rows.Err()
+}
+
+// GetSongsBySmartFilter returns songs matching the given criteria.
+func (d *DB) GetSongsBySmartFilter(genres []string, artists []string, minYear, maxYear int) ([]Song, error) {
+	query := "SELECT id, title, artist, album, genre, year, duration, file_path, cover_path, added_at, play_count, last_played FROM songs WHERE 1=1"
+	var args []interface{}
+
+	if len(genres) > 0 {
+		query += " AND ("
+		for i, g := range genres {
+			if i > 0 {
+				query += " OR "
+			}
+			query += "genre LIKE ?"
+			args = append(args, "%"+g+"%")
+		}
+		query += ")"
+	}
+
+	if len(artists) > 0 {
+		query += " AND ("
+		for i, a := range artists {
+			if i > 0 {
+				query += " OR "
+			}
+			query += "artist LIKE ?"
+			args = append(args, "%"+a+"%")
+		}
+		query += ")"
+	}
+
+	if minYear > 0 {
+		query += " AND year >= ?"
+		args = append(args, minYear)
+	}
+	if maxYear > 0 {
+		query += " AND year <= ?"
+		args = append(args, maxYear)
+	}
+
+	query += " ORDER BY RANDOM() LIMIT 50"
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var songs []Song
+	for rows.Next() {
+		var s Song
+		var genreJSON sql.NullString
+		var coverPath sql.NullString
+		var lastPlayed sql.NullInt64
+
+		err := rows.Scan(
+			&s.ID, &s.Title, &s.Artist, &s.Album, &genreJSON, &s.Year, &s.Duration,
+			&s.FilePath, &coverPath, &s.AddedAt, &s.PlayCount, &lastPlayed,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if genreJSON.Valid && genreJSON.String != "" {
+			json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+		}
+		if coverPath.Valid {
+			s.CoverPath = coverPath.String
+		}
+		if lastPlayed.Valid {
+			s.LastPlayed = lastPlayed.Int64
 		}
 		songs = append(songs, s)
 	}
