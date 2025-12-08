@@ -4,11 +4,11 @@
  * Full-screen overlay showing currently playing track with enhanced controls.
  * 
  * Features:
- * - Large album artwork display
+ * - Large album artwork display with visualizer overlay (click to toggle)
  * - Playback controls (play/pause, next/prev, shuffle, repeat)
  * - Progress bar with seeking
  * - Volume control
- * - Visualizer toggle (off, wave, spectrum, aurora)
+ * - Visualizer modes: OFF, WAVE, SPECTRUM, AURORA, CIRCULAR, PARTICLES, NEBULA
  * - Lyrics view (placeholder)
  * - Mini queue list
  * - Like button (placeholder)

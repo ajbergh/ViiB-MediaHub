@@ -8,6 +8,9 @@
  * - WAVE: Waveform display (time domain)
  * - SPECTRUM: Frequency bar graph (FFT)
  * - AURORA: Animated gradient wave effect
+ * - CIRCULAR: Circular equalizer with rotating bars
+ * - PARTICLES: Particle system reacting to audio frequencies
+ * - NEBULA: Cosmic nebula effect with flowing gradients
  * 
  * Uses requestAnimationFrame for smooth 60fps rendering.
  * Automatically cleans up animation on unmount or mode change.

@@ -44,6 +44,11 @@ func dmLog(format string, v ...interface{}) {
 //   - Real-time progress updates are sent via SSE (Server-Sent Events)
 //   - OAuth access tokens are retrieved from database before each download
 //   - Downloaded files are saved as OGG Vorbis in {downloadDir}/{artist}/{track}.ogg
+//
+// Reliability Features:
+//   - Rate limiting (1s delay between downloads) to prevent Spotify throttling
+//   - Retry logic with exponential backoff (3 attempts) for transient errors
+//   - Session reset on persistent "invalid key size" errors
 type DownloadManager struct {
 	db               *db.DB                        // Database for persistent queue
 	downloadDir      string                        // Root directory for downloaded files

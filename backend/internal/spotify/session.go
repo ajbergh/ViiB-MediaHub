@@ -29,6 +29,7 @@ func sLog(format string, v ...interface{}) {
 //   - Integration with amp.SDK task context for proper resource management
 //   - Session state tracking to prevent duplicate initializations
 //   - Session refresh when token changes
+//   - Session reset for recovery from corrupted state (e.g., "invalid key size" errors)
 //
 // Usage:
 //

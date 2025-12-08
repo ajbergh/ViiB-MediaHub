@@ -6,7 +6,7 @@
  * 
  * Features:
  * - Smooth fade in/out transitions when toggling between album art and visualizer
- * - Multiple visualization modes (WAVE, SPECTRUM, AURORA, CIRCULAR)
+ * - Multiple visualization modes (WAVE, SPECTRUM, AURORA, CIRCULAR, PARTICLES, NEBULA)
  * - Pauses rendering when not visible to save resources
  * - Responsive sizing that fills the album art container
  * - Uses existing audio analyzer from audioEngine
