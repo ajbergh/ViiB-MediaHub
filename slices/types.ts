@@ -174,6 +174,7 @@ export interface LibrarySlice {
   addScanFolder: (path: string) => Promise<void>;
   removeScanFolder: (id: string) => Promise<void>;
   startBackendScan: () => Promise<void>;
+  startQuickScan: () => Promise<void>;
   pollScanStatus: () => Promise<void>;
 }
 

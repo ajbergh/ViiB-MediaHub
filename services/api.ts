@@ -240,6 +240,11 @@ export const api = {
     await handleResponse(response);
   },
 
+  async startQuickScan(): Promise<void> {
+    const response = await fetch(`${API_BASE}/scan/quick`, { method: 'POST' });
+    await handleResponse(response);
+  },
+
   async getScanStatus(): Promise<ScanStatus> {
     const response = await fetch(`${API_BASE}/scan/status`);
     return handleResponse(response);

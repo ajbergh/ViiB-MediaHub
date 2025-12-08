@@ -229,8 +229,8 @@ func (s *Scanner) NotifyDownloadComplete() bool {
 		for _, folder := range folders {
 			// Check if spotify download dir is inside or is one of the library folders
 			if isSubPath(folder.Path, downloadDir) || isSubPath(downloadDir, folder.Path) {
-				logger.Scanner("Triggering automatic rescan (download dir %s is within library folder %s)", downloadDir, folder.Path)
-				go s.ScanAll()
+				logger.Scanner("Triggering automatic quick scan (download dir %s is within library folder %s)", downloadDir, folder.Path)
+				go s.performQuickScan()
 
 				s.rescanMutex.Lock()
 				s.downloadsSinceLastScan = 0
@@ -242,6 +242,63 @@ func (s *Scanner) NotifyDownloadComplete() bool {
 	}
 
 	return false
+}
+
+// performQuickScan runs a quick scan with proper event handling for download completion
+func (s *Scanner) performQuickScan() {
+	if s.IsScanning() {
+		logger.Scanner("Quick scan skipped - scan already in progress")
+		return
+	}
+
+	s.SetScanning(true)
+	defer s.SetScanning(false)
+
+	s.emitEvent(LibraryEvent{
+		Type:    "scan_started",
+		Message: "Quick scan after download...",
+	})
+
+	quickResult, err := s.QuickStartup()
+	if err != nil {
+		logger.Scanner("Quick scan after download failed: %v", err)
+		s.emitEvent(LibraryEvent{
+			Type:    "scan_complete",
+			Message: fmt.Sprintf("Quick scan failed: %v", err),
+		})
+		return
+	}
+
+	method := "signatures"
+	if quickResult.UsedJournal {
+		method = quickResult.JournalMethod
+	}
+	logger.Scanner("Quick scan complete in %s using %s: %d files changed",
+		quickResult.ScanDuration, method, len(quickResult.ChangedFiles))
+
+	if len(quickResult.ChangedFiles) > 0 {
+		s.emitEvent(LibraryEvent{
+			Type:    "scan_progress",
+			Message: fmt.Sprintf("Processing %d changed files...", len(quickResult.ChangedFiles)),
+		})
+
+		result, err := s.ProcessChanges(quickResult.ChangedFiles)
+		if err != nil {
+			logger.Scanner("Error processing changes: %v", err)
+		} else {
+			logger.Scanner("Quick scan processed: %d added, %d updated, %d deleted",
+				result.NewSongs, result.UpdatedSongs, result.RemovedSongs)
+		}
+	}
+
+	s.emitEvent(LibraryEvent{
+		Type:    "scan_complete",
+		Message: fmt.Sprintf("Quick scan complete: %d files changed", len(quickResult.ChangedFiles)),
+	})
+
+	s.emitEvent(LibraryEvent{
+		Type: "library_updated",
+	})
 }
 
 // isSubPath checks if child is a subdirectory of parent
@@ -261,6 +318,13 @@ func (s *Scanner) IsScanning() bool {
 	s.scanMutex.RLock()
 	defer s.scanMutex.RUnlock()
 	return s.scanning
+}
+
+// SetScanning sets the scanning state (used by quick scan)
+func (s *Scanner) SetScanning(scanning bool) {
+	s.scanMutex.Lock()
+	s.scanning = scanning
+	s.scanMutex.Unlock()
 }
 
 // GetProgress returns the current scan progress message

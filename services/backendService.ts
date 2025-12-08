@@ -165,6 +165,12 @@ export const backendService = {
     }
   },
 
+  async startQuickScan(): Promise<void> {
+    if (await isBackendAvailable()) {
+      await api.startQuickScan();
+    }
+  },
+
   async getScanStatus(): Promise<{ scanning: boolean; progress: string }> {
     if (await isBackendAvailable()) {
       return api.getScanStatus();

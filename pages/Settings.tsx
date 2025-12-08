@@ -26,7 +26,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3 } from 'lucide-react';
+import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap } from 'lucide-react';
 import { useStore } from '../store';
 import { VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
@@ -43,7 +43,7 @@ export const Settings: React.FC = () => {
       streamingStats, resetStreamingStats,
       logs, clearLogs, addLog, addSongs, resetLibrary,
       isScanning, scanProgress, setScanning, setScanProgress,
-      backendAvailable, scanFolders, loadScanFolders, addScanFolder, removeScanFolder, startBackendScan
+      backendAvailable, scanFolders, loadScanFolders, addScanFolder, removeScanFolder, startBackendScan, startQuickScan
   } = useStore();
 
   const [tempClientId, setTempClientId] = useState(spotifyClientId);
@@ -563,12 +563,21 @@ export const Settings: React.FC = () => {
                 </div>
                 
                 {/* Add folder & Scan buttons */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                     <button 
                         onClick={openFolderBrowser}
                         className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main font-bold py-2 px-4 rounded-lg transition-all border border-surface-border"
                     >
                         <Plus size={18} /> Add Folder
+                    </button>
+                    <button 
+                        onClick={startQuickScan}
+                        disabled={isScanning || scanFolders.length === 0}
+                        className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border disabled:opacity-50 disabled:cursor-not-allowed text-text-main font-bold py-2 px-4 rounded-lg transition-all border border-surface-border"
+                        title="Fast scan using signatures - detects new/changed/deleted files only"
+                    >
+                        {isScanning ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+                        Quick Scan
                     </button>
                     <button 
                         onClick={startBackendScan}

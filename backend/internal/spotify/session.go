@@ -233,6 +233,37 @@ func (sm *SessionManager) GetInitTime() int64 {
 	return sm.initTime
 }
 
+// ResetSession forces the session to be closed and cleared, allowing
+// a fresh re-initialization on the next GetSession/Initialize call.
+// This is useful when encountering persistent errors like "invalid key size"
+// that indicate the session state has become corrupted.
+//
+// Unlike Close(), this method is designed to be called when you want to
+// force a complete session refresh while keeping the manager alive.
+func (sm *SessionManager) ResetSession() {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	sLog("Resetting Spotify session...")
+
+	if sm.session != nil {
+		if err := sm.session.Close(); err != nil {
+			sLog("Warning: Failed to close session during reset: %v", err)
+		}
+		sm.session = nil
+	}
+	if sm.taskCtx != nil {
+		sm.taskCtx.Close()
+		sm.taskCtx = nil
+	}
+
+	sm.initialized = false
+	sm.lastTokenUsed = ""
+	sm.initTime = 0
+
+	sLog("Spotify session reset complete")
+}
+
 // Close closes the Spotify session and releases resources.
 // This should be called when the session is no longer needed to prevent
 // resource leaks. It's safe to call multiple times.

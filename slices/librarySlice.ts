@@ -617,7 +617,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       }
       
       try {
-          set({ isScanning: true, scanProgress: 'Starting scan...' });
+          set({ isScanning: true, scanProgress: 'Starting full rescan...' });
           await backendService.startScan();
           
           // Start polling for status
@@ -625,6 +625,25 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       } catch (e: any) {
           set({ isScanning: false, scanProgress: '' });
           alert(e.message || "Failed to start scan");
+      }
+  },
+
+  startQuickScan: async () => {
+      const { backendAvailable } = get();
+      if (!backendAvailable) {
+          alert("Backend not available. Use browser file import instead.");
+          return;
+      }
+      
+      try {
+          set({ isScanning: true, scanProgress: 'Starting quick scan...' });
+          await backendService.startQuickScan();
+          
+          // Start polling for status
+          get().pollScanStatus();
+      } catch (e: any) {
+          set({ isScanning: false, scanProgress: '' });
+          alert(e.message || "Failed to start quick scan");
       }
   },
 

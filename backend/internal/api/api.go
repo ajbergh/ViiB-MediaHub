@@ -126,6 +126,7 @@ func (a *API) Routes() chi.Router {
 	r.Post("/folders", a.addScanFolder)
 	r.Delete("/folders/{id}", a.removeScanFolder)
 	r.Post("/scan", a.startScan)
+	r.Post("/scan/quick", a.startQuickScan)
 	r.Get("/scan/status", a.getScanStatus)
 
 	// Library events SSE
@@ -383,6 +384,77 @@ func (a *API) startScan(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	respondJSON(w, map[string]string{"status": "started"})
+}
+
+// startQuickScan performs a fast incremental scan using signatures and filesystem journals.
+// Only processes changed/new/deleted files rather than rescanning the entire library.
+func (a *API) startQuickScan(w http.ResponseWriter, r *http.Request) {
+	if a.scanner.IsScanning() {
+		respondError(w, http.StatusConflict, "Scan already in progress")
+		return
+	}
+
+	// Set scanning state before starting goroutine
+	a.scanner.SetScanning(true)
+
+	go func() {
+		// Ensure scanning is set to false when done
+		defer a.scanner.SetScanning(false)
+
+		// Emit scan started event
+		a.scanner.EmitEvent(scanner.LibraryEvent{
+			Type:    "scan_started",
+			Message: "Quick scan started...",
+		})
+
+		logger.API("Starting quick scan...")
+		quickResult, err := a.scanner.QuickStartup()
+		if err != nil {
+			logger.API("Quick scan failed: %v", err)
+			a.scanner.EmitEvent(scanner.LibraryEvent{
+				Type:    "scan_complete",
+				Message: fmt.Sprintf("Quick scan failed: %v", err),
+			})
+			return
+		}
+
+		// Log results
+		method := "signatures"
+		if quickResult.UsedJournal {
+			method = quickResult.JournalMethod
+		}
+		logger.API("Quick scan complete in %s using %s: %d dirs checked, %d unchanged, %d files changed",
+			quickResult.ScanDuration, method, quickResult.CheckedDirs, quickResult.UnchangedDirs, len(quickResult.ChangedFiles))
+
+		// Process changes if any
+		if len(quickResult.ChangedFiles) > 0 {
+			a.scanner.EmitEvent(scanner.LibraryEvent{
+				Type:    "scan_progress",
+				Message: fmt.Sprintf("Processing %d changed files...", len(quickResult.ChangedFiles)),
+			})
+
+			result, err := a.scanner.ProcessChanges(quickResult.ChangedFiles)
+			if err != nil {
+				logger.API("Error processing changes: %v", err)
+			} else {
+				logger.API("Quick scan processed: %d added, %d updated, %d deleted",
+					result.NewSongs, result.UpdatedSongs, result.RemovedSongs)
+			}
+		}
+
+		// Emit completion event
+		a.scanner.EmitEvent(scanner.LibraryEvent{
+			Type:    "scan_complete",
+			Message: fmt.Sprintf("Quick scan complete: %d files changed", len(quickResult.ChangedFiles)),
+		})
+
+		// Notify UI to refresh
+		a.scanner.EmitEvent(scanner.LibraryEvent{
+			Type: "library_updated",
+		})
+	}()
+
+	respondJSON(w, map[string]string{"status": "started", "type": "quick"})
 }
 
 func (a *API) getScanStatus(w http.ResponseWriter, r *http.Request) {

@@ -45,21 +45,23 @@ func dmLog(format string, v ...interface{}) {
 //   - OAuth access tokens are retrieved from database before each download
 //   - Downloaded files are saved as OGG Vorbis in {downloadDir}/{artist}/{track}.ogg
 type DownloadManager struct {
-	db              *db.DB                        // Database for persistent queue
-	downloadDir     string                        // Root directory for downloaded files
-	sessionManager  *spotify.SessionManager       // Manages librespot session lifecycle
-	downloader      *spotify.Downloader           // Handles actual track downloads
-	scanner         *scanner.Scanner              // Scanner for auto-rescan on download complete
-	isRunning       bool                          // Whether the background processor is active
-	activeDownloads map[string]context.CancelFunc // Map of download ID -> cancel function
-	activeCount     int32                         // Atomic counter for active downloads
-	maxConcurrent   int32                         // Maximum concurrent downloads (configurable)
-	mu              sync.RWMutex                  // Protects activeDownloads and isRunning
-	ctx             context.Context               // Context for graceful shutdown
-	cancel          context.CancelFunc            // Cancel function for context
-	progressChan    chan DownloadProgress         // Channel for SSE progress updates
-	workChan        chan *db.SpotifyDownload      // Channel for dispatching work to workers
-	workerWg        sync.WaitGroup                // Wait group for worker goroutines
+	db               *db.DB                        // Database for persistent queue
+	downloadDir      string                        // Root directory for downloaded files
+	sessionManager   *spotify.SessionManager       // Manages librespot session lifecycle
+	downloader       *spotify.Downloader           // Handles actual track downloads
+	scanner          *scanner.Scanner              // Scanner for auto-rescan on download complete
+	isRunning        bool                          // Whether the background processor is active
+	activeDownloads  map[string]context.CancelFunc // Map of download ID -> cancel function
+	activeCount      int32                         // Atomic counter for active downloads
+	maxConcurrent    int32                         // Maximum concurrent downloads (configurable)
+	mu               sync.RWMutex                  // Protects activeDownloads and isRunning
+	ctx              context.Context               // Context for graceful shutdown
+	cancel           context.CancelFunc            // Cancel function for context
+	progressChan     chan DownloadProgress         // Channel for SSE progress updates
+	workChan         chan *db.SpotifyDownload      // Channel for dispatching work to workers
+	workerWg         sync.WaitGroup                // Wait group for worker goroutines
+	lastDownloadTime time.Time                     // For rate limiting between downloads
+	rateLimitMu      sync.Mutex                    // Protects lastDownloadTime
 }
 
 // DownloadProgress represents download progress for real-time updates via SSE.
@@ -747,6 +749,9 @@ func (dm *DownloadManager) processDownload(workerID int, download *db.SpotifyDow
 		Progress:   0,
 	}
 
+	// Apply rate limiting to avoid Spotify throttling
+	dm.applyRateLimit()
+
 	// Process the download
 	dmLog("Worker %d: starting download: %s - %s (SpotifyID: %s)", workerID, download.Title, download.Type, download.SpotifyID)
 
@@ -772,15 +777,61 @@ func (dm *DownloadManager) processDownload(workerID int, download *db.SpotifyDow
 	dm.activeDownloads[download.ID] = cancel
 	dm.mu.Unlock()
 
-	// Download using librespot-go
-	if err := dm.downloadTrack(ctx, download); err != nil {
-		dmLog("Worker %d: download failed for '%s': %v", workerID, download.Title, err)
-		dm.db.MarkDownloadFailed(download.ID, err.Error())
+	// Download with retry logic for transient errors
+	const maxRetries = 3
+	var lastErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		lastErr = dm.downloadTrack(ctx, download)
+		if lastErr == nil {
+			// Success - exit retry loop
+			break
+		}
+
+		// Check if error is retriable (session/key errors)
+		errStr := lastErr.Error()
+		isRetriable := strings.Contains(errStr, "invalid key size") ||
+			strings.Contains(errStr, "session") ||
+			strings.Contains(errStr, "crypto") ||
+			strings.Contains(errStr, "EOF")
+
+		if !isRetriable || attempt == maxRetries {
+			// Non-retriable error or final attempt - give up
+			break
+		}
+
+		dmLog("Worker %d: download failed for '%s' (attempt %d/%d): %v - retrying...",
+			workerID, download.Title, attempt, maxRetries, lastErr)
+
+		// Reset session on persistent failures (after 2nd attempt)
+		if attempt >= 2 {
+			dmLog("Worker %d: resetting Spotify session after repeated failures", workerID)
+			dm.sessionManager.ResetSession()
+			// Re-initialize session
+			if err := dm.ensureSession(); err != nil {
+				dmLog("Worker %d: failed to re-initialize session: %v", workerID, err)
+			}
+		}
+
+		// Exponential backoff: 2s, 4s, 8s
+		backoff := time.Duration(1<<uint(attempt)) * time.Second
+		dmLog("Worker %d: waiting %v before retry", workerID, backoff)
+		select {
+		case <-ctx.Done():
+			lastErr = ctx.Err()
+			break
+		case <-time.After(backoff):
+			// Continue to next attempt
+		}
+	}
+
+	if lastErr != nil {
+		dmLog("Worker %d: download failed for '%s' after %d attempts: %v", workerID, download.Title, maxRetries, lastErr)
+		dm.db.MarkDownloadFailed(download.ID, lastErr.Error())
 		dm.progressChan <- DownloadProgress{
 			DownloadID: download.ID,
 			Status:     "failed",
 			Progress:   0,
-			Error:      err.Error(),
+			Error:      lastErr.Error(),
 		}
 	}
 }
@@ -889,4 +940,24 @@ func (dm *DownloadManager) GetActiveDownloads() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// applyRateLimit ensures minimum delay between downloads to avoid Spotify throttling.
+// This helps prevent "invalid key size 0" errors that occur when requests are made too rapidly.
+func (dm *DownloadManager) applyRateLimit() {
+	const minDelay = 1000 * time.Millisecond // 1 second between downloads
+
+	dm.rateLimitMu.Lock()
+	defer dm.rateLimitMu.Unlock()
+
+	if !dm.lastDownloadTime.IsZero() {
+		elapsed := time.Since(dm.lastDownloadTime)
+		if elapsed < minDelay {
+			sleepTime := minDelay - elapsed
+			dmLog("Rate limiting: waiting %v before next download", sleepTime)
+			time.Sleep(sleepTime)
+		}
+	}
+
+	dm.lastDownloadTime = time.Now()
 }
