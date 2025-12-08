@@ -631,7 +631,43 @@ export const SpotifyService = {
                     );
                 }
 
-                return await res.json();
+                const results = await res.json();
+                
+                // If searching for playlists and this is the first page (offset 0),
+                // enhance results with fallback scraper for first-party playlists
+                if (types.includes('playlist') && offset === 0) {
+                    try {
+                        const { api } = await import('./api');
+                        const fallbackResults = await api.searchPlaylistsFallback(query);
+                        
+                        if (fallbackResults?.playlists?.items?.length > 0) {
+                            // Get existing playlist IDs from API results
+                            const existingIds = new Set(
+                                (results.playlists?.items || []).map((p: any) => p?.id).filter(Boolean)
+                            );
+                            
+                            // Add unique playlists from fallback (first-party playlists)
+                            const newPlaylists = fallbackResults.playlists.items.filter(
+                                (p: any) => p?.id && !existingIds.has(p.id)
+                            );
+                            
+                            if (newPlaylists.length > 0) {
+                                console.log(`[SpotifyService] Added ${newPlaylists.length} playlists from fallback search`);
+                                // Prepend first-party playlists as they're usually more relevant
+                                results.playlists = {
+                                    ...results.playlists,
+                                    items: [...newPlaylists, ...(results.playlists?.items || [])],
+                                    total: (results.playlists?.total || 0) + newPlaylists.length
+                                };
+                            }
+                        }
+                    } catch (fallbackError) {
+                        // Don't fail the entire search if fallback fails
+                        console.warn('[SpotifyService] Fallback playlist search failed:', fallbackError);
+                    }
+                }
+                
+                return results;
             } catch (error) {
                 if (error instanceof SpotifyAuthError || error instanceof SpotifyRateLimitError || error instanceof SpotifyApiError) {
                     store.addLog('error', `Spotify Search Error: ${query}`, error);

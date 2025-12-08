@@ -145,6 +145,8 @@ func (a *API) Routes() chi.Router {
 	r.Get("/spotify/credentials", a.getSpotifyCredentials)
 	r.Post("/spotify/credentials", a.saveSpotifyCredentials)
 	r.Get("/spotify/search", a.spotifySearch)
+	r.Get("/spotify/search/playlists", a.spotifySearchPlaylists)            // Fallback search for first-party playlists
+	r.Get("/spotify/playlists/{id}/scrape", a.spotifyGetPlaylistByScraping) // Get first-party playlist details via scraping
 	r.Get("/spotify/me", a.spotifyGetUserProfile)
 	r.Get("/spotify/proxy", a.spotifyProxy)
 	r.Post("/spotify/proxy", a.spotifyProxy)
@@ -1421,7 +1423,7 @@ func (a *API) enrichMood(w http.ResponseWriter, r *http.Request) {
 // The analysis runs in a background goroutine and continues even if the client disconnects
 func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 	logger.API("enrichMoodStream: Starting mood analysis stream")
-	
+
 	apiKey, err := a.db.GetSetting("gemini_api_key")
 	if err != nil || apiKey == "" {
 		logger.API("enrichMoodStream: Gemini API key not configured")
@@ -1471,7 +1473,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 	totalBatches := (totalSongs + batchSize - 1) / batchSize
 
 	logger.API("enrichMoodStream: Starting analysis of %d songs in %d batches", totalSongs, totalBatches)
-	
+
 	// Send initial event to client
 	jsonData, _ := json.Marshal(EnrichmentProgress{
 		Status:       "started",
@@ -1481,7 +1483,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 	})
 	fmt.Fprintf(w, "data: %s\n\n", jsonData)
 	flusher.Flush()
-	
+
 	// Broadcast to sidebar
 	a.scanner.EmitEvent(scanner.LibraryEvent{
 		Type:    "mood_started",
@@ -1496,15 +1498,15 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 
 	// Create channels for communication between goroutine and SSE sender
 	type progressUpdate struct {
-		data     EnrichmentProgress
-		done     bool
+		data EnrichmentProgress
+		done bool
 	}
 	progressChan := make(chan progressUpdate, 100)
 
 	// Start background goroutine for processing (continues even if client disconnects)
 	go func() {
 		defer close(progressChan)
-		
+
 		client := gemini.NewClient(apiKey)
 		processedSongs := 0
 		updatedTotal := 0
@@ -1548,7 +1550,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 			default:
 				// Channel full, skip SSE update but continue processing
 			}
-			
+
 			// Always broadcast to sidebar
 			broadcastMoodEvent("mood_progress", fmt.Sprintf("Analyzing batch %d/%d", batch+1, totalBatches), processedSongs, totalSongs, batch+1, totalBatches)
 
@@ -1601,7 +1603,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 			}:
 			default:
 			}
-			
+
 			// Always broadcast to sidebar
 			broadcastMoodEvent("mood_progress", fmt.Sprintf("Batch %d complete: %d songs analyzed", batch+1, batchUpdated), processedSongs, totalSongs, batch+1, totalBatches)
 
@@ -1627,7 +1629,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 		}:
 		default:
 		}
-		
+
 		// Always broadcast completion to sidebar
 		broadcastMoodEvent("mood_complete", fmt.Sprintf("Mood analysis complete! %d songs", updatedTotal), processedSongs, totalSongs, totalBatches, totalBatches)
 	}()

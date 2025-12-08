@@ -1,0 +1,641 @@
+/*
+spot-playlist-scraper.go
+
+Command-line utility to extract Spotify playlist URLs / URIs from a Spotify
+search page.
+
+This tool aims to make it easy to obtain playlist IDs from a Spotify web
+search result page by scraping any playlist references embedded in the
+rendered page HTML or in embedded (base64-encoded) initialState payloads.
+
+Features:
+- Optional rendering of JavaScript-driven Spotify pages using a headless
+	browser (chromedp) so the scraper operates on post-render HTML when
+	needed.
+- Optional raw HTTP fetch using a desktop browser User-Agent string when
+	rendering is unnecessary or chromedp is unavailable.
+- Regex- and DOM-based extraction of playlist IDs and metadata in several
+	patterns (spotify URIs, open.spotify.com playlist links, and UI-specific
+	"card-title" IDs). The tool deduplicates results and outputs them in a
+	consistent format.
+
+Limitations:
+- This is a scraping-only tool and does not use the Spotify Web API. The
+	scraper may break if Spotify changes their site structure or script
+	payload formats.
+- Chromedp requires a local Chrome/Chromium instance. Rendering will fail
+	if a compatible browser is not installed or chromedp cannot find one.
+- Use responsibly and follow Spotify's terms of service; rate-limiting
+	might be required for bulk usage.
+
+Usage:
+	go run spot-playlist-scraper.go [flags] <spotify_search_url_or_query>
+
+Flags:
+	-dump: Write the fetched (rendered or raw) HTML to stdout for debugging.
+				 If an 'initialState' script is found it will also attempt base64
+				 decoding for easier inspection.
+	-render: Use a headless browser (chromedp) to render JavaScript and
+					 return the final HTML. Defaults to true.
+  -json: Output a JSON array of playlist objects with fields: id, url,
+	  name, author. This is the default output format; pass -json=false
+	  to print plain playlist URLs one per line instead.
+	-spotify: Print URIs in the spotify:playlist:<ID> form instead of the
+						default https://open.spotify.com/playlist/<ID> URL.
+
+Exit codes:
+	0 - One or more playlist IDs were printed.
+	1 - Usage or argument parsing error.
+	2 - No playlists found (no matches).
+	other non-zero - Internal errors (HTTP request failure, chromedp error, etc.)
+
+Examples:
+	JSON output (default):
+		go run spot-playlist-scraper.go -json "this is"
+
+	Plain URL output (legacy):
+		go run spot-playlist-scraper.go -json=false "this is"
+	[
+		{
+			"id": "37i9dQZF1DX5KpP2LN299J",
+			"url": "https://open.spotify.com/playlist/37i9dQZF1DX5KpP2LN299J",
+			"name": "This Is Taylor Swift",
+			"author": "Spotify"
+		}
+	]
+*/
+
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/chromedp/chromedp"
+)
+
+// Playlist contains the basic structured information we extract for a
+// discovered Spotify playlist. When scraping is not able to find a title or
+// author, those fields may be empty.
+type Playlist struct {
+	ID     string `json:"id"`
+	URL    string `json:"url"`
+	Name   string `json:"name,omitempty"`
+	Author string `json:"author,omitempty"`
+}
+
+// usage prints a terse CLI usage message to standard error and exits with
+// status code 1. This is invoked when required command-line arguments are
+// missing or invalid. The message describes the minimal invocation.
+//
+// The input may be either a full Spotify URL or a simple search term; the
+// program will convert a plain search term into a matching search URL.
+//
+// Examples:
+//
+//	go run spot-playlist-scraper.go "https://open.spotify.com/search/this%20is/playlists"
+//	go run spot-playlist-scraper.go "this is"
+func usage() {
+	fmt.Fprintln(os.Stderr, "Usage: go run spot-playlist-scraper.go <spotify_search_url_or_query>")
+	os.Exit(1)
+}
+
+// buildSearchURL returns a full Spotify search URL from either a
+// user-supplied URL or a simple search term. If `input` already looks like
+// a valid URL with a scheme, it is returned unchanged. Otherwise the
+// function returns `https://open.spotify.com/search/<path-escaped-input>/playlists`.
+// buildSearchURL returns a full Spotify search URL from either a
+// user-supplied URL or a simple search term. If `input` already looks like
+// a valid URL with a scheme, it is returned unchanged. Otherwise the
+// function returns `https://open.spotify.com/search/<path-escaped-input>/playlists`.
+//
+// The function also accepts the short form `open.spotify.com/...` without
+// a scheme and will prepend `https://` in that case.
+func buildSearchURL(input string) (string, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "", fmt.Errorf("empty search input")
+	}
+	// If input already appears to be a URL, return it as-is.
+	if u, err := url.ParseRequestURI(input); err == nil && u.Scheme != "" && u.Host != "" {
+		return input, nil
+	}
+	// Add scheme if user passed 'open.spotify.com/..'
+	if strings.HasPrefix(input, "open.spotify.com/") {
+		return "https://" + input, nil
+	}
+	// Treat the input as a search term and build the search URL.
+	encoded := url.PathEscape(input)
+	return fmt.Sprintf("https://open.spotify.com/search/%s/playlists", encoded), nil
+}
+
+// (scraping-only): This tool does not attempt to call the Spotify Web API.
+// Instead it performs HTML scraping and uses page DOM analysis for rendered
+// pages and regex/initialState decoding for non-rendered pages. As a
+// scraper it is dependent on Spotify's frontend markup and embedded
+// payloads; breakage is possible if Spotify changes the page structure.
+
+// main is the program entry point. It supplies the CLI flags that control
+// behavior and chooses a rendering or raw HTTP fetch strategy to obtain the
+// target page. By default the command prints JSON output (set `-json=false`
+// to print a list of playlist URLs, one per line).
+//
+// It performs the following high-level steps:
+//  1. Parse command line flags and the single required positional
+//     argument: spotify_search_url (e.g., https://open.spotify.com/search/...).
+//  2. If -render is true, render the page with a headless Chrome instance
+//     using chromedp in order to execute client-side JavaScript and obtain
+//     fully rendered HTML. If -render is false, perform a plain HTTP GET with
+//     a desktop User-Agent.
+//  3. Use a set of regexes to extract Spotify playlist IDs from different
+//     contexts, including explicit spotify URIs, open.spotify.com playlist
+//     links, and 'card-title' attributes used by Spotify's UI.
+//  4. If initial regex searches don't find any IDs, inspect the page for an
+//     embedded <script id="initialState">...base64...</script> payload.
+//     When found, decode it from base64 and re-run the same regexes against
+//     the decoded content.
+//  5. Deduplicate found IDs and print them. By default the tool prints JSON
+//     output (array of playlist objects). If `-json=false` the tool prints
+//     a single canonical playlist URL per line (optionally `spotify:playlist` with
+//     `-spotify` set).
+//     print spotify:playlist:<ID> URIs instead.
+//
+// Error handling and exit codes:
+//   - Exits with 1 on usage errors (see usage()).
+//   - Exits with 2 when no playlist matches are found.
+//   - Other errors cause a non-zero exit and generally print no playlist lines
+//     to stdout (e.g., HTTP request failure, chromedp error).
+func main() {
+	dump := flag.Bool("dump", false, "dump fetched HTML to stdout for debugging")
+	render := flag.Bool("render", true, "use headless browser to render JavaScript and return full HTML")
+	jsonOut := flag.Bool("json", true, "output JSON array of playlists with fields: id, url, name, author (default true)")
+	spotifyStyle := flag.Bool("spotify", false, "output spotify:playlist:<ID> style instead of https://open.spotify.com/playlist/<ID>")
+	flag.Parse()
+	args := flag.Args()
+	if len(args) < 1 {
+		usage()
+	}
+	// Accept either a full URL or a simple text query. buildSearchURL will
+	// construct the correct Spotify search URL for the query case.
+	searchURL, err := buildSearchURL(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid search input: %v\n", err)
+		os.Exit(1)
+	}
+
+	var body []byte
+	details := make(map[string]Playlist)
+	// If rendering is enabled, silence chromedp/internal log output so only
+	// playlist information is printed to stdout.
+	if *render {
+		log.SetOutput(io.Discard)
+		// If JSON output is requested, extract structured fields directly
+		// from the rendered page using the DOM. This is more robust than
+		// regex-ing the HTML and allows us to include playlist names and
+		// authors.
+		if *jsonOut {
+			pls, err := renderPlaylists(searchURL)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error rendering playlists: %v\n", err)
+				os.Exit(1)
+			}
+			if len(pls) == 0 {
+				os.Exit(2)
+			}
+			// Deduplicate by ID and ensure URL is populated.
+			uniq := []Playlist{}
+			seenIDs := make(map[string]bool)
+			for _, p := range pls {
+				if p.ID == "" {
+					continue
+				}
+				if !seenIDs[p.ID] {
+					seenIDs[p.ID] = true
+					if p.URL == "" {
+						if *spotifyStyle {
+							p.URL = fmt.Sprintf("spotify:playlist:%s", p.ID)
+						} else {
+							p.URL = fmt.Sprintf("https://open.spotify.com/playlist/%s", p.ID)
+						}
+					}
+					uniq = append(uniq, p)
+				}
+			}
+			pls = uniq
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(pls); err != nil {
+				fmt.Fprintf(os.Stderr, "error encoding json output: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+		html, err := renderHTML(searchURL)
+		if err != nil {
+			os.Exit(1)
+		}
+		body = []byte(html)
+	} else {
+		req, err := http.NewRequest("GET", searchURL, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error creating request: %v\n", err)
+			os.Exit(1)
+		}
+		// Request desktop site HTML
+		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			os.Exit(1)
+		}
+	}
+
+	// Match playlist IDs in several contexts. Accept either escaped '\:' or plain ':' separators.
+	// We'll normalize all findings to the form: spotify:playlist:<ID>
+	re := regexp.MustCompile(`(?:(?:"uri"\s*:\s*"spotify:playlist:")|(?:https?://open\.spotify\.com/playlist/)|(?:spotify(?:\\:|:)?playlist(?:\\:|:)))([A-Za-z0-9]+)`)
+	matches := re.FindAllStringSubmatch(string(body), -1)
+	// Also check for card-title patterns which often look like:
+	// card-title-spotify:playlist:37i9dQZF1DX...-0
+	reCard := regexp.MustCompile(`card-title-spotify(?:\\:|:)?playlist(?:\\:|:)?([A-Za-z0-9]+)`)
+	cardMatches := reCard.FindAllStringSubmatch(string(body), -1)
+
+	// If requested, dump raw HTML and exit immediately for debugging
+	if *dump {
+		_, _ = os.Stdout.Write(body)
+		// additionally try to decode initialState for easier debugging
+		reInit := regexp.MustCompile(`(?s)<script\s+id="initialState"[^>]*>([^<]+)</script>`)
+		m := reInit.FindStringSubmatch(string(body))
+		if m != nil && len(m) > 1 {
+			if dec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(m[1])); err == nil {
+				fmt.Fprintln(os.Stdout, "\n--- decoded initialState (truncated) ---")
+				// print a truncated preview to avoid huge output
+				preview := string(dec)
+				if len(preview) > 2000 {
+					preview = preview[:2000]
+				}
+				fmt.Fprintln(os.Stdout, preview)
+			} else {
+				fmt.Fprintln(os.Stdout, "\n--- initialState decode failed:", err)
+			}
+		} else {
+			fmt.Fprintln(os.Stdout, "\n--- no initialState script found ---")
+		}
+		return
+	}
+
+	// If no matches in raw HTML, try to find an embedded initialState script and decode it
+	if len(matches) == 0 && len(cardMatches) == 0 {
+		// look for: <script id="initialState" type="text/plain">BASE64...</script>
+		reInit := regexp.MustCompile(`(?s)<script\s+id="initialState"[^>]*>([^<]+)</script>`)
+		m := reInit.FindStringSubmatch(string(body))
+		if m != nil && len(m) > 1 {
+			// The initialState appears to be base64; try decoding
+			dec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(m[1]))
+			if err == nil {
+				// parse decoded initialState for playlist name/author details
+				details = extractPlaylistDetailsFromInitialState(string(dec))
+				// scan decoded initialState with the same regexes
+				matches = re.FindAllStringSubmatch(string(dec), -1)
+				if len(matches) == 0 {
+					// also try card-title specific search in the decoded payload to help debugging
+					reCardDec := regexp.MustCompile(`card-title-spotify(?:\\:|:)?playlist(?:\\:|:)?([A-Za-z0-9]+)`)
+					cm := reCardDec.FindAllStringSubmatch(string(dec), -1)
+					if len(cm) > 0 {
+						// Print normalized spotify:playlist:<ID> lines
+						localSeen := make(map[string]bool)
+						for _, c := range cm {
+							id := c[1]
+							norm := fmt.Sprintf("spotify:playlist:%s", id)
+							if !localSeen[norm] {
+								fmt.Println(norm)
+								localSeen[norm] = true
+							}
+						}
+						// If JSON requested in non-render mode, try to collect
+						// additional details from the decoded initialState.
+						if *jsonOut {
+							// convert cm to playlist structs and use details when available
+							out := []Playlist{}
+							localSeen := make(map[string]bool)
+							for _, c := range cm {
+								id := c[1]
+								if localSeen[id] {
+									continue
+								}
+								localSeen[id] = true
+								if detail, ok := details[id]; ok {
+									if *spotifyStyle {
+										detail.URL = fmt.Sprintf("spotify:playlist:%s", id)
+									} else if detail.URL == "" {
+										detail.URL = fmt.Sprintf("https://open.spotify.com/playlist/%s", id)
+									}
+									out = append(out, detail)
+								} else {
+									urlStr := fmt.Sprintf("https://open.spotify.com/playlist/%s", id)
+									if *spotifyStyle {
+										urlStr = fmt.Sprintf("spotify:playlist:%s", id)
+									}
+									out = append(out, Playlist{ID: id, URL: urlStr})
+								}
+							}
+							enc := json.NewEncoder(os.Stdout)
+							enc.SetIndent("", "  ")
+							_ = enc.Encode(out)
+							return
+						}
+						return
+					}
+				}
+			}
+		}
+	}
+
+	// Deduplicate IDs. By default the program prints JSON output; when the
+	// -json flag is false it instead prints a single playlist URL per line.
+	// Use the -spotify flag in non-JSON mode to output spotify:playlist:<ID>
+	// URIs instead of https://open.spotify.com/playlist/<ID> URLs.
+	seen := make(map[string]bool) // key: playlist ID
+	// printOut formats the playlist ID according to the -spotify flag and
+	// prints it to stdout. It does not perform deduplication; callers should
+	// use a dedup map to avoid printing duplicates.
+	printOut := func(id string) {
+		if *spotifyStyle {
+			fmt.Printf("spotify:playlist:%s\n", id)
+		} else {
+			fmt.Printf("https://open.spotify.com/playlist/%s\n", id)
+		}
+	}
+
+	// addID inserts the ID into the 'seen' map if not present and emits the
+	// formatted output via printOut. This ensures each playlist ID is printed
+	// at most once.
+	addID := func(id string) {
+		if !seen[id] {
+			seen[id] = true
+			printOut(id)
+		}
+	}
+
+	// If JSON output is requested, construct a list of Playlist objects. When
+	// we don't have a playlist name/author (non-render mode or initialState
+	// fallback), store the ID and URL and leave the name/author empty.
+	if *jsonOut {
+		out := []Playlist{}
+		for _, m := range matches {
+			if len(m) > 1 {
+				id := m[1]
+				if !seen[id] {
+					seen[id] = true
+					urlStr := fmt.Sprintf("https://open.spotify.com/playlist/%s", id)
+					if d, ok := details[id]; ok {
+						// Respect the -spotify flag by adjusting the returned URL
+						if *spotifyStyle {
+							d.URL = fmt.Sprintf("spotify:playlist:%s", id)
+						} else if d.URL == "" {
+							d.URL = fmt.Sprintf("https://open.spotify.com/playlist/%s", id)
+						}
+						out = append(out, d)
+					} else {
+						if *spotifyStyle {
+							urlStr = fmt.Sprintf("spotify:playlist:%s", id)
+						}
+						out = append(out, Playlist{ID: id, URL: urlStr})
+					}
+				}
+			}
+		}
+		for _, m := range cardMatches {
+			if len(m) > 1 {
+				id := m[1]
+				if !seen[id] {
+					seen[id] = true
+					urlStr := fmt.Sprintf("https://open.spotify.com/playlist/%s", id)
+					if d, ok := details[id]; ok {
+						out = append(out, d)
+					} else {
+						out = append(out, Playlist{ID: id, URL: urlStr})
+					}
+				}
+			}
+		}
+		if len(out) > 0 {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(out); err != nil {
+				fmt.Fprintf(os.Stderr, "error encoding json output: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+	}
+	for _, m := range cardMatches {
+		if len(m) > 1 {
+			addID(m[1])
+		}
+	}
+
+	if len(seen) == 0 {
+		// No output other than playlist lines; exit non-zero silently.
+		os.Exit(2)
+	}
+}
+
+// renderHTML launches a short-lived headless Chrome session using chromedp
+// to navigate to `targetURL`, execute any client-side JavaScript, and return
+// the final rendered HTML document as a string.
+//
+// Notes:
+//   - The function builds a context with a 20-second timeout which bounds the
+//     entire operation (navigation + wait + page HTML retrieval).
+//   - This function performs a small sleep (2 seconds) after navigating. On
+//     slow pages or when Spotify's dynamic rendering is delayed, callers may
+//     need to increase this sleep duration to ensure payloads are present.
+//   - chromedp depends on an installed Chrome/Chromium binary; if not present
+//     the call will fail with an error from chromedp.Run.
+//   - The caller is responsible for controlling log output (this program
+//     silences chromedp logs when rendering is used so that only playlist
+//     lines are printed to stdout).
+func renderHTML(targetURL string) (string, error) {
+	// create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	// create chromedp context
+	cctx, ccancel := chromedp.NewContext(ctx)
+	defer ccancel()
+
+	var html string
+	tasks := chromedp.Tasks{
+		chromedp.Navigate(targetURL),
+		chromedp.Sleep(2 * time.Second),
+		chromedp.OuterHTML("html", &html, chromedp.ByQuery),
+	}
+
+	if err := chromedp.Run(cctx, tasks); err != nil {
+		return "", err
+	}
+	return html, nil
+}
+
+// renderPlaylists loads the page in a headless browser and extracts a
+// structured list of playlists (ID, URL, name, author) using in-page DOM
+// traversal and heuristics. This typically produces richer results than
+// regex-based scraping of the raw HTML and is therefore preferred when
+// `-render` is enabled.
+//
+// Heuristics used include:
+//   - Finding anchors containing "/playlist/" and parsing their href for
+//     the playlist ID
+//   - Parsing `aria-label` when present (contains name and "By <author>"),
+//   - Looking for anchor child nodes linking to user profiles (/user/) and
+//     using the innerText as the author, and
+//   - Falling back to innerText parsing with a "by" suffix for author.
+func renderPlaylists(targetURL string) ([]Playlist, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	cctx, ccancel := chromedp.NewContext(ctx)
+	defer ccancel()
+
+	// JavaScript to run in the page context. It finds anchors whose href
+	// contains '/playlist/' and tries to extract title/author info using
+	// aria-label, innerText, or child elements heuristics. It will also look
+	// for anchor children that point to user profiles (href containing
+	// '/user/') as a heuristic for the playlist author. Returns JSON.
+	js := `(function() {
+		const nodes = Array.from(document.querySelectorAll('a[href*="/playlist/"]'));
+		const seen = new Set();
+		const out = [];
+		nodes.forEach(a => {
+			const href = a.getAttribute('href') || '';
+			const m = href.match(/\/playlist\/([A-Za-z0-9]+)/);
+			if (!m) return;
+			const id = m[1];
+			if (seen.has(id)) return;
+			seen.add(id);
+			let name = '';
+			let author = '';
+			const al = a.getAttribute('aria-label');
+			if (al) {
+				const bi = al.toLowerCase().lastIndexOf(' by ');
+				if (bi !== -1) {
+					name = al.slice(0, bi).trim();
+					author = al.slice(bi + 4).trim();
+				} else {
+					name = al.trim();
+				}
+			}
+			if (!name) {
+				const t = a.querySelector('h3, h2, span') || a;
+				name = (t && t.innerText) ? t.innerText.trim() : '';
+			}
+			if (!author) {
+				// Look for a child anchor linking to a user or profile.
+				const userLink = a.querySelector('a[href*="/user/"]');
+				if (userLink && userLink.innerText) {
+					author = userLink.innerText.trim();
+				}
+			}
+			if (!author) {
+				const s = a.innerText || '';
+				const match = s.match(/by\s+(.+)$/i);
+				if (match) author = match[1].trim();
+			}
+			let url;
+			try { url = new URL(href, window.location.href).href; } catch(e) { url = href; }
+			out.push({id, url, name, author});
+		});
+		return JSON.stringify(out);
+	})();`
+
+	var res string
+	tasks := chromedp.Tasks{
+		chromedp.Navigate(targetURL),
+		chromedp.Sleep(2 * time.Second),
+		chromedp.Evaluate(js, &res),
+	}
+	if err := chromedp.Run(cctx, tasks); err != nil {
+		return nil, err
+	}
+	var pls []Playlist
+	if err := json.Unmarshal([]byte(res), &pls); err != nil {
+		return nil, err
+	}
+	return pls, nil
+}
+
+// extractPlaylistDetailsFromInitialState attempts to recover playlist
+// metadata (name and owner/display_name) from a decoded Spotify initialState
+// payload. This is used when rendering is disabled and an embedded payload
+// is available in the page. The function returns a map of playlist ID =>
+// Playlist objects (with `Name` and `Author` fields set when available).
+//
+// The function supports several payload formats and heuristics, such as
+// `ownerName`, `display_name`, and `owner` objects containing `display_name`.
+func extractPlaylistDetailsFromInitialState(payload string) map[string]Playlist {
+	out := map[string]Playlist{}
+	// Find all playlist occurrences in the payload
+	reID := regexp.MustCompile(`spotify:playlist:([A-Za-z0-9]+)`) // find playlist URIs
+	ids := reID.FindAllStringSubmatch(payload, -1)
+	for _, m := range ids {
+		if len(m) < 2 {
+			continue
+		}
+		id := m[1]
+		// search for name and display_name near this ID
+		name := ""
+		author := ""
+		reName := regexp.MustCompile(fmt.Sprintf(`(?s)spotify:playlist:%s.*?"name":"([^"]+)"`, id))
+		if nm := reName.FindStringSubmatch(payload); len(nm) > 1 {
+			name = nm[1]
+		}
+		// Some payloads use owner.display_name; others may use ownerName; often
+		// the owner is represented as an object with a `display_name` property
+		// so try a couple of different patterns.
+		reOwnerSimple := regexp.MustCompile(fmt.Sprintf(`(?s)spotify:playlist:%s.*?"ownerName"\s*:\s*"([^"]+)"`, id))
+		if om := reOwnerSimple.FindStringSubmatch(payload); len(om) > 1 {
+			author = om[1]
+		}
+		if author == "" {
+			reOwnerDisplay := regexp.MustCompile(fmt.Sprintf(`(?s)spotify:playlist:%s.*?"display_name"\s*:\s*"([^"]+)"`, id))
+			if om := reOwnerDisplay.FindStringSubmatch(payload); len(om) > 1 {
+				author = om[1]
+			}
+		}
+		if author == "" {
+			reOwnerObj := regexp.MustCompile(fmt.Sprintf(`(?s)spotify:playlist:%s.*?"owner"\s*:\s*\{[^}]*?"display_name"\s*:\s*"([^"]+)"`, id))
+			if om := reOwnerObj.FindStringSubmatch(payload); len(om) > 1 {
+				author = om[1]
+			}
+		}
+		if name != "" || author != "" {
+			urlStr := fmt.Sprintf("https://open.spotify.com/playlist/%s", id)
+			out[id] = Playlist{ID: id, URL: urlStr, Name: name, Author: author}
+		}
+	}
+	return out
+}

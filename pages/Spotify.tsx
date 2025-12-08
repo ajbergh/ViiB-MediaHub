@@ -55,6 +55,9 @@ export const Spotify: React.FC = () => {
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(false);
     
+    // Search result category filter (Tracks, Albums, Artists, Playlists)
+    const [searchResultTab, setSearchResultTab] = useState<'tracks' | 'albums' | 'artists' | 'playlists'>('tracks');
+    
     // Wrapper to persist tab changes
     const setActiveTab = (tab: 'search' | 'recent' | 'albums' | 'playlists') => {
         setActiveTabLocal(tab);
@@ -884,7 +887,7 @@ export const Spotify: React.FC = () => {
             {/* Search Section */}
             {activeTab === 'search' && (
                 <>
-                    <div className="mb-8">
+                    <div className="mb-6">
                         <div className="relative w-full max-w-3xl">
                             <SearchIcon className="absolute left-5 top-1/2 -translate-y-1/2 text-text-secondary" size={22} />
                             <input
@@ -902,13 +905,58 @@ export const Spotify: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Search Result Category Tabs */}
+                    {spotifyResults && (
+                        <div className="flex gap-2 mb-6 flex-wrap">
+                            <button
+                                onClick={() => setSearchResultTab('tracks')}
+                                className={`px-4 py-2 rounded-full font-medium text-sm transition-all ${
+                                    searchResultTab === 'tracks'
+                                        ? 'bg-brand text-black'
+                                        : 'bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-main'
+                                }`}
+                            >
+                                Tracks {spotifyResults.tracks?.items?.length > 0 && `(${spotifyResults.tracks.items.length})`}
+                            </button>
+                            <button
+                                onClick={() => setSearchResultTab('albums')}
+                                className={`px-4 py-2 rounded-full font-medium text-sm transition-all ${
+                                    searchResultTab === 'albums'
+                                        ? 'bg-brand text-black'
+                                        : 'bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-main'
+                                }`}
+                            >
+                                Albums {spotifyResults.albums?.items?.length > 0 && `(${spotifyResults.albums.items.length})`}
+                            </button>
+                            <button
+                                onClick={() => setSearchResultTab('artists')}
+                                className={`px-4 py-2 rounded-full font-medium text-sm transition-all ${
+                                    searchResultTab === 'artists'
+                                        ? 'bg-brand text-black'
+                                        : 'bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-main'
+                                }`}
+                            >
+                                Artists {spotifyResults.artists?.items?.length > 0 && `(${spotifyResults.artists.items.length})`}
+                            </button>
+                            <button
+                                onClick={() => setSearchResultTab('playlists')}
+                                className={`px-4 py-2 rounded-full font-medium text-sm transition-all ${
+                                    searchResultTab === 'playlists'
+                                        ? 'bg-brand text-black'
+                                        : 'bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-main'
+                                }`}
+                            >
+                                Playlists {spotifyResults.playlists?.items?.length > 0 && `(${spotifyResults.playlists.items.length})`}
+                            </button>
+                        </div>
+                    )}
+
                     {/* Results */}
                     {spotifyResults ? (
-                        <div className="space-y-10 pb-32">
-                            {/* Albums */}
-                            {spotifyResults.albums?.items && Array.isArray(spotifyResults.albums.items) && spotifyResults.albums.items.length > 0 && (
+                        <div className="pb-32">
+                            {/* Albums - only show when albums tab selected */}
+                            {searchResultTab === 'albums' && spotifyResults.albums?.items && Array.isArray(spotifyResults.albums.items) && spotifyResults.albums.items.length > 0 && (
                                 <section>
-                                    <h2 className="text-xl font-bold mb-4">Albums</h2>
                                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                                         {spotifyResults.albums.items.filter((a: any) => a).map((album: any) => (
                                             <div key={album.id} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group relative">
@@ -964,10 +1012,9 @@ export const Spotify: React.FC = () => {
                                 </section>
                             )}
 
-                            {/* Artists */}
-                            {spotifyResults.artists?.items && Array.isArray(spotifyResults.artists.items) && spotifyResults.artists.items.length > 0 && (
+                            {/* Artists - only show when artists tab selected */}
+                            {searchResultTab === 'artists' && spotifyResults.artists?.items && Array.isArray(spotifyResults.artists.items) && spotifyResults.artists.items.length > 0 && (
                                 <section>
-                                    <h2 className="text-xl font-bold mb-4">Artists</h2>
                                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                                         {spotifyResults.artists.items.filter((a: any) => a).map((artist: any) => (
                                             <div key={artist.id} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group">
@@ -1016,10 +1063,9 @@ export const Spotify: React.FC = () => {
                                 </section>
                             )}
 
-                            {/* Playlists */}
-                            {spotifyResults.playlists?.items && Array.isArray(spotifyResults.playlists.items) && spotifyResults.playlists.items.length > 0 && (
+                            {/* Playlists - only show when playlists tab selected */}
+                            {searchResultTab === 'playlists' && spotifyResults.playlists?.items && Array.isArray(spotifyResults.playlists.items) && spotifyResults.playlists.items.length > 0 && (
                                 <section>
-                                    <h2 className="text-xl font-bold mb-4">Playlists</h2>
                                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                                         {spotifyResults.playlists.items.filter((p: any) => p).map((playlist: any) => (
                                             <div key={playlist.id} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group relative">
@@ -1074,10 +1120,9 @@ export const Spotify: React.FC = () => {
                                 </section>
                             )}
 
-                            {/* Tracks */}
-                            {spotifyResults.tracks?.items && Array.isArray(spotifyResults.tracks.items) && spotifyResults.tracks.items.length > 0 && (
+                            {/* Tracks - only show when tracks tab selected */}
+                            {searchResultTab === 'tracks' && spotifyResults.tracks?.items && Array.isArray(spotifyResults.tracks.items) && spotifyResults.tracks.items.length > 0 && (
                                 <section>
-                                    <h2 className="text-xl font-bold mb-4">Songs</h2>
                                     <div className="bg-surface-1 rounded-xl overflow-hidden">
                                         {spotifyResults.tracks.items.filter((t: any) => t).map((track: any, idx: number) => {
                                             const isDownloaded = downloadedSpotifyIds.has(track.id);
@@ -1163,9 +1208,25 @@ export const Spotify: React.FC = () => {
                                 </section>
                             )}
 
-                            {(!spotifyResults.albums?.items?.length && !spotifyResults.playlists?.items?.length && !spotifyResults.tracks?.items?.length && !spotifyResults.artists?.items?.length) && (
+                            {/* Empty state for selected tab */}
+                            {searchResultTab === 'tracks' && !spotifyResults.tracks?.items?.length && (
                                 <div className="text-center p-10 text-text-subtle">
-                                    No results found on Spotify for "{debouncedQuery}"
+                                    No tracks found for "{debouncedQuery}"
+                                </div>
+                            )}
+                            {searchResultTab === 'albums' && !spotifyResults.albums?.items?.length && (
+                                <div className="text-center p-10 text-text-subtle">
+                                    No albums found for "{debouncedQuery}"
+                                </div>
+                            )}
+                            {searchResultTab === 'artists' && !spotifyResults.artists?.items?.length && (
+                                <div className="text-center p-10 text-text-subtle">
+                                    No artists found for "{debouncedQuery}"
+                                </div>
+                            )}
+                            {searchResultTab === 'playlists' && !spotifyResults.playlists?.items?.length && (
+                                <div className="text-center p-10 text-text-subtle">
+                                    No playlists found for "{debouncedQuery}"
                                 </div>
                             )}
 

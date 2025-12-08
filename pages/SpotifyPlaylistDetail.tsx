@@ -23,6 +23,7 @@ import { SpotifyService } from '../services/spotifyService';
 import { useStore } from '../store';
 import { formatTime } from '../utils';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
+import { spotifyPlaylistToSongs } from '../lib/spotifyHelpers';
 import api from '../services/api';
 
 interface SpotifyPlaylistFull {
@@ -57,12 +58,41 @@ interface SpotifyPlaylistFull {
 export const SpotifyPlaylistDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { addLog } = useStore();
+  const { addLog, playSong, addToQueue, showToast } = useStore();
   
   const [playlist, setPlaylist] = useState<SpotifyPlaylistFull | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // Play the entire playlist
+  const handlePlayPlaylist = () => {
+    if (!playlist) return;
+    const songs = spotifyPlaylistToSongs(playlist);
+    if (songs.length > 0) {
+      playSong(songs[0], songs);
+      addLog('info', `▶ Playing playlist: ${playlist.name}`);
+    }
+  };
+
+  // Play a specific track (with rest of playlist as context)
+  const handlePlayTrack = (trackIndex: number) => {
+    if (!playlist) return;
+    const songs = spotifyPlaylistToSongs(playlist);
+    if (songs.length > 0 && trackIndex < songs.length) {
+      playSong(songs[trackIndex], songs);
+    }
+  };
+
+  // Add playlist to queue
+  const handleAddToQueue = () => {
+    if (!playlist) return;
+    const songs = spotifyPlaylistToSongs(playlist);
+    if (songs.length > 0) {
+      addToQueue(songs);
+      showToast({ type: 'success', message: `Added ${songs.length} tracks to queue` });
+    }
+  };
 
   const handleDownload = async () => {
     if (!playlist) return;
@@ -101,6 +131,59 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           throw new SpotifyRateLimitError(
             'Rate limited while fetching playlist',
             retryAfter ? parseInt(retryAfter) : 60
+          );
+        }
+
+        // For 404/403 errors, try the scraping fallback for first-party playlists
+        if (response.status === 404 || response.status === 403) {
+          console.log('[SpotifyPlaylistDetail] API returned ' + response.status + ', trying scraping fallback');
+          try {
+            const scrapedData = await api.getPlaylistByScraping(id);
+            if (scrapedData) {
+              // Transform scraped data to match SpotifyPlaylistFull interface
+              const transformedPlaylist: SpotifyPlaylistFull = {
+                id: scrapedData.id,
+                name: scrapedData.name,
+                description: scrapedData.description || '',
+                images: scrapedData.images || [],
+                owner: {
+                  display_name: scrapedData.owner?.display_name || 'Spotify',
+                  id: scrapedData.owner?.id || 'spotify',
+                },
+                followers: { total: 0 },
+                public: true,
+                external_urls: {
+                  spotify: `https://open.spotify.com/playlist/${scrapedData.id}`,
+                },
+                tracks: {
+                  total: scrapedData.tracks?.items?.length || 0,
+                  items: (scrapedData.tracks?.items || []).map((item: any) => ({
+                    added_at: '',
+                    track: {
+                      id: item.track?.id || '',
+                      name: item.track?.name || '',
+                      duration_ms: item.track?.duration_ms || 0,
+                      explicit: false,
+                      preview_url: null,
+                      artists: item.track?.artists || [],
+                      album: {
+                        name: item.track?.album?.name || '',
+                        images: item.track?.album?.images || [],
+                      },
+                    },
+                  })),
+                },
+              };
+              setPlaylist(transformedPlaylist);
+              return;
+            }
+          } catch (scrapeError) {
+            console.error('[SpotifyPlaylistDetail] Scraping fallback failed:', scrapeError);
+            // Continue to throw the original API error
+          }
+          throw new SpotifyApiError(
+            'Failed to fetch playlist details',
+            response.status
           );
         }
 
@@ -205,6 +288,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
       {/* Actions */}
       <div className="px-8 py-6 flex items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
         <button 
+          onClick={handlePlayPlaylist}
           className="w-14 h-14 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center shadow-xl hover:scale-105 transition-all duration-200 text-black"
           aria-label="Play playlist"
         >
@@ -248,7 +332,8 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           {playlist.tracks.items.filter(item => item.track).map((item, idx) => (
             <div 
               key={item.track.id || idx}
-              className="grid grid-cols-[40px_60px_1fr_1fr_80px_40px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0"
+              onClick={() => handlePlayTrack(idx)}
+              className="grid grid-cols-[40px_60px_1fr_1fr_80px_40px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer"
             >
               <div className="text-center text-text-subtle flex items-center justify-center">
                 <span className="group-hover:hidden">{idx + 1}</span>
@@ -256,9 +341,13 @@ export const SpotifyPlaylistDetail: React.FC = () => {
               </div>
               <div className="flex items-center">
                 <img 
-                  src={item.track.album.images[0]?.url} 
+                  src={item.track.album.images?.[0]?.url || playlist.images?.[0]?.url || '/placeholder-album.svg'} 
                   alt={item.track.album.name}
-                  className="w-10 h-10 rounded"
+                  className="w-10 h-10 rounded bg-surface-2"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = playlist.images?.[0]?.url || '/placeholder-album.svg';
+                  }}
                 />
               </div>
               <div className="flex flex-col justify-center min-w-0">

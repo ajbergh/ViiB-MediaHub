@@ -192,6 +192,177 @@ func (a *API) spotifySearch(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
+// spotifySearchPlaylists provides a fallback playlist search using web scraping.
+// The Spotify Web API does not return "First Party" playlists (Made For You,
+// Discover Weekly, etc.) in search results. This endpoint scrapes the actual
+// Spotify search page to find all playlists including first-party ones.
+//
+// Query Parameters:
+//   - q: Search query string (required)
+//
+// GET /api/spotify/search/playlists?q=this+is
+// Response: { "playlists": { "items": [...] } }
+func (a *API) spotifySearchPlaylists(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		respondError(w, http.StatusBadRequest, "Missing query parameter 'q'")
+		return
+	}
+
+	log.Printf("[SpotifySearchPlaylists] Searching for: %s", query)
+
+	result, err := spotify.SearchPlaylists(query)
+	if err != nil {
+		log.Printf("[SpotifySearchPlaylists] Error: %v", err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to search playlists: %v", err))
+		return
+	}
+
+	log.Printf("[SpotifySearchPlaylists] Found %d playlists", len(result.Playlists))
+
+	// Format response to match Spotify API structure
+	// Convert SearchedPlaylist to the format frontend expects
+	items := make([]map[string]interface{}, 0, len(result.Playlists))
+	for _, p := range result.Playlists {
+		item := map[string]interface{}{
+			"id":   p.ID,
+			"name": p.Name,
+			"owner": map[string]interface{}{
+				"display_name": p.Author,
+			},
+			"external_urls": map[string]string{
+				"spotify": p.URL,
+			},
+		}
+		// Add images if available
+		if len(p.Images) > 0 {
+			images := make([]map[string]interface{}, len(p.Images))
+			for i, img := range p.Images {
+				images[i] = map[string]interface{}{
+					"url": img.URL,
+				}
+			}
+			item["images"] = images
+		}
+		items = append(items, item)
+	}
+
+	response := map[string]interface{}{
+		"playlists": map[string]interface{}{
+			"items": items,
+			"total": result.Total,
+		},
+	}
+
+	respondJSON(w, response)
+}
+
+// spotifyGetPlaylistByScraping retrieves playlist details using web scraping.
+// This is a fallback for first-party playlists that return 404/403 from the Web API.
+//
+// URL Parameters:
+//   - id: Spotify playlist ID (required)
+//
+// GET /api/spotify/playlists/{id}/scrape
+// Response: Spotify playlist format with tracks array
+func (a *API) spotifyGetPlaylistByScraping(w http.ResponseWriter, r *http.Request) {
+	playlistID := chi.URLParam(r, "id")
+	if playlistID == "" {
+		respondError(w, http.StatusBadRequest, "Missing playlist ID")
+		return
+	}
+
+	log.Printf("[SpotifyGetPlaylistByScraping] Scraping playlist: %s", playlistID)
+
+	result, err := spotify.ScrapePlaylistDetail(playlistID)
+	if err != nil {
+		log.Printf("[SpotifyGetPlaylistByScraping] Error: %v", err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to scrape playlist: %v", err))
+		return
+	}
+
+	log.Printf("[SpotifyGetPlaylistByScraping] Found %d tracks for playlist: %s", len(result.Tracks), result.Name)
+
+	// Convert ScrapedPlaylistDetail to Spotify API format
+	tracks := make([]map[string]interface{}, 0, len(result.Tracks))
+	for _, t := range result.Tracks {
+		artists := make([]map[string]interface{}, 0, len(t.Artists))
+		for _, a := range t.Artists {
+			artists = append(artists, map[string]interface{}{
+				"id":   a.ID,
+				"name": a.Name,
+			})
+		}
+
+		track := map[string]interface{}{
+			"id":          t.ID,
+			"name":        t.Name,
+			"duration_ms": t.Duration,
+			"artists":     artists,
+		}
+
+		// Always include album with images array (even if empty)
+		albumImages := make([]map[string]interface{}, 0)
+		albumName := ""
+		albumID := ""
+
+		if t.Album != nil {
+			albumName = t.Album.Name
+			albumID = t.Album.ID
+			for _, img := range t.Album.Images {
+				albumImages = append(albumImages, map[string]interface{}{
+					"url": img.URL,
+				})
+			}
+		}
+
+		// If no album images, use the playlist images as fallback
+		if len(albumImages) == 0 && len(result.Images) > 0 {
+			for _, img := range result.Images {
+				albumImages = append(albumImages, map[string]interface{}{
+					"url": img.URL,
+				})
+			}
+		}
+
+		track["album"] = map[string]interface{}{
+			"id":     albumID,
+			"name":   albumName,
+			"images": albumImages,
+		}
+
+		tracks = append(tracks, map[string]interface{}{
+			"track": track,
+		})
+	}
+
+	// Build images array
+	images := make([]map[string]interface{}, 0, len(result.Images))
+	for _, img := range result.Images {
+		images = append(images, map[string]interface{}{
+			"url": img.URL,
+		})
+	}
+
+	response := map[string]interface{}{
+		"id":          result.ID,
+		"name":        result.Name,
+		"description": result.Description,
+		"images":      images,
+		"owner": map[string]interface{}{
+			"id":           result.Owner.ID,
+			"display_name": result.Owner.Name,
+		},
+		"tracks": map[string]interface{}{
+			"total": len(tracks),
+			"items": tracks,
+		},
+		"scraped": true, // Flag to indicate this was scraped
+	}
+
+	respondJSON(w, response)
+}
+
 // spotifyGetUserProfile proxies user profile requests to Spotify Web API.
 // Returns information about the authenticated user including display name,
 // follower count, and profile images.
@@ -746,7 +917,9 @@ func (a *API) downloadAlbumByID(w http.ResponseWriter, accessToken, spotifyID st
 	})
 }
 
-// downloadPlaylistByID fetches playlist metadata and all tracks, then queues downloads
+// downloadPlaylistByID fetches playlist metadata and all tracks, then queues downloads.
+// For first-party playlists (e.g., "Made For You", "Daily Mix") that return 404/403 from
+// the Web API, this function falls back to scraping the public embed page.
 func (a *API) downloadPlaylistByID(w http.ResponseWriter, accessToken, spotifyID string) {
 	// Fetch playlist metadata from Spotify
 	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/playlists/%s", spotifyID), nil)
@@ -760,6 +933,13 @@ func (a *API) downloadPlaylistByID(w http.ResponseWriter, accessToken, spotifyID
 	}
 	defer resp.Body.Close()
 
+	// Check if this is a first-party playlist that requires scraping fallback
+	if spotify.IsFirstPartyPlaylistError(resp.StatusCode) {
+		log.Printf("Playlist %s returned %d - attempting embed page scrape fallback", spotifyID, resp.StatusCode)
+		a.downloadPlaylistByScraping(w, accessToken, spotifyID)
+		return
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		respondError(w, resp.StatusCode, "Failed to fetch playlist from Spotify")
 		return
@@ -770,6 +950,11 @@ func (a *API) downloadPlaylistByID(w http.ResponseWriter, accessToken, spotifyID
 		Owner struct {
 			DisplayName string `json:"display_name"`
 		} `json:"owner"`
+		Images []struct {
+			URL    string `json:"url"`
+			Height int    `json:"height"`
+			Width  int    `json:"width"`
+		} `json:"images"`
 		Tracks struct {
 			Items []struct {
 				Track struct {
@@ -794,9 +979,15 @@ func (a *API) downloadPlaylistByID(w http.ResponseWriter, accessToken, spotifyID
 		return
 	}
 
-	// Queue each track
+	// Get playlist artwork URL (use playlist image, not individual track album images)
+	var playlistImageURL string
+	if len(playlist.Images) > 0 {
+		playlistImageURL = playlist.Images[0].URL
+	}
+
+	// Queue each track with playlist metadata for proper file organization
 	queuedCount := 0
-	for _, item := range playlist.Tracks.Items {
+	for i, item := range playlist.Tracks.Items {
 		track := item.Track
 		if track.ID == "" {
 			continue // Skip local tracks
@@ -807,9 +998,10 @@ func (a *API) downloadPlaylistByID(w http.ResponseWriter, accessToken, spotifyID
 			artist = track.Artists[0].Name
 		}
 
-		var metadata *DownloadMetadata
-		if len(track.Album.Images) > 0 {
-			metadata = &DownloadMetadata{ImageURL: track.Album.Images[0].URL}
+		metadata := &DownloadMetadata{
+			PlaylistName:  playlist.Name,
+			PlaylistOrder: i + 1,
+			ImageURL:      playlistImageURL, // Use playlist artwork, not track album artwork
 		}
 
 		_, err := a.downloadManager.QueueDownload(
@@ -835,6 +1027,106 @@ func (a *API) downloadPlaylistByID(w http.ResponseWriter, accessToken, spotifyID
 		"owner":   playlist.Owner.DisplayName,
 		"message": fmt.Sprintf("Queued %d tracks from playlist", queuedCount),
 		"count":   queuedCount,
+	})
+}
+
+// downloadPlaylistByScraping uses web scraping to download first-party Spotify playlists
+// that are not accessible via the Web API. It scrapes the public embed page to get
+// track IDs, then fetches metadata for each track individually via the API.
+func (a *API) downloadPlaylistByScraping(w http.ResponseWriter, accessToken, spotifyID string) {
+	// Scrape playlist data from embed page
+	scraped, err := spotify.ScrapePlaylist(spotifyID)
+	if err != nil {
+		log.Printf("Failed to scrape playlist %s: %v", spotifyID, err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch playlist: %v. This playlist may not be publicly accessible.", err))
+		return
+	}
+
+	log.Printf("Scraped playlist '%s' with %d tracks (artwork: %s)", scraped.Name, len(scraped.Tracks), scraped.Artwork)
+
+	// Queue each track - we need to fetch individual track metadata via API
+	queuedCount := 0
+	client := &http.Client{}
+
+	for i, trackID := range scraped.Tracks {
+		// Fetch track metadata from Spotify API
+		req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/tracks/%s", trackID), nil)
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Failed to fetch track %s metadata: %v", trackID, err)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			log.Printf("Track %s returned status %d", trackID, resp.StatusCode)
+			continue
+		}
+
+		var track struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Artists []struct {
+				Name string `json:"name"`
+			} `json:"artists"`
+			Album struct {
+				Name   string `json:"name"`
+				Images []struct {
+					URL string `json:"url"`
+				} `json:"images"`
+			} `json:"album"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&track); err != nil {
+			resp.Body.Close()
+			log.Printf("Failed to parse track %s metadata: %v", trackID, err)
+			continue
+		}
+		resp.Body.Close()
+
+		artist := ""
+		if len(track.Artists) > 0 {
+			artist = track.Artists[0].Name
+		}
+
+		// Use scraped playlist artwork for cover.jpg (not individual track album artwork)
+		metadata := &DownloadMetadata{
+			PlaylistName:  scraped.Name,
+			PlaylistOrder: i + 1,
+			ImageURL:      scraped.Artwork, // Use playlist artwork, not track album artwork
+		}
+
+		_, err = a.downloadManager.QueueDownload(
+			track.ID,
+			fmt.Sprintf("spotify:track:%s", track.ID),
+			"track",
+			track.Name,
+			artist,
+			track.Album.Name,
+			metadata,
+		)
+		if err != nil {
+			log.Printf("Failed to queue track %s: %v", track.Name, err)
+			continue
+		}
+		queuedCount++
+	}
+
+	if queuedCount == 0 {
+		respondError(w, http.StatusInternalServerError, "Failed to queue any tracks from playlist")
+		return
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"status":       "queued",
+		"type":         "playlist",
+		"title":        scraped.Name,
+		"owner":        "Spotify", // First-party playlists are from Spotify
+		"message":      fmt.Sprintf("Queued %d tracks from playlist (via fallback)", queuedCount),
+		"count":        queuedCount,
+		"usedFallback": true,
 	})
 }
 
@@ -1155,6 +1447,16 @@ func (a *API) fetchPlaylistTracks(playlistID string, playlistName *string) ([]Pl
 	}
 	defer resp.Body.Close()
 
+	// Check if this is a first-party playlist that requires scraping fallback
+	if spotify.IsFirstPartyPlaylistError(resp.StatusCode) {
+		log.Printf("Playlist %s returned %d - attempting embed page scrape fallback", playlistID, resp.StatusCode)
+		return a.fetchPlaylistTracksByScraping(playlistID, creds.AccessToken)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", "", fmt.Errorf("spotify api error: %s", resp.Status)
+	}
+
 	var playlist struct {
 		Name   string `json:"name"`
 		Images []struct {
@@ -1210,6 +1512,71 @@ func (a *API) fetchPlaylistTracks(playlistID string, playlistName *string) ([]Pl
 	}
 
 	return tracks, playlist.Name, imageURL, nil
+}
+
+// fetchPlaylistTracksByScraping uses web scraping to fetch first-party playlist tracks
+// that are not accessible via the Web API, then fetches individual track metadata.
+func (a *API) fetchPlaylistTracksByScraping(playlistID string, accessToken string) ([]PlaylistTrackInfo, string, string, error) {
+	// Scrape playlist data from embed page
+	scraped, err := spotify.ScrapePlaylist(playlistID)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("failed to scrape playlist: %w", err)
+	}
+
+	log.Printf("Scraped playlist '%s' with %d tracks", scraped.Name, len(scraped.Tracks))
+
+	// Fetch individual track metadata via API
+	client := &http.Client{}
+	var tracks []PlaylistTrackInfo
+
+	for _, trackID := range scraped.Tracks {
+		req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/tracks/%s", trackID), nil)
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Failed to fetch track %s metadata: %v", trackID, err)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			continue
+		}
+
+		var track struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Artists []struct {
+				Name string `json:"name"`
+			} `json:"artists"`
+			Album struct {
+				Name        string `json:"name"`
+				ReleaseDate string `json:"release_date"`
+			} `json:"album"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&track); err != nil {
+			resp.Body.Close()
+			continue
+		}
+		resp.Body.Close()
+
+		artist := "Unknown Artist"
+		if len(track.Artists) > 0 {
+			artist = track.Artists[0].Name
+		}
+
+		tracks = append(tracks, PlaylistTrackInfo{
+			ID:          track.ID,
+			Name:        track.Name,
+			Artist:      artist,
+			Album:       track.Album.Name,
+			ReleaseDate: track.Album.ReleaseDate,
+		})
+	}
+
+	return tracks, scraped.Name, scraped.Artwork, nil
 }
 
 // streamSpotifyTrack streams audio directly from Spotify without saving to disk.

@@ -305,6 +305,32 @@ export const api = {
     return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number }>(response);
   },
 
+  /**
+   * Searches Spotify playlists using web scraping fallback.
+   * The Spotify Web API doesn't return "First Party" playlists (Made For You, 
+   * Discover Weekly, etc.) in search results. This endpoint uses web scraping
+   * to find all playlists including first-party ones.
+   * 
+   * @param query - Search query string
+   * @returns Promise resolving to playlist search results in Spotify API format
+   */
+  async searchPlaylistsFallback(query: string): Promise<{ playlists: { items: any[]; total: number } }> {
+    const response = await fetch(`${API_BASE}/spotify/search/playlists?q=${encodeURIComponent(query)}`);
+    return handleResponse<{ playlists: { items: any[]; total: number } }>(response);
+  },
+
+  /**
+   * Gets Spotify playlist details using web scraping fallback.
+   * This is used for first-party playlists that return 404/403 from the Web API.
+   * 
+   * @param playlistId - Spotify playlist ID
+   * @returns Promise resolving to playlist details in Spotify API format
+   */
+  async getPlaylistByScraping(playlistId: string): Promise<any> {
+    const response = await fetch(`${API_BASE}/spotify/playlists/${playlistId}/scrape`);
+    return handleResponse<any>(response);
+  },
+
   // Spotify Downloads
 
   /**

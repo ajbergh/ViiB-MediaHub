@@ -102,3 +102,51 @@ export function spotifyAlbumToSongs(album: {
         addedAt: Date.now(),
     }));
 }
+
+/**
+ * Converts a Spotify playlist's tracks to Song objects.
+ * Uses each track's album artwork.
+ * 
+ * @param playlist - Spotify playlist data with tracks
+ * @returns Array of Song objects ready for playback
+ */
+export function spotifyPlaylistToSongs(playlist: {
+    name: string;
+    images?: Array<{ url: string }>;
+    tracks?: {
+        items: Array<{
+            track?: {
+                id: string;
+                name: string;
+                artists?: Array<{ name: string }>;
+                album?: {
+                    name: string;
+                    images?: Array<{ url: string }>;
+                };
+                duration_ms: number;
+            };
+        }>;
+    };
+}): Song[] {
+    const playlistCover = playlist.images?.[0]?.url;
+
+    return (playlist.tracks?.items || [])
+        .filter(item => item.track && item.track.id)
+        .map(item => {
+            const track = item.track!;
+            const trackCover = track.album?.images?.[0]?.url || playlistCover;
+            
+            return {
+                id: `spotify:${track.id}`,
+                title: track.name,
+                artist: track.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
+                album: track.album?.name || 'Unknown Album',
+                duration: Math.floor(track.duration_ms / 1000),
+                url: '',
+                spotifyId: track.id,
+                isStreaming: true,
+                coverUrl: trackCover,
+                addedAt: Date.now(),
+            };
+        });
+}

@@ -1,0 +1,371 @@
+// spotify_playlist_tracks is a small command-line tool used to extract tracks,
+// the cover artwork, and the human-friendly playlist name from Spotify
+// playlist pages that are not necessarily available via the public Web API.
+//
+// The tool requests the playlist embed page (which is publicly accessible) and
+// extracts data from the page's embedded JSON or via focused regular expression
+// fallbacks. The output is JSON by default and contains a human-readable name,
+// an artwork URL (if found), and an array of track permalinks. The older text
+// output format is still supported with the `-format=text` flag.
+//
+// Usage
+//   spotify_playlist_tracks [flags] <spotify_playlist_url>
+//
+// Flags
+//   -format: `json` (default) or `text` to control output format.
+//
+// Example
+//  go run . -format=json 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=...'
+//
+// Output (JSON default)
+//   {
+//     "name": "Playlist Name",
+//     "artwork": "https://pickasso.spotifycdn.com/...",
+//     "tracks": ["https://open.spotify.com/track/<id>", ...]
+//   }
+//
+// Implementation notes & limitations
+//  - We parse the `__NEXT_DATA__` JSON payload, which is the most reliable
+//    source of structured page data. Where that JSON is not present or
+//    differently structured, the tool falls back to regex searches (e.g. for
+//    track URIs and artwork URLs). This approach is intentionally lightweight
+//    but brittle: changes to Spotify's embed page structure or JSON may break
+//    parsing.
+//  - The tool does not use authenticated Spotify APIs; it scrapes publicly
+//    accessible embed pages only. Please check and respect Spotify's Terms of
+//    Service when scraping content.
+//  - The embed page may omit part of the playlist (e.g., for very long
+//    playlists that are loaded in batches). If complete data preservation is
+//    required, consider using the authenticated API or pagination techniques.
+//
+// Limitations & caveats
+//  - This tool performs simple scraping of the embed page HTML. It is fragile
+//    to changes in Spotify's embed page layout and JSON structure.
+//  - The regex only finds track URIs that appear as JSON-like key/value pairs
+//    like "uri":"spotify:track:<id>" in the embed page. If Spotify changes
+//    the naming or structure, fewer or no tracks may be found.
+//  - The embed page may not contain the entire playlist if Spotify pages
+//    tracks; use with that limitation in mind.
+//
+// The implementation intentionally keeps dependencies small: it performs a
+// single HTTP GET on the embed URL, reads the response body, uses a regular
+// expression to find Spotify track URIs, deduplicates track IDs, and prints the
+// track permalinks to stdout.
+
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"regexp"
+	"strings"
+)
+
+// extractPlaylistName attempts to find the playlist's display name from the
+// embed page. It prefers parsing the JSON payload inside the
+// <script id="__NEXT_DATA__" type="application/json"> tag, and falls back to
+// a couple of regular-expression searches (searching e.g. the "entity" JSON
+// object or the Open Graph <meta> tag) if the JSON parse fails.
+//
+// Returns the playlist name as a string, or an empty string if no name could
+// be located.
+// extractPlaylistName returns the playlist display name found in the page's
+// HTML content. It prefers the structured JSON found in the `<script
+// id="__NEXT_DATA__"` payload and falls back to regex searches for a JSON
+// `entity` name or the Open Graph `<meta property="og:title">` value.
+//
+// Returns an empty string when no name is detected.
+func extractPlaylistName(body string) string {
+	// 1) Find the `<script id="__NEXT_DATA__"` tag and extract the JSON
+	//    content inside it. This contains the structured page data and is
+	//    the most reliable source of the playlist name.
+	startTag := `<script id="__NEXT_DATA__" type="application/json">`
+	start := strings.Index(body, startTag)
+	if start >= 0 {
+		start += len(startTag)
+		end := strings.Index(body[start:], "</script>")
+		if end >= 0 {
+			jsonStr := body[start : start+end]
+			var root map[string]interface{}
+			if json.Unmarshal([]byte(jsonStr), &root) == nil {
+				// Traverse: props.pageProps.state.data.entity.name
+				if props, ok := root["props"].(map[string]interface{}); ok {
+					if pageProps, ok := props["pageProps"].(map[string]interface{}); ok {
+						if state, ok := pageProps["state"].(map[string]interface{}); ok {
+							if data, ok := state["data"].(map[string]interface{}); ok {
+								if entity, ok := data["entity"].(map[string]interface{}); ok {
+									if name, ok := entity["name"].(string); ok {
+										return name
+									}
+									// Some pages also include a `title` field.
+									if title, ok := entity["title"].(string); ok {
+										return title
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 2) Fallback: look for an `entity` JSON object with type=playlist, then
+	//    capture its `name` property using a single regex. This is less
+	//    restrictive but still attempts to ensure the name belongs to a
+	//    playlist entity.
+	reEntityName := regexp.MustCompile(`"entity"\s*:\s*\{[^}]*"type"\s*:\s*"playlist"[^}]*"name"\s*:\s*"([^"]+)"`)
+	if m := reEntityName.FindStringSubmatch(body); len(m) > 1 {
+		return m[1]
+	}
+
+	// 3) Last fallback: Open Graph title meta tag (may contain the playlist's
+	//    name) like `<meta property="og:title" content="All Out 2020s">`.
+	reOgTitle := regexp.MustCompile(`<meta\s+property="og:title"\s+content="([^"]+)"`)
+	if m := reOgTitle.FindStringSubmatch(body); len(m) > 1 {
+		return m[1]
+	}
+
+	return ""
+}
+
+// extractPlaylistArtwork attempts to locate the playlist's artwork URL in the
+// embed page. It prefers the `visualIdentity.image` array inside the JSON
+// payload (the Pickasso CDN image), then falls back to `entity.coverArt` and
+// lastly to a regex search for Pickasso or i.scdn.co URLs in the HTML.
+// extractPlaylistArtwork returns a public artwork image URL for the playlist
+// if available. Priority order is:
+//  1. `visualIdentity.image[0].url` inside the `__NEXT_DATA__` JSON
+//  2. `entity.coverArt.sources[0].url` inside the `__NEXT_DATA__` JSON
+//  3. Regex match for `pickasso.spotifycdn.com` or `i.scdn.co` image URLs
+//
+// This function returns an empty string when no artwork URL can be found.
+func extractPlaylistArtwork(body string) string {
+	// 1) Try JSON payload in __NEXT_DATA__
+	startTag := `<script id="__NEXT_DATA__" type="application/json">`
+	start := strings.Index(body, startTag)
+	if start >= 0 {
+		start += len(startTag)
+		end := strings.Index(body[start:], "</script>")
+		if end >= 0 {
+			jsonStr := body[start : start+end]
+			var root map[string]interface{}
+			if json.Unmarshal([]byte(jsonStr), &root) == nil {
+				if props, ok := root["props"].(map[string]interface{}); ok {
+					if pageProps, ok := props["pageProps"].(map[string]interface{}); ok {
+						if state, ok := pageProps["state"].(map[string]interface{}); ok {
+							if data, ok := state["data"].(map[string]interface{}); ok {
+								// visualIdentity.image[0].url
+								if vi, ok := data["visualIdentity"].(map[string]interface{}); ok {
+									if imgs, ok := vi["image"].([]interface{}); ok && len(imgs) > 0 {
+										if img0, ok := imgs[0].(map[string]interface{}); ok {
+											if urlStr, ok := img0["url"].(string); ok && urlStr != "" {
+												return urlStr
+											}
+										}
+									}
+								}
+								// entity.coverArt.sources[0].url
+								if entity, ok := data["entity"].(map[string]interface{}); ok {
+									if coverArt, ok := entity["coverArt"].(map[string]interface{}); ok {
+										if sources, ok := coverArt["sources"].([]interface{}); ok && len(sources) > 0 {
+											if s0, ok := sources[0].(map[string]interface{}); ok {
+												if urlStr, ok := s0["url"].(string); ok && urlStr != "" {
+													return urlStr
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 2) Fallback: regex for Pickasso or i.scdn.co images
+	rePickasso := regexp.MustCompile(`https?://pickasso\.spotifycdn\.com/[^"'\s>]+`)
+	if m := rePickasso.FindString(body); m != "" {
+		return m
+	}
+	reIScdn := regexp.MustCompile(`https?://i\.scdn\.co/image/[^"'\s>]+`)
+	if m := reIScdn.FindString(body); m != "" {
+		return m
+	}
+
+	return ""
+}
+
+// extractTrackIDs returns the unique Spotify track IDs found in an embed
+// page's HTML. The returned slice preserves the order of first occurrence.
+// extractTrackIDs parses the page HTML and returns a deduplicated (by
+// first-seen order) slice of Spotify track IDs discovered on the page.
+//
+// The function uses a focused regular expression that matches the common
+// JSON-like `"uri":"spotify:track:<id>"` pattern and is intentionally
+// forgiving; if the format changes, the regex can be updated accordingly.
+func extractTrackIDs(body string) []string {
+	re := regexp.MustCompile(`"uri":"spotify:track:([A-Za-z0-9]+)"`)
+	matches := re.FindAllStringSubmatch(body, -1)
+	seen := make(map[string]bool)
+	var ids []string
+	for _, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		id := m[1]
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// extractPlaylistID parses the playlist ID from a given Spotify playlist URL.
+//
+// The function accepts the following URL formats and similar variations:
+//   - https://open.spotify.com/playlist/<playlist-id>
+//   - https://open.spotify.com/embed/playlist/<playlist-id>
+//   - https://open.spotify.com/user/<user-id>/playlist/<playlist-id>
+//
+// Behavior:
+//   - If the URL path contains a "playlist" segment, the function returns the
+//     path segment immediately after "playlist" as the playlist ID.
+//   - If no explicit "playlist" segment is present, it returns the last path
+//     segment as a fallback.
+//   - When the given URL cannot be parsed, it returns an empty string.
+//
+// Note: This function performs no validation of the returned ID format other
+// than returning the path segment; consumers should validate the ID if they
+// require a specific format or length.
+// extractPlaylistID parses the playlist ID from a given Spotify playlist
+// URL. Known supported forms include:
+//   - https://open.spotify.com/playlist/<id>
+//   - https://open.spotify.com/embed/playlist/<id>
+//   - https://open.spotify.com/user/<user>/playlist/<id>
+//
+// The function looks for the `playlist` path segment and returns the
+// next segment as the ID. As a fallback it returns the last path segment.
+// It returns an empty string when the input cannot be parsed.
+func extractPlaylistID(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	// Split the path and strip leading/trailing slashes
+	segments := strings.Split(strings.Trim(u.Path, "/"), "/")
+	for i := 0; i < len(segments); i++ {
+		if segments[i] == "playlist" && i+1 < len(segments) {
+			return segments[i+1]
+		}
+	}
+	if len(segments) > 0 {
+		return segments[len(segments)-1]
+	}
+	return ""
+}
+
+// main is the CLI entrypoint. The workflow is:
+//  1. Parse the `-format` flag and the playlist URL argument.
+//  2. Extract the playlist ID from the provided URL.
+//  3. Request the public Spotify embed page for that playlist.
+//  4. Parse the page HTML for the playlist name, artwork, and track IDs.
+//  5. Print a JSON object (default) or a text view when `-format=text`.
+//
+// Exits with a non-zero status for usage errors, network errors, or when no
+// tracks are found.
+func main() {
+	// CLI flags and usage: format determines output style (json vs text).
+	var format string
+	flag.StringVar(&format, "format", "json", "output format: 'json' (default) or 'text'")
+	flag.Parse()
+
+	// The program expects a single non-flag argument: the Spotify playlist URL.
+	if flag.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: spotify_playlist_tracks [flags] <spotify_playlist_url>")
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+	playlistURL := flag.Arg(0)
+	id := extractPlaylistID(playlistURL)
+	if id == "" {
+		fmt.Fprintln(os.Stderr, "could not extract playlist ID from URL")
+		os.Exit(1)
+	}
+
+	// Build the embed URL for the playlist and request it with a single GET.
+	// Spotify's embed pages include the playlist's data in JSON embedded in the
+	// HTML, which is why this route can return track URIs without authentication;
+	// however, the embed page structure is not guaranteed and is subject to
+	// change.
+	embedURL := "https://open.spotify.com/embed/playlist/" + id
+
+	resp, err := http.Get(embedURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error fetching embed page: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "unexpected HTTP status from embed page: %s\n", resp.Status)
+		os.Exit(1)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error reading embed page body: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Extract track IDs from the embed page HTML. If no tracks are found,
+	// exit with a non-zero status code.
+	ids := extractTrackIDs(string(body))
+	if len(ids) == 0 {
+		fmt.Fprintln(os.Stderr, "no tracks found on playlist embed page")
+		os.Exit(1)
+	}
+
+	// The default output format is JSON, with a simple structure:
+	//   { "name": "Playlist Name", "tracks": ["https://open.spotify.com/track/<id>"...] }
+	// A `-format=text` flag keeps the previous human-readable output.
+
+	playlistName := extractPlaylistName(string(body))
+	tracks := make([]string, 0, len(ids))
+	for _, id := range ids {
+		tracks = append(tracks, "https://open.spotify.com/track/"+id)
+	}
+
+	if strings.ToLower(format) == "text" {
+		if playlistName != "" {
+			fmt.Println("# Playlist:", playlistName)
+		}
+		artwork := extractPlaylistArtwork(string(body))
+		if artwork != "" {
+			fmt.Println("# Artwork:", artwork)
+		}
+		for _, t := range tracks {
+			fmt.Println(t)
+		}
+		return
+	}
+
+	// Default: JSON output
+	out := struct {
+		Name    string   `json:"name"`
+		Artwork string   `json:"artwork,omitempty"`
+		Tracks  []string `json:"tracks"`
+	}{Name: playlistName, Artwork: extractPlaylistArtwork(string(body)), Tracks: tracks}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		fmt.Fprintf(os.Stderr, "error encoding JSON: %v\n", err)
+		os.Exit(1)
+	}
+}
