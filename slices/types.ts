@@ -61,6 +61,7 @@ export interface PlayerSlice {
   setGapless: (enabled: boolean) => void;
   setNormalization: (enabled: boolean) => void;
   toggleEqPanel: () => void;
+  loadAudioSettings: () => Promise<void>; // Load audio settings from backend on startup
   
   // Buffering actions
   setBuffering: (isBuffering: boolean) => void;

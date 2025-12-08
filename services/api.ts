@@ -30,7 +30,11 @@
  * - useTimeContext: Add time-of-day context to recommendations
  */
 
+import { AudioSettings } from '../types';
+
 const API_BASE = '/api';
+
+/**
 
 /**
  * Standard error response from backend
@@ -516,6 +520,33 @@ export const api = {
       body: JSON.stringify({ value }),
     });
     await handleResponse(response);
+  },
+
+  /**
+   * Gets audio settings from the backend database.
+   * Audio settings are stored as JSON in the 'audio_settings' key.
+   * 
+   * @returns Promise with audio settings object or null if not set
+   */
+  async getAudioSettings(): Promise<AudioSettings | null> {
+    try {
+      const value = await this.getSetting('audio_settings');
+      if (!value) return null;
+      return JSON.parse(value) as AudioSettings;
+    } catch (e) {
+      console.warn('Failed to load audio settings from backend:', e);
+      return null;
+    }
+  },
+
+  /**
+   * Saves audio settings to the backend database.
+   * 
+   * @param settings - Audio settings object to save
+   * @returns Promise resolving when saved
+   */
+  async saveAudioSettings(settings: AudioSettings): Promise<void> {
+    await this.setSetting('audio_settings', JSON.stringify(settings));
   },
 
   // Album Metadata Cache

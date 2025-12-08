@@ -162,7 +162,7 @@ export enum ContextMenuType {
 
 // --- Audio Enhancement Types ---
 
-export type VisualizerMode = 'OFF' | 'WAVE' | 'SPECTRUM' | 'AURORA';
+export type VisualizerMode = 'OFF' | 'WAVE' | 'SPECTRUM' | 'AURORA' | 'CIRCULAR' | 'PARTICLES' | 'NEBULA';
 
 export interface EqPreset {
   id: string;

@@ -16,6 +16,7 @@
  * - Auto-EQ based on song genre
  * - Navigation between songs (next/prev)
  * - Play count recording
+ * - Audio settings persistence to backend database
  * 
  * @module playerSlice
  */
@@ -24,11 +25,34 @@ import { StateCreator } from 'zustand';
 import { AppState, PlayerSlice, StreamingError, StreamingStats, StreamingEvent } from './types';
 import { EQ_PRESETS } from '../utils';
 import { libraryService } from '../services/libraryService';
+import { api } from '../services/api';
+import { AudioSettings } from '../types';
 
 // Maximum retry attempts for streaming errors
 const MAX_RETRY_ATTEMPTS = 3;
 // Base delay for exponential backoff (in ms)
 const BASE_RETRY_DELAY = 1000;
+
+// Debounce timeout for saving settings (prevent rapid saves)
+let saveSettingsTimeout: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Saves audio settings to the backend database with debouncing.
+ * This ensures we don't spam the backend with every slider movement.
+ */
+const saveAudioSettingsToBackend = (settings: AudioSettings) => {
+    if (saveSettingsTimeout) {
+        clearTimeout(saveSettingsTimeout);
+    }
+    saveSettingsTimeout = setTimeout(async () => {
+        try {
+            await api.saveAudioSettings(settings);
+            console.log('💾 Audio settings saved to backend');
+        } catch (e) {
+            console.warn('Failed to save audio settings to backend:', e);
+        }
+    }, 500); // 500ms debounce
+};
 
 // Initial streaming stats
 const initialStreamingStats: StreamingStats = {
@@ -315,34 +339,84 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         }
     },
 
-    setVisualizerMode: (mode) => set((state) => ({ audioSettings: { ...state.audioSettings, visualizerMode: mode } })),
-    setEqEnabled: (enabled) => set((state) => ({ audioSettings: { ...state.audioSettings, eqEnabled: enabled } })),
+    setVisualizerMode: (mode) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, visualizerMode: mode };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setEqEnabled: (enabled) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, eqEnabled: enabled };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
     setEqBand: (index, gain) => set((state) => {
         const newBands = [...state.audioSettings.eqBands];
         newBands[index] = gain;
-        return {
-            audioSettings: {
-                ...state.audioSettings,
-                eqBands: newBands,
-                activePresetId: 'custom'
-            }
+        const newSettings = {
+            ...state.audioSettings,
+            eqBands: newBands,
+            activePresetId: 'custom'
         };
+        saveAudioSettingsToBackend(newSettings);
+        return { audioSettings: newSettings };
     }),
     setEqPreset: (presetId) => set((state) => {
         const preset = EQ_PRESETS.find(p => p.id === presetId);
         if (!preset) return state;
-        return {
-            audioSettings: {
-                ...state.audioSettings,
-                activePresetId: presetId,
-                eqBands: [...preset.gains]
-            }
+        const newSettings = {
+            ...state.audioSettings,
+            activePresetId: presetId,
+            eqBands: [...preset.gains]
         };
+        saveAudioSettingsToBackend(newSettings);
+        return { audioSettings: newSettings };
     }),
-    setCrossfade: (val) => set((state) => ({ audioSettings: { ...state.audioSettings, crossfadeDuration: val } })),
-    setGapless: (val) => set((state) => ({ audioSettings: { ...state.audioSettings, gapless: val } })),
-    setNormalization: (val) => set((state) => ({ audioSettings: { ...state.audioSettings, normalization: val } })),
+    setCrossfade: (val) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, crossfadeDuration: val };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setGapless: (val) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, gapless: val };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setNormalization: (val) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, normalization: val };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
     toggleEqPanel: () => set((state) => ({ isEqOpen: !state.isEqOpen })),
+    
+    // Load audio settings from backend database on startup
+    loadAudioSettings: async () => {
+        try {
+            const backendSettings = await api.getAudioSettings();
+            if (backendSettings) {
+                console.log('🔊 Loaded audio settings from backend:', backendSettings);
+                set((state) => ({
+                    audioSettings: {
+                        ...state.audioSettings,
+                        ...backendSettings
+                    }
+                }));
+            } else {
+                console.log('🔊 No audio settings in backend, using defaults');
+            }
+        } catch (e) {
+            console.warn('Failed to load audio settings from backend:', e);
+        }
+    },
     
     // Buffering actions
     setBuffering: (isBuffering) => set({ isBuffering }),

@@ -134,6 +134,14 @@ const App: React.FC = () => {
       syncSpotify();
   }, [spotifyAccessToken, setSpotifyCredentials, setSpotifyTokens]);
 
+  // Load audio settings from backend on startup
+  const loadAudioSettings = useStore(state => state.loadAudioSettings);
+  useEffect(() => {
+      if (backendAvailable) {
+          loadAudioSettings();
+      }
+  }, [backendAvailable, loadAudioSettings]);
+
   return (
     <BrowserRouter>
       <Layout>

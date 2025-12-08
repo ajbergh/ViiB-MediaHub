@@ -27,6 +27,7 @@ import { api } from '../services/api';
 import { Visualizer } from './Visualizer';
 import { LyricsView } from './now-playing/LyricsView';
 import { QueueList } from './now-playing/QueueList';
+import { AlbumArtVisualizer } from './now-playing/AlbumArtVisualizer';
 
 interface Props {
     currentTime: number;
@@ -56,6 +57,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     const albumCovers = useAlbumCovers();
     const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS'>('LYRICS');
     const [isDownloading, setIsDownloading] = useState(false);
+    const [showVisualizerOverlay, setShowVisualizerOverlay] = useState(false);
 
     if (!currentSong) return null;
 
@@ -86,7 +88,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     };
     
     const cycleVisualizer = () => {
-        const modes: VisualizerMode[] = ['OFF', 'WAVE', 'SPECTRUM', 'AURORA'];
+        const modes: VisualizerMode[] = ['OFF', 'WAVE', 'SPECTRUM', 'AURORA', 'CIRCULAR', 'PARTICLES', 'NEBULA'];
         const currentIdx = modes.indexOf(audioSettings.visualizerMode);
         const nextIdx = (currentIdx + 1) % modes.length;
         setVisualizerMode(modes[nextIdx]);
@@ -149,18 +151,33 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                 <div className="flex-1 flex flex-col justify-center max-w-2xl mx-auto w-full min-h-[400px]">
                     <div 
                         className="aspect-square w-full max-w-[500px] mx-auto bg-[#222] rounded-xl shadow-2xl relative group overflow-hidden mb-8 md:mb-12 cursor-pointer border border-white/10"
+                        onClick={() => setShowVisualizerOverlay(!showVisualizerOverlay)}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
                     >
                          {coverUrl ? (
-                            <img src={coverUrl} alt="Album Art" className="w-full h-full object-contain" />
+                            <img 
+                                src={coverUrl} 
+                                alt="Album Art" 
+                                className={`w-full h-full object-contain transition-opacity duration-300 ${
+                                    showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' ? 'opacity-30' : 'opacity-100'
+                                }`} 
+                            />
                          ) : (
                              <div 
-                                className="w-full h-full flex items-center justify-center text-8xl font-bold text-white/20"
+                                className={`w-full h-full flex items-center justify-center text-8xl font-bold text-white/20 transition-opacity duration-300 ${
+                                    showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' ? 'opacity-30' : 'opacity-100'
+                                }`}
                                 style={{ background: generateGradient(currentSong.album) }}
                             >
                                 {currentSong.title.charAt(0)}
                             </div>
                          )}
+                         
+                         {/* Album Art Visualizer Overlay */}
+                         <AlbumArtVisualizer 
+                            mode={audioSettings.visualizerMode}
+                            isActive={showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && isPlaying}
+                         />
                     </div>
                     
                     <div className="flex items-end justify-between mb-2">

@@ -574,9 +574,10 @@ export const Settings: React.FC = () => {
                         onClick={startBackendScan}
                         disabled={isScanning || scanFolders.length === 0}
                         className="flex items-center gap-2 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-2 px-4 rounded-lg transition-all"
+                        title="Performs a complete rescan of all configured folders"
                     >
                         {isScanning ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-                        {isScanning ? 'Scanning...' : 'Scan All Folders'}
+                        {isScanning ? 'Rescanning...' : 'Full Rescan'}
                     </button>
                 </div>
                 {isScanning && <div className="text-sm text-brand font-mono mt-2">{scanProgress}</div>}
@@ -683,8 +684,11 @@ export const Settings: React.FC = () => {
                 >
                     <option value="OFF">Disabled</option>
                     <option value="WAVE">Waveform</option>
-                    <option value="SPECTRUM">Spectrum Bar</option>
+                    <option value="SPECTRUM">Spectrum Bars</option>
                     <option value="AURORA">Ambient Aurora</option>
+                    <option value="CIRCULAR">Circular Pulse</option>
+                    <option value="PARTICLES">Particle Storm</option>
+                    <option value="NEBULA">Deep Space Nebula</option>
                 </select>
             </div>
 

@@ -60,6 +60,7 @@ type LibraryEvent struct {
 	Type         string                 `json:"type"`                   // "scan_complete", "scan_started", "scan_progress", "enrichment_started", "enrichment_progress", "enrichment_complete", "mood_started", "mood_progress", "mood_complete"
 	Message      string                 `json:"message"`                // Human-readable message
 	NewSongs     int                    `json:"newSongs,omitempty"`     // Number of new songs added (for scan_complete)
+	UpdatedSongs int                    `json:"updatedSongs,omitempty"` // Number of songs updated (for library_updated)
 	RemovedSongs int                    `json:"removedSongs,omitempty"` // Number of songs removed (for scan_complete)
 	TotalSongs   int                    `json:"totalSongs,omitempty"`   // Total songs in library (for scan_complete)
 	Data         map[string]interface{} `json:"data,omitempty"`         // Additional event-specific data
@@ -104,6 +105,9 @@ type Scanner struct {
 	enrichmentBatchNum     int
 	enrichmentTotalBatches int
 	enrichmentActive       bool
+
+	// Background scanner for incremental updates
+	backgroundScanner *BackgroundScanner
 }
 
 // ScanResult contains the results of a scan operation
@@ -130,6 +134,10 @@ func New(database *db.DB, dataDir string) *Scanner {
 		subscribers:     make(map[chan LibraryEvent]struct{}),
 		enrichmentQueue: make(chan []db.Song, 1000), // Buffer for pending batches
 	}
+
+	// Initialize background scanner with 2 workers
+	s.backgroundScanner = NewBackgroundScanner(s, 2)
+	s.backgroundScanner.Start()
 
 	// Start background enrichment worker
 	go s.processEnrichmentQueue()
@@ -162,13 +170,19 @@ func (s *Scanner) emitEvent(event LibraryEvent) {
 	s.subscriberMutex.RLock()
 	defer s.subscriberMutex.RUnlock()
 
-	logger.Scanner("Broadcasting event to %d subscribers: %s - %s", len(s.subscribers), event.Type, event.Message)
+	// Only log non-progress events to reduce log noise during bulk operations
+	if event.Type != "background_progress" {
+		logger.Scanner("Broadcasting event to %d subscribers: %s - %s", len(s.subscribers), event.Type, event.Message)
+	}
 
 	for ch := range s.subscribers {
 		select {
 		case ch <- event:
 		default:
-			logger.Scanner("Subscriber channel full, dropping event")
+			// Don't log dropped progress events to avoid log spam
+			if event.Type != "background_progress" {
+				logger.Scanner("Subscriber channel full, dropping event")
+			}
 		}
 	}
 }
@@ -497,6 +511,18 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		totalSongs = len(songs)
 	}
 
+	// Save scan state for fast startup
+	s.setProgress("Saving scan state for fast startup...")
+	if err := s.SaveScanState(result); err != nil {
+		logger.Scanner("Failed to save scan state: %v", err)
+	}
+
+	// Compute and save directory signatures for fast change detection
+	s.setProgress("Computing directory signatures...")
+	if err := s.ComputeAndSaveDirectorySignatures(); err != nil {
+		logger.Scanner("Failed to save directory signatures: %v", err)
+	}
+
 	// Emit scan complete event to notify frontend
 	s.emitEvent(LibraryEvent{
 		Type:         "scan_complete",
@@ -633,6 +659,13 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 			Message:  fmt.Sprintf("Added %d songs", len(songs)),
 			NewSongs: len(songs),
 		})
+	}
+
+	// Update file metadata cache for fast startup
+	if len(scannedPaths) > 0 {
+		if err := s.UpdateFileMetadataCache(scannedPaths); err != nil {
+			logger.Scanner("Failed to update metadata cache for %s: %v", folderPath, err)
+		}
 	}
 
 	logger.Scanner("Completed scan of %s: %d files, %d errors", folderPath, fileCount, result.Errors)

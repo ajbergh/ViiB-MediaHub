@@ -38,6 +38,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'mediahub-storage',
+      version: 1, // Increment when storage schema changes
       // We do NOT persist 'songs' here anymore because they are in IndexedDB
       partialize: (state) => ({ 
           audioSettings: state.audioSettings,
@@ -50,6 +51,32 @@ export const useStore = create<AppState>()(
           spotifyTokenExpiry: state.spotifyTokenExpiry,
           spotifyUser: state.spotifyUser
       }),
+      // Deep merge audioSettings to preserve nested values properly
+      merge: (persistedState: any, currentState: AppState) => {
+        const persisted = persistedState as Partial<AppState>;
+        console.log('🔄 Zustand: Rehydrating state from localStorage', { 
+          persistedAudioSettings: persisted?.audioSettings,
+          currentAudioSettings: currentState.audioSettings 
+        });
+        return {
+          ...currentState,
+          ...persisted,
+          // Deep merge audioSettings to handle nested properties
+          audioSettings: {
+            ...currentState.audioSettings,
+            ...(persisted?.audioSettings || {})
+          }
+        };
+      },
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          console.log('✅ Zustand: Store rehydrated successfully', { 
+            audioSettings: state.audioSettings 
+          });
+        } else {
+          console.log('⚠️ Zustand: No persisted state found');
+        }
+      }
     }
   )
 );

@@ -84,6 +84,37 @@ type ScanFolder struct {
 	SongCount int    `json:"songCount"`
 }
 
+// DirectorySignature stores a compact representation of directory state
+// for quick change detection without walking contents.
+type DirectorySignature struct {
+	Path         string `json:"path"`
+	FileCount    int    `json:"fileCount"`
+	TotalSize    int64  `json:"totalSize"`
+	LatestMtime  int64  `json:"latestMtime"`
+	ContentHash  string `json:"contentHash"`
+	LastVerified int64  `json:"lastVerified"`
+}
+
+// ScanState stores global scan state for journal-based change detection.
+type ScanState struct {
+	LastScanTime   int64 `json:"lastScanTime"`
+	WindowsUSN     int64 `json:"windowsUsn,omitempty"`
+	MacOSEventID   int64 `json:"macosEventId,omitempty"`
+	LinuxLastMtime int64 `json:"linuxLastMtime,omitempty"`
+	ScanDurationMs int64 `json:"scanDurationMs,omitempty"`
+	FilesScanned   int   `json:"filesScanned,omitempty"`
+	FilesChanged   int   `json:"filesChanged,omitempty"`
+}
+
+// FileMetadataCache stores file-level change detection data.
+type FileMetadataCache struct {
+	FilePath     string `json:"filePath"`
+	FileSize     int64  `json:"fileSize"`
+	Mtime        int64  `json:"mtime"`
+	MetadataHash string `json:"metadataHash,omitempty"`
+	LastVerified int64  `json:"lastVerified"`
+}
+
 // New opens the SQLite database located at dbPath and returns a configured
 // DB instance ready for queries and updates.
 func New(dbPath string) (*DB, error) {
@@ -219,6 +250,41 @@ func (d *DB) migrate() error {
 		fetched_at INTEGER,
 		updated_at INTEGER
 	);
+
+	-- Fast scan: Directory signatures for quick change detection
+	CREATE TABLE IF NOT EXISTS directory_signatures (
+		path TEXT PRIMARY KEY,
+		file_count INTEGER NOT NULL,
+		total_size INTEGER NOT NULL,
+		latest_mtime INTEGER NOT NULL,
+		content_hash TEXT NOT NULL,
+		last_verified INTEGER NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_dir_sig_mtime ON directory_signatures(latest_mtime);
+
+	-- Fast scan: Global scan state for journal-based detection
+	CREATE TABLE IF NOT EXISTS scan_state (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		last_scan_time INTEGER NOT NULL,
+		windows_usn INTEGER,
+		macos_event_id INTEGER,
+		linux_last_mtime INTEGER,
+		scan_duration_ms INTEGER,
+		files_scanned INTEGER,
+		files_changed INTEGER
+	);
+
+	-- Fast scan: File metadata cache for cheap change detection
+	CREATE TABLE IF NOT EXISTS file_metadata_cache (
+		file_path TEXT PRIMARY KEY,
+		file_size INTEGER NOT NULL,
+		mtime INTEGER NOT NULL,
+		metadata_hash TEXT,
+		last_verified INTEGER NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_metadata_cache_mtime ON file_metadata_cache(mtime);
 	`
 
 	_, err := d.conn.Exec(schema)
@@ -2245,4 +2311,396 @@ func (d *DB) GetSongsBySmartFilter(genres []string, artists []string, minYear, m
 		songs = append(songs, s)
 	}
 	return songs, rows.Err()
+}
+
+// ==============================================================================
+// Fast Scan: Directory Signature Methods
+// ==============================================================================
+
+// SaveDirectorySignature saves or updates a directory signature for fast change detection.
+func (d *DB) SaveDirectorySignature(sig DirectorySignature) error {
+	_, err := d.conn.Exec(`
+		INSERT INTO directory_signatures (path, file_count, total_size, latest_mtime, content_hash, last_verified)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(path) DO UPDATE SET
+			file_count = excluded.file_count,
+			total_size = excluded.total_size,
+			latest_mtime = excluded.latest_mtime,
+			content_hash = excluded.content_hash,
+			last_verified = excluded.last_verified
+	`, sig.Path, sig.FileCount, sig.TotalSize, sig.LatestMtime, sig.ContentHash, sig.LastVerified)
+	return err
+}
+
+// SaveDirectorySignaturesBatch saves multiple directory signatures in a single transaction.
+func (d *DB) SaveDirectorySignaturesBatch(sigs []DirectorySignature) error {
+	if len(sigs) == 0 {
+		return nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO directory_signatures (path, file_count, total_size, latest_mtime, content_hash, last_verified)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(path) DO UPDATE SET
+			file_count = excluded.file_count,
+			total_size = excluded.total_size,
+			latest_mtime = excluded.latest_mtime,
+			content_hash = excluded.content_hash,
+			last_verified = excluded.last_verified
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, sig := range sigs {
+		_, err = stmt.Exec(sig.Path, sig.FileCount, sig.TotalSize, sig.LatestMtime, sig.ContentHash, sig.LastVerified)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GetDirectorySignature retrieves a directory signature by path.
+func (d *DB) GetDirectorySignature(path string) (*DirectorySignature, error) {
+	var sig DirectorySignature
+	err := d.conn.QueryRow(`
+		SELECT path, file_count, total_size, latest_mtime, content_hash, last_verified
+		FROM directory_signatures
+		WHERE path = ?
+	`, path).Scan(&sig.Path, &sig.FileCount, &sig.TotalSize, &sig.LatestMtime, &sig.ContentHash, &sig.LastVerified)
+	if err != nil {
+		return nil, err
+	}
+	return &sig, nil
+}
+
+// GetAllDirectorySignatures retrieves all stored directory signatures.
+func (d *DB) GetAllDirectorySignatures() ([]DirectorySignature, error) {
+	rows, err := d.conn.Query(`
+		SELECT path, file_count, total_size, latest_mtime, content_hash, last_verified
+		FROM directory_signatures
+		ORDER BY path
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sigs []DirectorySignature
+	for rows.Next() {
+		var sig DirectorySignature
+		err := rows.Scan(&sig.Path, &sig.FileCount, &sig.TotalSize, &sig.LatestMtime, &sig.ContentHash, &sig.LastVerified)
+		if err != nil {
+			return nil, err
+		}
+		sigs = append(sigs, sig)
+	}
+	return sigs, rows.Err()
+}
+
+// DeleteDirectorySignature removes a directory signature by path.
+func (d *DB) DeleteDirectorySignature(path string) error {
+	_, err := d.conn.Exec(`DELETE FROM directory_signatures WHERE path = ?`, path)
+	return err
+}
+
+// DeleteDirectorySignaturesWithPrefix removes all signatures for paths under a given prefix.
+// Useful for removing signatures for an entire folder tree when a scan folder is removed.
+// Example: DeleteDirectorySignaturesWithPrefix("/music") removes /music, /music/albums, etc.
+func (d *DB) DeleteDirectorySignaturesWithPrefix(prefix string) error {
+	_, err := d.conn.Exec(`DELETE FROM directory_signatures WHERE path LIKE ?`, prefix+"%")
+	return err
+}
+
+// DeleteDirectorySignatures removes multiple directory signatures by path in a single
+// transaction. This is used by CleanupStaleSignatures() to efficiently remove
+// signatures for directories that no longer exist.
+//
+// Returns the number of signatures actually deleted.
+// The operation is atomic - either all deletions succeed or none are committed.
+func (d *DB) DeleteDirectorySignatures(paths []string) (int, error) {
+	if len(paths) == 0 {
+		return 0, nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`DELETE FROM directory_signatures WHERE path = ?`)
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+
+	deleted := 0
+	for _, path := range paths {
+		result, err := stmt.Exec(path)
+		if err != nil {
+			return deleted, err
+		}
+		affected, _ := result.RowsAffected()
+		deleted += int(affected)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
+// ==============================================================================
+// Fast Scan: Scan State Methods
+// ==============================================================================
+
+// SaveScanState saves or updates the global scan state.
+// The scan state is stored with a fixed ID (1) so there's always only one row.
+// Uses upsert (INSERT ... ON CONFLICT UPDATE) for efficiency.
+func (d *DB) SaveScanState(state ScanState) error {
+	_, err := d.conn.Exec(`
+		INSERT INTO scan_state (id, last_scan_time, windows_usn, macos_event_id, linux_last_mtime, scan_duration_ms, files_scanned, files_changed)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			last_scan_time = excluded.last_scan_time,
+			windows_usn = excluded.windows_usn,
+			macos_event_id = excluded.macos_event_id,
+			linux_last_mtime = excluded.linux_last_mtime,
+			scan_duration_ms = excluded.scan_duration_ms,
+			files_scanned = excluded.files_scanned,
+			files_changed = excluded.files_changed
+	`, state.LastScanTime, state.WindowsUSN, state.MacOSEventID, state.LinuxLastMtime, state.ScanDurationMs, state.FilesScanned, state.FilesChanged)
+	return err
+}
+
+// GetScanState retrieves the global scan state.
+func (d *DB) GetScanState() (*ScanState, error) {
+	var state ScanState
+	var windowsUSN, macosEventID, linuxLastMtime, scanDurationMs sql.NullInt64
+	var filesScanned, filesChanged sql.NullInt64
+
+	err := d.conn.QueryRow(`
+		SELECT last_scan_time, windows_usn, macos_event_id, linux_last_mtime, scan_duration_ms, files_scanned, files_changed
+		FROM scan_state
+		WHERE id = 1
+	`).Scan(&state.LastScanTime, &windowsUSN, &macosEventID, &linuxLastMtime, &scanDurationMs, &filesScanned, &filesChanged)
+	if err != nil {
+		return nil, err
+	}
+
+	if windowsUSN.Valid {
+		state.WindowsUSN = windowsUSN.Int64
+	}
+	if macosEventID.Valid {
+		state.MacOSEventID = macosEventID.Int64
+	}
+	if linuxLastMtime.Valid {
+		state.LinuxLastMtime = linuxLastMtime.Int64
+	}
+	if scanDurationMs.Valid {
+		state.ScanDurationMs = scanDurationMs.Int64
+	}
+	if filesScanned.Valid {
+		state.FilesScanned = int(filesScanned.Int64)
+	}
+	if filesChanged.Valid {
+		state.FilesChanged = int(filesChanged.Int64)
+	}
+
+	return &state, nil
+}
+
+// ==============================================================================
+// Fast Scan: File Metadata Cache Methods
+// ==============================================================================
+
+// SaveFileMetadataCache saves or updates a file metadata cache entry.
+func (d *DB) SaveFileMetadataCache(cache FileMetadataCache) error {
+	_, err := d.conn.Exec(`
+		INSERT INTO file_metadata_cache (file_path, file_size, mtime, metadata_hash, last_verified)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(file_path) DO UPDATE SET
+			file_size = excluded.file_size,
+			mtime = excluded.mtime,
+			metadata_hash = excluded.metadata_hash,
+			last_verified = excluded.last_verified
+	`, cache.FilePath, cache.FileSize, cache.Mtime, cache.MetadataHash, cache.LastVerified)
+	return err
+}
+
+// SaveFileMetadataCacheBatch saves multiple file metadata cache entries in a single transaction.
+func (d *DB) SaveFileMetadataCacheBatch(caches []FileMetadataCache) error {
+	if len(caches) == 0 {
+		return nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO file_metadata_cache (file_path, file_size, mtime, metadata_hash, last_verified)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(file_path) DO UPDATE SET
+			file_size = excluded.file_size,
+			mtime = excluded.mtime,
+			metadata_hash = excluded.metadata_hash,
+			last_verified = excluded.last_verified
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, cache := range caches {
+		_, err = stmt.Exec(cache.FilePath, cache.FileSize, cache.Mtime, cache.MetadataHash, cache.LastVerified)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GetFileMetadataCache retrieves a file metadata cache entry by path.
+func (d *DB) GetFileMetadataCache(path string) (*FileMetadataCache, error) {
+	var cache FileMetadataCache
+	var metadataHash sql.NullString
+
+	err := d.conn.QueryRow(`
+		SELECT file_path, file_size, mtime, metadata_hash, last_verified
+		FROM file_metadata_cache
+		WHERE file_path = ?
+	`, path).Scan(&cache.FilePath, &cache.FileSize, &cache.Mtime, &metadataHash, &cache.LastVerified)
+	if err != nil {
+		return nil, err
+	}
+
+	if metadataHash.Valid {
+		cache.MetadataHash = metadataHash.String
+	}
+
+	return &cache, nil
+}
+
+// GetAllFileMetadataCache retrieves all file metadata cache entries.
+func (d *DB) GetAllFileMetadataCache() ([]FileMetadataCache, error) {
+	rows, err := d.conn.Query(`
+		SELECT file_path, file_size, mtime, metadata_hash, last_verified
+		FROM file_metadata_cache
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var caches []FileMetadataCache
+	for rows.Next() {
+		var cache FileMetadataCache
+		var metadataHash sql.NullString
+
+		err := rows.Scan(&cache.FilePath, &cache.FileSize, &cache.Mtime, &metadataHash, &cache.LastVerified)
+		if err != nil {
+			return nil, err
+		}
+
+		if metadataHash.Valid {
+			cache.MetadataHash = metadataHash.String
+		}
+
+		caches = append(caches, cache)
+	}
+	return caches, rows.Err()
+}
+
+// GetFileMetadataCacheMap returns a map of file path to FileMetadataCache for fast lookup.
+func (d *DB) GetFileMetadataCacheMap() (map[string]FileMetadataCache, error) {
+	caches, err := d.GetAllFileMetadataCache()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]FileMetadataCache, len(caches))
+	for _, cache := range caches {
+		result[cache.FilePath] = cache
+	}
+	return result, nil
+}
+
+// DeleteFileMetadataCache removes a file metadata cache entry by path.
+func (d *DB) DeleteFileMetadataCache(path string) error {
+	_, err := d.conn.Exec(`DELETE FROM file_metadata_cache WHERE file_path = ?`, path)
+	return err
+}
+
+// DeleteFileMetadataCacheBatch removes multiple file metadata cache entries.
+func (d *DB) DeleteFileMetadataCacheBatch(paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`DELETE FROM file_metadata_cache WHERE file_path = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, path := range paths {
+		_, err = stmt.Exec(path)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GetRandomFileSample retrieves a random sample of file metadata cache entries.
+func (d *DB) GetRandomFileSample(count int) ([]FileMetadataCache, error) {
+	rows, err := d.conn.Query(`
+		SELECT file_path, file_size, mtime, metadata_hash, last_verified
+		FROM file_metadata_cache
+		ORDER BY RANDOM()
+		LIMIT ?
+	`, count)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var caches []FileMetadataCache
+	for rows.Next() {
+		var cache FileMetadataCache
+		var metadataHash sql.NullString
+
+		err := rows.Scan(&cache.FilePath, &cache.FileSize, &cache.Mtime, &metadataHash, &cache.LastVerified)
+		if err != nil {
+			return nil, err
+		}
+
+		if metadataHash.Valid {
+			cache.MetadataHash = metadataHash.String
+		}
+
+		caches = append(caches, cache)
+	}
+	return caches, rows.Err()
 }

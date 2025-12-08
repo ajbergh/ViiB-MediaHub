@@ -56,6 +56,7 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
 
 ### 📚 Library Management
 - **Folder Scanning** - Add multiple music folders with incremental scanning
+- **Ultra-Fast Startup** - Near-instant library loading using filesystem journals and directory signatures
 - **Smart Mixes** - Auto-generated playlists based on listening patterns:
   - Heavy Rotation (most played recently)
   - Rediscover Favorites (old favorites you haven't heard in a while)
@@ -64,6 +65,19 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
 - **Playlists** - Create, edit, and manage custom playlists
   - Playlists are persisted to the backend when available. When running in browser-only mode, playlists are stored in IndexedDB.
 - **Background Enrichment** - Automatic Spotify metadata enhancement for albums/artists
+
+### ⚡ Ultra-Fast Startup Scan System (New)
+- **Instant Startup** - Sub-second library loading even with 100,000+ songs
+- **Platform-Optimized Detection**:
+  - Windows: USN (Update Sequence Number) journal for kernel-level change tracking
+  - macOS: Optimized mtime scanning with directory-level skipping
+  - Linux: mtime + ctime detection with signature integration
+- **Directory Signatures** - Content-based hashing allows skipping unchanged folders entirely
+- **Background Processing** - Priority-based worker pool for deferred operations
+- **Integrity Verification** - Periodic sampling detects missing, corrupted, or modified files
+- **Adaptive Scheduling** - Automatically adjusts scan frequency based on activity
+
+See `FAST_SCAN_DESIGN.md` for complete architecture documentation.
 
 ### 🎧 Spotify Integration
 **Streaming & Direct Downloads** - Stream and download Spotify tracks (Premium required)
@@ -109,8 +123,15 @@ ViiB-MediaHub/
         ├── api/        # REST API + SSE handlers
         ├── audio/      # Metadata extraction (taglib + dhowden/tag)
         ├── db/         # SQLite with WAL mode
+        ├── gemini/     # AI-powered music analysis
         ├── logger/     # Shared logging facility
-        ├── scanner/    # Library scanning with event broadcasting
+        ├── scanner/    # Library scanning with fast startup
+        │   ├── scanner.go       # Core scanning logic
+        │   ├── fast_scan.go     # Incremental scan with signatures
+        │   ├── background.go    # Priority-based worker pool
+        │   ├── optimization.go  # Performance tuning utilities
+        │   ├── journal_*.go     # Platform-specific change detection
+        │   └── journal.go       # Change detector interface
         ├── server/     # Chi router + middleware
         └── spotify/    # librespot session + downloader
 ```

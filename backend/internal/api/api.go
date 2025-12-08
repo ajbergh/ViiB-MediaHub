@@ -422,7 +422,10 @@ func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
 				logger.API("libraryEventsSSE: Event channel closed")
 				return
 			}
-			logger.API("libraryEventsSSE: Sending event: %s", event.Type)
+			// Only log non-progress events to reduce log noise during bulk operations
+			if event.Type != "background_progress" {
+				logger.API("libraryEventsSSE: Sending event: %s", event.Type)
+			}
 			data, _ := json.Marshal(event)
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
@@ -430,7 +433,10 @@ func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// scanOnStartup triggers a library scan when the application starts
+// scanOnStartup triggers a library scan when the application starts.
+// Uses the fast scan system (QuickStartup) to detect changes quickly,
+// then processes any changes in the background. Falls back to full scan
+// if quick startup detects many changes or is unavailable.
 func (a *API) scanOnStartup() {
 	// Wait for application to fully initialize
 	time.Sleep(3 * time.Second)
@@ -446,15 +452,87 @@ func (a *API) scanOnStartup() {
 		return
 	}
 
-	logger.API("Starting automatic library scan on startup...")
-	result, err := a.scanner.ScanAll()
+	// Emit scan started event so UI shows progress
+	a.scanner.EmitEvent(scanner.LibraryEvent{
+		Type:    "scan_started",
+		Message: "Checking for library changes...",
+	})
+
+	// Try quick startup first (uses signatures and filesystem journals)
+	logger.API("Starting quick startup scan...")
+	quickResult, err := a.scanner.QuickStartup()
 	if err != nil {
-		logger.API("Startup scan error: %v", err)
+		logger.API("Quick startup failed: %v, falling back to full scan", err)
+		// Fall back to full scan (which emits its own events)
+		result, err := a.scanner.ScanAll()
+		if err != nil {
+			logger.API("Startup scan error: %v", err)
+			return
+		}
+		logger.API("Full startup scan complete: %d files, %d new, %d updated (%s)",
+			result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.Duration)
 		return
 	}
 
-	logger.API("Startup scan complete: %d files, %d new, %d updated (%s)",
-		result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.Duration)
+	// Log quick startup results
+	method := "signatures"
+	if quickResult.UsedJournal {
+		method = quickResult.JournalMethod
+	}
+	logger.API("Quick startup complete in %s using %s: %d dirs checked, %d unchanged, %d files changed",
+		quickResult.ScanDuration, method, quickResult.CheckedDirs, quickResult.UnchangedDirs, len(quickResult.ChangedFiles))
+
+	// If we detected changes, process them
+	if len(quickResult.ChangedFiles) > 0 {
+		// Update progress
+		a.scanner.EmitEvent(scanner.LibraryEvent{
+			Type:    "scan_progress",
+			Message: fmt.Sprintf("Processing %d changed files...", len(quickResult.ChangedFiles)),
+		})
+
+		// For small number of changes, process immediately
+		if len(quickResult.ChangedFiles) <= 100 {
+			logger.API("Processing %d changed files immediately...", len(quickResult.ChangedFiles))
+			result, err := a.scanner.ProcessChanges(quickResult.ChangedFiles)
+			if err != nil {
+				logger.API("Error processing changes: %v", err)
+			} else {
+				logger.API("Processed changes: %d new, %d updated, %d removed",
+					result.NewSongs, result.UpdatedSongs, result.RemovedSongs)
+			}
+		} else {
+			// For many changes, queue for background processing
+			logger.API("Queueing %d changed files for background processing...", len(quickResult.ChangedFiles))
+			a.scanner.QueueChangesForBackground(quickResult.ChangedFiles)
+		}
+	}
+
+	// If quick startup required fallback or found too many changes, do a full scan
+	if quickResult.FallbackFull {
+		logger.API("Quick startup requested full scan fallback")
+		result, err := a.scanner.ScanAll()
+		if err != nil {
+			logger.API("Fallback scan error: %v", err)
+			// Emit scan complete even on error
+			a.scanner.EmitEvent(scanner.LibraryEvent{
+				Type:    "scan_complete",
+				Message: "Scan failed",
+			})
+			return
+		}
+		logger.API("Fallback scan complete: %d files, %d new, %d updated (%s)",
+			result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.Duration)
+		// ScanAll emits its own scan_complete event
+		return
+	}
+
+	// Emit scan complete event for quick startup
+	a.scanner.EmitEvent(scanner.LibraryEvent{
+		Type:       "scan_complete",
+		Message:    "Library check complete",
+		NewSongs:   len(quickResult.ChangedFiles),
+		TotalSongs: quickResult.CheckedDirs,
+	})
 }
 
 func (a *API) serveAudio(w http.ResponseWriter, r *http.Request) {
