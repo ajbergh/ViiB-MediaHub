@@ -162,7 +162,73 @@ export enum ContextMenuType {
 
 // --- Audio Enhancement Types ---
 
-export type VisualizerMode = 'OFF' | 'WAVE' | 'SPECTRUM' | 'AURORA' | 'CIRCULAR' | 'PARTICLES' | 'NEBULA';
+/**
+ * Audio Visualizer Mode
+ * 
+ * Defines 21 available visualization modes for the Now Playing view.
+ * Each mode renders audio-reactive graphics using Canvas 2D API.
+ * 
+ * Classic Modes (Original 6):
+ * - OFF: No visualization
+ * - WAVE: Smooth glowing waveform with quadratic curve interpolation
+ * - SPECTRUM: Circular frequency bars radiating from center (sun-burst effect)
+ * - AURORA: Ambient flowing gradients reacting to bass/mid/treble bands
+ * - CIRCULAR: Enhanced circular with rotating bars, pulsing rings, inner waveform
+ * - PARTICLES: Dynamic particle system with gravity effects and audio-reactive spawning
+ * - NEBULA: Cosmic atmosphere with swirling nebula clouds, stars, and lens flares
+ * 
+ * Next-Gen Modes (15 New):
+ * - FLAME_SPECTRUM: Stylized flame tongues rising with frequency-based height and color intensity
+ * - STARDUST_HALO: Pulsing particle halo with stardust bursts on bass hits
+ * - AURORA_RIBBON: Translucent ribbon with waveform modulation and frequency-based colors
+ * - ELECTRIC_ARC: TRON-style geometric light beams with crackling effects on treble
+ * - GRASS_OSCILLOSCOPE: Organic swaying grass blades with amplitude height and stereo sway
+ * - CRYSTAL_SHARDS: Prismatic diamond shards bursting outward with refraction effects
+ * - WATERCOLOR_BLOOM: Painterly circular blooms with multi-layer depth
+ * - ICE_FRACTURE: Cracking ice radiating from center with branching fractures
+ * - FIREFLY_FIELD: Drifting fireflies with warm glow and gentle flicker (seasonal)
+ * - VINYL_SPIN: Rotating vinyl grooves with tempo-based rotation and treble glints
+ * - BEAT_ORBS: Volumetric orbs expanding on bass hits with soft gradients
+ * - TUNNEL_WAVEFORM: 3D tunnel of pulsating rings with perspective depth
+ * - GLASS_SHARDS: Reflective rotating glass fragments with prismatic colors
+ * - WIND_FIELD: Flowing particle wind effect with bass intensity and treble sparkles
+ * 
+ * Audio Mapping:
+ * - Bass (0-30 Hz): Triggers bursts, expansions, intensity
+ * - Mid (30-150 Hz): Controls thickness, height, density
+ * - Treble (150-300 Hz): Sparkles, glints, shimmer effects
+ * 
+ * Performance:
+ * - All modes target 60 FPS rendering
+ * - Particle systems capped at 40-300 particles
+ * - Canvas 2D for broad compatibility
+ * - Automatic cleanup on mode switch
+ * 
+ * @see AlbumArtVisualizer - Component that renders these visualizations
+ * @see audioEngine - Web Audio API wrapper providing frequency data
+ */
+export type VisualizerMode = 
+  | 'OFF' 
+  | 'WAVE' 
+  | 'SPECTRUM' 
+  | 'AURORA' 
+  | 'CIRCULAR' 
+  | 'PARTICLES' 
+  | 'NEBULA'
+  | 'FLAME_SPECTRUM'
+  | 'STARDUST_HALO'
+  | 'AURORA_RIBBON'
+  | 'ELECTRIC_ARC'
+  | 'GRASS_OSCILLOSCOPE'
+  | 'CRYSTAL_SHARDS'
+  | 'WATERCOLOR_BLOOM'
+  | 'ICE_FRACTURE'
+  | 'FIREFLY_FIELD'
+  | 'VINYL_SPIN'
+  | 'BEAT_ORBS'
+  | 'TUNNEL_WAVEFORM'
+  | 'GLASS_SHARDS'
+  | 'WIND_FIELD';
 
 export interface EqPreset {
   id: string;

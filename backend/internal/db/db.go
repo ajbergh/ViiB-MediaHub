@@ -5,7 +5,7 @@
 //   - playlists: User-created playlists with song references
 //   - plays: Play history with timestamps for tracking listening patterns
 //   - scan_folders: Configured directories to scan for music
-//   - settings: Key-value store for application configuration
+//   - settings: Key-value store for application configuration (with encryption for secrets)
 //   - spotify_downloads: Download queue with status tracking
 //   - album_metadata: Cached Spotify album metadata
 //   - artist_metadata: Cached Spotify artist metadata
@@ -17,6 +17,13 @@
 //   - Artist preference tracking based on cumulative play counts
 //   - Genre indexing for fast local matching without API calls
 //
+// Security:
+//   - Sensitive settings (Spotify credentials, API keys) are encrypted at rest
+//   - Uses AES-256-GCM encryption with machine-bound keys
+//   - Automatic migration of plaintext secrets to encrypted format
+//   - LIKE pattern wildcards are escaped to prevent wildcard injection
+//   - See internal/crypto package for encryption implementation
+//
 // Uses SQLite with WAL mode for concurrent access and foreign keys enabled.
 package db
 
@@ -27,8 +34,37 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/crypto"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// escapeLikePattern escapes SQL LIKE wildcards (%, _) in a string.
+// This prevents user input from being interpreted as wildcards, which could
+// cause unintended matches (e.g., "%" would match all records).
+//
+// SQLite uses backslash as the escape character by default with ESCAPE clause,
+// but for simpler queries, we escape by doubling the wildcards or using
+// a different approach. Since we're matching within JSON strings, we also
+// need to preserve the JSON structure.
+//
+// For SQLite with ESCAPE clause: LIKE pattern ESCAPE '\'
+//   - % -> \%
+//   - _ -> \_
+//   - \ -> \\
+func escapeLikePattern(s string) string {
+	// Escape backslashes first, then wildcards
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
+}
+
+// buildGenreLikePattern creates a safe LIKE pattern for matching a genre name
+// within a JSON array. Escapes any LIKE wildcards in the genre name.
+func buildGenreLikePattern(genreName string) string {
+	escaped := escapeLikePattern(genreName)
+	return "%\"" + escaped + "\"%"
+}
 
 // DB is the primary SQLite database wrapper. It provides methods for managing
 // songs, playlists, scan folders, Spotify downloads, and AI DJ features
@@ -337,6 +373,61 @@ func (d *DB) migrateColumns() error {
 		}
 	}
 
+	// Migrate unencrypted sensitive settings to encrypted format
+	if err := d.migrateUnencryptedSettings(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// migrateUnencryptedSettings encrypts any existing plaintext sensitive settings.
+// This provides backward compatibility when upgrading from versions without encryption.
+//
+// The migration process:
+//  1. Reads the raw value from the database (bypassing GetSetting decryption)
+//  2. Checks if the value is already encrypted (has "enc:v1:" prefix)
+//  3. If plaintext, encrypts using the crypto package
+//  4. Updates the database with the encrypted value
+//
+// This function is called during database initialization and is idempotent -
+// already encrypted values are skipped, and the migration can be run multiple
+// times safely.
+//
+// Protected settings:
+//   - spotify_credentials: OAuth tokens and client secrets
+//   - gemini_api_key: Google Gemini AI API key
+func (d *DB) migrateUnencryptedSettings() error {
+	sensitiveKeys := []string{"spotify_credentials", "gemini_api_key"}
+
+	for _, key := range sensitiveKeys {
+		// Read raw value directly (bypass GetSetting which would try to decrypt)
+		var value string
+		err := d.conn.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+		if err == sql.ErrNoRows {
+			continue // Setting doesn't exist, nothing to migrate
+		}
+		if err != nil {
+			return err
+		}
+
+		// Check if already encrypted
+		if value == "" || crypto.IsEncrypted(value) {
+			continue // Empty or already encrypted
+		}
+
+		// Encrypt and update
+		encrypted, err := crypto.Encrypt(value)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt setting %s during migration: %w", key, err)
+		}
+
+		_, err = d.conn.Exec("UPDATE settings SET value = ? WHERE key = ?", encrypted, key)
+		if err != nil {
+			return fmt.Errorf("failed to update encrypted setting %s: %w", key, err)
+		}
+	}
+
 	return nil
 }
 
@@ -629,12 +720,12 @@ func (d *DB) GetSongsByMoodCriteria(mood, energy, tempo string, genreNames []str
 		args = append(args, tempo)
 	}
 
-	// Add genre filter if specified
+	// Add genre filter if specified (with LIKE wildcard escaping for security)
 	if len(genreNames) > 0 {
 		genreConditions := []string{}
 		for _, g := range genreNames {
-			genreConditions = append(genreConditions, "genre LIKE ?")
-			args = append(args, "%\""+g+"\"%")
+			genreConditions = append(genreConditions, "genre LIKE ? ESCAPE '\\'")
+			args = append(args, buildGenreLikePattern(g))
 		}
 		query += " AND (" + strings.Join(genreConditions, " OR ") + ")"
 	}
@@ -1027,12 +1118,12 @@ func (d *DB) GetSimilarArtists(artistName string, limit int) ([]string, error) {
 		return nil, nil
 	}
 
-	// Find other artists with similar genres
+	// Find other artists with similar genres (with LIKE wildcard escaping for security)
 	genreConditions := []string{}
 	args := []any{}
 	for _, g := range genres {
-		genreConditions = append(genreConditions, "genre LIKE ?")
-		args = append(args, "%\""+g+"\"%")
+		genreConditions = append(genreConditions, "genre LIKE ? ESCAPE '\\'")
+		args = append(args, buildGenreLikePattern(g))
 	}
 	args = append(args, artistName, limit)
 
@@ -1525,21 +1616,69 @@ func (d *DB) DeleteCompletedDownloads() (int64, error) {
 // Settings operations
 
 // GetSetting retrieves a value for a configuration key from the settings table.
+//
+// Encryption Handling:
+// Sensitive keys (spotify_credentials, gemini_api_key) are automatically decrypted
+// using the machine-bound encryption key. If decryption fails (e.g., database was
+// moved to a different machine), an error is returned to prevent exposing
+// corrupted or encrypted data.
+//
+// Returns:
+//   - The setting value (decrypted if sensitive)
+//   - Empty string if the key doesn't exist
+//   - Error if decryption fails or database error occurs
 func (d *DB) GetSetting(key string) (string, error) {
 	var value string
 	err := d.conn.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
-	return value, err
+	if err != nil {
+		return "", err
+	}
+
+	// Decrypt sensitive settings
+	if crypto.IsSensitiveKey(key) {
+		decrypted, err := crypto.Decrypt(value)
+		if err != nil {
+			// Log error but return empty to avoid exposing encrypted data
+			return "", fmt.Errorf("failed to decrypt setting %s: %w", key, err)
+		}
+		return decrypted, nil
+	}
+
+	return value, nil
 }
 
 // SetSetting sets a value for a configuration key in the settings table.
+//
+// Encryption Handling:
+// Sensitive keys (spotify_credentials, gemini_api_key) are automatically encrypted
+// using AES-256-GCM before storage. The encryption key is derived from machine-
+// specific identifiers, binding the encrypted data to this installation.
+//
+// Upsert Behavior:
+// Uses INSERT ... ON CONFLICT to either insert a new setting or update an
+// existing one. This is an atomic operation.
+//
+// Empty Value Handling:
+// Empty strings are stored without encryption to avoid unnecessary processing.
 func (d *DB) SetSetting(key, value string) error {
+	storeValue := value
+
+	// Encrypt sensitive settings
+	if crypto.IsSensitiveKey(key) && value != "" {
+		encrypted, err := crypto.Encrypt(value)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
+		}
+		storeValue = encrypted
+	}
+
 	_, err := d.conn.Exec(`
 		INSERT INTO settings (key, value) VALUES (?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value
-	`, key, value)
+	`, key, storeValue)
 	return err
 }
 

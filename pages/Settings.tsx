@@ -698,6 +698,20 @@ export const Settings: React.FC = () => {
                     <option value="CIRCULAR">Circular Pulse</option>
                     <option value="PARTICLES">Particle Storm</option>
                     <option value="NEBULA">Deep Space Nebula</option>
+                    <option value="FLAME_SPECTRUM">Flame Spectrum Crown</option>
+                    <option value="STARDUST_HALO">Stardust Pulse Halo</option>
+                    <option value="AURORA_RIBBON">Aurora Ribbon</option>
+                    <option value="ELECTRIC_ARC">Electric Arc Wireframe</option>
+                    <option value="GRASS_OSCILLOSCOPE">Growing Grass Oscilloscope</option>
+                    <option value="CRYSTAL_SHARDS">Crystal Shards Burst</option>
+                    <option value="WATERCOLOR_BLOOM">Watercolor Bloom</option>
+                    <option value="ICE_FRACTURE">Ice Fracture Pulse</option>
+                    <option value="FIREFLY_FIELD">Holiday Firefly Field</option>
+                    <option value="VINYL_SPIN">Vinyl Spin Overlay</option>
+                    <option value="BEAT_ORBS">Beat Explosion Orbs</option>
+                    <option value="TUNNEL_WAVEFORM">3D Tunnel Waveform</option>
+                    <option value="GLASS_SHARDS">Reflective Glass Shards</option>
+                    <option value="WIND_FIELD">Soft Wind Field</option>
                 </select>
             </div>
 

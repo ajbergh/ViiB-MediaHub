@@ -1,21 +1,66 @@
 /**
  * ViiB MediaHub - Now Playing View Component
  * 
- * Full-screen overlay showing currently playing track with enhanced controls.
+ * Full-screen immersive view for the currently playing track with comprehensive controls and visualizations.
+ * 
+ * Architecture:
+ * - Fixed full-screen overlay (z-index 100) with animated entrance
+ * - Dynamic gradient background generated from album artwork colors
+ * - Album art container with audio-reactive visualizer overlay
+ * - Bottom control panel with player controls and metadata
  * 
  * Features:
- * - Large album artwork display with visualizer overlay (click to toggle)
- * - Playback controls (play/pause, next/prev, shuffle, repeat)
- * - Progress bar with seeking
- * - Volume control
- * - Visualizer modes: OFF, WAVE, SPECTRUM, AURORA, CIRCULAR, PARTICLES, NEBULA
- * - Lyrics view (placeholder)
- * - Mini queue list
- * - Like button (placeholder)
  * 
- * Activated by clicking album art in the player bar.
+ * Visual Elements:
+ * - Large square album artwork (60vh) with aspect ratio preservation
+ * - Dynamic gradient background blurred and faded from album colors
+ * - Audio-reactive visualizer overlay with 21 modes (see AlbumArtVisualizer)
+ * - Visualizer cycle button with active state indication
+ * - Album art download functionality with progress indication
+ * 
+ * Playback Controls:
+ * - Play/Pause toggle with icon transition
+ * - Previous/Next track navigation
+ * - Shuffle toggle (saved in player state)
+ * - Repeat mode toggle (off → all → one)
+ * - Seek bar with draggable progress indicator
+ * - Volume slider with icon indication
+ * 
+ * Visualizer System:
+ * - 21 visualization modes: OFF, WAVE, SPECTRUM, AURORA, CIRCULAR, PARTICLES, NEBULA,
+ *   FLAME_SPECTRUM, STARDUST_HALO, AURORA_RIBBON, ELECTRIC_ARC, GRASS_OSCILLOSCOPE,
+ *   CRYSTAL_SHARDS, WATERCOLOR_BLOOM, ICE_FRACTURE, FIREFLY_FIELD, VINYL_SPIN,
+ *   BEAT_ORBS, TUNNEL_WAVEFORM, GLASS_SHARDS, WIND_FIELD
+ * - Cycle through modes via Activity button (bottom-left controls)
+ * - Real-time audio analysis via Web Audio API
+ * - Smooth fade transitions between modes
+ * 
+ * Additional Views:
+ * - Lyrics View: Shows synchronized lyrics (when available)
+ * - Queue View: Mini queue list showing upcoming tracks
+ * - Both views accessible via bottom-right buttons
+ * 
+ * Interaction:
+ * - Activated by clicking album art in the main player bar
+ * - Close via X button (top-right) or Escape key
+ * - Seek by clicking/dragging on progress bar
+ * - Download album art via download button (saves to filesystem)
+ * 
+ * State Management:
+ * - Uses Zustand store for player state (isPlaying, volume, shuffle, repeat)
+ * - Local state for view toggles (lyrics, queue, download status)
+ * - Album cover URLs fetched via useAlbumCovers hook
+ * 
+ * Performance:
+ * - Visualizer paused when view is closed
+ * - Album art lazy-loaded with fallback
+ * - Gradient memoized per album
+ * - Smooth animations via Tailwind CSS classes
  * 
  * @module NowPlaying
+ * @requires AlbumArtVisualizer - Audio-reactive visualization renderer
+ * @requires LyricsView - Synchronized lyrics display component
+ * @requires QueueList - Mini queue preview component
  */
 
 import React, { useState } from 'react';
@@ -87,8 +132,62 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
         }
     };
     
+    /**
+     * Cycles through all available visualizer modes in order.
+     * 
+     * Order: OFF → Classic modes (6) → Next-gen modes (14) → back to OFF
+     * 
+     * Classic Modes:
+     * - WAVE: Smooth waveform
+     * - SPECTRUM: Circular frequency bars
+     * - AURORA: Ambient gradients
+     * - CIRCULAR: Rotating bars with pulse
+     * - PARTICLES: Dynamic particle system
+     * - NEBULA: Cosmic nebula clouds
+     * 
+     * Next-Gen Modes:
+     * - FLAME_SPECTRUM: Rising flame tongues
+     * - STARDUST_HALO: Pulsing particle ring
+     * - AURORA_RIBBON: Flowing ribbon
+     * - ELECTRIC_ARC: TRON light beams
+     * - GRASS_OSCILLOSCOPE: Swaying grass blades
+     * - CRYSTAL_SHARDS: Bursting prisms
+     * - WATERCOLOR_BLOOM: Painterly blooms
+     * - ICE_FRACTURE: Cracking ice
+     * - FIREFLY_FIELD: Drifting fireflies
+     * - VINYL_SPIN: Rotating grooves
+     * - BEAT_ORBS: Expanding orbs
+     * - TUNNEL_WAVEFORM: 3D ring tunnel
+     * - GLASS_SHARDS: Reflective fragments
+     * - WIND_FIELD: Flowing particles
+     * 
+     * Triggered by clicking the Activity button in the Now Playing view.
+     * Updates global audio settings via Zustand store.
+     */
     const cycleVisualizer = () => {
-        const modes: VisualizerMode[] = ['OFF', 'WAVE', 'SPECTRUM', 'AURORA', 'CIRCULAR', 'PARTICLES', 'NEBULA'];
+        const modes: VisualizerMode[] = [
+            'OFF', 
+            'WAVE', 
+            'SPECTRUM', 
+            'AURORA', 
+            'CIRCULAR', 
+            'PARTICLES', 
+            'NEBULA',
+            'FLAME_SPECTRUM',
+            'STARDUST_HALO',
+            'AURORA_RIBBON',
+            'ELECTRIC_ARC',
+            'GRASS_OSCILLOSCOPE',
+            'CRYSTAL_SHARDS',
+            'WATERCOLOR_BLOOM',
+            'ICE_FRACTURE',
+            'FIREFLY_FIELD',
+            'VINYL_SPIN',
+            'BEAT_ORBS',
+            'TUNNEL_WAVEFORM',
+            'GLASS_SHARDS',
+            'WIND_FIELD'
+        ];
         const currentIdx = modes.indexOf(audioSettings.visualizerMode);
         const nextIdx = (currentIdx + 1) % modes.length;
         setVisualizerMode(modes[nextIdx]);
