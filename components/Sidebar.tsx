@@ -138,7 +138,7 @@ export const Sidebar: React.FC = () => {
           <div className={`flex flex-col gap-2 text-text-secondary ${collapsed ? 'items-center' : ''}`}>
             <div className={`flex items-center gap-3 text-brand ${collapsed ? 'justify-center' : ''}`}>
               <Loader2 size={20} className="animate-spin" />
-              {!collapsed && <span className="text-sm font-semibold">Importing...</span>}
+              {!collapsed && <span className="text-sm font-semibold">Scanning...</span>}
             </div>
             {!collapsed && <span className="text-[10px] font-mono text-text-subtle line-clamp-1">{scanProgress}</span>}
           </div>

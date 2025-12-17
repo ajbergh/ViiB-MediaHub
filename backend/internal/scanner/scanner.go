@@ -19,7 +19,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -53,6 +52,52 @@ var coverFilenames = []string{
 	"front.jpg", "front.jpeg", "front.png",
 	"albumart.jpg", "albumart.jpeg", "albumart.png",
 	"artwork.jpg", "artwork.jpeg", "artwork.png",
+}
+
+// Directories to skip during scanning (case-insensitive prefix matching)
+// These typically contain system files, snapshots, or hidden content
+var skipDirectoryPrefixes = []string{
+	"@", // Synology snapshots (@eaDir, @sharebin, @tmp, etc.)
+	"$", // Windows system folders ($RECYCLE.BIN, $SysReset, etc.)
+	".", // Hidden directories (.git, .svn, .cache, etc.)
+	"#", // Temp/hash folders
+}
+
+// Directories to skip during scanning (exact name match, case-insensitive)
+var skipDirectoryNames = map[string]bool{
+	"$recycle.bin":              true,
+	"system volume information": true,
+	"recycler":                  true,
+	"lost+found":                true,
+	"node_modules":              true,
+	"__pycache__":               true,
+	"thumbs":                    true,
+	".thumbnails":               true,
+	".cache":                    true,
+	".git":                      true,
+	".svn":                      true,
+	".hg":                       true,
+	".ds_store":                 true,
+	"desktop.ini":               true,
+}
+
+// shouldSkipDirectory checks if a directory should be skipped during scanning
+func shouldSkipDirectory(dirName string) bool {
+	lowerName := strings.ToLower(dirName)
+
+	// Check exact name matches
+	if skipDirectoryNames[lowerName] {
+		return true
+	}
+
+	// Check prefix patterns
+	for _, prefix := range skipDirectoryPrefixes {
+		if strings.HasPrefix(lowerName, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // LibraryEvent represents an event that can be sent to frontend clients
@@ -621,6 +666,12 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 		}
 
 		if info.IsDir() {
+			// Check if this directory should be skipped
+			dirName := info.Name()
+			if shouldSkipDirectory(dirName) {
+				logger.Scanner("Skipping directory: %s", path)
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
@@ -912,13 +963,13 @@ func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
 }
 
 // getAlbumCover gets or creates album artwork for a song
-// It checks for cached covers first, then looks for local cover files,
-// then tries to extract embedded artwork from the audio file
+// It uses content-based hashing to deduplicate identical cover art.
+// Multiple albums with the same cover art will share a single cached file.
 func (s *Scanner) getAlbumCover(artist, album, folderPath, audioFilePath string) string {
-	// Create album key for caching
+	// Create album key for caching (to avoid re-processing the same album)
 	albumKey := fmt.Sprintf("%s|%s", strings.ToLower(artist), strings.ToLower(album))
 
-	// Check if we already have a cover for this album
+	// Check if we already have a cover path cached for this album
 	s.albumCoverMutex.RLock()
 	if coverPath, ok := s.albumCovers[albumKey]; ok {
 		s.albumCoverMutex.RUnlock()
@@ -926,24 +977,12 @@ func (s *Scanner) getAlbumCover(artist, album, folderPath, audioFilePath string)
 	}
 	s.albumCoverMutex.RUnlock()
 
-	// Generate a unique cover filename based on album
-	coverHash := sha256.Sum256([]byte(albumKey))
-	coverFileName := hex.EncodeToString(coverHash[:8]) + ".jpg"
-	coverPath := filepath.Join(s.coverDir, coverFileName)
-
-	// Check if cover already exists on disk
-	if _, err := os.Stat(coverPath); err == nil {
-		s.albumCoverMutex.Lock()
-		s.albumCovers[albumKey] = coverPath
-		s.albumCoverMutex.Unlock()
-		return coverPath
-	}
-
 	// Try to find local cover art file in the audio file's folder
 	localCover := s.findLocalCover(folderPath)
 	if localCover != "" {
-		// Copy local cover to our cover cache
-		if err := s.copyCoverFile(localCover, coverPath); err == nil {
+		// Get content-based path (deduplicates identical covers)
+		coverPath := s.saveCoverWithContentHash(localCover, nil)
+		if coverPath != "" {
 			s.albumCoverMutex.Lock()
 			s.albumCovers[albumKey] = coverPath
 			s.albumCoverMutex.Unlock()
@@ -954,7 +993,9 @@ func (s *Scanner) getAlbumCover(artist, album, folderPath, audioFilePath string)
 	// Try to extract embedded artwork
 	embeddedCover := s.extractEmbeddedArtwork(audioFilePath)
 	if embeddedCover != nil {
-		if err := os.WriteFile(coverPath, embeddedCover, 0644); err == nil {
+		// Get content-based path (deduplicates identical covers)
+		coverPath := s.saveCoverWithContentHash("", embeddedCover)
+		if coverPath != "" {
 			s.albumCoverMutex.Lock()
 			s.albumCovers[albumKey] = coverPath
 			s.albumCoverMutex.Unlock()
@@ -964,6 +1005,46 @@ func (s *Scanner) getAlbumCover(artist, album, folderPath, audioFilePath string)
 
 	// No cover found
 	return ""
+}
+
+// saveCoverWithContentHash saves cover art using a content-based hash as filename.
+// This deduplicates identical covers - if the same image is used by multiple albums,
+// only one copy is stored. Pass either srcPath (file path) or data (raw bytes), not both.
+func (s *Scanner) saveCoverWithContentHash(srcPath string, data []byte) string {
+	var coverData []byte
+	var err error
+
+	if srcPath != "" {
+		// Read from file
+		coverData, err = os.ReadFile(srcPath)
+		if err != nil {
+			logger.Scanner("Failed to read cover file %s: %v", srcPath, err)
+			return ""
+		}
+	} else if len(data) > 0 {
+		coverData = data
+	} else {
+		return ""
+	}
+
+	// Hash the content
+	contentHash := sha256.Sum256(coverData)
+	coverFileName := hex.EncodeToString(contentHash[:8]) + ".jpg"
+	coverPath := filepath.Join(s.coverDir, coverFileName)
+
+	// Check if cover with this content already exists
+	if _, err := os.Stat(coverPath); err == nil {
+		// Already exists, just return the path
+		return coverPath
+	}
+
+	// Write the cover file
+	if err := os.WriteFile(coverPath, coverData, 0644); err != nil {
+		logger.Scanner("Failed to write cover file %s: %v", coverPath, err)
+		return ""
+	}
+
+	return coverPath
 }
 
 // findLocalCover looks for cover art files in a directory
@@ -991,24 +1072,6 @@ func (s *Scanner) findLocalCover(folderPath string) string {
 	}
 
 	return ""
-}
-
-// copyCoverFile copies a cover image to the cache directory
-func (s *Scanner) copyCoverFile(src, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	return err
 }
 
 // extractEmbeddedArtwork extracts cover art embedded in the audio file

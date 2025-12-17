@@ -78,6 +78,11 @@ func (f *FSEventsDetector) scanDirectoryForChanges(dirPath string, since time.Ti
 
 		// For directories, check if we can skip the entire subtree
 		if info.IsDir() {
+			// Check if this directory should be skipped
+			dirName := info.Name()
+			if shouldSkipDirectory(dirName) {
+				return filepath.SkipDir
+			}
 			// If directory hasn't been modified since last scan, we might be able to skip it
 			// Note: Directory mtime only changes when direct children are added/removed
 			// Files modified within maintain the same directory mtime

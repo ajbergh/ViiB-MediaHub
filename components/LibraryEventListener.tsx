@@ -43,6 +43,8 @@ interface LibraryEvent {
 const LibraryEventListener = () => {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const lastRefreshTimeRef = useRef<number>(0);
   const backendAvailable = useStore(state => state.backendAvailable);
   
   // Use refs for callbacks to prevent SSE reconnection on store updates
@@ -70,7 +72,12 @@ const LibraryEventListener = () => {
         case 'scan_complete':
           setScanning(false);
           setScanProgress('');
-          // Always refresh the library when scan completes
+          // Cancel any pending debounced refresh
+          if (refreshDebounceRef.current) {
+            clearTimeout(refreshDebounceRef.current);
+            refreshDebounceRef.current = null;
+          }
+          // Always refresh the library when scan completes - immediate, not debounced
           const added = libraryEvent.newSongs || 0;
           const removed = libraryEvent.removedSongs || 0;
           console.log(`🎵 Scan complete (${added} new, ${removed} removed), refreshing library...`);
@@ -82,8 +89,31 @@ const LibraryEventListener = () => {
           break;
 
         case 'library_updated':
-          console.log(`📚 Library updated: ${libraryEvent.message}, refreshing view...`);
-          refreshLibrary();
+          console.log(`📚 Library updated: ${libraryEvent.message}`);
+          // Use throttle + debounce: refresh at most every 2s during scan, plus final debounced refresh
+          const now = Date.now();
+          const timeSinceLastRefresh = now - lastRefreshTimeRef.current;
+          
+          // Clear any pending debounced refresh
+          if (refreshDebounceRef.current) {
+            clearTimeout(refreshDebounceRef.current);
+          }
+          
+          // Throttle: if more than 2s since last refresh, refresh immediately
+          if (timeSinceLastRefresh >= 2000) {
+            console.log(`📚 Throttled refresh triggered (${timeSinceLastRefresh}ms since last)`);
+            lastRefreshTimeRef.current = now;
+            refreshLibrary();
+          }
+          
+          // Debounce: schedule a refresh for 500ms after last event (for final update)
+          refreshDebounceRef.current = setTimeout(() => {
+            console.log(`📚 Debounced refresh triggered`);
+            lastRefreshTimeRef.current = Date.now();
+            refreshLibrary();
+            refreshDebounceRef.current = null;
+          }, 500);
+          
           // Dispatch window event for components that need to know (e.g., Genres page)
           window.dispatchEvent(new CustomEvent('library_updated', { detail: libraryEvent }));
           break;

@@ -1,0 +1,178 @@
+name: Build Windows (Wails)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug build'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  CGO_ENABLED: 1
+  GO_VERSION: '1.22'
+  NODE_VERSION: '20'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install MSYS2 (for CGO/SQLite)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+
+      - name: Add MSYS2 to PATH
+        run: echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
+
+      - name: Verify CGO compiler
+        run: gcc --version
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Verify Wails installation
+        run: wails version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Prepare Wails frontend directory
+        run: |
+          $dest = "backend\cmd\wails\frontend\dist"
+          if (Test-Path $dest) { 
+            Remove-Item -Recurse -Force $dest 
+          }
+          New-Item -ItemType Directory -Path "backend\cmd\wails\frontend" -Force | Out-Null
+          Copy-Item -Recurse "dist" $dest
+          Write-Host "Frontend copied to $dest"
+
+      - name: Download Go dependencies
+        working-directory: backend
+        run: go mod download
+
+      - name: Build Wails application
+        working-directory: backend/cmd/wails
+        run: |
+          $ldflags = "-s -w"
+          if ("${{ inputs.debug }}" -eq "true") {
+            wails build -platform windows/amd64 -debug
+          } else {
+            wails build -platform windows/amd64 -ldflags "$ldflags"
+          }
+
+      - name: Verify build output
+        run: |
+          $exePath = "backend\cmd\wails\build\bin\ViiB-MediaHub.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Build failed: $exePath not found"
+            exit 1
+          }
+          $size = (Get-Item $exePath).Length / 1MB
+          Write-Host "✅ Build successful: $exePath ($([math]::Round($size, 2)) MB)"
+
+      - name: Sign executable
+        if: env.WIN_CERT_PFX != ''
+        env:
+          WIN_CERT_PFX: ${{ secrets.WIN_CERT_PFX }}
+          WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+        run: |
+          $certPath = "code-signing-cert.pfx"
+          [Convert]::FromBase64String($env:WIN_CERT_PFX) | Set-Content $certPath -AsByteStream
+          
+          # Find signtool
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" | 
+            Where-Object { $_.FullName -like "*x64*" } | 
+            Select-Object -First 1
+          
+          if (-not $signtool) {
+            Write-Warning "signtool.exe not found, skipping code signing"
+            exit 0
+          }
+          
+          & $signtool.FullName sign /f $certPath /p $env:WIN_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "backend\cmd\wails\build\bin\ViiB-MediaHub.exe"
+          
+          Remove-Item $certPath -Force
+          Write-Host "✅ Executable signed successfully"
+
+      - name: Run smoke test
+        run: |
+          $exePath = "backend\cmd\wails\build\bin\ViiB-MediaHub.exe"
+          
+          Write-Host "Starting smoke test..."
+          $process = Start-Process -FilePath $exePath -PassThru
+          
+          # Wait for app to start
+          Start-Sleep -Seconds 5
+          
+          try {
+            if ($process.HasExited) {
+              Write-Error "Process exited unexpectedly with code: $($process.ExitCode)"
+              exit 1
+            }
+            Write-Host "✅ Smoke test passed: App started successfully"
+          } finally {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Determine version
+        id: version
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          if (-not $version -or $version -eq "main" -or $version -eq "master") {
+            $version = "dev-${{ github.sha }}".Substring(0, 15)
+          }
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+
+      - name: Create release archive
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $archiveName = "ViiB-MediaHub-$version-windows-x64.zip"
+          
+          Compress-Archive -Path "backend\cmd\wails\build\bin\ViiB-MediaHub.exe" -DestinationPath $archiveName
+          
+          $size = (Get-Item $archiveName).Length / 1MB
+          Write-Host "✅ Created: $archiveName ($([math]::Round($size, 2)) MB)"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ViiB-MediaHub-${{ steps.version.outputs.VERSION }}-windows-x64
+          path: ViiB-MediaHub-*.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ViiB-MediaHub-*.zip
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

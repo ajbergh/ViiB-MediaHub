@@ -58,6 +58,11 @@ func (m *MtimeChangeDetector) GetChangesSince(since time.Time, watchPaths []stri
 			}
 
 			if info.IsDir() {
+				// Check if this directory should be skipped
+				dirName := info.Name()
+				if shouldSkipDirectory(dirName) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 

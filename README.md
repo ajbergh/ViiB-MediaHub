@@ -1,6 +1,9 @@
 # ViiB MediaHub
 
-A modern local media player for audio files, built with React 19 + TypeScript frontend and Go 1.22+ backend. Compiles to a single Windows executable that opens in your web browser.
+A modern local media player for audio files, built with React 19 + TypeScript frontend and Go 1.22+ backend. Supports two build modes:
+
+- **Web Build** - Single Windows executable that opens in your web browser
+- **Wails Build** - Native Windows desktop app with WebView2 window
 
 ## Features
 
@@ -121,9 +124,22 @@ ViiB-MediaHub/
 │   └── useKeyboardNavigation.ts    # Global keyboard shortcuts
 ├── lib/                # Audio engine, smart mix generator, parsers
 ├── workers/            # Web workers for background tasks
+├── docs/               # Documentation
+│   └── wails-windows-setup.md  # Wails development guide
+├── scripts/            # Build and dev scripts
+│   ├── build.ps1       # Web build (browser-based)
+│   ├── build-wails.ps1 # Native desktop build (Wails)
+│   ├── dev.ps1         # Web development mode
+│   └── dev-wails.ps1   # Wails development mode
 │
 └── backend/            # Go HTTP server
-    ├── cmd/viib/       # Entry point with system tray
+    ├── cmd/
+    │   ├── viib/       # Web build entry point (opens in browser)
+    │   │   └── main.go
+    │   └── wails/      # Native desktop entry point (WebView2)
+    │       ├── main.go
+    │       ├── wails.json
+    │       └── frontend/dist/
     └── internal/
         ├── api/        # REST API + SSE handlers
         ├── audio/      # Metadata extraction (taglib + dhowden/tag)
@@ -202,6 +218,33 @@ This will:
 1. Build the React frontend with Vite
 2. Embed the frontend into the Go binary
 3. Output `build/ViiB-MediaHub.exe`
+
+### Build Native Desktop App (Wails)
+
+For a native Windows desktop experience with WebView2 instead of opening in the browser:
+
+```powershell
+.\scripts\build-wails.ps1
+```
+
+This will:
+1. Build the React frontend with Vite
+2. Build a Wails application with embedded frontend
+3. Output `backend/cmd/wails/build/bin/ViiB-MediaHub.exe`
+
+**Wails Build Options:**
+```powershell
+.\scripts\build-wails.ps1 -Debug       # Enable dev tools
+.\scripts\build-wails.ps1 -Clean       # Clean build artifacts first
+.\scripts\build-wails.ps1 -SkipFrontend # Skip frontend rebuild
+```
+
+**Wails Development Mode:**
+```powershell
+.\scripts\dev-wails.ps1
+```
+
+For detailed Wails setup instructions, see [docs/wails-windows-setup.md](docs/wails-windows-setup.md).
 
 ### Run the Executable
 

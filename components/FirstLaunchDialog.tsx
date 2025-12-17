@@ -32,7 +32,7 @@ interface FirstLaunchDialogProps {
 export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, onComplete }) => {
   const [step, setStep] = useState(1);
   const [isScanning, setIsScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState('');
+  const [localScanProgress, setLocalScanProgress] = useState('');
 
   // Folder browser state
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
@@ -62,7 +62,9 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
     addScanFolder,
     removeScanFolder,
     setSpotifyCredentials,
-    addLog
+    addLog,
+    setScanning,
+    setScanProgress,
   } = useStore();
 
   // Load scan folders when dialog opens
@@ -211,9 +213,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
   const handleStartScanAndClose = async () => {
     if (scanFolders.length > 0) {
       try {
+        // Set global store scanning state immediately so Sidebar shows progress
+        setScanning(true);
+        setScanProgress('Starting initial scan...');
         await api.startScan();
         addLog('success', 'Library scan started in background');
       } catch (e) {
+        setScanning(false);
+        setScanProgress('');
         addLog('error', 'Failed to start scan', e);
       }
     }
@@ -227,6 +234,10 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
     }
 
     setIsScanning(true);
+    setLocalScanProgress('Starting scan...');
+    
+    // Also set global store state so Sidebar shows progress
+    setScanning(true);
     setScanProgress('Starting scan...');
 
     try {
@@ -236,12 +247,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       const pollInterval = setInterval(async () => {
         try {
           const status = await api.getScanStatus();
+          setLocalScanProgress(status.progress);
           setScanProgress(status.progress);
 
           if (!status.scanning) {
             clearInterval(pollInterval);
             setIsScanning(false);
-            setScanProgress('');
+            setLocalScanProgress('');
+            // Note: Don't clear global store state here - SSE will handle that
             onComplete();
           }
         } catch (e) {
@@ -259,6 +272,8 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
     } catch (e) {
       addLog('error', 'Failed to start scan', e);
       setIsScanning(false);
+      setLocalScanProgress('');
+      setScanning(false);
       setScanProgress('');
     }
   };

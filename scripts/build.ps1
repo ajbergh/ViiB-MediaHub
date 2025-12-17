@@ -27,7 +27,7 @@ if ($PSVersionTable.PSVersion.Major -lt 6) {
 
 Write-Host "Stopping any existing running Viib MediaHub Process..." -ForegroundColor Cyan
 Stop-Process -Name "ViiB-MediaHub" -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1
-Write-Host "Building ViiB MediaHub..." -ForegroundColor Cyan
+Write-Host "Building ViiB MediaHub for Web..." -ForegroundColor Cyan
 
 # Get the script's directory (project root)
 $projectRoot = Split-Path -Parent $PSScriptRoot

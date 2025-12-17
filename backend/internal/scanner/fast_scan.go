@@ -215,6 +215,12 @@ func (s *Scanner) checkDirectoryWithSignature(
 		}
 
 		if info.IsDir() {
+			// Check if this directory should be skipped
+			dirName := info.Name()
+			if shouldSkipDirectory(dirName) {
+				return filepath.SkipDir
+			}
+
 			dirsChecked++
 
 			// Check if we have a stored signature for this directory
@@ -399,6 +405,12 @@ func (s *Scanner) ComputeAndSaveDirectorySignatures() error {
 
 			if !info.IsDir() {
 				return nil
+			}
+
+			// Check if this directory should be skipped
+			dirName := info.Name()
+			if shouldSkipDirectory(dirName) {
+				return filepath.SkipDir
 			}
 
 			sig, err := s.computeQuickDirectorySignature(path)

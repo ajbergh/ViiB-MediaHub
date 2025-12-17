@@ -88,6 +88,12 @@ func (l *LinuxMtimeDetector) scanDirectoryForChanges(
 		}
 
 		if info.IsDir() {
+			// Check if this directory should be skipped
+			dirName := info.Name()
+			if shouldSkipDirectory(dirName) {
+				return filepath.SkipDir
+			}
+
 			// Check if we can skip this directory using stored signature
 			if sig, ok := sigMap[path]; ok {
 				// Get current directory stats

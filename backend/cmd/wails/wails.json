@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "ViiB-MediaHub",
+  "outputfilename": "ViiB-MediaHub",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "wailsjsdir": "./frontend",
+  "author": {
+    "name": "ajbergh",
+    "email": ""
+  },
+  "info": {
+    "companyName": "ViiB",
+    "productName": "ViiB MediaHub",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright © 2025 ViiB",
+    "comments": "Local media player with web UI - Native Windows desktop application"
+  }
+}
