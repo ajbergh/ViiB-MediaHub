@@ -15,9 +15,11 @@
  * - Visualizer display (when enabled)
  * - Responsive layout: stacks controls on narrow screens
  * - Hidden secondary controls on mobile (shuffle, repeat, EQ)
+ * - Windows SMTC integration via Media Session API
  * 
  * Keyboard shortcuts are handled by useKeyboardNavigation hook in Layout.
  * Integrates with useAudioPlayer hook for audio state management.
+ * Uses useMediaSession hook for Windows media controls integration.
  * 
  * @module Player
  */
@@ -32,6 +34,7 @@ import { ContextMenuType } from '../types';
 import { Visualizer } from './Visualizer';
 import { EqualizerPanel } from './Equalizer';
 import { SleepTimer, useSleepTimer } from './SleepTimer';
+import { useMediaSession } from '../hooks/useMediaSession';
 
 export const Player: React.FC = () => {
   const { 
@@ -45,6 +48,10 @@ export const Player: React.FC = () => {
       primaryRef, secondaryRef,
       currentTime, duration, handleTimeUpdate, handleEnded, seek 
   } = useAudioPlayer();
+
+  // Windows SMTC / Media Session API integration
+  // Provides media key support and Windows media overlay controls
+  useMediaSession(currentTime, duration, seek);
 
   // Sleep timer state
   const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
