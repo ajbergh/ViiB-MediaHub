@@ -20,7 +20,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2 } from 'lucide-react';
-import { formatTime } from '../utils';
+import { formatTime, getOAuthCallbackUrl, isWailsEnvironment } from '../utils';
 import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
@@ -320,38 +320,106 @@ export const Spotify: React.FC = () => {
         }
     }, [activeTab, spotifyUser, recentlyPlayed, savedAlbums, savedPlaylists, addLog]);
 
+    // Polling state for Wails cross-origin auth
+    const [isWaitingForAuth, setIsWaitingForAuth] = useState(false);
+    const pollIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
+
+    // Poll backend for auth completion (for Wails cross-origin popup)
+    useEffect(() => {
+        if (!isWaitingForAuth) return;
+        
+        const pollForAuth = async () => {
+            try {
+                const creds = await api.getSpotifyCredentials();
+                if (creds && creds.accessToken && creds.refreshToken) {
+                    console.log('[Spotify] Auth detected via backend polling');
+                    
+                    // Update Zustand with tokens from backend
+                    setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry || Date.now() + 3600000);
+                    
+                    // Fetch user profile
+                    try {
+                        const profile = await SpotifyService.getUserProfile();
+                        if (profile) {
+                            setSpotifyUser(profile);
+                            addLog('success', `Logged in as ${profile.display_name}`);
+                            showToast({ type: 'success', message: `Connected as ${profile.display_name}` });
+                        }
+                    } catch (e) {
+                        console.error('[Spotify] Failed to fetch profile after auth:', e);
+                    }
+                    
+                    setIsWaitingForAuth(false);
+                }
+            } catch (e) {
+                console.error('[Spotify] Poll error:', e);
+            }
+        };
+        
+        // Poll every 2 seconds
+        pollIntervalRef.current = setInterval(pollForAuth, 2000);
+        
+        return () => {
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+            }
+        };
+    }, [isWaitingForAuth, setSpotifyTokens, setSpotifyUser, addLog, showToast]);
+
     const handleLogin = async () => {
         if (!spotifyClientId || !spotifyClientSecret) {
             alert("Please configure your Client ID and Client Secret in Settings first.");
             return;
         }
 
-        // Ensure we use 127.0.0.1 instead of localhost for Spotify compliance
-        let origin = window.location.origin;
-        if (window.location.hostname === 'localhost') {
-            origin = origin.replace('localhost', '127.0.0.1');
-            if (window.location.origin !== origin) {
-                // If we are on localhost, we should probably redirect the user to 127.0.0.1 first
-                // or just use 127.0.0.1 for the callback and hope the popup handles it.
-                // But the popup needs to communicate back to the opener.
-                // If opener is localhost and popup is 127.0.0.1, cross-origin restrictions might apply.
-                // So it's better to warn the user to use 127.0.0.1.
-                alert("Please access this app via http://127.0.0.1:3000 instead of localhost to comply with Spotify's new security requirements.");
-                window.location.href = window.location.href.replace('localhost', '127.0.0.1');
-                return;
-            }
+        // Get the proper callback URL (handles Wails environment)
+        const redirectUri = await getOAuthCallbackUrl();
+        
+        // For standard web builds on localhost, prompt user to use 127.0.0.1
+        if (!isWailsEnvironment() && window.location.hostname === 'localhost') {
+            alert("Please access this app via http://127.0.0.1:3000 instead of localhost to comply with Spotify's new security requirements.");
+            window.location.href = window.location.href.replace('localhost', '127.0.0.1');
+            return;
         }
-
-        const redirectUri = `${origin}/callback`;
 
         addLog('info', 'Initiating Spotify Login', { redirectUri, clientId: spotifyClientId });
 
         const { url, codeVerifier } = await SpotifyService.generateAuthUrl(spotifyClientId, redirectUri);
 
+        // For Wails builds, save credentials to backend BEFORE opening popup
+        // This allows the cross-origin popup to fetch them
+        if (isWailsEnvironment()) {
+            try {
+                const preSaveData = {
+                    clientId: spotifyClientId,
+                    clientSecret: spotifyClientSecret,
+                    accessToken: '',
+                    refreshToken: '',
+                    expiry: 0,
+                    codeVerifier: codeVerifier // Save verifier for cross-origin callback
+                };
+                console.log('[Spotify] Pre-saving credentials to backend:', JSON.stringify(preSaveData));
+                await api.saveSpotifyCredentials(preSaveData);
+                console.log('[Spotify] Pre-saved credentials and verifier to backend for popup');
+            } catch (e) {
+                console.error('[Spotify] Failed to pre-save credentials:', e);
+                addLog('error', 'Failed to save credentials');
+                return;
+            }
+        }
+
         // Store verifier for the callback
         localStorage.setItem('spotify_code_verifier', codeVerifier);
+        // Also store the redirect URI for the callback to use
+        localStorage.setItem('spotify_redirect_uri', redirectUri);
 
         addLog('info', 'Opening Spotify Auth Popup', { url });
+
+        // Start polling for auth completion (for Wails)
+        if (isWailsEnvironment()) {
+            setIsWaitingForAuth(true);
+        }
 
         // Open popup
         const width = 600;
@@ -363,6 +431,7 @@ export const Spotify: React.FC = () => {
 
     const handleLogout = () => {
         logoutSpotify();
+        setIsWaitingForAuth(false);
         setSpotifyResults(null);
         setInputValue('');
     };

@@ -125,13 +125,14 @@ func createAPIProxyHandler(serverURL string) http.Handler {
 	proxy.FlushInterval = -1 // Flush immediately for every write
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Only handle /api requests
+		// Handle /api requests by proxying to the internal server
 		if strings.HasPrefix(r.URL.Path, "/api") {
 			logger.Main("Proxying request: %s %s", r.Method, r.URL.Path)
 			proxy.ServeHTTP(w, r)
 			return
 		}
-		// Return 404 for non-API requests (assets will be handled by Assets fs)
+
+		// Return 404 for other non-API requests (assets will be handled by Assets fs)
 		http.NotFound(w, r)
 	})
 }

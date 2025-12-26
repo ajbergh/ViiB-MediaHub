@@ -9,7 +9,7 @@ on:
       debug:
         description: 'Enable debug build'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 env:

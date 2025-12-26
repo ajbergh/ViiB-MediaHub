@@ -42,6 +42,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   scanProgress: '',
   backendAvailable: false,
   scanFolders: [],
+  likedSongIds: new Set(),
+  likedAlbumKeys: new Set(),
   enrichmentStatus: {
     isEnriching: false,
     totalSongs: 0,
@@ -59,12 +61,14 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       if (backendAvailable) {
           // Load from Go backend
           try {
-              const [songs, playlists, scanFolders, cachedAlbumMetadata, cachedArtistMetadata] = await Promise.all([
+              const [songs, playlists, scanFolders, cachedAlbumMetadata, cachedArtistMetadata, likedIds, likedAlbumKeysList] = await Promise.all([
                   backendService.getAllSongs(),
                   backendService.getAllPlaylists(),
                   backendService.getFolders(),
                   api.getAllAlbumMetadata().catch(() => [] as ApiAlbumMetadata[]),
-                  api.getAllArtistMetadata().catch(() => [] as ApiArtistMetadata[])
+                  api.getAllArtistMetadata().catch(() => [] as ApiArtistMetadata[]),
+                  api.getLikedSongIds().catch(() => [] as string[]),
+                  api.getLikedAlbumKeys().catch(() => [] as string[])
               ]);
               
               // Convert cached album metadata to the format used by the store
@@ -111,8 +115,10 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               }
               
               const mixes = generateSmartMixes(songs);
-              set({ songs, playlists, smartMixes: mixes, scanFolders, albumMetadata, artistMetadata });
-              console.log(`✅ Loaded ${songs.length} songs, ${Object.keys(albumMetadata).length} cached album metadata, ${Object.keys(artistMetadata).length} cached artist metadata from backend`);
+              const likedSongIds = new Set(likedIds);
+              const likedAlbumKeys = new Set(likedAlbumKeysList);
+              set({ songs, playlists, smartMixes: mixes, scanFolders, albumMetadata, artistMetadata, likedSongIds, likedAlbumKeys });
+              console.log(`✅ Loaded ${songs.length} songs, ${Object.keys(albumMetadata).length} cached album metadata, ${Object.keys(artistMetadata).length} cached artist metadata, ${likedIds.length} liked songs, ${likedAlbumKeysList.length} liked albums from backend`);
           } catch (e) {
               console.error("Failed to initialize library from backend", e);
           }
@@ -679,5 +685,121 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       };
       
       poll();
+  },
+
+  /**
+   * Toggle the liked status of a song
+   * Updates both backend and local state
+   */
+  toggleLikeSong: async (songId: string) => {
+      const { backendAvailable } = get();
+      if (!backendAvailable) {
+          console.warn('Backend not available, cannot toggle like');
+          return;
+      }
+
+      try {
+          const result = await api.toggleLike(songId);
+          const newLikedIds = new Set(get().likedSongIds);
+          
+          if (result.liked) {
+              newLikedIds.add(songId);
+          } else {
+              newLikedIds.delete(songId);
+          }
+          
+          // Update local song object as well
+          set((state) => ({
+              likedSongIds: newLikedIds,
+              songs: state.songs.map(s => 
+                  s.id === songId 
+                      ? { ...s, liked: result.liked, likedAt: result.liked ? Date.now() : undefined }
+                      : s
+              )
+          }));
+          
+          console.log(`${result.liked ? '❤️' : '💔'} Song ${songId} ${result.liked ? 'liked' : 'unliked'}`);
+      } catch (e) {
+          console.error('Failed to toggle like:', e);
+      }
+  },
+
+  /**
+   * Sync liked songs from backend on initialization
+   * Populates the likedSongIds set for quick lookup
+   */
+  syncLikedSongs: async () => {
+      const { backendAvailable } = get();
+      if (!backendAvailable) return;
+
+      try {
+          const likedIds = await api.getLikedSongIds();
+          set({ likedSongIds: new Set(likedIds) });
+          console.log(`✅ Synced ${likedIds.length} liked songs from backend`);
+      } catch (e) {
+          console.error('Failed to sync liked songs:', e);
+      }
+  },
+
+  /**
+   * Check if a song is liked
+   * Uses the Set for O(1) lookup
+   */
+  isLikedSong: (songId: string) => {
+      return get().likedSongIds.has(songId);
+  },
+
+  /**
+   * Toggle the liked status of an album
+   * Updates both backend and local state
+   */
+  toggleLikeAlbum: async (albumKey: string) => {
+      const { backendAvailable } = get();
+      if (!backendAvailable) {
+          console.warn('Backend not available, cannot toggle album like');
+          return;
+      }
+
+      try {
+          const result = await api.toggleAlbumLike(albumKey);
+          const newLikedKeys = new Set(get().likedAlbumKeys);
+          
+          if (result.liked) {
+              newLikedKeys.add(albumKey);
+          } else {
+              newLikedKeys.delete(albumKey);
+          }
+          
+          set({ likedAlbumKeys: newLikedKeys });
+          
+          console.log(`${result.liked ? '❤️' : '💔'} Album "${albumKey}" ${result.liked ? 'liked' : 'unliked'}`);
+      } catch (e) {
+          console.error('Failed to toggle album like:', e);
+      }
+  },
+
+  /**
+   * Sync liked albums from backend on initialization
+   * Populates the likedAlbumKeys set for quick lookup
+   */
+  syncLikedAlbums: async () => {
+      const { backendAvailable } = get();
+      if (!backendAvailable) return;
+
+      try {
+          const likedKeys = await api.getLikedAlbumKeys();
+          set({ likedAlbumKeys: new Set(likedKeys) });
+          console.log(`✅ Synced ${likedKeys.length} liked albums from backend`);
+      } catch (e) {
+          console.error('Failed to sync liked albums:', e);
+      }
+  },
+
+  /**
+   * Check if an album is liked
+   * Uses the Set for O(1) lookup
+   */
+  isLikedAlbum: (albumKey: string) => {
+      return get().likedAlbumKeys.has(albumKey);
   },
 });

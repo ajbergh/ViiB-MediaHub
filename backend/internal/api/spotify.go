@@ -29,6 +29,7 @@ type SpotifyCredentials struct {
 	AccessToken  string `json:"accessToken"`  // OAuth access token (expires in 1 hour)
 	RefreshToken string `json:"refreshToken"` // OAuth refresh token (used to get new access tokens)
 	Expiry       int64  `json:"expiry"`       // Unix timestamp when access token expires
+	CodeVerifier string `json:"codeVerifier"` // PKCE code verifier (used during auth flow)
 }
 
 // DownloadResponse extends SpotifyDownload with extracted metadata fields.
@@ -73,6 +74,8 @@ func (a *API) saveSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+
+	log.Printf("[Spotify] Saving credentials. ClientID: %s, HasVerifier: %v", creds.ClientId, creds.CodeVerifier != "")
 
 	// Store credentials as JSON string for atomic read/write
 	// This ensures all credential fields are updated together

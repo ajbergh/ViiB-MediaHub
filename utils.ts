@@ -56,6 +56,48 @@ export const cssUrl = (url: string): string => {
 };
 
 /**
+ * Detects if the app is running in a Wails environment (native desktop).
+ * Wails uses 'wails.localhost' as the hostname for the WebView.
+ */
+export const isWailsEnvironment = (): boolean => {
+  return window.location.hostname === 'wails.localhost';
+};
+
+/**
+ * Gets the OAuth callback URL, handling the Wails environment specially.
+ * In Wails, we need to use the backend server URL for OAuth callbacks
+ * since 'wails.localhost' is not a valid redirect URI for Spotify.
+ * 
+ * For Wails builds, this returns a URL like: http://127.0.0.1:PORT/callback
+ * For web builds, this returns the current origin + /callback
+ */
+export const getOAuthCallbackUrl = async (): Promise<string> => {
+  if (isWailsEnvironment()) {
+    // Try to get the server URL from Wails bindings
+    try {
+      // @ts-ignore - window.go is injected by Wails runtime
+      if (window.go?.main?.App?.GetServerURL) {
+        const serverUrl = await window.go.main.App.GetServerURL();
+        return `${serverUrl}/callback`;
+      }
+    } catch (e) {
+      console.error('Failed to get Wails server URL:', e);
+    }
+    // Fallback: use 127.0.0.1 with the current port (or default 8080)
+    // This shouldn't happen in production since GetServerURL should work
+    return 'http://127.0.0.1:8080/callback';
+  }
+  
+  // Standard web build - use current origin
+  let origin = window.location.origin;
+  if (window.location.hostname === 'localhost') {
+    // Spotify prefers 127.0.0.1 over localhost
+    origin = origin.replace('localhost', '127.0.0.1');
+  }
+  return `${origin}/callback`;
+};
+
+/**
  * Generates a CSS background property with a cover image or gradient fallback.
  */
 export const coverBackground = (coverUrl: string | undefined, fallbackSeed: string): string => {

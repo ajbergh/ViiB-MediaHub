@@ -36,9 +36,9 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
 
-	// CORS for development
+	// CORS for development and Wails builds (wails.localhost)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:*", "http://127.0.0.1:*"},
+		AllowedOrigins:   []string{"http://localhost:*", "http://127.0.0.1:*", "http://wails.localhost", "http://wails.localhost:*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,

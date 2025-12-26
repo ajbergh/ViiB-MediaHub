@@ -24,6 +24,8 @@ import { formatTime, generateGradient } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
 import api from '../services/api';
+import { LikeButton } from '../components/LikeButton';
+import { AlbumLikeButton } from '../components/AlbumLikeButton';
 
 // Separate Header Component to be stable
 const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
@@ -37,6 +39,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
         albumObject,
         coverUrl,
         metadata,
+        metadataKey,
         firstSong,
         artist,
         year,
@@ -138,7 +141,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                     >
                         <Play size={28} className="fill-current ml-1" />
                     </button>
-                    <button className="text-text-secondary hover:text-white transition-all duration-200" aria-label="Like album"><Heart size={32} /></button>
+                    <AlbumLikeButton albumKey={metadataKey} size={32} className="text-text-secondary hover:text-white" />
                     <button className="text-text-secondary hover:text-white transition-all duration-200" aria-label="Download album"><Download size={32} /></button>
                     <div className="relative">
                         <button 
@@ -348,6 +351,7 @@ export const AlbumDetail: React.FC = () => {
         albumObject,
         coverUrl,
         metadata,
+        metadataKey,
         firstSong,
         artist,
         year,
@@ -421,7 +425,8 @@ export const AlbumDetail: React.FC = () => {
                                     {formatTime(song.duration)}
                                 </div>
 
-                                <div className="hidden group-hover:flex justify-end pr-2 absolute right-2">
+                                <div className="hidden group-hover:flex items-center gap-2 justify-end pr-2 absolute right-2">
+                                        <LikeButton songId={song.id} size={18} />
                                         <button 
                                         onClick={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                                         className="text-text-secondary hover:text-white transition-all duration-200"

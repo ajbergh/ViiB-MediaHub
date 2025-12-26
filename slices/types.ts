@@ -146,6 +146,10 @@ export interface LibrarySlice {
   backendAvailable: boolean;
   scanFolders: ScanFolder[];
   
+  // Likes state
+  likedSongIds: Set<string>;
+  likedAlbumKeys: Set<string>;
+  
   // Genre enrichment state
   enrichmentStatus: EnrichmentStatus;
   
@@ -168,6 +172,16 @@ export interface LibrarySlice {
   setScanning: (isScanning: boolean) => void;
   setScanProgress: (progress: string) => void;
   setEnrichmentStatus: (status: Partial<EnrichmentStatus>) => void;
+  
+  // Likes management
+  toggleLikeSong: (songId: string) => Promise<void>;
+  syncLikedSongs: () => Promise<void>;
+  isLikedSong: (songId: string) => boolean;
+  
+  // Album likes management
+  toggleLikeAlbum: (albumKey: string) => Promise<void>;
+  syncLikedAlbums: () => Promise<void>;
+  isLikedAlbum: (albumKey: string) => boolean;
   
   // Backend folder management
   loadScanFolders: () => Promise<void>;

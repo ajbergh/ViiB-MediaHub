@@ -99,6 +99,8 @@ type Song struct {
 	BPM            int      `json:"bpm,omitempty"`            // Beats per minute (if analyzed)
 	Instrumental   bool     `json:"instrumental,omitempty"`   // true if song has no vocals
 	MoodAnalyzedAt int64    `json:"moodAnalyzedAt,omitempty"` // Timestamp of mood analysis
+	Liked          bool     `json:"liked,omitempty"`          // true if user has liked this song
+	LikedAt        int64    `json:"likedAt,omitempty"`        // Timestamp when song was liked
 }
 
 // Playlist represents a user-defined playlist persisted in the database.
@@ -373,6 +375,49 @@ func (d *DB) migrateColumns() error {
 		}
 	}
 
+	// Check for liked column (added for likes feature) and add if missing
+	err = d.conn.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name='liked'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		likeMigrations := []string{
+			`ALTER TABLE songs ADD COLUMN liked INTEGER DEFAULT 0`,
+			`ALTER TABLE songs ADD COLUMN liked_at INTEGER`,
+		}
+		for _, m := range likeMigrations {
+			if _, err := d.conn.Exec(m); err != nil {
+				if !strings.Contains(err.Error(), "duplicate column") {
+					return err
+				}
+			}
+		}
+		// Create index for fast liked song queries
+		if _, err := d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_songs_liked ON songs(liked) WHERE liked = 1`); err != nil {
+			// Ignore if index already exists
+			if !strings.Contains(err.Error(), "already exists") {
+				return err
+			}
+		}
+	}
+
+	// Migration: Add liked columns to album_metadata
+	albumLikeMigrations := []string{
+		`ALTER TABLE album_metadata ADD COLUMN liked INTEGER DEFAULT 0`,
+		`ALTER TABLE album_metadata ADD COLUMN liked_at INTEGER`,
+	}
+	for _, m := range albumLikeMigrations {
+		if _, err := d.conn.Exec(m); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				// Ignore duplicate column errors
+			}
+		}
+	}
+	// Create index for fast liked album queries
+	if _, err := d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_album_metadata_liked ON album_metadata(liked) WHERE liked = 1`); err != nil {
+		// Ignore if index already exists
+	}
+
 	// Migrate unencrypted sensitive settings to encrypted format
 	if err := d.migrateUnencryptedSettings(); err != nil {
 		return err
@@ -439,7 +484,8 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
 		       genre, year, duration, file_path, cover_path, added_at,
 		       play_count, last_played, skip_count, file_hash,
-		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at,
+		       liked, liked_at
 		FROM songs
 		ORDER BY album, disc_number, track_number, title
 	`)
@@ -457,6 +503,7 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 		var lastPlayed sql.NullInt64
 		var mood, energy, tempo sql.NullString
 		var bpm, instrumental, moodAnalyzedAt sql.NullInt64
+		var liked, likedAt sql.NullInt64
 
 		err := rows.Scan(
 			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
@@ -464,6 +511,7 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 			&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
 			&playCount, &lastPlayed, &skipCount, &fileHash,
 			&mood, &energy, &tempo, &bpm, &instrumental, &moodAnalyzedAt,
+			&liked, &likedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -516,6 +564,12 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 		}
 		if moodAnalyzedAt.Valid {
 			s.MoodAnalyzedAt = moodAnalyzedAt.Int64
+		}
+		if liked.Valid {
+			s.Liked = liked.Int64 == 1
+		}
+		if likedAt.Valid {
+			s.LikedAt = likedAt.Int64
 		}
 
 		songs = append(songs, s)
@@ -701,7 +755,8 @@ func (d *DB) GetSongsByMoodCriteria(mood, energy, tempo string, genreNames []str
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
 		       genre, year, duration, file_path, cover_path, added_at,
 		       play_count, last_played, skip_count, file_hash,
-		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at,
+		       liked, liked_at
 		FROM songs
 		WHERE 1=1
 	`
@@ -871,17 +926,20 @@ func (d *DB) GetSongByID(id string) (*Song, error) {
 	var albumArtist, coverPath, fileHash sql.NullString
 	var trackNum, discNum, year, playCount, skipCount sql.NullInt64
 	var lastPlayed sql.NullInt64
+	var liked, likedAt sql.NullInt64
 
 	err := d.conn.QueryRow(`
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
 		       genre, year, duration, file_path, cover_path, added_at,
-		       play_count, last_played, skip_count, file_hash
+		       play_count, last_played, skip_count, file_hash,
+		       liked, liked_at
 		FROM songs WHERE id = ?
 	`, id).Scan(
 		&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
 		&trackNum, &discNum, &genreJSON, &year,
 		&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
 		&playCount, &lastPlayed, &skipCount, &fileHash,
+		&liked, &likedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -917,6 +975,12 @@ func (d *DB) GetSongByID(id string) (*Song, error) {
 	if fileHash.Valid {
 		s.FileHash = fileHash.String
 	}
+	if liked.Valid {
+		s.Liked = liked.Int64 == 1
+	}
+	if likedAt.Valid {
+		s.LikedAt = likedAt.Int64
+	}
 
 	return &s, nil
 }
@@ -929,6 +993,266 @@ func (d *DB) UpdatePlayCount(id string) error {
 		WHERE id = ?
 	`, time.Now().UnixMilli(), id)
 	return err
+}
+
+// ToggleLike toggles the liked status of a song and returns the new liked state.
+// If the song is currently liked, it will be unliked (and likedAt cleared).
+// If the song is not liked, it will be liked (and likedAt set to current time).
+func (d *DB) ToggleLike(songID string) (bool, int64, error) {
+	// First get current state
+	var liked sql.NullInt64
+	err := d.conn.QueryRow(`SELECT liked FROM songs WHERE id = ?`, songID).Scan(&liked)
+	if err != nil {
+		return false, 0, err
+	}
+
+	isCurrentlyLiked := liked.Valid && liked.Int64 == 1
+	newLiked := !isCurrentlyLiked
+	var likedAt int64
+
+	if newLiked {
+		likedAt = time.Now().UnixMilli()
+		_, err = d.conn.Exec(`UPDATE songs SET liked = 1, liked_at = ? WHERE id = ?`, likedAt, songID)
+	} else {
+		likedAt = 0
+		_, err = d.conn.Exec(`UPDATE songs SET liked = 0, liked_at = NULL WHERE id = ?`, songID)
+	}
+
+	if err != nil {
+		return false, 0, err
+	}
+	return newLiked, likedAt, nil
+}
+
+// SetLike explicitly sets the liked status of a song.
+// Pass liked=true to like, liked=false to unlike.
+func (d *DB) SetLike(songID string, liked bool) (int64, error) {
+	var likedAt int64
+	var err error
+
+	if liked {
+		likedAt = time.Now().UnixMilli()
+		_, err = d.conn.Exec(`UPDATE songs SET liked = 1, liked_at = ? WHERE id = ?`, likedAt, songID)
+	} else {
+		likedAt = 0
+		_, err = d.conn.Exec(`UPDATE songs SET liked = 0, liked_at = NULL WHERE id = ?`, songID)
+	}
+
+	return likedAt, err
+}
+
+// BulkSetLike sets the liked status for multiple songs at once.
+// Returns the number of songs updated.
+func (d *DB) BulkSetLike(songIDs []string, liked bool) (int, error) {
+	if len(songIDs) == 0 {
+		return 0, nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var updated int
+	likedAt := time.Now().UnixMilli()
+
+	for _, id := range songIDs {
+		var result sql.Result
+		if liked {
+			result, err = tx.Exec(`UPDATE songs SET liked = 1, liked_at = ? WHERE id = ?`, likedAt, id)
+		} else {
+			result, err = tx.Exec(`UPDATE songs SET liked = 0, liked_at = NULL WHERE id = ?`, id)
+		}
+		if err != nil {
+			return 0, err
+		}
+		affected, _ := result.RowsAffected()
+		updated += int(affected)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return updated, nil
+}
+
+// GetLikedSongIDs returns the IDs of all liked songs, ordered by when they were liked (newest first).
+func (d *DB) GetLikedSongIDs() ([]string, error) {
+	rows, err := d.conn.Query(`
+		SELECT id FROM songs 
+		WHERE liked = 1
+		ORDER BY liked_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// Album Like Operations
+
+// ToggleAlbumLike toggles the liked status of an album and returns the new liked state.
+// If the album doesn't exist in album_metadata, it creates an entry for it.
+func (d *DB) ToggleAlbumLike(albumKey string) (bool, int64, error) {
+	// First check if album metadata exists
+	var liked sql.NullInt64
+	err := d.conn.QueryRow(`SELECT liked FROM album_metadata WHERE album_key = ?`, albumKey).Scan(&liked)
+
+	if err == sql.ErrNoRows {
+		// Album doesn't exist in metadata table - create a basic entry
+		// Parse album_key format: "AlbumName::ArtistName"
+		parts := strings.SplitN(albumKey, "::", 2)
+		albumName := albumKey
+		artistName := ""
+		if len(parts) == 2 {
+			albumName = parts[0]
+			artistName = parts[1]
+		}
+
+		likedAt := time.Now().UnixMilli()
+		_, err = d.conn.Exec(`
+			INSERT INTO album_metadata (album_key, album_name, artist_name, liked, liked_at)
+			VALUES (?, ?, ?, 1, ?)
+		`, albumKey, albumName, artistName, likedAt)
+		if err != nil {
+			return false, 0, err
+		}
+		return true, likedAt, nil
+	}
+	if err != nil {
+		return false, 0, err
+	}
+
+	isCurrentlyLiked := liked.Valid && liked.Int64 == 1
+	newLiked := !isCurrentlyLiked
+	var likedAt int64
+
+	if newLiked {
+		likedAt = time.Now().UnixMilli()
+		_, err = d.conn.Exec(`UPDATE album_metadata SET liked = 1, liked_at = ? WHERE album_key = ?`, likedAt, albumKey)
+	} else {
+		likedAt = 0
+		_, err = d.conn.Exec(`UPDATE album_metadata SET liked = 0, liked_at = NULL WHERE album_key = ?`, albumKey)
+	}
+
+	if err != nil {
+		return false, 0, err
+	}
+	return newLiked, likedAt, nil
+}
+
+// GetLikedAlbumKeys returns the album_keys of all liked albums, ordered by when they were liked (newest first).
+func (d *DB) GetLikedAlbumKeys() ([]string, error) {
+	rows, err := d.conn.Query(`
+		SELECT album_key FROM album_metadata 
+		WHERE liked = 1
+		ORDER BY liked_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+// GetLikedAlbums returns all liked albums with their metadata.
+func (d *DB) GetLikedAlbums() ([]AlbumMetadata, error) {
+	rows, err := d.conn.Query(`
+		SELECT album_key, album_name, artist_name, spotify_id, cover_url, local_cover_path,
+		       description, genre, release_date, spotify_url, copyright,
+		       spotify_checked, spotify_found, fetched_at, updated_at, liked, liked_at
+		FROM album_metadata
+		WHERE liked = 1
+		ORDER BY liked_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []AlbumMetadata
+	for rows.Next() {
+		var m AlbumMetadata
+		var spotifyID, coverURL, localCoverPath, description, genre, releaseDate, spotifyURL, copyright sql.NullString
+		var fetchedAt, updatedAt, liked, likedAt sql.NullInt64
+		var spotifyChecked, spotifyFound sql.NullInt64
+
+		err := rows.Scan(
+			&m.AlbumKey, &m.AlbumName, &m.ArtistName, &spotifyID, &coverURL, &localCoverPath,
+			&description, &genre, &releaseDate, &spotifyURL, &copyright,
+			&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt, &liked, &likedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if spotifyID.Valid {
+			m.SpotifyID = spotifyID.String
+		}
+		if coverURL.Valid {
+			m.CoverURL = coverURL.String
+		}
+		if localCoverPath.Valid {
+			m.LocalCoverPath = localCoverPath.String
+		}
+		if description.Valid {
+			m.Description = description.String
+		}
+		if genre.Valid {
+			m.Genre = genre.String
+		}
+		if releaseDate.Valid {
+			m.ReleaseDate = releaseDate.String
+		}
+		if spotifyURL.Valid {
+			m.SpotifyURL = spotifyURL.String
+		}
+		if copyright.Valid {
+			m.Copyright = copyright.String
+		}
+		if spotifyChecked.Valid {
+			m.SpotifyChecked = spotifyChecked.Int64 == 1
+		}
+		if spotifyFound.Valid {
+			m.SpotifyFound = spotifyFound.Int64 == 1
+		}
+		if fetchedAt.Valid {
+			m.FetchedAt = fetchedAt.Int64
+		}
+		if updatedAt.Valid {
+			m.UpdatedAt = updatedAt.Int64
+		}
+		if liked.Valid {
+			m.Liked = liked.Int64 == 1
+		}
+		if likedAt.Valid {
+			m.LikedAt = likedAt.Int64
+		}
+
+		results = append(results, m)
+	}
+
+	return results, rows.Err()
 }
 
 // GetRecentlyPlayedSongIDs returns IDs of songs played in the last N hours.
@@ -961,7 +1285,8 @@ func (d *DB) GetFrequentlyPlayedSongs(limit int) ([]Song, error) {
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
 		       genre, year, duration, file_path, cover_path, added_at,
 		       play_count, last_played, skip_count, file_hash,
-		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at,
+		       liked, liked_at
 		FROM songs
 		WHERE play_count > 0
 		ORDER BY play_count DESC
@@ -981,7 +1306,8 @@ func (d *DB) GetUnderplayedSongs(genreNames []string, maxPlayCount int, limit in
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
 		       genre, year, duration, file_path, cover_path, added_at,
 		       play_count, last_played, skip_count, file_hash,
-		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at,
+		       liked, liked_at
 		FROM songs
 		WHERE play_count <= ?
 	`
@@ -1077,7 +1403,8 @@ func (d *DB) GetSongsByArtist(artistName string) ([]Song, error) {
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
 		       genre, year, duration, file_path, cover_path, added_at,
 		       play_count, last_played, skip_count, file_hash,
-		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at
+		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at,
+		       liked, liked_at
 		FROM songs
 		WHERE LOWER(artist) = LOWER(?)
 		ORDER BY album, track_number
@@ -1152,7 +1479,7 @@ func (d *DB) GetSimilarArtists(artistName string, limit int) ([]string, error) {
 	return artists, rows.Err()
 }
 
-// scanSongsWithMood is a helper to scan song rows including mood fields.
+// scanSongsWithMood is a helper to scan song rows including mood and like fields.
 func (d *DB) scanSongsWithMood(rows *sql.Rows) ([]Song, error) {
 	var songs []Song
 	for rows.Next() {
@@ -1163,6 +1490,7 @@ func (d *DB) scanSongsWithMood(rows *sql.Rows) ([]Song, error) {
 		var lastPlayed sql.NullInt64
 		var mood, energy, tempo sql.NullString
 		var bpm, instrumental, moodAnalyzedAt sql.NullInt64
+		var liked, likedAt sql.NullInt64
 
 		err := rows.Scan(
 			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
@@ -1170,6 +1498,7 @@ func (d *DB) scanSongsWithMood(rows *sql.Rows) ([]Song, error) {
 			&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
 			&playCount, &lastPlayed, &skipCount, &fileHash,
 			&mood, &energy, &tempo, &bpm, &instrumental, &moodAnalyzedAt,
+			&liked, &likedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -1222,6 +1551,12 @@ func (d *DB) scanSongsWithMood(rows *sql.Rows) ([]Song, error) {
 		}
 		if moodAnalyzedAt.Valid {
 			s.MoodAnalyzedAt = moodAnalyzedAt.Int64
+		}
+		if liked.Valid {
+			s.Liked = liked.Int64 == 1
+		}
+		if likedAt.Valid {
+			s.LikedAt = likedAt.Int64
 		}
 
 		songs = append(songs, s)
@@ -1701,6 +2036,8 @@ type AlbumMetadata struct {
 	SpotifyFound   bool   `json:"spotifyFound"`   // True if Spotify returned results
 	FetchedAt      int64  `json:"fetchedAt,omitempty"`
 	UpdatedAt      int64  `json:"updatedAt,omitempty"`
+	Liked          bool   `json:"liked,omitempty"`   // True if user has liked this album
+	LikedAt        int64  `json:"likedAt,omitempty"` // Timestamp when album was liked
 }
 
 // GetAlbumMetadata retrieves cached metadata for an album
@@ -1773,7 +2110,7 @@ func (d *DB) GetAllAlbumMetadata() ([]AlbumMetadata, error) {
 	rows, err := d.conn.Query(`
 		SELECT album_key, album_name, artist_name, spotify_id, cover_url, local_cover_path,
 		       description, genre, release_date, spotify_url, copyright,
-		       spotify_checked, spotify_found, fetched_at, updated_at
+		       spotify_checked, spotify_found, fetched_at, updated_at, liked, liked_at
 		FROM album_metadata
 	`)
 	if err != nil {
@@ -1785,13 +2122,13 @@ func (d *DB) GetAllAlbumMetadata() ([]AlbumMetadata, error) {
 	for rows.Next() {
 		var m AlbumMetadata
 		var spotifyID, coverURL, localCoverPath, description, genre, releaseDate, spotifyURL, copyright sql.NullString
-		var fetchedAt, updatedAt sql.NullInt64
+		var fetchedAt, updatedAt, liked, likedAt sql.NullInt64
 		var spotifyChecked, spotifyFound sql.NullInt64
 
 		err := rows.Scan(
 			&m.AlbumKey, &m.AlbumName, &m.ArtistName, &spotifyID, &coverURL, &localCoverPath,
 			&description, &genre, &releaseDate, &spotifyURL, &copyright,
-			&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt,
+			&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt, &liked, &likedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -1832,6 +2169,12 @@ func (d *DB) GetAllAlbumMetadata() ([]AlbumMetadata, error) {
 		}
 		if updatedAt.Valid {
 			m.UpdatedAt = updatedAt.Int64
+		}
+		if liked.Valid {
+			m.Liked = liked.Int64 == 1
+		}
+		if likedAt.Valid {
+			m.LikedAt = likedAt.Int64
 		}
 
 		results = append(results, m)

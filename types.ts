@@ -4,7 +4,7 @@
  * Defines TypeScript interfaces and types used throughout the application:
  * 
  * Core Entities:
- * - Song: Audio file with metadata, URLs, and usage metrics
+ * - Song: Audio file with metadata, URLs, usage metrics, and like status
  * - Album: Aggregated from songs, includes cover and addedAt
  * - Artist: Aggregated from songs with smart name splitting
  * - Playlist: User-created collections with song references
@@ -63,6 +63,10 @@ export interface Song {
   bpm?: number; // Beats per minute
   instrumental?: boolean; // true if song has no vocals
   moodAnalyzedAt?: number; // timestamp of mood analysis
+
+  // User preferences
+  liked?: boolean; // true if user has liked this song
+  likedAt?: number; // timestamp when song was liked
 }
 
 export interface Album {

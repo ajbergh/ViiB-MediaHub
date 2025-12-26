@@ -24,7 +24,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { 
   Home, Music, Disc, Mic2, ListMusic, Tags,
   Download, Search, Settings, Library, Sparkles, Loader2,
-  ChevronLeft, ChevronRight, Menu, BarChart3
+  ChevronLeft, ChevronRight, Menu, BarChart3, Heart
 } from 'lucide-react';
 import { useStore } from '../store';
 import { SpotifyIcon } from './icons/SpotifyIcon';
@@ -68,8 +68,10 @@ const SidebarItem = ({ to, icon: Icon, label, badge, collapsed }: SidebarItemPro
 };
 
 export const Sidebar: React.FC = () => {
-  const { isScanning, scanProgress, downloadCount, enrichmentStatus } = useStore();
+  const { isScanning, scanProgress, downloadCount, enrichmentStatus, likedSongIds, likedAlbumKeys } = useStore();
   const [collapsed, setCollapsed] = useState(false);
+  const likedCount = likedSongIds.size;
+  const likedAlbumCount = likedAlbumKeys.size;
 
   // Debug: Log enrichment status changes
   console.log('🎨 Sidebar render - enrichmentStatus:', { 
@@ -117,6 +119,8 @@ export const Sidebar: React.FC = () => {
         <SidebarItem to="/genres" icon={Tags} label="Genres" collapsed={collapsed} />
         <SidebarItem to="/smart-playlists" icon={Sparkles} label="AI DJ" collapsed={collapsed} />
         <SidebarItem to="/playlists" icon={ListMusic} label="Playlists" collapsed={collapsed} />
+        <SidebarItem to="/liked" icon={Heart} label="Liked Songs" badge={likedCount > 0 ? likedCount : undefined} collapsed={collapsed} />
+        <SidebarItem to="/liked-albums" icon={Disc} label="Liked Albums" badge={likedAlbumCount > 0 ? likedAlbumCount : undefined} collapsed={collapsed} />
         </div>
 
         <div className={`my-4 border-t border-surface-highlight ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>

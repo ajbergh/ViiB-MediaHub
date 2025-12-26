@@ -24,6 +24,8 @@ import { Genres } from './pages/Genres';
 import { GenreDetail } from './pages/GenreDetail';
 import { SmartPlaylists } from './pages/SmartPlaylists';
 import { Playlists } from './pages/Playlists';
+import { LikedSongs } from './pages/LikedSongs';
+import { LikedAlbums } from './pages/LikedAlbums';
 import { Spotify } from './pages/Spotify';
 import { SpotifyCallback } from './pages/SpotifyCallback';
 import { SpotifyAlbumDetail } from './pages/SpotifyAlbumDetail';
@@ -156,6 +158,8 @@ const App: React.FC = () => {
           <Route path="/genres/:genreId" element={<GenreDetail />} />
           <Route path="/smart-playlists" element={<SmartPlaylists />} />
           <Route path="/playlists" element={<Playlists />} />
+          <Route path="/liked" element={<LikedSongs />} />
+          <Route path="/liked-albums" element={<LikedAlbums />} />
           <Route path="/smart-mix/:mixId" element={<SmartMixDetail />} />
           <Route path="/spotify" element={<Spotify />} />
           <Route path="/spotify/album/:id" element={<SpotifyAlbumDetail />} />

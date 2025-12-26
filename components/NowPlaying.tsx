@@ -65,7 +65,7 @@
 
 import React, { useState } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { X, Play, Pause, SkipBack, SkipForward, Shuffle, Heart, ListMusic, Activity, SlidersHorizontal, Image as ImageIcon, Volume2, Download, Loader2, CheckCircle } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Image as ImageIcon, Volume2, Download, Loader2, CheckCircle } from 'lucide-react';
 import { formatTime, generateGradient, cssUrl } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { api } from '../services/api';
@@ -73,6 +73,7 @@ import { Visualizer } from './Visualizer';
 import { LyricsView } from './now-playing/LyricsView';
 import { QueueList } from './now-playing/QueueList';
 import { AlbumArtVisualizer } from './now-playing/AlbumArtVisualizer';
+import { LikeButton } from './LikeButton';
 
 interface Props {
     currentTime: number;
@@ -313,9 +314,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                     <CheckCircle size={28} />
                                 </div>
                             )}
-                            <button className="text-white/50 hover:text-green-500 hover:scale-110 transition-all">
-                                <Heart size={32} />
-                            </button>
+                            <LikeButton songId={currentSong.id} size={32} />
                         </div>
                     </div>
                 </div>

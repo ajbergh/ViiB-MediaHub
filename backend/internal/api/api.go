@@ -115,6 +115,16 @@ func (a *API) Routes() chi.Router {
 	r.Get("/library/enrich-mood/stream", a.enrichMoodStream)     // SSE streaming mood enrichment
 	r.Post("/songs/{id}/play", a.recordPlay)
 
+	// Likes endpoints
+	r.Post("/songs/{id}/like", a.toggleLike)    // Toggle like status for a song
+	r.Get("/songs/liked", a.getLikedSongIDs)    // Get all liked song IDs
+	r.Post("/songs/like/bulk", a.bulkLikeSongs) // Bulk like/unlike songs (for albums)
+
+	// Album likes endpoints
+	r.Post("/albums/{albumKey}/like", a.toggleAlbumLike) // Toggle like status for an album
+	r.Get("/albums/liked", a.getLikedAlbumKeys)          // Get all liked album keys
+	r.Get("/albums/liked/full", a.getLikedAlbums)        // Get all liked albums with metadata
+
 	// Playlist endpoints
 	r.Get("/playlists", a.getPlaylists)
 	r.Post("/playlists", a.createPlaylist)
@@ -253,6 +263,148 @@ func (a *API) recordPlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, map[string]string{"status": "ok"})
+}
+
+// toggleLike toggles the liked status of a song.
+// POST /api/songs/{id}/like
+// Response: { "liked": true, "likedAt": 1735123456789 }
+func (a *API) toggleLike(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "Missing song ID")
+		return
+	}
+
+	liked, likedAt, err := a.db.ToggleLike(id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"id":      id,
+		"liked":   liked,
+		"likedAt": likedAt,
+	})
+}
+
+// getLikedSongIDs returns the IDs of all liked songs.
+// GET /api/songs/liked
+// Response: { "ids": ["songId1", "songId2", ...] }
+func (a *API) getLikedSongIDs(w http.ResponseWriter, r *http.Request) {
+	ids, err := a.db.GetLikedSongIDs()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if ids == nil {
+		ids = []string{}
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"ids": ids,
+	})
+}
+
+// bulkLikeSongs sets the liked status for multiple songs at once.
+// Useful for liking/unliking all songs in an album.
+// POST /api/songs/like/bulk
+// Request: { "songIds": ["id1", "id2"], "liked": true }
+// Response: { "updated": 5 }
+func (a *API) bulkLikeSongs(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SongIDs []string `json:"songIds"`
+		Liked   bool     `json:"liked"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	if len(req.SongIDs) == 0 {
+		respondError(w, http.StatusBadRequest, "No song IDs provided")
+		return
+	}
+
+	updated, err := a.db.BulkSetLike(req.SongIDs, req.Liked)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"updated": updated,
+	})
+}
+
+// Album Like Handlers
+
+// toggleAlbumLike toggles the liked status of an album.
+// POST /api/albums/{albumKey}/like
+// Response: { "albumKey": "...", "liked": true, "likedAt": 1735123456789 }
+func (a *API) toggleAlbumLike(w http.ResponseWriter, r *http.Request) {
+	albumKey := chi.URLParam(r, "albumKey")
+	if albumKey == "" {
+		respondError(w, http.StatusBadRequest, "Missing album key")
+		return
+	}
+
+	// URL-decode the album key since it comes from a URL path parameter
+	decodedKey, err := url.PathUnescape(albumKey)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid album key encoding")
+		return
+	}
+
+	liked, likedAt, err := a.db.ToggleAlbumLike(decodedKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"albumKey": decodedKey,
+		"liked":    liked,
+		"likedAt":  likedAt,
+	})
+}
+
+// getLikedAlbumKeys returns the album_keys of all liked albums.
+// GET /api/albums/liked
+// Response: { "albumKeys": ["albumKey1", "albumKey2", ...] }
+func (a *API) getLikedAlbumKeys(w http.ResponseWriter, r *http.Request) {
+	keys, err := a.db.GetLikedAlbumKeys()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if keys == nil {
+		keys = []string{}
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"albumKeys": keys,
+	})
+}
+
+// getLikedAlbums returns all liked albums with their metadata.
+// GET /api/albums/liked/full
+// Response: Array of AlbumMetadata objects
+func (a *API) getLikedAlbums(w http.ResponseWriter, r *http.Request) {
+	albums, err := a.db.GetLikedAlbums()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if albums == nil {
+		albums = []db.AlbumMetadata{}
+	}
+
+	respondJSON(w, albums)
 }
 
 func (a *API) getPlaylists(w http.ResponseWriter, r *http.Request) {

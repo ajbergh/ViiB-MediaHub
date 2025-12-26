@@ -77,6 +77,9 @@ export interface ApiSong {
   playCount?: number;
   lastPlayed?: number;
   skipCount?: number;
+  // User preferences
+  liked?: boolean;
+  likedAt?: number;
 }
 
 export interface ApiPlaylist {
@@ -183,6 +186,73 @@ export const api = {
   async recordPlay(songId: string): Promise<void> {
     const response = await fetch(`${API_BASE}/songs/${songId}/play`, { method: 'POST' });
     await handleResponse(response);
+  },
+
+  // Likes
+  /**
+   * Toggle the liked status of a song.
+   * @param songId - The ID of the song to like/unlike
+   * @returns The new liked state and timestamp
+   */
+  async toggleLike(songId: string): Promise<{ id: string; liked: boolean; likedAt: number }> {
+    const response = await fetch(`${API_BASE}/songs/${songId}/like`, { method: 'POST' });
+    return handleResponse(response);
+  },
+
+  /**
+   * Get all liked song IDs.
+   * @returns Array of song IDs that are liked
+   */
+  async getLikedSongIds(): Promise<string[]> {
+    const response = await fetch(`${API_BASE}/songs/liked`);
+    const data = await handleResponse<{ ids: string[] }>(response);
+    return data.ids;
+  },
+
+  /**
+   * Bulk like or unlike multiple songs at once.
+   * Useful for liking/unliking all songs in an album.
+   * @param songIds - Array of song IDs to update
+   * @param liked - True to like, false to unlike
+   * @returns Number of songs updated
+   */
+  async bulkLikeSongs(songIds: string[], liked: boolean): Promise<{ updated: number }> {
+    const response = await fetch(`${API_BASE}/songs/like/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ songIds, liked }),
+    });
+    return handleResponse(response);
+  },
+
+  // Album Likes
+  /**
+   * Toggle the liked status of an album.
+   * @param albumKey - The album key in "AlbumName::ArtistName" format
+   * @returns The new liked state and timestamp
+   */
+  async toggleAlbumLike(albumKey: string): Promise<{ albumKey: string; liked: boolean; likedAt: number }> {
+    const response = await fetch(`${API_BASE}/albums/${encodeURIComponent(albumKey)}/like`, { method: 'POST' });
+    return handleResponse(response);
+  },
+
+  /**
+   * Get all liked album keys.
+   * @returns Array of album keys that are liked
+   */
+  async getLikedAlbumKeys(): Promise<string[]> {
+    const response = await fetch(`${API_BASE}/albums/liked`);
+    const data = await handleResponse<{ albumKeys: string[] }>(response);
+    return data.albumKeys;
+  },
+
+  /**
+   * Get all liked albums with full metadata.
+   * @returns Array of album metadata objects
+   */
+  async getLikedAlbums(): Promise<ApiAlbumMetadata[]> {
+    const response = await fetch(`${API_BASE}/albums/liked/full`);
+    return handleResponse(response);
   },
 
   // Playlists
@@ -294,7 +364,7 @@ export const api = {
    * @param creds - OAuth credentials from Spotify authorization flow
    * @returns Promise resolving to success response
    */
-  async saveSpotifyCredentials(creds: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number }) {
+  async saveSpotifyCredentials(creds: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string }) {
     const response = await fetch(`${API_BASE}/spotify/credentials`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -311,7 +381,7 @@ export const api = {
    */
   async getSpotifyCredentials() {
     const response = await fetch(`${API_BASE}/spotify/credentials`);
-    return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number }>(response);
+    return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string }>(response);
   },
 
   /**
@@ -959,6 +1029,8 @@ export interface ApiAlbumMetadata {
   spotifyFound: boolean;      // True if Spotify returned results
   fetchedAt?: number;
   updatedAt?: number;
+  liked?: boolean;            // True if user has liked this album
+  likedAt?: number;           // Timestamp when album was liked
 }
 
 /**
