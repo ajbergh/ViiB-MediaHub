@@ -197,7 +197,7 @@ func (s *Scanner) Subscribe() chan LibraryEvent {
 	s.subscriberMutex.Lock()
 	s.subscribers[ch] = struct{}{}
 	s.subscriberMutex.Unlock()
-	logger.Scanner("New subscriber added, total: %d", len(s.subscribers))
+	logger.ScannerDebug("New subscriber added, total: %d", len(s.subscribers))
 	return ch
 }
 
@@ -207,7 +207,7 @@ func (s *Scanner) Unsubscribe(ch chan LibraryEvent) {
 	delete(s.subscribers, ch)
 	close(ch)
 	s.subscriberMutex.Unlock()
-	logger.Scanner("Subscriber removed, total: %d", len(s.subscribers))
+	logger.ScannerDebug("Subscriber removed, total: %d", len(s.subscribers))
 }
 
 // emitEvent broadcasts an event to all subscribers (non-blocking)
@@ -217,7 +217,7 @@ func (s *Scanner) emitEvent(event LibraryEvent) {
 
 	// Only log non-progress events to reduce log noise during bulk operations
 	if event.Type != "background_progress" {
-		logger.Scanner("Broadcasting event to %d subscribers: %s - %s", len(s.subscribers), event.Type, event.Message)
+		logger.ScannerDebug("Broadcasting event to %d subscribers: %s - %s", len(s.subscribers), event.Type, event.Message)
 	}
 
 	for ch := range s.subscribers {
@@ -1234,7 +1234,7 @@ func (s *Scanner) queueForEnrichment(batch []db.Song) {
 
 // processEnrichmentQueue handles background enrichment of songs
 func (s *Scanner) processEnrichmentQueue() {
-	logger.Scanner("Enrichment worker started")
+	logger.ScannerDebug("Enrichment worker started")
 
 	for batch := range s.enrichmentQueue {
 		// Check for API key (reload each time to catch updates)

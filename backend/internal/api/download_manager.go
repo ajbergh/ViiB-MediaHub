@@ -33,6 +33,11 @@ func dmLog(format string, v ...interface{}) {
 	logger.DownloadManager(format, v...)
 }
 
+// dmLogDebug is a helper for verbose download manager logging (debug mode only)
+func dmLogDebug(format string, v ...interface{}) {
+	logger.DownloadManagerDebug(format, v...)
+}
+
 // DownloadManager manages the Spotify download queue and processing.
 // It maintains a persistent queue in SQLite and processes downloads concurrently.
 // The manager uses librespot-go to authenticate with Spotify using OAuth tokens
@@ -682,16 +687,16 @@ func (dm *DownloadManager) dispatchDownloads() {
 // downloadWorker is a worker goroutine that processes downloads from the work channel.
 func (dm *DownloadManager) downloadWorker(workerID int) {
 	defer dm.workerWg.Done()
-	dmLog("Worker %d started", workerID)
+	dmLogDebug("Worker %d started", workerID)
 
 	for {
 		select {
 		case <-dm.ctx.Done():
-			dmLog("Worker %d stopping (context cancelled)", workerID)
+			dmLogDebug("Worker %d stopping (context cancelled)", workerID)
 			return
 		case download, ok := <-dm.workChan:
 			if !ok {
-				dmLog("Worker %d stopping (channel closed)", workerID)
+				dmLogDebug("Worker %d stopping (channel closed)", workerID)
 				return
 			}
 			dm.processDownload(workerID, download)

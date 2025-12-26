@@ -9,9 +9,14 @@
  * - Songs: Complete song library
  * - Albums: Album grid view
  * - Artists: Artist grid view
+ * - Genres: Genre listing
  * - Playlists: User playlists
+ * - Smart Playlists: AI DJ generated playlists
+ * - Liked Songs: Favorited songs
+ * - Liked Albums: Favorited albums
  * - Spotify: Spotify integration hub
  * - Downloads: Download queue (with active count badge)
+ * - Stats: Listening statistics
  * - Settings: Application configuration
  * 
  * Highlights active route and shows loading indicator during scans.
@@ -28,6 +33,8 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store';
 import { SpotifyIcon } from './icons/SpotifyIcon';
+import LargeLogo from './icons/Large-Logo1-black.png';
+import SmallLogo from './icons/appicon.png';
 
 interface SidebarItemProps {
   to: string;
@@ -68,10 +75,8 @@ const SidebarItem = ({ to, icon: Icon, label, badge, collapsed }: SidebarItemPro
 };
 
 export const Sidebar: React.FC = () => {
-  const { isScanning, scanProgress, downloadCount, enrichmentStatus, likedSongIds, likedAlbumKeys } = useStore();
+  const { isScanning, scanProgress, downloadCount, enrichmentStatus } = useStore();
   const [collapsed, setCollapsed] = useState(false);
-  const likedCount = likedSongIds.size;
-  const likedAlbumCount = likedAlbumKeys.size;
 
   // Debug: Log enrichment status changes
   console.log('🎨 Sidebar render - enrichmentStatus:', { 
@@ -86,24 +91,28 @@ export const Sidebar: React.FC = () => {
         collapsed ? 'w-16' : 'w-64'
       }`}
     >
-      <div className={`p-4 ${collapsed ? 'px-2' : 'p-6'} flex items-center justify-between`}>
+      <div className={`p-4 ${collapsed ? 'px-2 flex-col items-center' : 'p-6 items-center justify-between'} flex`}>
         {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-1 h-6 bg-brand rounded-full"></div>
-            <div className="w-1 h-4 bg-brand rounded-full"></div>
-            <div className="w-1 h-2 bg-brand rounded-full"></div>
-            <h1 className="text-xl font-bold tracking-tight text-text-main ml-2">ViiB MediaHub</h1>
+          <div className="flex items-center">
+            <img 
+              src={LargeLogo} 
+              alt="ViiB MediaHub" 
+              className="h-32 w-auto object-contain"
+            />
           </div>
         )}
         {collapsed && (
-          <div className="flex items-center gap-1 mx-auto">
-            <div className="w-1 h-5 bg-brand rounded-full"></div>
-            <div className="w-1 h-3 bg-brand rounded-full"></div>
+          <div className="flex items-center justify-center">
+            <img 
+              src={SmallLogo} 
+              alt="ViiB" 
+              className="h-32 w-32 object-contain"
+            />
           </div>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className={`p-1.5 rounded-lg text-text-subtle hover:text-text-main hover:bg-surface-hover transition-colors ${collapsed ? 'mx-auto block' : ''}`}
+          className={`p-1.5 rounded-lg text-text-subtle hover:text-text-main hover:bg-surface-hover transition-colors ${collapsed ? 'mt-2' : ''}`}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
@@ -119,8 +128,8 @@ export const Sidebar: React.FC = () => {
         <SidebarItem to="/genres" icon={Tags} label="Genres" collapsed={collapsed} />
         <SidebarItem to="/smart-playlists" icon={Sparkles} label="AI DJ" collapsed={collapsed} />
         <SidebarItem to="/playlists" icon={ListMusic} label="Playlists" collapsed={collapsed} />
-        <SidebarItem to="/liked" icon={Heart} label="Liked Songs" badge={likedCount > 0 ? likedCount : undefined} collapsed={collapsed} />
-        <SidebarItem to="/liked-albums" icon={Disc} label="Liked Albums" badge={likedAlbumCount > 0 ? likedAlbumCount : undefined} collapsed={collapsed} />
+        <SidebarItem to="/liked" icon={Heart} label="Liked Songs" collapsed={collapsed} />
+        <SidebarItem to="/liked-albums" icon={Disc} label="Liked Albums" collapsed={collapsed} />
         </div>
 
         <div className={`my-4 border-t border-surface-highlight ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>

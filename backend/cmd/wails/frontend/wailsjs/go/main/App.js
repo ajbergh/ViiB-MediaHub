@@ -13,3 +13,7 @@ export function GetServerURL() {
 export function GetVersion() {
   return window['go']['main']['App']['GetVersion']();
 }
+
+export function ShowWindow() {
+  return window['go']['main']['App']['ShowWindow']();
+}

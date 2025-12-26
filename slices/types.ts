@@ -263,6 +263,10 @@ export interface UISlice {
   confirmDialog: ConfirmDialogConfig | null;
   logs: LogEntry[];
   toasts: ToastConfig[];
+  
+  // Local search persistence
+  localSearchQuery: string;
+  localSearchTab: 'all' | 'tracks' | 'albums' | 'artists' | 'playlists';
 
   setQueueOpen: (isOpen: boolean) => void;
   setNowPlayingOpen: (isOpen: boolean) => void;
@@ -280,6 +284,10 @@ export interface UISlice {
   
   addLog: (level: LogEntry['level'], message: string, details?: any) => void;
   clearLogs: () => void;
+  
+  // Local search persistence
+  setLocalSearchQuery: (query: string) => void;
+  setLocalSearchTab: (tab: 'all' | 'tracks' | 'albums' | 'artists' | 'playlists') => void;
 }
 
 export type AppState = PlayerSlice & LibrarySlice & SpotifySlice & UISlice;

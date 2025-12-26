@@ -275,7 +275,7 @@ func (bs *BackgroundScanner) Stats() (processed, errors int64, queueSize int, ac
 
 // worker processes tasks from the queue
 func (bs *BackgroundScanner) worker(id int) {
-	logger.Scanner("Background worker %d started", id)
+	logger.ScannerDebug("Background worker %d started", id)
 
 	for {
 		// Check shutdown

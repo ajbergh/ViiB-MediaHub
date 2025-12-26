@@ -39,10 +39,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getlantern/systray"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/ajbergh/viib-mediahub/internal/api"
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -55,6 +58,11 @@ import (
 //
 //go:embed all:frontend/dist
 var frontendFS embed.FS
+
+// trayIconData embeds the system tray icon.
+//
+//go:embed build/windows/icon.ico
+var trayIconData []byte
 
 // Version information (can be set at build time with ldflags)
 var (
@@ -69,14 +77,16 @@ type App struct {
 	serverURL string
 	dataDir   string
 	database  *db.DB
+	quitChan  chan struct{} // Channel to signal app quit from systray
 }
 
 // NewApp creates a new App instance with the given configuration.
-func NewApp(serverURL, dataDir string, database *db.DB) *App {
+func NewApp(serverURL, dataDir string, database *db.DB, quitChan chan struct{}) *App {
 	return &App{
 		serverURL: serverURL,
 		dataDir:   dataDir,
 		database:  database,
+		quitChan:  quitChan,
 	}
 }
 
@@ -86,6 +96,22 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logger.Main("Wails application started")
 	logger.Main("API server available at %s", a.serverURL)
+
+	// Start listening for quit signal from systray
+	go func() {
+		<-a.quitChan
+		logger.Main("Quit signal received from system tray")
+		runtime.Quit(a.ctx)
+	}()
+}
+
+// ShowWindow shows and brings the application window to front.
+// This is called from the system tray.
+func (a *App) ShowWindow() {
+	if a.ctx != nil {
+		runtime.WindowShow(a.ctx)
+		runtime.WindowUnminimise(a.ctx)
+	}
 }
 
 // shutdown is called when the Wails app is closing.
@@ -127,7 +153,7 @@ func createAPIProxyHandler(serverURL string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Handle /api requests by proxying to the internal server
 		if strings.HasPrefix(r.URL.Path, "/api") {
-			logger.Main("Proxying request: %s %s", r.Method, r.URL.Path)
+			logger.MainDebug("Proxying request: %s %s", r.Method, r.URL.Path)
 			proxy.ServeHTTP(w, r)
 			return
 		}
@@ -159,8 +185,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize logger
-	if err := logger.Init(*dataDir); err != nil {
+	// Initialize logger with debug mode
+	if err := logger.InitWithDebug(*dataDir, *debug); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		// Continue anyway, logging will go to stdout
 	}
@@ -223,13 +249,58 @@ func main() {
 		}
 	}()
 
+	// Create quit channel for systray
+	quitChan := make(chan struct{})
+
 	// Create app instance for Wails bindings
-	app := NewApp(serverURL, *dataDir, database)
+	app := NewApp(serverURL, *dataDir, database, quitChan)
 
 	// Create API proxy handler for Wails AssetServer
 	// This routes /api/* requests to the HTTP server while letting
 	// the embedded distFS handle all other requests (frontend assets)
 	apiProxyHandler := createAPIProxyHandler(serverURL)
+
+	// Start system tray with external loop for integration with Wails
+	// The tray provides: Show window, Quit application
+	systrayReady := make(chan struct{})
+	go func() {
+		systray.Run(
+			func() {
+				// onReady - set up the systray
+				systray.SetIcon(trayIconData)
+				systray.SetTitle("ViiB MediaHub")
+				systray.SetTooltip("ViiB MediaHub - Local Media Player")
+
+				mShow := systray.AddMenuItem("Show ViiB MediaHub", "Show the application window")
+				systray.AddSeparator()
+				mQuit := systray.AddMenuItem("Quit", "Quit the application")
+
+				logger.Main("System tray initialized")
+				close(systrayReady)
+
+				// Handle menu clicks
+				for {
+					select {
+					case <-mShow.ClickedCh:
+						logger.Main("Systray: Show clicked")
+						app.ShowWindow()
+					case <-mQuit.ClickedCh:
+						logger.Main("Systray: Quit clicked")
+						close(quitChan)
+						return
+					}
+				}
+			},
+			func() {
+				// onExit - cleanup when systray exits
+				logger.Main("Systray exited")
+			},
+		)
+	}()
+
+	// Wait for systray to be ready before starting Wails
+	<-systrayReady
+	logger.Main("System tray ready, starting Wails...")
 
 	// Configure and run Wails application
 	err = wails.Run(&options.App{
@@ -242,8 +313,12 @@ func main() {
 		Fullscreen:        false,
 		Frameless:         false,
 		StartHidden:       false,
-		HideWindowOnClose: false,
+		HideWindowOnClose: true,                                       // Minimize to tray on close
 		BackgroundColour:  &options.RGBA{R: 18, G: 18, B: 18, A: 255}, // Match app background (#121212)
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId:               "viib-mediahub-unique-lock",
+			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {},
+		},
 		AssetServer: &assetserver.Options{
 			Assets:  distFS,
 			Handler: apiProxyHandler,
@@ -252,6 +327,12 @@ func main() {
 		OnShutdown: app.shutdown,
 		Bind: []interface{}{
 			app,
+		},
+		Mac: &mac.Options{
+			TitleBar:             mac.TitleBarDefault(),
+			Appearance:           mac.NSAppearanceNameDarkAqua,
+			WebviewIsTransparent: false,
+			WindowIsTranslucent:  false,
 		},
 		Windows: &windows.Options{
 			WebviewIsTransparent:              false,
@@ -273,6 +354,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Wails application error: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Clean up systray
+	systray.Quit()
 
 	// Graceful shutdown of HTTP server
 	logger.Main("Shutting down HTTP server...")

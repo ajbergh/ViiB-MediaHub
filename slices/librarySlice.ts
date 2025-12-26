@@ -10,6 +10,8 @@
  * - artistMetadata/albumMetadata: Spotify-enriched metadata cache
  * - scanFolders: Configured music directories
  * - isScanning: Library scan status
+ * - likedSongIds: Set of liked song IDs
+ * - likedAlbumKeys: Set of liked album keys ("Album::Artist" format)
  * 
  * Features:
  * - Library initialization from backend or IndexedDB
@@ -17,6 +19,7 @@
  * - Smart mix generation based on listening patterns
  * - Folder management and backend scanning
  * - Playlist CRUD operations
+ * - Song/Album like/unlike with backend persistence
  * 
  * @module librarySlice
  */

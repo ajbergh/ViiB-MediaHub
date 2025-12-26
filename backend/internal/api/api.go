@@ -2,8 +2,9 @@
 //
 // This package implements the complete REST API including:
 //   - Library management: songs, playlists, folders
+//   - Likes: song and album favorites with persistence
 //   - Media serving: audio streaming, cover art
-//   - Spotify integration: OAuth, search proxy, downloads
+//   - Spotify integration: OAuth, search proxy, downloads, streaming
 //   - Metadata caching: album and artist enrichment
 //   - Settings: key-value configuration storage
 //   - SSE endpoints: real-time download progress and library events
@@ -618,7 +619,7 @@ func (a *API) getScanStatus(w http.ResponseWriter, r *http.Request) {
 
 // libraryEventsSSE streams library events (scan complete, etc.) to the frontend via SSE
 func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
-	logger.API("libraryEventsSSE: Connection started")
+	logger.APIDebug("libraryEventsSSE: Connection started")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -635,7 +636,7 @@ func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
 	eventChan := a.scanner.Subscribe()
 	defer a.scanner.Unsubscribe(eventChan)
 
-	logger.API("libraryEventsSSE: Subscribed and entering event loop")
+	logger.APIDebug("libraryEventsSSE: Subscribed and entering event loop")
 	for {
 		select {
 		case <-r.Context().Done():
@@ -648,7 +649,7 @@ func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			// Only log non-progress events to reduce log noise during bulk operations
 			if event.Type != "background_progress" {
-				logger.API("libraryEventsSSE: Sending event: %s", event.Type)
+				logger.APIDebug("libraryEventsSSE: Sending event: %s", event.Type)
 			}
 			data, _ := json.Marshal(event)
 			fmt.Fprintf(w, "data: %s\n\n", data)
@@ -1327,7 +1328,7 @@ func (a *API) getAllArtistMetadata(w http.ResponseWriter, r *http.Request) {
 			withLocalImage++
 		}
 	}
-	logger.API("getAllArtistMetadata: Returning %d artists (%d with local images)", len(metadata), withLocalImage)
+	logger.APIDebug("getAllArtistMetadata: Returning %d artists (%d with local images)", len(metadata), withLocalImage)
 
 	respondJSON(w, metadata)
 }

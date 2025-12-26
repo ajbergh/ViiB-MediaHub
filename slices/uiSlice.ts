@@ -39,11 +39,19 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
     data: null,
   },
   confirmDialog: null,
+  
+  // Local search persistence
+  localSearchQuery: '',
+  localSearchTab: 'all',
 
   setQueueOpen: (isOpen) => set({ isQueueOpen: isOpen }),
   setNowPlayingOpen: (isOpen) => set({ isNowPlayingOpen: isOpen }),
   setShowSmartMixes: (show) => set({ showSmartMixes: show }),
   setHasCompletedSetup: (completed) => set({ hasCompletedSetup: completed }),
+  
+  // Local search persistence
+  setLocalSearchQuery: (query) => set({ localSearchQuery: query }),
+  setLocalSearchTab: (tab) => set({ localSearchTab: tab }),
 
   openContextMenu: (e, type, data) => {
     e.preventDefault();

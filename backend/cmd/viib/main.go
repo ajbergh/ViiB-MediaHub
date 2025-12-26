@@ -14,6 +14,7 @@
 //	-no-browser    Don't open browser automatically
 //	-no-tray       Disable system tray icon (useful for debugging)
 //	-data <path>   Custom data directory (default: %APPDATA%/ViiB-MediaHub)
+//	-debug         Enable verbose debug logging
 //
 // Data storage:
 //   - library.db: SQLite database for songs, playlists, settings
@@ -119,6 +120,7 @@ func main() {
 	noBrowser := flag.Bool("no-browser", false, "Don't open browser automatically")
 	noTray := flag.Bool("no-tray", false, "Disable system tray icon (useful for debugging)")
 	dataDir := flag.String("data", "", "Data directory (default: user config dir)")
+	debug := flag.Bool("debug", false, "Enable verbose debug logging")
 	flag.Parse()
 
 	logCrash("CHECKPOINT: After flag parsing")
@@ -141,7 +143,7 @@ func main() {
 	}
 
 	// Initialize the shared logger
-	if err := logger.Init(*dataDir); err != nil {
+	if err := logger.InitWithDebug(*dataDir, *debug); err != nil {
 		logCrash(fmt.Sprintf("ERROR: Failed to initialize logger: %v", err))
 	}
 	defer logger.Close()

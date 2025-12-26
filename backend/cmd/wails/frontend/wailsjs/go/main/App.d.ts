@@ -6,3 +6,5 @@ export function GetDataDir():Promise<string>;
 export function GetServerURL():Promise<string>;
 
 export function GetVersion():Promise<string>;
+
+export function ShowWindow():Promise<void>;

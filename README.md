@@ -62,6 +62,13 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
   - Library overview (total songs, albums, artists)
   - Weekly/monthly play counts
 
+### ❤️ Liked Songs & Albums
+- **Like Songs** - Click the heart icon on any song to mark it as a favorite
+- **Like Albums** - Click the heart icon on album pages to like entire albums
+- **Dedicated Pages** - "Liked Songs" and "Liked Albums" pages in the sidebar show all your favorites
+- **Persistence** - Likes are saved to the backend and restored on restart
+- **Sort Options** - Sort liked items by recently liked, name, or artist
+
 ### 📚 Library Management
 - **Folder Scanning** - Add multiple music folders with incremental scanning
 - **Ultra-Fast Startup** - Near-instant library loading using filesystem journals and directory signatures
@@ -286,6 +293,15 @@ The app will:
 | POST | `/api/scan` | Start library scan |
 | GET | `/api/scan/status` | Get scan status |
 | GET | `/api/library/events` | SSE stream for library events |
+
+### Likes
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/songs/{id}/like` | Toggle song like status |
+| GET | `/api/songs/liked` | Get all liked song IDs |
+| POST | `/api/albums/{key}/like` | Toggle album like status |
+| GET | `/api/albums/liked` | Get all liked album keys |
 
 ### Media
 
