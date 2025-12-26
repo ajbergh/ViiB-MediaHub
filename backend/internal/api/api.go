@@ -115,6 +115,7 @@ func (a *API) Routes() chi.Router {
 	r.Post("/library/enrich-mood", a.enrichMood)                 // Mood/energy enrichment
 	r.Get("/library/enrich-mood/stream", a.enrichMoodStream)     // SSE streaming mood enrichment
 	r.Post("/songs/{id}/play", a.recordPlay)
+	r.Patch("/songs/{id}/duration", a.updateSongDuration) // Update song duration from actual audio
 
 	// Likes endpoints
 	r.Post("/songs/{id}/like", a.toggleLike)    // Toggle like status for a song
@@ -263,6 +264,40 @@ func (a *API) recordPlay(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	respondJSON(w, map[string]string{"status": "ok"})
+}
+
+// updateSongDuration updates the duration of a song from the actual audio playback.
+// This fixes cases where metadata extraction reports incorrect duration.
+// PATCH /api/songs/{id}/duration
+// Request body: { "duration": 173.45 }
+// Response: { "status": "ok" }
+func (a *API) updateSongDuration(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "Missing song ID")
+		return
+	}
+
+	var body struct {
+		Duration float64 `json:"duration"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Only update if duration is positive and reasonable (under 24 hours)
+	if body.Duration <= 0 || body.Duration > 86400 {
+		respondError(w, http.StatusBadRequest, "Invalid duration value")
+		return
+	}
+
+	if err := a.db.UpdateSongDuration(id, body.Duration); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	respondJSON(w, map[string]string{"status": "ok"})
 }
 

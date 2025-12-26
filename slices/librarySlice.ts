@@ -363,6 +363,39 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       });
   },
 
+  /**
+   * updateSongDuration - Update a song's duration with the actual audio duration.
+   * This fixes cases where metadata extraction reports incorrect duration.
+   * Only updates if the difference is significant (> 5%).
+   */
+  updateSongDuration: (songId, duration) => {
+      const { backendAvailable, songs } = get();
+      const song = songs.find(s => s.id === songId);
+      
+      // Only update if duration is valid and significantly different (> 5% difference)
+      if (!song || !duration || duration <= 0) return;
+      const diff = Math.abs(song.duration - duration) / Math.max(song.duration, duration);
+      if (diff < 0.05) return; // Skip if difference is less than 5%
+      
+      console.log(`🔧 Fixing duration for "${song.title}": ${song.duration.toFixed(1)}s → ${duration.toFixed(1)}s`);
+      
+      set((state) => ({
+          songs: state.songs.map(s => 
+              s.id === songId ? { ...s, duration } : s
+          )
+      }));
+      
+      // Persist to backend
+      if (backendAvailable) {
+          api.updateSongDuration(songId, duration).catch(e => 
+              console.error('Failed to update duration on backend:', e)
+          );
+      } else {
+          const updatedSong = { ...song, duration };
+          libraryService.saveSongs([updatedSong]);
+      }
+  },
+
   fetchArtistMetadata: async (artistName) => {
       const state = get();
       if (state.artistMetadata[artistName] || state.fetchingArtists.has(artistName)) return;

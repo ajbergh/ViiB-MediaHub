@@ -70,6 +70,9 @@ export const useAudioPlayer = () => {
     // Track if we've already triggered preload for current song
     const hasTriggeredPreload = useRef<string | null>(null);
     
+    // Track if we've already fixed duration for current song
+    const hasFixedDuration = useRef<string | null>(null);
+    
     // Local state for UI updates
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -81,7 +84,7 @@ export const useAudioPlayer = () => {
         currentSong, isPlaying, volume, audioSettings,
         nextSong, recordPlay, preloadNextTrack, setBuffering, setBufferProgress,
         setStreamError, retryStream, clearStreamError, showToast, retryCount,
-        recordStreamEvent
+        recordStreamEvent, updateSongDuration
     } = useStore();
 
     // Init Engine & EQ
@@ -340,6 +343,9 @@ export const useAudioPlayer = () => {
             // Reset preload trigger for new song
             hasTriggeredPreload.current = null;
             
+            // Reset duration fix tracker for new song
+            hasFixedDuration.current = null;
+            
             // Reset buffering state for new track
             if (currentSong.isStreaming) {
                 setBuffering(true);
@@ -396,6 +402,17 @@ export const useAudioPlayer = () => {
             
             setCurrentTime(time);
             setDuration(dur);
+            
+            // Fix duration if it differs significantly from stored metadata
+            // Only do this once per song, when we have a valid duration
+            if (dur > 0 && currentSong && hasFixedDuration.current !== currentSong.id) {
+                hasFixedDuration.current = currentSong.id;
+                // Check if stored duration differs by more than 5%
+                const diff = Math.abs(currentSong.duration - dur) / Math.max(currentSong.duration, dur);
+                if (diff > 0.05) {
+                    updateSongDuration(currentSong.id, dur);
+                }
+            }
             
             // Trigger pre-buffering of next track when approaching end of current track
             if (dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {

@@ -669,6 +669,13 @@ func (d *DB) DeleteSong(id string) error {
 	return err
 }
 
+// UpdateSongDuration updates the duration for a song.
+// This is useful when the actual audio duration differs from metadata.
+func (d *DB) UpdateSongDuration(songID string, duration float64) error {
+	_, err := d.conn.Exec(`UPDATE songs SET duration = ? WHERE id = ?`, duration, songID)
+	return err
+}
+
 // UpdateSongMood updates the mood/energy/tempo/instrumental metadata for a song.
 func (d *DB) UpdateSongMood(songID, mood, energy, tempo string, bpm int, instrumental bool) error {
 	_, err := d.conn.Exec(`

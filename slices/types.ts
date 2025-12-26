@@ -164,6 +164,7 @@ export interface LibrarySlice {
   refreshSmartMixes: () => void;
   saveSmartMixAsPlaylist: (mixId: string) => Promise<Playlist | void>;
   recordPlay: (songId: string) => void;
+  updateSongDuration: (songId: string, duration: number) => void;
   
   fetchArtistMetadata: (artistName: string) => Promise<void>;
   fetchAlbumMetadata: (albumName: string, artistName: string) => Promise<void>;

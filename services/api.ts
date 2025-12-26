@@ -188,6 +188,21 @@ export const api = {
     await handleResponse(response);
   },
 
+  /**
+   * Update the duration of a song.
+   * Used to fix incorrect durations from metadata extraction with the actual audio duration.
+   * @param songId - The ID of the song to update
+   * @param duration - The correct duration in seconds
+   */
+  async updateSongDuration(songId: string, duration: number): Promise<void> {
+    const response = await fetch(`${API_BASE}/songs/${songId}/duration`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration }),
+    });
+    await handleResponse(response);
+  },
+
   // Likes
   /**
    * Toggle the liked status of a song.
