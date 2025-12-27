@@ -1220,6 +1220,44 @@ func (a *API) retryDownload(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "queued"})
 }
 
+func (a *API) forceRestartDownload(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "Missing download ID")
+		return
+	}
+
+	if err := a.downloadManager.ForceRestartDownload(id); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to force restart download: %v", err))
+		return
+	}
+
+	respondJSON(w, map[string]string{"status": "queued"})
+}
+
+// getSpotifyAuthStatus returns the current Spotify authentication status.
+// This is used to check if re-authentication is required (e.g., token expired/revoked).
+//
+// GET /api/spotify/auth/status
+// Response: {"authRequired": true/false, "message": "..."}
+func (a *API) getSpotifyAuthStatus(w http.ResponseWriter, r *http.Request) {
+	authRequired := a.downloadManager.IsAuthRequired()
+	respondJSON(w, map[string]interface{}{
+		"authRequired": authRequired,
+		"message":      "",
+	})
+}
+
+// refreshSpotifyAuth is called after the user re-authenticates with Spotify.
+// It clears the authRequired flag and resets the session to use new credentials.
+//
+// POST /api/spotify/auth/refresh
+// Response: {"status": "ok"}
+func (a *API) refreshSpotifyAuth(w http.ResponseWriter, r *http.Request) {
+	a.downloadManager.ClearAuthRequired()
+	respondJSON(w, map[string]string{"status": "ok"})
+}
+
 func (a *API) clearCompletedDownloads(w http.ResponseWriter, r *http.Request) {
 	count, err := a.downloadManager.ClearCompletedDownloads()
 	if err != nil {

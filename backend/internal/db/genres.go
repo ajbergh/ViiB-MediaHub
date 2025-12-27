@@ -265,7 +265,8 @@ func (d *DB) GetAllGenreStats() ([]GenreStat, error) {
 	}
 	defer rows.Close()
 
-	var stats []GenreStat
+	// Initialize as empty slice to ensure JSON serializes as [] not null
+	stats := make([]GenreStat, 0)
 	for rows.Next() {
 		var s GenreStat
 		var artistsJSON string
@@ -278,6 +279,10 @@ func (d *DB) GetAllGenreStats() ([]GenreStat, error) {
 		// Parse top artists JSON array
 		if err := json.Unmarshal([]byte(artistsJSON), &s.TopArtists); err != nil {
 			s.TopArtists = []string{} // Fallback to empty array on parse error
+		}
+		// Ensure TopArtists is never nil
+		if s.TopArtists == nil {
+			s.TopArtists = []string{}
 		}
 
 		// Cover URL is already in API format (/api/cover/{songId}) from UpdateGenreStats

@@ -172,7 +172,7 @@ export const Genres: React.FC = () => {
                   {genre.count} tracks
                 </p>
                 <div className="text-xs text-text-subtle truncate">
-                  {genre.topArtists.join(', ')}
+                  {genre.topArtists?.join(', ') || ''}
                 </div>
               </div>
             </div>

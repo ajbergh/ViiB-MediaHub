@@ -10,23 +10,27 @@
  * - Clear completed downloads
  * - Direct URL download dialog
  * - Status indicators with progress bars
+ * - Auth expiry detection with notification to reconnect
  * 
- * Download statuses: queued, downloading, completed, failed
+ * Download statuses: queued, downloading, completed, failed, auth_required
  * Files saved as OGG Vorbis format.
  * 
  * @module Downloads
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Download, Loader2, CheckCircle, XCircle, Clock, Trash2, Music, RefreshCw, RotateCcw, Link2 } from 'lucide-react';
+import { Download, Loader2, CheckCircle, XCircle, Clock, Trash2, Music, RefreshCw, RotateCcw, Link2, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api, { ApiSpotifyDownload } from '../services/api';
 import ConfirmDialog from '../components/ConfirmDialog';
 import DirectDownloadDialog from '../components/DirectDownloadDialog';
+import { useStore } from '../store';
 
 export const Downloads: React.FC = () => {
   const [downloads, setDownloads] = useState<ApiSpotifyDownload[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'failed'>('all');
   const [confirmDialog, setConfirmDialog] = useState<{
     type: 'clearQueue' | 'clearCompleted' | null;
@@ -34,6 +38,8 @@ export const Downloads: React.FC = () => {
   const [showDirectDownload, setShowDirectDownload] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const showToast = useStore(state => state.showToast);
+  const navigate = useNavigate();
 
   // Fetch downloads function - memoized for reuse
   const fetchDownloads = useCallback(async () => {
@@ -90,6 +96,16 @@ export const Downloads: React.FC = () => {
           try {
             const progress: { downloadId: string; progress: number; status: string; error?: string } = JSON.parse(event.data);
             
+            // Handle auth_required event - Spotify session expired
+            if (progress.status === 'auth_required') {
+              setAuthRequired(true);
+              showToast({
+                type: 'error',
+                message: progress.error || 'Spotify session expired. Please reconnect to Spotify.',
+              });
+              return;
+            }
+            
             // Update the matching download
             setDownloads(prev => {
               const existing = prev.find(d => d.id === progress.downloadId);
@@ -133,7 +149,7 @@ export const Downloads: React.FC = () => {
         eventSource.close();
       }
     };
-  }, [isLoading, hasError, fetchDownloads]);
+  }, [isLoading, hasError, fetchDownloads, showToast]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -153,6 +169,18 @@ export const Downloads: React.FC = () => {
       ));
     } catch (error) {
       console.error('Failed to retry download:', error);
+    }
+  };
+
+  const handleForceRestart = async (id: string) => {
+    try {
+      await api.forceRestartDownload(id);
+      // Update local state immediately
+      setDownloads(prev => prev.map(d => 
+        d.id === id ? { ...d, status: 'queued' as const, progress: 0, errorMessage: undefined } : d
+      ));
+    } catch (error) {
+      console.error('Failed to force restart download:', error);
     }
   };
 
@@ -255,8 +283,39 @@ export const Downloads: React.FC = () => {
     );
   }
 
+  // Handler for navigating to Spotify settings and refreshing auth
+  const handleReconnectSpotify = async () => {
+    navigate('/spotify');
+    // Clear the auth required flag since user is re-authenticating
+    try {
+      await api.refreshSpotifyAuth();
+      setAuthRequired(false);
+    } catch (error) {
+      console.error('Failed to clear auth required flag:', error);
+    }
+  };
+
   return (
     <div className="p-8 pb-32 animate-fade-in">
+      {/* Auth Required Banner */}
+      {authRequired && (
+        <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="text-yellow-500" size={24} />
+            <div>
+              <p className="font-semibold text-yellow-400">Spotify Session Expired</p>
+              <p className="text-sm text-text-secondary">Please reconnect to Spotify to continue downloading.</p>
+            </div>
+          </div>
+          <button
+            onClick={handleReconnectSpotify}
+            className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-semibold rounded-lg transition-colors"
+          >
+            Reconnect to Spotify
+          </button>
+        </div>
+      )}
+
       <div className="mb-8 flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
@@ -377,7 +436,7 @@ export const Downloads: React.FC = () => {
       {/* Downloads List */}
       <div className="space-y-3">
         {filteredDownloads.map(download => (
-          <DownloadCard key={download.id} download={download} onDelete={handleDelete} onRetry={handleRetry} />
+          <DownloadCard key={download.id} download={download} onDelete={handleDelete} onRetry={handleRetry} onForceRestart={handleForceRestart} />
         ))}
       </div>
 
@@ -427,9 +486,10 @@ interface DownloadCardProps {
   download: ApiSpotifyDownload;
   onDelete: (id: string) => void;
   onRetry: (id: string) => void;
+  onForceRestart: (id: string) => void;
 }
 
-const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry }) => {
+const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry, onForceRestart }) => {
   const getStatusIcon = () => {
     switch (download.status) {
       case 'queued':
@@ -529,6 +589,17 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
 
         {/* Action Buttons */}
         <div className="flex items-center gap-1">
+          {/* Force Restart Button - for stuck downloading */}
+          {download.status === 'downloading' && (
+            <button
+              onClick={() => onForceRestart(download.id)}
+              className="p-2 hover:bg-surface-3 rounded-lg transition-colors group"
+              title="Force restart (if stuck)"
+            >
+              <RefreshCw className="text-text-muted group-hover:text-brand" size={18} />
+            </button>
+          )}
+
           {/* Retry Button - only for failed downloads */}
           {download.status === 'failed' && (
             <button

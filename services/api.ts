@@ -175,7 +175,12 @@ export const api = {
 
   async getGenres(): Promise<GenreStat[]> {
     const response = await fetch(`${API_BASE}/genres`);
-    return handleResponse(response);
+    const data = await handleResponse<GenreStat[] | null>(response);
+    // Ensure we always return an array, and topArtists is always defined
+    return (data || []).map(g => ({
+      ...g,
+      topArtists: g.topArtists || []
+    }));
   },
 
   async clearSongs(): Promise<void> {
@@ -568,6 +573,40 @@ export const api = {
    */
   async retryDownload(id: string) {
     const response = await fetch(`${API_BASE}/spotify/downloads/${id}/retry`, { method: 'POST' });
+    await handleResponse(response);
+  },
+
+  /**
+   * Force restarts a stuck/stalled download.
+   * Cancels any active download and requeues it.
+   * 
+   * @param id - Download ID (UUID)
+   * @returns Promise resolving when reset
+   */
+  async forceRestartDownload(id: string) {
+    const response = await fetch(`${API_BASE}/spotify/downloads/${id}/force-restart`, { method: 'POST' });
+    await handleResponse(response);
+  },
+
+  /**
+   * Gets the current Spotify authentication status.
+   * Returns whether re-authentication is required (e.g., token expired/revoked).
+   * 
+   * @returns Promise with authRequired status and optional message
+   */
+  async getSpotifyAuthStatus(): Promise<{ authRequired: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/spotify/auth/status`);
+    return handleResponse<{ authRequired: boolean; message: string }>(response);
+  },
+
+  /**
+   * Clears the auth required flag after successful re-authentication.
+   * Called after the user completes Spotify OAuth flow.
+   * 
+   * @returns Promise resolving when cleared
+   */
+  async refreshSpotifyAuth() {
+    const response = await fetch(`${API_BASE}/spotify/auth/refresh`, { method: 'POST' });
     await handleResponse(response);
   },
 

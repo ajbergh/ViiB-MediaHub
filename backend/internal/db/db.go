@@ -1946,6 +1946,21 @@ func (d *DB) ResetDownloadForRetry(id string) error {
 	return err
 }
 
+// ResetStuckDownloads resets all downloads that are stuck in 'downloading' status
+// back to 'queued'. This is called on startup to recover downloads that were
+// interrupted by application crashes or restarts.
+func (d *DB) ResetStuckDownloads() (int64, error) {
+	result, err := d.conn.Exec(`
+		UPDATE spotify_downloads
+		SET status = 'queued', progress = 0
+		WHERE status = 'downloading'
+	`)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 // DeleteCompletedDownloads removes all downloads with status 'completed'
 func (d *DB) DeleteCompletedDownloads() (int64, error) {
 	result, err := d.conn.Exec("DELETE FROM spotify_downloads WHERE status = 'completed'")

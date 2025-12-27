@@ -78,6 +78,61 @@ func NewDownloader(sessionManager *SessionManager, downloadDir string) *Download
 	}
 }
 
+// MinValidFileSize is the minimum size for a valid downloaded track file.
+// Files smaller than this are considered incomplete/corrupt and will be re-downloaded.
+const MinValidFileSize = 1 * 1024 * 1024 // 1 MB
+
+// isValidDownloadedFile checks if an existing file is a valid complete download.
+// Returns true if the file:
+// 1. Exists
+// 2. Is larger than MinValidFileSize (1 MB)
+// 3. Has valid OGG headers
+// 4. Has metadata tags written (artist, title)
+//
+// If any check fails, the file should be re-downloaded.
+func isValidDownloadedFile(filePath string) bool {
+	// Check if file exists and get its size
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return false // File doesn't exist
+	}
+
+	// Check minimum file size
+	if fileInfo.Size() < MinValidFileSize {
+		dLog("File too small (%d bytes), needs re-download: %s", fileInfo.Size(), filePath)
+		return false
+	}
+
+	// Check if it's a valid audio file with metadata
+	tags, err := taglib.ReadTags(filePath)
+	if err != nil {
+		dLog("Failed to read tags (may be corrupt): %s - %v", filePath, err)
+		return false
+	}
+
+	// Helper to get first tag value
+	getTag := func(key string) string {
+		if vals, ok := tags[key]; ok && len(vals) > 0 {
+			return vals[0]
+		}
+		return ""
+	}
+
+	artist := getTag(taglib.Artist)
+	title := getTag(taglib.Title)
+
+	// Check for essential metadata - artist and title should be present if properly saved
+	if artist == "" || title == "" {
+		dLog("Missing metadata (artist=%s, title=%s), needs re-download: %s",
+			artist, title, filePath)
+		return false
+	}
+
+	dLog("Valid existing download found: %s (size=%d, artist=%s, title=%s)",
+		filePath, fileInfo.Size(), artist, title)
+	return true
+}
+
 // ProgressCallback is called during download to report progress.
 // This allows the caller to track download progress in real-time.
 //
@@ -213,10 +268,16 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 	origName := assetMedia.Label()
 	dLog("Asset label: %s", origName)
 
-	// Check if file already exists
-	if _, err := os.Stat(fullPath); err == nil {
-		dLog("File already exists, skipping: %s", fullPath)
+	// Check if file already exists and is valid (proper size and metadata)
+	if isValidDownloadedFile(fullPath) {
+		dLog("Valid existing file found, skipping download: %s", fullPath)
 		return fullPath, nil
+	}
+
+	// Remove incomplete/corrupt file if it exists
+	if _, err := os.Stat(fullPath); err == nil {
+		dLog("Removing incomplete/corrupt file for re-download: %s", fullPath)
+		os.Remove(fullPath)
 	}
 
 	// Create temporary file
@@ -243,45 +304,110 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 	// Use buffered writer for better I/O performance on high-bandwidth connections
 	bufWriter := bufio.NewWriterSize(outFile, 256*1024) // 256KB write buffer
 
-	// Download with progress tracking
+	// Download with progress tracking using context-aware reading
+	// The key issue is that assetReader.Read() blocks indefinitely, ignoring context.
+	// We use a channel-based approach to make the read interruptible.
 	dLog("Starting download stream...")
 	var bytesRead int64
 	buf := make([]byte, 64*1024) // 64KB read buffer for better throughput
 
+	// readResult carries the result of a single Read operation
+	type readResult struct {
+		n   int
+		err error
+	}
+	resultChan := make(chan readResult, 1)
+
+	// Start a monitoring goroutine that will try to close the reader on context cancellation
+	// This is necessary because Read() blocks and doesn't check context
+	readerClosed := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			dLog("Context cancelled, attempting to interrupt download...")
+			// Try to close the asset reader to unblock the Read call
+			// Note: This may not be supported by all reader implementations
+			if closer, ok := assetReader.(io.Closer); ok {
+				closer.Close()
+			}
+		case <-readerClosed:
+			// Normal completion, nothing to do
+		}
+	}()
+
 	for {
+		// Check context first
 		select {
 		case <-ctx.Done():
 			dLog("Download cancelled by context")
+			close(readerClosed)
 			outFile.Close()
 			os.Remove(tempPath)
 			return "", ctx.Err()
 		default:
 		}
 
-		n, err := assetReader.Read(buf)
-		if n > 0 {
-			if _, writeErr := bufWriter.Write(buf[:n]); writeErr != nil {
+		// Start a read operation in a goroutine so we can timeout on it
+		go func() {
+			n, err := assetReader.Read(buf)
+			resultChan <- readResult{n, err}
+		}()
+
+		// Wait for read result with timeout, checking context periodically
+		var result readResult
+		readComplete := false
+		for !readComplete {
+			select {
+			case <-ctx.Done():
+				dLog("Download cancelled by context during read")
+				close(readerClosed)
+				outFile.Close()
+				os.Remove(tempPath)
+				return "", ctx.Err()
+			case result = <-resultChan:
+				readComplete = true
+			case <-time.After(5 * time.Second):
+				// Check context every 5 seconds while waiting for read
+				// This provides responsive cancellation even if Read blocks
+				dLog("Still waiting for read... (bytesRead=%d)", bytesRead)
+			}
+		}
+
+		if result.n > 0 {
+			if _, writeErr := bufWriter.Write(buf[:result.n]); writeErr != nil {
 				dLog("Failed to write to file: %v", writeErr)
+				close(readerClosed)
 				os.Remove(tempPath)
 				return "", fmt.Errorf("failed to write to file: %w", writeErr)
 			}
-			bytesRead += int64(n)
+			bytesRead += int64(result.n)
 
 			// Report progress (we don't know total size, so pass -1)
 			if progressCallback != nil {
 				progressCallback(bytesRead, -1)
 			}
 		}
-		if err == io.EOF {
+		if result.err == io.EOF {
 			dLog("Download complete, received EOF. Total bytes: %d", bytesRead)
 			break
 		}
-		if err != nil {
-			dLog("Failed to read from asset: %v", err)
+		if result.err != nil {
+			// Check if this was caused by context cancellation
+			if ctx.Err() != nil {
+				dLog("Read error due to context cancellation: %v", result.err)
+				close(readerClosed)
+				outFile.Close()
+				os.Remove(tempPath)
+				return "", ctx.Err()
+			}
+			dLog("Failed to read from asset: %v", result.err)
+			close(readerClosed)
 			os.Remove(tempPath)
-			return "", fmt.Errorf("failed to read from asset: %w", err)
+			return "", fmt.Errorf("failed to read from asset: %w", result.err)
 		}
 	}
+
+	close(readerClosed)
 
 	// Flush the buffered writer before closing
 	if err := bufWriter.Flush(); err != nil {

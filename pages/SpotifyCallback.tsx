@@ -187,6 +187,10 @@ export const SpotifyCallback: React.FC = () => {
                         expiry: expiry
                     });
                     console.log('[SpotifyCallback] Credentials synced to backend');
+                    
+                    // Clear auth required flag since we just re-authenticated
+                    await api.refreshSpotifyAuth();
+                    console.log('[SpotifyCallback] Auth required flag cleared');
                 } catch (e) {
                     console.error("Failed to sync credentials to backend", e);
                     throw new Error("Failed to save credentials to server");

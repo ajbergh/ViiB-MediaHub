@@ -163,6 +163,8 @@ func (a *API) Routes() chi.Router {
 	r.Get("/spotify/me", a.spotifyGetUserProfile)
 	r.Get("/spotify/proxy", a.spotifyProxy)
 	r.Post("/spotify/proxy", a.spotifyProxy)
+	r.Get("/spotify/auth/status", a.getSpotifyAuthStatus)
+	r.Post("/spotify/auth/refresh", a.refreshSpotifyAuth)
 
 	// Spotify Downloads
 	r.Post("/spotify/download/track", a.downloadTrack)
@@ -173,6 +175,7 @@ func (a *API) Routes() chi.Router {
 	r.Get("/spotify/downloads/{id}", a.getDownloadStatus)
 	r.Delete("/spotify/downloads/{id}", a.deleteDownload)
 	r.Post("/spotify/downloads/{id}/retry", a.retryDownload)
+	r.Post("/spotify/downloads/{id}/force-restart", a.forceRestartDownload)
 	r.Delete("/spotify/downloads/completed", a.clearCompletedDownloads)
 	r.Get("/spotify/downloads/events", a.downloadProgressSSE)
 
