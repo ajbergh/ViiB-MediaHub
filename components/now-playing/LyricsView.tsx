@@ -103,7 +103,7 @@ export const LyricsView: React.FC<Props> = ({ song, currentTime, onSeek }) => {
 
     if (isLoading) {
         return (
-            <div className="flex-1 flex items-center justify-center text-white/50 animate-pulse">
+            <div className="flex-1 flex items-center justify-center text-text-subtle opacity-70 animate-pulse">
                 Loading lyrics...
             </div>
         );
@@ -111,8 +111,8 @@ export const LyricsView: React.FC<Props> = ({ song, currentTime, onSeek }) => {
 
     if (error) {
         return (
-            <div className="flex-1 flex flex-col items-center justify-center text-white/50 text-center">
-                <Mic2 size={48} className="mb-4 opacity-50" />
+            <div className="flex-1 flex flex-col items-center justify-center text-text-subtle opacity-70 text-center">
+                <Mic2 size={48} className="mb-4 opacity-60" />
                 <p>Lyrics not available for this track.</p>
             </div>
         );
@@ -125,12 +125,20 @@ export const LyricsView: React.FC<Props> = ({ song, currentTime, onSeek }) => {
                     <div 
                         key={idx}
                         ref={idx === activeLyricIndex ? activeLineRef : null}
+                        role="button"
+                        tabIndex={0}
                         className={`transition-all duration-500 text-2xl md:text-3xl font-bold leading-relaxed px-4 ${
                             idx === activeLyricIndex 
-                                ? 'text-white scale-105 origin-center' 
-                                : 'text-white/30 blur-[1px] hover:text-white/60 hover:blur-0 cursor-pointer'
+                                ? 'text-text-main scale-105 origin-center'
+                                : 'text-text-main opacity-30 blur-[1px] hover:opacity-60 hover:blur-0 cursor-pointer'
                         }`}
                         onClick={() => onSeek(line.time)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                onSeek(line.time);
+                            }
+                        }}
                     >
                         {line.text || "♫"}
                     </div>
@@ -140,7 +148,7 @@ export const LyricsView: React.FC<Props> = ({ song, currentTime, onSeek }) => {
     }
 
     return (
-        <div className="whitespace-pre-wrap text-center text-lg leading-relaxed text-white/80 font-medium pb-10">
+        <div className="whitespace-pre-wrap text-center text-lg leading-relaxed text-text-main opacity-80 font-medium pb-10">
             {lyrics}
         </div>
     );

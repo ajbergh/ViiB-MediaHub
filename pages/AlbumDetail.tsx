@@ -103,7 +103,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                     </h1>
                     <div className="flex items-center flex-wrap gap-2 text-sm text-white font-medium mt-4 shadow-black drop-shadow-md">
                         <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden">
+                            <div className="w-6 h-6 rounded-full bg-surface-2 flex items-center justify-center overflow-hidden">
                                 {firstSong?.coverUrl ? (
                                     <img src={firstSong.coverUrl} className="w-full h-full object-cover blur-sm scale-150" alt="" />
                                 ) : (
@@ -120,12 +120,12 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
                         <span>{metadata?.releaseDate ? new Date(metadata.releaseDate).getFullYear() : (year || 'Unknown Year')}</span>
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
-                        <span>{albumSongs.length} songs, <span className="text-gray-300">{durationHours > 0 ? `${durationHours} hr ` : ''}{durationMin} min</span></span>
+                        <span>{albumSongs.length} songs, <span className="text-text-subtle">{durationHours > 0 ? `${durationHours} hr ` : ''}{durationMin} min</span></span>
                         
                         {metadata?.genre && (
                             <>
                                 <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
-                                <span className="text-gray-300">{metadata.genre}</span>
+                                <span className="text-text-subtle">{metadata.genre}</span>
                             </>
                         )}
                     </div>
@@ -319,7 +319,7 @@ export const AlbumDetail: React.FC = () => {
             <div className="flex flex-col items-center justify-center h-full text-text-subtle">
                 <Disc size={64} className="mb-4 opacity-50" />
                 <h2 className="text-xl font-bold mb-2">Album not found</h2>
-                <button onClick={() => navigate('/albums')} className="text-green-500 hover:underline">
+                <button onClick={() => navigate('/albums')} className="text-brand hover:underline">
                     Back to Albums
                 </button>
             </div>

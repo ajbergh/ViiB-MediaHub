@@ -22,6 +22,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { generateGradient, formatTime } from '../utils';
 import { ContextMenuType } from '../types';
 import { EmptySearchResults } from '../components/EmptyState';
+import { TextInput } from '../components/ui/TextInput';
+import { Chip } from '../components/ui/Chip';
 
 // Search result category tab type
 type SearchResultTab = 'all' | 'tracks' | 'albums' | 'artists' | 'playlists';
@@ -195,14 +197,13 @@ export const Search: React.FC = () => {
 
     return (
         <div className="p-8 h-full flex flex-col animate-fade-in">
-            <h1 className="text-3xl font-bold mb-6 flex-shrink-0">Search</h1>
+            <h1 className="text-section mb-6 flex-shrink-0">Search</h1>
             
-            <div className="relative w-full max-w-3xl mb-6 flex-shrink-0">
-                <SearchIcon className="absolute left-5 top-1/2 -translate-y-1/2 text-text-secondary" size={22} />
-                <input 
-                    type="text" 
-                    placeholder="What do you want to listen to?"
-                    className="w-full bg-surface-highlight hover:bg-surface-hover focus:bg-surface-hover border border-transparent focus:border-surface-slider rounded-full py-4 pl-14 pr-6 text-text-main outline-none transition-all placeholder-text-subtle text-lg shadow-lg"
+            <div className="w-full max-w-3xl mb-6 flex-shrink-0">
+                <TextInput
+                    leftIcon={<SearchIcon size={18} className="text-text-secondary" aria-hidden="true" />}
+                    type="text"
+                    placeholder="What do you want to feel?"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     autoFocus
@@ -220,18 +221,15 @@ export const Search: React.FC = () => {
                     {/* Category Tabs */}
                     <div className="flex gap-2 mb-6 flex-wrap flex-shrink-0">
                         {(['all', 'tracks', 'albums', 'artists', 'playlists'] as SearchResultTab[]).map((tab) => (
-                            <button
+                            <Chip
                                 key={tab}
                                 onClick={() => setSearchResultTab(tab)}
-                                className={`px-4 py-2 rounded-full font-medium text-sm transition-all ${
-                                    searchResultTab === tab
-                                        ? 'bg-brand text-black'
-                                        : 'bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-main'
-                                }`}
+                                selected={searchResultTab === tab}
+                                accent="brand"
                             >
                                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
                                 {getCategoryCount(tab) > 0 && ` (${getCategoryCount(tab)})`}
-                            </button>
+                            </Chip>
                         ))}
                     </div>
 

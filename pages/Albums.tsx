@@ -22,6 +22,9 @@ import { VirtuosoGrid } from 'react-virtuoso';
 import { ChevronDown, ArrowUpDown } from 'lucide-react';
 import { EmptyAlbums } from '../components/EmptyState';
 import { SkeletonAlbumGrid } from '../components/Skeleton';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Menu, MenuItem } from '../components/ui/Menu';
 
 type AlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc' | 'songs-desc' | 'songs-asc';
 
@@ -116,29 +119,38 @@ export const Albums: React.FC = () => {
             
             {/* Sort Dropdown */}
             <div className="relative">
-                <button
-                    onClick={() => setShowSortMenu(!showSortMenu)}
-                    className="flex items-center gap-2 px-4 py-2 bg-surface-highlight hover:bg-surface-hover rounded-full text-sm text-text-main transition-colors border border-transparent hover:border-surface-slider"
-                >
-                    <ArrowUpDown size={16} className="text-text-secondary" />
-                    <span>{sortLabels[sortBy]}</span>
-                    <ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} />
-                </button>
+          <Button
+            variant="secondary"
+            onClick={() => setShowSortMenu(!showSortMenu)}
+            className="rounded-full"
+            leftIcon={<ArrowUpDown size={16} className="text-text-secondary" aria-hidden="true" />}
+            rightIcon={<ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />}
+            aria-haspopup="menu"
+            aria-expanded={showSortMenu}
+          >
+            {sortLabels[sortBy]}
+          </Button>
                 
                 {showSortMenu && (
                     <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowSortMenu(false)} />
-                        <div className="absolute right-0 top-full mt-2 bg-surface-2 border border-surface-3 rounded-lg shadow-xl z-50 py-1 min-w-[180px]">
-                            {(Object.keys(sortLabels) as AlbumSortOption[]).map((option) => (
-                                <button
-                                    key={option}
-                                    onClick={() => { setSortBy(option); setShowSortMenu(false); }}
-                                    className={`w-full text-left px-4 py-2 text-sm hover:bg-surface-hover transition-colors ${sortBy === option ? 'text-brand font-medium' : 'text-text-main'}`}
-                                >
-                                    {sortLabels[option]}
-                                </button>
-                            ))}
-                        </div>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          aria-label="Close sort menu"
+                          className="fixed inset-0 z-40"
+                          onClick={() => setShowSortMenu(false)}
+                        />
+                    <Menu className="absolute right-0 top-full mt-2 z-50 min-w-[180px]">
+                      {(Object.keys(sortLabels) as AlbumSortOption[]).map((option) => (
+                        <MenuItem
+                          key={option}
+                          onClick={() => { setSortBy(option); setShowSortMenu(false); }}
+                          active={sortBy === option}
+                        >
+                          {sortLabels[option]}
+                        </MenuItem>
+                      ))}
+                    </Menu>
                     </>
                 )}
             </div>
@@ -161,11 +173,20 @@ export const Albums: React.FC = () => {
                     const coverUrl = metadata?.coverUrl || album.coverUrl;
 
                     return (
-                        <div 
-                            className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer border border-transparent hover:border-surface-border h-full flex flex-col"
-                            onClick={() => navigate(`/album/${encodeURIComponent(album.name)}`)}
-                            onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
-                        >
+                      <Card 
+                        interactive
+                        className="p-4 h-full flex flex-col cursor-pointer"
+                        onClick={() => navigate(`/album/${encodeURIComponent(album.name)}`)}
+                        onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            navigate(`/album/${encodeURIComponent(album.name)}`);
+                          }
+                        }}
+                      >
                             <div 
                                 className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-5xl font-bold text-white/20 relative overflow-hidden bg-surface-3"
                                 style={{ background: coverBackground(coverUrl, album.name) }}
@@ -174,19 +195,23 @@ export const Albums: React.FC = () => {
                                 
                                 {/* Hover Overlay */}
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <div className="w-12 h-12 bg-brand rounded-full flex items-center justify-center shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-                                        <svg className="w-6 h-6 text-black fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                    </div>
+                            <Button
+                              variant="primary"
+                              className="w-12 h-12 rounded-full p-0 translate-y-4 group-hover:translate-y-0 transition-transform duration-200"
+                              aria-label="Open album"
+                            >
+                              <svg className="w-6 h-6 text-black fill-current ml-0.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                            </Button>
                                 </div>
                             </div>
                             <h4 className="font-bold truncate text-text-main mb-1">{album.name}</h4>
                             <div className="flex justify-between items-center mt-auto">
                                 <p className="text-sm text-text-secondary truncate max-w-[70%]">{album.artist}</p>
                                 {metadata?.releaseDate && (
-                                    <span className="text-[10px] text-[#555] font-mono">{new Date(metadata.releaseDate).getFullYear()}</span>
+                            <span className="text-[10px] text-text-subtle font-mono">{new Date(metadata.releaseDate).getFullYear()}</span>
                                 )}
                             </div>
-                        </div>
+                      </Card>
                     );
                 }}
             />

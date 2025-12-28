@@ -35,6 +35,8 @@ import { Visualizer } from './Visualizer';
 import { EqualizerPanel } from './Equalizer';
 import { SleepTimer, useSleepTimer } from './SleepTimer';
 import { useMediaSession } from '../hooks/useMediaSession';
+import { Button } from './ui/Button';
+import { VIIB_COLOR_VALUES } from './ui/tokens';
 
 export const Player: React.FC = () => {
   const { 
@@ -60,7 +62,7 @@ export const Player: React.FC = () => {
   if (!currentSong) {
       return (
           <>
-            <div className="h-24 bg-surface-1 border-t border-surface-highlight flex items-center justify-center text-text-subtle">
+            <div className="h-24 bg-surface-1 border-t border-surface-3 flex items-center justify-center text-text-subtle">
                 <span className="text-sm">Select a song to start listening</span>
             </div>
             <EqualizerPanel />
@@ -70,7 +72,7 @@ export const Player: React.FC = () => {
 
   return (
     <>
-        <div className="h-24 bg-surface-0 border-t border-surface-highlight px-2 md:px-4 grid grid-cols-[1fr_auto_1fr] md:grid-cols-3 items-center z-50 relative gap-2 md:gap-4">
+                <div className="h-24 bg-surface-1 border-t border-surface-3 px-2 md:px-4 grid grid-cols-[1fr_auto_1fr] md:grid-cols-3 items-center z-50 relative gap-2 md:gap-4">
         {/* Dual Audio Elements for Crossfading */}
         <audio
             ref={primaryRef}
@@ -96,7 +98,7 @@ export const Player: React.FC = () => {
                 {!currentSong.coverUrl && <div className="w-full h-full opacity-30"></div>}
                 {currentSong.coverUrl && <img src={currentSong.coverUrl} alt="Cover" className="w-full h-full object-cover" />}
                 
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                <div className="absolute inset-0 bg-surface-0/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                     <Maximize2 size={20} className="text-text-main" />
                 </div>
             </div>
@@ -120,41 +122,43 @@ export const Player: React.FC = () => {
         {/* Controls */}
         <div className="flex flex-col items-center gap-1 md:gap-2">
             <div className="flex items-center gap-3 md:gap-6">
-            <button className="text-text-secondary hover:text-text-main transition-colors hidden md:block" title="Shuffle" aria-label="Shuffle">
+            <Button variant="ghost" className="hidden md:inline-flex rounded-full p-2" title="Shuffle" aria-label="Shuffle">
                 <Shuffle size={18} />
-            </button>
-            <button onClick={prevSong} className="text-text-secondary hover:text-text-main transition-colors" aria-label="Previous track">
+            </Button>
+            <Button onClick={prevSong} variant="ghost" className="rounded-full p-2" aria-label="Previous track">
                 <SkipBack size={20} className="md:w-6 md:h-6 fill-current" />
-            </button>
+            </Button>
             
             <div className="relative">
                 {/* Buffering indicator */}
                 {isBuffering && currentSong.isStreaming && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-11 h-11 md:w-12 md:h-12 rounded-full border-2 border-brand/30 border-t-brand animate-spin" />
+                        <div className="w-11 h-11 md:w-12 md:h-12 rounded-full border-2 border-accent-green/30 border-t-accent-green animate-spin" />
                     </div>
                 )}
-                <button
+                <Button
                     onClick={togglePlay}
-                    className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform z-10 relative"
+                    variant="primary"
+                    accent="playback"
+                    className="w-9 h-9 md:w-10 md:h-10 rounded-full p-0 hover:scale-105 transition-transform z-10 relative"
                     aria-label={isPlaying ? 'Pause' : 'Play'}
                 >
                     {isBuffering && currentSong.isStreaming ? (
-                        <Loader2 size={18} className="md:w-5 md:h-5 animate-spin text-gray-600" />
+                        <Loader2 size={18} className="md:w-5 md:h-5 animate-spin text-surface-0/70" />
                     ) : isPlaying ? (
                         <Pause size={18} className="md:w-5 md:h-5 fill-current" />
                     ) : (
                         <Play size={18} className="md:w-5 md:h-5 fill-current ml-0.5" />
                     )}
-                </button>
+                </Button>
             </div>
 
-            <button onClick={nextSong} className="text-text-secondary hover:text-text-main transition-colors" aria-label="Next track">
+            <Button onClick={nextSong} variant="ghost" className="rounded-full p-2" aria-label="Next track">
                 <SkipForward size={20} className="md:w-6 md:h-6 fill-current" />
-            </button>
-            <button className="text-text-secondary hover:text-text-main transition-colors hidden md:block" title="Repeat" aria-label="Repeat">
+            </Button>
+            <Button variant="ghost" className="hidden md:inline-flex rounded-full p-2" title="Repeat" aria-label="Repeat">
                 <Repeat size={18} />
-            </button>
+            </Button>
             </div>
             
             {/* Progress bar with buffer indication */}
@@ -164,17 +168,18 @@ export const Player: React.FC = () => {
             {/* Error state - show error with retry */}
             {streamError && currentSong?.isStreaming ? (
                 <div className="flex-1 flex items-center gap-2 px-2">
-                    <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
-                    <span className="text-red-400 text-xs truncate">{streamError.message}</span>
+                    <AlertCircle size={14} className="text-accent-crimson flex-shrink-0" />
+                    <span className="text-accent-crimson text-xs truncate">{streamError.message}</span>
                     {streamError.canRetry && (
-                        <button
+                        <Button
                             onClick={() => retryStream()}
-                            className="flex items-center gap-1 px-2 py-0.5 bg-surface-hover hover:bg-surface-highlight rounded text-xs text-text-main transition-colors"
                             title="Retry playback"
+                            variant="secondary"
+                            className="h-7 px-2 py-0.5 text-xs rounded-md"
+                            leftIcon={<RefreshCw size={12} aria-hidden="true" />}
                         >
-                            <RefreshCw size={12} />
                             Retry
-                        </button>
+                        </Button>
                     )}
                 </div>
             ) : (
@@ -182,7 +187,7 @@ export const Player: React.FC = () => {
                     {/* Buffer progress background for streaming tracks */}
                     {currentSong?.isStreaming && bufferProgress < 100 && (
                         <div 
-                            className="absolute h-1 bg-brand/20 rounded-lg transition-all duration-300"
+                            className="absolute h-1 bg-accent-green/20 rounded-lg transition-all duration-300"
                             style={{ width: `${bufferProgress}%` }}
                         />
                     )}
@@ -199,7 +204,7 @@ export const Player: React.FC = () => {
                         aria-valuemax={duration || 100}
                         aria-valuenow={currentTime}
                         aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
-                        className="w-full h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white hover:[&::-webkit-slider-thumb]:scale-110 relative z-10"
+                        className="w-full h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main hover:[&::-webkit-slider-thumb]:scale-110 relative z-10"
                     />
                 </div>
             )}
@@ -208,7 +213,7 @@ export const Player: React.FC = () => {
             
             {/* Streaming indicator */}
             {currentSong?.isStreaming && !streamError && (
-                <div className="flex items-center gap-1 text-brand" title={isBuffering ? 'Buffering...' : 'Streaming'}>
+                <div className="flex items-center gap-1 text-accent-green" title={isBuffering ? 'Buffering...' : 'Streaming'}>
                     {isBuffering ? (
                         <Loader2 size={12} className="animate-spin" />
                     ) : (
@@ -222,45 +227,48 @@ export const Player: React.FC = () => {
         {/* Volume & Extras - Hidden on mobile, shown on tablet+ */}
         <div className="hidden md:flex items-center justify-end gap-3">
             {/* Sleep Timer Toggle */}
-            <button 
+            <Button 
                 onClick={() => setIsSleepTimerOpen(true)}
-                className={`p-2 rounded-full transition-colors ${sleepTimer.timerState.mode !== 'off' ? 'text-purple-400' : 'text-text-secondary hover:text-text-main'}`}
                 title="Sleep Timer"
                 aria-label={`Sleep Timer ${sleepTimer.timerState.mode !== 'off' ? 'active' : ''}`}
+                variant="ghost"
+                className={`rounded-full p-2 ${sleepTimer.timerState.mode !== 'off' ? 'text-accent-green bg-surface-2/60' : ''}`}
             >
                 <Moon size={18} />
-            </button>
+            </Button>
 
             {/* EQ Toggle */}
-            <button 
+            <Button 
                 onClick={toggleEqPanel}
-                className={`p-2 rounded-full transition-colors ${audioSettings.eqEnabled ? 'text-brand' : 'text-text-secondary hover:text-text-main'}`}
                 title="Equalizer"
                 aria-label={`Equalizer ${audioSettings.eqEnabled ? 'enabled' : 'disabled'}`}
                 aria-pressed={audioSettings.eqEnabled}
+                variant="ghost"
+                className={`rounded-full p-2 ${audioSettings.eqEnabled ? 'text-accent-green bg-surface-2/60' : ''}`}
             >
                 <SlidersHorizontal size={18} />
-            </button>
+            </Button>
 
             {/* Mini Visualizer - Hidden on smaller screens */}
             <div className="hidden lg:flex w-20 h-8 mx-1 items-end opacity-90 pb-1" title="Spectrum Analyzer">
                 {audioSettings.visualizerEnabled && (
-                    <Visualizer mode="SPECTRUM" barColor="#22c55e" />
+                    <Visualizer mode="SPECTRUM" barColor={VIIB_COLOR_VALUES.playbackGreen} />
                 )}
             </div>
 
-            <button 
+            <Button 
                 onClick={() => setQueueOpen(!isQueueOpen)}
-                className={`relative p-2 rounded-full transition-colors ${isQueueOpen ? 'text-brand bg-surface-hover' : 'text-text-secondary hover:text-text-main'}`}
                 title="Queue"
+                variant="ghost"
+                className={`relative rounded-full p-2 ${isQueueOpen ? 'text-accent-green bg-surface-2/60' : ''}`}
             >
                 <ListMusic size={20} />
                 {queue.length > 0 && (
-                    <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-brand text-black text-[10px] leading-none font-bold rounded-full flex items-center justify-center shadow-sm border border-surface-0">
+                    <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-brand text-surface-0 text-[10px] leading-none font-bold rounded-full flex items-center justify-center shadow-sm border border-surface-0">
                         {queue.length}
                     </div>
                 )}
-            </button>
+            </Button>
 
             <div className="flex items-center gap-2 w-32 group">
                 <Volume2 size={20} className="text-text-secondary group-hover:text-text-main" />
@@ -271,7 +279,7 @@ export const Player: React.FC = () => {
                     step="0.05"
                     value={volume}
                     onChange={(e) => setVolume(parseFloat(e.target.value))}
-                    className="w-full h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="w-full h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main opacity-0 group-hover:opacity-100 transition-opacity"
                 />
             </div>
         </div>

@@ -4,6 +4,11 @@
  * This component provides the main UI for ViiB MediaHub's AI DJ feature,
  * allowing users to generate playlists using natural language prompts.
  * 
+ * Design System Alignment (Phase 4 complete 2025-12-28):
+ * - Uses DS primitives: Button, Chip, TextInput.
+ * - Typography: text-display, text-section, text-body, text-meta.
+ * - Accent: Brand Purple for all state badges and highlights.
+ * 
  * Features:
  * - Natural language prompt input (e.g., "90s alternative rock", "chill evening vibes")
  * - Blend Mode toggle: Single Genre vs Multi-Genre Mix
@@ -25,36 +30,19 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import { Sparkles, Play, Save, RefreshCw, Music, Zap, Heart, Clock, Shuffle, Target, User, Eye, EyeOff, ChevronDown, ChevronUp, Compass, Sun } from 'lucide-react';
 import { Song } from '../types';
-import { api, MatchedGenre } from '../services/api';
+import { api, MatchedGenre, SmartPlaylistFilter } from '../services/api';
 import { apiSongToSong } from '../services/backendService';
 import { formatTime } from '../utils';
-
-/**
- * PlaylistFilter represents the criteria used to generate a playlist.
- * Returned by the backend after processing the user's prompt.
- */
-interface PlaylistFilter {
-  genres: string[];
-  artists: string[];
-  minYear: number;
-  maxYear: number;
-  description: string;
-  mood?: string;            // Detected mood (happy, sad, energetic, etc.)
-  energy?: string;          // Energy level (high, medium, low)
-  tempo?: string;           // Tempo (fast, medium, slow)
-  occasion?: string;        // Occasion hint (party, workout, study, etc.)
-  instrumental?: boolean;   // Whether instrumental music is preferred
-  fromCache?: boolean;      // True if result came from Gemini cache
-  blendMode?: 'single' | 'mixed';  // Genre blending mode
-  matchedGenres?: MatchedGenre[];  // Scored genres with proportions
-}
+import { Button } from '../components/ui/Button';
+import { Chip } from '../components/ui/Chip';
+import { TextInput } from '../components/ui/TextInput';
 
 export const SmartPlaylists: React.FC = () => {
   const { playSong, showToast, createPlaylist } = useStore();
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [generatedSongs, setGeneratedSongs] = useState<Song[]>([]);
-  const [filter, setFilter] = useState<PlaylistFilter | null>(null);
+  const [filter, setFilter] = useState<SmartPlaylistFilter | null>(null);
   const [blendMode, setBlendMode] = useState<'single' | 'mixed'>('single');
   
   // Play history preferences
@@ -122,106 +110,106 @@ export const SmartPlaylists: React.FC = () => {
       <div className="p-8 pb-4">
         <div className="flex items-center gap-3 mb-6">
           <Sparkles className="text-brand" size={32} />
-          <h1 className="text-4xl font-bold text-white">AI DJ</h1>
+          <h1 className="text-display text-text-main">AI DJ</h1>
         </div>
         
-        <p className="text-text-secondary mb-6 max-w-2xl">
+        <p className="text-body text-text-secondary mb-6 max-w-2xl">
           Describe the vibe, genre, era, or mood you're looking for, and I'll build a custom playlist from your library.
         </p>
 
         <div className="flex gap-4 max-w-3xl">
-          <input
+          <TextInput
             type="text"
             placeholder="e.g., 'Upbeat 80s pop songs for a workout' or 'Chill jazz for studying'"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-            className="flex-1 bg-surface-1 border border-surface-highlight rounded-xl px-6 py-4 text-lg text-text-main placeholder:text-text-subtle focus:outline-none focus:border-brand transition-colors"
+            className="flex-1 rounded-xl px-6 py-4 ring-1 ring-surface-highlight"
           />
-          <button
+          <Button
             onClick={handleGenerate}
             disabled={isLoading || !prompt.trim()}
-            className="bg-brand text-white px-8 py-4 rounded-xl font-bold hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            variant="primary"
+            accent="brand"
+            leftIcon={isLoading ? <RefreshCw className="animate-spin" /> : <Sparkles />}
+            className="px-8 py-4 rounded-xl text-body font-semibold"
           >
-            {isLoading ? <RefreshCw className="animate-spin" /> : <Sparkles />}
             Generate
-          </button>
+          </Button>
         </div>
 
         {/* Blend Mode Toggle */}
         <div className="flex gap-4 mt-4">
-          <button
+          <Chip
+            selected={blendMode === 'single'}
+            accent="brand"
             onClick={() => setBlendMode('single')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              blendMode === 'single' 
-                ? 'bg-brand text-white' 
-                : 'bg-surface-1 text-text-secondary hover:bg-surface-2'
-            }`}
+            className="rounded-lg px-4 py-2 text-meta font-medium"
           >
-            <Target size={16} />
-            Single Genre
-          </button>
-          <button
+            <span className="inline-flex items-center gap-2">
+              <Target size={16} />
+              Single Genre
+            </span>
+          </Chip>
+          <Chip
+            selected={blendMode === 'mixed'}
+            accent="brand"
             onClick={() => setBlendMode('mixed')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              blendMode === 'mixed' 
-                ? 'bg-brand text-white' 
-                : 'bg-surface-1 text-text-secondary hover:bg-surface-2'
-            }`}
+            className="rounded-lg px-4 py-2 text-meta font-medium"
           >
-            <Shuffle size={16} />
-            Multi-Genre Mix
-          </button>
+            <span className="inline-flex items-center gap-2">
+              <Shuffle size={16} />
+              Multi-Genre Mix
+            </span>
+          </Chip>
         </div>
 
         {/* Discovery Mode */}
         <div className="mt-4">
-          <h4 className="text-sm font-medium text-text-secondary mb-2 flex items-center gap-2">
+          <h4 className="text-meta text-text-secondary mb-2 flex items-center gap-2">
             <Compass size={14} />
             Discovery Mode
           </h4>
           <div className="flex gap-2">
-            <button
+            <Chip
+              selected={discoverMode === 'balanced'}
+              accent="brand"
               onClick={() => setDiscoverMode('balanced')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                discoverMode === 'balanced' 
-                  ? 'bg-brand text-white' 
-                  : 'bg-surface-1 text-text-secondary hover:bg-surface-2'
-              }`}
+              className="rounded-lg px-3 py-1.5 text-meta font-medium"
             >
               Balanced
-            </button>
-            <button
+            </Chip>
+            <Chip
+              selected={discoverMode === 'discover'}
+              accent="brand"
               onClick={() => setDiscoverMode('discover')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                discoverMode === 'discover' 
-                  ? 'bg-green-600 text-white' 
-                  : 'bg-surface-1 text-text-secondary hover:bg-surface-2'
-              }`}
+              className="rounded-lg px-3 py-1.5 text-meta font-medium"
             >
               Discover New
-            </button>
-            <button
+            </Chip>
+            <Chip
+              selected={discoverMode === 'favorites'}
+              accent="brand"
               onClick={() => setDiscoverMode('favorites')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                discoverMode === 'favorites' 
-                  ? 'bg-amber-600 text-white' 
-                  : 'bg-surface-1 text-text-secondary hover:bg-surface-2'
-              }`}
+              className="rounded-lg px-3 py-1.5 text-meta font-medium"
             >
               Favorites
-            </button>
+            </Chip>
           </div>
         </div>
 
         {/* Additional Options */}
         <div className="mt-4 flex flex-wrap gap-4 items-center">
-          <label className="flex items-center gap-2 text-sm text-text-secondary">
+          <label className="flex items-center gap-2 text-meta text-text-secondary">
             <span>Avoid recently played:</span>
             <select
               value={avoidRecentlyHours}
               onChange={(e) => setAvoidRecentlyHours(Number(e.target.value))}
-              className="bg-surface-1 border border-surface-2 rounded px-2 py-1 text-text-primary text-sm"
+              className={
+                'bg-surface-1 text-text-main rounded-lg px-2 py-1 text-sm ' +
+                'ring-1 ring-surface-3/80 ' +
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0'
+              }
             >
               <option value={0}>Off</option>
               <option value={1}>1 hour</option>
@@ -231,23 +219,31 @@ export const SmartPlaylists: React.FC = () => {
               <option value={168}>1 week</option>
             </select>
           </label>
-          <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
+          <label className="flex items-center gap-2 text-meta text-text-secondary cursor-pointer">
             <input
               type="checkbox"
               checked={onePerArtist}
               onChange={(e) => setOnePerArtist(e.target.checked)}
-              className="w-4 h-4 rounded border-surface-2 bg-surface-1 text-brand focus:ring-brand"
+              className={
+                'w-4 h-4 rounded bg-surface-1 ' +
+                'ring-1 ring-surface-3/80 accent-brand ' +
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0'
+              }
             />
             <span>One song per artist</span>
           </label>
-          <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer" title="Adjust recommendations based on time of day">
+          <label className="flex items-center gap-2 text-meta text-text-secondary cursor-pointer" title="Adjust recommendations based on time of day">
             <input
               type="checkbox"
               checked={useTimeContext}
               onChange={(e) => setUseTimeContext(e.target.checked)}
-              className="w-4 h-4 rounded border-surface-2 bg-surface-1 text-brand focus:ring-brand"
+              className={
+                'w-4 h-4 rounded bg-surface-1 ' +
+                'ring-1 ring-surface-3/80 accent-brand ' +
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0'
+              }
             />
-            <Sun size={14} className={useTimeContext ? 'text-amber-400' : ''} />
+            <Sun size={14} className={useTimeContext ? 'text-brand' : 'text-text-subtle'} />
             <span>Time-aware</span>
           </label>
         </div>
@@ -259,7 +255,7 @@ export const SmartPlaylists: React.FC = () => {
           <div className="animate-fade-in">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-white mb-1 flex items-center gap-2">
+                <h2 className="text-section text-text-main mb-1 flex items-center gap-2">
                   {filter?.description || 'Generated Playlist'}
                   {filter?.fromCache && (
                     <span className="text-xs bg-surface-highlight text-text-subtle px-2 py-0.5 rounded-full font-normal">
@@ -268,17 +264,17 @@ export const SmartPlaylists: React.FC = () => {
                   )}
                 </h2>
                 {/* Genre tags with proportions for multi-genre blend */}
-                <div className="flex flex-wrap gap-2 text-sm text-text-secondary mb-2">
+                <div className="flex flex-wrap gap-2 text-meta text-text-secondary mb-2">
                   {filter?.matchedGenres && filter.matchedGenres.length > 0 ? (
                     filter.matchedGenres.map(g => (
                       <span 
                         key={g.name} 
-                        className="bg-surface-highlight px-2 py-1 rounded-md flex items-center gap-1"
+                        className="bg-surface-highlight px-2 py-1 rounded-lg flex items-center gap-1"
                         title={`Score: ${g.score}, Songs: ${g.songCount}`}
                       >
                         {g.name}
                         {filter.blendMode === 'mixed' && (
-                          <span className="text-brand text-xs font-medium">
+                          <span className="text-brand text-meta font-medium">
                             {Math.round(g.proportion * 100)}%
                           </span>
                         )}
@@ -286,14 +282,14 @@ export const SmartPlaylists: React.FC = () => {
                     ))
                   ) : (
                     filter?.genres?.map(g => (
-                      <span key={g} className="bg-surface-highlight px-2 py-1 rounded-md">{g}</span>
+                      <span key={g} className="bg-surface-highlight px-2 py-1 rounded-lg">{g}</span>
                     ))
                   )}
                   {filter?.minYear && filter.minYear > 0 && (
-                    <span className="bg-surface-highlight px-2 py-1 rounded-md">{filter.minYear}-{filter.maxYear}</span>
+                    <span className="bg-surface-highlight px-2 py-1 rounded-lg">{filter.minYear}-{filter.maxYear}</span>
                   )}
                   {filter?.blendMode === 'mixed' && (
-                    <span className="bg-brand/20 text-brand px-2 py-1 rounded-md flex items-center gap-1">
+                    <span className="bg-brand/20 text-brand px-2 py-1 rounded-lg flex items-center gap-1">
                       <Shuffle size={12} />
                       Blended
                     </span>
@@ -301,32 +297,32 @@ export const SmartPlaylists: React.FC = () => {
                 </div>
                 {/* Mood/Energy/Occasion indicators */}
                 {(filter?.mood || filter?.energy || filter?.tempo || filter?.occasion) && (
-                  <div className="flex flex-wrap gap-2 text-xs">
+                  <div className="flex flex-wrap gap-2 text-meta">
                     {filter?.mood && (
-                      <span className="flex items-center gap-1 bg-pink-500/20 text-pink-300 px-2 py-1 rounded-md">
+                      <span className="flex items-center gap-1 bg-brand/20 text-brand px-2 py-1 rounded-lg">
                         <Heart size={12} />
                         {filter.mood}
                       </span>
                     )}
                     {filter?.energy && (
-                      <span className="flex items-center gap-1 bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded-md">
+                      <span className="flex items-center gap-1 bg-brand/15 text-brand px-2 py-1 rounded-lg">
                         <Zap size={12} />
                         {filter.energy} energy
                       </span>
                     )}
                     {filter?.tempo && (
-                      <span className="flex items-center gap-1 bg-blue-500/20 text-blue-300 px-2 py-1 rounded-md">
+                      <span className="flex items-center gap-1 bg-brand/15 text-brand px-2 py-1 rounded-lg">
                         <Clock size={12} />
                         {filter.tempo} tempo
                       </span>
                     )}
                     {filter?.occasion && (
-                      <span className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded-md">
+                      <span className="bg-brand/20 text-brand px-2 py-1 rounded-lg">
                         {filter.occasion}
                       </span>
                     )}
                     {filter?.instrumental && (
-                      <span className="bg-green-500/20 text-green-300 px-2 py-1 rounded-md">
+                      <span className="bg-brand/15 text-brand px-2 py-1 rounded-lg">
                         Instrumental
                       </span>
                     )}
@@ -335,20 +331,23 @@ export const SmartPlaylists: React.FC = () => {
               </div>
               
               <div className="flex gap-3">
-                <button
+                <Button
                   onClick={handlePlay}
-                  className="flex items-center gap-2 px-6 py-2 bg-brand text-white rounded-full font-bold hover:bg-brand-hover transition-colors"
+                  variant="primary"
+                  accent="brand"
+                  leftIcon={<Play size={18} fill="currentColor" />}
+                  className="rounded-full px-6 py-2 font-semibold"
                 >
-                  <Play size={18} fill="currentColor" />
                   Play All
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleSave}
-                  className="flex items-center gap-2 px-6 py-2 bg-surface-3 text-text-main rounded-full font-bold hover:bg-surface-4 transition-colors"
+                  variant="secondary"
+                  leftIcon={<Save size={18} />}
+                  className="rounded-full px-6 py-2 font-semibold"
                 >
-                  <Save size={18} />
                   Save Playlist
-                </button>
+                </Button>
               </div>
             </div>
 

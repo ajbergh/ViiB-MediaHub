@@ -24,9 +24,9 @@ interface SkeletonProps {
  */
 export const Skeleton: React.FC<SkeletonProps> = ({ className = '' }) => (
   <div 
-    className={`bg-surface-3 rounded animate-pulse relative overflow-hidden ${className}`}
+    className={`bg-surface-3 rounded animate-pulse motion-reduce:animate-none relative overflow-hidden ${className}`}
   >
-    <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+    <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] motion-reduce:animate-none bg-gradient-to-r from-transparent via-white/5 to-transparent" />
   </div>
 );
 
@@ -98,7 +98,7 @@ export const SkeletonDetailHeader: React.FC = () => (
  * Full page loading skeleton for detail pages
  */
 export const SkeletonDetailPage: React.FC = () => (
-  <div className="animate-in fade-in duration-300">
+  <div className="animate-in fade-in duration-300 motion-reduce:animate-none motion-reduce:transition-none">
     <SkeletonDetailHeader />
     <div className="px-8 pt-6">
       <div className="flex gap-4 mb-8">

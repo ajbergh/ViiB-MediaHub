@@ -30,7 +30,7 @@ interface EmptyStateProps {
  * Generic empty state component
  */
 export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description, action }) => (
-  <div className="flex flex-col items-center justify-center py-20 px-4 text-center animate-in fade-in duration-500">
+  <div className="flex flex-col items-center justify-center py-20 px-4 text-center animate-in fade-in duration-500 motion-reduce:animate-none motion-reduce:transition-none">
     <div className="w-24 h-24 rounded-full bg-surface-2 flex items-center justify-center mb-6">
       <div className="text-text-subtle">
         {icon}
@@ -41,7 +41,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description
     {action && (
       <button
         onClick={action.onClick}
-        className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-8 rounded-full transition-all duration-200 hover:scale-105"
+        className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-8 rounded-full transition-all duration-200 hover:scale-105 motion-reduce:transition-none motion-reduce:hover:transform-none"
       >
         {action.label}
       </button>

@@ -39,9 +39,9 @@ export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }>
 
     return (
         <>
-            <div className="px-3 py-2 border-b border-[#333] mb-1">
-                <div className="font-bold text-white truncate text-sm">{playlist.name}</div>
-                <div className="text-xs text-gray-400 truncate">{playlist.songIds.length} songs</div>
+            <div className="px-3 py-2 border-b border-surface-border mb-1">
+                <div className="font-bold text-text-main truncate text-sm">{playlist.name}</div>
+                <div className="text-xs text-text-secondary truncate">{playlist.songIds.length} songs</div>
             </div>
 
             <MenuItem icon={Play} label="Play Playlist" onClick={() => handleAction(() => {
@@ -50,7 +50,7 @@ export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }>
             <MenuItem icon={SkipForward} label="Play Next" onClick={() => handleAction(() => playNext(playlistSongs))} />
             <MenuItem icon={ListPlus} label="Add to Queue" onClick={() => handleAction(() => addToQueue(playlistSongs))} />
             
-            <div className="border-t border-[#333] my-1"></div>
+            <div className="border-t border-surface-border my-1"></div>
             
             <MenuItem icon={Trash2} label="Delete Playlist" onClick={handleDeletePlaylist} />
         </>

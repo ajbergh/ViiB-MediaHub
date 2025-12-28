@@ -41,16 +41,16 @@ const iconMap = {
 };
 
 const colorMap = {
-  success: 'bg-brand text-black',
-  error: 'bg-red-500 text-white',
-  info: 'bg-blue-500 text-white',
-  warning: 'bg-warning text-black',
+  success: 'bg-brand text-surface-0',
+  error: 'bg-error text-surface-0',
+  info: 'bg-accent-blue text-surface-0',
+  warning: 'bg-warning text-surface-0',
 };
 
 const bgColorMap = {
   success: 'bg-surface-2 border-brand/30',
-  error: 'bg-surface-2 border-red-500/30',
-  info: 'bg-surface-2 border-blue-500/30',
+  error: 'bg-surface-2 border-error/30',
+  info: 'bg-surface-2 border-accent-blue/30',
   warning: 'bg-surface-2 border-warning/30',
 };
 
@@ -87,6 +87,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
         flex items-center gap-3 px-4 py-3 rounded-lg border shadow-xl backdrop-blur-sm
         ${bgColorMap[toast.type]}
         ${isExiting ? 'animate-out fade-out slide-out-to-right-full duration-200' : 'animate-in fade-in slide-in-from-right-full duration-300'}
+        motion-reduce:animate-none motion-reduce:transition-none
       `}
     >
       <div className={`p-1 rounded-full ${colorMap[toast.type]}`}>

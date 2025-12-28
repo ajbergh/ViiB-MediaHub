@@ -189,7 +189,7 @@ export const Queue: React.FC = () => {
                             {/* Remove */}
                             <button 
                                 onClick={(e) => { e.stopPropagation(); removeFromQueue(idx); }}
-                                className="p-1.5 rounded hover:bg-surface-border text-surface-slider group-hover:text-text-secondary hover:text-red-400 transition-colors"
+                                className="p-1.5 rounded hover:bg-surface-border text-surface-slider group-hover:text-text-secondary hover:text-error transition-colors"
                                 title="Remove from Queue"
                             >
                                 <Trash2 size={14} />

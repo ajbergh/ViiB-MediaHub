@@ -46,8 +46,8 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
             onClick={handleClick}
             className={`transition-all hover:scale-110 ${
                 isLiked || showFilled
-                    ? 'text-red-500 hover:text-red-400'
-                    : 'text-white/50 hover:text-red-500'
+                    ? 'text-error hover:text-error'
+                    : 'text-text-subtle hover:text-error'
             } ${className}`}
             title={isLiked ? 'Unlike' : 'Like'}
             aria-label={isLiked ? 'Unlike song' : 'Like song'}

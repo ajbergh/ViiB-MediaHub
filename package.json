@@ -6,21 +6,25 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:raw-colors": "node scripts/check-no-raw-colors-tsx.mjs",
+    "check:palette": "node scripts/check-no-tailwind-palette.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
-    "lucide-react": "^0.554.0",
-    "react": "^19.2.0",
-    "react-router-dom": "^7.9.6",
-    "react-dom": "^19.2.0",
-    "zustand": "^5.0.8",
-    "music-metadata": "10.0.0",
     "buffer": "5.7.1",
+    "idb": "8.0.0",
+    "lucide-react": "^0.554.0",
+    "music-metadata": "10.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.6",
     "react-virtuoso": "4.12.3",
-    "idb": "8.0.0"
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",

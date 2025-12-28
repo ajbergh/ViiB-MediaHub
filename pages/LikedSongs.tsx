@@ -56,7 +56,7 @@ const LikedHeader: React.FC<{ context?: LikedContext }> = ({ context }) => {
             {/* Header Section */}
             <div className="flex items-end gap-6 mb-8">
                 {/* Liked Songs Icon */}
-                <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shadow-2xl shadow-red-500/30">
+                <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand to-surface-1 flex items-center justify-center shadow-2xl shadow-brand/30">
                     <Heart size={80} className="text-white fill-current" />
                 </div>
                 
@@ -145,7 +145,7 @@ export const LikedSongs: React.FC = () => {
                 <div className="p-8">
                     {/* Header Section */}
                     <div className="flex items-end gap-6 mb-8">
-                        <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-red-500/50 to-pink-600/50 flex items-center justify-center shadow-2xl">
+                        <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand/40 to-surface-1 flex items-center justify-center shadow-2xl">
                             <Heart size={80} className="text-white/50" />
                         </div>
                         

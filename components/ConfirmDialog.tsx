@@ -47,13 +47,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     switch (variant) {
       case 'danger':
         return {
-          iconColor: 'text-red-500',
-          buttonBg: 'bg-red-600 hover:bg-red-700',
+          iconColor: 'text-error',
+          buttonBg: 'bg-error hover:bg-error/90',
         };
       case 'warning':
         return {
-          iconColor: 'text-yellow-500',
-          buttonBg: 'bg-yellow-600 hover:bg-yellow-700',
+          iconColor: 'text-warning',
+          buttonBg: 'bg-warning hover:bg-warning/90',
         };
       default:
         return {
@@ -67,7 +67,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
@@ -84,12 +84,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         }
       }}
     >
-      <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-scale-in">
+      <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-scale-in motion-reduce:animate-none">
         <div className="flex items-center gap-4 mb-4">
           {variant !== 'default' && (
             <AlertTriangle size={28} className={styles.iconColor} aria-hidden="true" />
           )}
-          <h2 id="confirm-dialog-title" className="text-lg font-bold text-white">{title}</h2>
+          <h2 id="confirm-dialog-title" className="text-lg font-bold text-text-main">{title}</h2>
         </div>
         
         <div id="confirm-dialog-description" className="text-text-secondary mb-6 leading-relaxed">
@@ -107,7 +107,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button 
             onClick={onConfirm}
             disabled={isLoading}
-            className={`px-5 py-2 rounded-lg font-bold text-white transition-colors flex items-center gap-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-surface-2 ${styles.buttonBg}`}
+            className={`px-5 py-2 rounded-lg font-bold text-surface-0 transition-colors flex items-center gap-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-text-main focus:ring-offset-2 focus:ring-offset-surface-2 ${styles.buttonBg}`}
             autoFocus
           >
             {isLoading && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}

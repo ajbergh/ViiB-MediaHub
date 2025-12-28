@@ -110,7 +110,7 @@ export const ArtistDetail: React.FC = () => {
             <div className="flex flex-col items-center justify-center h-full text-text-subtle">
                 <User size={64} className="mb-4 opacity-50" />
                 <h2 className="text-xl font-bold mb-2">Artist not found</h2>
-                <button onClick={() => navigate('/artists')} className="text-green-500 hover:underline">
+                <button onClick={() => navigate('/artists')} className="text-brand hover:underline">
                     Back to Artists
                 </button>
             </div>
@@ -200,7 +200,7 @@ export const ArtistDetail: React.FC = () => {
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
                         <span>{artistAlbums.length} albums</span>
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
-                        <span className="text-gray-300">{durationHours > 0 ? `${durationHours} hr ${durationMin} min` : `${durationMin} min`}</span>
+                        <span className="text-text-subtle">{durationHours > 0 ? `${durationHours} hr ${durationMin} min` : `${durationMin} min`}</span>
                     </div>
                 </div>
             </div>
@@ -288,7 +288,7 @@ export const ArtistDetail: React.FC = () => {
                                 <div className="flex justify-between items-center mt-auto">
                                     <p className="text-sm text-text-secondary">{album.songCount} songs</p>
                                     {albumMeta?.releaseDate && (
-                                        <span className="text-[10px] text-[#555] font-mono">{new Date(albumMeta.releaseDate).getFullYear()}</span>
+                                        <span className="text-[10px] text-text-subtle font-mono">{new Date(albumMeta.releaseDate).getFullYear()}</span>
                                     )}
                                 </div>
                             </div>

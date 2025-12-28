@@ -21,6 +21,7 @@
 import React, { useEffect, useRef } from 'react';
 import { audioEngine } from '../lib/audio';
 import { VisualizerMode } from '../types';
+import { rgbaFromRgb, VIIB_COLOR_RGB, VIIB_COLOR_VALUES } from './ui/tokens';
 
 interface Props {
   mode: VisualizerMode;
@@ -28,7 +29,7 @@ interface Props {
   barColor?: string;
 }
 
-export const Visualizer: React.FC<Props> = ({ mode, className = '', barColor = '#22c55e' }) => {
+export const Visualizer: React.FC<Props> = ({ mode, className = '', barColor = VIIB_COLOR_VALUES.playbackGreen }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
 
@@ -162,21 +163,21 @@ export const Visualizer: React.FC<Props> = ({ mode, className = '', barColor = '
         
         // Different color schemes for different modes
         if (mode === 'NEBULA') {
-          gradient.addColorStop(0, `rgba(139, 92, 246, ${bass * 0.5})`);
-          gradient.addColorStop(0.5, `rgba(236, 72, 153, ${(bass + treble) * 0.3})`);
-          gradient.addColorStop(1, `rgba(59, 130, 246, ${treble * 0.5})`);
+          gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPurple, bass * 0.5));
+          gradient.addColorStop(0.5, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPink, (bass + treble) * 0.3));
+          gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerBlue, treble * 0.5));
         } else if (mode === 'PARTICLES') {
-          gradient.addColorStop(0, `rgba(34, 197, 94, ${bass * 0.4})`);
-          gradient.addColorStop(0.5, `rgba(255, 255, 255, ${(bass + treble) * 0.2})`);
-          gradient.addColorStop(1, `rgba(139, 92, 246, ${treble * 0.4})`);
+          gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.visualizerGreen, bass * 0.4));
+          gradient.addColorStop(0.5, rgbaFromRgb(VIIB_COLOR_RGB.white, (bass + treble) * 0.2));
+          gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPurple, treble * 0.4));
         } else if (mode === 'CIRCULAR') {
-          gradient.addColorStop(0, `rgba(34, 197, 94, ${bass * 0.6})`);
-          gradient.addColorStop(0.5, `rgba(139, 92, 246, ${(bass + treble) * 0.4})`);
-          gradient.addColorStop(1, `rgba(59, 130, 246, ${treble * 0.5})`);
+          gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.visualizerGreen, bass * 0.6));
+          gradient.addColorStop(0.5, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPurple, (bass + treble) * 0.4));
+          gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerBlue, treble * 0.5));
         } else {
-          gradient.addColorStop(0, `rgba(30, 215, 96, ${bass * 0.6})`);
-          gradient.addColorStop(0.5, `rgba(139, 92, 246, ${(bass + treble) * 0.4})`);
-          gradient.addColorStop(1, `rgba(59, 130, 246, ${treble * 0.6})`);
+          gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.spotifyGreen, bass * 0.6));
+          gradient.addColorStop(0.5, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPurple, (bass + treble) * 0.4));
+          gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerBlue, treble * 0.6));
         }
         
         ctx.fillStyle = gradient;

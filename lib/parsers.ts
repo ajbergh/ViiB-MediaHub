@@ -1,3 +1,4 @@
+// @ts-ignore - URL import is handled by Vite at runtime; TS bundler resolution doesn't model it.
 import { parseBlob } from 'https://esm.sh/music-metadata@10.0.0?bundle';
 import { Song } from '../types';
 import { generateId } from '../utils';

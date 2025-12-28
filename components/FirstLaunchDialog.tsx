@@ -23,6 +23,8 @@ import React, { useState, useEffect } from 'react';
 import { Music, FolderOpen, Wifi, Check, Loader2, X, Plus, ChevronRight, Sparkles, HardDrive } from 'lucide-react';
 import { useStore } from '../store';
 import { api } from '../services/api';
+import { Button } from './ui/Button';
+import { TextInput } from './ui/TextInput';
 
 interface FirstLaunchDialogProps {
   isOpen: boolean;
@@ -358,20 +360,23 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       </div>
 
       <div className="flex flex-col items-center gap-4">
-        <button
+        <Button
+          variant="primary"
+          accent="brand"
           onClick={() => setStep(2)}
-          className="group relative bg-brand hover:bg-brand-hover text-black font-bold py-4 px-10 rounded-full transition-all shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105 flex items-center gap-3 text-lg"
+          rightIcon={<ChevronRight size={24} className="group-hover:translate-x-1 transition-transform" />}
+          className="group relative rounded-full py-4 px-10 shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105 text-lg font-bold"
         >
           <span>Let's Get Started</span>
-          <ChevronRight size={24} className="group-hover:translate-x-1 transition-transform" />
-        </button>
+        </Button>
 
-        <button
+        <Button
+          variant="ghost"
           onClick={handleFinish}
-          className="text-text-subtle hover:text-text-secondary text-sm hover:underline transition-colors"
+          className="px-0 py-0 text-text-subtle hover:text-text-secondary text-sm hover:underline hover:bg-transparent"
         >
           Skip setup for now
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -409,48 +414,57 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                     <div className="font-mono text-sm text-text-main truncate">{folder.path}</div>
                   </div>
                 </div>
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => removeScanFolder(folder.id)}
-                  className="p-2 text-text-subtle hover:text-red-500 transition-colors ml-2"
+                  className="p-2 text-text-subtle hover:text-error ml-2"
                   title="Remove folder"
+                  aria-label="Remove folder"
                 >
                   <X size={18} />
-                </button>
+                </Button>
               </div>
             ))
           )}
         </div>
 
-        <button
+        <Button
+          variant="secondary"
           onClick={openFolderBrowser}
-          className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main font-bold py-3 px-5 rounded-lg transition-all border border-surface-border w-full justify-center"
+          leftIcon={<Plus size={18} />}
+          className="w-full justify-center font-bold py-3"
         >
-          <Plus size={18} /> Add Folder
-        </button>
+          Add Folder
+        </Button>
       </div>
 
       <div className="flex items-center justify-between">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => setStep(1)}
-          className="px-5 py-2 text-text-secondary hover:text-text-main transition-colors"
+          className="px-0 py-0 text-text-secondary hover:text-text-main hover:bg-transparent"
         >
           ← Back
-        </button>
+        </Button>
 
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="ghost"
             onClick={handleSkipToEnd}
-            className="px-5 py-2 text-text-subtle hover:text-text-secondary transition-colors underline"
+            className="px-0 py-0 text-text-subtle hover:text-text-secondary underline hover:bg-transparent"
           >
             Skip
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
+            accent="brand"
             onClick={() => setStep(3)}
             disabled={scanFolders.length === 0}
-            className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2"
+            rightIcon={<ChevronRight size={18} />}
+            className="font-bold py-3 px-6"
           >
-            Continue <ChevronRight size={18} />
-          </button>
+            Continue
+          </Button>
         </div>
       </div>
     </div>
@@ -498,12 +512,12 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
             <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
               Spotify Client ID
             </label>
-            <input
+            <TextInput
               type="text"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               placeholder="Enter your Client ID"
-              className="w-full bg-surface-2 border border-surface-border rounded-lg px-4 py-3 text-text-main focus:border-brand outline-none transition-colors"
+              className="w-full bg-surface-2 px-4 py-3"
             />
           </div>
 
@@ -511,12 +525,12 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
             <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
               Spotify Client Secret
             </label>
-            <input
+            <TextInput
               type="password"
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
               placeholder="Enter your Client Secret"
-              className="w-full bg-surface-2 border border-surface-border rounded-lg px-4 py-3 text-text-main focus:border-brand outline-none transition-colors"
+              className="w-full bg-surface-2 px-4 py-3"
             />
           </div>
 
@@ -528,20 +542,23 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
               Where should Spotify downloads be saved? Leave empty for default location.
             </p>
             <div className="flex items-center gap-2">
-              <input
+              <TextInput
                 type="text"
                 value={spotifyDownloadPath}
                 onChange={(e) => setSpotifyDownloadPath(e.target.value)}
                 placeholder="Default: AppData/ViiB-MediaHub/spotify_downloads"
-                className="flex-1 bg-surface-2 border border-surface-border rounded-lg px-4 py-3 text-text-main focus:border-brand outline-none font-mono text-sm"
+                className="flex-1 bg-surface-2 px-4 py-3"
+                inputClassName="font-mono text-sm"
               />
-              <button
+              <Button
+                variant="secondary"
                 onClick={openDownloadFolderBrowser}
-                className="bg-surface-2 border border-surface-border hover:bg-surface-hover text-text-main font-bold py-3 px-4 rounded-lg transition-colors flex items-center gap-2"
+                className="py-3 px-4"
                 title="Browse folders"
+                aria-label="Browse folders"
               >
                 <FolderOpen size={18} />
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -560,36 +577,33 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       </div>
 
       <div className="flex items-center justify-between">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => setStep(2)}
-          className="px-5 py-2 text-text-secondary hover:text-text-main transition-colors"
+          className="px-0 py-0 text-text-secondary hover:text-text-main hover:bg-transparent"
         >
           ← Back
-        </button>
+        </Button>
 
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setStep(4)}
-            className="px-5 py-2 text-text-subtle hover:text-text-secondary transition-colors underline"
+            className="px-0 py-0 text-text-subtle hover:text-text-secondary underline hover:bg-transparent"
           >
             Skip for now
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
+            accent="brand"
             onClick={handleSaveSpotifyCredentials}
             disabled={!clientId.trim() || !clientSecret.trim() || savingCredentials}
-            className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2"
+            leftIcon={savingCredentials ? <Loader2 size={18} className="animate-spin" /> : undefined}
+            rightIcon={!savingCredentials ? <ChevronRight size={18} /> : undefined}
+            className="font-bold py-3 px-6"
           >
-            {savingCredentials ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                Save & Continue <ChevronRight size={18} />
-              </>
-            )}
-          </button>
+            {savingCredentials ? 'Saving...' : 'Save & Continue'}
+          </Button>
         </div>
       </div>
     </div>
@@ -636,12 +650,12 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
             <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
               Gemini API Key
             </label>
-            <input
+            <TextInput
               type="password"
               value={geminiKey}
               onChange={(e) => setGeminiKey(e.target.value)}
               placeholder="Enter your Gemini API Key"
-              className="w-full bg-surface-2 border border-surface-border rounded-lg px-4 py-3 text-text-main focus:border-brand outline-none transition-colors"
+              className="w-full bg-surface-2 px-4 py-3"
             />
           </div>
         </div>
@@ -660,36 +674,33 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       </div>
 
       <div className="flex items-center justify-between">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => setStep(3)}
-          className="px-5 py-2 text-text-secondary hover:text-text-main transition-colors"
+          className="px-0 py-0 text-text-secondary hover:text-text-main hover:bg-transparent"
         >
           ← Back
-        </button>
+        </Button>
 
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setStep(5)}
-            className="px-5 py-2 text-text-subtle hover:text-text-secondary transition-colors underline"
+            className="px-0 py-0 text-text-subtle hover:text-text-secondary underline hover:bg-transparent"
           >
             Skip for now
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
+            accent="brand"
             onClick={handleSaveGeminiKey}
             disabled={!geminiKey.trim() || savingGemini}
-            className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-3 px-6 rounded-lg transition-all flex items-center gap-2"
+            leftIcon={savingGemini ? <Loader2 size={18} className="animate-spin" /> : undefined}
+            rightIcon={!savingGemini ? <ChevronRight size={18} /> : undefined}
+            className="font-bold py-3 px-6"
           >
-            {savingGemini ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                Save & Continue <ChevronRight size={18} />
-              </>
-            )}
-          </button>
+            {savingGemini ? 'Saving...' : 'Save & Continue'}
+          </Button>
         </div>
       </div>
     </div>
@@ -699,8 +710,8 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
   const renderComplete = () => (
     <div className="text-center py-8">
       <div className="flex justify-center mb-6">
-        <div className="p-6 bg-gradient-to-br from-green-500/20 to-green-500/5 rounded-full">
-          <Check size={64} className="text-green-500" />
+        <div className="p-6 bg-gradient-to-br from-success/20 to-success/5 rounded-full">
+          <Check size={64} className="text-success" />
         </div>
       </div>
 
@@ -757,21 +768,25 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
 
       <div className="flex flex-col items-center gap-4">
         {scanFolders.length > 0 ? (
-          <button
+          <Button
+            variant="primary"
+            accent="brand"
             onClick={handleStartScanAndClose}
-            className="bg-brand hover:bg-brand-hover text-black font-bold py-4 px-10 rounded-full transition-all shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105 flex items-center gap-3 text-lg"
+            leftIcon={<Music size={24} />}
+            className="rounded-full py-4 px-10 shadow-lg shadow-brand/20 hover:shadow-brand/40 hover:scale-105 text-lg font-bold"
           >
-            <Music size={24} />
             Start Scanning & Launch
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
+            variant="primary"
+            accent="brand"
             onClick={handleFinish}
-            className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-8 rounded-full transition-all shadow-lg shadow-brand/20 flex items-center gap-2"
+            leftIcon={<Music size={20} />}
+            className="rounded-full py-3 px-8 shadow-lg shadow-brand/20 font-bold"
           >
-            <Music size={20} />
             Start Using ViiB MediaHub
-          </button>
+          </Button>
         )}
         
         {scanFolders.length > 0 && (
@@ -818,12 +833,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">Select Music Folder</h2>
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => setShowFolderBrowser(false)}
-                className="p-2 hover:bg-surface-3 rounded-lg transition-colors"
+                className="p-2"
+                aria-label="Close folder browser"
               >
                 <X size={20} />
-              </button>
+              </Button>
             </div>
 
             {/* Current Path */}
@@ -842,10 +859,11 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                   {browserEntries.map((entry, idx) => {
                     const isRoot = isDriveLetter(entry.name);
                     return (
-                      <button
+                      <Button
+                        variant="ghost"
                         key={idx}
                         onClick={() => navigateFolder(entry.path)}
-                        className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
+                        className="w-full justify-start gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
                       >
                         {isRoot ? (
                           <HardDrive size={18} className="text-brand flex-shrink-0" />
@@ -854,7 +872,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                         )}
                         <span className="text-text-main truncate font-medium">{entry.name}</span>
                         {isRoot && <span className="text-xs text-text-subtle ml-auto">Drive</span>}
-                      </button>
+                      </Button>
                     );
                   })}
                   {browserEntries.length === 0 && (
@@ -866,19 +884,22 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-3">
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => setShowFolderBrowser(false)}
-                className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
+                accent="brand"
                 onClick={selectCurrentFolder}
                 disabled={!browserPath}
-                className="px-6 py-2 rounded-lg font-bold bg-brand hover:bg-brand-hover disabled:opacity-50 text-black transition-colors flex items-center gap-2"
+                leftIcon={<Plus size={16} />}
+                className="px-6 py-2 font-bold"
               >
-                <Plus size={16} /> Add This Folder
-              </button>
+                Add This Folder
+              </Button>
             </div>
           </div>
         </div>
@@ -890,12 +911,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">Select Download Folder</h2>
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => setShowDownloadFolderBrowser(false)}
-                className="p-2 hover:bg-surface-3 rounded-lg transition-colors"
+                className="p-2"
+                aria-label="Close download folder browser"
               >
                 <X size={20} />
-              </button>
+              </Button>
             </div>
 
             {/* Current Path */}
@@ -914,10 +937,11 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                   {downloadBrowserEntries.map((entry, idx) => {
                     const isRoot = isDriveLetter(entry.name);
                     return (
-                      <button
+                      <Button
+                        variant="ghost"
                         key={idx}
                         onClick={() => navigateDownloadFolder(entry.path)}
-                        className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
+                        className="w-full justify-start gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
                       >
                         {isRoot ? (
                           <HardDrive size={18} className="text-brand flex-shrink-0" />
@@ -926,7 +950,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
                         )}
                         <span className="text-text-main truncate font-medium">{entry.name}</span>
                         {isRoot && <span className="text-xs text-text-subtle ml-auto">Drive</span>}
-                      </button>
+                      </Button>
                     );
                   })}
                   {downloadBrowserEntries.length === 0 && (
@@ -938,19 +962,22 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-3">
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => setShowDownloadFolderBrowser(false)}
-                className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
+                accent="brand"
                 onClick={selectDownloadFolder}
                 disabled={!downloadBrowserPath}
-                className="px-6 py-2 rounded-lg font-bold bg-brand hover:bg-brand-hover disabled:opacity-50 text-black transition-colors flex items-center gap-2"
+                leftIcon={<FolderOpen size={16} />}
+                className="px-6 py-2 font-bold"
               >
-                <FolderOpen size={16} /> Select This Folder
-              </button>
+                Select This Folder
+              </Button>
             </div>
           </div>
         </div>

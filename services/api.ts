@@ -1050,6 +1050,9 @@ export interface SmartPlaylistFilter {
   mood?: string;
   energy?: string;
   tempo?: string;
+  occasion?: string;
+  instrumental?: boolean;
+  fromCache?: boolean;
   localMatch?: boolean;
   blendMode?: 'single' | 'mixed';
   matchedGenres?: MatchedGenre[];

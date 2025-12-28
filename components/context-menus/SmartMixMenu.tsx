@@ -25,12 +25,12 @@ export const SmartMixMenu: React.FC<{ mix: SmartMix; onClose: () => void }> = ({
 
     return (
         <>
-            <div className="px-3 py-2 border-b border-[#333] mb-1">
-                <div className="font-bold text-white truncate text-sm flex items-center gap-1">
-                    <Sparkles size={12} className="text-yellow-500" />
+            <div className="px-3 py-2 border-b border-surface-border mb-1">
+                <div className="font-bold text-text-main truncate text-sm flex items-center gap-1">
+                    <Sparkles size={12} className="text-brand" />
                     {mix.name}
                 </div>
-                <div className="text-xs text-gray-400 truncate">{mix.songIds.length} tracks</div>
+                <div className="text-xs text-text-secondary truncate">{mix.songIds.length} tracks</div>
             </div>
 
             <MenuItem icon={Play} label="Play Mix" onClick={() => handleAction(() => {
@@ -39,7 +39,7 @@ export const SmartMixMenu: React.FC<{ mix: SmartMix; onClose: () => void }> = ({
             <MenuItem icon={SkipForward} label="Play Next" onClick={() => handleAction(() => playNext(mixSongs))} />
             <MenuItem icon={ListPlus} label="Add to Queue" onClick={() => handleAction(() => addToQueue(mixSongs))} />
             
-            <div className="border-t border-[#333] my-1"></div>
+            <div className="border-t border-surface-border my-1"></div>
             
             <MenuItem icon={Save} label="Save as Playlist" onClick={() => handleAction(() => {
                     saveSmartMixAsPlaylist(mix.id);

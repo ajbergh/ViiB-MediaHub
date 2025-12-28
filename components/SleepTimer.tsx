@@ -241,12 +241,12 @@ export const SleepTimer: React.FC<SleepTimerProps & {
     const presetTimes = [15, 30, 45, 60, 90, 120];
 
     return (
-        <div className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none">
             <div className="w-full max-w-md bg-surface-1 border border-surface-border rounded-2xl shadow-2xl overflow-hidden">
                 {/* Header */}
                 <div className="h-14 border-b border-surface-3 bg-surface-2 px-5 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <Moon size={20} className="text-purple-400" />
+                        <Moon size={20} className="text-brand" />
                         <h2 className="text-lg font-bold text-text-main">Sleep Timer</h2>
                     </div>
                     <button 
@@ -260,11 +260,11 @@ export const SleepTimer: React.FC<SleepTimerProps & {
                 <div className="p-5">
                     {/* Active Timer Display */}
                     {isActive && (
-                        <div className="mb-5 p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
+                        <div className="mb-5 p-4 bg-brand/10 border border-brand/30 rounded-xl">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center">
-                                        <Timer size={20} className="text-purple-400" />
+                                    <div className="w-10 h-10 bg-brand/20 rounded-full flex items-center justify-center">
+                                        <Timer size={20} className="text-brand" />
                                     </div>
                                     <div>
                                         <p className="text-sm text-text-secondary">Timer Active</p>
@@ -283,13 +283,13 @@ export const SleepTimer: React.FC<SleepTimerProps & {
                                 </div>
                                 <button
                                     onClick={cancelTimer}
-                                    className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-colors"
+                                    className="px-4 py-2 bg-error/20 text-error rounded-lg text-sm font-medium hover:bg-error/30 transition-colors"
                                 >
                                     Cancel
                                 </button>
                             </div>
                             {timerState.fadeStarted && (
-                                <p className="text-xs text-purple-300 mt-2">Volume fading...</p>
+                                <p className="text-xs text-text-secondary mt-2">Volume fading...</p>
                             )}
                         </div>
                     )}

@@ -19,6 +19,7 @@ import { useStore, useAlbums, useArtists } from '../store';
 import { Sparkles, Search, Play, Clock, History } from 'lucide-react';
 import { generateGradient, coverBackground, formatTime } from '../utils';
 import { ContextMenuType, Song } from '../types';
+import { TextInput } from '../components/ui/TextInput';
 
 export const Home: React.FC = () => {
   const { songs, smartMixes, refreshSmartMixes, playSong, openContextMenu, showSmartMixes } = useStore();
@@ -78,21 +79,18 @@ export const Home: React.FC = () => {
     <div className="p-8 pb-32 animate-fade-in">
       {/* Header Section */}
       <section className="mb-12 flex flex-col items-center justify-center pt-8">
-        <h1 className="text-4xl md:text-5xl font-bold mb-8 text-center bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">Let's ViiB</h1>
+        <h1 className="text-display mb-8 text-center">Let's ViiB</h1>
         
         {/* Global Search Input */}
-        <div className="relative w-full max-w-2xl flex justify-center">
-             <div className="relative w-full">
-                <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-text-secondary" size={22} />
-                <input 
-                    type="text" 
-                    placeholder="What do you want to play?" 
-                    className="w-full bg-surface-highlight hover:bg-surface-hover focus:bg-surface-hover border border-transparent focus:border-surface-slider rounded-full py-4 pl-14 pr-6 text-white outline-none transition-all placeholder-text-subtle text-lg shadow-lg"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={handleSearch}
-                />
-            </div>
+        <div className="w-full max-w-2xl flex justify-center">
+          <TextInput
+            leftIcon={<Search size={18} className="text-text-secondary" aria-hidden="true" />}
+            type="text"
+            placeholder="What do you want to feel?"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearch}
+          />
         </div>
       </section>
 
@@ -100,8 +98,8 @@ export const Home: React.FC = () => {
       {songs.length > 0 && showSmartMixes && (
           <section className="mb-12">
             <div className="flex items-center gap-2 mb-6">
-                <Sparkles className="text-purple-400" size={24} />
-                <h2 className="text-2xl font-bold">Smart Mixes</h2>
+            <Sparkles className="text-brand" size={24} />
+            <h2 className="text-section">Smart Mixes</h2>
             </div>
             
             <div className="flex overflow-x-auto gap-6 pb-4 scrollbar-hide snap-x">
@@ -142,11 +140,11 @@ export const Home: React.FC = () => {
             onClick={() => navigate('/songs')}
         >
             <div className="relative z-10">
-                <MusicIcon className="text-green-500 mb-4" />
+            <MusicIcon className="text-brand mb-4" />
                 <h3 className="text-3xl font-bold mb-1">{songs.length}</h3>
                 <p className="text-text-secondary text-sm font-medium">Total Songs</p>
             </div>
-            <div className="absolute top-0 right-0 w-24 h-24 bg-green-500/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-green-500/20"></div>
+          <div className="absolute top-0 right-0 w-24 h-24 bg-brand/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-brand/20"></div>
         </div>
 
         <div 
@@ -154,11 +152,11 @@ export const Home: React.FC = () => {
             onClick={() => navigate('/albums')}
         >
             <div className="relative z-10">
-                <AlbumIcon className="text-purple-500 mb-4" />
+            <AlbumIcon className="text-brand mb-4" />
                 <h3 className="text-3xl font-bold mb-1">{albums.length}</h3>
                 <p className="text-text-secondary text-sm font-medium">Albums</p>
             </div>
-            <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-purple-500/20"></div>
+          <div className="absolute top-0 right-0 w-24 h-24 bg-brand/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-brand/20"></div>
         </div>
 
         <div 
@@ -166,11 +164,11 @@ export const Home: React.FC = () => {
             onClick={() => navigate('/artists')}
         >
              <div className="relative z-10">
-                <ArtistIcon className="text-blue-500 mb-4" />
+            <ArtistIcon className="text-brand mb-4" />
                 <h3 className="text-3xl font-bold mb-1">{artists.length}</h3>
                 <p className="text-text-secondary text-sm font-medium">Artists</p>
             </div>
-            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-blue-500/20"></div>
+          <div className="absolute top-0 right-0 w-24 h-24 bg-brand/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-brand/20"></div>
         </div>
       </section>
 
@@ -178,7 +176,7 @@ export const Home: React.FC = () => {
       {recentlyPlayed.length > 0 && (
         <section className="mb-12">
           <div className="flex items-center gap-2 mb-6">
-            <History className="text-blue-400" size={24} />
+            <History className="text-accent-blue" size={24} />
             <h2 className="text-2xl font-bold">Recently Played</h2>
           </div>
           
