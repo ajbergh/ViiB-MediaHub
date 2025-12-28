@@ -153,7 +153,7 @@ export const Sidebar: React.FC = () => {
               <Loader2 size={20} className="animate-spin" />
               {!collapsed && <span className="text-sm font-semibold">Scanning...</span>}
             </div>
-            {!collapsed && <span className="text-[10px] font-mono text-text-subtle line-clamp-1">{scanProgress}</span>}
+            {!collapsed && scanProgress && <span className="text-xs text-text-subtle line-clamp-1">{scanProgress}</span>}
           </div>
         ) : enrichmentStatus.isEnriching ? (
           <div className={`flex flex-col gap-2 text-text-secondary ${collapsed ? 'items-center' : ''}`}>

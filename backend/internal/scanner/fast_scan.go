@@ -162,6 +162,7 @@ func (s *Scanner) signatureBasedStartup() (*QuickStartupResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get directory signatures: %w", err)
 	}
+	logger.Scanner("Found %d stored directory signatures", len(storedSigs))
 
 	// Build a map for quick lookup
 	sigMap := make(map[string]db.DirectorySignature)
@@ -181,6 +182,7 @@ func (s *Scanner) signatureBasedStartup() (*QuickStartupResult, error) {
 		logger.Scanner("Failed to get metadata cache: %v", err)
 		metadataCache = make(map[string]db.FileMetadataCache)
 	}
+	logger.Scanner("Found %d entries in file metadata cache", len(metadataCache))
 
 	// Check each scan folder
 	for _, folder := range folders {

@@ -62,6 +62,9 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       set({ backendAvailable });
 
       if (backendAvailable) {
+          // Show scanning UI immediately - startup scan will begin shortly
+          set({ isScanning: true, scanProgress: 'Updating media library' });
+          
           // Load from Go backend
           try {
               const [songs, playlists, scanFolders, cachedAlbumMetadata, cachedArtistMetadata, likedIds, likedAlbumKeysList] = await Promise.all([
@@ -122,8 +125,15 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               const likedAlbumKeys = new Set(likedAlbumKeysList);
               set({ songs, playlists, smartMixes: mixes, scanFolders, albumMetadata, artistMetadata, likedSongIds, likedAlbumKeys });
               console.log(`✅ Loaded ${songs.length} songs, ${Object.keys(albumMetadata).length} cached album metadata, ${Object.keys(artistMetadata).length} cached artist metadata, ${likedIds.length} liked songs, ${likedAlbumKeysList.length} liked albums from backend`);
+              
+              // Note: isScanning is already set to true at the start of initLibrary
+              // The SSE connection will handle scan_complete events to reset it
+              // Start polling to ensure we catch scan completion even if SSE events are missed
+              get().pollScanStatus();
           } catch (e) {
               console.error("Failed to initialize library from backend", e);
+              // Reset scanning state on error
+              set({ isScanning: false, scanProgress: '' });
           }
       } else {
           // Fallback: Load from IndexedDB (browser-only mode)
@@ -693,16 +703,41 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       const { backendAvailable } = get();
       if (!backendAvailable) return;
       
+      console.log('🔄 Starting scan status polling...');
+
+	  // Avoid a startup race: the backend may report scanning=false for a brief
+	  // window right after launch (before the startup scan flips its flag).
+	  const pollStartedAt = Date.now();
+	  let everSawScanning = false;
+      
       const poll = async () => {
           try {
               const status = await backendService.getScanStatus();
-              set({ scanProgress: status.progress });
+              console.log('🔄 Poll result:', { scanning: status.scanning, progress: status.progress });
+
+	          if (status.scanning) {
+	              everSawScanning = true;
+	          }
+
+	          // Don't wipe the UI progress message with an empty backend status.
+	          if (typeof status.progress === 'string' && status.progress.trim().length > 0) {
+	              set({ scanProgress: status.progress });
+	          }
               
               if (status.scanning) {
                   // Continue polling
                   setTimeout(poll, 1000);
               } else {
+	              // If we haven't observed the scan start yet, keep polling briefly.
+	              // This is especially important on startup when the backend may delay
+	              // the quick scan by a couple seconds.
+	              if (!everSawScanning && Date.now() - pollStartedAt < 8000) {
+	                  setTimeout(poll, 500);
+	                  return;
+	              }
+
                   // Scan complete - reload library
+                  console.log('✅ Scan complete detected via polling, resetting UI...');
                   set({ isScanning: false, scanProgress: '' });
                   
                   // Refresh songs from backend
@@ -713,6 +748,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                   
                   const mixes = generateSmartMixes(songs);
                   set({ songs, smartMixes: mixes, scanFolders: folders });
+                  console.log('✅ Library refreshed after scan completion');
               }
           } catch (e) {
               console.error("Error polling scan status", e);

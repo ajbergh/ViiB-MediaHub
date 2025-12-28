@@ -587,10 +587,14 @@ func (a *API) startQuickScan(w http.ResponseWriter, r *http.Request) {
 
 	// Set scanning state before starting goroutine
 	a.scanner.SetScanning(true)
+	a.scanner.SetProgress("Quick scan started...")
 
 	go func() {
 		// Ensure scanning is set to false when done
-		defer a.scanner.SetScanning(false)
+		defer func() {
+			a.scanner.SetProgress("")
+			a.scanner.SetScanning(false)
+		}()
 
 		// Emit scan started event
 		a.scanner.EmitEvent(scanner.LibraryEvent{
@@ -617,11 +621,27 @@ func (a *API) startQuickScan(w http.ResponseWriter, r *http.Request) {
 		logger.API("Quick scan complete in %s using %s: %d dirs checked, %d unchanged, %d files changed",
 			quickResult.ScanDuration, method, quickResult.CheckedDirs, quickResult.UnchangedDirs, len(quickResult.ChangedFiles))
 
+		// Also detect deleted files (files in cache that no longer exist on disk)
+		a.scanner.SetProgress("Checking for deleted files...")
+		a.scanner.EmitEvent(scanner.LibraryEvent{
+			Type:    "scan_progress",
+			Message: "Checking for deleted files...",
+		})
+		deletedFiles, err := a.scanner.DetectDeletedFiles()
+		if err != nil {
+			logger.API("Error detecting deleted files: %v", err)
+		} else if len(deletedFiles) > 0 {
+			logger.API("Detected %d deleted files", len(deletedFiles))
+			quickResult.ChangedFiles = append(quickResult.ChangedFiles, deletedFiles...)
+		}
+
 		// Process changes if any
 		if len(quickResult.ChangedFiles) > 0 {
+			msg := fmt.Sprintf("Processing %d changed files...", len(quickResult.ChangedFiles))
+			a.scanner.SetProgress(msg)
 			a.scanner.EmitEvent(scanner.LibraryEvent{
 				Type:    "scan_progress",
-				Message: fmt.Sprintf("Processing %d changed files...", len(quickResult.ChangedFiles)),
+				Message: msg,
 			})
 
 			result, err := a.scanner.ProcessChanges(quickResult.ChangedFiles)
@@ -634,6 +654,7 @@ func (a *API) startQuickScan(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Emit completion event
+		a.scanner.SetProgress("")
 		a.scanner.EmitEvent(scanner.LibraryEvent{
 			Type:    "scan_complete",
 			Message: fmt.Sprintf("Quick scan complete: %d files changed", len(quickResult.ChangedFiles)),
@@ -701,9 +722,6 @@ func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
 // then processes any changes in the background. Falls back to full scan
 // if quick startup detects many changes or is unavailable.
 func (a *API) scanOnStartup() {
-	// Wait for application to fully initialize
-	time.Sleep(3 * time.Second)
-
 	folders, err := a.db.GetScanFolders()
 	if err != nil {
 		logger.API("Error getting scan folders for startup scan: %v", err)
@@ -715,11 +733,19 @@ func (a *API) scanOnStartup() {
 		return
 	}
 
-	// Emit scan started event so UI shows progress
-	a.scanner.EmitEvent(scanner.LibraryEvent{
-		Type:    "scan_started",
-		Message: "Checking for library changes...",
-	})
+	// Immediately report scanning so the frontend can show "Scanning..." on startup.
+	// The actual scan work begins shortly after (startup delay helps the UI connect).
+	a.scanner.SetScanning(true)
+	a.scanner.SetProgress("Updating media library")
+	defer func() {
+		a.scanner.SetProgress("")
+		a.scanner.SetScanning(false)
+	}()
+
+	a.scanner.EmitEvent(scanner.LibraryEvent{Type: "scan_started", Message: "Updating media library"})
+
+	// Wait for application to fully initialize / UI to attach SSE.
+	time.Sleep(3 * time.Second)
 
 	// Try quick startup first (uses signatures and filesystem journals)
 	logger.API("Starting quick startup scan...")
@@ -745,28 +771,50 @@ func (a *API) scanOnStartup() {
 	logger.API("Quick startup complete in %s using %s: %d dirs checked, %d unchanged, %d files changed",
 		quickResult.ScanDuration, method, quickResult.CheckedDirs, quickResult.UnchangedDirs, len(quickResult.ChangedFiles))
 
+	// Also detect deleted files (files in cache that no longer exist on disk)
+	a.scanner.SetProgress("Updating media library")
+	a.scanner.EmitEvent(scanner.LibraryEvent{Type: "scan_progress", Message: "Updating media library"})
+	deletedFiles, err := a.scanner.DetectDeletedFiles()
+	if err != nil {
+		logger.API("Error detecting deleted files: %v", err)
+	} else {
+		logger.API("Detected %d deleted files", len(deletedFiles))
+		if len(deletedFiles) > 0 {
+			quickResult.ChangedFiles = append(quickResult.ChangedFiles, deletedFiles...)
+		}
+	}
+
 	// If we detected changes, process them
 	if len(quickResult.ChangedFiles) > 0 {
 		// Update progress
-		a.scanner.EmitEvent(scanner.LibraryEvent{
-			Type:    "scan_progress",
-			Message: fmt.Sprintf("Processing %d changed files...", len(quickResult.ChangedFiles)),
-		})
+		msg := fmt.Sprintf("Processing %d changed files...", len(quickResult.ChangedFiles))
+		a.scanner.SetProgress(msg)
+		a.scanner.EmitEvent(scanner.LibraryEvent{Type: "scan_progress", Message: msg})
 
-		// For small number of changes, process immediately
-		if len(quickResult.ChangedFiles) <= 100 {
-			logger.API("Processing %d changed files immediately...", len(quickResult.ChangedFiles))
-			result, err := a.scanner.ProcessChanges(quickResult.ChangedFiles)
-			if err != nil {
-				logger.API("Error processing changes: %v", err)
-			} else {
-				logger.API("Processed changes: %d new, %d updated, %d removed",
-					result.NewSongs, result.UpdatedSongs, result.RemovedSongs)
-			}
+		// Process all changes immediately during startup scan (don't use background queue)
+		// This ensures the scan completes fully before we emit scan_complete
+		logger.API("Processing %d changed files immediately...", len(quickResult.ChangedFiles))
+		result, err := a.scanner.ProcessChanges(quickResult.ChangedFiles)
+		if err != nil {
+			logger.API("Error processing changes: %v", err)
 		} else {
-			// For many changes, queue for background processing
-			logger.API("Queueing %d changed files for background processing...", len(quickResult.ChangedFiles))
-			a.scanner.QueueChangesForBackground(quickResult.ChangedFiles)
+			logger.API("Processed changes: %d new, %d updated, %d removed",
+				result.NewSongs, result.UpdatedSongs, result.RemovedSongs)
+
+			// Emit scan complete with accurate counts
+			a.scanner.SetProgress("")
+			a.scanner.EmitEvent(scanner.LibraryEvent{
+				Type:         "scan_complete",
+				Message:      fmt.Sprintf("Startup scan complete: %d added, %d removed", result.NewSongs, result.RemovedSongs),
+				NewSongs:     result.NewSongs,
+				RemovedSongs: result.RemovedSongs,
+			})
+
+			// Notify UI to refresh
+			a.scanner.EmitEvent(scanner.LibraryEvent{
+				Type: "library_updated",
+			})
+			return
 		}
 	}
 
@@ -789,12 +837,12 @@ func (a *API) scanOnStartup() {
 		return
 	}
 
-	// Emit scan complete event for quick startup
+	// Emit scan complete event for quick startup (no changes found)
+	logger.API("Startup scan complete - no changes detected, emitting scan_complete event")
+	a.scanner.SetProgress("")
 	a.scanner.EmitEvent(scanner.LibraryEvent{
-		Type:       "scan_complete",
-		Message:    "Library check complete",
-		NewSongs:   len(quickResult.ChangedFiles),
-		TotalSongs: quickResult.CheckedDirs,
+		Type:    "scan_complete",
+		Message: "Library check complete - no changes detected",
 	})
 }
 

@@ -321,6 +321,19 @@ func (s *Scanner) performQuickScan() {
 	logger.Scanner("Quick scan complete in %s using %s: %d files changed",
 		quickResult.ScanDuration, method, len(quickResult.ChangedFiles))
 
+	// Also detect deleted files (files in cache that no longer exist on disk)
+	s.emitEvent(LibraryEvent{
+		Type:    "scan_progress",
+		Message: "Checking for deleted files...",
+	})
+	deletedFiles, err := s.DetectDeletedFiles()
+	if err != nil {
+		logger.Scanner("Error detecting deleted files: %v", err)
+	} else if len(deletedFiles) > 0 {
+		logger.Scanner("Detected %d deleted files", len(deletedFiles))
+		quickResult.ChangedFiles = append(quickResult.ChangedFiles, deletedFiles...)
+	}
+
 	if len(quickResult.ChangedFiles) > 0 {
 		s.emitEvent(LibraryEvent{
 			Type:    "scan_progress",
@@ -377,6 +390,14 @@ func (s *Scanner) GetProgress() string {
 	s.scanMutex.RLock()
 	defer s.scanMutex.RUnlock()
 	return s.scanProgress
+}
+
+// SetProgress updates the progress string returned by /scan/status.
+// It does not emit an SSE event (call emitEvent/setProgress separately if needed).
+func (s *Scanner) SetProgress(msg string) {
+	s.scanMutex.Lock()
+	s.scanProgress = msg
+	s.scanMutex.Unlock()
 }
 
 // setProgress updates the scan progress message
