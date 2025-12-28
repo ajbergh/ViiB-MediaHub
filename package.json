@@ -8,6 +8,7 @@
     "build": "vite build",
     "check:raw-colors": "node scripts/check-no-raw-colors-tsx.mjs",
     "check:palette": "node scripts/check-no-tailwind-palette.mjs",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -80,7 +80,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                         <img src={coverUrl} alt={decodedAlbumName} className="w-full h-full object-cover rounded shadow-lg" />
                     ) : (
                         <div 
-                            className="w-full h-full flex items-center justify-center rounded shadow-lg text-white/30 text-6xl font-bold bg-surface-3"
+                            className="w-full h-full flex items-center justify-center rounded shadow-lg text-white/30 text-display font-bold bg-surface-3"
                             style={{ background: generateGradient(decodedAlbumName) }}
                         >
                             {decodedAlbumName.charAt(0)}
@@ -96,7 +96,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                     </div>
                     
                     <h1 
-                        className="text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-snug line-clamp-2 drop-shadow-lg"
+                        className="text-display font-bold text-white tracking-tight leading-snug line-clamp-2 drop-shadow-lg"
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, albumObject)}
                     >
                         {decodedAlbumName}

@@ -270,7 +270,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
 
             <div className="flex-1 pb-4">
               <p className="text-sm font-bold uppercase tracking-wider text-text-secondary mb-2">Playlist</p>
-              <h1 className="text-5xl font-bold mb-4 leading-tight">{playlist.name}</h1>
+              <h1 className="text-display font-bold mb-4 leading-tight">{playlist.name}</h1>
               {playlist.description && (
                 <p className="text-text-secondary mb-4" dangerouslySetInnerHTML={{ __html: playlist.description }} />
               )}

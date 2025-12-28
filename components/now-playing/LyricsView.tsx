@@ -127,7 +127,7 @@ export const LyricsView: React.FC<Props> = ({ song, currentTime, onSeek }) => {
                         ref={idx === activeLyricIndex ? activeLineRef : null}
                         role="button"
                         tabIndex={0}
-                        className={`transition-all duration-500 text-2xl md:text-3xl font-bold leading-relaxed px-4 ${
+                        className={`transition-all duration-500 text-card md:text-section font-bold leading-relaxed px-4 ${
                             idx === activeLyricIndex 
                                 ? 'text-text-main scale-105 origin-center'
                                 : 'text-text-main opacity-30 blur-[1px] hover:opacity-60 hover:blur-0 cursor-pointer'

@@ -21,6 +21,7 @@ import { ContextMenuType, Album } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { useNavigate } from 'react-router-dom';
 import { AlbumLikeButton } from '../components/AlbumLikeButton';
+import { Page } from '../components/ui/Page';
 
 type LikedAlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc';
 
@@ -100,35 +101,33 @@ export const LikedAlbums: React.FC = () => {
     // Empty state
     if (sortedLikedAlbums.length === 0) {
         return (
-            <div className="h-full animate-fade-in">
-                <div className="p-8">
-                    {/* Header Section */}
-                    <div className="flex items-end gap-6 mb-8">
-                        <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand/40 to-surface-1 flex items-center justify-center shadow-2xl">
-                            <Heart size={80} className="text-white/50" />
-                        </div>
-                        
-                        <div className="flex-1">
-                            <p className="text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibold">Collection</p>
-                            <h1 className="text-5xl font-black text-text-main mb-4">Liked Albums</h1>
-                            <p className="text-text-secondary text-sm">No liked albums yet</p>
-                        </div>
+            <Page withPlayerPadding={false}>
+                {/* Header Section */}
+                <div className="flex items-end gap-6 mb-8">
+                    <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand/40 to-surface-1 flex items-center justify-center shadow-2xl">
+                        <Heart size={80} className="text-white/50" />
+                    </div>
+                    
+                    <div className="flex-1">
+                        <p className="text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibold">Collection</p>
+                        <h1 className="text-display font-bold text-text-main mb-4">Liked Albums</h1>
+                        <p className="text-text-secondary text-sm">No liked albums yet</p>
                     </div>
                 </div>
                 
                 <div className="flex flex-col items-center justify-center p-12 text-center">
                     <Heart size={64} className="text-text-subtle mb-4" />
-                    <h2 className="text-xl font-bold text-text-main mb-2">Albums you like will appear here</h2>
+                    <h2 className="text-section font-semibold text-text-main mb-2">Albums you like will appear here</h2>
                     <p className="text-text-secondary max-w-md">
                         Click the heart icon on any album to add it to your Liked Albums collection.
                     </p>
                 </div>
-            </div>
+            </Page>
         );
     }
 
     return (
-        <div className="p-8 h-full animate-fade-in">
+        <Page withPlayerPadding={false}>
             {/* Header Section */}
             <div className="flex items-end gap-6 mb-8">
                 <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand to-surface-1 flex items-center justify-center shadow-2xl shadow-brand/30">
@@ -137,7 +136,7 @@ export const LikedAlbums: React.FC = () => {
                 
                 <div className="flex-1">
                     <p className="text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibold">Collection</p>
-                    <h1 className="text-5xl font-black text-text-main mb-4">Liked Albums</h1>
+                    <h1 className="text-display font-bold text-text-main mb-4">Liked Albums</h1>
                     <p className="text-text-secondary text-sm">
                         {sortedLikedAlbums.length} album{sortedLikedAlbums.length !== 1 ? 's' : ''}
                     </p>
@@ -220,7 +219,7 @@ export const LikedAlbums: React.FC = () => {
                             </div>
                             
                             <div 
-                                className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-5xl font-bold text-white/20 relative overflow-hidden bg-surface-3"
+                                className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden bg-surface-3"
                                 style={{ background: coverBackground(coverUrl, album.name) }}
                             >
                                 {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}
@@ -243,7 +242,7 @@ export const LikedAlbums: React.FC = () => {
                     );
                 }}
             />
-        </div>
+        </Page>
     );
 };
 

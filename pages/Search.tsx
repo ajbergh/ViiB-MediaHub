@@ -24,6 +24,7 @@ import { ContextMenuType } from '../types';
 import { EmptySearchResults } from '../components/EmptyState';
 import { TextInput } from '../components/ui/TextInput';
 import { Chip } from '../components/ui/Chip';
+import { Page, PageHeader } from '../components/ui/Page';
 
 // Search result category tab type
 type SearchResultTab = 'all' | 'tracks' | 'albums' | 'artists' | 'playlists';
@@ -195,9 +196,13 @@ export const Search: React.FC = () => {
         }
     };
 
-    return (
-        <div className="p-8 h-full flex flex-col animate-fade-in">
-            <h1 className="text-section mb-6 flex-shrink-0">Search</h1>
+        return (
+        <Page withPlayerPadding={false} className="flex flex-col">
+            <PageHeader
+              heading="Search"
+              className="mb-6 flex-shrink-0"
+              titleClassName="text-section mb-0"
+            />
             
             <div className="w-full max-w-3xl mb-6 flex-shrink-0">
                 <TextInput
@@ -453,6 +458,6 @@ export const Search: React.FC = () => {
                     )}
                 </div>
             )}
-        </div>
+        </Page>
     );
 };

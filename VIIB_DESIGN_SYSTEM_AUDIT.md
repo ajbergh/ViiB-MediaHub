@@ -4,7 +4,7 @@ Date: 2025-12-28
 Repo: ViiB-MediaHub (React/TS + Vite + Tailwind; Go/Wails backend)  
 Audit basis: code inspection of the current workspace. Any item not verifiable in code is marked **Unknown / Needs Verification**.
 
-Last updated: 2025-12-28 (Phase 1 complete; Phase 2 complete; Phase 3 complete: playback UI/visualizer literal cleanup; Phase 4 complete: AI DJ signature styling/typography aligned; Phase 5 complete: motion/a11y polish + context-menu keyboard navigation; repo-wide checks passing)
+Last updated: 2025-12-28 (Phase 1 complete; Phase 2 complete; Phase 3 complete: playback UI/visualizer literal cleanup; Phase 4 complete: AI DJ signature styling/typography aligned; Phase 5 complete: motion/a11y polish + context-menu keyboard navigation; Phase 6 complete: typography sweep + menu semantics + CI enforcement; Phase 7 complete: spacing/layout wrappers + list header standardization)
 
 ---
 
@@ -20,10 +20,10 @@ Last updated: 2025-12-28 (Phase 1 complete; Phase 2 complete; Phase 3 complete: 
 
 **Top 3 risks or gaps**
 1. **Gradients and accent usage still need stronger constraints** (even though they are now tokenized and the default Tailwind palette is eliminated). Without explicit rules/allowlists, “calm + intentional accents” can still drift over time.
-2. **Typography and component consistency are mixed**: core routes now use the primitive set, but several screens still use ad-hoc sizing (e.g., Stats and some collection views), and typography scale adoption is not yet systematic.
+2. **Row-level spacing consistency is the main remaining drift vector**: page shells/headers are now largely standardized via `Page`/`PageHeader`/`ListHeader`, but list rows and empty-state containers still contain one-off spacing patterns.
 3. **Accessibility and keyboard patterns need ongoing verification**: global focus-visible exists, context menus support full keyboard navigation, and a broad reduced-motion/tab-order sweep has been applied, but complex surfaces should still be periodically audited.
 
-Update (2025-12-28): core primitives adoption is now substantially complete across AI DJ, Settings, Spotify, and First Launch flows; remaining inconsistency is primarily typography/spacing patterns and a few bespoke accessibility patterns outside menus.
+Update (2025-12-28): core primitives adoption is now substantially complete across AI DJ, Settings, Spotify, and First Launch flows; remaining inconsistency is primarily row/empty-state spacing patterns and a few bespoke accessibility patterns outside menus.
 
 ---
 
@@ -51,9 +51,9 @@ Update (2025-12-28): core primitives adoption is now substantially complete acro
   Where: `tailwind.config.js`  
   Compliance: ✅ Fully compliant
 
-- **Some screens adopt the scale** (e.g., Home uses `text-display` / `text-section`)  
-  Where: `pages/Home.tsx`  
-  Compliance: ⚠️ Partially compliant (many screens still use `text-3xl`, `text-4xl`, `text-5xl`, etc.)
+- **Pages and key flows adopt the scale for major hierarchy** (page titles, section headers, hero headings)  
+  Where: `pages/*`, `components/NowPlaying.tsx`, `components/FirstLaunchDialog.tsx`  
+  Compliance: ✅ Fully compliant (microcopy may still use small Tailwind sizes where DS tokens are not expressive enough)
 
 - **Base font family enforced at document level**  
   Where: `index.css` (`font-family: 'Inter'`)  
@@ -64,8 +64,8 @@ Update (2025-12-28): core primitives adoption is now substantially complete acro
   Where: `components/Layout.tsx`  
   Compliance: ✅ Fully compliant
 
-- **Spacing patterns are present but not standardized** (frequent `p-8`, `mb-12`, arbitrary grid gaps)  
-  Where: multiple screens (`pages/Home.tsx`, `pages/Stats.tsx`, `pages/LikedSongs.tsx`, etc.)  
+- **Page-level spacing is standardized; row-level spacing still drifts** (wrappers cover shell/header/list headers; list rows + empty states still have one-offs)  
+  Where: `components/ui/Page.tsx` (`Page`, `PageHeader`, `ListHeader`), plus remaining one-offs across list rows/empty states in multiple screens  
   Compliance: ⚠️ Partially compliant
 
 ### Components
@@ -87,7 +87,7 @@ Update (2025-12-28): core primitives adoption is now substantially complete acro
 
 - **Menu primitive (menu role + focus-visible styling)**  
   Where: `components/ui/Menu.tsx`  
-  Compliance: ⚠️ Partially compliant (role exists; keyboard navigation semantics beyond focus styles are not implemented here)
+  Compliance: ✅ Fully compliant (shared Arrow/Home/End navigation, typeahead, Escape-to-close hook)
 
 ### Playback UI
 - **Player bar aligned to tokens + primitives; playback state uses accent-green**  
@@ -135,9 +135,9 @@ Update (2025-12-28): core primitives adoption is now substantially complete acro
 
 - **Primitives exist, but adoption is incomplete**  
   What exists: `components/ui/*` primitives used in Home/Player/NowPlaying and some library views.  
-  What’s missing: remaining gaps are mostly typography scale adoption + spacing normalization across several pages (e.g., Stats / collection views), not core button/input primitives.  
+  What’s missing: remaining gaps are mostly row/empty-state spacing normalization across some pages (e.g., collection lists), not core button/input primitives.  
   Why it matters: increases one-off styling, inconsistent hover/focus/motion, and higher cost for future DS changes.  
-  Suggested correction: continue the typography normalization sweep, then consider a simple layout/spacing wrapper pattern.
+  Suggested correction: continue consolidating row/empty-state spacing patterns on screens that still use bespoke wrappers.
 
 - **Default Tailwind palette usage has been eliminated, but enforcement policy is still evolving**  
   What exists: `npm run check:palette` is in place and currently reports **0** offenders.  
@@ -149,15 +149,13 @@ Update (2025-12-28): core primitives adoption is now substantially complete acro
   What’s missing: consistent gradient rules (max colors, contrast constraints, and restricted placement).  
   Why it matters: gradients can still become decorative noise even when tokenized.
 
-- **Typography scale defined but not consistently used**  
-  What exists: `text-display`, `text-section`, etc. in Tailwind config; Home (and AI DJ header) use them.  
-  What’s missing: consistent headings/body/meta usage across all pages (e.g., Liked Songs uses `text-5xl font-black`, other collection/analytics screens still use ad-hoc sizes).  
-  Why it matters: inconsistent hierarchy and “mood-first” cadence; harder to create consistent layouts and responsive behavior.  
-  Suggested correction: codify a small set of page patterns (page title, section header, meta label) and gradually replace ad-hoc sizes.
+- **Typography scale is now consistent for major hierarchy; row/empty-state spacing remains inconsistent**  
+  What exists: `text-display`, `text-section`, etc. are used for page titles/section headers across pages and key flows.  
+  What’s missing: further reduction of one-off spacing in list rows and empty states to fully align rhythm across collection views.  
+  Why it matters: typography reads cohesive, but the UI can still feel “variable” due to row-level spacing drift.
 
-- **Context menu system is now keyboard-accessible; Menu primitive remains styling-first**  
-  What exists: global context menus support roving focus + typeahead + submenu traversal with consistent ARIA roles.  
-  What’s missing: decide whether `components/ui/Menu.tsx` should grow shared keyboard semantics (or remain styling-only) to avoid bespoke non-context-menu dropdown behavior.
+- **Context menu system is keyboard-accessible; Menu primitive now shares keyboard semantics**  
+  What exists: context menus support roving focus + typeahead + submenu traversal; `components/ui/Menu.tsx` supports Arrow/Home/End + typeahead + Escape-to-close hook for non-context menus.
 
 ---
 
@@ -176,8 +174,8 @@ Update (2025-12-28): core primitives adoption is now substantially complete acro
   Status: ✅ Complete as of Phase 4.
 
 - **Spacing system normalization**  
-  Evidence: many pages use raw Tailwind spacing values without a shared layout primitive or spacing tokens.  
-  Missing: a small set of layout wrappers/section patterns.
+  Evidence: `Page`/`PageHeader`/`ListHeader` now exist and are used on many high-traffic screens; remaining drift is concentrated in list rows and empty states.  
+  Missing: a systematic pass to unify row/empty-state spacing patterns across library lists.
 
 - **Enforcement beyond hex colors**  
   Evidence: `npm run check:raw-colors` blocks hex in TSX and `npm run check:palette` exists to block Tailwind default palette usage. `index.css` still contains literal color values for browser/platform chrome.  
@@ -273,16 +271,48 @@ Update (2025-12-28): core primitives adoption is now substantially complete acro
 - Motion consistency + reduced-motion respected.
 - Accessibility baseline met (keyboard + focus + ARIA semantics).
 
+### Phase 6 — Typography, Gradients & DS Governance
+**Status:** ✅ Complete
+**Intent:** reduce long-term drift by standardizing typography/layout patterns and adding enforceable UI “policy” (gradients/accents/menus).
+
+**Scope:**
+- Typography normalization sweep on remaining high-traffic screens (Stats, Liked, remaining collections): adopt the DS type scale (`text-display`, `text-section`, `text-body`, `text-meta`) and reduce ad-hoc sizes.
+- Gradient policy: document/align an allowlist for where gradients are acceptable (and keep them subtle + token-based).
+- Enforcement policy decisions: decide where `npm run check:palette` should run (CI vs local), and whether strict mode is desired.
+- Menu primitive follow-up: decide whether `components/ui/Menu.tsx` stays styling-only or gains shared keyboard semantics to prevent bespoke dropdown behavior.
+
+**Outcomes / Deliverables:**
+- Clear typography hierarchy across pages and key flows (no ad-hoc `text-3xl+` sizing in screens/components audited).
+- Reduced visual noise from gradients (notably removing gradient-heavy genre pills on Stats; gradients kept to intentional hero surfaces).
+- Reduced regressions via enforcement in CI (Windows workflow runs `check:palette`, `check:raw-colors`, and `typecheck`).
+- Shared non-context-menu dropdown behavior via `components/ui/Menu.tsx` keyboard semantics and an `onRequestClose` hook.
+
+### Phase 7 — Spacing & Layout Standardization
+**Status:** ✅ Complete
+**Intent:** make screens feel consistently “built from the same grid” by standardizing spacing and repeated layout patterns.
+
+**Scope:**
+- Define 2–3 layout wrappers/patterns (page header, section block, panel/grid spacing) and migrate the highest-traffic screens.
+- Reduce one-off `p-*` / `mb-*` / arbitrary grid gaps; prefer consistent section rhythm.
+- Keep gradients/accent usage constrained to intentional hero surfaces; expand policy only if needed.
+
+**Outcomes / Deliverables:**
+- More consistent vertical rhythm and screen composition across the app.
+- Lower maintenance cost for future DS changes.
+
+**Progress to date (2025-12-28):**
+- Added `components/ui/Page.tsx` with `Page` and `PageHeader` wrappers.
+- Migrated page shells/headers on Home, Albums, Artists, Search, Playlists, Downloads, Stats, Settings, and Liked Albums to use the wrappers.
+- Added `ListHeader` and migrated Songs + Liked Songs Virtuoso headers to remove remaining one-off `p-8 pb-0`.
+
 ---
 
 ## 7. Recommended Next Actions
 
-1. **Typography normalization sweep**: standardize page titles/section headers to the DS type scale across remaining high-traffic screens (Stats, Liked, Spotify, Settings, AI DJ).
-2. **Gradient policy**: add explicit guidance/allowlist for where gradients are acceptable (and keep them subtle, token-based).
-3. **Palette enforcement decision**: consider enabling `npm run check:palette --strict` in CI once the team is comfortable (allowlist only if truly required).
-4. **Accessibility follow-up**: periodically re-audit `aria-label` on icon-only buttons, click targets that aren’t real `<button>`/`<a>`, and tab-order traps across Now Playing, library lists, and dialogs.
-5. **Menu primitive follow-up**: decide whether `components/ui/Menu.tsx` should grow shared keyboard semantics (or remain styling-only) so non-context menus don’t reintroduce bespoke behavior.
-6. **Typography normalization (continued)**: migrate remaining high-traffic screens (`pages/Stats.tsx`, `pages/LikedSongs.tsx`, `pages/LikedAlbums.tsx`) to DS type scale (`text-display`, `text-section`, `text-meta`).
+1. **Spacing consistency follow-up**: do a quick spot-check for remaining one-off spacing patterns outside `Page`/`PageHeader`/`ListHeader` (especially in list rows and empty states).
+2. **A11y follow-up (ongoing)**: periodically re-audit `aria-label` on icon-only buttons, non-button click targets, and tab-order traps across Now Playing, library lists, and dialogs.
+3. **Visualizer literals (optional)**: continue centralizing canvas-only `rgba(...)`/`hsla(...)` strings to `components/ui/tokens.ts` where practical.
+4. **CSS literal policy (optional)**: decide whether `index.css` literal colors (scrollbars, focus outline) should be tokenized over time.
 
 ---
 

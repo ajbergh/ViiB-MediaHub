@@ -110,7 +110,7 @@ export const SmartMixDetail: React.FC = () => {
                         <Sparkles size={14} className="text-accent-orange" />
                         Smart Mix
                     </span>
-                    <h1 className="text-4xl md:text-6xl font-bold text-white tracking-tight leading-tight drop-shadow-lg">
+                    <h1 className="text-display font-bold text-white tracking-tight leading-tight drop-shadow-lg">
                         {mix.name}
                     </h1>
                     <p className="text-white/80 text-lg font-medium">{mix.description}</p>

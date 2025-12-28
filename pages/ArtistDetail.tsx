@@ -174,7 +174,7 @@ export const ArtistDetail: React.FC = () => {
                         <img src={imageUrl} alt={decodedArtistName} className="w-full h-full object-cover" />
                     ) : (
                         <div 
-                            className="w-full h-full flex items-center justify-center text-white/30 text-6xl font-bold"
+                            className="w-full h-full flex items-center justify-center text-white/30 text-display font-bold"
                             style={{ background: generateGradient(decodedArtistName) }}
                         >
                             {decodedArtistName.charAt(0)}
@@ -190,7 +190,7 @@ export const ArtistDetail: React.FC = () => {
                     </div>
                     
                     <h1 
-                        className="text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-tight line-clamp-2 drop-shadow-lg"
+                        className="text-display font-bold text-white tracking-tight leading-tight line-clamp-2 drop-shadow-lg"
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, artistObject)}
                     >
                         {decodedArtistName}
@@ -272,7 +272,7 @@ export const ArtistDetail: React.FC = () => {
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
                             >
                                 <div 
-                                    className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-5xl font-bold text-white/20 relative overflow-hidden bg-surface-3"
+                                    className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden bg-surface-3"
                                     style={{ background: coverBackground(coverUrl, album.name) }}
                                 >
                                     {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}

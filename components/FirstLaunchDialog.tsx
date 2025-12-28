@@ -300,7 +300,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         </div>
       </div>
 
-      <h1 className="text-5xl font-bold text-white mb-6 tracking-tight">
+      <h1 className="text-display font-bold text-text-main mb-6 tracking-tight">
         Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-brand-hover">ViiB MediaHub</span>
       </h1>
 
@@ -715,7 +715,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         </div>
       </div>
 
-      <h2 className="text-3xl font-bold text-white mb-4">
+      <h2 className="text-section font-bold text-text-main mb-4">
         You're All Set!
       </h2>
 
@@ -726,7 +726,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       </p>
 
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 max-w-md mx-auto mb-8">
-        <h3 className="font-bold text-white mb-4">What's Next?</h3>
+        <h3 className="font-bold text-text-main mb-4">What's Next?</h3>
         <div className="space-y-3 text-left">
           {scanFolders.length > 0 && (
             <div className="flex items-start gap-3">

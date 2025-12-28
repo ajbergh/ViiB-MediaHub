@@ -25,6 +25,7 @@ import { SkeletonAlbumGrid } from '../components/Skeleton';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Menu, MenuItem } from '../components/ui/Menu';
+import { Page, PageHeader } from '../components/ui/Page';
 
 type AlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc' | 'songs-desc' | 'songs-asc';
 
@@ -110,14 +111,11 @@ export const Albums: React.FC = () => {
   }, [albums, sortBy]);
 
   return (
-    <div className="p-8 h-full animate-fade-in">
-        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-                <h1 className="text-3xl font-bold mb-2">Albums</h1>
-                <p className="text-text-secondary">{albums.length} albums</p>
-            </div>
-            
-            {/* Sort Dropdown */}
+    <Page withPlayerPadding={false}>
+        <PageHeader
+          heading="Albums"
+          subtitle={`${albums.length} albums`}
+          actions={
             <div className="relative">
           <Button
             variant="secondary"
@@ -140,7 +138,10 @@ export const Albums: React.FC = () => {
                           className="fixed inset-0 z-40"
                           onClick={() => setShowSortMenu(false)}
                         />
-                    <Menu className="absolute right-0 top-full mt-2 z-50 min-w-[180px]">
+                    <Menu
+                      className="absolute right-0 top-full mt-2 z-50 min-w-[180px]"
+                      onRequestClose={() => setShowSortMenu(false)}
+                    >
                       {(Object.keys(sortLabels) as AlbumSortOption[]).map((option) => (
                         <MenuItem
                           key={option}
@@ -154,7 +155,8 @@ export const Albums: React.FC = () => {
                     </>
                 )}
             </div>
-        </div>
+                }
+              />
 
         {sortedAlbums.length === 0 ? (
             <EmptyAlbums />
@@ -188,7 +190,7 @@ export const Albums: React.FC = () => {
                         }}
                       >
                             <div 
-                                className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-5xl font-bold text-white/20 relative overflow-hidden bg-surface-3"
+                              className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden bg-surface-3"
                                 style={{ background: coverBackground(coverUrl, album.name) }}
                             >
                                 {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}
@@ -216,6 +218,6 @@ export const Albums: React.FC = () => {
                 }}
             />
         )}
-    </div>
+    </Page>
   );
 };

@@ -264,7 +264,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
             <div className="flex-1 pb-4">
               <p className="text-sm font-bold uppercase tracking-wider text-text-secondary mb-2">Album</p>
-              <h1 className="text-5xl font-bold mb-4 leading-tight">{album.name}</h1>
+              <h1 className="text-display font-bold mb-4 leading-tight">{album.name}</h1>
               <div className="flex items-center gap-2 text-text-secondary">
                 <span className="font-bold text-text-main">
                   {album.artists.map(a => a.name).join(', ')}

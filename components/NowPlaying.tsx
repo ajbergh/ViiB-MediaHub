@@ -273,7 +273,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                             />
                          ) : (
                              <div 
-                                className={`w-full h-full flex items-center justify-center text-8xl font-bold text-text-subtle/30 transition-opacity duration-300 ${
+                                className={`w-full h-full flex items-center justify-center text-display font-bold text-text-subtle/30 transition-opacity duration-300 ${
                                     showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' ? 'opacity-30' : 'opacity-100'
                                 }`}
                                 style={{ background: generateGradient(currentSong.album) }}
@@ -291,11 +291,11 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     
                     <div className="flex items-end justify-between mb-2">
                         <div className="flex flex-col min-w-0 pr-4">
-                            <h1 className="text-3xl md:text-5xl font-bold truncate leading-tight mb-2" title={currentSong.title}>
+                            <h1 className="text-section md:text-display font-bold truncate leading-tight mb-2" title={currentSong.title}>
                                 {currentSong.title}
                             </h1>
                             <h2 
-                                className="text-xl md:text-2xl text-text-secondary font-medium truncate cursor-pointer hover:underline hover:text-text-main transition-colors"
+                                className="text-card md:text-section text-text-secondary font-medium truncate cursor-pointer hover:underline hover:text-text-main transition-colors"
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, { name: currentSong.artist })}
                             >
                                 {currentSong.artist}

@@ -25,6 +25,7 @@ import api, { ApiSpotifyDownload } from '../services/api';
 import ConfirmDialog from '../components/ConfirmDialog';
 import DirectDownloadDialog from '../components/DirectDownloadDialog';
 import { useStore } from '../store';
+import { Page, PageHeader } from '../components/ui/Page';
 
 export const Downloads: React.FC = () => {
   const [downloads, setDownloads] = useState<ApiSpotifyDownload[]>([]);
@@ -296,7 +297,7 @@ export const Downloads: React.FC = () => {
   };
 
   return (
-    <div className="p-8 pb-32 animate-fade-in">
+    <Page>
       {/* Auth Required Banner */}
       {authRequired && (
         <div className="mb-6 bg-warning/20 border border-warning/50 rounded-lg p-4 flex items-center justify-between">
@@ -316,17 +317,16 @@ export const Downloads: React.FC = () => {
         </div>
       )}
 
-      <div className="mb-8 flex justify-between items-end">
-        <div>
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+      <PageHeader
+        heading={
+          <span className="flex items-center gap-3">
             <Download className="text-brand" size={32} />
             Downloads
-          </h1>
-          <p className="text-text-secondary">
-            Manage your Spotify downloads
-          </p>
-        </div>
-        <div className="flex gap-2">
+          </span>
+        }
+        subtitle="Manage your Spotify downloads"
+        actions={
+          <div className="flex gap-2">
           <button
             onClick={() => setShowDirectDownload(true)}
             className="px-4 py-2 bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
@@ -361,8 +361,9 @@ export const Downloads: React.FC = () => {
               Clear Queue
             </button>
           )}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -478,7 +479,7 @@ export const Downloads: React.FC = () => {
         isOpen={showDirectDownload}
         onClose={() => setShowDirectDownload(false)}
       />
-    </div>
+    </Page>
   );
 };
 

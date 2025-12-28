@@ -28,6 +28,7 @@ import { LikeButton } from '../components/LikeButton';
 import { TextInput } from '../components/ui/TextInput';
 import { Button } from '../components/ui/Button';
 import { Menu, MenuItem } from '../components/ui/Menu';
+import { ListHeader } from '../components/ui/Page';
 
 type SongSortOption = 'recent' | 'title-asc' | 'title-desc' | 'artist-asc' | 'artist-desc' | 'album-asc' | 'album-desc' | 'duration-asc' | 'duration-desc' | 'plays-desc';
 
@@ -67,9 +68,9 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
     };
 
     return (
-        <div className="p-8 pb-0">
+      <ListHeader>
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
-                <h1 className="text-3xl font-bold">All Songs</h1>
+          <h1 className="text-display">All Songs</h1>
                 <div className="flex items-center gap-3 w-full md:w-auto">
                     {/* Sort Dropdown */}
                     <div className="relative">
@@ -94,7 +95,10 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
                                   className="fixed inset-0 z-40"
                                   onClick={() => setShowSortMenu(false)}
                                 />
-                            <Menu className="absolute right-0 top-full mt-2 z-50 min-w-[180px]">
+                            <Menu
+                              className="absolute right-0 top-full mt-2 z-50 min-w-[180px]"
+                              onRequestClose={() => setShowSortMenu(false)}
+                            >
                               {(Object.keys(sortLabels) as SongSortOption[]).map((option) => (
                                 <MenuItem
                                   key={option}
@@ -133,7 +137,7 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
                 <div className="flex justify-end pr-2"><Clock size={16} /></div>
                 <div></div>
             </div>
-        </div>
+          </ListHeader>
     );
 };
 

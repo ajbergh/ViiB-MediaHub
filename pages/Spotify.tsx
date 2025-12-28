@@ -809,7 +809,7 @@ export const Spotify: React.FC = () => {
                 <div className="w-24 h-24 bg-brand rounded-full flex items-center justify-center mb-6 shadow-lg shadow-brand/20">
                     <Loader2 size={48} className="text-black animate-spin" />
                 </div>
-                <h1 className="text-2xl font-bold mb-2">Restoring Session</h1>
+                <h1 className="text-section font-semibold mb-2">Restoring Session</h1>
                 <p className="text-text-secondary">Connecting to Spotify...</p>
             </div>
         );
@@ -821,7 +821,7 @@ export const Spotify: React.FC = () => {
                 <div className="w-24 h-24 bg-brand rounded-full flex items-center justify-center mb-6 shadow-lg shadow-brand/20">
                     <Music size={48} className="text-surface-0" />
                 </div>
-                <h1 className="text-3xl font-bold mb-4">Connect to Spotify</h1>
+                <h1 className="text-display mb-4">Connect to Spotify</h1>
                 <p className="text-text-secondary max-w-md mb-8">
                     Link your Spotify account to search and play music directly from ViiB MediaHub.
                     Requires a Spotify Premium account for full playback.
@@ -865,7 +865,7 @@ export const Spotify: React.FC = () => {
     return (
         <div className="p-8 h-full overflow-y-auto">
             <div className="flex items-center justify-between mb-8">
-                <h1 className="text-3xl font-bold flex items-center gap-3">
+                <h1 className="text-display flex items-center gap-3">
                     <Music className="text-brand" size={32} />
                     Spotify
                 </h1>
@@ -892,7 +892,7 @@ export const Spotify: React.FC = () => {
                     )}
 
                     <div>
-                        <h2 className="text-2xl font-bold mb-1">{spotifyUser.display_name}</h2>
+                        <h2 className="text-section font-bold mb-1">{spotifyUser.display_name}</h2>
                         <div className="flex items-center gap-4 text-text-secondary text-sm mb-3">
                             <span>{spotifyUser.followers?.total.toLocaleString()} followers</span>
                             <span>•</span>

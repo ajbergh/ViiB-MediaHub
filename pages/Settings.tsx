@@ -32,6 +32,7 @@ import { VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
 import { api } from '../services/api';
 import { Button } from '../components/ui/Button';
+import { Page } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
 
 export const Settings: React.FC = () => {
@@ -497,9 +498,9 @@ export const Settings: React.FC = () => {
       if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  return (
-    <div className="p-8 pb-32 max-w-4xl mx-auto animate-fade-in">
-      <h1 className="text-3xl font-bold mb-10">Settings</h1>
+    return (
+        <Page className="max-w-4xl mx-auto">
+            <h1 className="text-display mb-10">Settings</h1>
 
       {/* Hidden Fallback Input */}
       <input 
@@ -517,7 +518,7 @@ export const Settings: React.FC = () => {
       <section className="bg-surface-2 rounded-xl p-6 mb-6 border border-surface-3">
         <div className="flex items-center gap-3 mb-6 text-brand">
             <FolderOpen size={20} />
-            <h2 className="text-lg font-bold text-text-main">Library Management</h2>
+            <h2 className="text-card font-semibold text-text-main">Library Management</h2>
             {backendAvailable ? (
                 <span className="flex items-center gap-1 text-xs bg-success/20 text-success px-2 py-1 rounded-full">
                     <Server size={12} /> Backend Connected
@@ -1580,6 +1581,6 @@ export const Settings: React.FC = () => {
           </div>
       )}
 
-    </div>
+        </Page>
   );
 };

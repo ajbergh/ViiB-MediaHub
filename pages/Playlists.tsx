@@ -18,6 +18,7 @@ import { useStore } from '../store';
 import { ListMusic, Plus } from 'lucide-react';
 import { ContextMenuType } from '../types';
 import { EmptyPlaylists } from '../components/EmptyState';
+import { Page, PageHeader } from '../components/ui/Page';
 
 export const Playlists: React.FC = () => {
   const { playlists, createPlaylist, openContextMenu } = useStore();
@@ -33,16 +34,18 @@ export const Playlists: React.FC = () => {
   };
 
   return (
-    <div className="p-8 pb-32 animate-fade-in">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Playlists</h1>
-        <button 
+    <Page>
+      <PageHeader
+        heading="Playlists"
+        actions={
+          <button
             onClick={() => setShowInput(true)}
             className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main px-4 py-2 rounded-full font-medium transition-colors text-sm"
-        >
+          >
             <Plus size={16} /> Create Playlist
-        </button>
-      </div>
+          </button>
+        }
+      />
 
       {showInput && (
         <div className="mb-8 p-6 bg-surface-2 rounded-xl border border-surface-border flex gap-4 items-center">
@@ -79,6 +82,6 @@ export const Playlists: React.FC = () => {
             ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 };
