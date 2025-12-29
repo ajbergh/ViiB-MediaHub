@@ -70,7 +70,7 @@ export const GenreDetail: React.FC = () => {
           
           <div className="flex-1">
             <h4 className="text-sm font-bold text-brand uppercase tracking-wider mb-2">Genre</h4>
-            <h1 className="text-5xl font-bold text-white mb-4">{genreName}</h1>
+            <h1 className="text-display font-bold text-text-main mb-4">{genreName}</h1>
             <div className="flex items-center text-text-secondary text-sm">
               <span>{genreSongs.length} songs</span>
               <span className="mx-2">•</span>

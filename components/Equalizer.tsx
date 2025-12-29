@@ -31,7 +31,7 @@ export const EqualizerPanel: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none">
         <div className="w-full max-w-4xl bg-surface-1 border border-surface-border rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
             
             {/* Header */}
@@ -45,7 +45,7 @@ export const EqualizerPanel: React.FC = () => {
                         className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold uppercase transition-all duration-300 ${
                             audioSettings.eqEnabled 
                                 ? 'bg-brand text-black shadow-[0_0_15px_rgba(34,197,94,0.4)]' 
-                                : 'bg-surface-border text-gray-400 hover:bg-surface-slider'
+                                : 'bg-surface-border text-text-subtle hover:bg-surface-slider'
                         }`}
                     >
                         <Power size={14} strokeWidth={3} />
@@ -79,7 +79,7 @@ export const EqualizerPanel: React.FC = () => {
                         <select 
                             value={audioSettings.activePresetId}
                             onChange={(e) => setEqPreset(e.target.value)}
-                            className="w-full appearance-none bg-surface-3 hover:bg-surface-hover text-text-main py-3 pl-6 pr-10 rounded-full border border-surface-border hover:border-surface-slider outline-none cursor-pointer font-medium transition-all focus:border-brand focus:ring-1 focus:ring-green-500/50 shadow-lg text-center"
+                            className="w-full appearance-none bg-surface-3 hover:bg-surface-hover text-text-main py-3 pl-6 pr-10 rounded-full border border-surface-border hover:border-surface-slider outline-none cursor-pointer font-medium transition-all focus:border-brand focus:ring-1 focus:ring-accent-green/50 shadow-lg text-center"
                         >
                             <option value="custom">Manual</option>
                             <optgroup label="Presets">
@@ -88,7 +88,7 @@ export const EqualizerPanel: React.FC = () => {
                                 ))}
                             </optgroup>
                         </select>
-                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-text-main transition-colors" />
+                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-subtle pointer-events-none group-hover:text-text-main transition-colors" />
                     </div>
                 </div>
 
@@ -148,7 +148,7 @@ export const EqualizerPanel: React.FC = () => {
                                     
                                     {/* Active Fill Line */}
                                     <div 
-                                        className={`absolute w-1 rounded-full transition-colors duration-150 pointer-events-none ${audioSettings.eqEnabled ? 'bg-brand/50' : 'bg-gray-600/30'}`}
+                                        className={`absolute w-1 rounded-full transition-colors duration-150 pointer-events-none ${audioSettings.eqEnabled ? 'bg-brand/50' : 'bg-surface-border/30'}`}
                                         style={{
                                             height: `${Math.abs(gain) / 12 * 50}%`,
                                             top: gain > 0 ? '50%' : undefined,
@@ -161,8 +161,8 @@ export const EqualizerPanel: React.FC = () => {
                                     <div 
                                         className={`pointer-events-none absolute w-4 h-4 rounded-full border-2 shadow-lg transition-all duration-75 z-20 ${
                                             audioSettings.eqEnabled 
-                                                ? 'bg-white border-brand group-hover:scale-125' 
-                                                : 'bg-surface-slider border-[#666]'
+                                                ? 'bg-text-main border-brand group-hover:scale-125' 
+                                                : 'bg-surface-slider border-surface-border'
                                         }`}
                                         style={{
                                             // Map -12..12 to 100%..0% height

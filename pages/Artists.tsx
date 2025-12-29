@@ -20,6 +20,7 @@ import { generateGradient, cssUrl } from '../utils';
 import { ContextMenuType } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { EmptyArtists } from '../components/EmptyState';
+import { Page, PageHeader } from '../components/ui/Page';
 
 // Define Grid Components
 const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
@@ -106,11 +107,8 @@ export const Artists: React.FC = () => {
   }, [navigate]);
 
   return (
-    <div className="p-8 h-full animate-fade-in">
-        <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Artists</h1>
-            <p className="text-text-secondary">{artists.length} artists</p>
-        </div>
+    <Page withPlayerPadding={false}>
+        <PageHeader heading="Artists" subtitle={`${artists.length} artists`} />
 
         {artists.length === 0 ? (
             <EmptyArtists />
@@ -144,7 +142,7 @@ export const Artists: React.FC = () => {
                             )}
 
                             <div 
-                                className="w-40 h-40 rounded-full mb-4 shadow-lg flex items-center justify-center text-5xl font-bold text-white/20 relative overflow-hidden border-4 border-surface-3 group-hover:border-surface-border transition-colors flex-shrink-0"
+                              className="w-40 h-40 rounded-full mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden border-4 border-surface-3 group-hover:border-surface-border transition-colors flex-shrink-0"
                                 style={{ 
                                     background: displayImage
                                         ? `${cssUrl(displayImage)} center/cover no-repeat` 
@@ -163,6 +161,6 @@ export const Artists: React.FC = () => {
                 }}
              />
         )}
-    </div>
+    </Page>
   );
 };

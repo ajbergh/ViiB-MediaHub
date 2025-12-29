@@ -20,6 +20,7 @@ import { formatTime, generateGradient } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
 import { LikeButton } from '../components/LikeButton';
+import { ListHeader } from '../components/ui/Page';
 
 // Context interface for the Virtuoso list
 interface LikedContext {
@@ -52,17 +53,17 @@ const LikedHeader: React.FC<{ context?: LikedContext }> = ({ context }) => {
     };
 
     return (
-        <div className="p-8 pb-0">
+        <ListHeader>
             {/* Header Section */}
             <div className="flex items-end gap-6 mb-8">
                 {/* Liked Songs Icon */}
-                <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shadow-2xl shadow-red-500/30">
+                <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand to-surface-1 flex items-center justify-center shadow-2xl shadow-brand/30">
                     <Heart size={80} className="text-white fill-current" />
                 </div>
                 
                 <div className="flex-1">
                     <p className="text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibold">Playlist</p>
-                    <h1 className="text-5xl font-black text-text-main mb-4">Liked Songs</h1>
+                    <h1 className="text-display font-bold text-text-main mb-4">Liked Songs</h1>
                     <p className="text-text-secondary text-sm">
                         {context?.songCount || 0} songs • {context?.totalDuration || '0:00'} total
                     </p>
@@ -98,7 +99,7 @@ const LikedHeader: React.FC<{ context?: LikedContext }> = ({ context }) => {
                 <div></div>
                 <div></div>
             </div>
-        </div>
+        </ListHeader>
     );
 };
 
@@ -145,13 +146,13 @@ export const LikedSongs: React.FC = () => {
                 <div className="p-8">
                     {/* Header Section */}
                     <div className="flex items-end gap-6 mb-8">
-                        <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-red-500/50 to-pink-600/50 flex items-center justify-center shadow-2xl">
+                        <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand/40 to-surface-1 flex items-center justify-center shadow-2xl">
                             <Heart size={80} className="text-white/50" />
                         </div>
                         
                         <div className="flex-1">
                             <p className="text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibold">Playlist</p>
-                            <h1 className="text-5xl font-black text-text-main mb-4">Liked Songs</h1>
+                            <h1 className="text-display font-bold text-text-main mb-4">Liked Songs</h1>
                             <p className="text-text-secondary text-sm">No liked songs yet</p>
                         </div>
                     </div>
@@ -159,7 +160,7 @@ export const LikedSongs: React.FC = () => {
                 
                 <div className="flex flex-col items-center justify-center p-12 text-center">
                     <Heart size={64} className="text-text-subtle mb-4" />
-                    <h2 className="text-xl font-bold text-text-main mb-2">Songs you like will appear here</h2>
+                    <h2 className="text-section font-semibold text-text-main mb-2">Songs you like will appear here</h2>
                     <p className="text-text-secondary max-w-md">
                         Click the heart icon on any song to add it to your Liked Songs collection.
                     </p>

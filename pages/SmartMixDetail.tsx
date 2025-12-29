@@ -43,7 +43,7 @@ export const SmartMixDetail: React.FC = () => {
             <div className="flex flex-col items-center justify-center h-full text-text-subtle">
                 <Sparkles size={64} className="mb-4 opacity-50" />
                 <h2 className="text-xl font-bold mb-2">Mix not found</h2>
-                <button onClick={() => navigate('/')} className="text-green-500 hover:underline">
+                <button onClick={() => navigate('/')} className="text-brand hover:underline">
                     Back to Home
                 </button>
             </div>
@@ -107,10 +107,10 @@ export const SmartMixDetail: React.FC = () => {
                 {/* Mix Metadata */}
                 <div className="flex flex-col gap-2 z-10 w-full">
                     <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
-                        <Sparkles size={14} className="text-yellow-400" />
+                        <Sparkles size={14} className="text-accent-orange" />
                         Smart Mix
                     </span>
-                    <h1 className="text-4xl md:text-6xl font-bold text-white tracking-tight leading-tight drop-shadow-lg">
+                    <h1 className="text-display font-bold text-white tracking-tight leading-tight drop-shadow-lg">
                         {mix.name}
                     </h1>
                     <p className="text-white/80 text-lg font-medium">{mix.description}</p>

@@ -66,6 +66,7 @@ import { audioEngine } from '../../lib/audio';
 import { VisualizerMode } from '../../types';
 import { CanvasPostProcessor } from './CanvasPostProcessor';
 import { SpriteGenerator } from './SpriteGenerator';
+import { rgbaFromRgb, VIIB_COLOR_RGB, VIIB_COLOR_VALUES } from '../ui/tokens';
 
 interface AlbumArtVisualizerProps {
     /** Current visualization mode */
@@ -93,8 +94,8 @@ interface AlbumArtVisualizerProps {
 export const AlbumArtVisualizer: React.FC<AlbumArtVisualizerProps> = ({
     mode,
     isActive,
-    color = '#22c55e',
-    accentColor = '#8b5cf6',
+    color = VIIB_COLOR_VALUES.playbackGreen,
+    accentColor = VIIB_COLOR_VALUES.brandPurple,
     onFadeComplete,
     className = ''
 }) => {
@@ -212,8 +213,8 @@ export const AlbumArtVisualizer: React.FC<AlbumArtVisualizerProps> = ({
         
         // Inner circle glow
         const gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.8, centerX, centerY, radius);
-        gradient.addColorStop(0, 'rgba(34, 197, 94, 0.1)');
-        gradient.addColorStop(1, 'rgba(34, 197, 94, 0)');
+        gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.visualizerGreen, 0.1));
+        gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerGreen, 0));
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
@@ -318,10 +319,10 @@ export const AlbumArtVisualizer: React.FC<AlbumArtVisualizerProps> = ({
         const y2 = height / 2 + Math.sin(gradientAngle + Math.PI) * height;
         
         const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
-        gradient.addColorStop(0, `rgba(34, 197, 94, ${bass * 0.8})`);
-        gradient.addColorStop(0.3, `rgba(139, 92, 246, ${mid * 0.6})`);
-        gradient.addColorStop(0.6, `rgba(59, 130, 246, ${treble * 0.7})`);
-        gradient.addColorStop(1, `rgba(236, 72, 153, ${(bass + treble) * 0.5})`);
+        gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.visualizerGreen, bass * 0.8));
+        gradient.addColorStop(0.3, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPurple, mid * 0.6));
+        gradient.addColorStop(0.6, rgbaFromRgb(VIIB_COLOR_RGB.visualizerBlue, treble * 0.7));
+        gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPink, (bass + treble) * 0.5));
         
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
@@ -343,8 +344,8 @@ export const AlbumArtVisualizer: React.FC<AlbumArtVisualizerProps> = ({
         ctx.closePath();
         
         const waveGradient = ctx.createLinearGradient(0, height / 2, 0, height);
-        waveGradient.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
-        waveGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        waveGradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.white, 0.2));
+        waveGradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.white, 0));
         ctx.fillStyle = waveGradient;
         ctx.fill();
         

@@ -31,6 +31,9 @@ import { useStore } from '../store';
 import { VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
 import { api } from '../services/api';
+import { Button } from '../components/ui/Button';
+import { Page } from '../components/ui/Page';
+import { TextInput } from '../components/ui/TextInput';
 
 export const Settings: React.FC = () => {
   const { 
@@ -301,9 +304,9 @@ export const Settings: React.FC = () => {
 
   const getLogColor = (level: string) => {
       switch(level) {
-          case 'error': return 'text-red-500';
-          case 'warn': return 'text-yellow-500';
-          case 'success': return 'text-green-500';
+          case 'error': return 'text-error';
+          case 'warn': return 'text-warning';
+          case 'success': return 'text-success';
           default: return 'text-text-secondary';
       }
   };
@@ -495,9 +498,9 @@ export const Settings: React.FC = () => {
       if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  return (
-    <div className="p-8 pb-32 max-w-4xl mx-auto animate-fade-in">
-      <h1 className="text-3xl font-bold mb-10">Settings</h1>
+    return (
+        <Page className="max-w-4xl mx-auto">
+            <h1 className="text-display mb-10">Settings</h1>
 
       {/* Hidden Fallback Input */}
       <input 
@@ -515,13 +518,13 @@ export const Settings: React.FC = () => {
       <section className="bg-surface-2 rounded-xl p-6 mb-6 border border-surface-3">
         <div className="flex items-center gap-3 mb-6 text-brand">
             <FolderOpen size={20} />
-            <h2 className="text-lg font-bold text-text-main">Library Management</h2>
+            <h2 className="text-card font-semibold text-text-main">Library Management</h2>
             {backendAvailable ? (
-                <span className="flex items-center gap-1 text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full">
+                <span className="flex items-center gap-1 text-xs bg-success/20 text-success px-2 py-1 rounded-full">
                     <Server size={12} /> Backend Connected
                 </span>
             ) : (
-                <span className="flex items-center gap-1 text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded-full">
+                <span className="flex items-center gap-1 text-xs bg-warning/20 text-warning px-2 py-1 rounded-full">
                     <MonitorOff size={12} /> Browser Mode
                 </span>
             )}
@@ -550,13 +553,15 @@ export const Settings: React.FC = () => {
                                         {folder.songCount} songs • Last scan: {folder.lastScan ? new Date(folder.lastScan).toLocaleDateString() : 'Never'}
                                     </div>
                                 </div>
-                                <button 
+                                <Button
+                                    variant="ghost"
                                     onClick={() => removeScanFolder(folder.id)}
-                                    className="p-2 text-text-subtle hover:text-red-500 transition-colors"
+                                    className="p-2 text-text-subtle hover:text-error"
                                     title="Remove folder"
+                                    aria-label="Remove folder"
                                 >
                                     <X size={18} />
-                                </button>
+                                </Button>
                             </div>
                         ))
                     )}
@@ -564,30 +569,35 @@ export const Settings: React.FC = () => {
                 
                 {/* Add folder & Scan buttons */}
                 <div className="flex items-center gap-3 flex-wrap">
-                    <button 
+                    <Button
+                        variant="secondary"
                         onClick={openFolderBrowser}
-                        className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main font-bold py-2 px-4 rounded-lg transition-all border border-surface-border"
+                        leftIcon={<Plus size={18} />}
+                        className="font-bold"
                     >
-                        <Plus size={18} /> Add Folder
-                    </button>
-                    <button 
+                        Add Folder
+                    </Button>
+                    <Button
+                        variant="secondary"
                         onClick={startQuickScan}
                         disabled={isScanning || scanFolders.length === 0}
-                        className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border disabled:opacity-50 disabled:cursor-not-allowed text-text-main font-bold py-2 px-4 rounded-lg transition-all border border-surface-border"
+                        leftIcon={isScanning ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+                        className="font-bold"
                         title="Fast scan using signatures - detects new/changed/deleted files only"
                     >
-                        {isScanning ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
                         Quick Scan
-                    </button>
-                    <button 
+                    </Button>
+                    <Button
+                        variant="primary"
+                        accent="brand"
                         onClick={startBackendScan}
                         disabled={isScanning || scanFolders.length === 0}
-                        className="flex items-center gap-2 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-2 px-4 rounded-lg transition-all"
+                        leftIcon={isScanning ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+                        className="font-bold"
                         title="Performs a complete rescan of all configured folders"
                     >
-                        {isScanning ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
                         {isScanning ? 'Rescanning...' : 'Full Rescan'}
-                    </button>
+                    </Button>
                 </div>
                 {isScanning && <div className="text-sm text-brand font-mono mt-2">{scanProgress}</div>}
             </div>
@@ -601,14 +611,15 @@ export const Settings: React.FC = () => {
                 </p>
                 
                 <div className="flex items-center gap-4">
-                    <button 
+                    <Button
+                        variant="secondary"
                         onClick={handleScanClick}
                         disabled={isScanning}
-                        className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border disabled:opacity-50 disabled:cursor-not-allowed text-text-main font-bold py-3 px-6 rounded-full transition-all border border-surface-border hover:border-surface-slider"
+                        leftIcon={isScanning ? <Loader2 size={20} className="animate-spin" /> : <FolderOpen size={20} />}
+                        className="rounded-full py-3 px-6 font-bold"
                     >
-                        {isScanning ? <Loader2 size={20} className="animate-spin" /> : <FolderOpen size={20} />}
                         {isScanning ? 'Scanning...' : 'Scan Local Directory'}
-                    </button>
+                    </Button>
                     {isScanning && <span className="text-sm text-brand font-mono">{scanProgress}</span>}
                 </div>
                 
@@ -784,22 +795,22 @@ export const Settings: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-xs font-bold text-text-subtle uppercase mb-2">Client ID</label>
-                    <input 
-                        type="text" 
+                    <TextInput
+                        type="text"
                         value={tempClientId}
                         onChange={(e) => setTempClientId(e.target.value)}
                         placeholder="Enter Client ID"
-                        className="w-full bg-surface-1 border border-surface-border rounded px-4 py-3 text-text-main focus:border-brand outline-none transition-colors"
+                        className="w-full px-4 py-3"
                     />
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-text-subtle uppercase mb-2">Client Secret</label>
-                    <input 
-                        type="password" 
+                    <TextInput
+                        type="password"
                         value={tempClientSecret}
                         onChange={(e) => setTempClientSecret(e.target.value)}
                         placeholder="Enter Client Secret"
-                        className="w-full bg-surface-1 border border-surface-border rounded px-4 py-3 text-text-main focus:border-brand outline-none transition-colors"
+                        className="w-full px-4 py-3"
                     />
                 </div>
             </div>
@@ -810,16 +821,18 @@ export const Settings: React.FC = () => {
                 </p>
                 <div className="flex items-center gap-3">
                     {saveSuccess && (
-                        <span className="text-green-500 text-sm font-bold animate-in fade-in slide-in-from-right-4">
+                        <span className="text-success text-sm font-bold animate-in fade-in slide-in-from-right-4">
                             Saved!
                         </span>
                     )}
-                    <button 
+                    <Button
+                        variant="primary"
+                        accent="brand"
                         onClick={handleSaveCredentials}
-                        className="bg-brand hover:bg-brand-hover text-black font-bold py-2 px-6 rounded-full transition-colors text-sm"
+                        className="rounded-full px-6 py-2 text-sm font-bold"
                     >
                         Save Credentials
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>
@@ -840,31 +853,36 @@ export const Settings: React.FC = () => {
                     Specify where Spotify downloads should be saved. Leave empty to use default location.
                 </p>
                 <div className="flex items-center gap-3">
-                    <input 
-                        type="text" 
+                    <TextInput
+                        type="text"
                         value={spotifyDownloadPath}
                         onChange={(e) => setSpotifyDownloadPath(e.target.value)}
                         placeholder="Default: AppData/ViiB-MediaHub/spotify_downloads"
-                        className="flex-1 bg-surface-1 border border-surface-border rounded px-4 py-3 text-text-main focus:border-brand outline-none font-mono text-sm"
+                        className="flex-1 px-4 py-3"
+                        inputClassName="font-mono text-sm"
                     />
-                    <button 
+                    <Button
+                        variant="secondary"
                         onClick={openDownloadFolderBrowser}
-                        className="bg-surface-1 border border-surface-border hover:bg-surface-hover text-text-main font-bold py-3 px-4 rounded-lg transition-colors flex items-center gap-2"
+                        className="py-3 px-4"
                         title="Browse folders"
+                        aria-label="Browse folders"
                     >
                         <FolderOpen size={18} />
-                    </button>
+                    </Button>
                     {downloadPathSaved && (
-                        <span className="text-green-500 text-sm font-bold">
+                        <span className="text-success text-sm font-bold">
                             Saved!
                         </span>
                     )}
-                    <button 
+                    <Button
+                        variant="primary"
+                        accent="brand"
                         onClick={handleSaveDownloadPath}
-                        className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-6 rounded-lg transition-colors text-sm"
+                        className="py-3 px-6 rounded-lg text-sm font-bold"
                     >
                         Save
-                    </button>
+                    </Button>
                 </div>
             </div>
         )}
@@ -889,16 +907,18 @@ export const Settings: React.FC = () => {
                         <span className="text-text-main font-bold w-8 text-center">{concurrentDownloads}</span>
                     </div>
                     {concurrentSaved && (
-                        <span className="text-green-500 text-sm font-bold">
+                        <span className="text-success text-sm font-bold">
                             Saved!
                         </span>
                     )}
-                    <button 
+                    <Button
+                        variant="primary"
+                        accent="brand"
                         onClick={handleSaveConcurrentDownloads}
-                        className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-6 rounded-lg transition-colors text-sm"
+                        className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
                     >
                         Save
-                    </button>
+                    </Button>
                 </div>
                 <p className="text-xs text-text-subtle mt-2">
                     Recommended: 3 for most connections, up to 6-10 for high-speed connections (100+ Mbps).
@@ -936,36 +956,27 @@ export const Settings: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                    <button
+                    <Button
                         onClick={() => setStreamingQuality('high')}
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
-                            streamingQuality === 'high' 
-                                ? 'bg-brand text-black' 
-                                : 'bg-surface-2 text-text-secondary hover:bg-surface-3'
-                        }`}
+                        variant={streamingQuality === 'high' ? 'primary' : 'secondary'}
+                        className="flex-1 py-2 px-4 rounded-lg text-sm font-bold"
                     >
                         High (320kbps)
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         onClick={() => setStreamingQuality('medium')}
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
-                            streamingQuality === 'medium' 
-                                ? 'bg-brand text-black' 
-                                : 'bg-surface-2 text-text-secondary hover:bg-surface-3'
-                        }`}
+                        variant={streamingQuality === 'medium' ? 'primary' : 'secondary'}
+                        className="flex-1 py-2 px-4 rounded-lg text-sm font-bold"
                     >
                         Medium (160kbps)
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         onClick={() => setStreamingQuality('low')}
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
-                            streamingQuality === 'low' 
-                                ? 'bg-brand text-black' 
-                                : 'bg-surface-2 text-text-secondary hover:bg-surface-3'
-                        }`}
+                        variant={streamingQuality === 'low' ? 'primary' : 'secondary'}
+                        className="flex-1 py-2 px-4 rounded-lg text-sm font-bold"
                     >
                         Low (96kbps)
-                    </button>
+                    </Button>
                 </div>
             </div>
             
@@ -990,12 +1001,13 @@ export const Settings: React.FC = () => {
                         <BarChart3 size={16} className="text-brand" />
                         <h3 className="text-sm text-text-main font-medium">Streaming Statistics</h3>
                     </div>
-                    <button
+                    <Button
+                        variant="ghost"
                         onClick={resetStreamingStats}
-                        className="text-xs text-text-subtle hover:text-text-secondary transition-colors"
+                        className="px-0 py-0 text-xs text-text-subtle hover:text-text-secondary"
                     >
                         Reset Stats
-                    </button>
+                    </Button>
                 </div>
                 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1007,7 +1019,7 @@ export const Settings: React.FC = () => {
                     
                     {/* Success Rate */}
                     <div className="bg-surface-2 p-3 rounded-lg">
-                        <div className="text-lg font-bold text-green-500">
+                        <div className="text-lg font-bold text-success">
                             {streamingStats.totalStreams > 0 
                                 ? Math.round((streamingStats.successfulStreams / streamingStats.totalStreams) * 100)
                                 : 100}%
@@ -1017,7 +1029,7 @@ export const Settings: React.FC = () => {
                     
                     {/* Buffering Events */}
                     <div className="bg-surface-2 p-3 rounded-lg">
-                        <div className="text-lg font-bold text-yellow-500">{streamingStats.bufferingEvents}</div>
+                        <div className="text-lg font-bold text-warning">{streamingStats.bufferingEvents}</div>
                         <div className="text-xs text-text-subtle">Buffer Events</div>
                     </div>
                     
@@ -1036,16 +1048,16 @@ export const Settings: React.FC = () => {
                         <div className="text-xs text-text-subtle mb-2">Errors by Type</div>
                         <div className="flex gap-4 text-xs">
                             {streamingStats.errorsByType.network > 0 && (
-                                <span className="text-red-400">Network: {streamingStats.errorsByType.network}</span>
+                                <span className="text-error">Network: {streamingStats.errorsByType.network}</span>
                             )}
                             {streamingStats.errorsByType.auth > 0 && (
-                                <span className="text-orange-400">Auth: {streamingStats.errorsByType.auth}</span>
+                                <span className="text-accent-orange">Auth: {streamingStats.errorsByType.auth}</span>
                             )}
                             {streamingStats.errorsByType.unavailable > 0 && (
-                                <span className="text-yellow-400">Unavailable: {streamingStats.errorsByType.unavailable}</span>
+                                <span className="text-warning">Unavailable: {streamingStats.errorsByType.unavailable}</span>
                             )}
                             {streamingStats.errorsByType.unknown > 0 && (
-                                <span className="text-gray-400">Unknown: {streamingStats.errorsByType.unknown}</span>
+                                <span className="text-text-subtle">Unknown: {streamingStats.errorsByType.unknown}</span>
                             )}
                         </div>
                     </div>
@@ -1066,12 +1078,14 @@ export const Settings: React.FC = () => {
                 <h3 className="text-sm text-text-secondary mb-1">Database & Cache</h3>
                 <p className="text-xs text-text-subtle">Clear local database to resolve issues.</p>
             </div>
-            <button 
+            <Button
+                variant="secondary"
                 onClick={() => setShowResetConfirm(true)}
-                className="flex items-center gap-2 bg-surface-2 border border-surface-border text-text-main px-4 py-2 rounded font-bold text-sm hover:bg-red-500/20 hover:text-red-500 hover:border-red-500/50 transition-all"
+                leftIcon={<Trash2 size={16} />}
+                className="px-4 py-2 font-bold text-sm hover:bg-error/20 hover:text-error hover:border-error/50"
             >
-                <Trash2 size={16} /> Reset Library
-            </button>
+                Reset Library
+            </Button>
         </div>
 
         <div>
@@ -1091,12 +1105,14 @@ export const Settings: React.FC = () => {
                   <Terminal size={20} />
                   <h2 className="text-lg font-bold text-text-main">Debug Console</h2>
               </div>
-              <button 
+              <Button
+                variant="ghost"
                 onClick={clearLogs}
-                className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-main"
+                leftIcon={<XCircle size={14} />}
+                className="px-0 py-0 text-xs text-text-secondary hover:text-text-main"
               >
-                  <XCircle size={14} /> Clear
-              </button>
+                  Clear
+              </Button>
           </div>
           
           <div className="bg-surface-1 border border-surface-border rounded-lg p-4 h-64 overflow-y-auto font-mono text-xs">
@@ -1108,10 +1124,10 @@ export const Settings: React.FC = () => {
                           <div className="flex items-start gap-2">
                               <span className="text-surface-slider whitespace-nowrap">{new Date(log.timestamp).toLocaleTimeString()}</span>
                               <span className={`font-bold uppercase w-16 ${getLogColor(log.level)}`}>[{log.level}]</span>
-                              <span className="text-gray-300 break-all">{log.message}</span>
+                              <span className="text-text-subtle break-all">{log.message}</span>
                           </div>
                           {log.details && (
-                              <div className="ml-24 mt-1 text-gray-500 break-all">
+                              <div className="ml-24 mt-1 text-text-subtle break-all">
                                   {JSON.stringify(log.details)}
                               </div>
                           )}
@@ -1126,31 +1142,33 @@ export const Settings: React.FC = () => {
       {showResetConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
               <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-md w-full shadow-2xl scale-100">
-                  <div className="flex items-center gap-4 text-red-500 mb-4">
+                  <div className="flex items-center gap-4 text-error mb-4">
                       <AlertTriangle size={32} />
                       <h2 className="text-xl font-bold text-white">Reset Library?</h2>
                   </div>
                   <p className="text-text-secondary mb-6 leading-relaxed">
                       Are you sure you want to delete your entire music library? This will remove all songs, playlists, and cached metadata from the database. <br/><br/>
-                      <span className="text-red-400 font-bold">This action cannot be undone.</span>
+                      <span className="text-error font-bold">This action cannot be undone.</span>
                   </p>
                   
                   <div className="flex items-center justify-end gap-3">
-                      <button 
+                      <Button
+                          variant="ghost"
                           onClick={() => setShowResetConfirm(false)}
                           disabled={isResetting}
-                          className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors"
                       >
                           Cancel
-                      </button>
-                      <button 
+                      </Button>
+                      <Button
+                          variant="primary"
+                          accent="destructive"
                           onClick={confirmResetLibrary}
                           disabled={isResetting}
-                          className="px-6 py-2 rounded-lg font-bold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center gap-2"
+                          leftIcon={isResetting ? <Loader2 size={16} className="animate-spin" /> : undefined}
+                          className="px-6 py-2 font-bold text-white"
                       >
-                          {isResetting && <Loader2 size={16} className="animate-spin" />}
                           {isResetting ? 'Resetting...' : 'Yes, Delete Everything'}
-                      </button>
+                      </Button>
                   </div>
               </div>
           </div>
@@ -1178,7 +1196,7 @@ export const Settings: React.FC = () => {
                   Gemini API Key
                 </label>
                 <div className="flex gap-2">
-                    <input
+                    <TextInput
                       type="password"
                       value={geminiKey}
                       onChange={(e) => {
@@ -1186,10 +1204,11 @@ export const Settings: React.FC = () => {
                           setKeySaved(false);
                       }}
                       placeholder={keySaved ? "API Key Saved (Hidden)" : "Enter your Gemini API Key"}
-                      className="flex-1 bg-surface-3 border border-surface-border rounded-lg px-3 py-2 text-text-main focus:outline-none focus:border-brand transition-colors"
+                      className="flex-1 bg-surface-3"
                       disabled={isEnriching}
                     />
-                    <button
+                    <Button
+                        variant="secondary"
                         onClick={async () => {
                             try {
                                 await api.setSetting('gemini_api_key', geminiKey);
@@ -1200,13 +1219,13 @@ export const Settings: React.FC = () => {
                                 console.error('Failed to save key:', e);
                             }
                         }}
-                        className="bg-surface-2 hover:bg-surface-3 text-text-main font-bold py-2 px-4 rounded-lg transition-colors text-sm border border-surface-border"
+                        className="text-sm font-bold"
                     >
                         Save
-                    </button>
+                    </Button>
                 </div>
                 {showKeySavedMessage && (
-                    <p className="text-green-500 text-xs mt-1 font-bold">API Key saved successfully!</p>
+                    <p className="text-success text-xs mt-1 font-bold">API Key saved successfully!</p>
                 )}
                 {keySaved && !showKeySavedMessage && (
                     <p className="text-brand text-xs mt-1 flex items-center gap-1">
@@ -1233,7 +1252,7 @@ export const Settings: React.FC = () => {
                 </label>
               </div>
 
-              <button
+                            <Button
                 onClick={() => {
                   if (!geminiKey && !keySaved) {
                       alert("Please enter or save an API Key first.");
@@ -1273,11 +1292,9 @@ export const Settings: React.FC = () => {
                   return () => eventSource.close();
                 }}
                 disabled={isEnriching || (!geminiKey && !keySaved)}
-                className={`self-start px-4 py-2 font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
-                    isEnriching || (!geminiKey && !keySaved)
-                        ? 'bg-surface-2 text-text-subtle' 
-                        : 'bg-brand text-black hover:bg-brand-hover'
-                }`}
+                                variant={isEnriching || (!geminiKey && !keySaved) ? 'secondary' : 'primary'}
+                                accent="brand"
+                                className="self-start px-4 py-2 font-bold"
               >
                 {isEnriching ? (
                     <>
@@ -1286,7 +1303,7 @@ export const Settings: React.FC = () => {
                 ) : (
                     <>✨ Enrich Library Genres</>
                 )}
-              </button>
+                            </Button>
               
               {/* Progress Bar */}
               {enrichProgress && enrichProgress.totalSongs > 0 && (
@@ -1308,8 +1325,8 @@ export const Settings: React.FC = () => {
               
               {enrichStatus && (
                   <div className={`text-sm mt-2 ${
-                      enrichStatus.startsWith('Error') ? 'text-red-400' : 
-                      enrichStatus.includes('complete') || enrichStatus.startsWith('Success') ? 'text-green-400' : 
+                      enrichStatus.startsWith('Error') ? 'text-error' : 
+                      enrichStatus.includes('complete') || enrichStatus.startsWith('Success') ? 'text-success' : 
                       'text-text-subtle'
                   }`}>
                       {enrichStatus}
@@ -1327,7 +1344,7 @@ export const Settings: React.FC = () => {
             </p>
 
             <div className="flex flex-col gap-3">
-              <button
+                            <Button
                 onClick={() => {
                   if (!geminiKey && !keySaved) {
                     alert("Please enter or save an API Key first.");
@@ -1365,11 +1382,9 @@ export const Settings: React.FC = () => {
                   return () => eventSource.close();
                 }}
                 disabled={isMoodAnalyzing || (!geminiKey && !keySaved)}
-                className={`self-start px-4 py-2 font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
-                  isMoodAnalyzing || (!geminiKey && !keySaved)
-                    ? 'bg-surface-2 text-text-subtle' 
-                    : 'bg-purple-600 text-white hover:bg-purple-700'
-                }`}
+                                variant={isMoodAnalyzing || (!geminiKey && !keySaved) ? 'secondary' : 'primary'}
+                                accent="brand"
+                                className="self-start px-4 py-2 font-bold"
               >
                 {isMoodAnalyzing ? (
                   <>
@@ -1378,7 +1393,7 @@ export const Settings: React.FC = () => {
                 ) : (
                   <>🎭 Analyze Library Moods</>
                 )}
-              </button>
+                            </Button>
               
               {/* Progress Bar */}
               {moodProgress && moodProgress.totalSongs > 0 && (
@@ -1389,7 +1404,7 @@ export const Settings: React.FC = () => {
                   </div>
                   <div className="w-full bg-surface-3 rounded-full h-2 overflow-hidden">
                     <div 
-                      className="bg-purple-600 h-full rounded-full transition-all duration-300 ease-out"
+                                            className="bg-brand h-full rounded-full transition-all duration-300 ease-out"
                       style={{ 
                         width: `${Math.round((moodProgress.processedSongs / moodProgress.totalSongs) * 100)}%` 
                       }}
@@ -1400,8 +1415,8 @@ export const Settings: React.FC = () => {
               
               {moodStatus && (
                 <div className={`text-sm mt-2 ${
-                  moodStatus.startsWith('Error') ? 'text-red-400' : 
-                  moodStatus.includes('complete') || moodStatus.startsWith('Success') ? 'text-green-400' : 
+                                    moodStatus.startsWith('Error') ? 'text-error' : 
+                                    moodStatus.includes('complete') || moodStatus.startsWith('Success') ? 'text-success' : 
                   'text-text-subtle'
                 }`}>
                   {moodStatus}
@@ -1418,12 +1433,14 @@ export const Settings: React.FC = () => {
               <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full shadow-2xl max-h-[80vh] flex flex-col">
                   <div className="flex items-center justify-between mb-4">
                       <h2 className="text-xl font-bold text-white">Select Music Folder</h2>
-                      <button 
+                      <Button
+                          variant="ghost"
                           onClick={() => setShowFolderBrowser(false)}
-                          className="p-2 hover:bg-surface-3 rounded-lg transition-colors"
+                          className="p-2"
+                          aria-label="Close folder browser"
                       >
                           <X size={20} />
-                      </button>
+                      </Button>
                   </div>
                   
                   {/* Current Path */}
@@ -1466,19 +1483,22 @@ export const Settings: React.FC = () => {
                   
                   {/* Actions */}
                   <div className="flex items-center justify-end gap-3">
-                      <button 
+                      <Button
+                          variant="ghost"
                           onClick={() => setShowFolderBrowser(false)}
-                          className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors"
                       >
                           Cancel
-                      </button>
-                      <button 
+                      </Button>
+                      <Button
+                          variant="primary"
+                          accent="brand"
                           onClick={selectCurrentFolder}
                           disabled={!browserPath}
-                          className="px-6 py-2 rounded-lg font-bold bg-brand hover:bg-brand-hover disabled:opacity-50 text-black transition-colors flex items-center gap-2"
+                          leftIcon={<Plus size={16} />}
+                          className="px-6 py-2 font-bold"
                       >
-                          <Plus size={16} /> Add This Folder
-                      </button>
+                          Add This Folder
+                      </Button>
                   </div>
               </div>
           </div>
@@ -1490,12 +1510,14 @@ export const Settings: React.FC = () => {
               <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full shadow-2xl max-h-[80vh] flex flex-col">
                   <div className="flex items-center justify-between mb-4">
                       <h2 className="text-xl font-bold text-white">Select Download Folder</h2>
-                      <button 
+                      <Button
+                          variant="ghost"
                           onClick={() => setShowDownloadFolderBrowser(false)}
-                          className="p-2 hover:bg-surface-3 rounded-lg transition-colors"
+                          className="p-2"
+                          aria-label="Close download folder browser"
                       >
                           <X size={20} />
-                      </button>
+                      </Button>
                   </div>
                   
                   {/* Current Path */}
@@ -1538,24 +1560,27 @@ export const Settings: React.FC = () => {
                   
                   {/* Actions */}
                   <div className="flex items-center justify-end gap-3">
-                      <button 
+                      <Button
+                          variant="ghost"
                           onClick={() => setShowDownloadFolderBrowser(false)}
-                          className="px-4 py-2 rounded-lg font-medium text-text-main hover:bg-surface-3 transition-colors"
                       >
                           Cancel
-                      </button>
-                      <button 
+                      </Button>
+                      <Button
+                          variant="primary"
+                          accent="brand"
                           onClick={selectDownloadFolder}
                           disabled={!downloadBrowserPath}
-                          className="px-6 py-2 rounded-lg font-bold bg-brand hover:bg-brand-hover disabled:opacity-50 text-black transition-colors flex items-center gap-2"
+                          leftIcon={<FolderOpen size={16} />}
+                          className="px-6 py-2 font-bold"
                       >
-                          <FolderOpen size={16} /> Select This Folder
-                      </button>
+                          Select This Folder
+                      </Button>
                   </div>
               </div>
           </div>
       )}
 
-    </div>
+        </Page>
   );
 };

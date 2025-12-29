@@ -4,7 +4,8 @@
  * Common elements used across multiple context menus such as MenuItem and PlaylistsSubmenu.
  */
 import React from 'react';
-import { Plus, ListMusic } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useStore } from '../../store';
 
 /**
@@ -14,13 +15,37 @@ import { useStore } from '../../store';
  *  - label: Text label for the menu item
  *  - onClick: Handler for activation
  */
-export const MenuItem: React.FC<{ icon: any; label: string; onClick: () => void }> = ({ icon: Icon, label, onClick }) => (
-    <button 
-        onClick={(e) => { e.stopPropagation(); onClick(); }}
-        className="w-full text-left px-4 py-2 text-sm hover:bg-surface-border hover:text-white flex items-center gap-3 transition-colors group"
+type MenuItemProps = {
+    icon: LucideIcon;
+    label: string;
+    onClick: () => void;
+    disabled?: boolean;
+    destructive?: boolean;
+};
+
+export const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, onClick, disabled, destructive }) => (
+    <button
+        onClick={(e) => {
+            e.stopPropagation();
+            if (!disabled) onClick();
+        }}
+        disabled={disabled}
+        role="menuitem"
+        tabIndex={-1}
+        data-viib-label={label}
+        aria-label={label}
+        className={
+            'group w-full text-left px-4 py-2 text-sm flex items-center gap-3 justify-between ' +
+            'hover:bg-surface-1/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-0 ' +
+            'transition-colors duration-150 motion-reduce:transition-none ' +
+            (disabled ? 'opacity-50 cursor-not-allowed ' : 'cursor-pointer ') +
+            (destructive ? 'text-error ' : 'text-text-main ')
+        }
     >
-        <Icon size={16} className="text-gray-400 group-hover:text-white" />
-        <span>{label}</span>
+        <div className="flex items-center gap-3 min-w-0">
+            <Icon size={16} className="text-text-subtle group-hover:text-text-main" />
+            <span className="truncate">{label}</span>
+        </div>
     </button>
 );
 
@@ -30,7 +55,7 @@ export const MenuItem: React.FC<{ icon: any; label: string; onClick: () => void 
  *  - songId: ID of the song being added
  *  - onClose: Callback when the submenu closes
  */
-export const PlaylistsSubmenu: React.FC<{ songId: string; onClose: () => void }> = ({ songId, onClose }) => {
+export const PlaylistsSubmenu: React.FC<{ songId: string; onClose: () => void; onBack?: () => void }> = ({ songId, onClose, onBack }) => {
     const { playlists, addToPlaylist, createPlaylist } = useStore();
 
     const handleAddToPlaylist = (playlistId: string) => {
@@ -47,22 +72,41 @@ export const PlaylistsSubmenu: React.FC<{ songId: string; onClose: () => void }>
     };
 
     return (
-        <div className="absolute left-full top-0 ml-1 w-48 bg-surface-3 rounded-md shadow-xl border border-surface-border z-50 overflow-hidden py-1">
-            <button 
-                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-slider flex items-center gap-2"
+        <div
+            role="menu"
+            aria-label="Playlists"
+            data-viib-submenu="playlists"
+            className="absolute left-full top-0 ml-1 w-56 bg-surface-2 ring-1 ring-surface-3 rounded-xl shadow-xl shadow-black/30 py-1 overflow-hidden z-50"
+            onKeyDown={(e) => {
+                if (e.key === 'ArrowLeft' && onBack) {
+                    e.preventDefault();
+                    onBack();
+                }
+            }}
+        >
+            <button
+                role="menuitem"
+                tabIndex={-1}
+                data-viib-label="New Playlist"
+                aria-label="New Playlist"
+                className="w-full text-left px-4 py-2 text-sm text-text-main hover:bg-surface-1/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-0 flex items-center gap-2 transition-colors duration-150 motion-reduce:transition-none"
                 onClick={handleCreatePlaylist}
             >
                 <Plus size={14} /> New Playlist
             </button>
-            <div className="border-t border-surface-slider my-1"></div>
+            <div role="separator" className="border-t border-surface-3 my-1"></div>
             {playlists.length === 0 ? (
-                <div className="px-4 py-2 text-xs text-gray-500 italic">No playlists</div>
+                <div className="px-4 py-2 text-xs text-text-subtle italic">No playlists</div>
             ) : (
                 <div className="max-h-48 overflow-y-auto">
-                    {playlists.map(pl => (
+                    {playlists.map((pl) => (
                         <button
                             key={pl.id}
-                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-surface-slider truncate"
+                            role="menuitem"
+                            tabIndex={-1}
+                            data-viib-label={pl.name}
+                            aria-label={pl.name}
+                            className="w-full text-left px-4 py-2 text-sm text-text-main hover:bg-surface-1/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-0 truncate transition-colors duration-150 motion-reduce:transition-none"
                             onClick={() => handleAddToPlaylist(pl.id)}
                         >
                             {pl.name}

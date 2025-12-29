@@ -25,6 +25,10 @@ import { EmptyLibrary } from '../components/EmptyState';
 import { SkeletonTrackList } from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import { LikeButton } from '../components/LikeButton';
+import { TextInput } from '../components/ui/TextInput';
+import { Button } from '../components/ui/Button';
+import { Menu, MenuItem } from '../components/ui/Menu';
+import { ListHeader } from '../components/ui/Page';
 
 type SongSortOption = 'recent' | 'title-asc' | 'title-desc' | 'artist-asc' | 'artist-desc' | 'album-asc' | 'album-desc' | 'duration-asc' | 'duration-desc' | 'plays-desc';
 
@@ -64,49 +68,61 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
     };
 
     return (
-        <div className="p-8 pb-0">
+      <ListHeader>
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
-                <h1 className="text-3xl font-bold">All Songs</h1>
+          <h1 className="text-display">All Songs</h1>
                 <div className="flex items-center gap-3 w-full md:w-auto">
                     {/* Sort Dropdown */}
                     <div className="relative">
-                        <button
-                            onClick={() => setShowSortMenu(!showSortMenu)}
-                            className="flex items-center gap-2 px-4 py-2 bg-surface-highlight hover:bg-surface-hover rounded-full text-sm text-text-main transition-colors border border-transparent hover:border-surface-slider whitespace-nowrap"
-                        >
-                            <ArrowUpDown size={16} className="text-text-secondary" />
-                            <span className="hidden sm:inline">{sortLabels[sortBy]}</span>
-                            <ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} />
-                        </button>
+              <Button
+                variant="secondary"
+                onClick={() => setShowSortMenu(!showSortMenu)}
+                className="rounded-full whitespace-nowrap"
+                leftIcon={<ArrowUpDown size={16} className="text-text-secondary" aria-hidden="true" />}
+                rightIcon={<ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />}
+                aria-haspopup="menu"
+                aria-expanded={showSortMenu}
+              >
+                <span className="hidden sm:inline">{sortLabels[sortBy]}</span>
+              </Button>
                         
                         {showSortMenu && (
                             <>
-                                <div className="fixed inset-0 z-40" onClick={() => setShowSortMenu(false)} />
-                                <div className="absolute right-0 top-full mt-2 bg-surface-2 border border-surface-3 rounded-lg shadow-xl z-50 py-1 min-w-[180px]">
-                                    {(Object.keys(sortLabels) as SongSortOption[]).map((option) => (
-                                        <button
-                                            key={option}
-                                            onClick={() => { setSortBy(option); setShowSortMenu(false); }}
-                                            className={`w-full text-left px-4 py-2 text-sm hover:bg-surface-hover transition-colors ${sortBy === option ? 'text-brand font-medium' : 'text-text-main'}`}
-                                        >
-                                            {sortLabels[option]}
-                                        </button>
-                                    ))}
-                                </div>
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  aria-label="Close sort menu"
+                                  className="fixed inset-0 z-40"
+                                  onClick={() => setShowSortMenu(false)}
+                                />
+                            <Menu
+                              className="absolute right-0 top-full mt-2 z-50 min-w-[180px]"
+                              onRequestClose={() => setShowSortMenu(false)}
+                            >
+                              {(Object.keys(sortLabels) as SongSortOption[]).map((option) => (
+                                <MenuItem
+                                  key={option}
+                                  onClick={() => { setSortBy(option); setShowSortMenu(false); }}
+                                  active={sortBy === option}
+                                >
+                                  {sortLabels[option]}
+                                </MenuItem>
+                              ))}
+                            </Menu>
                             </>
                         )}
                     </div>
 
                     {/* Search Input */}
-                    <div className="relative flex-1 md:w-72">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
-                        <input 
-                            type="text" 
-                            placeholder="Search songs..."
-                            value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
-                            className="w-full bg-surface-highlight border border-transparent focus:border-surface-slider rounded-full py-2 pl-10 pr-4 text-sm text-text-main outline-none placeholder-text-subtle"
-                        />
+                    <div className="flex-1 md:w-72">
+                      <TextInput
+                        leftIcon={<Search size={18} className="text-text-secondary" aria-hidden="true" />}
+                        type="text"
+                        placeholder="Find a sound…"
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                        className="rounded-full"
+                      />
                     </div>
                 </div>
             </div>
@@ -121,7 +137,7 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
                 <div className="flex justify-end pr-2"><Clock size={16} /></div>
                 <div></div>
             </div>
-        </div>
+          </ListHeader>
     );
 };
 
@@ -202,7 +218,7 @@ export const Songs: React.FC = () => {
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                     >
                         <div className="text-center text-text-subtle font-mono text-sm relative h-full flex items-center justify-center">
-                            <span className="group-hover:hidden">{isCurrent && isPlaying ? <div className="w-3 h-3 bg-brand rounded-full animate-pulse"></div> : index + 1}</span>
+                        <span className="group-hover:hidden">{isCurrent && isPlaying ? <div className="w-3 h-3 bg-accent-green rounded-full animate-pulse"></div> : index + 1}</span>
                             <Play size={16} className="hidden group-hover:block text-text-main fill-current absolute" />
                         </div>
                         <div className="flex items-center gap-3 overflow-hidden">
@@ -214,7 +230,7 @@ export const Songs: React.FC = () => {
                                     )}
                             </div>
                             <div className="flex flex-col truncate">
-                                <span className={`font-medium truncate ${isCurrent ? 'text-brand' : 'text-text-main'}`}>{song.title}</span>
+                              <span className={`font-medium truncate ${isCurrent ? 'text-accent-green' : 'text-text-main'}`}>{song.title}</span>
                             </div>
                         </div>
                         <div className="text-text-secondary text-sm truncate">{song.album}</div>
@@ -227,13 +243,18 @@ export const Songs: React.FC = () => {
                         </div>
                         
                         <div className="flex justify-center relative">
-                            <button 
-                                onClick={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
-                                className={`text-text-subtle hover:text-text-main transition-opacity opacity-0 group-hover:opacity-100`}
-                                aria-label="More options"
-                            >
-                                <MoreHorizontal size={20} />
-                            </button>
+                          <Button
+                            variant="ghost"
+                            className="rounded-full p-2 opacity-0 group-hover:opacity-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openContextMenu(e, ContextMenuType.SONG, song);
+                            }}
+                            aria-label="More options"
+                            title="More options"
+                          >
+                            <MoreHorizontal size={20} />
+                          </Button>
                         </div>
                     </div>
                 </div>

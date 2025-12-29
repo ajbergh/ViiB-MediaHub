@@ -21,6 +21,7 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
     const { playSong, playNext, addToQueue, showToast } = useStore();
     const navigate = useNavigate();
     const [playlistsSubmenuOpen, setPlaylistsSubmenuOpen] = useState(false);
+    const playlistTriggerRef = React.useRef<HTMLButtonElement | null>(null);
 
     const handleAction = (action: () => void) => {
         action();
@@ -57,9 +58,9 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
 
     return (
         <>
-            <div className="px-3 py-2 border-b border-[#333] mb-1">
-                <div className="font-bold text-white truncate text-sm">{song.title}</div>
-                <div className="text-xs text-gray-400 truncate">{song.artist}</div>
+            <div className="px-3 py-2 border-b border-surface-border mb-1">
+                <div className="font-bold text-text-main truncate text-sm">{song.title}</div>
+                <div className="text-xs text-text-secondary truncate">{song.artist}</div>
             </div>
 
             <MenuItem icon={Play} label="Play Now" onClick={() => handleAction(() => playSong(song))} />
@@ -67,26 +68,61 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
             <MenuItem icon={ListPlus} label="Add to Queue" onClick={() => handleAction(() => addToQueue(song))} />
             
             <div 
-                className="relative group"
+                className="relative"
                 onMouseEnter={() => setPlaylistsSubmenuOpen(true)}
                 onMouseLeave={() => setPlaylistsSubmenuOpen(false)}
+                onFocus={() => setPlaylistsSubmenuOpen(true)}
+                onBlurCapture={(e) => {
+                    const next = e.relatedTarget as Node | null;
+                    if (!next || !e.currentTarget.contains(next)) {
+                        setPlaylistsSubmenuOpen(false);
+                    }
+                }}
             >
-                <button className="w-full text-left px-4 py-2 text-sm hover:bg-[#333] hover:text-white flex items-center justify-between transition-colors">
+                <button
+                    ref={playlistTriggerRef}
+                    role="menuitem"
+                    tabIndex={-1}
+                    data-viib-label="Add to Playlist"
+                    aria-label="Add to Playlist"
+                    aria-haspopup="menu"
+                    aria-expanded={playlistsSubmenuOpen}
+                    className="group w-full text-left px-4 py-2 text-sm text-text-main hover:bg-surface-1/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-0 flex items-center justify-between transition-colors duration-150 motion-reduce:transition-none"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setPlaylistsSubmenuOpen((v) => !v);
+                        requestAnimationFrame(() => {
+                            const root = (e.currentTarget.parentElement as HTMLElement | null) ?? null;
+                            const submenu = root?.querySelector('[data-viib-submenu="playlists"]') as HTMLElement | null;
+                            const firstItem = submenu?.querySelector('[role="menuitem"]') as HTMLElement | null;
+                            firstItem?.focus();
+                        });
+                    }}
+                >
                     <div className="flex items-center gap-3">
                         <ListMusic size={16} />
                         <span>Add to Playlist</span>
                     </div>
-                    <ArrowRight size={14} />
+                    <ArrowRight size={14} className="text-text-subtle group-hover:text-text-main" />
                 </button>
-                {playlistsSubmenuOpen && <PlaylistsSubmenu songId={song.id} onClose={onClose} />}
+                {playlistsSubmenuOpen && (
+                    <PlaylistsSubmenu
+                        songId={song.id}
+                        onClose={onClose}
+                        onBack={() => {
+                            setPlaylistsSubmenuOpen(false);
+                            requestAnimationFrame(() => playlistTriggerRef.current?.focus());
+                        }}
+                    />
+                )}
             </div>
 
-            <div className="border-t border-[#333] my-1"></div>
+            <div className="border-t border-surface-border my-1"></div>
 
             <MenuItem icon={Disc} label="Go to Album" onClick={() => navigateTo(`/album/${encodeURIComponent(song.album)}`)} />
             <MenuItem icon={Mic2} label="Go to Artist" onClick={() => navigateTo(`/artists`)} /> 
             
-            <div className="border-t border-[#333] my-1"></div>
+            <div className="border-t border-surface-border my-1"></div>
             
             {/* Download option for streaming Spotify tracks */}
             {isSpotifyStreaming && (
@@ -94,7 +130,7 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
             )}
             {/* Show downloaded indicator for Spotify tracks */}
             {isSpotifyDownloaded && (
-                <div className="px-4 py-2 text-sm text-gray-400 flex items-center gap-3">
+                <div className="px-4 py-2 text-sm text-text-secondary flex items-center gap-3">
                     <CheckCircle size={16} className="text-brand" />
                     <span>Downloaded</span>
                 </div>

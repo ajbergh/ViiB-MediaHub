@@ -59,6 +59,12 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Design system checks
+        run: |
+          npm run check:palette
+          npm run check:raw-colors
+          npm run typecheck
+
       - name: Build frontend
         run: npm run build
 

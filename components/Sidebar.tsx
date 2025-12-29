@@ -33,8 +33,8 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store';
 import { SpotifyIcon } from './icons/SpotifyIcon';
-import LargeLogo from './icons/Large-Logo1-black.png';
-import SmallLogo from './icons/appicon.png';
+import LargeLogo from './icons/Large-Logo1-clear-highres.png';
+import SmallLogo from './icons/Icon_1_clear-high-res.png';
 
 interface SidebarItemProps {
   to: string;
@@ -51,22 +51,22 @@ const SidebarItem = ({ to, icon: Icon, label, badge, collapsed }: SidebarItemPro
       title={collapsed ? label : undefined}
       aria-label={label}
       className={({ isActive }) =>
-        `flex items-center gap-4 px-4 py-3 text-sm font-medium transition-all duration-200 border-l-4 relative ${
+        `flex items-center gap-4 px-4 py-3 text-sm font-medium transition-all duration-200 ease-out border-l-4 relative ${
           isActive
-            ? 'border-brand bg-surface-highlight text-text-main'
-            : 'border-transparent text-text-secondary hover:text-text-main hover:bg-surface-highlight/50'
+            ? 'border-brand bg-surface-2 text-brand ring-1 ring-brand/15'
+            : 'border-transparent text-text-secondary hover:text-text-main hover:bg-surface-2/60'
         } ${collapsed ? 'justify-center px-2' : ''}`
       }
     >
       <Icon size={20} className="flex-shrink-0" aria-hidden="true" />
       {!collapsed && <span className="flex-1">{label}</span>}
       {!collapsed && badge !== undefined && badge > 0 && (
-        <span className="bg-brand text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center" aria-label={`${badge} items`}>
+        <span className="bg-brand text-black/90 text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center" aria-label={`${badge} items`}>
           {badge}
         </span>
       )}
       {collapsed && badge !== undefined && badge > 0 && (
-        <span className="absolute -top-1 -right-1 bg-brand text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center" aria-label={`${badge} items`}>
+        <span className="absolute -top-1 -right-1 bg-brand text-black/90 text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center" aria-label={`${badge} items`}>
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -87,7 +87,7 @@ export const Sidebar: React.FC = () => {
 
   return (
     <div 
-      className={`h-full bg-surface-0 flex flex-col border-r border-surface-highlight transition-all duration-300 ${
+      className={`h-full bg-surface-0 flex flex-col border-r border-surface-3 transition-all duration-300 ease-out ${
         collapsed ? 'w-16' : 'w-64'
       }`}
     >
@@ -112,7 +112,7 @@ export const Sidebar: React.FC = () => {
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className={`p-1.5 rounded-lg text-text-subtle hover:text-text-main hover:bg-surface-hover transition-colors ${collapsed ? 'mt-2' : ''}`}
+          className={`p-1.5 rounded-lg text-text-subtle hover:text-text-main hover:bg-surface-2/60 transition-colors ${collapsed ? 'mt-2' : ''}`}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
@@ -146,19 +146,19 @@ export const Sidebar: React.FC = () => {
         </div>
       </nav>
 
-      <div className={`p-4 border-t border-surface-highlight bg-gradient-to-t from-surface-0 to-surface-0/50 ${collapsed ? 'px-2' : ''}`}>
+      <div className={`p-4 border-t border-surface-3 bg-surface-0 ${collapsed ? 'px-2' : ''}`}>
         {isScanning ? (
           <div className={`flex flex-col gap-2 text-text-secondary ${collapsed ? 'items-center' : ''}`}>
             <div className={`flex items-center gap-3 text-brand ${collapsed ? 'justify-center' : ''}`}>
-              <Loader2 size={20} className="animate-spin" />
+              <Loader2 size={20} className="animate-spin motion-reduce:animate-none" />
               {!collapsed && <span className="text-sm font-semibold">Scanning...</span>}
             </div>
             {!collapsed && scanProgress && <span className="text-xs text-text-subtle line-clamp-1">{scanProgress}</span>}
           </div>
         ) : enrichmentStatus.isEnriching ? (
           <div className={`flex flex-col gap-2 text-text-secondary ${collapsed ? 'items-center' : ''}`}>
-            <div className={`flex items-center gap-3 text-purple-400 ${collapsed ? 'justify-center' : ''}`}>
-              <Sparkles size={20} className="animate-pulse" />
+            <div className={`flex items-center gap-3 text-brand ${collapsed ? 'justify-center' : ''}`}>
+              <Sparkles size={20} className="animate-pulse motion-reduce:animate-none" />
               {!collapsed && (
                 <span className="text-sm font-semibold">
                   {enrichmentStatus.message?.toLowerCase().includes('mood') ? 'Analyzing Moods...' : 'Enriching Genres...'}
@@ -169,7 +169,7 @@ export const Sidebar: React.FC = () => {
               <>
                 <div className="w-full bg-surface-3 rounded-full h-1.5 overflow-hidden">
                   <div 
-                    className="bg-purple-400 h-full rounded-full transition-all duration-300 ease-out"
+                    className="bg-brand h-full rounded-full transition-all duration-300 ease-out motion-reduce:transition-none"
                     style={{ 
                       width: enrichmentStatus.totalSongs > 0 
                         ? `${Math.round((enrichmentStatus.processedSongs / enrichmentStatus.totalSongs) * 100)}%` 
@@ -185,7 +185,7 @@ export const Sidebar: React.FC = () => {
           </div>
         ) : enrichmentStatus.message && enrichmentStatus.message.includes('complete') ? (
           <div className={`flex flex-col gap-2 text-text-secondary ${collapsed ? 'items-center' : ''}`}>
-            <div className={`flex items-center gap-3 text-green-400 ${collapsed ? 'justify-center' : ''}`}>
+            <div className={`flex items-center gap-3 text-accent-green ${collapsed ? 'justify-center' : ''}`}>
               <Sparkles size={20} />
               {!collapsed && (
                 <span className="text-sm font-semibold">

@@ -25,6 +25,7 @@ import { formatTime } from '../utils';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
 import { spotifyPlaylistToSongs } from '../lib/spotifyHelpers';
 import api from '../services/api';
+import { Button } from '../components/ui/Button';
 
 interface SpotifyPlaylistFull {
   id: string;
@@ -229,13 +230,15 @@ export const SpotifyPlaylistDetail: React.FC = () => {
   if (error || !playlist) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-        <p className="text-red-500 mb-4">{error || 'Playlist not found'}</p>
-        <button 
+        <p className="text-error mb-4">{error || 'Playlist not found'}</p>
+        <Button
+          variant="secondary"
           onClick={() => navigate('/spotify')}
-          className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-3 rounded-full transition-colors"
+          leftIcon={<ArrowLeft size={18} />}
+          className="rounded-full px-4 py-2"
         >
-          <ArrowLeft size={18} /> Back to Spotify
-        </button>
+          Back to Spotify
+        </Button>
       </div>
     );
   }
@@ -247,12 +250,14 @@ export const SpotifyPlaylistDetail: React.FC = () => {
       {/* Header */}
       <div className="bg-gradient-to-b from-brand/20 to-transparent">
         <div className="p-8">
-          <button 
+          <Button
+            variant="ghost"
             onClick={() => navigate('/spotify')}
-            className="flex items-center gap-2 text-text-secondary hover:text-text-main mb-6 transition-colors"
+            leftIcon={<ArrowLeft size={20} />}
+            className="px-0 py-0 text-text-secondary hover:text-text-main hover:bg-transparent"
           >
-            <ArrowLeft size={20} /> Back
-          </button>
+            Back
+          </Button>
 
           <div className="flex gap-8 items-end">
             <div className="w-64 h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden">
@@ -265,7 +270,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
 
             <div className="flex-1 pb-4">
               <p className="text-sm font-bold uppercase tracking-wider text-text-secondary mb-2">Playlist</p>
-              <h1 className="text-5xl font-bold mb-4 leading-tight">{playlist.name}</h1>
+              <h1 className="text-display font-bold mb-4 leading-tight">{playlist.name}</h1>
               {playlist.description && (
                 <p className="text-text-secondary mb-4" dangerouslySetInnerHTML={{ __html: playlist.description }} />
               )}
@@ -287,22 +292,25 @@ export const SpotifyPlaylistDetail: React.FC = () => {
 
       {/* Actions */}
       <div className="px-8 py-6 flex items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
-        <button 
+        <Button
+          variant="primary"
+          accent="brand"
           onClick={handlePlayPlaylist}
-          className="w-14 h-14 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center shadow-xl hover:scale-105 transition-all duration-200 text-black"
+          className="w-14 h-14 p-0 rounded-full shadow-xl hover:scale-105 transition-all duration-200"
           aria-label="Play playlist"
         >
           <Play size={24} fill="black" />
-        </button>
-        <button 
+        </Button>
+        <Button
+          variant="secondary"
           onClick={handleDownload}
           disabled={isDownloading}
-          className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-3 rounded-full text-sm font-bold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          leftIcon={isDownloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+          className="rounded-full px-4 py-2 text-sm font-bold"
           aria-label="Download playlist"
         >
-          {isDownloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
           Download
-        </button>
+        </Button>
         <a 
           href={playlist.external_urls.spotify} 
           target="_blank" 
@@ -365,9 +373,13 @@ export const SpotifyPlaylistDetail: React.FC = () => {
                 {formatTime(item.track.duration_ms / 1000)}
               </div>
               <div className="flex items-center justify-center">
-                <button className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button
+                  variant="ghost"
+                  className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label="More"
+                >
                   <MoreHorizontal size={18} />
-                </button>
+                </Button>
               </div>
             </div>
           ))}

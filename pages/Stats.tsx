@@ -1,3 +1,4 @@
+import { Page, PageHeader } from '../components/ui/Page';
 /**
  * ViiB MediaHub - Listening Stats Page
  * 
@@ -30,8 +31,18 @@ interface StatCardProps {
     label: string;
     value: string | number;
     subtext?: string;
-    color?: string;
+    color?: 'brand' | 'accent-blue' | 'accent-green' | 'accent-orange' | 'accent-crimson' | 'success' | 'warning';
 }
+
+const STAT_CARD_COLORS: Record<NonNullable<StatCardProps['color']>, { icon: string; glow: string; glowHover: string }> = {
+    brand: { icon: 'text-brand', glow: 'bg-brand/10', glowHover: 'group-hover:bg-brand/20' },
+    'accent-blue': { icon: 'text-accent-blue', glow: 'bg-accent-blue/10', glowHover: 'group-hover:bg-accent-blue/20' },
+    'accent-green': { icon: 'text-accent-green', glow: 'bg-accent-green/10', glowHover: 'group-hover:bg-accent-green/20' },
+    'accent-orange': { icon: 'text-accent-orange', glow: 'bg-accent-orange/10', glowHover: 'group-hover:bg-accent-orange/20' },
+    'accent-crimson': { icon: 'text-accent-crimson', glow: 'bg-accent-crimson/10', glowHover: 'group-hover:bg-accent-crimson/20' },
+    success: { icon: 'text-success', glow: 'bg-success/10', glowHover: 'group-hover:bg-success/20' },
+    warning: { icon: 'text-warning', glow: 'bg-warning/10', glowHover: 'group-hover:bg-warning/20' }
+};
 
 /**
  * StatCard - Reusable card component used in the stats dashboard.
@@ -41,17 +52,20 @@ interface StatCardProps {
  *  - value: Primary value to display (string or number)
  *  - subtext: Optional secondary text
  */
-const StatCard: React.FC<StatCardProps> = ({ icon, label, value, subtext, color = 'brand' }) => (
-    <div className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors group relative overflow-hidden">
-        <div className="relative z-10">
-            <div className={`text-${color} mb-3`}>{icon}</div>
-            <h3 className="text-3xl font-bold mb-1">{value}</h3>
-            <p className="text-text-secondary text-sm font-medium">{label}</p>
-            {subtext && <p className="text-text-subtle text-xs mt-1">{subtext}</p>}
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, subtext, color = 'brand' }) => {
+    const c = STAT_CARD_COLORS[color];
+    return (
+        <div className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors group relative overflow-hidden">
+            <div className="relative z-10">
+                <div className={`${c.icon} mb-3`}>{icon}</div>
+                <h3 className="text-section font-bold mb-1">{value}</h3>
+                <p className="text-text-secondary text-sm font-medium">{label}</p>
+                {subtext && <p className="text-text-subtle text-xs mt-1">{subtext}</p>}
+            </div>
+            <div className={`absolute top-0 right-0 w-24 h-24 ${c.glow} rounded-full -mr-4 -mt-4 blur-2xl transition-all ${c.glowHover}`}></div>
         </div>
-        <div className={`absolute top-0 right-0 w-24 h-24 bg-${color}/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-${color}/20`}></div>
-    </div>
-);
+    );
+};
 
 interface TopItemProps {
     rank: number;
@@ -204,35 +218,22 @@ export const Stats: React.FC = () => {
         return `${minutes}m`;
     };
 
-    // Genre colors for visual interest
-    const genreColors = [
-        'from-pink-500 to-purple-600',
-        'from-blue-500 to-cyan-500',
-        'from-green-500 to-emerald-600',
-        'from-orange-500 to-red-500',
-        'from-indigo-500 to-purple-500',
-        'from-yellow-500 to-orange-500',
-        'from-teal-500 to-green-500',
-        'from-rose-500 to-pink-500',
-        'from-violet-500 to-indigo-600',
-        'from-amber-500 to-yellow-500'
-    ];
-
-    return (
-        <div className="p-8 pb-32 animate-fade-in">
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-8">
-                <BarChart3 className="text-brand" size={32} />
-                <div>
-                    <h1 className="text-3xl font-bold">Listening Stats</h1>
-                    <p className="text-text-secondary">Your music journey in numbers</p>
-                </div>
-            </div>
+        return (
+                <Page>
+                        <PageHeader
+                            heading={
+                                <span className="flex items-center gap-3">
+                                    <BarChart3 className="text-brand" size={32} />
+                                    Listening Stats
+                                </span>
+                            }
+                            subtitle="Your music journey in numbers"
+                        />
 
             {/* Overview Stats Grid */}
             <section className="mb-12">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                    <TrendingUp size={20} className="text-blue-400" />
+                <h2 className="text-section font-semibold mb-4 flex items-center gap-2">
+                    <TrendingUp size={20} className="text-accent-blue" />
                     Overview
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -248,21 +249,21 @@ export const Stats: React.FC = () => {
                         label="Total Plays"
                         value={stats.totalPlays.toLocaleString()}
                         subtext={`${stats.avgPlaysPerSong} avg per song`}
-                        color="purple-500"
+                        color="brand"
                     />
                     <StatCard 
                         icon={<Music size={24} />}
                         label="Songs Played"
                         value={stats.uniqueSongsPlayed}
                         subtext={`of ${stats.totalSongs} total`}
-                        color="blue-500"
+                        color="accent-blue"
                     />
                     <StatCard 
                         icon={<Calendar size={24} />}
                         label="This Week"
                         value={stats.playsThisWeek.toLocaleString()}
                         subtext="plays"
-                        color="green-500"
+                        color="accent-green"
                     />
                 </div>
             </section>
@@ -270,10 +271,10 @@ export const Stats: React.FC = () => {
             {/* Most Played Song Highlight */}
             {stats.mostPlayedSong && stats.mostPlayedSong.playCount && stats.mostPlayedSong.playCount > 0 && (
                 <section className="mb-12">
-                    <div className="bg-gradient-to-r from-brand/20 to-purple-500/20 p-6 rounded-2xl border border-brand/30">
+                    <div className="bg-gradient-to-r from-brand/20 to-brand/10 p-6 rounded-2xl border border-brand/30">
                         <div className="flex items-center gap-2 mb-4">
-                            <Award size={20} className="text-yellow-400" />
-                            <h3 className="text-lg font-bold">Your #1 Song</h3>
+                            <Award size={20} className="text-accent-orange" />
+                            <h3 className="text-card font-semibold">Your #1 Song</h3>
                         </div>
                         <div className="flex items-center gap-6">
                             <div 
@@ -285,8 +286,8 @@ export const Stats: React.FC = () => {
                                 )}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <h4 className="text-2xl font-bold truncate">{stats.mostPlayedSong.title}</h4>
-                                <p className="text-text-secondary text-lg">{stats.mostPlayedSong.artist}</p>
+                                <h4 className="text-section font-bold truncate">{stats.mostPlayedSong.title}</h4>
+                                <p className="text-text-secondary text-body">{stats.mostPlayedSong.artist}</p>
                                 <div className="flex items-center gap-4 mt-2">
                                     <span className="flex items-center gap-1 text-brand font-bold">
                                         <Play size={16} className="fill-current" />
@@ -306,8 +307,8 @@ export const Stats: React.FC = () => {
             <div className="grid md:grid-cols-2 gap-8 mb-12">
                 {/* Top Artists */}
                 <section>
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                        <Mic2 size={20} className="text-pink-400" />
+                    <h2 className="text-section font-semibold mb-4 flex items-center gap-2">
+                        <Mic2 size={20} className="text-brand" />
                         Top Artists
                     </h2>
                     <div className="bg-surface-2 rounded-xl border border-surface-3 overflow-hidden">
@@ -321,7 +322,7 @@ export const Stats: React.FC = () => {
                                         subtitle={`${artist.plays} plays`}
                                         plays={artist.plays}
                                         imageUrl={artist.imageUrl}
-                                        fallbackGradient={`linear-gradient(135deg, ${genreColors[idx % genreColors.length].replace('from-', '').replace(' to-', ', ').split(', ').map(c => `var(--tw-gradient-stops)`).join(', ')})`}
+                                        fallbackGradient={coverBackground(undefined, artist.name)}
                                         onClick={() => navigate('/artists')}
                                     />
                                 ))}
@@ -337,8 +338,8 @@ export const Stats: React.FC = () => {
 
                 {/* Top Albums */}
                 <section>
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                        <Disc size={20} className="text-purple-400" />
+                    <h2 className="text-section font-semibold mb-4 flex items-center gap-2">
+                        <Disc size={20} className="text-brand" />
                         Top Albums
                     </h2>
                     <div className="bg-surface-2 rounded-xl border border-surface-3 overflow-hidden">
@@ -370,18 +371,18 @@ export const Stats: React.FC = () => {
             {/* Top Genres */}
             {stats.topGenres.length > 0 && stats.topGenres[0].plays > 0 && (
                 <section className="mb-12">
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                        <Zap size={20} className="text-yellow-400" />
+                    <h2 className="text-section font-semibold mb-4 flex items-center gap-2">
+                        <Zap size={20} className="text-warning" />
                         Top Genres
                     </h2>
                     <div className="flex flex-wrap gap-3">
                         {stats.topGenres.map((genre, idx) => (
                             <div 
                                 key={genre.name}
-                                className={`px-4 py-2 rounded-full bg-gradient-to-r ${genreColors[idx % genreColors.length]} text-white font-medium shadow-lg`}
+                                className="px-4 py-2 rounded-full bg-surface-2 border border-surface-3 text-text-main font-medium"
                             >
                                 <span className="mr-2">{genre.name}</span>
-                                <span className="text-white/70 text-sm">{genre.plays} plays</span>
+                                <span className="text-text-subtle text-meta">{genre.plays} plays</span>
                             </div>
                         ))}
                     </div>
@@ -390,8 +391,8 @@ export const Stats: React.FC = () => {
 
             {/* Library Overview */}
             <section>
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                    <Star size={20} className="text-amber-400" />
+                <h2 className="text-section font-semibold mb-4 flex items-center gap-2">
+                    <Star size={20} className="text-accent-orange" />
                     Your Library
                 </h2>
                 <div className="grid grid-cols-3 gap-4">
@@ -399,29 +400,29 @@ export const Stats: React.FC = () => {
                         className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors cursor-pointer text-center"
                         onClick={() => navigate('/songs')}
                     >
-                        <Music className="mx-auto text-green-500 mb-2" size={32} />
-                        <h3 className="text-2xl font-bold">{stats.totalSongs}</h3>
+                        <Music className="mx-auto text-accent-green mb-2" size={32} />
+                        <h3 className="text-section font-bold">{stats.totalSongs}</h3>
                         <p className="text-text-secondary text-sm">Songs</p>
                     </div>
                     <div 
                         className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors cursor-pointer text-center"
                         onClick={() => navigate('/albums')}
                     >
-                        <Disc className="mx-auto text-purple-500 mb-2" size={32} />
-                        <h3 className="text-2xl font-bold">{stats.totalAlbums}</h3>
+                        <Disc className="mx-auto text-brand mb-2" size={32} />
+                        <h3 className="text-section font-bold">{stats.totalAlbums}</h3>
                         <p className="text-text-secondary text-sm">Albums</p>
                     </div>
                     <div 
                         className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors cursor-pointer text-center"
                         onClick={() => navigate('/artists')}
                     >
-                        <Mic2 className="mx-auto text-blue-500 mb-2" size={32} />
-                        <h3 className="text-2xl font-bold">{stats.totalArtists}</h3>
+                        <Mic2 className="mx-auto text-accent-blue mb-2" size={32} />
+                        <h3 className="text-section font-bold">{stats.totalArtists}</h3>
                         <p className="text-text-secondary text-sm">Artists</p>
                     </div>
                 </div>
             </section>
-        </div>
+        </Page>
     );
 };
 

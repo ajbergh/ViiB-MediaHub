@@ -4,6 +4,7 @@ import { useStore, useAlbumCovers } from '../../store';
 import { formatTime, generateGradient } from '../../utils';
 import { ContextMenuType } from '../../types';
 import { api } from '../../services/api';
+import { Button } from '../ui/Button';
 
 interface Props {
     queue: any[];
@@ -76,11 +77,11 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.QUEUE_ITEM, { song, index: idx })}
                         className={`group flex items-center gap-4 p-3 rounded-lg border border-transparent transition-all ${
                             isCurrent 
-                                ? 'bg-white/10 border-green-500/50' 
-                                : 'hover:bg-white/5 border-transparent'
+                                ? 'bg-surface-2/60 border-accent-green/40' 
+                                : 'hover:bg-surface-2/30 border-transparent'
                         } ${draggedItemIndex === idx ? 'opacity-40' : ''}`}
                     >
-                        <div className="cursor-grab active:cursor-grabbing text-white/30 group-hover:text-white/60">
+                        <div className="cursor-grab active:cursor-grabbing text-text-subtle/70 group-hover:text-text-secondary">
                             <GripVertical size={20} />
                         </div>
                         
@@ -92,34 +93,36 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
                                 alt="" 
                                 />
                                 <div 
-                                className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center cursor-pointer"
+                                className="absolute inset-0 bg-surface-0/60 hidden group-hover:flex items-center justify-center cursor-pointer"
                                 onClick={() => playQueueItem(idx)}
                                 >
-                                <Play size={20} className="fill-white" />
+                                <Play size={20} className="text-text-main fill-current" />
                                 </div>
                         </div>
 
                         <div className="flex-1 min-w-0">
-                            <div className={`font-bold truncate ${isCurrent ? 'text-green-400' : 'text-white'}`}>{song.title}</div>
-                            <div className="text-sm text-white/50 truncate">{song.artist}</div>
+                            <div className={`font-bold truncate ${isCurrent ? 'text-accent-green' : 'text-text-main'}`}>{song.title}</div>
+                            <div className="text-sm text-text-secondary truncate">{song.artist}</div>
                         </div>
                         
-                        <div className="text-sm font-mono text-white/30">{formatTime(song.duration)}</div>
+                        <div className="text-sm font-mono text-text-subtle/70">{formatTime(song.duration)}</div>
 
                         {/* Download button for streaming Spotify tracks */}
                         {song.spotifyId && song.isStreaming && (
-                            <button 
+                            <Button
                                 onClick={(e) => handleDownloadTrack(song, e)}
                                 disabled={downloadingIds.has(song.spotifyId)}
-                                className="p-2 text-white/30 hover:text-brand opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                                variant="ghost"
+                                className="p-2 text-text-subtle/70 hover:text-brand opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                                 title="Download for offline"
+                                aria-label="Download for offline"
                             >
                                 {downloadingIds.has(song.spotifyId) ? (
                                     <Loader2 size={18} className="animate-spin" />
                                 ) : (
                                     <Download size={18} />
                                 )}
-                            </button>
+                            </Button>
                         )}
                         {/* Show downloaded indicator */}
                         {song.spotifyId && !song.isStreaming && (
@@ -128,12 +131,15 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
                             </div>
                         )}
 
-                        <button 
+                        <Button
                             onClick={(e) => { e.stopPropagation(); removeFromQueue(idx); }}
-                            className="p-2 text-white/30 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                            variant="ghost"
+                            className="p-2 text-text-subtle/70 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label="Remove from queue"
+                            title="Remove from queue"
                         >
                             <Trash2 size={18} />
-                        </button>
+                        </Button>
                     </div>
                 )
             })}

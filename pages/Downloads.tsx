@@ -25,6 +25,7 @@ import api, { ApiSpotifyDownload } from '../services/api';
 import ConfirmDialog from '../components/ConfirmDialog';
 import DirectDownloadDialog from '../components/DirectDownloadDialog';
 import { useStore } from '../store';
+import { Page, PageHeader } from '../components/ui/Page';
 
 export const Downloads: React.FC = () => {
   const [downloads, setDownloads] = useState<ApiSpotifyDownload[]>([]);
@@ -248,7 +249,7 @@ export const Downloads: React.FC = () => {
     return (
       <div className="p-8 pb-32 flex flex-col items-center justify-center min-h-[60vh]">
         <div className="mb-6 opacity-20">
-          <XCircle size={80} className="text-red-400" />
+          <XCircle size={80} className="text-error" />
         </div>
         <h1 className="text-2xl font-bold mb-2">Unable to Load Downloads</h1>
         <p className="text-text-subtle text-center max-w-sm">
@@ -296,37 +297,36 @@ export const Downloads: React.FC = () => {
   };
 
   return (
-    <div className="p-8 pb-32 animate-fade-in">
+    <Page>
       {/* Auth Required Banner */}
       {authRequired && (
-        <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 flex items-center justify-between">
+        <div className="mb-6 bg-warning/20 border border-warning/50 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="text-yellow-500" size={24} />
+            <AlertTriangle className="text-warning" size={24} />
             <div>
-              <p className="font-semibold text-yellow-400">Spotify Session Expired</p>
+              <p className="font-semibold text-warning">Spotify Session Expired</p>
               <p className="text-sm text-text-secondary">Please reconnect to Spotify to continue downloading.</p>
             </div>
           </div>
           <button
             onClick={handleReconnectSpotify}
-            className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-semibold rounded-lg transition-colors"
+            className="px-4 py-2 bg-warning hover:bg-warning/90 text-surface-0 font-semibold rounded-lg transition-colors"
           >
             Reconnect to Spotify
           </button>
         </div>
       )}
 
-      <div className="mb-8 flex justify-between items-end">
-        <div>
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+      <PageHeader
+        heading={
+          <span className="flex items-center gap-3">
             <Download className="text-brand" size={32} />
             Downloads
-          </h1>
-          <p className="text-text-secondary">
-            Manage your Spotify downloads
-          </p>
-        </div>
-        <div className="flex gap-2">
+          </span>
+        }
+        subtitle="Manage your Spotify downloads"
+        actions={
+          <div className="flex gap-2">
           <button
             onClick={() => setShowDirectDownload(true)}
             className="px-4 py-2 bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
@@ -346,7 +346,7 @@ export const Downloads: React.FC = () => {
           {downloads.some(d => d.status === 'completed') && (
             <button
               onClick={() => setConfirmDialog({ type: 'clearCompleted' })}
-              className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-green-400 rounded-lg transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-success rounded-lg transition-colors flex items-center gap-2"
             >
               <CheckCircle size={18} />
               Clear Completed
@@ -355,14 +355,15 @@ export const Downloads: React.FC = () => {
           {downloads.some(d => d.status === 'queued') && (
             <button
               onClick={() => setConfirmDialog({ type: 'clearQueue' })}
-              className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-red-400 rounded-lg transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-error rounded-lg transition-colors flex items-center gap-2"
             >
               <Trash2 size={18} />
               Clear Queue
             </button>
           )}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -374,14 +375,14 @@ export const Downloads: React.FC = () => {
           <p className="text-2xl font-bold">{stats.active}</p>
         </div>
         <div className="bg-surface-1 p-4 rounded-lg">
-          <div className="flex items-center gap-2 text-green-400 mb-1">
+          <div className="flex items-center gap-2 text-success mb-1">
             <CheckCircle size={18} />
             <span className="text-sm font-semibold">Completed</span>
           </div>
           <p className="text-2xl font-bold">{stats.completed}</p>
         </div>
         <div className="bg-surface-1 p-4 rounded-lg">
-          <div className="flex items-center gap-2 text-red-400 mb-1">
+          <div className="flex items-center gap-2 text-error mb-1">
             <XCircle size={18} />
             <span className="text-sm font-semibold">Failed</span>
           </div>
@@ -445,7 +446,7 @@ export const Downloads: React.FC = () => {
         <div className="mt-6">
           <button
             onClick={() => setConfirmDialog({ type: 'clearQueue' })}
-            className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-error hover:bg-error/90 text-white font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <Trash2 size={18} />
             Clear Queue
@@ -478,7 +479,7 @@ export const Downloads: React.FC = () => {
         isOpen={showDirectDownload}
         onClose={() => setShowDirectDownload(false)}
       />
-    </div>
+    </Page>
   );
 };
 
@@ -497,9 +498,9 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
       case 'downloading':
         return <Loader2 className="text-brand animate-spin" size={20} />;
       case 'completed':
-        return <CheckCircle className="text-green-400" size={20} />;
+        return <CheckCircle className="text-success" size={20} />;
       case 'failed':
-        return <XCircle className="text-red-400" size={20} />;
+        return <XCircle className="text-error" size={20} />;
     }
   };
 
@@ -574,8 +575,8 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
 
           {/* Error Message */}
           {download.status === 'failed' && download.errorMessage && (
-            <div className="bg-red-400/10 border border-red-400/30 rounded p-2 mt-2">
-              <p className="text-xs text-red-400">{download.errorMessage}</p>
+            <div className="bg-error/10 border border-error/30 rounded p-2 mt-2">
+              <p className="text-xs text-error">{download.errorMessage}</p>
             </div>
           )}
 
@@ -617,7 +618,7 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
             className="p-2 hover:bg-surface-3 rounded-lg transition-colors group"
             title={download.status === 'downloading' ? "Cancel download" : "Remove from list"}
           >
-            <Trash2 className={`text-text-muted group-hover:text-red-400 ${download.status === 'downloading' ? 'text-red-400' : ''}`} size={18} />
+            <Trash2 className={`text-text-muted group-hover:text-error ${download.status === 'downloading' ? 'text-error' : ''}`} size={18} />
           </button>
         </div>
       </div>

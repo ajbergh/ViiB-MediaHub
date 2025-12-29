@@ -28,6 +28,7 @@ import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
 import { Loader2, XCircle, CheckCircle } from 'lucide-react';
 import { isWailsEnvironment } from '../utils';
+import { Button } from '../components/ui/Button';
 
 import { api } from '../services/api';
 
@@ -258,7 +259,7 @@ export const SpotifyCallback: React.FC = () => {
     }, [searchParams, spotifyClientId, spotifyClientSecret, setSpotifyTokens, setSpotifyUser, addLog, navigate]);
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white p-8">
+        <div className="flex flex-col items-center justify-center min-h-screen bg-surface-0 text-text-main p-8">
             <div className="bg-surface-2 p-8 rounded-xl border border-surface-3 max-w-md w-full text-center shadow-2xl">
                 {status === 'processing' && (
                     <>
@@ -280,15 +281,16 @@ export const SpotifyCallback: React.FC = () => {
 
                 {status === 'error' && (
                     <>
-                        <XCircle size={48} className="text-red-500 mx-auto mb-4" />
+                        <XCircle size={48} className="text-error mx-auto mb-4" />
                         <h2 className="text-xl font-bold mb-2">Connection Failed</h2>
-                        <p className="text-red-400 mb-6">{errorMsg}</p>
-                        <button 
+                        <p className="text-error mb-6">{errorMsg}</p>
+                        <Button 
+                            variant="secondary"
                             onClick={() => window.close()}
-                            className="bg-surface-3 hover:bg-surface-hover text-white font-bold py-2 px-6 rounded-full transition-all duration-200"
+                            className="rounded-full px-6 py-2 font-bold"
                         >
                             Close
-                        </button>
+                        </Button>
                     </>
                 )}
             </div>

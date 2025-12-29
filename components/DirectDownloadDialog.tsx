@@ -105,7 +105,7 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
 
   return (
     <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isLoading) {
           handleClose();
@@ -120,7 +120,7 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
               <Link2 size={20} className="text-brand" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Direct Download</h2>
+              <h2 className="text-lg font-bold text-text-main">Direct Download</h2>
               <p className="text-sm text-text-secondary">Paste a Spotify URL or URI</p>
             </div>
           </div>
@@ -146,8 +146,8 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
                   setSuccess(null);
                 }}
                 placeholder="https://open.spotify.com/track/... or spotify:track:..."
-                className={`w-full bg-surface-1 border rounded-lg px-4 py-3 pr-12 text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-brand/50 transition-all ${
-                  error ? 'border-red-500' : validation.valid ? 'border-green-500' : 'border-surface-border'
+                className={`w-full bg-surface-1 border rounded-lg px-4 py-3 pr-12 text-text-main placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-brand/50 transition-all ${
+                  error ? 'border-error' : validation.valid ? 'border-success' : 'border-surface-border'
                 }`}
                 disabled={isLoading}
                 autoFocus
@@ -160,7 +160,7 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
                       <span className="text-xs text-text-secondary">{getTypeName(validation.type)}</span>
                     </>
                   ) : (
-                    <AlertCircle size={16} className="text-red-400" />
+                    <AlertCircle size={16} className="text-error" />
                   )}
                 </div>
               )}
@@ -168,7 +168,7 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
             
             {/* Validation hint */}
             {url.trim() && !validation.valid && (
-              <p className="text-xs text-red-400 mt-2">
+              <p className="text-xs text-error mt-2">
                 Invalid format. Use a Spotify URL or URI for a track, album, or playlist.
               </p>
             )}
@@ -176,17 +176,17 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
 
           {/* Error message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <p className="text-sm text-red-400">{error}</p>
+            <div className="mb-4 p-3 bg-error/10 border border-error/30 rounded-lg">
+              <p className="text-sm text-error">{error}</p>
             </div>
           )}
 
           {/* Success message */}
           {success && (
-            <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-3">
-              <CheckCircle size={20} className="text-green-400 flex-shrink-0" />
+            <div className="mb-4 p-3 bg-success/10 border border-success/30 rounded-lg flex items-center gap-3">
+              <CheckCircle size={20} className="text-success flex-shrink-0" />
               <div>
-                <p className="text-sm text-green-400 font-medium">
+                <p className="text-sm text-success font-medium">
                   {success.type === 'track' 
                     ? `Queued "${success.title}"`
                     : `Queued ${success.count} tracks from "${success.title}"`

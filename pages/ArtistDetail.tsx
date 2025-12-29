@@ -110,7 +110,7 @@ export const ArtistDetail: React.FC = () => {
             <div className="flex flex-col items-center justify-center h-full text-text-subtle">
                 <User size={64} className="mb-4 opacity-50" />
                 <h2 className="text-xl font-bold mb-2">Artist not found</h2>
-                <button onClick={() => navigate('/artists')} className="text-green-500 hover:underline">
+                <button onClick={() => navigate('/artists')} className="text-brand hover:underline">
                     Back to Artists
                 </button>
             </div>
@@ -174,7 +174,7 @@ export const ArtistDetail: React.FC = () => {
                         <img src={imageUrl} alt={decodedArtistName} className="w-full h-full object-cover" />
                     ) : (
                         <div 
-                            className="w-full h-full flex items-center justify-center text-white/30 text-6xl font-bold"
+                            className="w-full h-full flex items-center justify-center text-white/30 text-display font-bold"
                             style={{ background: generateGradient(decodedArtistName) }}
                         >
                             {decodedArtistName.charAt(0)}
@@ -190,7 +190,7 @@ export const ArtistDetail: React.FC = () => {
                     </div>
                     
                     <h1 
-                        className="text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-tight line-clamp-2 drop-shadow-lg"
+                        className="text-display font-bold text-white tracking-tight leading-tight line-clamp-2 drop-shadow-lg"
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, artistObject)}
                     >
                         {decodedArtistName}
@@ -200,7 +200,7 @@ export const ArtistDetail: React.FC = () => {
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
                         <span>{artistAlbums.length} albums</span>
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
-                        <span className="text-gray-300">{durationHours > 0 ? `${durationHours} hr ${durationMin} min` : `${durationMin} min`}</span>
+                        <span className="text-text-subtle">{durationHours > 0 ? `${durationHours} hr ${durationMin} min` : `${durationMin} min`}</span>
                     </div>
                 </div>
             </div>
@@ -272,7 +272,7 @@ export const ArtistDetail: React.FC = () => {
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
                             >
                                 <div 
-                                    className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-5xl font-bold text-white/20 relative overflow-hidden bg-surface-3"
+                                    className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden bg-surface-3"
                                     style={{ background: coverBackground(coverUrl, album.name) }}
                                 >
                                     {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}
@@ -288,7 +288,7 @@ export const ArtistDetail: React.FC = () => {
                                 <div className="flex justify-between items-center mt-auto">
                                     <p className="text-sm text-text-secondary">{album.songCount} songs</p>
                                     {albumMeta?.releaseDate && (
-                                        <span className="text-[10px] text-[#555] font-mono">{new Date(albumMeta.releaseDate).getFullYear()}</span>
+                                        <span className="text-[10px] text-text-subtle font-mono">{new Date(albumMeta.releaseDate).getFullYear()}</span>
                                     )}
                                 </div>
                             </div>

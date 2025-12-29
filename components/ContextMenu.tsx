@@ -14,6 +14,9 @@
  * Handles click-outside and escape key dismissal.
  * Position auto-adjusts to stay within viewport.
  * 
+ * Phase 5 TODO: implement arrow-key roving focus and optional typeahead
+ * to meet ARIA menu interaction baseline for keyboard-only users.
+ * 
  * @module ContextMenu
  */
 
@@ -31,6 +34,8 @@ export const ContextMenu: React.FC = () => {
     const { contextMenu, closeContextMenu } = useStore();
     const { isOpen, x, y, type, data } = contextMenu;
     const menuRef = useRef<HTMLDivElement>(null);
+
+    const typeaheadRef = useRef<{ buffer: string; lastAt: number }>({ buffer: '', lastAt: 0 });
 
     // Calculate position to prevent overflow
     const [adjustedPos, setAdjustedPos] = useState({ x: 0, y: 0 });
@@ -51,6 +56,61 @@ export const ContextMenu: React.FC = () => {
         }
     }, [isOpen, x, y]);
 
+    const getRootMenuEl = (): HTMLElement | null => menuRef.current;
+
+    const isVisible = (el: HTMLElement): boolean => {
+        // offsetParent is null for display:none and most hidden/positioned-offscreen cases.
+        return el.offsetParent !== null;
+    };
+
+    const getActiveMenuEl = (): HTMLElement | null => {
+        const root = getRootMenuEl();
+        if (!root) return null;
+        const active = document.activeElement as HTMLElement | null;
+        if (!active) return root;
+        const menu = active.closest('[role="menu"]') as HTMLElement | null;
+        return menu && root.contains(menu) ? menu : root;
+    };
+
+    const getMenuItems = (menuEl: HTMLElement): HTMLElement[] => {
+        const items = Array.from(menuEl.querySelectorAll('[role="menuitem"]')) as HTMLElement[];
+        return items
+            .filter((el) => isVisible(el))
+            .filter((el) => el.closest('[role="menu"]') === menuEl);
+    };
+
+    const focusItemAt = (menuEl: HTMLElement, index: number) => {
+        const items = getMenuItems(menuEl);
+        if (items.length === 0) return;
+        const clamped = ((index % items.length) + items.length) % items.length;
+        items[clamped]?.focus();
+    };
+
+    const focusFirstItem = () => {
+        const root = getRootMenuEl();
+        if (!root) return;
+        const items = getMenuItems(root);
+        items[0]?.focus();
+    };
+
+    const focusNextByPrefix = (menuEl: HTMLElement, prefix: string) => {
+        const items = getMenuItems(menuEl);
+        if (items.length === 0) return;
+        const active = document.activeElement as HTMLElement | null;
+        const start = Math.max(0, items.findIndex((i) => i === active));
+        const norm = prefix.toLowerCase();
+
+        for (let offset = 1; offset <= items.length; offset++) {
+            const idx = (start + offset) % items.length;
+            const el = items[idx];
+            const label = (el.getAttribute('data-viib-label') || el.textContent || '').trim().toLowerCase();
+            if (label.startsWith(norm)) {
+                el.focus();
+                return;
+            }
+        }
+    };
+
     // Close on outside click
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -58,9 +118,98 @@ export const ContextMenu: React.FC = () => {
                 closeContextMenu();
             }
         };
-        
+
         const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') closeContextMenu();
+            const root = getRootMenuEl();
+            if (!root || !isOpen) return;
+
+            const active = document.activeElement as HTMLElement | null;
+            if (active && !root.contains(active)) return;
+
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeContextMenu();
+                return;
+            }
+
+            const menuEl = getActiveMenuEl();
+            if (!menuEl) return;
+
+            const items = getMenuItems(menuEl);
+            if (items.length === 0) return;
+
+            const currentIndex = Math.max(0, items.findIndex((i) => i === document.activeElement));
+
+            switch (event.key) {
+                case 'ArrowDown':
+                    event.preventDefault();
+                    focusItemAt(menuEl, currentIndex + 1);
+                    return;
+                case 'ArrowUp':
+                    event.preventDefault();
+                    focusItemAt(menuEl, currentIndex - 1);
+                    return;
+                case 'Home':
+                    event.preventDefault();
+                    focusItemAt(menuEl, 0);
+                    return;
+                case 'End':
+                    event.preventDefault();
+                    focusItemAt(menuEl, items.length - 1);
+                    return;
+                case 'Enter':
+                case ' ': {
+                    const el = document.activeElement as HTMLElement | null;
+                    if (el && el.getAttribute('role') === 'menuitem') {
+                        event.preventDefault();
+                        (el as HTMLButtonElement).click();
+                    }
+                    return;
+                }
+                case 'ArrowRight': {
+                    const el = document.activeElement as HTMLElement | null;
+                    if (!el) return;
+                    if (el.getAttribute('aria-haspopup') === 'menu') {
+                        event.preventDefault();
+                        (el as HTMLButtonElement).click();
+                        requestAnimationFrame(() => {
+                            const container = el.parentElement;
+                            if (!container) return;
+                            const submenu = container.querySelector('[role="menu"]') as HTMLElement | null;
+                            if (!submenu || !isVisible(submenu)) return;
+                            const subItems = getMenuItems(submenu);
+                            subItems[0]?.focus();
+                        });
+                    }
+                    return;
+                }
+                case 'ArrowLeft': {
+                    if (menuEl === root) return;
+                    event.preventDefault();
+                    // Find the nearest trigger in the root menu that owns this submenu.
+                    const triggers = Array.from(root.querySelectorAll('[aria-haspopup="menu"]')) as HTMLElement[];
+                    const trigger = triggers.find((t) => {
+                        const container = t.parentElement;
+                        return !!container && container.contains(menuEl);
+                    });
+                    if (trigger) {
+                        (trigger as HTMLButtonElement).click();
+                        trigger.focus();
+                    }
+                    return;
+                }
+                default: {
+                    // Typeahead
+                    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                        const now = Date.now();
+                        const state = typeaheadRef.current;
+                        const isStale = now - state.lastAt > 600;
+                        state.buffer = (isStale ? '' : state.buffer) + event.key;
+                        state.lastAt = now;
+                        focusNextByPrefix(menuEl, state.buffer);
+                    }
+                }
+            }
         };
 
         if (isOpen) {
@@ -73,12 +222,21 @@ export const ContextMenu: React.FC = () => {
         };
     }, [isOpen, closeContextMenu]);
 
+    // Focus first menu item when opened
+    useEffect(() => {
+        if (!isOpen) return;
+        // Wait a tick for the menu content to render.
+        requestAnimationFrame(() => focusFirstItem());
+    }, [isOpen, type]);
+
     if (!isOpen) return null;
 
     return (
         <div 
             ref={menuRef}
-            className="fixed z-[9999] w-56 bg-surface-3 border border-surface-border rounded-lg shadow-2xl py-1 text-gray-200 animate-in fade-in duration-100"
+            role="menu"
+            aria-label="Context menu"
+            className="fixed z-[9999] w-56 bg-surface-2 ring-1 ring-surface-3 rounded-xl shadow-xl shadow-black/30 py-1 overflow-hidden text-text-main animate-in fade-in duration-150 motion-reduce:transition-none"
             style={{ top: adjustedPos.y, left: adjustedPos.x }}
         >
             {type === ContextMenuType.SONG && <SongMenu song={data} onClose={closeContextMenu} />}
