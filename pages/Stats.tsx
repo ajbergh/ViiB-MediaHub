@@ -1,8 +1,8 @@
-import { Page, PageHeader } from '../components/ui/Page';
 /**
  * ViiB MediaHub - Listening Stats Page
  * 
  * Comprehensive listening statistics and insights dashboard.
+ * Shows personalized data based on listening history with empty state for new users.
  * 
  * Features:
  * - Total listening time (all-time, monthly, weekly)
@@ -12,9 +12,19 @@ import { Page, PageHeader } from '../components/ui/Page';
  * - Listening activity calendar/heatmap
  * - Recently played history
  * - Fun statistics (most played song, longest listening session, etc.)
+ * - Empty state when no listening history using centralized copy
+ * 
+ * Design System Usage:
+ * - EmptyState component with copy from lib/emptyStateCopy.ts
+ * - Page/PageHeader components for consistent layout
+ * - StatCard internal component for consistent stat display
  * 
  * @module Stats
  */
+
+import { Page, PageHeader } from '../components/ui/Page';
+import { EmptyState } from '../components/EmptyState';
+import { EMPTY_STATE } from '../lib/emptyStateCopy';
 
 import React, { useMemo } from 'react';
 import { useStore, useAlbums, useArtists } from '../store';
@@ -217,6 +227,39 @@ export const Stats: React.FC = () => {
         }
         return `${minutes}m`;
     };
+
+    // Show empty state when no listening data
+    if (stats.totalPlays === 0) {
+        const copy = EMPTY_STATE.stats;
+        return (
+            <Page>
+                <PageHeader
+                    heading={
+                        <span className="flex items-center gap-3">
+                            <BarChart3 className="text-brand" size={32} />
+                            Listening Stats
+                        </span>
+                    }
+                    subtitle="Your music journey in numbers"
+                />
+                <div className="flex items-center justify-center py-24">
+                    <EmptyState
+                        icon={copy.icon}
+                        title={copy.title}
+                        description={copy.description}
+                        primaryAction={copy.primaryAction ? {
+                            label: copy.primaryAction,
+                            onClick: () => navigate('/')
+                        } : undefined}
+                        secondaryAction={copy.secondaryAction ? {
+                            label: copy.secondaryAction,
+                            onClick: () => navigate('/songs')
+                        } : undefined}
+                    />
+                </div>
+            </Page>
+        );
+    }
 
         return (
                 <Page>

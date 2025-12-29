@@ -4,12 +4,13 @@
  * Floating side panel displaying the current playback queue.
  * 
  * Features:
- * - Drag-and-drop reordering
+ * - Drag-and-drop reordering via drag handles
  * - Remove individual items
  * - Clear entire queue
  * - Click to play specific track
  * - Current song highlight
- * - Smooth slide-in animation
+ * - Smooth slide-in animation from right edge
+ * - Empty state via shared EmptyQueue component
  * 
  * Accessible via queue button in player or keyboard shortcut.
  * 
@@ -21,6 +22,7 @@ import { useStore, useAlbumCovers } from '../store';
 import { X, Trash2, GripVertical, Play, ListMusic } from 'lucide-react';
 import { generateGradient, formatTime, cssUrl } from '../utils';
 import { ContextMenuType } from '../types';
+import { EmptyQueue } from './EmptyState';
 
 export const Queue: React.FC = () => {
   const { 
@@ -125,11 +127,7 @@ export const Queue: React.FC = () => {
         {/* List */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-1 bg-surface-1">
             {queue.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-text-subtle text-center p-6">
-                    <ListMusic size={48} className="mb-4 opacity-30" />
-                    <h3 className="font-bold mb-1">Your queue is empty</h3>
-                    <p className="text-sm">Add songs or albums to start listening</p>
-                </div>
+                <EmptyQueue />
             ) : (
                 queue.map((song, idx) => {
                     const isCurrent = idx === currentSongIndex;
