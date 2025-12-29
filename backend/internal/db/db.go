@@ -85,6 +85,9 @@ type Song struct {
 	DiscNumber     int      `json:"discNumber,omitempty"`
 	Genre          []string `json:"genre,omitempty"`
 	Year           int      `json:"year,omitempty"`
+	OriginalYear   int      `json:"originalYear,omitempty"`   // Original release year (for remasters)
+	YearUncertain  bool     `json:"yearUncertain,omitempty"`  // True if year may be remaster date
+	YearAnalyzedAt int64    `json:"yearAnalyzedAt,omitempty"` // Timestamp of year analysis
 	Duration       float64  `json:"duration"`
 	FilePath       string   `json:"filePath"`
 	CoverPath      string   `json:"coverPath,omitempty"`
@@ -418,9 +421,82 @@ func (d *DB) migrateColumns() error {
 		// Ignore if index already exists
 	}
 
+	// Migration: Create listening_events table for preference learning (Phase 5.1)
+	// This table tracks detailed listening behavior: plays, skips, and timing.
+	// Used by the AI DJ to personalize recommendations based on user preferences.
+	listeningEventsTable := `
+	CREATE TABLE IF NOT EXISTS listening_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		song_id TEXT NOT NULL,
+		event_type TEXT NOT NULL,  -- 'play_complete', 'skip_early' (<10s), 'skip_mid' (10-30s), 'skip_late' (>30s)
+		play_duration REAL,        -- How many seconds played before skip/complete
+		song_duration REAL,        -- Total song duration
+		timestamp INTEGER NOT NULL,
+		genre TEXT,                -- Cached genre for aggregation
+		mood TEXT,                 -- Cached mood for aggregation
+		energy TEXT,               -- Cached energy for aggregation
+		context TEXT               -- 'ai_dj', 'album', 'playlist', 'queue', 'search'
+	);
+	CREATE INDEX IF NOT EXISTS idx_listening_events_song ON listening_events(song_id);
+	CREATE INDEX IF NOT EXISTS idx_listening_events_type ON listening_events(event_type);
+	CREATE INDEX IF NOT EXISTS idx_listening_events_timestamp ON listening_events(timestamp);
+	`
+	// Execute table creation (ignore errors if exists)
+	for _, stmt := range strings.Split(listeningEventsTable, ";") {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if _, err := d.conn.Exec(stmt); err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				// Log but don't fail
+			}
+		}
+	}
+
+	// Migration: Create genre_preferences table for AI DJ preference learning
+	// Aggregates listening events into per-genre preference scores.
+	genrePreferencesTable := `
+	CREATE TABLE IF NOT EXISTS genre_preferences (
+		genre TEXT PRIMARY KEY,
+		play_count INTEGER DEFAULT 0,
+		skip_count INTEGER DEFAULT 0,
+		complete_rate REAL DEFAULT 0.5,  -- 0.0-1.0, ratio of plays that complete
+		skip_early_rate REAL DEFAULT 0,  -- 0.0-1.0, ratio of skips < 10s
+		affinity_score REAL DEFAULT 0.5, -- 0.0-1.0, overall preference score
+		last_updated INTEGER
+	);
+	`
+	if _, err := d.conn.Exec(genrePreferencesTable); err != nil {
+		// Ignore if exists
+	}
+
 	// Migrate unencrypted sensitive settings to encrypted format
 	if err := d.migrateUnencryptedSettings(); err != nil {
 		return err
+	}
+
+	// Migration: Add original_year column for remaster detection
+	// This allows the AI DJ to correctly filter by decade even for remastered songs.
+	// The original_year stores the actual release year of the song (not the remaster date).
+	originalYearMigrations := []string{
+		`ALTER TABLE songs ADD COLUMN original_year INTEGER`,
+		`ALTER TABLE songs ADD COLUMN year_uncertain INTEGER DEFAULT 0`,
+		`ALTER TABLE songs ADD COLUMN year_analyzed_at INTEGER`,
+	}
+	for _, m := range originalYearMigrations {
+		if _, err := d.conn.Exec(m); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				// Ignore duplicate column errors
+			}
+		}
+	}
+	// Create indexes for efficient querying
+	if _, err := d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_songs_original_year ON songs(original_year)`); err != nil {
+		// Ignore if index already exists
+	}
+	if _, err := d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_songs_year_uncertain ON songs(year_uncertain) WHERE year_uncertain = 1`); err != nil {
+		// Ignore if index already exists
 	}
 
 	return nil
@@ -934,19 +1010,20 @@ func (d *DB) GetSongByID(id string) (*Song, error) {
 	var trackNum, discNum, year, playCount, skipCount sql.NullInt64
 	var lastPlayed sql.NullInt64
 	var liked, likedAt sql.NullInt64
+	var mood, energy, tempo sql.NullString
 
 	err := d.conn.QueryRow(`
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
 		       genre, year, duration, file_path, cover_path, added_at,
 		       play_count, last_played, skip_count, file_hash,
-		       liked, liked_at
+		       liked, liked_at, mood, energy, tempo
 		FROM songs WHERE id = ?
 	`, id).Scan(
 		&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
 		&trackNum, &discNum, &genreJSON, &year,
 		&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
 		&playCount, &lastPlayed, &skipCount, &fileHash,
-		&liked, &likedAt,
+		&liked, &likedAt, &mood, &energy, &tempo,
 	)
 	if err != nil {
 		return nil, err
@@ -988,6 +1065,15 @@ func (d *DB) GetSongByID(id string) (*Song, error) {
 	if likedAt.Valid {
 		s.LikedAt = likedAt.Int64
 	}
+	if mood.Valid {
+		s.Mood = mood.String
+	}
+	if energy.Valid {
+		s.Energy = energy.String
+	}
+	if tempo.Valid {
+		s.Tempo = tempo.String
+	}
 
 	return &s, nil
 }
@@ -1000,6 +1086,187 @@ func (d *DB) UpdatePlayCount(id string) error {
 		WHERE id = ?
 	`, time.Now().UnixMilli(), id)
 	return err
+}
+
+// UpdateSkipCount increments the skip count for the given song ID.
+// This is used for preference learning in the AI DJ.
+func (d *DB) UpdateSkipCount(id string) error {
+	_, err := d.conn.Exec(`
+		UPDATE songs 
+		SET skip_count = skip_count + 1
+		WHERE id = ?
+	`, id)
+	return err
+}
+
+// ListeningEvent represents a detailed listening event for preference learning.
+// Used by the AI DJ to understand user preferences based on listening behavior.
+type ListeningEvent struct {
+	SongID       string  `json:"songId"`
+	EventType    string  `json:"eventType"`    // 'play_complete', 'skip_early', 'skip_mid', 'skip_late'
+	PlayDuration float64 `json:"playDuration"` // Seconds played before event
+	SongDuration float64 `json:"songDuration"` // Total song duration
+	Genre        string  `json:"genre,omitempty"`
+	Mood         string  `json:"mood,omitempty"`
+	Energy       string  `json:"energy,omitempty"`
+	Context      string  `json:"context,omitempty"` // 'ai_dj', 'album', 'playlist', 'queue', 'search'
+}
+
+// RecordListeningEvent records a listening event for preference learning.
+// Event types:
+//   - 'play_complete': Song played to completion
+//   - 'skip_early': Skipped within first 10 seconds
+//   - 'skip_mid': Skipped between 10-30 seconds
+//   - 'skip_late': Skipped after 30 seconds
+//
+// This data is used to build genre preferences and improve AI DJ recommendations.
+func (d *DB) RecordListeningEvent(event ListeningEvent) error {
+	_, err := d.conn.Exec(`
+		INSERT INTO listening_events 
+		(song_id, event_type, play_duration, song_duration, timestamp, genre, mood, energy, context)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, event.SongID, event.EventType, event.PlayDuration, event.SongDuration,
+		time.Now().UnixMilli(), event.Genre, event.Mood, event.Energy, event.Context)
+	return err
+}
+
+// UpdateGenrePreferences recalculates preference scores for a genre based on listening events.
+// This is called after recording a listening event to update aggregate statistics.
+func (d *DB) UpdateGenrePreferences(genre string) error {
+	if genre == "" {
+		return nil
+	}
+
+	// Calculate aggregates from listening_events
+	var playCount, skipCount int
+	var completeRate, skipEarlyRate float64
+
+	// Count events by type for this genre
+	row := d.conn.QueryRow(`
+		SELECT 
+			COUNT(*) FILTER (WHERE event_type = 'play_complete'),
+			COUNT(*) FILTER (WHERE event_type IN ('skip_early', 'skip_mid', 'skip_late')),
+			COALESCE(AVG(CASE WHEN event_type = 'play_complete' THEN 1.0 ELSE 0.0 END), 0.5),
+			COALESCE(AVG(CASE WHEN event_type = 'skip_early' THEN 1.0 ELSE 0.0 END), 0.0)
+		FROM listening_events
+		WHERE genre = ?
+	`, genre)
+	err := row.Scan(&playCount, &skipCount, &completeRate, &skipEarlyRate)
+	if err != nil {
+		// SQLite doesn't support FILTER clause - use fallback
+		row = d.conn.QueryRow(`
+			SELECT 
+				SUM(CASE WHEN event_type = 'play_complete' THEN 1 ELSE 0 END),
+				SUM(CASE WHEN event_type IN ('skip_early', 'skip_mid', 'skip_late') THEN 1 ELSE 0 END)
+			FROM listening_events
+			WHERE genre = ?
+		`, genre)
+		var playCountNull, skipCountNull sql.NullInt64
+		if err := row.Scan(&playCountNull, &skipCountNull); err != nil {
+			return err
+		}
+		if playCountNull.Valid {
+			playCount = int(playCountNull.Int64)
+		}
+		if skipCountNull.Valid {
+			skipCount = int(skipCountNull.Int64)
+		}
+
+		total := playCount + skipCount
+		if total > 0 {
+			completeRate = float64(playCount) / float64(total)
+		} else {
+			completeRate = 0.5
+		}
+
+		// Calculate early skip rate
+		var earlySkips sql.NullInt64
+		d.conn.QueryRow(`
+			SELECT COUNT(*) FROM listening_events 
+			WHERE genre = ? AND event_type = 'skip_early'
+		`, genre).Scan(&earlySkips)
+		if skipCount > 0 && earlySkips.Valid {
+			skipEarlyRate = float64(earlySkips.Int64) / float64(skipCount)
+		}
+	}
+
+	// Calculate affinity score: higher complete rate = higher affinity
+	// Early skips hurt more than late skips
+	affinityScore := completeRate - (skipEarlyRate * 0.3)
+	if affinityScore < 0 {
+		affinityScore = 0
+	}
+	if affinityScore > 1 {
+		affinityScore = 1
+	}
+
+	// Upsert genre preferences
+	_, err = d.conn.Exec(`
+		INSERT INTO genre_preferences (genre, play_count, skip_count, complete_rate, skip_early_rate, affinity_score, last_updated)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(genre) DO UPDATE SET
+			play_count = excluded.play_count,
+			skip_count = excluded.skip_count,
+			complete_rate = excluded.complete_rate,
+			skip_early_rate = excluded.skip_early_rate,
+			affinity_score = excluded.affinity_score,
+			last_updated = excluded.last_updated
+	`, genre, playCount, skipCount, completeRate, skipEarlyRate, affinityScore, time.Now().UnixMilli())
+	return err
+}
+
+// GetGenrePreferences returns the preference data for a genre.
+// Returns nil if no preferences exist for this genre.
+func (d *DB) GetGenrePreferences(genre string) (*GenrePreference, error) {
+	var pref GenrePreference
+	err := d.conn.QueryRow(`
+		SELECT genre, play_count, skip_count, complete_rate, skip_early_rate, affinity_score, last_updated
+		FROM genre_preferences
+		WHERE genre = ?
+	`, genre).Scan(&pref.Genre, &pref.PlayCount, &pref.SkipCount, &pref.CompleteRate,
+		&pref.SkipEarlyRate, &pref.AffinityScore, &pref.LastUpdated)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &pref, nil
+}
+
+// GenrePreference represents aggregated listening preferences for a genre.
+type GenrePreference struct {
+	Genre         string  `json:"genre"`
+	PlayCount     int     `json:"playCount"`
+	SkipCount     int     `json:"skipCount"`
+	CompleteRate  float64 `json:"completeRate"`  // 0.0-1.0
+	SkipEarlyRate float64 `json:"skipEarlyRate"` // 0.0-1.0
+	AffinityScore float64 `json:"affinityScore"` // 0.0-1.0
+	LastUpdated   int64   `json:"lastUpdated"`
+}
+
+// GetAllGenrePreferences returns all genre preferences ordered by affinity score.
+func (d *DB) GetAllGenrePreferences() ([]GenrePreference, error) {
+	rows, err := d.conn.Query(`
+		SELECT genre, play_count, skip_count, complete_rate, skip_early_rate, affinity_score, last_updated
+		FROM genre_preferences
+		ORDER BY affinity_score DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prefs []GenrePreference
+	for rows.Next() {
+		var p GenrePreference
+		if err := rows.Scan(&p.Genre, &p.PlayCount, &p.SkipCount, &p.CompleteRate,
+			&p.SkipEarlyRate, &p.AffinityScore, &p.LastUpdated); err != nil {
+			return nil, err
+		}
+		prefs = append(prefs, p)
+	}
+	return prefs, rows.Err()
 }
 
 // ToggleLike toggles the liked status of a song and returns the new liked state.
@@ -2286,6 +2553,29 @@ func (d *DB) ResetAlbumSpotifyCheck(albumKey string) error {
 	return err
 }
 
+// BackfillSongYearsFromAlbumMetadata populates missing song year values from album_metadata.release_date.
+// This enables the AI DJ to correctly filter by decade (e.g., "90s hip hop") even when songs
+// don't have year metadata embedded in their audio files.
+// Returns the count of songs updated.
+func (d *DB) BackfillSongYearsFromAlbumMetadata() (int64, error) {
+	// Update songs where year is 0 or NULL, joining on album_metadata to get release_date
+	// The album_key format is "album::artist" but we need to match on album + artist separately
+	result, err := d.conn.Exec(`
+		UPDATE songs SET year = CAST(SUBSTR(am.release_date, 1, 4) AS INTEGER)
+		FROM album_metadata am
+		WHERE songs.year IS NULL OR songs.year = 0
+		AND am.release_date IS NOT NULL 
+		AND LENGTH(am.release_date) >= 4
+		AND CAST(SUBSTR(am.release_date, 1, 4) AS INTEGER) > 1900
+		AND am.album_name = songs.album
+		AND (am.artist_name = songs.artist OR am.artist_name = songs.album_artist)
+	`)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 // GetAlbumMetadataBatch returns metadata for multiple albums at once
 func (d *DB) GetAlbumMetadataBatch(albumKeys []string) ([]AlbumMetadata, error) {
 	if len(albumKeys) == 0 {
@@ -2643,7 +2933,8 @@ func (d *DB) GetExpiredArtistMetadata(expirationDays int) ([]ArtistMetadata, err
 
 // GetSongsForEnrichment returns a list of songs for genre enrichment.
 // If force is true, it returns all songs (paginated by offset).
-// If force is false, it returns only songs with missing genres.
+// If force is false, it returns only songs with 0 or 1 genres (needs enrichment).
+// Songs with 0-1 genres are considered "under-enriched" and benefit from AI analysis.
 func (d *DB) GetSongsForEnrichment(limit int, force bool, offset int) ([]Song, error) {
 	var query string
 	var args []interface{}
@@ -2657,8 +2948,16 @@ func (d *DB) GetSongsForEnrichment(limit int, force bool, offset int) ([]Song, e
 		query = baseQuery + ` ORDER BY added_at DESC LIMIT ? OFFSET ?`
 		args = []interface{}{limit, offset}
 	} else {
+		// Include songs with no genres OR only 1 genre
+		// JSON array length check: count commas (0 commas = 0-1 elements)
+		// Empty/null: genre IS NULL OR genre = '' OR genre = '[]' OR genre = 'null'
+		// Single genre: genre LIKE '["%"]' AND genre NOT LIKE '%,%' (one element, no comma)
 		query = baseQuery + `
-			WHERE genre IS NULL OR genre = '' OR genre = '[]' OR genre = 'null'
+			WHERE genre IS NULL 
+			   OR genre = '' 
+			   OR genre = '[]' 
+			   OR genre = 'null'
+			   OR (genre LIKE '["%"]' AND genre NOT LIKE '%,%')
 			LIMIT ?
 		`
 		args = []interface{}{limit}
@@ -2743,8 +3042,19 @@ func (d *DB) GetSongsWithMissingGenres(limit int) ([]Song, error) {
 }
 
 // GetSongsBySmartFilter returns songs matching the given criteria.
-func (d *DB) GetSongsBySmartFilter(genres []string, artists []string, minYear, maxYear int) ([]Song, error) {
-	query := "SELECT id, title, artist, album, genre, year, duration, file_path, cover_path, added_at, play_count, last_played FROM songs WHERE 1=1"
+// This function supports the AI DJ feature by querying songs based on:
+// - Genre matching (partial, case-insensitive)
+// - Artist matching (partial, case-insensitive)
+// - Year range filtering (minYear to maxYear)
+// - Mood/Energy/Tempo filtering (exact match when provided)
+//
+// The mood/energy/tempo fields are populated by Gemini AI analysis via AnalyzeSongMood().
+// When these filters are provided, only songs with matching analyzed metadata are returned.
+// Songs without mood analysis are excluded when mood filters are active.
+//
+// Results are randomized and limited to 50 songs by default.
+func (d *DB) GetSongsBySmartFilter(genres []string, artists []string, minYear, maxYear int, mood, energy, tempo string) ([]Song, error) {
+	query := "SELECT id, title, artist, album, genre, year, duration, file_path, cover_path, added_at, play_count, last_played, mood, energy, tempo FROM songs WHERE 1=1"
 	var args []interface{}
 
 	if len(genres) > 0 {
@@ -2771,13 +3081,29 @@ func (d *DB) GetSongsBySmartFilter(genres []string, artists []string, minYear, m
 		query += ")"
 	}
 
+	// Year filters using COALESCE to prefer original_year (for remasters) over embedded year
 	if minYear > 0 {
-		query += " AND year >= ?"
+		query += " AND COALESCE(original_year, year) >= ?"
 		args = append(args, minYear)
 	}
 	if maxYear > 0 {
-		query += " AND year <= ?"
+		query += " AND COALESCE(original_year, year) <= ?"
 		args = append(args, maxYear)
+	}
+
+	// Mood/Energy/Tempo filters - exact match when provided
+	// These fields are populated by Gemini AI analysis via AnalyzeSongMood()
+	if mood != "" {
+		query += " AND mood = ?"
+		args = append(args, mood)
+	}
+	if energy != "" {
+		query += " AND energy = ?"
+		args = append(args, energy)
+	}
+	if tempo != "" {
+		query += " AND tempo = ?"
+		args = append(args, tempo)
 	}
 
 	query += " ORDER BY RANDOM() LIMIT 50"
@@ -2794,10 +3120,12 @@ func (d *DB) GetSongsBySmartFilter(genres []string, artists []string, minYear, m
 		var genreJSON sql.NullString
 		var coverPath sql.NullString
 		var lastPlayed sql.NullInt64
+		var moodVal, energyVal, tempoVal sql.NullString
 
 		err := rows.Scan(
 			&s.ID, &s.Title, &s.Artist, &s.Album, &genreJSON, &s.Year, &s.Duration,
 			&s.FilePath, &coverPath, &s.AddedAt, &s.PlayCount, &lastPlayed,
+			&moodVal, &energyVal, &tempoVal,
 		)
 		if err != nil {
 			return nil, err
@@ -2811,6 +3139,15 @@ func (d *DB) GetSongsBySmartFilter(genres []string, artists []string, minYear, m
 		}
 		if lastPlayed.Valid {
 			s.LastPlayed = lastPlayed.Int64
+		}
+		if moodVal.Valid {
+			s.Mood = moodVal.String
+		}
+		if energyVal.Valid {
+			s.Energy = energyVal.String
+		}
+		if tempoVal.Valid {
+			s.Tempo = tempoVal.String
 		}
 		songs = append(songs, s)
 	}

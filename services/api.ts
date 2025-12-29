@@ -70,6 +70,9 @@ export interface ApiSong {
   discNumber?: number;
   genre?: string[];
   year?: number;
+  originalYear?: number; // Original release year (for remasters)
+  yearUncertain?: boolean; // True if year may be remaster date
+  yearAnalyzedAt?: number; // timestamp of year analysis
   duration: number;
   filePath: string; // This will be the API URL like /api/audio/{id}
   coverPath?: string; // This will be /api/cover/{id}
@@ -191,6 +194,24 @@ export const api = {
   async recordPlay(songId: string): Promise<void> {
     const response = await fetch(`${API_BASE}/songs/${songId}/play`, { method: 'POST' });
     await handleResponse(response);
+  },
+
+  /**
+   * Record a listening event for AI DJ preference learning.
+   * Called when a song ends or is skipped to track user behavior.
+   * @param songId - The ID of the song
+   * @param playDuration - How many seconds the song was played
+   * @param songDuration - Total duration of the song
+   * @param context - Playback context: 'ai_dj', 'album', 'playlist', 'queue', 'search'
+   * @returns The auto-detected event type
+   */
+  async recordListenEvent(songId: string, playDuration: number, songDuration: number, context: string): Promise<{ status: string; eventType: string }> {
+    const response = await fetch(`${API_BASE}/songs/${songId}/listen-event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playDuration, songDuration, context }),
+    });
+    return handleResponse(response);
   },
 
   /**
@@ -932,6 +953,67 @@ export const api = {
   },
 
   /**
+   * Streams unified metadata enrichment progress via SSE.
+   * 
+   * This is the RECOMMENDED enrichment endpoint - it enriches ALL metadata in a single
+   * efficient API call per batch using TOON (Token-Oriented Object Notation) format.
+   * 
+   * Enriches:
+   * - genres: Detailed genre classifications
+   * - mood: happy, sad, energetic, calm, melancholic, uplifting, aggressive, romantic, chill, intense, dreamy, nostalgic
+   * - energy: high, medium, low
+   * - tempo: fast, medium, slow
+   * - bpm: Estimated beats per minute (integer)
+   * - instrumental: Whether the song has vocals
+   * - originalYear: Original release year (for remasters)
+   * 
+   * Benefits:
+   * - 3x more token efficient than JSON-based methods
+   * - 200 songs per batch (vs 50 for JSON)
+   * - Single API call gets all data (vs 3 separate calls)
+   * 
+   * @param force - If true, re-enriches songs that already have metadata
+   * @param onProgress - Callback for progress updates with batch status
+   * @returns EventSource instance (auto-closes on completion/error)
+   */
+  enrichAllMetadataStream(
+    force: boolean = false,
+    onProgress: (progress: EnrichmentProgress) => void
+  ): EventSource {
+    const url = `${API_BASE}/library/enrich-all/stream?force=${force}`;
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const progress = JSON.parse(event.data) as EnrichmentProgress;
+        onProgress(progress);
+        
+        // Auto-close on completion or error
+        if (progress.status === 'complete' || progress.status === 'error') {
+          eventSource.close();
+        }
+      } catch (e) {
+        console.error('Failed to parse enrichment progress:', e);
+      }
+    };
+
+    eventSource.onerror = () => {
+      onProgress({
+        status: 'error',
+        message: 'Connection lost',
+        error: 'SSE connection failed',
+        totalSongs: 0,
+        processedSongs: 0,
+        currentBatch: 0,
+        totalBatches: 0,
+      });
+      eventSource.close();
+    };
+
+    return eventSource;
+  },
+
+  /**
    * Streams mood/energy/tempo/BPM analysis progress via SSE.
    * 
    * Uses Gemini AI to analyze songs based on metadata (artist, title, album, genre).
@@ -981,6 +1063,102 @@ export const api = {
     };
 
     return eventSource;
+  },
+
+  /**
+   * Backfills missing song year values from album_metadata.release_date.
+   * This enables the AI DJ to correctly filter by decade (e.g., "90s hip hop").
+   * @returns The count of songs updated.
+   */
+  async backfillSongYears(): Promise<{ updated: number; message: string }> {
+    const response = await fetch(`${API_BASE}/library/backfill-years`, {
+      method: 'POST',
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Detects potential remaster songs using heuristic pattern matching.
+   * Scans album/title for patterns like "Remastered", "Deluxe Edition", "Anniversary"
+   * and flags songs with year_uncertain for later AI analysis.
+   * @returns The count of songs processed and flagged.
+   */
+  async detectRemasters(): Promise<{ processed: number; flagged: number; message: string }> {
+    const response = await fetch(`${API_BASE}/library/detect-remasters`, {
+      method: 'POST',
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Stream original year enrichment using SSE.
+   * Uses Gemini AI to determine the original release year of songs that may have remaster dates.
+   * @param onProgress Callback for progress updates
+   * @param onComplete Callback when enrichment completes
+   * @param onError Callback for errors
+   * @returns AbortController to cancel the stream
+   */
+  enrichOriginalYearsStream(
+    onProgress: (progress: EnrichmentProgress) => void,
+    onComplete: (progress: EnrichmentProgress) => void,
+    onError: (error: string) => void
+  ): AbortController {
+    const controller = new AbortController();
+    
+    fetch(`${API_BASE}/library/enrich-years/stream`, {
+      signal: controller.signal,
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        
+        const readStream = async () => {
+          if (!reader) return;
+          
+          let buffer = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6)) as EnrichmentProgress;
+                  if (data.status === 'complete') {
+                    onComplete(data);
+                  } else if (data.status === 'error') {
+                    onError(data.error || data.message);
+                  } else {
+                    onProgress(data);
+                  }
+                } catch (e) {
+                  console.error('Failed to parse SSE data:', e);
+                }
+              }
+            }
+          }
+        };
+        
+        readStream().catch(err => {
+          if (err.name !== 'AbortError') {
+            onError(err.message);
+          }
+        });
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') {
+          onError(err.message);
+        }
+      });
+    
+    return controller;
   },
 
   /**

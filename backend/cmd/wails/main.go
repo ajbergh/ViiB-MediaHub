@@ -234,10 +234,13 @@ func main() {
 	logger.Main("API server starting on %s", serverURL)
 
 	// Create HTTP server with timeouts
+	// Note: WriteTimeout is disabled (0) to support long-running SSE connections
+	// for operations like AI enrichment that can take several minutes per batch.
+	// ReadTimeout and IdleTimeout are kept for security.
 	httpServer := &http.Server{
 		Handler:      server.New(apiHandler, distFS),
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 0, // Disabled for SSE streams
 		IdleTimeout:  120 * time.Second,
 	}
 

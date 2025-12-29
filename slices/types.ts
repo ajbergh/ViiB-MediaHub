@@ -105,6 +105,12 @@ export interface StreamingStats {
 
 export type StreamingEventType = 'start' | 'complete' | 'error' | 'buffer_start' | 'buffer_end' | 'retry' | 'skip';
 
+/**
+ * Playback context for AI DJ preference learning.
+ * Tracks where the user initiated playback from.
+ */
+export type PlaybackContext = 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search' | 'artist' | 'liked' | 'smart_mix';
+
 export interface StreamingEvent {
   type: StreamingEventType;
   trackId?: string;
@@ -164,6 +170,15 @@ export interface LibrarySlice {
   refreshSmartMixes: () => void;
   saveSmartMixAsPlaylist: (mixId: string) => Promise<Playlist | void>;
   recordPlay: (songId: string) => void;
+  /**
+   * Record a listening event for AI DJ preference learning.
+   * Called when a song ends or is skipped.
+   * @param songId - The song ID
+   * @param playDuration - Seconds played before event
+   * @param songDuration - Total song duration
+   * @param context - 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search'
+   */
+  recordListenEvent: (songId: string, playDuration: number, songDuration: number, context: PlaybackContext) => void;
   updateSongDuration: (songId: string, duration: number) => void;
   
   fetchArtistMetadata: (artistName: string) => Promise<void>;

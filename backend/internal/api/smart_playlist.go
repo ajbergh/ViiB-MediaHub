@@ -1,27 +1,34 @@
 // Package api provides HTTP handlers for the ViiB MediaHub API.
 //
 // smart_playlist.go implements the AI DJ feature, which generates smart playlists
-// based on natural language prompts. It uses a three-tier matching system:
+// based on natural language prompts. It uses a four-tier matching system:
 //
-//  1. Artist-Based Matching: Detects "more like [artist]" patterns and returns
-//     songs from that artist plus similar artists (based on shared genres).
+//  1. Tier 0 - Artist-Based Matching: Detects "more like [artist]" patterns and
+//     returns songs from that artist plus similar artists (based on shared genres).
 //
-//  2. Local Genre Matching: Direct match against indexed genre names without
-//     calling external APIs. Handles exact and partial matches.
+//  2. Tier 1 - Local Genre Matching: Direct match against indexed genre names
+//     without calling external APIs. Handles exact and partial matches.
 //
-//  3. Gemini AI Fallback: For complex prompts, uses Google's Gemini AI to
-//     parse intent and smart-score indexed genres.
+//  3. Tier 1.5 - Mood/Activity Keyword Matching: Intercepts 85+ common mood/vibe
+//     keywords (chill, workout, focus, party, etc.) and queries by mood/energy/tempo
+//     directly, bypassing Gemini API entirely. Added 2025-01-13.
+//
+//  4. Tier 2 - Gemini AI Fallback: For complex prompts, uses Google's Gemini AI
+//     to parse intent and smart-score indexed genres.
 //
 // Additional features include:
 //   - Multi-genre blending with proportional song selection
 //   - Play history integration (discover mode, avoid recently played)
 //   - Time-of-day awareness for contextual recommendations
 //   - Decade extraction from prompts (supports early/mid/late qualifiers)
+//   - True random shuffling using Fisher-Yates algorithm (seeded at init)
+//   - Mood/energy/tempo filtering in database queries
 //
 // Key functions:
 //   - handleGenerateSmartPlaylist: Main HTTP handler for /api/smart-playlist
-//   - tryArtistBasedMatch: Detects artist-based prompts
-//   - tryLocalGenreMatch: Matches against indexed genres locally
+//   - tryArtistBasedMatch: Detects artist-based prompts (Tier 0)
+//   - tryLocalGenreMatch: Matches against indexed genres locally (Tier 1)
+//   - tryMoodBasedMatch: Intercepts mood/activity keywords (Tier 1.5)
 //   - tryMatchMultipleGenres: Returns top matching genres for blending
 //   - scoreGenreMatch: Calculates genre match scores
 //   - applyPlayHistoryFilters: Filters based on play history preferences
@@ -31,14 +38,22 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/gemini"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
+
+// init seeds the random number generator for true shuffle randomness.
+// This ensures each request produces different playlist ordering.
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 // LocalPlaylistFilter represents the filter criteria used to generate a playlist.
 // It contains all the parameters extracted from the user's prompt or determined
@@ -65,6 +80,36 @@ type MatchedGenre struct {
 	Score      int     `json:"score"`
 	SongCount  int     `json:"songCount"`
 	Proportion float64 `json:"proportion"` // 0.0-1.0, percentage of playlist from this genre
+}
+
+// transformSongsForAPI converts raw database songs to have API URLs for FilePath and CoverPath.
+// This is required because the frontend expects URLs like /api/audio/{id} and /api/cover/{id},
+// but database songs store the actual filesystem paths.
+// The function handles both []db.Song and []any (containing db.Song values).
+func transformSongsForAPI(songs []any) []any {
+	result := make([]any, 0, len(songs))
+	for _, s := range songs {
+		switch song := s.(type) {
+		case db.Song:
+			// Transform paths to API URLs
+			song.FilePath = "/api/audio/" + song.ID
+			if song.CoverPath != "" {
+				song.CoverPath = "/api/cover/" + song.ID
+			}
+			result = append(result, song)
+		case *db.Song:
+			// Transform paths to API URLs (pointer case)
+			song.FilePath = "/api/audio/" + song.ID
+			if song.CoverPath != "" {
+				song.CoverPath = "/api/cover/" + song.ID
+			}
+			result = append(result, *song)
+		default:
+			// If not a recognized song type, include as-is
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 // tryLocalGenreMatch attempts to match the prompt against known local genres.
@@ -145,6 +190,188 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 	}
 
 	return "", nil, false
+}
+
+// moodKeywords maps common user keywords to database mood/energy/tempo values.
+// This allows the AI DJ to match mood-based prompts without calling Gemini,
+// reducing API costs and latency for common activity-based requests.
+var moodKeywords = map[string]struct {
+	mood   string
+	energy string
+	tempo  string
+}{
+	// Relaxation/Calm prompts
+	"chill":      {mood: "calm", energy: "low", tempo: "slow"},
+	"chillout":   {mood: "calm", energy: "low", tempo: "slow"},
+	"relax":      {mood: "calm", energy: "low", tempo: "slow"},
+	"relaxing":   {mood: "calm", energy: "low", tempo: "slow"},
+	"relaxation": {mood: "calm", energy: "low", tempo: "slow"},
+	"calm":       {mood: "calm", energy: "low", tempo: "slow"},
+	"peaceful":   {mood: "peaceful", energy: "low", tempo: "slow"},
+	"sleep":      {mood: "calm", energy: "low", tempo: "slow"},
+	"sleeping":   {mood: "calm", energy: "low", tempo: "slow"},
+	"bedtime":    {mood: "calm", energy: "low", tempo: "slow"},
+	"meditation": {mood: "peaceful", energy: "low", tempo: "slow"},
+	"zen":        {mood: "peaceful", energy: "low", tempo: "slow"},
+	"ambient":    {mood: "calm", energy: "low", tempo: "slow"},
+	"mellow":     {mood: "calm", energy: "low", tempo: "medium"},
+	"soft":       {mood: "calm", energy: "low", tempo: "slow"},
+	"gentle":     {mood: "calm", energy: "low", tempo: "slow"},
+
+	// Focus/Study prompts
+	"focus":         {mood: "peaceful", energy: "medium", tempo: "medium"},
+	"study":         {mood: "calm", energy: "low", tempo: "medium"},
+	"studying":      {mood: "calm", energy: "low", tempo: "medium"},
+	"concentration": {mood: "peaceful", energy: "medium", tempo: "medium"},
+	"work":          {mood: "peaceful", energy: "medium", tempo: "medium"},
+	"coding":        {mood: "calm", energy: "medium", tempo: "medium"},
+
+	// Energy/Workout prompts
+	"workout":   {mood: "energetic", energy: "high", tempo: "fast"},
+	"exercise":  {mood: "energetic", energy: "high", tempo: "fast"},
+	"gym":       {mood: "energetic", energy: "high", tempo: "fast"},
+	"running":   {mood: "energetic", energy: "high", tempo: "fast"},
+	"run":       {mood: "energetic", energy: "high", tempo: "fast"},
+	"pump":      {mood: "energetic", energy: "high", tempo: "fast"},
+	"pump up":   {mood: "energetic", energy: "high", tempo: "fast"},
+	"energetic": {mood: "energetic", energy: "high", tempo: "fast"},
+	"energy":    {mood: "energetic", energy: "high", tempo: "fast"},
+	"upbeat":    {mood: "happy", energy: "high", tempo: "fast"},
+	"hype":      {mood: "energetic", energy: "high", tempo: "fast"},
+
+	// Happy/Party prompts
+	"happy":       {mood: "happy", energy: "high", tempo: "medium"},
+	"party":       {mood: "happy", energy: "high", tempo: "fast"},
+	"dance":       {mood: "happy", energy: "high", tempo: "fast"},
+	"dancing":     {mood: "happy", energy: "high", tempo: "fast"},
+	"fun":         {mood: "happy", energy: "high", tempo: "fast"},
+	"celebration": {mood: "happy", energy: "high", tempo: "fast"},
+	"celebrate":   {mood: "happy", energy: "high", tempo: "fast"},
+
+	// Sad/Melancholic prompts
+	"sad":         {mood: "sad", energy: "low", tempo: "slow"},
+	"melancholy":  {mood: "melancholic", energy: "low", tempo: "slow"},
+	"melancholic": {mood: "melancholic", energy: "low", tempo: "slow"},
+	"emotional":   {mood: "sad", energy: "low", tempo: "slow"},
+	"cry":         {mood: "sad", energy: "low", tempo: "slow"},
+	"heartbreak":  {mood: "sad", energy: "low", tempo: "slow"},
+	"breakup":     {mood: "sad", energy: "low", tempo: "slow"},
+
+	// Romantic prompts
+	"romantic":   {mood: "romantic", energy: "low", tempo: "slow"},
+	"love":       {mood: "romantic", energy: "low", tempo: "slow"},
+	"dinner":     {mood: "romantic", energy: "low", tempo: "slow"},
+	"date":       {mood: "romantic", energy: "low", tempo: "slow"},
+	"date night": {mood: "romantic", energy: "low", tempo: "slow"},
+
+	// Aggressive/Intense prompts
+	"aggressive": {mood: "aggressive", energy: "high", tempo: "fast"},
+	"angry":      {mood: "aggressive", energy: "high", tempo: "fast"},
+	"intense":    {mood: "intense", energy: "high", tempo: "fast"},
+	"metal":      {mood: "aggressive", energy: "high", tempo: "fast"},
+
+	// Driving prompts
+	"driving":   {mood: "energetic", energy: "medium", tempo: "medium"},
+	"road trip": {mood: "happy", energy: "medium", tempo: "medium"},
+	"roadtrip":  {mood: "happy", energy: "medium", tempo: "medium"},
+
+	// Nostalgic/Dreamy prompts
+	"nostalgic": {mood: "nostalgic", energy: "low", tempo: "medium"},
+	"nostalgia": {mood: "nostalgic", energy: "low", tempo: "medium"},
+	"dreamy":    {mood: "dreamy", energy: "low", tempo: "slow"},
+
+	// Morning/Evening prompts
+	"morning": {mood: "uplifting", energy: "medium", tempo: "medium"},
+	"wake up": {mood: "uplifting", energy: "medium", tempo: "medium"},
+	"evening": {mood: "calm", energy: "low", tempo: "slow"},
+}
+
+// tryMoodBasedMatch attempts to match the prompt against mood/activity keywords.
+// This avoids Gemini API calls for common vibe-based requests like "chill music"
+// or "workout playlist". Returns filter, songs, and whether a match was found.
+//
+// This is Tier 1.5 in the matching hierarchy:
+//   - Tier 0: Artist-based matching
+//   - Tier 1: Local genre matching
+//   - Tier 1.5: Mood/activity keyword matching (this function)
+//   - Tier 2: Gemini AI fallback
+func (a *API) tryMoodBasedMatch(prompt string) (*LocalPlaylistFilter, []any, bool) {
+	promptLower := strings.ToLower(strings.TrimSpace(prompt))
+	if promptLower == "" {
+		return nil, nil, false
+	}
+
+	// Count words in the prompt
+	words := strings.Fields(promptLower)
+	wordCount := len(words)
+
+	// Only use mood-based matching for simple prompts (1-2 words)
+	// This prevents "upbeat 90s hip hop" from matching just "upbeat"
+	// Complex prompts should go to Gemini for full parsing
+	if wordCount > 2 {
+		return nil, nil, false
+	}
+
+	// Check for mood keywords in the prompt
+	var matchedMood, matchedEnergy, matchedTempo string
+	var matchedKeyword string
+
+	for keyword, attrs := range moodKeywords {
+		// Check if keyword appears as a word boundary in the prompt
+		// This prevents "focus" matching "unfocused" etc.
+		if strings.Contains(" "+promptLower+" ", " "+keyword+" ") ||
+			strings.HasPrefix(promptLower, keyword+" ") ||
+			strings.HasSuffix(promptLower, " "+keyword) ||
+			promptLower == keyword {
+			matchedMood = attrs.mood
+			matchedEnergy = attrs.energy
+			matchedTempo = attrs.tempo
+			matchedKeyword = keyword
+			break
+		}
+	}
+
+	if matchedMood == "" {
+		return nil, nil, false
+	}
+
+	logger.API("Mood keyword match: '%s' → mood=%s, energy=%s, tempo=%s",
+		matchedKeyword, matchedMood, matchedEnergy, matchedTempo)
+
+	// Query songs by mood (using empty strings for genres/artists lets the mood filter take over)
+	songs, err := a.db.GetSongsBySmartFilter(nil, nil, 0, 0, matchedMood, matchedEnergy, matchedTempo)
+	if err != nil {
+		logger.API("Failed to get songs by mood filter: %v", err)
+		return nil, nil, false
+	}
+
+	if len(songs) == 0 {
+		// No songs with this exact mood - try with just mood, ignoring energy/tempo
+		songs, err = a.db.GetSongsBySmartFilter(nil, nil, 0, 0, matchedMood, "", "")
+		if err != nil || len(songs) == 0 {
+			logger.API("No songs found for mood '%s'", matchedMood)
+			return nil, nil, false
+		}
+	}
+
+	logger.API("Mood-based match found: %d songs for '%s' vibe", len(songs), matchedKeyword)
+
+	// Convert to interface slice
+	result := make([]any, len(songs))
+	for i, s := range songs {
+		result[i] = s
+	}
+
+	filter := &LocalPlaylistFilter{
+		Mood:        matchedMood,
+		Energy:      matchedEnergy,
+		Tempo:       matchedTempo,
+		Description: fmt.Sprintf("%s music - %s vibes", matchedKeyword, matchedMood),
+		LocalMatch:  true,
+		BlendMode:   "single",
+	}
+
+	return filter, result, true
 }
 
 // tryArtistBasedMatch detects "more like [artist]" or similar patterns and returns songs
@@ -574,7 +801,14 @@ func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any
 	// Only accept matches with a reasonable score threshold
 	// A score of 55+ means we matched both decade and genre concept
 	if bestScore >= 55 {
-		songs, err := a.db.GetSongsByExactGenre(bestGenre)
+		// Use year-filtered query if year range is specified (e.g., "90s hip hop")
+		var songs []db.Song
+		var err error
+		if filter.MinYear > 0 || filter.MaxYear > 0 {
+			songs, err = a.db.GetSongsByExactGenreWithYears(bestGenre, filter.MinYear, filter.MaxYear)
+		} else {
+			songs, err = a.db.GetSongsByExactGenre(bestGenre)
+		}
 		if err != nil {
 			logger.API("Failed to get songs for matched genre %s: %v", bestGenre, err)
 			return "", nil, false
@@ -584,7 +818,7 @@ func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any
 			for i, s := range songs {
 				result[i] = s
 			}
-			logger.API("Smart indexed genre match: '%s' with score %d (%d songs)", bestGenre, bestScore, len(songs))
+			logger.API("Smart indexed genre match: '%s' with score %d (%d songs, years: %d-%d)", bestGenre, bestScore, len(songs), filter.MinYear, filter.MaxYear)
 			return bestGenre, result, true
 		}
 	}
@@ -689,15 +923,22 @@ func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres in
 			songsFromGenre = 1 // At least 1 song per genre
 		}
 
-		songs, err := a.db.GetSongsByExactGenre(g.name)
+		// Use year-filtered query if year range is specified (e.g., "90s hip hop")
+		var songs []db.Song
+		var err error
+		if filter.MinYear > 0 || filter.MaxYear > 0 {
+			songs, err = a.db.GetSongsByExactGenreWithYears(g.name, filter.MinYear, filter.MaxYear)
+		} else {
+			songs, err = a.db.GetSongsByExactGenre(g.name)
+		}
 		if err != nil {
 			logger.API("Failed to get songs for genre %s: %v", g.name, err)
 			continue
 		}
 
-		// Shuffle songs for variety (simple Fisher-Yates)
+		// Shuffle songs for variety using true random (Fisher-Yates algorithm)
 		for j := len(songs) - 1; j > 0; j-- {
-			k := (j * 7) % (j + 1) // Pseudo-random swap
+			k := rand.Intn(j + 1)
 			songs[j], songs[k] = songs[k], songs[j]
 		}
 
@@ -710,12 +951,12 @@ func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres in
 			allSongs = append(allSongs, s)
 		}
 
-		logger.API("  Added %d songs from '%s' (proportion: %.0f%%)", songsFromGenre, g.name, proportion*100)
+		logger.API("  Added %d songs from '%s' (proportion: %.0f%%, years: %d-%d)", songsFromGenre, g.name, proportion*100, filter.MinYear, filter.MaxYear)
 	}
 
-	// Shuffle the combined playlist for natural mixing
+	// Shuffle the combined playlist for natural mixing using true random
 	for i := len(allSongs) - 1; i > 0; i-- {
-		j := (i * 13) % (i + 1) // Pseudo-random swap
+		j := rand.Intn(i + 1)
 		allSongs[i], allSongs[j] = allSongs[j], allSongs[i]
 	}
 
@@ -863,9 +1104,9 @@ func (a *API) applyPlayHistoryFilters(songs []any, recentlyPlayedIDs map[string]
 		// Sort by play count descending (favorites first)
 		sortSongsByPlayCount(songs, false)
 	default:
-		// "balanced" - shuffle for variety
+		// "balanced" - shuffle for variety using true random (Fisher-Yates)
 		for i := len(songs) - 1; i > 0; i-- {
-			j := (i * 17) % (i + 1)
+			j := rand.Intn(i + 1)
 			songs[i], songs[j] = songs[j], songs[i]
 		}
 	}
@@ -959,6 +1200,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		// Apply filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
 
+		// Transform paths to API URLs for frontend consumption
+		songs = transformSongsForAPI(songs)
+
 		filter := LocalPlaylistFilter{
 			Artists:     []string{artistName},
 			Description: fmt.Sprintf("Songs similar to %s", artistName),
@@ -982,6 +1226,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		// Apply filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
 
+		// Transform paths to API URLs for frontend consumption
+		songs = transformSongsForAPI(songs)
+
 		filter := LocalPlaylistFilter{
 			Genres:      []string{matchedGenre},
 			Description: fmt.Sprintf("Songs from the %s genre", matchedGenre),
@@ -998,6 +1245,27 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"filter": filter,
+			"songs":  songs,
+		})
+		return
+	}
+
+	// Third, try mood/activity keyword matching (Tier 1.5)
+	// This intercepts common vibe prompts like "chill", "workout", "relaxing"
+	// to avoid Gemini API calls for simple mood-based requests
+	if moodFilter, songs, matched := a.tryMoodBasedMatch(req.Prompt); matched {
+		logger.API("Mood-based match found: mood=%s, energy=%s with %d songs",
+			moodFilter.Mood, moodFilter.Energy, len(songs))
+
+		// Apply filters
+		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+
+		// Transform paths to API URLs for frontend consumption
+		songs = transformSongsForAPI(songs)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"filter": moodFilter,
 			"songs":  songs,
 		})
 		return
@@ -1043,6 +1311,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 			// Apply play history filters
 			songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
 
+			// Transform paths to API URLs for frontend consumption
+			songs = transformSongsForAPI(songs)
+
 			genreNames := make([]string, len(matchedGenres))
 			for i, g := range matchedGenres {
 				genreNames[i] = g.Name
@@ -1074,6 +1345,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		// Apply play history filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
 
+		// Transform paths to API URLs for frontend consumption
+		songs = transformSongsForAPI(songs)
+
 		smartFilter := LocalPlaylistFilter{
 			Genres:      []string{matchedGenre},
 			Description: fmt.Sprintf("Songs from the %s genre (matched from: %s)", matchedGenre, req.Prompt),
@@ -1096,11 +1370,16 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	}
 
 	// No indexed genre match - use Gemini's filter directly
+	// This is the Tier 3 fallback when smart indexed matching fails.
+	// Now includes mood/energy/tempo filters when Gemini extracts them from the prompt.
 	songs, err := a.db.GetSongsBySmartFilter(
 		filter.Genres,
 		filter.Artists,
 		filter.MinYear,
 		filter.MaxYear,
+		filter.Mood,
+		filter.Energy,
+		filter.Tempo,
 	)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to query songs: %v", err), http.StatusInternalServerError)
@@ -1115,6 +1394,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 	// Apply play history filters
 	songsAny = a.applyPlayHistoryFilters(songsAny, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+
+	// Transform paths to API URLs for frontend consumption
+	songsAny = transformSongsForAPI(songsAny)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

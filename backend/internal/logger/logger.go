@@ -195,3 +195,13 @@ func Scanner(format string, v ...interface{}) {
 func ScannerDebug(format string, v ...interface{}) {
 	Debug("Scanner", format, v...)
 }
+
+// Gemini logs a message with [Gemini] prefix
+func Gemini(format string, v ...interface{}) {
+	Log("Gemini", format, v...)
+}
+
+// GeminiDebug logs a debug message with [Gemini] prefix
+func GeminiDebug(format string, v ...interface{}) {
+	Debug("Gemini", format, v...)
+}

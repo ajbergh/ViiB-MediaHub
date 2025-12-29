@@ -204,10 +204,12 @@ func main() {
 	logCrash(fmt.Sprintf("CHECKPOINT: Server URL = %s", serverURL))
 
 	// Start HTTP server in goroutine
+	// Note: WriteTimeout is disabled (0) to support long-running SSE connections
+	// for operations like AI enrichment that can take several minutes per batch.
 	httpServer := &http.Server{
 		Handler:      srv,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 0, // Disabled for SSE streams
 		IdleTimeout:  120 * time.Second,
 	}
 

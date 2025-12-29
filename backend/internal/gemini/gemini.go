@@ -2,20 +2,21 @@
 //
 // This package handles all AI-powered features including:
 //
+// Unified Metadata Enrichment (TOON Format):
+//   - EnrichAllMetadata: High-efficiency batch enrichment for up to 200 songs
+//   - Uses TOON (Token-Oriented Object Notation) for compact response format
+//   - Combines genres, mood, energy, tempo, BPM, instrumental detection, and original year
+//   - Single API call per batch for maximum efficiency
+//
+// Legacy Wrapper Methods (call EnrichAllMetadata internally):
+//   - EnrichGenres: Returns genre classifications only
+//   - AnalyzeSongMood: Returns mood, energy, tempo, BPM, and instrumental flag
+//   - AnalyzeOriginalYear: Returns original release year detection
+//
 // Playlist Filter Generation:
 //   - GeneratePlaylistFilter: Parses natural language prompts into structured filters
 //   - Extracts genres, years, mood, energy, tempo from user requests
 //   - Uses caching to avoid duplicate API calls for similar prompts
-//
-// Genre Enrichment:
-//   - EnrichGenres: Analyzes songs to suggest detailed genre classifications
-//   - Uses song metadata (artist, title, album) to infer genres
-//   - Supports batch processing for efficiency
-//
-// Mood/Energy Analysis:
-//   - AnalyzeSongMood: Detects mood, energy, tempo, and estimated BPM
-//   - Based on metadata analysis (no audio processing required)
-//   - Leverages Gemini's knowledge of artist styles and genre conventions
 //
 // The package includes retry logic with exponential backoff for API resilience,
 // and caching to minimize API costs for repeated queries.
@@ -29,14 +30,16 @@ import (
 	"math/rand"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
 
-const apiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent"
+const apiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
 
 // Retry configuration for API calls
 const (
@@ -154,101 +157,24 @@ type candidate struct {
 }
 
 // EnrichGenres takes a list of songs and returns a map of song ID to genres using Gemini.
+// This is a legacy wrapper that calls EnrichAllMetadata and extracts only genres.
 func (c *Client) EnrichGenres(songs []db.Song) (map[string][]string, error) {
 	if len(songs) == 0 {
 		return nil, nil
 	}
 
-	var promptBuilder strings.Builder
-	promptBuilder.WriteString(`You are a music expert with deep knowledge of artists, genres, and subgenres.
-
-Your task is to identify the most accurate genres for each song, taking into account:
-
-1. Song-specific characteristics (sound, instrumentation, production era, stylistic elements).
-2. The band's or artist's overall established genres, which must be reflected in the song's genre list unless clearly contradicted by the actual sound.
-
-OUTPUT REQUIREMENTS:
-- Return ONLY a valid JSON object.
-- Keys: Song IDs exactly as provided.
-- Values: Arrays of genre strings.
-- Genres should be ordered from most specific (e.g., "Dream Pop") to broader parent genres (e.g., "Indie Rock").
-- Do not include any explanations, comments, markdown, or code blocks — JSON only.
-
-GENRE SELECTION RULES:
-- Use real, widely recognized genres.
-- Prefer specific subgenres when strongly supported.
-- Include broader genres only as parents or fallback categories.
-- If uncertain, choose the most widely accepted critical consensus for the song or artist.
-
-DECADE LABELING RULES:
-- Include an additional decade-based genre tag when clearly supported by the song’s release era and stylistic traits (e.g., "90s Alternative", "80s Pop", "2000s Hip Hop").
-- Decade tags should appear after the specific subgenres but before broad parent genres.
-- Only apply decade labels when they meaningfully describe the song's stylistic or cultural placement—not solely its release date.
-- Use the format: "[Decade] [Genre]" (e.g., "80s Synthpop", "90s Grunge")`)
-
-	for _, song := range songs {
-		promptBuilder.WriteString(fmt.Sprintf("ID: %s | Artist: %s | Title: %s | Album: %s\n", song.ID, song.Artist, song.Title, song.Album))
-	}
-
-	reqBody := generateContentRequest{
-		Contents: []content{
-			{
-				Parts: []part{
-					{Text: promptBuilder.String()},
-				},
-			},
-		},
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	// Use retry logic for API call
-	var result map[string][]string
-	err = c.doWithRetry(func() error {
-		url := fmt.Sprintf("%s?key=%s", apiEndpoint, c.apiKey)
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-		if err != nil {
-			return fmt.Errorf("failed to call Gemini API: %w", err)
-		}
-		defer resp.Body.Close()
-
-		// Check for rate limiting or server errors (retriable)
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			body, _ := io.ReadAll(resp.Body)
-			return &retriableError{fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))}
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))
-		}
-
-		var geminiResp generateContentResponse
-		if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
-			return fmt.Errorf("failed to decode response: %w", err)
-		}
-
-		if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-			return fmt.Errorf("no content in response")
-		}
-
-		responseText := geminiResp.Candidates[0].Content.Parts[0].Text
-
-		// Clean up and repair JSON response
-		responseText = cleanAndRepairJSON(responseText)
-
-		if err := json.Unmarshal([]byte(responseText), &result); err != nil {
-			return fmt.Errorf("failed to parse JSON response from Gemini: %w. Response was: %s", err, responseText)
-		}
-
-		return nil
-	})
-
+	// Call unified enrichment
+	unified, err := c.EnrichAllMetadata(songs)
 	if err != nil {
 		return nil, err
+	}
+
+	// Extract only genres from unified result
+	result := make(map[string][]string)
+	for id, meta := range unified {
+		if meta != nil && len(meta.Genres) > 0 {
+			result[id] = meta.Genres
+		}
 	}
 
 	return result, nil
@@ -318,6 +244,263 @@ func cleanAndRepairJSON(input string) string {
 	input = reTrailingComma.ReplaceAllString(input, `$1`)
 
 	return input
+}
+
+// UnifiedMetadata contains all AI-enriched metadata for a song.
+// This replaces MoodAnalysis and OriginalYearAnalysis for batch efficiency.
+type UnifiedMetadata struct {
+	Genres       []string `json:"genres"`        // Genre classifications for the song
+	Mood         string   `json:"mood"`          // Emotional quality: happy, sad, energetic, calm, melancholic, etc.
+	Energy       string   `json:"energy"`        // Energy level: high, medium, low
+	Tempo        string   `json:"tempo"`         // Perceived tempo: fast, medium, slow
+	BPM          int      `json:"bpm"`           // Estimated beats per minute (0 if unknown)
+	Instrumental bool     `json:"instrumental"`  // true if song has no vocals
+	OriginalYear int      `json:"original_year"` // Original release year (not remaster date)
+}
+
+// parseTOONLine parses a single line of TOON (Token-Oriented Object Notation) format.
+// Format: ID|Genre1;Genre2;Genre3|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
+// Example: abc123|Rock;Alternative;90s Rock|energetic|high|fast|140|false|1994
+func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", nil, fmt.Errorf("empty line")
+	}
+
+	parts := strings.Split(line, "|")
+	if len(parts) < 8 {
+		return "", nil, fmt.Errorf("invalid TOON format: expected 8 fields, got %d", len(parts))
+	}
+
+	id = strings.TrimSpace(parts[0])
+	if id == "" {
+		return "", nil, fmt.Errorf("empty ID")
+	}
+
+	metadata = &UnifiedMetadata{}
+
+	// Parse genres (semicolon-separated)
+	genreStr := strings.TrimSpace(parts[1])
+	if genreStr != "" && genreStr != "unknown" {
+		for _, g := range strings.Split(genreStr, ";") {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				metadata.Genres = append(metadata.Genres, g)
+			}
+		}
+	}
+
+	// Parse mood
+	metadata.Mood = strings.TrimSpace(parts[2])
+	if metadata.Mood == "" {
+		metadata.Mood = "unknown"
+	}
+
+	// Parse energy
+	metadata.Energy = strings.TrimSpace(parts[3])
+	if metadata.Energy == "" {
+		metadata.Energy = "medium"
+	}
+
+	// Parse tempo
+	metadata.Tempo = strings.TrimSpace(parts[4])
+	if metadata.Tempo == "" {
+		metadata.Tempo = "medium"
+	}
+
+	// Parse BPM (integer)
+	bpmStr := strings.TrimSpace(parts[5])
+	if bpmStr != "" && bpmStr != "0" {
+		if bpm, err := strconv.Atoi(bpmStr); err == nil {
+			metadata.BPM = bpm
+		}
+	}
+
+	// Parse instrumental (boolean)
+	instrStr := strings.ToLower(strings.TrimSpace(parts[6]))
+	metadata.Instrumental = instrStr == "true" || instrStr == "1" || instrStr == "yes"
+
+	// Parse original year (integer)
+	yearStr := strings.TrimSpace(parts[7])
+	if yearStr != "" && yearStr != "0" {
+		if year, err := strconv.Atoi(yearStr); err == nil {
+			metadata.OriginalYear = year
+		}
+	}
+
+	return id, metadata, nil
+}
+
+// EnrichAllMetadata performs unified enrichment of genres, mood, energy, tempo, BPM,
+// instrumental detection, and original year analysis in a single API call.
+//
+// This method uses TOON (Token-Oriented Object Notation) format instead of JSON
+// for maximum token efficiency, allowing up to 200 songs per batch.
+//
+// TOON format uses pipe-delimited values with semicolon-separated genres:
+// Input:  ID|Artist|Title|Album|Year
+// Output: ID|Genres|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
+//
+// Returns a map of song ID to UnifiedMetadata.
+func (c *Client) EnrichAllMetadata(songs []db.Song) (map[string]*UnifiedMetadata, error) {
+	if len(songs) == 0 {
+		return nil, nil
+	}
+
+	logger.Gemini("EnrichAllMetadata: Starting with %d songs", len(songs))
+
+	var promptBuilder strings.Builder
+	promptBuilder.WriteString(`You are a music expert with deep knowledge of artists, genres, and music history.
+
+Analyze each song and return ALL metadata in TOON (Token-Oriented Object Notation) format.
+TOON is a compact pipe-delimited format for maximum efficiency.
+
+INPUT FORMAT (provided below):
+ID|Artist|Title|Album|Year
+
+OUTPUT FORMAT (one line per song, no headers):
+ID|Genres|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
+
+FIELD DEFINITIONS:
+- ID: Return the exact ID from input
+- Genres: Semicolon-separated list (e.g., "Rock;Alternative;90s Rock") - most specific first
+- Mood: One of: happy, sad, energetic, calm, melancholic, uplifting, aggressive, romantic, chill, intense, dreamy, nostalgic
+- Energy: One of: high, medium, low
+- Tempo: One of: fast, medium, slow
+- BPM: Estimated beats per minute (integer, 0 if unknown)
+- Instrumental: true/false (true only if no vocals)
+- OriginalYear: Original release year (NOT remaster date). Use your music history knowledge.
+
+ANALYSIS RULES:
+1. GENRES: Use real genres, from specific to broad. Include decade tags when appropriate (e.g., "80s Synthpop").
+2. MOOD/ENERGY: Infer from artist's typical style, genre conventions, and title implications.
+3. BPM: Estimate based on genre conventions (e.g., punk ~170, ballads ~70, dance ~128).
+4. ORIGINAL YEAR: If album says "Remastered" or "Deluxe Edition", find the ORIGINAL release date.
+5. INSTRUMENTAL: Most songs have vocals (false). Only true for classical, ambient, or explicitly instrumental.
+
+CRITICAL: Return ONLY the TOON data. No headers, no explanations, no markdown. One song per line.
+
+SONGS TO ANALYZE:
+`)
+
+	// Write input in TOON format
+	for _, song := range songs {
+		promptBuilder.WriteString(fmt.Sprintf("%s|%s|%s|%s|%d\n",
+			song.ID, song.Artist, song.Title, song.Album, song.Year))
+	}
+
+	prompt := promptBuilder.String()
+	logger.Gemini("EnrichAllMetadata: Prompt length: %d chars", len(prompt))
+
+	reqBody := generateContentRequest{
+		Contents: []content{
+			{
+				Parts: []part{
+					{Text: prompt},
+				},
+			},
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	logger.Gemini("EnrichAllMetadata: Request body size: %d bytes, calling Gemini API...", len(jsonData))
+
+	result := make(map[string]*UnifiedMetadata)
+	err = c.doWithRetry(func() error {
+		url := fmt.Sprintf("%s?key=%s", apiEndpoint, c.apiKey)
+		logger.Gemini("EnrichAllMetadata: Making HTTP POST to Gemini...")
+
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			logger.Gemini("EnrichAllMetadata: HTTP error: %v", err)
+			return fmt.Errorf("failed to call Gemini API: %w", err)
+		}
+		defer resp.Body.Close()
+
+		logger.Gemini("EnrichAllMetadata: Response status: %d", resp.StatusCode)
+
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			body, _ := io.ReadAll(resp.Body)
+			logger.Gemini("EnrichAllMetadata: Retriable error: %s", string(body))
+			return &retriableError{fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))}
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			logger.Gemini("EnrichAllMetadata: Non-OK status: %s", string(body))
+			return fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))
+		}
+
+		var geminiResp generateContentResponse
+		if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
+			logger.Gemini("EnrichAllMetadata: JSON decode error: %v", err)
+			return fmt.Errorf("failed to decode response: %w", err)
+		}
+
+		if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+			logger.Gemini("EnrichAllMetadata: No content in response")
+			return fmt.Errorf("no content in response")
+		}
+
+		responseText := geminiResp.Candidates[0].Content.Parts[0].Text
+		logger.Gemini("EnrichAllMetadata: Response length: %d chars", len(responseText))
+
+		// Log first 500 chars of response for debugging
+		preview := responseText
+		if len(preview) > 500 {
+			preview = preview[:500] + "..."
+		}
+		logger.Gemini("EnrichAllMetadata: Response preview: %s", preview)
+
+		// Remove any markdown formatting
+		responseText = strings.TrimPrefix(responseText, "```")
+		responseText = strings.TrimSuffix(responseText, "```")
+		responseText = strings.TrimSpace(responseText)
+
+		// Parse TOON response line by line
+		lines := strings.Split(responseText, "\n")
+		logger.Gemini("EnrichAllMetadata: Parsing %d lines", len(lines))
+
+		parseErrors := 0
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+
+			id, metadata, err := parseTOONLine(line)
+			if err != nil {
+				parseErrors++
+				if parseErrors <= 3 {
+					logger.Gemini("EnrichAllMetadata: Parse error on line: %s - %v", line, err)
+				}
+				continue
+			}
+
+			result[id] = metadata
+		}
+
+		logger.Gemini("EnrichAllMetadata: Parsed %d songs successfully, %d parse errors", len(result), parseErrors)
+
+		// Verify we got results for at least some songs
+		if len(result) == 0 && len(songs) > 0 {
+			return fmt.Errorf("failed to parse TOON response: no valid entries. Response: %s", responseText)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		logger.Gemini("EnrichAllMetadata: Final error: %v", err)
+		return nil, err
+	}
+
+	logger.Gemini("EnrichAllMetadata: Complete - returned %d results", len(result))
+	return result, nil
 }
 
 type PlaylistFilter struct {
@@ -447,117 +630,65 @@ type MoodAnalysis struct {
 }
 
 // AnalyzeSongMood uses Gemini AI to analyze the mood, energy, tempo, and BPM of songs.
-// Unlike audio-based analysis, this uses metadata (artist, title, album, genre) to infer
-// musical characteristics based on Gemini's knowledge of artists, genres, and conventions.
-//
-// This approach was chosen over local audio analysis because:
-//   - Gemini understands genre conventions (e.g., death metal = high energy, ~180 BPM)
-//   - Artist reputation provides context (e.g., Radiohead = often melancholic)
-//   - No complex DSP/FFT processing required
-//   - Works without actual audio file access
-//
-// Returns a map of song ID to MoodAnalysis, allowing batch updates to the database.
+// This is a legacy wrapper that calls EnrichAllMetadata and extracts mood-related fields.
 func (c *Client) AnalyzeSongMood(songs []db.Song) (map[string]*MoodAnalysis, error) {
 	if len(songs) == 0 {
 		return nil, nil
 	}
 
-	var promptBuilder strings.Builder
-	promptBuilder.WriteString(`You are a music expert. Analyze the mood, energy level, tempo, and vocal presence of each song based on the artist, title, album, and genre.
-
-OUTPUT REQUIREMENTS:
-- Return ONLY a valid JSON object.
-- Keys: Song IDs exactly as provided.
-- Values: Objects with these fields:
-  - "mood": One of: "happy", "sad", "energetic", "calm", "melancholic", "uplifting", "aggressive", "romantic", "chill", "intense", "dreamy", "nostalgic"
-  - "energy": One of: "high", "medium", "low"
-  - "tempo": One of: "fast", "medium", "slow"
-  - "bpm": Estimated BPM as integer (use 0 if truly unknown, but make your best estimate based on genre/style)
-  - "instrumental": true if song has no vocals (instrumental only), false if it has vocals
-
-ANALYSIS GUIDELINES:
-- Consider the artist's typical sound and style
-- Consider the genre's typical characteristics
-- Consider the song title's emotional implications
-- For unknown songs, use genre conventions as guidance
-- Most songs have vocals (instrumental: false) unless explicitly instrumental, classical, or electronic/ambient
-
-Example output:
-{
-  "song-id-1": {"mood": "energetic", "energy": "high", "tempo": "fast", "bpm": 140, "instrumental": false},
-  "song-id-2": {"mood": "melancholic", "energy": "low", "tempo": "slow", "bpm": 70, "instrumental": true}
-}
-
-Songs to analyze:
-`)
-
-	for _, song := range songs {
-		genres := strings.Join(song.Genre, ", ")
-		if genres == "" {
-			genres = "Unknown"
-		}
-		promptBuilder.WriteString(fmt.Sprintf("ID: %s | Artist: %s | Title: %s | Album: %s | Genre: %s\n",
-			song.ID, song.Artist, song.Title, song.Album, genres))
-	}
-
-	reqBody := generateContentRequest{
-		Contents: []content{
-			{
-				Parts: []part{
-					{Text: promptBuilder.String()},
-				},
-			},
-		},
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	var result map[string]*MoodAnalysis
-	err = c.doWithRetry(func() error {
-		url := fmt.Sprintf("%s?key=%s", apiEndpoint, c.apiKey)
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-		if err != nil {
-			return fmt.Errorf("failed to call Gemini API: %w", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			body, _ := io.ReadAll(resp.Body)
-			return &retriableError{fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))}
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return fmt.Errorf("gemini API error: %s", string(body))
-		}
-
-		var geminiResp generateContentResponse
-		if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
-			return fmt.Errorf("failed to decode response: %w", err)
-		}
-
-		if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-			return fmt.Errorf("no content in response")
-		}
-
-		responseText := geminiResp.Candidates[0].Content.Parts[0].Text
-		responseText = strings.TrimPrefix(responseText, "```json")
-		responseText = strings.TrimPrefix(responseText, "```")
-		responseText = strings.TrimSuffix(responseText, "```")
-		responseText = strings.TrimSpace(responseText)
-
-		if err := json.Unmarshal([]byte(responseText), &result); err != nil {
-			return fmt.Errorf("failed to parse JSON response: %w", err)
-		}
-
-		return nil
-	})
-
+	// Call unified enrichment
+	unified, err := c.EnrichAllMetadata(songs)
 	if err != nil {
 		return nil, err
+	}
+
+	// Extract mood analysis from unified result
+	result := make(map[string]*MoodAnalysis)
+	for id, meta := range unified {
+		if meta != nil {
+			result[id] = &MoodAnalysis{
+				Mood:         meta.Mood,
+				Energy:       meta.Energy,
+				Tempo:        meta.Tempo,
+				BPM:          meta.BPM,
+				Instrumental: meta.Instrumental,
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// OriginalYearAnalysis represents the AI-determined original release year for a song.
+type OriginalYearAnalysis struct {
+	OriginalYear int  `json:"original_year"` // The original release year (0 if unknown)
+	Confident    bool `json:"confident"`     // true if AI is confident in the year
+}
+
+// AnalyzeOriginalYear uses Gemini AI to determine the original release year of songs.
+// This is a legacy wrapper that calls EnrichAllMetadata and extracts original year.
+func (c *Client) AnalyzeOriginalYear(songs []db.Song) (map[string]*OriginalYearAnalysis, error) {
+	if len(songs) == 0 {
+		return nil, nil
+	}
+
+	// Call unified enrichment
+	unified, err := c.EnrichAllMetadata(songs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract original year from unified result
+	result := make(map[string]*OriginalYearAnalysis)
+	for id, meta := range unified {
+		if meta != nil {
+			// Mark as confident if we got a valid year
+			confident := meta.OriginalYear > 0
+			result[id] = &OriginalYearAnalysis{
+				OriginalYear: meta.OriginalYear,
+				Confident:    confident,
+			}
+		}
 	}
 
 	return result, nil

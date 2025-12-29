@@ -84,6 +84,23 @@ export const Settings: React.FC = () => {
     totalBatches: number;
   } | null>(null);
 
+  // Unified Enrichment State (genres + mood + years in one call)
+  const [isUnifiedEnriching, setIsUnifiedEnriching] = useState(false);
+  const [unifiedStatus, setUnifiedStatus] = useState('');
+  const [forceUnified, setForceUnified] = useState(false);
+  const [unifiedProgress, setUnifiedProgress] = useState<{
+    processedSongs: number;
+    totalSongs: number;
+    currentBatch: number;
+    totalBatches: number;
+  } | null>(null);
+
+  // Year Backfill State
+  const [yearBackfillStatus, setYearBackfillStatus] = useState('');
+  
+  // Remaster Detection State
+  const [remasterStatus, setRemasterStatus] = useState('');
+
   const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingBrowser, setLoadingBrowser] = useState(false);
 
@@ -1335,6 +1352,114 @@ export const Settings: React.FC = () => {
             </div>
           </div>
 
+          {/* Unified AI Enrichment - RECOMMENDED */}
+          <div className="bg-surface-1 rounded-lg p-4 border-2 border-brand">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="px-2 py-0.5 text-xs font-bold bg-brand text-black rounded">RECOMMENDED</span>
+              <h3 className="text-lg font-bold text-text-main">Unified AI Enrichment</h3>
+            </div>
+            <p className="text-text-subtle text-sm mb-4">
+              Enrich your entire library with genres, mood, energy, tempo, BPM, and original year detection 
+              in a <strong>single efficient operation</strong>. Uses TOON format for 3x better efficiency 
+              and processes 200 songs per batch.
+            </p>
+
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="force-unified"
+                  checked={forceUnified}
+                  onChange={(e) => setForceUnified(e.target.checked)}
+                  disabled={isUnifiedEnriching}
+                  className="rounded border-surface-border bg-surface-3 text-brand focus:ring-brand"
+                />
+                <label htmlFor="force-unified" className="text-sm text-text-main cursor-pointer select-none">
+                  Force re-analyze all songs (overwrites existing metadata)
+                </label>
+              </div>
+
+              <Button
+                onClick={() => {
+                  if (!geminiKey && !keySaved) {
+                    alert("Please enter or save an API Key first.");
+                    return;
+                  }
+
+                  setIsUnifiedEnriching(true);
+                  setUnifiedStatus('Connecting to unified enrichment service...');
+                  setUnifiedProgress(null);
+
+                  const eventSource = api.enrichAllMetadataStream(forceUnified, (progress) => {
+                    setUnifiedStatus(progress.message);
+                    
+                    if (progress.status === 'started' || progress.status === 'processing' || progress.status === 'batch_complete') {
+                      setUnifiedProgress({
+                        processedSongs: progress.processedSongs,
+                        totalSongs: progress.totalSongs,
+                        currentBatch: progress.currentBatch,
+                        totalBatches: progress.totalBatches,
+                      });
+                    }
+                    
+                    if (progress.status === 'complete') {
+                      setIsUnifiedEnriching(false);
+                      setTimeout(() => setUnifiedProgress(null), 5000);
+                    }
+                    
+                    if (progress.status === 'error') {
+                      setIsUnifiedEnriching(false);
+                      setUnifiedProgress(null);
+                      setUnifiedStatus(`Error: ${progress.error || progress.message}`);
+                    }
+                  });
+
+                  return () => eventSource.close();
+                }}
+                disabled={isUnifiedEnriching || (!geminiKey && !keySaved)}
+                variant={isUnifiedEnriching || (!geminiKey && !keySaved) ? 'secondary' : 'primary'}
+                accent="brand"
+                className="self-start px-6 py-3 font-bold text-base"
+              >
+                {isUnifiedEnriching ? (
+                  <>
+                    <span className="animate-spin mr-2">⏳</span> Enriching Library...
+                  </>
+                ) : (
+                  <>🚀 Enrich All Metadata</>
+                )}
+              </Button>
+              
+              {/* Progress Bar */}
+              {unifiedProgress && unifiedProgress.totalSongs > 0 && (
+                <div className="w-full">
+                  <div className="flex justify-between text-xs text-text-subtle mb-1">
+                    <span>Batch {unifiedProgress.currentBatch} of {unifiedProgress.totalBatches}</span>
+                    <span>{unifiedProgress.processedSongs} / {unifiedProgress.totalSongs} songs</span>
+                  </div>
+                  <div className="w-full bg-surface-3 rounded-full h-2.5 overflow-hidden">
+                    <div 
+                      className="bg-brand h-full rounded-full transition-all duration-300 ease-out"
+                      style={{ 
+                        width: `${Math.round((unifiedProgress.processedSongs / unifiedProgress.totalSongs) * 100)}%` 
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {unifiedStatus && (
+                <div className={`text-sm mt-2 ${
+                  unifiedStatus.startsWith('Error') ? 'text-error' : 
+                  unifiedStatus.includes('complete') || unifiedStatus.startsWith('Success') ? 'text-success' : 
+                  'text-text-subtle'
+                }`}>
+                  {unifiedStatus}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Mood/Energy Analysis */}
           <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
             <h3 className="text-lg font-bold text-text-main mb-2">Mood & Energy Analysis</h3>
@@ -1422,6 +1547,112 @@ export const Settings: React.FC = () => {
                   {moodStatus}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Year Backfill */}
+          <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
+            <h3 className="text-lg font-bold text-text-main mb-2">Year Data Backfill</h3>
+            <p className="text-text-subtle text-sm mb-4">
+              Populate missing song year values from album metadata release dates.
+              This enables the AI DJ to correctly filter by decade (e.g., "90s hip hop").
+              Run this after enriching album metadata from Spotify.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <Button
+                onClick={async () => {
+                  setYearBackfillStatus('Backfilling years...');
+                  try {
+                    const result = await api.backfillSongYears();
+                    setYearBackfillStatus(`Success: ${result.message}`);
+                  } catch (err: unknown) {
+                    setYearBackfillStatus(`Error: ${err instanceof Error ? err.message : 'Failed to backfill years'}`);
+                  }
+                }}
+                variant="primary"
+                accent="brand"
+                className="self-start px-4 py-2 font-bold"
+              >
+                📅 Backfill Song Years
+              </Button>
+              
+              {yearBackfillStatus && (
+                <div className={`text-sm mt-2 ${
+                  yearBackfillStatus.startsWith('Error') ? 'text-error' : 
+                  yearBackfillStatus.startsWith('Success') ? 'text-success' : 
+                  'text-text-subtle'
+                }`}>
+                  {yearBackfillStatus}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Remaster Detection */}
+          <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
+            <h3 className="text-lg font-bold text-text-main mb-2">Original Year Detection</h3>
+            <p className="text-text-subtle text-sm mb-4">
+              Detect songs that may have remaster dates instead of original release years.
+              Step 1: Pattern matching finds "Remastered", "Deluxe Edition", etc.
+              Step 2: AI analyzes flagged songs to determine the original release year.
+            </p>
+
+            <div className="flex flex-col gap-4">
+              {/* Step 1: Detect Remasters */}
+              <div>
+                <Button
+                  onClick={async () => {
+                    setRemasterStatus('Detecting remasters...');
+                    try {
+                      const result = await api.detectRemasters();
+                      setRemasterStatus(`Success: ${result.message}`);
+                    } catch (err: unknown) {
+                      setRemasterStatus(`Error: ${err instanceof Error ? err.message : 'Failed to detect remasters'}`);
+                    }
+                  }}
+                  variant="primary"
+                  accent="brand"
+                  className="self-start px-4 py-2 font-bold"
+                >
+                  🔍 Step 1: Detect Remasters
+                </Button>
+                
+                {remasterStatus && (
+                  <div className={`text-sm mt-2 ${
+                    remasterStatus.startsWith('Error') ? 'text-error' : 
+                    remasterStatus.startsWith('Success') ? 'text-success' : 
+                    'text-text-subtle'
+                  }`}>
+                    {remasterStatus}
+                  </div>
+                )}
+              </div>
+
+              {/* Step 2: AI Year Enrichment */}
+              <div>
+                <Button
+                  onClick={() => {
+                    setRemasterStatus('Starting AI year analysis...');
+                    api.enrichOriginalYearsStream(
+                      (progress) => {
+                        setRemasterStatus(`Processing: ${progress.message} (${progress.processedSongs}/${progress.totalSongs})`);
+                      },
+                      (progress) => {
+                        setRemasterStatus(`Success: ${progress.message}`);
+                      },
+                      (error) => {
+                        setRemasterStatus(`Error: ${error}`);
+                      }
+                    );
+                  }}
+                  variant="primary"
+                  accent="brand"
+                  className="self-start px-4 py-2 font-bold"
+                >
+                  ✨ Step 2: AI Year Analysis
+                </Button>
+              </div>
             </div>
           </div>
         </div>

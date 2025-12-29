@@ -38,6 +38,9 @@ export interface Song {
   discNumber?: number;
   genre?: string[];
   year?: number;
+  originalYear?: number; // Original release year (for remasters)
+  yearUncertain?: boolean; // True if year may be remaster date
+  yearAnalyzedAt?: number; // timestamp of year analysis
   duration: number; // in seconds
   url: string; // Ephemeral Blob URL or streaming URL
   fileHandle?: FileSystemFileHandle; // Persisted handle

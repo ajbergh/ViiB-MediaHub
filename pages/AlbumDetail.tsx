@@ -43,6 +43,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
         firstSong,
         artist,
         year,
+        originalYear,
         albumSongs,
         durationHours,
         durationMin,
@@ -118,7 +119,12 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                             </span>
                         </div>
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
-                        <span>{metadata?.releaseDate ? new Date(metadata.releaseDate).getFullYear() : (year || 'Unknown Year')}</span>
+                        <span>
+                          {metadata?.releaseDate ? new Date(metadata.releaseDate).getFullYear() : (year || 'Unknown Year')}
+                          {originalYear && originalYear !== year && (
+                            <span className="text-text-subtle ml-1">(Originally: {originalYear})</span>
+                          )}
+                        </span>
                         <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
                         <span>{albumSongs.length} songs, <span className="text-text-subtle">{durationHours > 0 ? `${durationHours} hr ` : ''}{durationMin} min</span></span>
                         
@@ -257,6 +263,7 @@ export const AlbumDetail: React.FC = () => {
     }, [decodedAlbumName, artist]);
 
     const year = firstSong?.year;
+    const originalYear = firstSong?.originalYear;
     
     // Merge local cover with metadata cover (prefer metadata)
     const metadataKey = `${decodedAlbumName}::${artist}`;
@@ -355,6 +362,7 @@ export const AlbumDetail: React.FC = () => {
         firstSong,
         artist,
         year,
+        originalYear,
         albumSongs,
         durationHours,
         durationMin,

@@ -191,9 +191,10 @@ func (d *DB) GetGenreNames() ([]string, error) {
 func (d *DB) GetSongsByExactGenre(genreName string) ([]Song, error) {
 	// Match the genre name within the JSON array - handles exact matches like ["90s Alternative", "Rock"]
 	// We use LIKE with proper JSON escaping for reliability
+	// NOTE: Using raw string literal (backticks), so single backslash for ESCAPE character
 	query := `SELECT id, title, artist, album, genre, year, duration, file_path, cover_path, added_at, play_count, last_played 
 			  FROM songs 
-			  WHERE genre LIKE ? ESCAPE '\\' OR genre LIKE ? ESCAPE '\\' OR genre LIKE ? ESCAPE '\\'
+			  WHERE genre LIKE ? ESCAPE '\' OR genre LIKE ? ESCAPE '\' OR genre LIKE ? ESCAPE '\'
 			  ORDER BY RANDOM() LIMIT 50`
 
 	// Match three patterns:
@@ -207,7 +208,7 @@ func (d *DB) GetSongsByExactGenre(genreName string) ([]Song, error) {
 	// Use ESCAPE clause to handle any wildcards (%, _) in genre names safely
 	query = `SELECT id, title, artist, album, genre, year, duration, file_path, cover_path, added_at, play_count, last_played 
 			 FROM songs 
-			 WHERE genre LIKE ? ESCAPE '\\'
+			 WHERE genre LIKE ? ESCAPE '\'
 			 ORDER BY RANDOM() LIMIT 50`
 	args = []interface{}{buildGenreLikePattern(genreName)}
 
@@ -240,6 +241,70 @@ func (d *DB) GetSongsByExactGenre(genreName string) ([]Song, error) {
 		}
 		if lastPlayed.Valid {
 			s.LastPlayed = lastPlayed.Int64
+		}
+		songs = append(songs, s)
+	}
+	return songs, rows.Err()
+}
+
+// GetSongsByExactGenreWithYears returns songs that have the specified genre in their genre array,
+// filtered to the specified year range. This is used by the AI DJ multi-genre blending to ensure
+// decade-specific prompts like "90s hip hop" only return songs from that era.
+// Uses COALESCE(original_year, year) to prefer original release year over remaster dates.
+// Returns up to 50 random songs matching the criteria.
+func (d *DB) GetSongsByExactGenreWithYears(genreName string, minYear, maxYear int) ([]Song, error) {
+	// Build base query with genre matching
+	// Use COALESCE to prefer original_year (for remasters) over embedded year
+	query := `SELECT id, title, artist, album, genre, year, original_year, duration, file_path, cover_path, added_at, play_count, last_played 
+			 FROM songs 
+			 WHERE genre LIKE ? ESCAPE '\'`
+	args := []interface{}{buildGenreLikePattern(genreName)}
+
+	// Add year filters using COALESCE to check original_year first
+	if minYear > 0 {
+		query += " AND COALESCE(original_year, year) >= ?"
+		args = append(args, minYear)
+	}
+	if maxYear > 0 {
+		query += " AND COALESCE(original_year, year) <= ?"
+		args = append(args, maxYear)
+	}
+
+	query += " ORDER BY RANDOM() LIMIT 50"
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var songs []Song
+	for rows.Next() {
+		var s Song
+		var genreJSON sql.NullString
+		var coverPath sql.NullString
+		var lastPlayed sql.NullInt64
+		var originalYear sql.NullInt64
+
+		err := rows.Scan(
+			&s.ID, &s.Title, &s.Artist, &s.Album, &genreJSON, &s.Year, &originalYear, &s.Duration,
+			&s.FilePath, &coverPath, &s.AddedAt, &s.PlayCount, &lastPlayed,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if genreJSON.Valid && genreJSON.String != "" {
+			json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+		}
+		if coverPath.Valid {
+			s.CoverPath = coverPath.String
+		}
+		if lastPlayed.Valid {
+			s.LastPlayed = lastPlayed.Int64
+		}
+		if originalYear.Valid {
+			s.OriginalYear = int(originalYear.Int64)
 		}
 		songs = append(songs, s)
 	}
