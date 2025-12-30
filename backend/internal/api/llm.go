@@ -61,10 +61,8 @@ func (a *API) getLLMSettings(w http.ResponseWriter, r *http.Request) {
 		provider = llm.ProviderOllama
 	}
 	if model == "" {
-		models := llm.GetAvailableModels()
-		if providerModels, ok := models[provider]; ok && len(providerModels) > 0 {
-			model = providerModels[0].ID
-		}
+		// Get default model for the provider
+		model = getDefaultModelForProvider(provider)
 	}
 	if baseURL == "" && provider == llm.ProviderOllama {
 		baseURL = "http://localhost:11434"
@@ -179,10 +177,8 @@ func (a *API) testLLMConnection(w http.ResponseWriter, r *http.Request) {
 		provider = llm.ProviderOllama
 	}
 	if model == "" {
-		models := llm.GetAvailableModels()
-		if providerModels, ok := models[provider]; ok && len(providerModels) > 0 {
-			model = providerModels[0].ID
-		}
+		// Get default model for the provider
+		model = getDefaultModelForProvider(provider)
 	}
 	if baseURL == "" && provider == llm.ProviderOllama {
 		baseURL = "http://localhost:11434"
@@ -220,4 +216,22 @@ func (a *API) testLLMConnection(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Message: "Successfully connected to " + provider + " using model " + model,
 	})
+}
+
+// getDefaultModelForProvider returns the default model for a given provider.
+// For Ollama (freeform input), returns the default Ollama model.
+// For other providers, returns the first model in their predefined list.
+func getDefaultModelForProvider(provider string) string {
+	// Check provider info for default model
+	for _, p := range llm.GetAvailableProviders() {
+		if p.ID == provider {
+			return p.DefaultModel
+		}
+	}
+	// Fallback to first model in list (for non-freeform providers)
+	models := llm.GetAvailableModels()
+	if providerModels, ok := models[provider]; ok && len(providerModels) > 0 {
+		return providerModels[0].ID
+	}
+	return ""
 }

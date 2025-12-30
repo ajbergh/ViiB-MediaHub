@@ -139,7 +139,12 @@ func getLLMSettings(a *API) llm.Settings {
 
 // tryLocalGenreMatch attempts to match the prompt against known local genres.
 // Returns matched genre name, songs, and whether a match was found.
+//
+// IMPORTANT: This only matches if the genre has at least 20 songs to ensure
+// a good playlist experience. For small genres, we fall back to LLM blending.
 func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
+	const minSongsForLocalMatch = 20 // Require at least this many songs for direct match
+
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return "", nil, false
@@ -162,14 +167,17 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 				logger.API("Failed to get songs for genre %s: %v", genreName, err)
 				return "", nil, false
 			}
-			if len(songs) > 0 {
+			// Only use direct match if we have enough songs
+			if len(songs) >= minSongsForLocalMatch {
 				// Convert to interface slice for JSON encoding
 				result := make([]any, len(songs))
 				for i, s := range songs {
 					result[i] = s
 				}
+				logger.API("Local genre exact match: '%s' with %d songs (>= %d min)", genreName, len(songs), minSongsForLocalMatch)
 				return genreName, result, true
 			}
+			logger.API("Local genre exact match '%s' has only %d songs (< %d min), falling back to LLM", genreName, len(songs), minSongsForLocalMatch)
 		}
 	}
 
@@ -188,13 +196,16 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 					logger.API("Failed to get songs for genre %s: %v", genreName, err)
 					continue
 				}
-				if len(songs) > 0 {
+				// Only use direct match if we have enough songs
+				if len(songs) >= minSongsForLocalMatch {
 					result := make([]any, len(songs))
 					for i, s := range songs {
 						result[i] = s
 					}
+					logger.API("Local genre partial match: '%s' with %d songs (>= %d min)", genreName, len(songs), minSongsForLocalMatch)
 					return genreName, result, true
 				}
+				logger.API("Local genre partial match '%s' has only %d songs (< %d min), continuing", genreName, len(songs), minSongsForLocalMatch)
 			}
 		}
 		// Or if the prompt is contained in the genre name (e.g., "alternative" matches "90s Alternative")
@@ -204,11 +215,13 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 				logger.API("Failed to get songs for genre %s: %v", genreName, err)
 				continue
 			}
-			if len(songs) > 0 {
+			// Only use direct match if we have enough songs
+			if len(songs) >= minSongsForLocalMatch {
 				result := make([]any, len(songs))
 				for i, s := range songs {
 					result[i] = s
 				}
+				logger.API("Local genre inverse match: '%s' with %d songs (>= %d min)", genreName, len(songs), minSongsForLocalMatch)
 				return genreName, result, true
 			}
 		}
@@ -768,6 +781,31 @@ func getGenreVariations(genre string) []string {
 	return []string{}
 }
 
+// getAvailableGenreNames returns a list of genre names from the user's library,
+// sorted by popularity (most songs first). This is used to help the LLM select
+// genres that actually exist in the user's collection.
+func (a *API) getAvailableGenreNames() []string {
+	stats, err := a.db.GetAllGenreStats()
+	if err != nil {
+		logger.API("Failed to get genre stats for context: %v", err)
+		return nil
+	}
+
+	names := make([]string, len(stats))
+	for i, stat := range stats {
+		names[i] = stat.Name
+	}
+	return names
+}
+
+// truncateSlice returns the first n elements of a slice for logging purposes.
+func truncateSlice(slice []string, n int) []string {
+	if len(slice) <= n {
+		return slice
+	}
+	return slice[:n]
+}
+
 // tryMatchIndexedGenre attempts to find the best indexed genre that matches the LLM filter intent.
 // This bridges the gap between the LLM's generic understanding and the user's actual indexed genres.
 // The originalPrompt is used to boost exact subgenre matches (e.g., "jazz trios" → "Jazz Trio").
@@ -936,10 +974,32 @@ func (a *API) tryMatchMultipleGenres(filter *llm.PlaylistFilter, originalPrompt 
 	// Take top N genres (within 30 points of highest)
 	highestScore := candidates[0].score
 	var topGenres []scoredGenre
+
+	// Determine the score threshold for including genres
+	// Default is within 30 points of the highest score
+	scoreThreshold := 30
+
+	// If the top genre has few songs, widen the threshold to include more genres
+	// This helps blend "Classic Rock" (11 songs) with "60s Rock" (100 songs) etc.
+	if candidates[0].count < 30 {
+		scoreThreshold = 60 // Widen threshold to include more related genres
+		logger.API("Multi-genre: Top genre '%s' has only %d songs, widening threshold to %d points",
+			candidates[0].name, candidates[0].count, scoreThreshold)
+	}
+
 	for _, c := range candidates {
-		if c.score >= highestScore-30 && len(topGenres) < maxGenres {
+		if c.score >= highestScore-scoreThreshold && len(topGenres) < maxGenres {
 			topGenres = append(topGenres, c)
 		}
+	}
+
+	// If we still have only 1 genre with few songs, try to add the next best genre
+	// even if it's further below the threshold
+	if len(topGenres) == 1 && topGenres[0].count < targetSongs && len(candidates) > 1 {
+		// Add the next best genre regardless of score threshold
+		topGenres = append(topGenres, candidates[1])
+		logger.API("Multi-genre: Forced additional genre '%s' (%d songs) to supplement '%s' (%d songs)",
+			candidates[1].name, candidates[1].count, topGenres[0].name, topGenres[0].count)
 	}
 
 	// Only proceed if we have good matches (score >= 55)
@@ -1367,7 +1427,17 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	}
 	defer provider.Close()
 
-	llmFilter, err := provider.ParsePlaylistFilter(r.Context(), promptToUse)
+	// Get available genres from user's library to help LLM select relevant genres
+	availableGenres := a.getAvailableGenreNames()
+	logger.API("AI DJ: Available genres in library: %d total, top 10: %v", len(availableGenres), truncateSlice(availableGenres, 10))
+
+	// Use context-aware parsing if we have local genres, otherwise fall back to generic
+	var llmFilter *llm.PlaylistFilter
+	if len(availableGenres) > 0 {
+		llmFilter, err = provider.ParsePlaylistFilterWithContext(r.Context(), promptToUse, availableGenres)
+	} else {
+		llmFilter, err = provider.ParsePlaylistFilter(r.Context(), promptToUse)
+	}
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to generate filter: %v", err), http.StatusInternalServerError)
 		return
@@ -1376,9 +1446,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	// Use the LLM filter directly (no conversion needed)
 	filter := llmFilter
 
-	// Log what the LLM returned
-	logger.API("LLM filter (%s) for '%s': genres=%v, minYear=%d, maxYear=%d, blendMode=%s",
-		llmSettings.Provider, req.Prompt, filter.Genres, filter.MinYear, filter.MaxYear, req.BlendMode)
+	// Log what the LLM returned with detailed info
+	logger.API("AI DJ Result: prompt='%s' → genres=%v mood=%s energy=%s years=%d-%d blendMode=%s",
+		req.Prompt, filter.Genres, filter.Mood, filter.Energy, filter.MinYear, filter.MaxYear, req.BlendMode)
 
 	// If the LLM didn't extract year information, try to extract it from the prompt
 	if filter.MinYear == 0 && filter.MaxYear == 0 {
@@ -1386,7 +1456,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		if minYear > 0 {
 			filter.MinYear = minYear
 			filter.MaxYear = maxYear
-			logger.API("Extracted decade from prompt: %d-%d", minYear, maxYear)
+			logger.API("AI DJ: Extracted decade from prompt: %d-%d", minYear, maxYear)
 		}
 	}
 

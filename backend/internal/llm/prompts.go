@@ -1,12 +1,13 @@
-// Package llm - System prompts for AI DJ playlist generation
+// Package llm - System prompts for AI DJ and library enrichment
 //
-// This file contains the carefully crafted prompts used to extract
-// structured playlist filters from natural language user requests.
-// The prompts are designed to work well across different LLM providers
-// (Ollama, Gemini, OpenAI, Anthropic, etc.) and produce consistent JSON output.
+// This file contains all AI prompts used throughout ViiB MediaHub.
+// Centralized here for easy maintenance and provider-specific tuning.
+//
+// Prompts are designed to work well across different LLM providers
+// (Ollama, Gemini, OpenAI, Anthropic, etc.) and produce consistent output.
 package llm
 
-// playlistFilterSystemPrompt is the system prompt for generating playlist filters.
+// PlaylistFilterSystemPrompt is the system prompt for generating playlist filters.
 // It instructs the LLM to output structured JSON matching the PlaylistFilter schema.
 //
 // Key design decisions:
@@ -14,7 +15,7 @@ package llm
 //   - Clear rules for inference (mood from descriptions, decade from era mentions)
 //   - Examples of genre mappings for consistent output
 //   - Instruction to output ONLY valid JSON for reliable parsing
-const playlistFilterSystemPrompt = `You are a music expert assistant. Convert the user's natural language playlist request into a structured JSON filter.
+const PlaylistFilterSystemPrompt = `You are a music expert assistant. Convert the user's natural language playlist request into a structured JSON filter.
 
 OUTPUT FORMAT (output ONLY this JSON, no other text):
 {
@@ -62,89 +63,99 @@ OUTPUT RULES:
 - Arrays should use proper JSON array syntax
 - Do not include any text before or after the JSON object`
 
-// GetAvailableModels returns a map of provider to their available models.
-// This is used by the Settings UI to populate model dropdowns.
-func GetAvailableModels() map[string][]ModelInfo {
-	return map[string][]ModelInfo{
-		ProviderOllama: {
-			{ID: "llama3.2:8b", Name: "Llama 3.2 8B", Description: "Fast, good quality (default)"},
-			{ID: "llama3.2:3b", Name: "Llama 3.2 3B", Description: "Fastest, lower quality"},
-			{ID: "llama3.1:8b", Name: "Llama 3.1 8B", Description: "Previous generation"},
-			{ID: "mistral:7b", Name: "Mistral 7B", Description: "Alternative model"},
-			{ID: "gemma2:9b", Name: "Gemma 2 9B", Description: "Google's open model"},
-			{ID: "qwen3:4b", Name: "Qwen 3 4B", Description: "Alibaba's model"},
-			{ID: "deepseek-r1:8b", Name: "DeepSeek R1 8B", Description: "Deepseek's model"},
-		},
-		ProviderGemini: {
-			{ID: "gemini-3-flash-preview", Name: "Gemini 3 Flash Preview", Description: "Latest preview"},
-			{ID: "gemini-2.5-flash-preview-09-2025", Name: "Gemini 2.5 Flash Preview", Description: "2.5 Flash preview"},
-		},
-		ProviderOpenAI: {
-			{ID: "gpt-4o-mini", Name: "GPT-4o Mini", Description: "Fast, cost-effective (default)"},
-			{ID: "gpt-4o", Name: "GPT-4o", Description: "Best quality, higher cost"},
-			{ID: "gpt-4-turbo", Name: "GPT-4 Turbo", Description: "Previous flagship"},
-			{ID: "gpt-3.5-turbo", Name: "GPT-3.5 Turbo", Description: "Legacy, cheapest"},
-		},
-		ProviderAnthropic: {
-			{ID: "claude-3-5-haiku-latest", Name: "Claude 3.5 Haiku", Description: "Fast, cost-effective (default)"},
-			{ID: "claude-3-5-sonnet-latest", Name: "Claude 3.5 Sonnet", Description: "Best quality"},
-			{ID: "claude-3-opus-latest", Name: "Claude 3 Opus", Description: "Most capable"},
-		},
-		ProviderXAI: {
-			{ID: "grok-2", Name: "Grok 2", Description: "Fast, good quality (default)"},
-			{ID: "grok-3", Name: "Grok 3", Description: "Latest model"},
-			{ID: "grok-3-mini", Name: "Grok 3 Mini", Description: "Smaller, faster"},
-		},
-	}
+// PlaylistFilterContextPromptTemplate is an enhanced version of PlaylistFilterSystemPrompt
+// that includes the user's actual available genres from their library.
+// This helps the LLM select genres that actually exist in the user's collection.
+//
+// The template has a %s placeholder for inserting the available genres list.
+// Use fmt.Sprintf(PlaylistFilterContextPromptTemplate, genresList) to create the prompt.
+const PlaylistFilterContextPromptTemplate = `You are a music expert assistant. Convert the user's natural language playlist request into a structured JSON filter.
+
+IMPORTANT: The user's music library contains these genres. PREFER selecting from this list when matching their request:
+%s
+
+OUTPUT FORMAT (output ONLY this JSON, no other text):
+{
+  "genres": ["genre1", "genre2"],
+  "artists": ["artist1"],
+  "minYear": 0,
+  "maxYear": 0,
+  "description": "A short description of the playlist vibe",
+  "mood": "",
+  "energy": "",
+  "tempo": "",
+  "occasion": "",
+  "instrumental": false
 }
 
-// ModelInfo describes a model available for a provider
-type ModelInfo struct {
-	ID          string `json:"id"`          // Model identifier (e.g., "llama3.2:8b")
-	Name        string `json:"name"`        // Display name (e.g., "Llama 3.2 8B")
-	Description string `json:"description"` // Brief description
-}
+FIELD DEFINITIONS:
+- genres: Array of relevant music genres. PREFER genres from the user's library list above. Be specific (e.g., "Jazz Trio", "Synthwave", "Progressive Rock")
+- artists: Specific artists if mentioned by the user, otherwise empty array
+- minYear: Start year if a decade/era is mentioned (e.g., 1990 for "90s"), otherwise 0
+- maxYear: End year if a decade/era is mentioned (e.g., 1999 for "90s"), otherwise 0
+- description: Brief 5-10 word description of the playlist's vibe/theme
+- mood: One of: "happy", "sad", "energetic", "chill", "romantic", "melancholic", "aggressive", "peaceful", "nostalgic", "uplifting" (or empty if not applicable)
+- energy: One of: "low", "medium", "high" (or empty if not applicable)
+- tempo: One of: "slow", "medium", "fast" (or empty if not applicable)
+- occasion: One of: "workout", "study", "party", "relaxation", "driving", "sleep", "focus", "dinner", "morning", "evening" (or empty if not applicable)
+- instrumental: true if user explicitly wants instrumental/no vocals, otherwise false
 
-// ProviderInfo describes an LLM provider
-type ProviderInfo struct {
-	ID           string `json:"id"`           // Provider identifier (e.g., "ollama")
-	Name         string `json:"name"`         // Display name (e.g., "Ollama (Local)")
-	RequiresKey  bool   `json:"requiresKey"`  // Whether API key is required
-	DefaultModel string `json:"defaultModel"` // Default model for this provider
-}
+GENRE SELECTION RULES:
+1. PREFER exact matches from the user's library genres list above
+2. If the request mentions "90s rock", look for genres like "90s Rock", "90s Alternative", "Alternative Rock" in their library
+3. If no exact match exists, return the closest matching genre from their library
+4. Only return genres NOT in their library if absolutely necessary (they won't have songs for it)
+5. Return 1-3 genres maximum, ordered by relevance
 
-// GetAvailableProviders returns information about all supported providers
-func GetAvailableProviders() []ProviderInfo {
-	return []ProviderInfo{
-		{
-			ID:           ProviderOllama,
-			Name:         "Ollama (Local)",
-			RequiresKey:  false,
-			DefaultModel: DefaultOllamaModel,
-		},
-		{
-			ID:           ProviderGemini,
-			Name:         "Google Gemini",
-			RequiresKey:  true,
-			DefaultModel: DefaultGeminiModel,
-		},
-		{
-			ID:           ProviderOpenAI,
-			Name:         "OpenAI",
-			RequiresKey:  true,
-			DefaultModel: DefaultOpenAIModel,
-		},
-		{
-			ID:           ProviderAnthropic,
-			Name:         "Anthropic (Claude)",
-			RequiresKey:  true,
-			DefaultModel: DefaultAnthropicModel,
-		},
-		{
-			ID:           ProviderXAI,
-			Name:         "X.AI (Grok)",
-			RequiresKey:  true,
-			DefaultModel: DefaultXAIModel,
-		},
-	}
-}
+INFERENCE RULES:
+1. Map decade mentions to year ranges: "80s" → 1980-1989, "early 90s" → 1990-1994, "late 2000s" → 2005-2009
+2. Infer mood from adjectives: "upbeat" → mood:"happy" + energy:"high", "chill" → mood:"chill" + energy:"low"
+3. Infer occasion from context: "for running" → occasion:"workout", "to study" → occasion:"study"
+4. Be specific with genres from their library - prefer "90s Alternative" over just "Alternative" if available
+
+OUTPUT RULES:
+- Output ONLY valid JSON, no markdown, no explanation
+- All string values should be properly quoted
+- Arrays should use proper JSON array syntax
+- Do not include any text before or after the JSON object`
+
+// EnrichmentSystemPrompt is the system prompt for TOON-format metadata enrichment.
+// This is optimized for token efficiency while maintaining output quality.
+//
+// TOON (Token-Oriented Object Notation) uses pipe-delimited values:
+// Input:  ID|Artist|Title|Album|Year
+// Output: ID|Genres|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
+//
+// This allows processing up to 200 songs per batch with Gemini,
+// significantly reducing API costs compared to JSON format.
+const EnrichmentSystemPrompt = `You are a music expert with deep knowledge of artists, genres, and music history.
+
+Analyze each song and return ALL metadata in TOON (Token-Oriented Object Notation) format.
+TOON is a compact pipe-delimited format for maximum efficiency.
+
+INPUT FORMAT (provided below):
+ID|Artist|Title|Album|Year
+
+OUTPUT FORMAT (one line per song, no headers):
+ID|Genres|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
+
+FIELD DEFINITIONS:
+- ID: Return the exact ID from input
+- Genres: Semicolon-separated list (e.g., "Rock;Alternative;90s Rock") - most specific first
+- Mood: One of: happy, sad, energetic, calm, melancholic, uplifting, aggressive, romantic, chill, intense, dreamy, nostalgic
+- Energy: One of: high, medium, low
+- Tempo: One of: fast, medium, slow
+- BPM: Estimated beats per minute (integer, 0 if unknown)
+- Instrumental: true/false (true only if no vocals)
+- OriginalYear: Original release year (NOT remaster date). Use your music history knowledge.
+
+ANALYSIS RULES:
+1. GENRES: Use real genres, from specific to broad. Include decade tags when appropriate (e.g., "80s Synthpop"). Try and provide a minimum of 3 genres per song, maximum of 5.
+2. MOOD/ENERGY: Infer from artist's typical style, genre conventions, and title implications.
+3. BPM: Estimate based on genre conventions (e.g., punk ~170, ballads ~70, dance ~128).
+4. ORIGINAL YEAR: If album says "Remastered" or "Deluxe Edition", find the ORIGINAL release date.
+5. INSTRUMENTAL: Most songs have vocals (false). Only true for classical, ambient, or explicitly instrumental.
+
+CRITICAL: Return ONLY the TOON data. No headers, no explanations, no markdown. One song per line.
+
+SONGS TO ANALYZE:`

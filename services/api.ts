@@ -1348,7 +1348,8 @@ export interface LLMProviderInfo {
   name: string;         // e.g., "Ollama (Local)"
   requiresKey: boolean; // Whether an API key is required
   defaultModel: string; // Default model for this provider
-  description: string;  // Brief description of the provider
+  description?: string;  // Brief description of the provider
+  freeformModel: boolean; // Whether user can type any model name (true for Ollama)
 }
 
 /**
@@ -1357,7 +1358,7 @@ export interface LLMProviderInfo {
 export interface LLMModelInfo {
   id: string;       // e.g., "llama3.2:8b", "gpt-4o"
   name: string;     // e.g., "Llama 3.2 8B"
-  provider: string; // Provider this model belongs to
+  description?: string; // Brief description
 }
 
 /**

@@ -234,7 +234,7 @@ func (p *Provider) ParsePlaylistFilter(ctx context.Context, prompt string) (*Pla
 	resp, err := p.client.CreateChatCompletion(ctx, &omnillm.ChatCompletionRequest{
 		Model: p.model,
 		Messages: []omnillm.Message{
-			{Role: omnillm.RoleSystem, Content: playlistFilterSystemPrompt},
+			{Role: omnillm.RoleSystem, Content: PlaylistFilterSystemPrompt},
 			{Role: omnillm.RoleUser, Content: prompt},
 		},
 		Temperature: floatPtr(0.3), // Low temperature for structured output
@@ -262,6 +262,71 @@ func (p *Provider) ParsePlaylistFilter(ctx context.Context, prompt string) (*Pla
 	duration := time.Since(startTime)
 	logger.API("LLM ParsePlaylistFilter: provider=%s model=%s duration=%v genres=%v",
 		p.providerName, p.model, duration, filter.Genres)
+
+	return filter, nil
+}
+
+// ParsePlaylistFilterWithContext converts a natural language prompt into a structured filter,
+// using the user's available genres to guide the LLM toward genres that actually exist in their library.
+// This produces significantly better results than the generic ParsePlaylistFilter.
+//
+// Parameters:
+//   - ctx: Request context for cancellation
+//   - prompt: User's natural language playlist request (e.g., "90s alt rock")
+//   - availableGenres: List of genre names from the user's library (most popular first)
+//
+// The LLM will prefer selecting from availableGenres when possible, falling back to
+// generic genre names only when no match exists.
+func (p *Provider) ParsePlaylistFilterWithContext(ctx context.Context, prompt string, availableGenres []string) (*PlaylistFilter, error) {
+	startTime := time.Now()
+
+	// Format the available genres for the prompt (limit to top 100 to stay within token limits)
+	maxGenres := 100
+	if len(availableGenres) > maxGenres {
+		availableGenres = availableGenres[:maxGenres]
+	}
+	genresList := strings.Join(availableGenres, ", ")
+
+	// Create context-aware system prompt
+	systemPrompt := fmt.Sprintf(PlaylistFilterContextPromptTemplate, genresList)
+
+	// Log the request for debugging
+	logger.API("AI DJ Request: provider=%s model=%s prompt='%s' availableGenres=%d",
+		p.providerName, p.model, prompt, len(availableGenres))
+
+	// Create chat completion request
+	resp, err := p.client.CreateChatCompletion(ctx, &omnillm.ChatCompletionRequest{
+		Model: p.model,
+		Messages: []omnillm.Message{
+			{Role: omnillm.RoleSystem, Content: systemPrompt},
+			{Role: omnillm.RoleUser, Content: prompt},
+		},
+		Temperature: floatPtr(0.3), // Low temperature for structured output
+	})
+	if err != nil {
+		return nil, fmt.Errorf("LLM request failed: %w", err)
+	}
+
+	// Extract response content
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("empty response from LLM")
+	}
+
+	content := resp.Choices[0].Message.Content
+	logger.API("AI DJ Raw LLM Response: %s", truncateString(content, 500))
+
+	// Parse JSON response into PlaylistFilter
+	filter, err := parseFilterFromResponse(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response: %w (content: %s)", err, truncateString(content, 200))
+	}
+
+	// Mark provider source
+	filter.FromProvider = p.providerName
+
+	duration := time.Since(startTime)
+	logger.API("AI DJ Parsed Filter: provider=%s model=%s duration=%v genres=%v mood=%s energy=%s years=%d-%d",
+		p.providerName, p.model, duration, filter.Genres, filter.Mood, filter.Energy, filter.MinYear, filter.MaxYear)
 
 	return filter, nil
 }

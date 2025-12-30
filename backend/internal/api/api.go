@@ -2069,9 +2069,10 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	batchSize := provider.GetOptimalBatchSize()
 	totalBatches := (totalSongs + batchSize - 1) / batchSize
 
-	// Concurrency settings - process up to 3 batches in parallel
-	// This significantly speeds up enrichment while respecting rate limits
-	concurrency := 3
+	// Concurrency settings - adapt based on provider type
+	// Cloud APIs can handle parallel requests, but local Ollama should be single-threaded
+	// to avoid overloading the GPU/CPU and causing timeouts
+	concurrency := provider.GetOptimalConcurrency()
 	if totalBatches < concurrency {
 		concurrency = totalBatches
 	}
@@ -2090,7 +2091,7 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	moodUpdated := 0
 	yearsUpdated := 0
 	completedBatches := 0
-	hasError := false
+	failedBatches := 0 // Track failed batches for reporting
 
 	// Create batch job channel
 	type batchJob struct {
@@ -2103,20 +2104,12 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	// Worker function
 	workerFunc := func(workerID int) {
 		for job := range jobs {
-			// Check if client disconnected or error occurred
+			// Check if client disconnected
 			select {
 			case <-r.Context().Done():
 				return
 			default:
 			}
-
-			mu.Lock()
-			if hasError {
-				mu.Unlock()
-				results <- struct{}{}
-				continue
-			}
-			mu.Unlock()
 
 			logger.API("enrichAllMetadataStream: Worker %d processing batch %d with %d songs", workerID, job.batchNum+1, len(job.songs))
 
@@ -2126,9 +2119,10 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				logger.API("enrichAllMetadataStream: Worker %d batch %d error: %v", workerID, job.batchNum+1, err)
 				mu.Lock()
-				hasError = true
+				failedBatches++
+				completedBatches++ // Count as completed (attempted) even if failed
 				mu.Unlock()
-				// Don't return error to client - other workers might succeed
+				// Continue processing other batches - don't stop everything for one failure
 				results <- struct{}{}
 				continue
 			}
@@ -2257,11 +2251,16 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	close(keepaliveDone)
 	wg.Wait()
 
-	logger.API("enrichAllMetadataStream: Complete - genres=%d, mood=%d, years=%d", genresUpdated, moodUpdated, yearsUpdated)
+	// Build completion message
+	completionMsg := fmt.Sprintf("Enrichment complete! Genres: %d, Mood: %d, Years: %d", genresUpdated, moodUpdated, yearsUpdated)
+	if failedBatches > 0 {
+		completionMsg = fmt.Sprintf("%s (%d batches failed)", completionMsg, failedBatches)
+	}
+	logger.API("enrichAllMetadataStream: Complete - genres=%d, mood=%d, years=%d, failedBatches=%d", genresUpdated, moodUpdated, yearsUpdated, failedBatches)
 
 	sendEvent(EnrichmentProgress{
 		Status:         "complete",
-		Message:        fmt.Sprintf("Enrichment complete! Genres: %d, Mood: %d, Years: %d", genresUpdated, moodUpdated, yearsUpdated),
+		Message:        completionMsg,
 		TotalSongs:     totalSongs,
 		ProcessedSongs: processedSongs,
 		TotalBatches:   totalBatches,

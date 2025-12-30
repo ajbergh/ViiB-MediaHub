@@ -1309,25 +1309,44 @@ export const Settings: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Model Select */}
+                  {/* Model - Text Input for Ollama (freeform), Dropdown for others */}
                   <div>
                     <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
                       Model
                     </label>
-                    <select
-                      value={llmModel}
-                      onChange={(e) => {
-                        setLlmModel(e.target.value);
-                        setLlmSaveStatus('idle');
-                      }}
-                      className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
-                    >
-                      {(llmModels[llmProvider] || []).map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
+                    {llmProviders.find(p => p.id === llmProvider)?.freeformModel ? (
+                      <div>
+                        <TextInput
+                          value={llmModel}
+                          onChange={(e) => {
+                            setLlmModel(e.target.value);
+                            setLlmSaveStatus('idle');
+                          }}
+                          placeholder="e.g., llama3.2:8b, qwen3:4b, mistral:7b"
+                          className="w-full bg-surface-3"
+                        />
+                        <p className="text-xs text-text-subtle mt-1">
+                          Enter the model name as shown in Ollama (run <code className="bg-surface-2 px-1 rounded">ollama list</code> to see installed models).
+                          <br />
+                          <span className="text-text-main">Recommended:</span> llama3.2:8b, qwen3:4b, mistral:7b. Avoid vision models (-vl) for text tasks.
+                        </p>
+                      </div>
+                    ) : (
+                      <select
+                        value={llmModel}
+                        onChange={(e) => {
+                          setLlmModel(e.target.value);
+                          setLlmSaveStatus('idle');
+                        }}
+                        className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
+                      >
+                        {(llmModels[llmProvider] || []).map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 </div>
 

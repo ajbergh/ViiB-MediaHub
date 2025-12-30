@@ -1,8 +1,8 @@
 # AI DJ Technical Deep Dive
 
-> **Purpose:** Comprehensive technical documentation of the AI DJ feature, including architecture, algorithms, Gemini integration, and known shortcomings.
+> **Purpose:** Comprehensive technical documentation of the AI DJ feature, including architecture, algorithms, LLM integration, and known shortcomings.
 >
-> **Last Updated:** 2025-12-29
+> **Last Updated:** 2025-12-30
 >
 > **Audience:** Developers working on or extending the AI DJ feature
 
@@ -11,8 +11,8 @@
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Three-Tier Matching System](#three-tier-matching-system)
-3. [Gemini AI Integration](#gemini-ai-integration)
+2. [Four-Tier Matching System](#four-tier-matching-system)
+3. [LLM Provider Integration](#llm-provider-integration)
 4. [Genre Scoring Algorithm](#genre-scoring-algorithm)
 5. [Multi-Genre Blending](#multi-genre-blending)
 6. [Mood & Energy Analysis](#mood--energy-analysis)
@@ -31,8 +31,10 @@
 
 | File | Purpose |
 |------|---------|
-| `backend/internal/api/smart_playlist.go` | Main handler (1125 lines), matching tiers, scoring |
-| `backend/internal/gemini/gemini.go` | Gemini API client (565 lines), filter generation, mood analysis |
+| `backend/internal/api/smart_playlist.go` | Main handler (~1500 lines), matching tiers, scoring |
+| `backend/internal/llm/provider.go` | LLM provider abstraction (omnillm), filter generation |
+| `backend/internal/llm/prompts.go` | System prompts for playlist filtering and enrichment |
+| `backend/internal/llm/models.go` | Provider and model configuration |
 | `backend/internal/db/db.go` | Database queries for songs, genres, play history, mood fields |
 | `pages/SmartPlaylists.tsx` | Frontend UI for AI DJ prompt input and results |
 | `services/api.ts` | TypeScript API client, interface definitions |
@@ -50,9 +52,10 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │  handleGenerateSmartPlaylist()                                       │
 │  ├─ Tier 0: tryArtistBasedMatch()                                    │
-│  ├─ Tier 1: tryLocalGenreMatch()                                     │
-│  ├─ Tier 2: gemini.GeneratePlaylistFilter() + tryMatchIndexedGenre() │
-│  └─ Tier 3: Direct database query with Gemini filter                 │
+│  ├─ Tier 1: tryLocalGenreMatch() [min 20 songs required]             │
+│  ├─ Tier 2: tryMoodBasedMatch() [mood keywords direct match]         │
+│  ├─ Tier 3: LLM + tryMatchIndexedGenre() [context-aware prompts]     │
+│  └─ Tier 4: Direct database query with LLM filter                    │
 └───────────────────────────────────┬──────────────────────────────────┘
                                     │
                                     ▼
@@ -101,7 +104,7 @@ type MatchedGenre struct {
 
 ---
 
-## Three-Tier Matching System
+## Four-Tier Matching System
 
 ### Tier 0: Artist-Based Matching
 
@@ -136,17 +139,28 @@ type MatchedGenre struct {
 
 **Function:** `tryLocalGenreMatch(prompt string)`
 
+**✅ Updated (2025-12-30):** Now requires a minimum of 20 songs for direct match.
+
 **Algorithm:**
 1. Normalize prompt: lowercase, trim whitespace
 2. Check exact match against all indexed genre names
 3. If no exact match, check partial matches:
    - Genre name must be ≥60% of prompt length (prevents "rock" matching everything)
    - Prompt must contain genre name as substring
+4. **NEW:** Only return match if genre has ≥20 songs (otherwise fall back to LLM blending)
+
+**Minimum Song Threshold:**
+| Genre Songs | Behavior |
+|-------------|----------|
+| ≥20 songs | Direct match returned |
+| <20 songs | Falls back to LLM for multi-genre blending |
+
+This ensures users get diverse playlists even for sparse genres. For example, "Classic Rock" with only 11 songs will trigger LLM blending with "60s Rock", "70s Rock", etc.
 
 **Examples:**
 | Prompt | Match | Reason |
 |--------|-------|--------|
-| "90s Alternative" | Yes (exact) | Direct genre name match |
+| "90s Alternative" | Yes (exact) | Direct genre name match (if ≥20 songs) |
 | "Give me some 90s Alternative" | Yes (partial) | Contains genre, genre is 60%+ of relevant part |
 | "Rock" | Yes (exact) | If "Rock" is an indexed genre |
 | "Something with drums" | No | No genre contains "drums" |
@@ -205,45 +219,92 @@ type MatchedGenre struct {
 - Limited to predefined keyword list (extensible)
 - Doesn't combine mood + genre (e.g., "chill rock" not fully supported yet)
 
-### Tier 2: Gemini AI + Smart Indexed Matching
+### Tier 2: LLM AI + Smart Indexed Matching
 
 **Functions:** 
-- `gemini.GeneratePlaylistFilter(prompt)` → AI parses prompt
+- `llm.NewProvider(settings)` → Creates LLM client for configured provider
+- `provider.ParsePlaylistFilterWithContext(prompt, availableGenres)` → AI parses prompt with library context
 - `tryMatchIndexedGenre(filter)` → Scores indexed genres against AI intent
 
-**Gemini Prompt Template:**
+**✅ Updated (2025-12-30):** Now uses multi-provider LLM abstraction (omnillm SDK) and context-aware prompts.
+
+### Supported Providers
+
+| Provider | Model Examples | API Key Required |
+|----------|---------------|------------------|
+| **Ollama** (local) | llama3.2:8b, qwen3:4b, mistral:7b | No |
+| **Gemini** | gemini-2.0-flash, gemini-1.5-pro | Yes |
+| **OpenAI** | gpt-4o-mini, gpt-4o | Yes |
+| **Anthropic** | claude-sonnet-4-20250514, claude-3-5-haiku | Yes |
+| **X.AI** | grok-4, grok-3 | Yes |
+
+### Context-Aware Prompts ✨ NEW (2025-12-30)
+
+The LLM now receives the user's available genres from their library, helping it select genres that actually exist:
+
+```go
+// Get available genres sorted by song count (most popular first)
+availableGenres := a.getAvailableGenreNames()
+
+// Create context-aware prompt with user's genres
+llmFilter, err = provider.ParsePlaylistFilterWithContext(ctx, prompt, availableGenres)
 ```
-You are a music expert. Convert the user's natural language 
+
+**Before (generic prompt):**
+```
+You are a music expert. Convert the user's playlist request into JSON.
+// LLM returns: {"genres": ["Alt-Rock", "90s Alternative Rock"]}
+// Problem: Neither genre exists in user's library
+```
+
+**After (context-aware prompt):**
+```
+You are a music expert. The user's library contains these genres:
+Hip-Hop, Rock, Pop, Alternative, Jazz, 90s Alternative, Classic Rock, ...
+
+Convert the user's playlist request into JSON.
+PREFER selecting from the user's library genres list.
+// LLM returns: {"genres": ["90s Alternative", "Alternative"]}
+// Success: Both genres exist in user's library
+```
+
+### LLM Prompt Template
+
+```
+You are a music expert assistant. Convert the user's natural language 
 playlist request into a structured JSON filter.
 
-OUTPUT FORMAT:
+IMPORTANT: The user's music library contains these genres. 
+PREFER selecting from this list when matching their request:
+[genre1, genre2, genre3, ...]
+
+OUTPUT FORMAT (output ONLY this JSON, no other text):
 {
     "genres": ["genre1", "genre2"],
     "artists": ["artist1"],
-    "minYear": 1980,
-    "maxYear": 1989,
+    "minYear": 0,
+    "maxYear": 0,
     "description": "A short description of the playlist vibe",
-    "mood": "energetic",    // happy, sad, energetic, chill, etc.
-    "energy": "high",       // low, medium, high
-    "tempo": "fast",        // slow, medium, fast
-    "occasion": "workout",  // workout, study, party, etc.
+    "mood": "",       // happy, sad, energetic, chill, etc.
+    "energy": "",     // low, medium, high
+    "tempo": "",      // slow, medium, fast
+    "occasion": "",   // workout, study, party, etc.
     "instrumental": false
 }
 
-RULES:
-- If no specific era is mentioned, set minYear and maxYear to 0.
-- Infer genres AND mood/energy from descriptions.
-- Return ONLY valid JSON. No markdown.
-
-User Request: {prompt}
+GENRE SELECTION RULES:
+1. PREFER exact matches from the user's library genres list
+2. If the request mentions "90s rock", look for "90s Rock", "90s Alternative"
+3. If no exact match, return the closest matching genre from their library
+4. Return 1-3 genres maximum, ordered by relevance
 ```
 
 **Smart Indexed Matching Process:**
-1. Gemini returns structured filter
+1. LLM returns structured filter (genres already aligned with user's library)
 2. For each indexed genre, calculate matching score (0-100)
 3. Two-pass selection:
    - Pass 1: Find highest scoring genre
-   - Pass 2: Among genres within 30 points of highest, prefer most songs
+   - Pass 2: Among genres within threshold of highest, prefer most songs
 4. Accept if best score ≥ 55
 
 ### Tier 3: Direct Database Query
@@ -359,25 +420,54 @@ var variations = map[string][]string{
 
 **When Used:** `blendMode: "mixed"` option selected by user
 
-**✅ Updated (2025-12-29):** Now accepts original prompt for subgenre matching and uses mood/energy/tempo filtering.
+**✅ Updated (2025-12-30):** Now dynamically widens score threshold for sparse genres.
 
 **Algorithm:**
-1. Score all indexed genres against Gemini filter **and original prompt**
+1. Score all indexed genres against LLM filter **and original prompt**
 2. Sort by score descending, then by song count
-3. Take top N genres (default: 3) within 30 points of highest
+3. **Determine threshold dynamically:**
+   - Default: Take genres within 30 points of highest
+   - **If top genre has <30 songs:** Widen threshold to 60 points
+   - **If still only 1 genre with insufficient songs:** Force-add next best genre
 4. Calculate proportional song distribution based on scores:
    ```go
    proportion := float64(genreScore) / float64(totalScores)
    songsFromGenre := int(proportion * float64(targetSongs))
    ```
-5. **Query songs with mood/energy/tempo filtering** (from Gemini's parsed filter)
+5. **Query songs with mood/energy/tempo filtering** (from LLM's parsed filter)
 6. Fall back to genre-only query if mood filter returns too few songs
 7. Shuffle songs from each genre (Fisher-Yates random)
 8. Combine and shuffle final playlist
 
-### Mood/Energy/Tempo Filtering ✨ NEW (2025-12-29)
+### Dynamic Threshold for Sparse Genres ✨ NEW (2025-12-30)
 
-When Gemini extracts mood/energy/tempo from the prompt (e.g., "upbeat" → `energy: "high"`), these are now applied to the song query:
+When the top-scoring genre has few songs, the algorithm automatically widens its selection:
+
+| Top Genre Songs | Score Threshold | Behavior |
+|-----------------|-----------------|----------|
+| ≥30 songs | 30 points | Normal: only include closely-scored genres |
+| <30 songs | 60 points | Widened: include more related genres |
+| 1 genre, <target songs | N/A | Force-add next best genre regardless of score |
+
+**Example: "upbeat classic rock"**
+
+**Before (fixed 30-point threshold):**
+- Classic Rock: 130 points, 11 songs → **ONLY SELECTION**
+- Rock: 80 points (outside 30-point threshold)
+- 60s Rock: 70 points (outside threshold)
+- Result: Only 11 songs returned ❌
+
+**After (dynamic threshold):**
+- Classic Rock: 130 points, 11 songs (top, but <30 songs)
+- Threshold widened to 60 points
+- Rock: 80 points (within 60-point threshold) ✅
+- 60s Rock: 70 points (within threshold) ✅
+- 70s Rock: 70 points (within threshold) ✅
+- Result: 3 genres blended, 50+ songs returned ✅
+
+### Mood/Energy/Tempo Filtering (2025-12-29)
+
+When the LLM extracts mood/energy/tempo from the prompt (e.g., "upbeat" → `energy: "high"`), these are now applied to the song query:
 
 ```go
 // Uses new function that combines genre + mood filtering
@@ -401,6 +491,69 @@ songs, err = a.db.GetSongsByExactGenreWithMood(
   - 90s Alternative: 90/230 × 50 ≈ 20 songs
   - Grunge: 75/230 × 50 ≈ 16 songs
   - Indie Rock: 65/230 × 50 ≈ 14 songs
+
+---
+
+## LLM Provider Integration
+
+### Provider Architecture
+
+The AI DJ uses the `omnillm` SDK to abstract across multiple LLM providers. This allows users to choose their preferred provider in Settings.
+
+```go
+// backend/internal/llm/provider.go
+type Provider struct {
+    client       *omnillm.Client
+    model        string
+    providerName string
+}
+
+// Create provider from user settings
+provider, err := llm.NewProvider(llmSettings)
+defer provider.Close()
+
+// Parse playlist request with context
+filter, err := provider.ParsePlaylistFilterWithContext(ctx, prompt, availableGenres)
+```
+
+### Configuration
+
+Users configure their LLM provider in Settings:
+
+| Setting | Description |
+|---------|-------------|
+| `llm_provider` | Provider name: "ollama", "gemini", "openai", "anthropic", "xai" |
+| `llm_model` | Model identifier (e.g., "llama3.2:8b", "gpt-4o-mini") |
+| `llm_api_key` | API key (not required for Ollama) |
+| `ollama_endpoint` | Ollama server URL (default: http://localhost:11434) |
+
+### Concurrency Management
+
+Different providers have different concurrency limits:
+
+| Provider | Optimal Concurrency | Reason |
+|----------|---------------------|--------|
+| Ollama | 1 | Single GPU, requests queue |
+| Cloud APIs | 3 | Rate limits allow parallel |
+
+```go
+func (p *Provider) GetOptimalConcurrency() int {
+    if p.providerName == ProviderOllama {
+        return 1 // Ollama queues on single GPU
+    }
+    return 3 // Cloud APIs handle concurrency
+}
+```
+
+### Prompts
+
+All AI prompts are centralized in `backend/internal/llm/prompts.go`:
+
+| Prompt | Purpose |
+|--------|---------|
+| `PlaylistFilterSystemPrompt` | Basic playlist parsing (no context) |
+| `PlaylistFilterContextPromptTemplate` | Context-aware parsing with user's genres |
+| `EnrichmentSystemPrompt` | TOON-format metadata enrichment |
 
 ---
 
@@ -538,7 +691,7 @@ func applyPlayHistoryFilters(songs []any, recentlyPlayedIDs map[string]bool,
 
 **Function:** `enhancePromptWithTimeContext(prompt string, useTimeContext bool)`
 
-When `useTimeContext: true`, the system adds time-of-day hints to the Gemini prompt.
+When `useTimeContext: true`, the system adds time-of-day hints to the LLM prompt.
 
 ### Time Periods
 
@@ -656,11 +809,14 @@ Songs are NOT cached because:
 
 **Workaround:** Could integrate Spotify preview API for discovery, but currently out of scope.
 
-### 7. Gemini Rate Limits
+### 7. API Rate Limits
 
-**Issue:** Free tier has limits. Heavy usage may hit 429 errors.
+**Issue:** Cloud LLM providers have rate limits. Heavy usage may hit 429 errors.
 
-**Mitigation:** Retry logic with exponential backoff, 15-minute filter cache.
+**Mitigation:** 
+- Retry logic with exponential backoff
+- 15-minute filter cache
+- Use Ollama (local) for unlimited requests with no rate limiting
 
 ### 8. Single-Language Support
 
@@ -832,9 +988,11 @@ The `useAudioPlayer.ts` hook now tracks listening events:
 
 ### Long-Term
 
-7. **Local LLM Option**
-   - Allow users to run local models (Ollama, LLaMA) instead of Gemini
-   - Privacy-focused alternative
+7. ~~**Local LLM Option**~~ ✅ DONE (2025-12-30)
+   - ~~Allow users to run local models (Ollama, LLaMA) instead of Gemini~~
+   - Implemented via omnillm SDK with Ollama as default provider
+   - Users can configure in Settings → AI Provider
+   - See [LLM Provider Integration](#llm-provider-integration)
 
 8. **Playlist "Evolution"**
    - Continuous DJ mode that adapts based on what's playing
@@ -866,11 +1024,15 @@ The `useAudioPlayer.ts` hook now tracks listening events:
 
 ## Summary
 
-The AI DJ is a sophisticated three-tier matching system that balances speed (local matching) with intelligence (Gemini AI). It now includes:
+The AI DJ is a sophisticated four-tier matching system that balances speed (local matching) with intelligence (multi-provider LLM support). Key features include:
 
-- **Subgenre phrase matching** (2025-12-29): User prompt phrases like "jazz trios" correctly match indexed genres like "Jazz Trio" even when Gemini simplifies them.
+- **Multi-provider LLM support** (2025-12-30): Ollama (local), Gemini, OpenAI, Anthropic, and X.AI all supported via omnillm SDK. Ollama is the default for privacy-focused local processing.
+- **Context-aware prompts** (2025-12-30): LLM receives the user's available genres, helping it select genres that actually exist in their library.
+- **Dynamic genre blending** (2025-12-30): For sparse genres (<30 songs), the system automatically widens its selection threshold to include more related genres.
+- **Minimum song threshold** (2025-12-30): Local matching requires ≥20 songs to ensure diverse playlists.
+- **Subgenre phrase matching** (2025-12-29): User prompt phrases like "jazz trios" correctly match indexed genres like "Jazz Trio" even when the LLM simplifies them.
 - **Mood/energy/tempo filtering** (2025-12-29): Prompts like "upbeat" now filter songs by energy level, using the mood analysis data already stored in the database.
 - **Preference learning** (2025-01-13): User listening behavior (skips, completions) is tracked to enable future personalization.
 - **True random shuffling** (2025-01-13): Fisher-Yates algorithm with time-based seeding ensures varied results.
 
-The architecture is extensible and most major gaps have been addressed. Remaining improvements focus on advanced features like audio-based BPM detection, cross-artist embeddings, and local LLM options.
+The architecture is extensible and most major gaps have been addressed. Remaining improvements focus on advanced features like audio-based BPM detection and cross-artist embeddings.

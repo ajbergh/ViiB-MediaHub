@@ -775,25 +775,42 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
               )}
             </div>
 
-            {/* Model Selection */}
+            {/* Model Selection - Text Input for Ollama (freeform), Dropdown for others */}
             <div>
               <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
                 Model
               </label>
-              <select
-                value={llmModel}
-                onChange={(e) => {
-                  setLlmModel(e.target.value);
-                  setLlmTestStatus('idle');
-                }}
-                className="w-full px-4 py-3 rounded-lg bg-surface-2 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
-              >
-                {(llmModels[llmProvider] || []).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
+              {llmProviders.find(p => p.id === llmProvider)?.freeformModel ? (
+                <div>
+                  <TextInput
+                    value={llmModel}
+                    onChange={(e) => {
+                      setLlmModel(e.target.value);
+                      setLlmTestStatus('idle');
+                    }}
+                    placeholder="e.g., llama3.2:8b, qwen3:4b, mistral:7b"
+                    className="w-full bg-surface-2 px-4 py-3"
+                  />
+                  <p className="text-xs text-text-subtle mt-1">
+                    Enter the model name as shown in Ollama (run <code className="bg-surface-1 px-1 rounded">ollama list</code> to see installed models)
+                  </p>
+                </div>
+              ) : (
+                <select
+                  value={llmModel}
+                  onChange={(e) => {
+                    setLlmModel(e.target.value);
+                    setLlmTestStatus('idle');
+                  }}
+                  className="w-full px-4 py-3 rounded-lg bg-surface-2 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
+                >
+                  {(llmModels[llmProvider] || []).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* API Key - only show for cloud providers */}

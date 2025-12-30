@@ -67,40 +67,6 @@ type OriginalYearAnalysis struct {
 	Confident    bool `json:"confident"`     // true if AI is confident in the year
 }
 
-// enrichmentSystemPrompt is the system prompt for TOON-format metadata enrichment.
-// This is optimized for token efficiency while maintaining output quality.
-const enrichmentSystemPrompt = `You are a music expert with deep knowledge of artists, genres, and music history.
-
-Analyze each song and return ALL metadata in TOON (Token-Oriented Object Notation) format.
-TOON is a compact pipe-delimited format for maximum efficiency.
-
-INPUT FORMAT (provided below):
-ID|Artist|Title|Album|Year
-
-OUTPUT FORMAT (one line per song, no headers):
-ID|Genres|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
-
-FIELD DEFINITIONS:
-- ID: Return the exact ID from input
-- Genres: Semicolon-separated list (e.g., "Rock;Alternative;90s Rock") - most specific first
-- Mood: One of: happy, sad, energetic, calm, melancholic, uplifting, aggressive, romantic, chill, intense, dreamy, nostalgic
-- Energy: One of: high, medium, low
-- Tempo: One of: fast, medium, slow
-- BPM: Estimated beats per minute (integer, 0 if unknown)
-- Instrumental: true/false (true only if no vocals)
-- OriginalYear: Original release year (NOT remaster date). Use your music history knowledge.
-
-ANALYSIS RULES:
-1. GENRES: Use real genres, from specific to broad. Include decade tags when appropriate (e.g., "80s Synthpop").
-2. MOOD/ENERGY: Infer from artist's typical style, genre conventions, and title implications.
-3. BPM: Estimate based on genre conventions (e.g., punk ~170, ballads ~70, dance ~128).
-4. ORIGINAL YEAR: If album says "Remastered" or "Deluxe Edition", find the ORIGINAL release date.
-5. INSTRUMENTAL: Most songs have vocals (false). Only true for classical, ambient, or explicitly instrumental.
-
-CRITICAL: Return ONLY the TOON data. No headers, no explanations, no markdown. One song per line.
-
-SONGS TO ANALYZE:`
-
 // GetOptimalBatchSize returns the recommended batch size for enrichment based on provider.
 // Different providers have different context window sizes and token limits.
 func (p *Provider) GetOptimalBatchSize() int {
@@ -118,6 +84,22 @@ func (p *Provider) GetOptimalBatchSize() int {
 		return 100 // Similar to OpenAI
 	default:
 		return 50 // Conservative default
+	}
+}
+
+// GetOptimalConcurrency returns the recommended number of concurrent API calls.
+// Cloud APIs can handle parallel requests, but local models should process sequentially
+// to avoid GPU memory contention and request timeouts.
+func (p *Provider) GetOptimalConcurrency() int {
+	switch p.providerName {
+	case ProviderGemini, ProviderOpenAI, ProviderAnthropic, ProviderXAI:
+		return 3 // Cloud APIs handle parallel requests well
+	case ProviderOllama:
+		// Ollama typically runs on a single GPU and can only process one request at a time
+		// Running multiple concurrent requests causes queueing and timeouts
+		return 1
+	default:
+		return 1 // Conservative default for unknown providers
 	}
 }
 
@@ -188,7 +170,7 @@ func (p *Provider) EnrichAllMetadata(ctx context.Context, songs []db.Song) (map[
 
 	// Build prompt with TOON-formatted song list
 	var promptBuilder strings.Builder
-	promptBuilder.WriteString(enrichmentSystemPrompt)
+	promptBuilder.WriteString(EnrichmentSystemPrompt)
 	promptBuilder.WriteString("\n")
 
 	for _, song := range songs {
@@ -436,7 +418,8 @@ func isRateLimitError(err error) bool {
 }
 
 // parseTOONLine parses a single line of TOON (Token-Oriented Object Notation) format.
-// Format: ID|Genre1;Genre2;Genre3|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
+// Format: ID|Genre1;Genre2;Genre3|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear (8 fields)
+// Also handles 7-field format when LLM skips Tempo: ID|Genres|Mood|Energy|BPM|Instrumental|OriginalYear
 // Example: abc123|Rock;Alternative;90s Rock|energetic|high|fast|140|false|1994
 func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error) {
 	line = strings.TrimSpace(line)
@@ -445,8 +428,10 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 	}
 
 	parts := strings.Split(line, "|")
-	if len(parts) < 8 {
-		return "", nil, fmt.Errorf("invalid TOON format: expected 8 fields, got %d", len(parts))
+
+	// Handle both 7-field (LLM skipped Tempo) and 8-field formats
+	if len(parts) < 7 {
+		return "", nil, fmt.Errorf("invalid TOON format: expected at least 7 fields, got %d", len(parts))
 	}
 
 	id = strings.TrimSpace(parts[0])
@@ -479,29 +464,62 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 		metadata.Energy = "medium"
 	}
 
-	// Parse tempo
-	metadata.Tempo = strings.TrimSpace(parts[4])
-	if metadata.Tempo == "" {
-		metadata.Tempo = "medium"
+	// Determine if this is 7-field or 8-field format by checking if parts[4] is a tempo word or a number
+	is8FieldFormat := len(parts) >= 8
+	tempoIdx, bpmIdx, instrIdx, yearIdx := 4, 5, 6, 7
+
+	if !is8FieldFormat {
+		// 7-field format: LLM skipped Tempo, parts[4] is BPM
+		// Try to detect by checking if parts[4] looks like a number (BPM) or tempo word
+		potentialTempo := strings.ToLower(strings.TrimSpace(parts[4]))
+		if potentialTempo != "slow" && potentialTempo != "medium" && potentialTempo != "fast" {
+			// It's a number (BPM), so LLM skipped Tempo
+			bpmIdx = 4
+			instrIdx = 5
+			yearIdx = 6
+			metadata.Tempo = "medium" // Default tempo when skipped
+		}
+	}
+
+	// Parse tempo (only if 8-field format or it was actually a tempo word)
+	if len(parts) >= 8 || (len(parts) == 7 && bpmIdx == 5) {
+		metadata.Tempo = strings.TrimSpace(parts[tempoIdx])
+		if metadata.Tempo == "" {
+			metadata.Tempo = "medium"
+		}
 	}
 
 	// Parse BPM (integer)
-	bpmStr := strings.TrimSpace(parts[5])
-	if bpmStr != "" && bpmStr != "0" {
-		if bpm, parseErr := strconv.Atoi(bpmStr); parseErr == nil {
-			metadata.BPM = bpm
+	if bpmIdx < len(parts) {
+		bpmStr := strings.TrimSpace(parts[bpmIdx])
+		if bpmStr != "" && bpmStr != "0" {
+			if bpm, parseErr := strconv.Atoi(bpmStr); parseErr == nil {
+				metadata.BPM = bpm
+				// Infer tempo from BPM if we defaulted earlier
+				if metadata.Tempo == "medium" && bpmIdx == 4 {
+					if bpm >= 140 {
+						metadata.Tempo = "fast"
+					} else if bpm <= 80 {
+						metadata.Tempo = "slow"
+					}
+				}
+			}
 		}
 	}
 
 	// Parse instrumental (boolean)
-	instrStr := strings.ToLower(strings.TrimSpace(parts[6]))
-	metadata.Instrumental = instrStr == "true" || instrStr == "1" || instrStr == "yes"
+	if instrIdx < len(parts) {
+		instrStr := strings.ToLower(strings.TrimSpace(parts[instrIdx]))
+		metadata.Instrumental = instrStr == "true" || instrStr == "1" || instrStr == "yes"
+	}
 
 	// Parse original year (integer)
-	yearStr := strings.TrimSpace(parts[7])
-	if yearStr != "" && yearStr != "0" {
-		if year, parseErr := strconv.Atoi(yearStr); parseErr == nil {
-			metadata.OriginalYear = year
+	if yearIdx < len(parts) {
+		yearStr := strings.TrimSpace(parts[yearIdx])
+		if yearStr != "" && yearStr != "0" {
+			if year, parseErr := strconv.Atoi(yearStr); parseErr == nil {
+				metadata.OriginalYear = year
+			}
 		}
 	}
 
