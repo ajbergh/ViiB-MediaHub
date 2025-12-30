@@ -11,7 +11,7 @@
  * 
  * Features:
  * - Natural language prompt input (e.g., "90s alternative rock", "chill evening vibes")
- * - Blend Mode toggle: Single Genre vs Multi-Genre Mix
+ * - Multi-Genre Mix: AI DJ always creates cross-genre blends based on user input
  * - Discovery Mode: Balanced, Discover New, or Favorites
  * - Avoid Recently Played: Configurable time window (1h to 1 week)
  * - One Per Artist: Ensures variety by limiting artist repetition
@@ -26,9 +26,9 @@
  * filterable song list, and save-to-playlist functionality.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useStore } from '../store';
-import { Sparkles, Play, Save, RefreshCw, Music, Zap, Heart, Clock, Shuffle, Target, User, Eye, EyeOff, ChevronDown, ChevronUp, Compass, Sun } from 'lucide-react';
+import { Sparkles, Play, Save, RefreshCw, Music, Zap, Heart, Clock, Shuffle, User, Eye, EyeOff, ChevronDown, ChevronUp, Compass, Sun } from 'lucide-react';
 import { Song } from '../types';
 import { api, MatchedGenre, SmartPlaylistFilter } from '../services/api';
 import { apiSongToSong } from '../services/backendService';
@@ -38,40 +38,51 @@ import { Chip } from '../components/ui/Chip';
 import { TextInput } from '../components/ui/TextInput';
 
 export const SmartPlaylists: React.FC = () => {
-  const { playSong, showToast, createPlaylist } = useStore();
-  const [prompt, setPrompt] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [generatedSongs, setGeneratedSongs] = useState<Song[]>([]);
-  const [filter, setFilter] = useState<SmartPlaylistFilter | null>(null);
-  const [blendMode, setBlendMode] = useState<'single' | 'mixed'>('single');
-  
-  // Play history preferences
-  const [discoverMode, setDiscoverMode] = useState<'balanced' | 'discover' | 'favorites'>('balanced');
-  const [avoidRecentlyHours, setAvoidRecentlyHours] = useState(0);
-  const [onePerArtist, setOnePerArtist] = useState(false);
-  const [useTimeContext, setUseTimeContext] = useState(false);
+  const { 
+    playSong, 
+    showToast, 
+    createPlaylist,
+    // AI DJ state
+    aiDjPrompt,
+    aiDjGeneratedSongs,
+    aiDjFilter,
+    aiDjIsLoading,
+    aiDjDiscoverMode,
+    aiDjAvoidRecentlyHours,
+    aiDjOnePerArtist,
+    aiDjUseTimeContext,
+    // AI DJ actions
+    setAIDJPrompt,
+    setAIDJGeneratedSongs,
+    setAIDJFilter,
+    setAIDJIsLoading,
+    setAIDJDiscoverMode,
+    setAIDJAvoidRecentlyHours,
+    setAIDJOnePerArtist,
+    setAIDJUseTimeContext,
+  } = useStore();
 
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    if (!aiDjPrompt.trim()) return;
 
-    setIsLoading(true);
-    setGeneratedSongs([]);
-    setFilter(null);
+    setAIDJIsLoading(true);
+    setAIDJGeneratedSongs([]);
+    setAIDJFilter(null);
 
     try {
-      const result = await api.generateSmartPlaylist(prompt, { 
-        blendMode, 
+      const result = await api.generateSmartPlaylist(aiDjPrompt, { 
+        blendMode: 'mixed',
         targetSongs: 50,
-        discoverMode,
-        avoidRecentlyHours,
-        onePerArtist,
-        useTimeContext,
+        discoverMode: aiDjDiscoverMode,
+        avoidRecentlyHours: aiDjAvoidRecentlyHours,
+        onePerArtist: aiDjOnePerArtist,
+        useTimeContext: aiDjUseTimeContext,
       });
       const apiSongs = result.songs || [];
       // Convert ApiSong[] to Song[] so they have the correct url field for playback
       const songs = apiSongs.map(apiSongToSong);
-      setGeneratedSongs(songs);
-      setFilter(result.filter || null);
+      setAIDJGeneratedSongs(songs);
+      setAIDJFilter(result.filter || null);
       
       if (songs.length === 0) {
         showToast({ type: 'error', message: 'No songs found matching your request.' });
@@ -80,23 +91,23 @@ export const SmartPlaylists: React.FC = () => {
       console.error('Failed to generate playlist:', error);
       showToast({ type: 'error', message: 'Failed to generate playlist. Please try again.' });
     } finally {
-      setIsLoading(false);
+      setAIDJIsLoading(false);
     }
   };
 
   const handlePlay = () => {
-    if (generatedSongs.length > 0) {
-      playSong(generatedSongs[0], generatedSongs);
+    if (aiDjGeneratedSongs.length > 0) {
+      playSong(aiDjGeneratedSongs[0], aiDjGeneratedSongs);
     }
   };
 
   const handleSave = async () => {
-    if (generatedSongs.length === 0 || !filter) return;
+    if (aiDjGeneratedSongs.length === 0 || !aiDjFilter) return;
     
     try {
-      const name = filter.description || prompt;
+      const name = aiDjFilter.description || aiDjPrompt;
       // Use store's createPlaylist to update both backend and frontend state
-      await createPlaylist(name, generatedSongs.map(s => s.id));
+      await createPlaylist(name, aiDjGeneratedSongs.map(s => s.id));
       showToast({ type: 'success', message: `Playlist "${name}" saved!` });
     } catch (error) {
       console.error('Failed to save playlist:', error);
@@ -121,47 +132,21 @@ export const SmartPlaylists: React.FC = () => {
           <TextInput
             type="text"
             placeholder="e.g., 'Upbeat 80s pop songs for a workout' or 'Chill jazz for studying'"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            value={aiDjPrompt}
+            onChange={(e) => setAIDJPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
             className="flex-1 rounded-xl px-6 py-4 ring-1 ring-surface-highlight"
           />
           <Button
             onClick={handleGenerate}
-            disabled={isLoading || !prompt.trim()}
+            disabled={aiDjIsLoading || !aiDjPrompt.trim()}
             variant="primary"
             accent="brand"
-            leftIcon={isLoading ? <RefreshCw className="animate-spin" /> : <Sparkles />}
+            leftIcon={aiDjIsLoading ? <RefreshCw className="animate-spin" /> : <Sparkles />}
             className="px-8 py-4 rounded-xl text-body font-semibold"
           >
             Generate
           </Button>
-        </div>
-
-        {/* Blend Mode Toggle */}
-        <div className="flex gap-4 mt-4">
-          <Chip
-            selected={blendMode === 'single'}
-            accent="brand"
-            onClick={() => setBlendMode('single')}
-            className="rounded-lg px-4 py-2 text-meta font-medium"
-          >
-            <span className="inline-flex items-center gap-2">
-              <Target size={16} />
-              Single Genre
-            </span>
-          </Chip>
-          <Chip
-            selected={blendMode === 'mixed'}
-            accent="brand"
-            onClick={() => setBlendMode('mixed')}
-            className="rounded-lg px-4 py-2 text-meta font-medium"
-          >
-            <span className="inline-flex items-center gap-2">
-              <Shuffle size={16} />
-              Multi-Genre Mix
-            </span>
-          </Chip>
         </div>
 
         {/* Discovery Mode */}
@@ -172,25 +157,25 @@ export const SmartPlaylists: React.FC = () => {
           </h4>
           <div className="flex gap-2">
             <Chip
-              selected={discoverMode === 'balanced'}
+              selected={aiDjDiscoverMode === 'balanced'}
               accent="brand"
-              onClick={() => setDiscoverMode('balanced')}
+              onClick={() => setAIDJDiscoverMode('balanced')}
               className="rounded-lg px-3 py-1.5 text-meta font-medium"
             >
               Balanced
             </Chip>
             <Chip
-              selected={discoverMode === 'discover'}
+              selected={aiDjDiscoverMode === 'discover'}
               accent="brand"
-              onClick={() => setDiscoverMode('discover')}
+              onClick={() => setAIDJDiscoverMode('discover')}
               className="rounded-lg px-3 py-1.5 text-meta font-medium"
             >
               Discover New
             </Chip>
             <Chip
-              selected={discoverMode === 'favorites'}
+              selected={aiDjDiscoverMode === 'favorites'}
               accent="brand"
-              onClick={() => setDiscoverMode('favorites')}
+              onClick={() => setAIDJDiscoverMode('favorites')}
               className="rounded-lg px-3 py-1.5 text-meta font-medium"
             >
               Favorites
@@ -203,8 +188,8 @@ export const SmartPlaylists: React.FC = () => {
           <label className="flex items-center gap-2 text-meta text-text-secondary">
             <span>Avoid recently played:</span>
             <select
-              value={avoidRecentlyHours}
-              onChange={(e) => setAvoidRecentlyHours(Number(e.target.value))}
+              value={aiDjAvoidRecentlyHours}
+              onChange={(e) => setAIDJAvoidRecentlyHours(Number(e.target.value))}
               className={
                 'bg-surface-1 text-text-main rounded-lg px-2 py-1 text-sm ' +
                 'ring-1 ring-surface-3/80 ' +
@@ -222,8 +207,8 @@ export const SmartPlaylists: React.FC = () => {
           <label className="flex items-center gap-2 text-meta text-text-secondary cursor-pointer">
             <input
               type="checkbox"
-              checked={onePerArtist}
-              onChange={(e) => setOnePerArtist(e.target.checked)}
+              checked={aiDjOnePerArtist}
+              onChange={(e) => setAIDJOnePerArtist(e.target.checked)}
               className={
                 'w-4 h-4 rounded bg-surface-1 ' +
                 'ring-1 ring-surface-3/80 accent-brand ' +
@@ -235,15 +220,15 @@ export const SmartPlaylists: React.FC = () => {
           <label className="flex items-center gap-2 text-meta text-text-secondary cursor-pointer" title="Adjust recommendations based on time of day">
             <input
               type="checkbox"
-              checked={useTimeContext}
-              onChange={(e) => setUseTimeContext(e.target.checked)}
+              checked={aiDjUseTimeContext}
+              onChange={(e) => setAIDJUseTimeContext(e.target.checked)}
               className={
                 'w-4 h-4 rounded bg-surface-1 ' +
                 'ring-1 ring-surface-3/80 accent-brand ' +
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0'
               }
             />
-            <Sun size={14} className={useTimeContext ? 'text-brand' : 'text-text-subtle'} />
+            <Sun size={14} className={aiDjUseTimeContext ? 'text-brand' : 'text-text-subtle'} />
             <span>Time-aware</span>
           </label>
         </div>
@@ -251,13 +236,13 @@ export const SmartPlaylists: React.FC = () => {
 
       {/* Results */}
       <div className="flex-1 overflow-y-auto p-8 pt-0">
-        {generatedSongs.length > 0 && (
+        {aiDjGeneratedSongs.length > 0 && (
           <div className="animate-fade-in">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-section text-text-main mb-1 flex items-center gap-2">
-                  {filter?.description || 'Generated Playlist'}
-                  {filter?.fromCache && (
+                  {aiDjFilter?.description || 'Generated Playlist'}
+                  {aiDjFilter?.fromCache && (
                     <span className="text-xs bg-surface-highlight text-text-subtle px-2 py-0.5 rounded-full font-normal">
                       cached
                     </span>
@@ -265,15 +250,15 @@ export const SmartPlaylists: React.FC = () => {
                 </h2>
                 {/* Genre tags with proportions for multi-genre blend */}
                 <div className="flex flex-wrap gap-2 text-meta text-text-secondary mb-2">
-                  {filter?.matchedGenres && filter.matchedGenres.length > 0 ? (
-                    filter.matchedGenres.map(g => (
+                  {aiDjFilter?.matchedGenres && aiDjFilter.matchedGenres.length > 0 ? (
+                    aiDjFilter.matchedGenres.map(g => (
                       <span 
                         key={g.name} 
                         className="bg-surface-highlight px-2 py-1 rounded-lg flex items-center gap-1"
                         title={`Score: ${g.score}, Songs: ${g.songCount}`}
                       >
                         {g.name}
-                        {filter.blendMode === 'mixed' && (
+                        {aiDjFilter.blendMode === 'mixed' && (
                           <span className="text-brand text-meta font-medium">
                             {Math.round(g.proportion * 100)}%
                           </span>
@@ -281,14 +266,14 @@ export const SmartPlaylists: React.FC = () => {
                       </span>
                     ))
                   ) : (
-                    filter?.genres?.map(g => (
+                    aiDjFilter?.genres?.map(g => (
                       <span key={g} className="bg-surface-highlight px-2 py-1 rounded-lg">{g}</span>
                     ))
                   )}
-                  {filter?.minYear && filter.minYear > 0 && (
-                    <span className="bg-surface-highlight px-2 py-1 rounded-lg">{filter.minYear}-{filter.maxYear}</span>
+                  {aiDjFilter?.minYear && aiDjFilter.minYear > 0 && (
+                    <span className="bg-surface-highlight px-2 py-1 rounded-lg">{aiDjFilter.minYear}-{aiDjFilter.maxYear}</span>
                   )}
-                  {filter?.blendMode === 'mixed' && (
+                  {aiDjFilter?.blendMode === 'mixed' && (
                     <span className="bg-brand/20 text-brand px-2 py-1 rounded-lg flex items-center gap-1">
                       <Shuffle size={12} />
                       Blended
@@ -296,32 +281,32 @@ export const SmartPlaylists: React.FC = () => {
                   )}
                 </div>
                 {/* Mood/Energy/Occasion indicators */}
-                {(filter?.mood || filter?.energy || filter?.tempo || filter?.occasion) && (
+                {(aiDjFilter?.mood || aiDjFilter?.energy || aiDjFilter?.tempo || aiDjFilter?.occasion) && (
                   <div className="flex flex-wrap gap-2 text-meta">
-                    {filter?.mood && (
+                    {aiDjFilter?.mood && (
                       <span className="flex items-center gap-1 bg-brand/20 text-brand px-2 py-1 rounded-lg">
                         <Heart size={12} />
-                        {filter.mood}
+                        {aiDjFilter.mood}
                       </span>
                     )}
-                    {filter?.energy && (
+                    {aiDjFilter?.energy && (
                       <span className="flex items-center gap-1 bg-brand/15 text-brand px-2 py-1 rounded-lg">
                         <Zap size={12} />
-                        {filter.energy} energy
+                        {aiDjFilter.energy} energy
                       </span>
                     )}
-                    {filter?.tempo && (
+                    {aiDjFilter?.tempo && (
                       <span className="flex items-center gap-1 bg-brand/15 text-brand px-2 py-1 rounded-lg">
                         <Clock size={12} />
-                        {filter.tempo} tempo
+                        {aiDjFilter.tempo} tempo
                       </span>
                     )}
-                    {filter?.occasion && (
+                    {aiDjFilter?.occasion && (
                       <span className="bg-brand/20 text-brand px-2 py-1 rounded-lg">
-                        {filter.occasion}
+                        {aiDjFilter.occasion}
                       </span>
                     )}
-                    {filter?.instrumental && (
+                    {aiDjFilter?.instrumental && (
                       <span className="bg-brand/15 text-brand px-2 py-1 rounded-lg">
                         Instrumental
                       </span>
@@ -363,7 +348,7 @@ export const SmartPlaylists: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-highlight">
-                  {generatedSongs.map((song, index) => (
+                  {aiDjGeneratedSongs.map((song, index) => (
                     <tr key={song.id} className="group hover:bg-surface-highlight/50 transition-colors">
                       <td className="px-6 py-3 text-text-subtle text-center">{index + 1}</td>
                       <td className="px-6 py-3 font-medium text-text-main">{song.title}</td>
@@ -380,7 +365,7 @@ export const SmartPlaylists: React.FC = () => {
           </div>
         )}
 
-        {generatedSongs.length === 0 && !isLoading && (
+        {aiDjGeneratedSongs.length === 0 && !aiDjIsLoading && (
           <div className="flex flex-col items-center justify-center h-64 text-text-subtle">
             <Music size={48} className="mb-4 opacity-20" />
             <p>Enter a prompt above to generate a playlist.</p>

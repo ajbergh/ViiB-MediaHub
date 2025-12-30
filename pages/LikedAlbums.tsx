@@ -128,10 +128,10 @@ export const LikedAlbums: React.FC = () => {
                 
                 <div className="flex items-center justify-center py-12">
                     <EmptyState
-                        icon={likedAlbumsCopy.icon}
+                        icon={<likedAlbumsCopy.icon size={48} />}
                         title={likedAlbumsCopy.title}
                         description={likedAlbumsCopy.description}
-                        primaryAction={likedAlbumsCopy.primaryAction ? {
+                        action={likedAlbumsCopy.primaryAction ? {
                             label: likedAlbumsCopy.primaryAction,
                             onClick: () => navigate('/albums')
                         } : undefined}

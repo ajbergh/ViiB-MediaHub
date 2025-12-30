@@ -16,6 +16,10 @@
 //  4. Tier 2 - Gemini AI Fallback: For complex prompts, uses Google's Gemini AI
 //     to parse intent and smart-score indexed genres.
 //
+// The AI DJ always uses multi-genre blending to create cross-genre playlists based
+// on the user's input query. The backend intelligently selects the best matching
+// genres and blends them proportionally for a cohesive listening experience.
+//
 // Additional features include:
 //   - Multi-genre blending with proportional song selection
 //   - Play history integration (discover mode, avoid recently played)
@@ -45,7 +49,7 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
-	"github.com/ajbergh/viib-mediahub/internal/gemini"
+	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
 
@@ -110,6 +114,27 @@ func transformSongsForAPI(songs []any) []any {
 		}
 	}
 	return result
+}
+
+// getLLMSettings retrieves the LLM configuration from the database.
+// Falls back to default settings (Ollama) if not configured.
+func getLLMSettings(a *API) llm.Settings {
+	settings := llm.DefaultSettings()
+
+	if provider, err := a.db.GetSetting("llm_provider"); err == nil && provider != "" {
+		settings.Provider = provider
+	}
+	if model, err := a.db.GetSetting("llm_model"); err == nil && model != "" {
+		settings.Model = model
+	}
+	if apiKey, err := a.db.GetSetting("llm_api_key"); err == nil && apiKey != "" {
+		settings.APIKey = apiKey
+	}
+	if baseURL, err := a.db.GetSetting("llm_base_url"); err == nil && baseURL != "" {
+		settings.BaseURL = baseURL
+	}
+
+	return settings
 }
 
 // tryLocalGenreMatch attempts to match the prompt against known local genres.
@@ -575,11 +600,32 @@ func enhancePromptWithTimeContext(prompt string, useTimeContext bool) string {
 	return enhanced
 }
 
-// scoreGenreMatch calculates how well an indexed genre matches the Gemini filter intent.
+// scoreGenreMatch calculates how well an indexed genre matches the LLM filter intent.
 // Returns a score from 0-100 where higher is better.
-func scoreGenreMatch(genreName string, filter *gemini.PlaylistFilter) int {
+// The originalPrompt parameter allows boosting exact subgenre matches (e.g., "jazz trios" → "Jazz Trio").
+func scoreGenreMatch(genreName string, filter *llm.PlaylistFilter, originalPrompt string) int {
 	genreLower := strings.ToLower(genreName)
+	promptLower := strings.ToLower(originalPrompt)
 	score := 0
+
+	// PRIORITY BOOST: Check if the indexed genre name appears as a phrase in the original prompt
+	// This handles cases like "upbeat jazz trios" matching "Jazz Trio" directly
+	// Apply a high bonus (+60) to prioritize subgenre matches over generic genre matches
+	if strings.Contains(promptLower, genreLower) {
+		score += 60
+		// Even higher bonus for near-exact matches (genre is significant portion of prompt)
+		if len(genreLower) >= len(promptLower)/2 {
+			score += 20
+		}
+	}
+
+	// Also check if prompt words form the genre name (e.g., "jazz trio" matches "Jazz Trio")
+	// Normalize the genre name by removing hyphens and extra spaces
+	genreNormalized := strings.ReplaceAll(genreLower, "-", " ")
+	genreNormalized = strings.Join(strings.Fields(genreNormalized), " ")
+	if strings.Contains(promptLower, genreNormalized) && genreNormalized != genreLower {
+		score += 50
+	}
 
 	// Check for decade indicators in genre name
 	decadePatterns := map[string][2]int{
@@ -722,9 +768,10 @@ func getGenreVariations(genre string) []string {
 	return []string{}
 }
 
-// tryMatchIndexedGenre attempts to find the best indexed genre that matches the Gemini filter intent.
-// This bridges the gap between Gemini's generic understanding and the user's actual indexed genres.
-func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any, bool) {
+// tryMatchIndexedGenre attempts to find the best indexed genre that matches the LLM filter intent.
+// This bridges the gap between the LLM's generic understanding and the user's actual indexed genres.
+// The originalPrompt is used to boost exact subgenre matches (e.g., "jazz trios" → "Jazz Trio").
+func (a *API) tryMatchIndexedGenre(filter *llm.PlaylistFilter, originalPrompt string) (string, []any, bool) {
 	genreNames, err := a.db.GetGenreNames()
 	if err != nil {
 		logger.API("Failed to get genre names for indexed matching: %v", err)
@@ -755,11 +802,11 @@ func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any
 	var candidates []scoredGenre
 
 	// Log scoring for debugging
-	logger.API("Scoring indexed genres against filter: genres=%v, years=%d-%d",
-		filter.Genres, filter.MinYear, filter.MaxYear)
+	logger.API("Scoring indexed genres against filter: genres=%v, years=%d-%d, prompt='%s'",
+		filter.Genres, filter.MinYear, filter.MaxYear, originalPrompt)
 
 	for _, genreName := range genreNames {
-		score := scoreGenreMatch(genreName, filter)
+		score := scoreGenreMatch(genreName, filter, originalPrompt)
 		if score > 50 { // Only consider genres with meaningful scores
 			count := genreCounts[genreName]
 			logger.API("  Genre '%s' scored %d (%d songs)", genreName, score, count)
@@ -827,8 +874,10 @@ func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any
 }
 
 // tryMatchMultipleGenres finds the top matching genres and blends songs proportionally.
+// The originalPrompt is used to boost exact subgenre matches (e.g., "jazz trios" → "Jazz Trio").
+// When the LLM provides mood/energy/tempo values, they are used to filter songs within each genre.
 // Returns matched genres, blended songs, and whether any matches were found.
-func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres int, targetSongs int) ([]MatchedGenre, []any, bool) {
+func (a *API) tryMatchMultipleGenres(filter *llm.PlaylistFilter, originalPrompt string, maxGenres int, targetSongs int) ([]MatchedGenre, []any, bool) {
 	genreNames, err := a.db.GetGenreNames()
 	if err != nil {
 		logger.API("Failed to get genre names for multi-genre matching: %v", err)
@@ -857,11 +906,11 @@ func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres in
 	}
 	var candidates []scoredGenre
 
-	logger.API("Multi-genre scoring against filter: genres=%v, years=%d-%d",
-		filter.Genres, filter.MinYear, filter.MaxYear)
+	logger.API("Multi-genre scoring against filter: genres=%v, years=%d-%d, mood=%s, energy=%s, tempo=%s, prompt='%s'",
+		filter.Genres, filter.MinYear, filter.MaxYear, filter.Mood, filter.Energy, filter.Tempo, originalPrompt)
 
 	for _, genreName := range genreNames {
-		score := scoreGenreMatch(genreName, filter)
+		score := scoreGenreMatch(genreName, filter, originalPrompt)
 		if score > 50 {
 			count := genreCounts[genreName]
 			logger.API("  Genre '%s' scored %d (%d songs)", genreName, score, count)
@@ -923,17 +972,36 @@ func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres in
 			songsFromGenre = 1 // At least 1 song per genre
 		}
 
-		// Use year-filtered query if year range is specified (e.g., "90s hip hop")
+		// Use GetSongsByExactGenreWithMood to filter by genre AND mood/energy/tempo
+		// This enables prompts like "upbeat jazz trios" to filter by both genre and energy
 		var songs []db.Song
 		var err error
-		if filter.MinYear > 0 || filter.MaxYear > 0 {
-			songs, err = a.db.GetSongsByExactGenreWithYears(g.name, filter.MinYear, filter.MaxYear)
-		} else {
-			songs, err = a.db.GetSongsByExactGenre(g.name)
-		}
+
+		// Determine mood/energy/tempo to use for filtering
+		// Map Gemini's mood values to database mood values if needed
+		mood := filter.Mood
+		energy := filter.Energy
+		tempo := filter.Tempo
+
+		// Use the new function that combines exact genre matching with mood filtering
+		songs, err = a.db.GetSongsByExactGenreWithMood(g.name, filter.MinYear, filter.MaxYear, mood, energy, tempo)
 		if err != nil {
-			logger.API("Failed to get songs for genre %s: %v", g.name, err)
+			logger.API("Failed to get songs for genre %s with mood filter: %v", g.name, err)
 			continue
+		}
+
+		// If mood filtering returned too few songs, fall back to genre-only query
+		if len(songs) < songsFromGenre && (mood != "" || energy != "" || tempo != "") {
+			logger.API("Mood filter too restrictive for genre %s (%d songs), falling back to genre-only", g.name, len(songs))
+			if filter.MinYear > 0 || filter.MaxYear > 0 {
+				songs, err = a.db.GetSongsByExactGenreWithYears(g.name, filter.MinYear, filter.MaxYear)
+			} else {
+				songs, err = a.db.GetSongsByExactGenre(g.name)
+			}
+			if err != nil {
+				logger.API("Failed to get songs for genre %s: %v", g.name, err)
+				continue
+			}
 		}
 
 		// Shuffle songs for variety using true random (Fisher-Yates algorithm)
@@ -1171,7 +1239,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 	// Set defaults
 	if req.BlendMode == "" {
-		req.BlendMode = "single"
+		req.BlendMode = "mixed"
 	}
 	if req.TargetSongs <= 0 || req.TargetSongs > 100 {
 		req.TargetSongs = 50
@@ -1271,28 +1339,48 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// No local match found - fall back to Gemini AI for complex prompts
-	apiKey, err := a.db.GetSetting("gemini_api_key")
-	if err != nil || apiKey == "" {
-		http.Error(w, "Gemini API key not configured", http.StatusServiceUnavailable)
-		return
+	// No local match found - fall back to LLM AI for complex prompts
+	// Get LLM settings from database (falls back to Gemini for backward compatibility)
+	llmSettings := getLLMSettings(a)
+
+	// Validate we have the required API key (Ollama doesn't need one)
+	if llmSettings.Provider != llm.ProviderOllama && llmSettings.APIKey == "" {
+		// Fall back to Gemini API key if LLM not configured
+		geminiKey, err := a.db.GetSetting("gemini_api_key")
+		if err != nil || geminiKey == "" {
+			http.Error(w, "AI provider not configured. Set up Ollama locally or add an API key in Settings.", http.StatusServiceUnavailable)
+			return
+		}
+		llmSettings.Provider = llm.ProviderGemini
+		llmSettings.APIKey = geminiKey
+		llmSettings.Model = llm.DefaultGeminiModel
 	}
 
 	// Enhance prompt with time context if enabled
 	promptToUse := enhancePromptWithTimeContext(req.Prompt, req.UseTimeContext)
 
-	client := gemini.NewClient(apiKey)
-	filter, err := client.GeneratePlaylistFilter(promptToUse)
+	// Create LLM provider and parse the playlist filter
+	provider, err := llm.NewProvider(llmSettings)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create AI provider: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer provider.Close()
+
+	llmFilter, err := provider.ParsePlaylistFilter(r.Context(), promptToUse)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to generate filter: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Log what Gemini returned
-	logger.API("Gemini filter for '%s': genres=%v, minYear=%d, maxYear=%d, blendMode=%s",
-		req.Prompt, filter.Genres, filter.MinYear, filter.MaxYear, req.BlendMode)
+	// Use the LLM filter directly (no conversion needed)
+	filter := llmFilter
 
-	// If Gemini didn't extract year information, try to extract it from the prompt
+	// Log what the LLM returned
+	logger.API("LLM filter (%s) for '%s': genres=%v, minYear=%d, maxYear=%d, blendMode=%s",
+		llmSettings.Provider, req.Prompt, filter.Genres, filter.MinYear, filter.MaxYear, req.BlendMode)
+
+	// If the LLM didn't extract year information, try to extract it from the prompt
 	if filter.MinYear == 0 && filter.MaxYear == 0 {
 		minYear, maxYear := extractDecadeFromPrompt(req.Prompt)
 		if minYear > 0 {
@@ -1304,7 +1392,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 	// Multi-genre blending mode
 	if req.BlendMode == "mixed" {
-		matchedGenres, songs, matched := a.tryMatchMultipleGenres(filter, 3, req.TargetSongs)
+		matchedGenres, songs, matched := a.tryMatchMultipleGenres(filter, req.Prompt, 3, req.TargetSongs)
 		if matched {
 			logger.API("Multi-genre blend: %d genres, %d songs", len(matchedGenres), len(songs))
 
@@ -1339,7 +1427,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	// SMART MATCHING: Try to match Gemini's intent against indexed genres (single mode)
 	// This bridges the gap between Gemini's generic understanding (e.g., "Alternative" + 1990-1999)
 	// and the user's actual indexed genres (e.g., "90s Alternative")
-	if matchedGenre, songs, matched := a.tryMatchIndexedGenre(filter); matched {
+	if matchedGenre, songs, matched := a.tryMatchIndexedGenre(filter, req.Prompt); matched {
 		logger.API("Smart indexed genre match after Gemini: '%s' with %d songs", matchedGenre, len(songs))
 
 		// Apply play history filters

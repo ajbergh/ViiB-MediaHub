@@ -9,15 +9,17 @@
  * - Audio: Crossfade, gapless, normalization, visualizer, EQ
  * - Spotify: OAuth credentials, download location, concurrent downloads
  * - Library Intelligence: AI-powered features
- *   - Generative Genre Enrichment: Uses Gemini AI to populate genre metadata
- *   - Mood & Energy Analysis: Analyzes mood, energy, tempo, BPM for AI DJ
+ *   - AI Provider: Configure LLM provider (Gemini, OpenAI, Anthropic, Ollama, X.AI)
+ *   - Genre Enrichment: Uses configured AI to populate genre metadata
+ *   - Unified Enrichment: Full metadata enrichment (genres, mood, energy, tempo, BPM, year)
  * - Activity Log: Debug log viewer
  * 
  * Folder browser dialogs allow navigation and selection of:
  * - Music scan directories
  * - Spotify download destination
  * 
- * AI Features (requires Gemini API key):
+ * AI Features (requires configured AI provider):
+ * - All AI features use the configured LLM provider (AI DJ Provider section)
  * - Genre enrichment runs during library scans or can be triggered manually
  * - Mood analysis detects emotional characteristics without audio processing
  * - Results are stored in the songs table for AI DJ playlist generation
@@ -60,10 +62,7 @@ export const Settings: React.FC = () => {
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
   const [browserPath, setBrowserPath] = useState('');
   
-  // Gemini Enrichment State
-  const [geminiKey, setGeminiKey] = useState('');
-  const [keySaved, setKeySaved] = useState(false);
-  const [showKeySavedMessage, setShowKeySavedMessage] = useState(false);
+  // Enrichment State
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichStatus, setEnrichStatus] = useState('');
   const [forceEnrichment, setForceEnrichment] = useState(false);
@@ -101,24 +100,47 @@ export const Settings: React.FC = () => {
   // Remaster Detection State
   const [remasterStatus, setRemasterStatus] = useState('');
 
+  // Genre Normalization State
+  const [isNormalizingGenres, setIsNormalizingGenres] = useState(false);
+  const [normalizeGenresStatus, setNormalizeGenresStatus] = useState('');
+
+  // LLM Provider Settings State
+  const [llmProvider, setLlmProvider] = useState('ollama');
+  const [llmModel, setLlmModel] = useState('llama3.2:8b');
+  const [llmApiKey, setLlmApiKey] = useState('');
+  const [llmBaseURL, setLlmBaseURL] = useState('http://localhost:11434');
+  const [llmProviders, setLlmProviders] = useState<import('../services/api').LLMProviderInfo[]>([]);
+  const [llmModels, setLlmModels] = useState<Record<string, import('../services/api').LLMModelInfo[]>>({});
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSaveStatus, setLlmSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [llmTestStatus, setLlmTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [llmTestMessage, setLlmTestMessage] = useState('');
+
   const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingBrowser, setLoadingBrowser] = useState(false);
 
-  // Load Gemini Key
+  // Load LLM Settings
   useEffect(() => {
-      const loadGeminiKey = async () => {
+      const loadLLMSettings = async () => {
           try {
-              const key = await api.getSetting('gemini_api_key');
-              if (key) {
-                  setGeminiKey(key);
-                  setKeySaved(true);
-              }
+              setLlmLoading(true);
+              const settings = await api.getLLMSettings();
+              setLlmProvider(settings.provider || 'ollama');
+              setLlmModel(settings.model || 'llama3.2:8b');
+              setLlmApiKey(settings.apiKey || '');
+              setLlmBaseURL(settings.baseURL || 'http://localhost:11434');
+              setLlmProviders(settings.providers || []);
+              setLlmModels(settings.models || {});
           } catch (e) {
-              console.error('Failed to load Gemini key:', e);
+              console.error('Failed to load LLM settings:', e);
+          } finally {
+              setLlmLoading(false);
           }
       };
-      loadGeminiKey();
-  }, []);
+      if (backendAvailable) {
+          loadLLMSettings();
+      }
+  }, [backendAvailable]);
 
   // Download folder browser state
   const [showDownloadFolderBrowser, setShowDownloadFolderBrowser] = useState(false);
@@ -221,6 +243,22 @@ export const Settings: React.FC = () => {
           setIsResetting(false);
           setShowResetConfirm(false);
           alert("An error occurred while resetting the library.");
+      }
+  };
+
+  const handleNormalizeGenres = async () => {
+      setIsNormalizingGenres(true);
+      setNormalizeGenresStatus('Normalizing genre capitalization...');
+      try {
+          const result = await api.normalizeGenres();
+          setNormalizeGenresStatus(`✓ Normalized ${result.normalized} songs${result.errors > 0 ? `, ${result.errors} errors` : ''}`);
+          addLog('info', `Genre normalization complete: ${result.normalized} songs normalized`);
+      } catch (e) {
+          console.error("Genre normalization failed", e);
+          setNormalizeGenresStatus('✗ Normalization failed');
+          addLog('error', 'Genre normalization failed', e);
+      } finally {
+          setIsNormalizingGenres(false);
       }
   };
 
@@ -1105,6 +1143,24 @@ export const Settings: React.FC = () => {
             </Button>
         </div>
 
+        <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg mb-4">
+            <div>
+                <h3 className="text-sm text-text-secondary mb-1">Genre Normalization</h3>
+                <p className="text-xs text-text-subtle">
+                    {normalizeGenresStatus || 'Fix inconsistent genre capitalization (e.g., "acid jazz" → "Acid Jazz").'}
+                </p>
+            </div>
+            <Button
+                variant="secondary"
+                onClick={handleNormalizeGenres}
+                disabled={isNormalizingGenres}
+                leftIcon={isNormalizingGenres ? <Loader2 size={16} className="animate-spin" /> : <SlidersHorizontal size={16} />}
+                className="px-4 py-2 font-bold text-sm"
+            >
+                {isNormalizingGenres ? 'Normalizing...' : 'Normalize Genres'}
+            </Button>
+        </div>
+
         <div>
             <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Download Quality</label>
             <select className="w-full bg-surface-1 border border-surface-border rounded px-4 py-3 text-text-main focus:border-brand outline-none" disabled>
@@ -1199,61 +1255,206 @@ export const Settings: React.FC = () => {
         </div>
 
         <div className="space-y-6">
-          {/* Gemini Integration */}
+          {/* AI DJ Provider Settings */}
           <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
-            <h3 className="text-lg font-bold text-text-main mb-2">Generative Genre Enrichment</h3>
+            <h3 className="text-lg font-bold text-text-main mb-2">AI DJ Provider</h3>
             <p className="text-text-subtle text-sm mb-4">
-              Use Google's Gemini AI to automatically populate detailed genre information for your songs. 
+              Choose which AI provider powers the AI DJ feature for natural language playlist generation.
+              Ollama runs locally (free, no API key), or use cloud providers for more powerful models.
+            </p>
+            
+            {llmLoading ? (
+              <div className="flex items-center gap-2 text-text-subtle">
+                <Loader2 size={16} className="animate-spin" />
+                Loading provider settings...
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Provider Select */}
+                  <div>
+                    <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
+                      Provider
+                    </label>
+                    <select
+                      value={llmProvider}
+                      onChange={(e) => {
+                        const newProvider = e.target.value;
+                        setLlmProvider(newProvider);
+                        // Set default model for this provider
+                        const providerModels = llmModels[newProvider];
+                        if (providerModels && providerModels.length > 0) {
+                          setLlmModel(providerModels[0].id);
+                        }
+                        // Set default base URL for Ollama
+                        if (newProvider === 'ollama') {
+                          setLlmBaseURL('http://localhost:11434');
+                        } else {
+                          setLlmBaseURL('');
+                        }
+                        setLlmSaveStatus('idle');
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
+                    >
+                      {llmProviders.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} {!p.requiresKey && '(No API Key)'}
+                        </option>
+                      ))}
+                    </select>
+                    {llmProviders.find(p => p.id === llmProvider)?.description && (
+                      <p className="text-xs text-text-subtle mt-1">
+                        {llmProviders.find(p => p.id === llmProvider)?.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Model Select */}
+                  <div>
+                    <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
+                      Model
+                    </label>
+                    <select
+                      value={llmModel}
+                      onChange={(e) => {
+                        setLlmModel(e.target.value);
+                        setLlmSaveStatus('idle');
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
+                    >
+                      {(llmModels[llmProvider] || []).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* API Key - only show for cloud providers */}
+                {llmProviders.find(p => p.id === llmProvider)?.requiresKey && (
+                  <div>
+                    <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
+                      API Key
+                    </label>
+                    <TextInput
+                      type="password"
+                      value={llmApiKey}
+                      onChange={(e) => {
+                        setLlmApiKey(e.target.value);
+                        setLlmSaveStatus('idle');
+                      }}
+                      placeholder={llmApiKey.startsWith('****') ? 'API Key Saved (Hidden)' : 'Enter your API Key'}
+                      className="w-full bg-surface-3"
+                    />
+                  </div>
+                )}
+
+                {/* Base URL - only show for Ollama */}
+                {llmProvider === 'ollama' && (
+                  <div>
+                    <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
+                      Ollama Server URL
+                    </label>
+                    <TextInput
+                      value={llmBaseURL}
+                      onChange={(e) => {
+                        setLlmBaseURL(e.target.value);
+                        setLlmSaveStatus('idle');
+                      }}
+                      placeholder="http://localhost:11434"
+                      className="w-full bg-surface-3"
+                    />
+                    <p className="text-xs text-text-subtle mt-1">
+                      Default: http://localhost:11434. Install Ollama from <a href="https://ollama.ai" target="_blank" rel="noreferrer" className="text-brand hover:underline">ollama.ai</a>
+                    </p>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="primary"
+                    onClick={async () => {
+                      try {
+                        setLlmSaveStatus('saving');
+                        await api.updateLLMSettings({
+                          provider: llmProvider,
+                          model: llmModel,
+                          apiKey: llmApiKey.startsWith('****') ? '' : llmApiKey,
+                          baseURL: llmBaseURL,
+                        });
+                        setLlmSaveStatus('saved');
+                        setTimeout(() => setLlmSaveStatus('idle'), 3000);
+                      } catch (e) {
+                        console.error('Failed to save LLM settings:', e);
+                        setLlmSaveStatus('error');
+                      }
+                    }}
+                    disabled={llmSaveStatus === 'saving'}
+                    leftIcon={llmSaveStatus === 'saving' ? <Loader2 size={16} className="animate-spin" /> : undefined}
+                    className="text-sm font-bold"
+                  >
+                    {llmSaveStatus === 'saved' ? 'Saved!' : llmSaveStatus === 'saving' ? 'Saving...' : 'Save Settings'}
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      try {
+                        setLlmTestStatus('testing');
+                        setLlmTestMessage('');
+                        const result = await api.testLLMConnection();
+                        setLlmTestStatus(result.success ? 'success' : 'error');
+                        setLlmTestMessage(result.message);
+                        setTimeout(() => setLlmTestStatus('idle'), 5000);
+                      } catch (e) {
+                        console.error('Failed to test LLM connection:', e);
+                        setLlmTestStatus('error');
+                        setLlmTestMessage(e instanceof Error ? e.message : 'Unknown error');
+                      }
+                    }}
+                    disabled={llmTestStatus === 'testing'}
+                    leftIcon={llmTestStatus === 'testing' ? <Loader2 size={16} className="animate-spin" /> : undefined}
+                    className="text-sm font-bold"
+                  >
+                    {llmTestStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+                  </Button>
+                </div>
+
+                {/* Test Result */}
+                {llmTestStatus !== 'idle' && llmTestStatus !== 'testing' && llmTestMessage && (
+                  <div className={`text-sm p-2 rounded ${llmTestStatus === 'success' ? 'bg-success/20 text-success' : 'bg-error/20 text-error'}`}>
+                    {llmTestMessage}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Genre Enrichment - Uses Unified LLM */}
+          <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
+            <h3 className="text-lg font-bold text-text-main mb-2">Genre Enrichment</h3>
+            <p className="text-text-subtle text-sm mb-4">
+              Use AI to automatically populate detailed genre information for your songs. 
               This enables smarter "Vibe" mixes and better organization.
             </p>
             
             <div className="flex flex-col gap-4">
-              <div>
-                <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
-                  Gemini API Key
-                </label>
-                <div className="flex gap-2">
-                    <TextInput
-                      type="password"
-                      value={geminiKey}
-                      onChange={(e) => {
-                          setGeminiKey(e.target.value);
-                          setKeySaved(false);
-                      }}
-                      placeholder={keySaved ? "API Key Saved (Hidden)" : "Enter your Gemini API Key"}
-                      className="flex-1 bg-surface-3"
-                      disabled={isEnriching}
-                    />
-                    <Button
-                        variant="secondary"
-                        onClick={async () => {
-                            try {
-                                await api.setSetting('gemini_api_key', geminiKey);
-                                setKeySaved(true);
-                                setShowKeySavedMessage(true);
-                                setTimeout(() => setShowKeySavedMessage(false), 3000);
-                            } catch (e) {
-                                console.error('Failed to save key:', e);
-                            }
-                        }}
-                        className="text-sm font-bold"
-                    >
-                        Save
-                    </Button>
+              {/* Status based on AI Provider */}
+              {llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey) ? (
+                <div className="text-brand text-sm flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-brand inline-block"></span>
+                  Using {llmProviders.find(p => p.id === llmProvider)?.name || llmProvider} for enrichment.
                 </div>
-                {showKeySavedMessage && (
-                    <p className="text-success text-xs mt-1 font-bold">API Key saved successfully!</p>
-                )}
-                {keySaved && !showKeySavedMessage && (
-                    <p className="text-brand text-xs mt-1 flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-brand inline-block"></span>
-                        Key saved & active. Enrichment will run during library scans.
-                    </p>
-                )}
-                <p className="text-xs text-text-subtle mt-1">
-                  Get a key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-brand hover:underline">Google AI Studio</a>.
-                </p>
-              </div>
+              ) : (
+                <div className="bg-surface-2 border border-yellow-500/30 rounded-lg p-3 mb-2">
+                  <p className="text-sm text-text-subtle">
+                    <strong>Note:</strong> Genre enrichment requires an AI provider. 
+                    Configure your preferred provider in the "AI DJ Provider" section above.
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center gap-2">
                 <input
@@ -1271,8 +1472,10 @@ export const Settings: React.FC = () => {
 
                             <Button
                 onClick={() => {
-                  if (!geminiKey && !keySaved) {
-                      alert("Please enter or save an API Key first.");
+                  // Check if we have a valid LLM provider configured
+                  const hasLLMAccess = llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey);
+                  if (!hasLLMAccess) {
+                      alert("Please configure an AI Provider in the section above first.");
                       return;
                   }
 
@@ -1308,8 +1511,8 @@ export const Settings: React.FC = () => {
                   // Store eventSource for cleanup if needed
                   return () => eventSource.close();
                 }}
-                disabled={isEnriching || (!geminiKey && !keySaved)}
-                                variant={isEnriching || (!geminiKey && !keySaved) ? 'secondary' : 'primary'}
+                disabled={isEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey))}
+                                variant={isEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey)) ? 'secondary' : 'primary'}
                                 accent="brand"
                                 className="self-start px-4 py-2 font-bold"
               >
@@ -1361,10 +1564,24 @@ export const Settings: React.FC = () => {
             <p className="text-text-subtle text-sm mb-4">
               Enrich your entire library with genres, mood, energy, tempo, BPM, and original year detection 
               in a <strong>single efficient operation</strong>. Uses TOON format for 3x better efficiency 
-              and processes 200 songs per batch.
+              and batch sizes optimized for your provider.
             </p>
 
             <div className="flex flex-col gap-4">
+              {/* Status indicator */}
+              {llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey) ? (
+                <div className="text-brand text-sm flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-brand inline-block"></span>
+                  Ready to enrich using {llmProviders.find(p => p.id === llmProvider)?.name || llmProvider}.
+                </div>
+              ) : (
+                <div className="bg-surface-2 border border-yellow-500/30 rounded-lg p-3">
+                  <p className="text-sm text-text-subtle">
+                    Configure an AI provider above to enable unified enrichment.
+                  </p>
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -1381,8 +1598,10 @@ export const Settings: React.FC = () => {
 
               <Button
                 onClick={() => {
-                  if (!geminiKey && !keySaved) {
-                    alert("Please enter or save an API Key first.");
+                  // Check if we have a valid LLM provider configured
+                  const hasLLMAccess = llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey);
+                  if (!hasLLMAccess) {
+                    alert("Please configure an AI Provider in the section above first.");
                     return;
                   }
 
@@ -1416,8 +1635,8 @@ export const Settings: React.FC = () => {
 
                   return () => eventSource.close();
                 }}
-                disabled={isUnifiedEnriching || (!geminiKey && !keySaved)}
-                variant={isUnifiedEnriching || (!geminiKey && !keySaved) ? 'secondary' : 'primary'}
+                disabled={isUnifiedEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey))}
+                variant={isUnifiedEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey)) ? 'secondary' : 'primary'}
                 accent="brand"
                 className="self-start px-6 py-3 font-bold text-base"
               >
@@ -1471,8 +1690,10 @@ export const Settings: React.FC = () => {
             <div className="flex flex-col gap-3">
                             <Button
                 onClick={() => {
-                  if (!geminiKey && !keySaved) {
-                    alert("Please enter or save an API Key first.");
+                  // Check if we have a valid LLM provider configured
+                  const hasLLMAccess = llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey);
+                  if (!hasLLMAccess) {
+                    alert("Please configure an AI Provider in the section above first.");
                     return;
                   }
 
@@ -1506,8 +1727,8 @@ export const Settings: React.FC = () => {
 
                   return () => eventSource.close();
                 }}
-                disabled={isMoodAnalyzing || (!geminiKey && !keySaved)}
-                                variant={isMoodAnalyzing || (!geminiKey && !keySaved) ? 'secondary' : 'primary'}
+                disabled={isMoodAnalyzing || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey))}
+                                variant={isMoodAnalyzing || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey)) ? 'secondary' : 'primary'}
                                 accent="brand"
                                 className="self-start px-4 py-2 font-bold"
               >

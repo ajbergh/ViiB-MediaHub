@@ -69,6 +69,31 @@ A modern local media player for audio files, built with React 19 + TypeScript fr
 - **Persistence** - Likes are saved to the backend and restored on restart
 - **Sort Options** - Sort liked items by recently liked, name, or artist
 
+### 🤖 AI DJ & Smart Playlists (New)
+- **Natural Language Prompts** - Generate playlists by describing what you want:
+  - "Upbeat jazz from the 90s"
+  - "Chill instrumental music for studying"
+  - "Energetic rock workout mix"
+  - "More like Radiohead"
+- **Multi-Provider Support** - Choose your preferred AI provider:
+  - **Ollama** (local, no API key required) - Default option
+  - **Google Gemini** - Fast, efficient, supports batch processing
+  - **OpenAI** - GPT-4o and GPT-4o-mini
+  - **Anthropic** - Claude models
+  - **X.AI** - Grok models
+- **Four-Tier Matching System**:
+  - Tier 0: Artist-based ("more like [artist]")
+  - Tier 1: Local genre matching (no API needed)
+  - Tier 1.5: Mood/activity keywords (85+ terms recognized locally)
+  - Tier 2: AI fallback for complex prompts
+- **Metadata Enrichment** - AI-powered analysis for your library:
+  - Genre classification
+  - Mood detection (happy, melancholic, energetic, calm)
+  - Energy level (high, medium, low)
+  - Tempo estimation (fast, medium, slow, BPM)
+  - Instrumental detection
+  - Original year detection (finds original release, not remaster)
+
 ### 📚 Library Management
 - **Folder Scanning** - Add multiple music folders with incremental scanning
 - **Ultra-Fast Startup** - Near-instant library loading using filesystem journals and directory signatures
@@ -151,7 +176,8 @@ ViiB-MediaHub/
         ├── api/        # REST API + SSE handlers
         ├── audio/      # Metadata extraction (taglib + dhowden/tag)
         ├── db/         # SQLite with WAL mode
-        ├── gemini/     # AI-powered music analysis
+        ├── llm/        # Unified AI provider (Gemini, OpenAI, Anthropic, Ollama, X.AI)
+        ├── gemini/     # Legacy AI implementation (deprecated, use llm/)
         ├── logger/     # Shared logging facility
         ├── scanner/    # Library scanning with fast startup
         │   ├── scanner.go       # Core scanning logic
@@ -348,6 +374,51 @@ The app will:
 |--------|----------|-------------|
 | GET | `/api/settings/{key}` | Get setting value |
 | POST | `/api/settings/{key}` | Set setting value |
+
+### AI DJ & Enrichment
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/smart-playlist` | Generate AI-powered playlist from natural language |
+| POST | `/api/enrich/genres` | Enrich genres for songs batch |
+| GET | `/api/enrich/genres/stream` | SSE stream for genre enrichment progress |
+| GET | `/api/enrich/all/stream` | SSE stream for full metadata enrichment (genres, mood, tempo, BPM, year) |
+| GET | `/api/enrich/mood/stream` | SSE stream for mood/energy/tempo enrichment |
+| GET | `/api/enrich/original-years/stream` | SSE stream for original year detection |
+
+## AI DJ Configuration
+
+ViiB MediaHub uses a unified LLM interface supporting multiple AI providers for smart playlists and metadata enrichment.
+
+### Supported Providers
+
+| Provider | API Key Required | Notes |
+|----------|-----------------|-------|
+| Ollama | No | Local-first, requires Ollama server running |
+| Google Gemini | Yes | Fast, supports large batches (200 songs) |
+| OpenAI | Yes | GPT-4o, GPT-4o-mini |
+| Anthropic | Yes | Claude models |
+| X.AI | Yes | Grok models |
+
+### Settings Keys
+
+Configure via Settings page or API:
+
+| Key | Description | Example |
+|-----|-------------|---------|
+| `llm_provider` | Provider name | `gemini`, `openai`, `anthropic`, `ollama`, `xai` |
+| `llm_model` | Model name | `gemini-2.0-flash`, `gpt-4o-mini`, `llama3.2:8b` |
+| `llm_api_key` | Provider API key | (encrypted at rest) |
+| `llm_base_url` | Custom endpoint URL | `http://localhost:11434` (for Ollama) |
+
+### Ollama Setup
+
+For local AI (no API key needed):
+
+1. Install [Ollama](https://ollama.ai)
+2. Pull a model: `ollama pull llama3.2:8b`
+3. In Settings, select "Ollama" as provider
+4. Set Base URL to `http://localhost:11434`
 
 ## Spotify Streaming & Downloads
 

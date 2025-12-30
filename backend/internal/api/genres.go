@@ -32,3 +32,33 @@ func (a *API) getGenres(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
 }
+
+// normalizeGenres handles POST /api/genres/normalize requests.
+// Normalizes the capitalization of all genre names in the database to ensure consistency.
+// This fixes issues like "acid jazz" and "Acid Jazz" being treated as different genres.
+//
+// All genres are converted to Title Case with special handling for:
+// - Acronyms: "r&b" → "R&B", "edm" → "EDM"
+// - Hyphenated genres: "trip-hop" → "Trip-Hop"
+// - Decade prefixes: "90s rock" → "90s Rock"
+//
+// Response includes the number of songs that were updated.
+func (a *API) normalizeGenres(w http.ResponseWriter, r *http.Request) {
+	logger.API("Starting genre normalization...")
+
+	count, err := a.db.NormalizeAllGenres()
+	if err != nil {
+		logger.API("Genre normalization failed: %v", err)
+		http.Error(w, "Failed to normalize genres: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	logger.API("Genre normalization complete: %d songs updated", count)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":       "ok",
+		"songsUpdated": count,
+		"message":      "Genre normalization complete",
+	})
+}

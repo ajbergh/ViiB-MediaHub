@@ -244,10 +244,10 @@ export const Stats: React.FC = () => {
                 />
                 <div className="flex items-center justify-center py-24">
                     <EmptyState
-                        icon={copy.icon}
+                        icon={<copy.icon size={48} />}
                         title={copy.title}
                         description={copy.description}
-                        primaryAction={copy.primaryAction ? {
+                        action={copy.primaryAction ? {
                             label: copy.primaryAction,
                             onClick: () => navigate('/')
                         } : undefined}

@@ -14,13 +14,35 @@ Based on detailed analysis of the existing codebase, here are corrections, clari
 
 1. **Tier Structure is 0-3, not 0-2**: The plan correctly identifies Tiers 0-3, but the "Tier 3 – Relaxed fallback queries" description should clarify this is `GetSongsBySmartFilter()` using Gemini's raw filter when smart indexed matching fails.
 
-2. **Mood/Energy Already Stored**: The database schema ALREADY includes `mood`, `energy`, `tempo`, `bpm`, `instrumental`, `mood_analyzed_at` columns. The `AnalyzeSongMood()` function in Gemini package populates these. The gap is that `GetSongsBySmartFilter()` doesn't USE them.
+2. **Mood/Energy Already Stored**: The database schema ALREADY includes `mood`, `energy`, `tempo`, `bpm`, `instrumental`, `mood_analyzed_at` columns. The `AnalyzeSongMood()` function in Gemini package populates these. ~~The gap is that `GetSongsBySmartFilter()` doesn't USE them.~~ ✅ **FIXED (2025-12-29)**: Now used in multi-genre blending.
 
 3. **Filter Cache Exists**: The Gemini client already has a 15-minute, 100-entry LRU filter cache. This reduces API calls for repeated prompts.
 
 4. **Genre Variations Map Exists**: There's already a 40+ entry `getGenreVariations()` map handling synonyms like "alt"→"alternative", "hiphop"→"hip hop".
 
 5. **Decade Detection Exists**: `extractDecadeFromPrompt()` already handles "90s", "early 90s", "late 80s", "modern", "classic", "retro", "vintage", and explicit year ranges.
+
+### Recent Fixes (2025-12-29)
+
+**Issue: "upbeat jazz trios" query only matched "Jazz" keyword**
+
+Root causes identified and fixed:
+
+1. **Gemini simplified "jazz trios" → "Jazz"**: The Gemini prompt doesn't preserve specific subgenres from user input.
+   - ✅ **FIX**: Added original prompt phrase matching in `scoreGenreMatch()`. Now "Jazz Trio" gets +60 bonus when "jazz trio" appears in the user's prompt.
+
+2. **`scoreGenreMatch()` favored decade-prefixed genres**: "50s Jazz" scored 85 vs "Jazz Trio" at 75 due to decade bonus.
+   - ✅ **FIX**: Added subgenre phrase boost that outweighs decade bonus. Exact phrase matches from prompt get +60-80 points.
+
+3. **Mood/energy/tempo from Gemini wasn't applied to song queries**: `tryMatchMultipleGenres()` used `GetSongsByExactGenre()` which ignored mood filters.
+   - ✅ **FIX**: Created `GetSongsByExactGenreWithMood()` in db/genres.go and updated `tryMatchMultipleGenres()` to use it. Now "upbeat" → energy:"high" is applied to song filtering.
+
+**Files Modified:**
+- `internal/db/genres.go`: Added `GetSongsByExactGenreWithMood()` function
+- `internal/api/smart_playlist.go`: 
+  - Updated `scoreGenreMatch()` to accept original prompt and boost exact subgenre matches
+  - Updated `tryMatchMultipleGenres()` to pass original prompt and use mood/energy/tempo filtering
+  - Updated `tryMatchIndexedGenre()` to pass original prompt for consistent scoring
 
 ### Phase-Specific Suggestions
 
@@ -96,8 +118,8 @@ Based on effort vs. impact:
    - Frontend tracks play duration across pause/resume and records events on song change/complete
    - Added `recordListenEvent()` to types, librarySlice, and backendService
    - Added `PlaybackContext` type for future context tracking enhancement
-5. **Phase 2** (1-2 days): LLM abstraction with Ollama — local-first option
-6. **Phase 4** (2-3 days): FTS5 integration — better "more like" results
+5. ~~**Phase 2** (1-2 days): LLM abstraction with OmniLLM — local-first option via Ollama, multi-provider support~~ ✅ **DONE (2025-01-13)**
+6. **Phase 4** (2-3 days): FTS5 integration — better "more like" results ← **NEXT**
 7. **Phase 3** (1-2 days): QueryPlan refactor — cleaner architecture
 
 ### Missing From Plan
@@ -213,45 +235,257 @@ The plan explicitly accounts for the **current Tier-based implementation**, pres
 
 **Goal:** Decouple AI DJ logic from Gemini and enable user/provider choice.
 
+**Status:** ✅ IMPLEMENTED (2025-01-13)
+
+### Implementation Summary
+
+Phase 2 is now fully implemented with the following components:
+
+**Backend Changes:**
+1. ✅ Added `github.com/agentplexus/omnillm` v0.9.0 dependency to `go.mod`
+2. ✅ Created `internal/llm/provider.go`:
+   - `Settings` struct for provider configuration
+   - `Provider` struct wrapping `omnillm.ChatClient`
+   - `NewProvider()` factory function
+   - `ParsePlaylistFilter()` for natural language → JSON filter
+   - `TestConnection()` for API connectivity validation
+   - `Close()` for cleanup
+3. ✅ Created `internal/llm/prompts.go`:
+   - `playlistFilterSystemPrompt` with JSON schema and genre inference rules
+   - `GetAvailableProviders()` returning supported providers
+   - `GetAvailableModels()` returning models per provider
+4. ✅ Created `internal/api/llm.go`:
+   - `GET /api/llm/settings` - Get current LLM configuration
+   - `PUT /api/llm/settings` - Update LLM configuration
+   - `GET /api/llm/providers` - List available providers/models
+   - `POST /api/llm/test` - Test provider connection
+5. ✅ Updated `internal/api/smart_playlist.go`:
+   - Added `getLLMSettings()` helper to read settings from database
+   - Replaced `gemini.NewClient()` with `llm.NewProvider()`
+   - Backward-compatible: Falls back to Gemini API key if LLM not configured
+
+**Frontend Changes:**
+1. ✅ Added LLM types to `services/api.ts`:
+   - `LLMProviderInfo`, `LLMModelInfo`, `LLMSettingsResponse`, `LLMSettingsRequest`, `LLMTestResponse`
+2. ✅ Added LLM API methods:
+   - `getLLMSettings()`, `updateLLMSettings()`, `getLLMProviders()`, `testLLMConnection()`
+3. ✅ Added Settings UI in `pages/Settings.tsx`:
+   - Provider dropdown (Ollama, Gemini, OpenAI, Anthropic, X.AI)
+   - Model selection (dynamic based on provider)
+   - API key input (hidden for Ollama)
+   - Base URL input (for Ollama server)
+   - Save Settings button with status feedback
+   - Test Connection button with result display
+
 ### Scope
-- Introduce LLM interface abstraction
+- Introduce LLM interface abstraction using `agentplexus/omnillm`
 - Maintain current `LocalPlaylistFilter` schema
+- Support multiple providers with unified API
 
-### Design
+### Library Choice: OmniLLM
+
+**Repository:** https://github.com/agentplexus/omnillm
+
+**Why OmniLLM:**
+- ✅ **Unified API** - Same `CreateChatCompletion()` interface for all providers
+- ✅ **Multi-Provider** - Built-in support for 6+ providers
+- ✅ **Ollama Native** - First-class local model support (privacy-focused)
+- ✅ **Retry Built-in** - Exponential backoff for rate limits
+- ✅ **Streaming** - SSE streaming support for all providers
+- ✅ **MIT License** - No licensing concerns
+- ✅ **Active Maintenance** - Regular releases (v0.9.0 as of 2025-01)
+
+### Supported Providers (via OmniLLM)
+
+| Provider | Models | API Key Required | Notes |
+|----------|--------|------------------|-------|
+| **Ollama** | Llama 3, Mistral, Gemma, Qwen2.5, DeepSeek | ❌ No | **Local-first, recommended default** |
+| **Google Gemini** | Gemini 2.5 Pro/Flash, 1.5 Pro/Flash | ✅ Yes | Current implementation |
+| **OpenAI** | GPT-4o, GPT-4o-mini, GPT-4-turbo | ✅ Yes | High quality, higher cost |
+| **Anthropic** | Claude Opus 4, Sonnet 4, Haiku | ✅ Yes | Best for nuanced prompts |
+| **X.AI (Grok)** | Grok-4, Grok-3, Grok-2 | ✅ Yes | 2M context window |
+| **AWS Bedrock** | Claude, Titan (via external module) | ✅ Yes | Enterprise option |
+
+### Architecture Design
+
 ```go
-type LLMProvider interface {
-    ParseIntent(ctx context.Context, prompt string) (QueryPlan, error)
+// internal/llm/provider.go
+package llm
+
+import (
+    "context"
+    "github.com/agentplexus/omnillm"
+)
+
+// PlaylistFilter represents the structured output from intent parsing
+type PlaylistFilter struct {
+    Genres     []string `json:"genres"`
+    Artists    []string `json:"artists"`
+    Mood       string   `json:"mood"`
+    Energy     string   `json:"energy"`
+    Tempo      string   `json:"tempo"`
+    MinYear    int      `json:"minYear"`
+    MaxYear    int      `json:"maxYear"`
+    BlendMode  string   `json:"blendMode"`
 }
-````
 
-### Supported Providers
+// Provider wraps omnillm with AI DJ specific functionality
+type Provider struct {
+    client       *omnillm.Client
+    providerName string
+    model        string
+}
 
-* Gemini (existing)
-* OpenAI
-* Ollama (local-first)
-* Future providers (Claude, etc.)
+// NewProvider creates a provider from settings
+func NewProvider(providerName, apiKey, baseURL, model string) (*Provider, error) {
+    config := omnillm.ClientConfig{
+        Provider: omnillm.ProviderName(providerName),
+        APIKey:   apiKey,
+    }
+    if baseURL != "" {
+        config.BaseURL = baseURL
+    }
+    
+    client, err := omnillm.NewClient(config)
+    if err != nil {
+        return nil, err
+    }
+    
+    return &Provider{
+        client:       client,
+        providerName: providerName,
+        model:        model,
+    }, nil
+}
 
-### Model Strategy
+// ParsePlaylistFilter extracts a structured filter from natural language
+func (p *Provider) ParsePlaylistFilter(ctx context.Context, prompt, systemPrompt string) (*PlaylistFilter, error) {
+    resp, err := p.client.CreateChatCompletion(ctx, &omnillm.ChatCompletionRequest{
+        Model: p.model,
+        Messages: []omnillm.Message{
+            {Role: omnillm.RoleSystem, Content: systemPrompt},
+            {Role: omnillm.RoleUser, Content: prompt},
+        },
+        Temperature: &[]float64{0.3}[0], // Low temp for structured output
+    })
+    if err != nil {
+        return nil, err
+    }
+    
+    // Parse JSON response into PlaylistFilter
+    return parseFilterFromResponse(resp.Choices[0].Message.Content)
+}
 
-* **Small-model-first**
+func (p *Provider) Close() error {
+    return p.client.Close()
+}
+```
 
-  * Use local or low-cost model for intent parsing
-* **Escalation**
+### Settings Schema
 
-  * Only use higher-cost models if parsing confidence is low
+New settings for LLM provider configuration:
+```go
+// Stored encrypted in settings table
+type LLMSettings struct {
+    Provider   string `json:"provider"`    // "ollama", "gemini", "openai", etc.
+    Model      string `json:"model"`       // "llama3.2", "gemini-2.0-flash", etc.
+    APIKey     string `json:"apiKey"`      // Empty for Ollama
+    BaseURL    string `json:"baseURL"`     // Custom endpoint (Ollama: localhost:11434)
+    MaxRetries int    `json:"maxRetries"`  // Default: 3
+}
+```
 
-### Libraries
+### UI Integration (Settings Page)
 
-* Preferred:
+Add "AI Provider" section to Settings:
+```
++----------------------------------+
+| 🤖 AI Provider                   |
++----------------------------------+
+| Provider:  [Ollama ▼]            |
+| Model:     [llama3.2 ▼]          |
+| Endpoint:  [localhost:11434    ] |
+| API Key:   [••••••••••••       ] |
+|                                  |
+| [Test Connection]  ✓ Connected   |
++----------------------------------+
+```
 
-  * `langchaingo` for chains & retrievers (future-proof)
-  * or `gollm` for lightweight provider abstraction
+### Migration Path
+
+1. ✅ **Phase 2.1: Add omnillm dependency**
+   ```bash
+   go get github.com/agentplexus/omnillm
+   ```
+
+2. ✅ **Phase 2.2: Create internal/llm package**
+   - `provider.go` - Provider interface and omnillm wrapper
+   - `prompts.go` - System prompts for intent parsing
+   - (factory.go merged into provider.go)
+
+3. ✅ **Phase 2.3: Add API endpoints for LLM settings**
+   - `internal/api/llm.go` - HTTP handlers for settings CRUD
+   - Routes added to `internal/api/api.go`
+
+4. ✅ **Phase 2.4: Update smart_playlist.go**
+   - Replace direct Gemini calls with llm.Provider interface
+   - Keep existing filter parsing logic
+   - Backward-compatible fallback to Gemini API key
+
+5. ✅ **Phase 2.5: Add Settings UI**
+   - Provider dropdown
+   - Model selection (dynamic based on provider)
+   - API key input (hidden for Ollama)
+   - Base URL input for Ollama server
+   - Connection test button with status feedback
+
+6. **Phase 2.6: Ollama auto-detection** (DEFERRED)
+   - On startup, check if Ollama is running locally
+   - If yes, default to Ollama (no API key needed)
+   - If no, prompt user to configure provider
+
+### Model Recommendations
+
+For AI DJ intent parsing (structured output, low creativity):
+
+| Use Case | Recommended Model | Cost/Quality |
+|----------|------------------|--------------|
+| **Local (Default)** | Ollama: `llama3.2:8b` | Free, Fast |
+| **Budget Cloud** | Gemini Flash, GPT-4o-mini | Low cost |
+| **Best Quality** | Claude Sonnet, GPT-4o | Higher cost |
+
+### Prompt Engineering Notes
+
+OmniLLM uses text responses (no JSON schema enforcement like Gemini's `ResponseSchema`). 
+We need robust prompt engineering:
+
+```
+System Prompt:
+You are a music playlist filter parser. Output ONLY valid JSON.
+Schema: {"genres":[],"artists":[],"mood":"","energy":"","tempo":"","minYear":0,"maxYear":0,"blendMode":""}
+
+User Prompt:
+Parse: "upbeat jazz trios from the 90s"
+```
 
 ### Outcome
 
-* User-visible model selection
-* Reduced vendor lock-in
-* Lower average cost per request
+- User-visible model selection in Settings
+- Local-first option with Ollama (no API key, no cost, privacy)
+- Reduced vendor lock-in (switch providers without code changes)
+- Lower average cost per request (use cheaper models for simple queries)
+- Fallback chain: Ollama → Gemini → OpenAI (escalation on failure)
+
+### Estimated Effort
+
+| Task | Effort |
+|------|--------|
+| Add omnillm dependency | 15 min |
+| Create internal/llm package | 2-3 hours |
+| Update smart_playlist.go | 2-3 hours |
+| Settings UI (frontend) | 3-4 hours |
+| Testing & validation | 2-3 hours |
+| **Total** | **1-2 days** |
 
 ---
 

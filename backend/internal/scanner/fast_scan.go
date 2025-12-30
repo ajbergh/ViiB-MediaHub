@@ -483,7 +483,8 @@ func (s *Scanner) SaveScanState(result *ScanResult) error {
 	return s.db.SaveScanState(state)
 }
 
-// DetectDeletedFiles finds files that were in the cache but no longer exist
+// DetectDeletedFiles finds files that were in the cache but no longer exist,
+// or are in directories that should be skipped (like @eaDir, $RECYCLE.BIN, etc.)
 func (s *Scanner) DetectDeletedFiles() ([]FileChange, error) {
 	cache, err := s.db.GetAllFileMetadataCache()
 	if err != nil {
@@ -492,6 +493,20 @@ func (s *Scanner) DetectDeletedFiles() ([]FileChange, error) {
 
 	var changes []FileChange
 	for _, cached := range cache {
+		// Check if file is in a directory that should be skipped
+		// This cleans up files that were added before skip logic was implemented
+		if pathContainsSkippedDirectory(cached.FilePath) {
+			logger.Scanner("Marking file for removal (in skipped directory): %s", cached.FilePath)
+			changes = append(changes, FileChange{
+				Path:       cached.FilePath,
+				ChangeType: ChangeTypeDeleted,
+				OldMtime:   cached.Mtime,
+				OldSize:    cached.FileSize,
+			})
+			continue
+		}
+
+		// Check if file no longer exists
 		if _, err := os.Stat(cached.FilePath); os.IsNotExist(err) {
 			changes = append(changes, FileChange{
 				Path:       cached.FilePath,

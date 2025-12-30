@@ -186,6 +186,11 @@ export const api = {
     }));
   },
 
+  async normalizeGenres(): Promise<{ normalized: number; errors: number }> {
+    const response = await fetch(`${API_BASE}/genres/normalize`, { method: 'POST' });
+    return handleResponse(response);
+  },
+
   async clearSongs(): Promise<void> {
     const response = await fetch(`${API_BASE}/songs`, { method: 'DELETE' });
     await handleResponse(response);
@@ -891,6 +896,54 @@ export const api = {
     const response = await fetch(`${API_BASE}/artists/metadata/unchecked`);
     return handleResponse<ApiArtistMetadata[]>(response);
   },
+
+  // ==================== LLM Settings API ====================
+
+  /**
+   * Gets current LLM settings and available providers/models.
+   * 
+   * @returns Current LLM configuration with provider/model options
+   */
+  async getLLMSettings(): Promise<LLMSettingsResponse> {
+    const response = await fetch(`${API_BASE}/llm/settings`);
+    return handleResponse<LLMSettingsResponse>(response);
+  },
+
+  /**
+   * Updates LLM settings.
+   * 
+   * @param settings - New LLM configuration
+   * @returns Success status
+   */
+  async updateLLMSettings(settings: LLMSettingsRequest): Promise<{ status: string }> {
+    const response = await fetch(`${API_BASE}/llm/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Gets available LLM providers and models.
+   * 
+   * @returns List of providers and models
+   */
+  async getLLMProviders(): Promise<{ providers: LLMProviderInfo[]; models: Record<string, LLMModelInfo[]> }> {
+    const response = await fetch(`${API_BASE}/llm/providers`);
+    return handleResponse(response);
+  },
+
+  /**
+   * Tests the connection to the currently configured LLM provider.
+   * 
+   * @returns Test result with success status and message
+   */
+  async testLLMConnection(): Promise<LLMTestResponse> {
+    const response = await fetch(`${API_BASE}/llm/test`, { method: 'POST' });
+    return handleResponse<LLMTestResponse>(response);
+  },
+
   /**
    * Triggers the Gemini genre enrichment process.
    * @param apiKey - Optional Gemini API key. If not provided, backend will use stored key.
@@ -1169,8 +1222,10 @@ export const api = {
    * 2. Local genre matching: Direct match against indexed genres
    * 3. Gemini AI fallback: For complex prompts requiring AI interpretation
    * 
+   * Always uses multi-genre blending to create cross-genre playlists based on user input.
+   * 
    * @param prompt - Natural language description of desired playlist
-   * @param options.blendMode - 'single' for one genre, 'mixed' for multi-genre blending
+   * @param options.blendMode - 'mixed' for multi-genre blending (always used)
    * @param options.targetSongs - Number of songs to return (default: 50, max: 100)
    * @param options.discoverMode - 'balanced', 'discover' (underplayed), or 'favorites'
    * @param options.avoidRecentlyHours - Exclude songs played within N hours (0 = off)
@@ -1194,7 +1249,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         prompt,
-        blendMode: options?.blendMode || 'single',
+        blendMode: options?.blendMode || 'mixed',
         targetSongs: options?.targetSongs || 50,
         discoverMode: options?.discoverMode || 'balanced',
         avoidRecentlyHours: options?.avoidRecentlyHours || 0,
@@ -1281,6 +1336,58 @@ export interface ApiArtistMetadata {
   spotifyFound: boolean;
   fetchedAt?: number;
   updatedAt?: number;
+}
+
+// ==================== LLM Settings Types ====================
+
+/**
+ * Information about an available LLM provider.
+ */
+export interface LLMProviderInfo {
+  id: string;           // e.g., "ollama", "gemini", "openai"
+  name: string;         // e.g., "Ollama (Local)"
+  requiresKey: boolean; // Whether an API key is required
+  defaultModel: string; // Default model for this provider
+  description: string;  // Brief description of the provider
+}
+
+/**
+ * Information about an available LLM model.
+ */
+export interface LLMModelInfo {
+  id: string;       // e.g., "llama3.2:8b", "gpt-4o"
+  name: string;     // e.g., "Llama 3.2 8B"
+  provider: string; // Provider this model belongs to
+}
+
+/**
+ * LLM settings response from backend.
+ */
+export interface LLMSettingsResponse {
+  provider: string;
+  model: string;
+  apiKey?: string;  // Masked for security (e.g., "****abc1")
+  baseURL?: string;
+  providers: LLMProviderInfo[];
+  models: Record<string, LLMModelInfo[]>;
+}
+
+/**
+ * LLM settings request for updating configuration.
+ */
+export interface LLMSettingsRequest {
+  provider: string;
+  model: string;
+  apiKey?: string;
+  baseURL?: string;
+}
+
+/**
+ * LLM connection test response.
+ */
+export interface LLMTestResponse {
+  success: boolean;
+  message: string;
 }
 
 export default api;

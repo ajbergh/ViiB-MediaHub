@@ -1,6 +1,16 @@
-// Package gemini provides integration with Google's Gemini AI for ViiB MediaHub.
+// Package gemini is deprecated and maintained for backward compatibility.
 //
-// This package handles all AI-powered features including:
+// Deprecated: Use internal/llm instead for all new code.
+// The llm package provides a unified interface supporting multiple LLM providers:
+//   - Google Gemini
+//   - OpenAI (GPT-4o, GPT-4o-mini)
+//   - Anthropic Claude
+//   - Ollama (local models)
+//   - X.AI (Grok)
+//
+// This package will be removed in a future version.
+//
+// Original functionality (now in internal/llm):
 //
 // Unified Metadata Enrichment (TOON Format):
 //   - EnrichAllMetadata: High-efficiency batch enrichment for up to 200 songs

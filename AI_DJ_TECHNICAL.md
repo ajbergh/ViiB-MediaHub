@@ -2,7 +2,7 @@
 
 > **Purpose:** Comprehensive technical documentation of the AI DJ feature, including architecture, algorithms, Gemini integration, and known shortcomings.
 >
-> **Last Updated:** 2025-01-13
+> **Last Updated:** 2025-12-29
 >
 > **Audience:** Developers working on or extending the AI DJ feature
 
@@ -263,19 +263,33 @@ User Request: {prompt}
 
 ## Genre Scoring Algorithm
 
-**Function:** `scoreGenreMatch(genreName string, filter *gemini.PlaylistFilter) int`
+**Function:** `scoreGenreMatch(genreName string, filter *gemini.PlaylistFilter, originalPrompt string) int`
 
-The scoring algorithm determines how well an indexed genre matches Gemini's interpreted intent.
+The scoring algorithm determines how well an indexed genre matches Gemini's interpreted intent. 
+
+**✅ Updated (2025-12-29):** Now accepts the original user prompt to boost exact subgenre matches.
 
 ### Scoring Components
 
 | Component | Max Points | Description |
 |-----------|------------|-------------|
+| **Subgenre Phrase Match** | 60 | If indexed genre name appears in original prompt (e.g., "jazz trio" → "Jazz Trio") |
+| **Near-Exact Phrase Match** | 20 (bonus) | Additional points if genre is ≥50% of prompt length |
 | Decade Match | 40 | If genre contains decade (e.g., "90s") overlapping filter's year range |
 | Decade Mismatch | -50 | Penalty if genre has decade outside filter's year range |
 | Genre Name Match | 30 | If indexed genre contains any filter genre name |
 | Word Match | 20 | If indexed genre contains any word from filter genres |
 | Variation Match | 25 | If indexed genre contains synonym (e.g., "alt" → "alternative") |
+
+### Subgenre Phrase Matching ✨ NEW (2025-12-29)
+
+The algorithm now detects when the user's original prompt contains an indexed genre name, even if Gemini simplified it.
+
+**Example:** Prompt "upbeat jazz trios"
+- Gemini returns `genres: ["Jazz"]` (simplified)
+- Indexed genre "Jazz Trio" scores: 60 (phrase match) + 30 (contains "Jazz") = **90**
+- Indexed genre "50s Jazz" scores: 40 (decade bonus) + 30 (contains "Jazz") = **70**
+- **Result:** "Jazz Trio" wins despite Gemini not extracting it
 
 ### Decade Detection
 
@@ -341,12 +355,14 @@ var variations = map[string][]string{
 
 ## Multi-Genre Blending
 
-**Function:** `tryMatchMultipleGenres(filter, maxGenres, targetSongs)`
+**Function:** `tryMatchMultipleGenres(filter, originalPrompt, maxGenres, targetSongs)`
 
 **When Used:** `blendMode: "mixed"` option selected by user
 
+**✅ Updated (2025-12-29):** Now accepts original prompt for subgenre matching and uses mood/energy/tempo filtering.
+
 **Algorithm:**
-1. Score all indexed genres against Gemini filter
+1. Score all indexed genres against Gemini filter **and original prompt**
 2. Sort by score descending, then by song count
 3. Take top N genres (default: 3) within 30 points of highest
 4. Calculate proportional song distribution based on scores:
@@ -354,8 +370,28 @@ var variations = map[string][]string{
    proportion := float64(genreScore) / float64(totalScores)
    songsFromGenre := int(proportion * float64(targetSongs))
    ```
-5. Shuffle songs from each genre (pseudo-random)
-6. Combine and shuffle final playlist
+5. **Query songs with mood/energy/tempo filtering** (from Gemini's parsed filter)
+6. Fall back to genre-only query if mood filter returns too few songs
+7. Shuffle songs from each genre (Fisher-Yates random)
+8. Combine and shuffle final playlist
+
+### Mood/Energy/Tempo Filtering ✨ NEW (2025-12-29)
+
+When Gemini extracts mood/energy/tempo from the prompt (e.g., "upbeat" → `energy: "high"`), these are now applied to the song query:
+
+```go
+// Uses new function that combines genre + mood filtering
+songs, err = a.db.GetSongsByExactGenreWithMood(
+    g.name,           // e.g., "Jazz Trio"
+    filter.MinYear,   // e.g., 0
+    filter.MaxYear,   // e.g., 0
+    filter.Mood,      // e.g., "happy" (from "upbeat")
+    filter.Energy,    // e.g., "high" (from "upbeat")
+    filter.Tempo,     // e.g., "fast" (from "upbeat")
+)
+```
+
+**Fallback Behavior:** If mood filtering is too restrictive (returns fewer songs than needed), the system falls back to genre-only queries to ensure playlist is filled.
 
 **Example:**
 - Target: 50 songs
@@ -423,9 +459,13 @@ The mood analysis runs as a background job:
 
 ### Current Usage
 
-**IMPORTANT:** Mood/energy fields are **stored but not yet used** for playlist filtering.
+~~**IMPORTANT:** Mood/energy fields are **stored but not yet used** for playlist filtering.~~
 
-The `PlaylistFilter` struct includes mood/energy/tempo/occasion fields, and Gemini extracts them, but the `GetSongsBySmartFilter()` database query does NOT filter by these fields yet.
+**✅ FIXED (2025-12-29):** Mood/energy/tempo fields are now used in playlist filtering:
+
+1. **Tier 1.5 (tryMoodBasedMatch):** For simple prompts like "chill" or "workout", queries songs directly by mood fields
+2. **Multi-Genre Blending (tryMatchMultipleGenres):** When Gemini extracts mood/energy/tempo from complex prompts, `GetSongsByExactGenreWithMood()` applies these filters within each matched genre
+3. **Fallback Behavior:** If mood filtering is too restrictive, the system falls back to genre-only queries to ensure results
 
 ---
 
@@ -590,21 +630,19 @@ Songs are NOT cached because:
 
 **Workaround:** This is intentional—no DSP/FFT needed, but limits precision.
 
-### 3. Pseudo-Random Shuffling
+### 4. ~~Genre Scoring Edge Cases~~ Partially Fixed (2025-12-29)
 
-**Issue:** Shuffle uses deterministic pseudo-random (`(i * 17) % (i + 1)`), not true randomness.
+**Issue:** ~~Scoring relies on string matching and decade detection. Creative genre names may not score well.~~
 
-**Impact:** Same input produces same shuffle order. Repeated requests without changes yield identical results.
+**Status:** **Partially Fixed** - Added subgenre phrase matching from original prompt.
 
-**Fix:** Use `math/rand` with time-based seed.
+**What's Fixed:**
+- ✅ "upbeat jazz trios" now correctly matches "Jazz Trio" (phrase matching)
+- ✅ Indexed subgenres appearing in user prompt get +60-80 bonus
 
-### 4. Genre Scoring Edge Cases
-
-**Issue:** Scoring relies on string matching and decade detection. Creative genre names may not score well.
-
-**Examples:**
-- "Shoegaze-inspired Indie" might not match "90s Shoegaze" well
-- "Psychedelic" scores poorly against "70s Psych Rock" (variation map helps but imperfect)
+**Remaining Issues:**
+- "Shoegaze-inspired Indie" might not match "90s Shoegaze" well (variation map helps but imperfect)
+- "Psychedelic" still scores poorly against "70s Psych Rock" if not in variations map
 
 ### 5. Artist Similarity is Genre-Only
 
@@ -828,4 +866,11 @@ The `useAudioPlayer.ts` hook now tracks listening events:
 
 ## Summary
 
-The AI DJ is a sophisticated three-tier matching system that balances speed (local matching) with intelligence (Gemini AI). While effective for genre-based playlists, it has limitations around mood filtering, audio analysis, and personalization. The architecture is extensible—mood/energy fields are already stored and ready for filtering once the database query is updated.
+The AI DJ is a sophisticated three-tier matching system that balances speed (local matching) with intelligence (Gemini AI). It now includes:
+
+- **Subgenre phrase matching** (2025-12-29): User prompt phrases like "jazz trios" correctly match indexed genres like "Jazz Trio" even when Gemini simplifies them.
+- **Mood/energy/tempo filtering** (2025-12-29): Prompts like "upbeat" now filter songs by energy level, using the mood analysis data already stored in the database.
+- **Preference learning** (2025-01-13): User listening behavior (skips, completions) is tracked to enable future personalization.
+- **True random shuffling** (2025-01-13): Fisher-Yates algorithm with time-based seeding ensures varied results.
+
+The architecture is extensible and most major gaps have been addressed. Remaining improvements focus on advanced features like audio-based BPM detection, cross-artist embeddings, and local LLM options.

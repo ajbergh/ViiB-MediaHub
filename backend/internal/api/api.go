@@ -14,6 +14,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,7 +31,7 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
-	"github.com/ajbergh/viib-mediahub/internal/gemini"
+	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/go-chi/chi/v5"
@@ -110,6 +111,7 @@ func (a *API) Routes() chi.Router {
 	// Library endpoints
 	r.Get("/songs", a.getSongs)
 	r.Get("/genres", a.getGenres)
+	r.Post("/genres/normalize", a.normalizeGenres) // Normalize genre capitalization
 	r.Post("/smart-playlist", a.handleGenerateSmartPlaylist)
 	r.Delete("/songs", a.clearSongs)
 	r.Post("/library/enrich-genres", a.enrichGenres)
@@ -206,6 +208,12 @@ func (a *API) Routes() chi.Router {
 	r.Post("/artists/metadata", a.saveArtistMetadata)
 	r.Post("/artists/metadata/download-image", a.downloadArtistImage)
 	r.Delete("/artists/metadata/{name}", a.resetArtistMetadata)
+
+	// LLM (AI) configuration
+	r.Get("/llm/settings", a.getLLMSettings)
+	r.Put("/llm/settings", a.updateLLMSettings)
+	r.Get("/llm/providers", a.getLLMProviders)
+	r.Post("/llm/test", a.testLLMConnection)
 
 	// Settings
 	r.Get("/settings/{key}", a.getSetting)
@@ -1682,22 +1690,26 @@ func (a *API) enrichGenres(w http.ResponseWriter, r *http.Request) {
 		// It's okay if body is empty, we might have key in settings
 	}
 
-	if req.APIKey == "" {
-		// Try to get from settings if not provided
-		key, err := a.db.GetSetting("gemini_api_key")
-		if err != nil || key == "" {
-			respondError(w, http.StatusBadRequest, "API key is required")
-			return
-		}
-		req.APIKey = key
-	} else {
-		// Save for future use
+	// If API key provided, save it as legacy gemini_api_key for backward compatibility
+	if req.APIKey != "" {
 		a.db.SetSetting("gemini_api_key", req.APIKey)
 	}
 
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "No LLM configured. Set AI Provider in Settings or provide a Gemini API key.")
+		return
+	}
+	defer provider.Close()
+
 	// Get songs for enrichment
-	// Limit to 50 to avoid hitting token limits
-	songs, err := a.db.GetSongsForEnrichment(50, req.Force, req.Offset)
+	// Limit to provider's optimal batch size to avoid hitting token limits
+	batchSize := provider.GetOptimalBatchSize()
+	if batchSize > 50 {
+		batchSize = 50 // Cap at 50 for this sync endpoint
+	}
+	songs, err := a.db.GetSongsForEnrichment(batchSize, req.Force, req.Offset)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get songs: %v", err))
 		return
@@ -1712,10 +1724,9 @@ func (a *API) enrichGenres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := gemini.NewClient(req.APIKey)
-	genresMap, err := client.EnrichGenres(songs)
+	genresMap, err := provider.EnrichGenres(r.Context(), songs)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Gemini API error: %v", err))
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("LLM error: %v", err))
 		return
 	}
 
@@ -1730,7 +1741,7 @@ func (a *API) enrichGenres(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, map[string]interface{}{
 		"status":  "ok",
-		"message": fmt.Sprintf("Successfully enriched %d songs", updatedCount),
+		"message": fmt.Sprintf("Successfully enriched %d songs using %s", updatedCount, provider.GetProviderName()),
 		"count":   updatedCount,
 	})
 }
@@ -1776,16 +1787,17 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	// Get API key
-	apiKey, err := a.db.GetSetting("gemini_api_key")
-	if err != nil || apiKey == "" {
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
 		sendEvent(EnrichmentProgress{
 			Status:  "error",
-			Message: "Gemini API key not configured",
-			Error:   "API key is required. Configure it in Settings.",
+			Message: "No LLM configured",
+			Error:   "Configure AI Provider in Settings or add a Gemini API key.",
 		})
 		return
 	}
+	defer provider.Close()
 
 	// Get total songs needing enrichment
 	allSongs, err := a.db.GetSongsForEnrichment(10000, force, 0) // Get all for counting
@@ -1808,18 +1820,17 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate batches - TOON format can handle 200 songs efficiently
-	batchSize := 200
+	// Calculate batches - use provider's optimal batch size
+	batchSize := provider.GetOptimalBatchSize()
 	totalBatches := (totalSongs + batchSize - 1) / batchSize
 
 	sendEvent(EnrichmentProgress{
 		Status:       "started",
-		Message:      fmt.Sprintf("Starting enrichment of %d songs in %d batches (200 songs/batch)", totalSongs, totalBatches),
+		Message:      fmt.Sprintf("Starting enrichment of %d songs in %d batches using %s", totalSongs, totalBatches, provider.GetProviderName()),
 		TotalSongs:   totalSongs,
 		TotalBatches: totalBatches,
 	})
 
-	client := gemini.NewClient(apiKey)
 	processedSongs := 0
 	updatedTotal := 0
 
@@ -1862,29 +1873,29 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 
 		logger.API("enrichGenresStream: Calling EnrichGenres for batch %d with %d songs", batch+1, len(songs))
 
-		// Create a channel to signal when Gemini call completes
-		geminiDone := make(chan struct{})
+		// Create a channel to signal when LLM call completes
+		llmDone := make(chan struct{})
 		var genresMap map[string][]string
-		var geminiErr error
+		var llmErr error
 
-		// Run Gemini call in goroutine
+		// Run LLM call in goroutine
 		go func() {
-			genresMap, geminiErr = client.EnrichGenres(songs)
-			close(geminiDone)
+			genresMap, llmErr = provider.EnrichGenres(r.Context(), songs)
+			close(llmDone)
 		}()
 
-		// Send keepalive events every 5 seconds while waiting for Gemini
+		// Send keepalive events every 5 seconds while waiting for LLM
 		keepaliveTicker := time.NewTicker(5 * time.Second)
 		defer keepaliveTicker.Stop()
 
-	geminiWait:
+	llmWait:
 		for {
 			select {
 			case <-r.Context().Done():
-				logger.API("enrichGenresStream: Client disconnected during Gemini call")
+				logger.API("enrichGenresStream: Client disconnected during LLM call")
 				return
-			case <-geminiDone:
-				break geminiWait
+			case <-llmDone:
+				break llmWait
 			case <-keepaliveTicker.C:
 				// Send SSE keepalive comment to prevent browser timeout
 				logger.API("enrichGenresStream: Sending keepalive for batch %d", batch+1)
@@ -1893,13 +1904,13 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 		}
 		keepaliveTicker.Stop()
 
-		logger.API("enrichGenresStream: EnrichGenres returned, err=%v, resultCount=%d", geminiErr, len(genresMap))
+		logger.API("enrichGenresStream: EnrichGenres returned, err=%v, resultCount=%d", llmErr, len(genresMap))
 
-		if geminiErr != nil {
+		if llmErr != nil {
 			sendEvent(EnrichmentProgress{
 				Status:         "error",
-				Message:        "Gemini API error",
-				Error:          geminiErr.Error(),
+				Message:        "LLM API error",
+				Error:          llmErr.Error(),
 				ProcessedSongs: processedSongs,
 				CurrentBatch:   batch + 1,
 				TotalBatches:   totalBatches,
@@ -1986,6 +1997,7 @@ func (a *API) detectRemasters(w http.ResponseWriter, r *http.Request) {
 // This is the recommended endpoint - it enriches genres, mood, energy, tempo, BPM,
 // instrumental detection, and original year in a single efficient API call per batch.
 // Uses TOON format for ~3x token efficiency compared to JSON-based methods.
+// Supports any configured LLM provider (Ollama, Gemini, OpenAI, Anthropic, X.AI).
 func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	logger.API("enrichAllMetadataStream: Starting unified metadata enrichment")
 
@@ -2017,16 +2029,17 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	// Get API key
-	apiKey, err := a.db.GetSetting("gemini_api_key")
-	if err != nil || apiKey == "" {
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
 		sendEvent(EnrichmentProgress{
 			Status:  "error",
-			Message: "Gemini API key not configured",
-			Error:   "API key is required. Configure it in Settings.",
+			Message: "No LLM configured",
+			Error:   "Configure AI Provider in Settings or add a Gemini API key.",
 		})
 		return
 	}
+	defer provider.Close()
 
 	// Get all songs needing any enrichment
 	// Use GetSongsForEnrichment to get songs without genres (primary need)
@@ -2052,12 +2065,12 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TOON format can handle 200 songs per batch efficiently
-	batchSize := 200
+	// Use provider's optimal batch size
+	batchSize := provider.GetOptimalBatchSize()
 	totalBatches := (totalSongs + batchSize - 1) / batchSize
 
 	// Concurrency settings - process up to 3 batches in parallel
-	// This significantly speeds up enrichment while respecting Gemini rate limits
+	// This significantly speeds up enrichment while respecting rate limits
 	concurrency := 3
 	if totalBatches < concurrency {
 		concurrency = totalBatches
@@ -2065,12 +2078,10 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 
 	sendEvent(EnrichmentProgress{
 		Status:       "started",
-		Message:      fmt.Sprintf("Starting unified enrichment of %d songs in %d batches (200 songs/batch, %d parallel)", totalSongs, totalBatches, concurrency),
+		Message:      fmt.Sprintf("Starting unified enrichment of %d songs in %d batches using %s", totalSongs, totalBatches, provider.GetProviderName()),
 		TotalSongs:   totalSongs,
 		TotalBatches: totalBatches,
 	})
-
-	client := gemini.NewClient(apiKey)
 
 	// Thread-safe counters
 	var mu sync.Mutex
@@ -2109,8 +2120,8 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 
 			logger.API("enrichAllMetadataStream: Worker %d processing batch %d with %d songs", workerID, job.batchNum+1, len(job.songs))
 
-			// Call Gemini API
-			unified, err := client.EnrichAllMetadata(job.songs)
+			// Call LLM API
+			unified, err := provider.EnrichAllMetadata(r.Context(), job.songs)
 
 			if err != nil {
 				logger.API("enrichAllMetadataStream: Worker %d batch %d error: %v", workerID, job.batchNum+1, err)
@@ -2259,16 +2270,18 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // enrichOriginalYearsStream provides SSE streaming for original year enrichment
-// Uses Gemini AI to determine the original release year of songs that may have remaster dates
+// Uses LLM AI to determine the original release year of songs that may have remaster dates
 func (a *API) enrichOriginalYearsStream(w http.ResponseWriter, r *http.Request) {
 	logger.API("enrichOriginalYearsStream: Starting original year analysis stream")
 
-	apiKey, err := a.db.GetSetting("gemini_api_key")
-	if err != nil || apiKey == "" {
-		logger.API("enrichOriginalYearsStream: Gemini API key not configured")
-		http.Error(w, "Gemini API key not configured", http.StatusServiceUnavailable)
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
+		logger.API("enrichOriginalYearsStream: No LLM configured")
+		http.Error(w, "No LLM configured. Set AI Provider in Settings.", http.StatusServiceUnavailable)
 		return
 	}
+	defer provider.Close()
 
 	// Setup SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -2334,7 +2347,6 @@ func (a *API) enrichOriginalYearsStream(w http.ResponseWriter, r *http.Request) 
 	go func() {
 		defer close(progressChan)
 
-		client := gemini.NewClient(apiKey)
 		processedSongs := 0
 		updatedTotal := 0
 
@@ -2363,10 +2375,10 @@ func (a *API) enrichOriginalYearsStream(w http.ResponseWriter, r *http.Request) 
 			default:
 			}
 
-			// Call Gemini API
-			results, err := client.AnalyzeOriginalYear(batchSongs)
+			// Call LLM API
+			results, err := provider.AnalyzeOriginalYear(context.Background(), batchSongs)
 			if err != nil {
-				logger.API("enrichOriginalYearsStream: Gemini API error on batch %d: %v", batch+1, err)
+				logger.API("enrichOriginalYearsStream: LLM API error on batch %d: %v", batch+1, err)
 				select {
 				case progressChan <- progressUpdate{
 					data: EnrichmentProgress{
@@ -2455,12 +2467,14 @@ func (a *API) enrichMood(w http.ResponseWriter, r *http.Request) {
 func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 	logger.API("enrichMoodStream: Starting mood analysis stream")
 
-	apiKey, err := a.db.GetSetting("gemini_api_key")
-	if err != nil || apiKey == "" {
-		logger.API("enrichMoodStream: Gemini API key not configured")
-		http.Error(w, "Gemini API key not configured", http.StatusServiceUnavailable)
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
+		logger.API("enrichMoodStream: No LLM configured")
+		http.Error(w, "No LLM configured. Set AI Provider in Settings.", http.StatusServiceUnavailable)
 		return
 	}
+	defer provider.Close()
 
 	// Setup SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -2538,7 +2552,6 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer close(progressChan)
 
-		client := gemini.NewClient(apiKey)
 		processedSongs := 0
 		updatedTotal := 0
 
@@ -2585,14 +2598,14 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 			// Always broadcast to sidebar
 			broadcastMoodEvent("mood_progress", fmt.Sprintf("Analyzing batch %d/%d", batch+1, totalBatches), processedSongs, totalSongs, batch+1, totalBatches)
 
-			moodMap, err := client.AnalyzeSongMood(batchSongs)
+			moodMap, err := provider.AnalyzeSongMood(context.Background(), batchSongs)
 			if err != nil {
-				logger.API("enrichMoodStream: Gemini API error on batch %d: %v", batch+1, err)
+				logger.API("enrichMoodStream: LLM API error on batch %d: %v", batch+1, err)
 				select {
 				case progressChan <- progressUpdate{
 					data: EnrichmentProgress{
 						Status:         "error",
-						Message:        "Gemini API error",
+						Message:        "LLM API error",
 						Error:          err.Error(),
 						ProcessedSongs: processedSongs,
 						CurrentBatch:   batch + 1,

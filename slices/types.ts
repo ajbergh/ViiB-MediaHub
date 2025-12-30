@@ -9,6 +9,7 @@
  * - LibrarySlice: Songs, playlists, metadata, scanning
  * - SpotifySlice: OAuth tokens and user profile
  * - UISlice: Context menus, dialogs, logs, panel states, toast notifications
+ * - AIDJSlice: AI DJ search state and preferences (persisted)
  * 
  * Key Types:
  * - ToastConfig: Toast notification structure (type, message, action, duration)
@@ -22,6 +23,7 @@
 
 import React from 'react';
 import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType } from '../types';
+import { SmartPlaylistFilter } from '../services/api';
 
 export interface PlayerSlice {
   isPlaying: boolean;
@@ -306,4 +308,30 @@ export interface UISlice {
   setLocalSearchTab: (tab: 'all' | 'tracks' | 'albums' | 'artists' | 'playlists') => void;
 }
 
-export type AppState = PlayerSlice & LibrarySlice & SpotifySlice & UISlice;
+export interface AIDJSlice {
+  // Search and results
+  aiDjPrompt: string;
+  aiDjGeneratedSongs: Song[];
+  aiDjFilter: SmartPlaylistFilter | null;
+  aiDjIsLoading: boolean;
+  
+  // User preferences
+  aiDjDiscoverMode: 'balanced' | 'discover' | 'favorites';
+  aiDjAvoidRecentlyHours: number;
+  aiDjOnePerArtist: boolean;
+  aiDjUseTimeContext: boolean;
+  
+  // Actions
+  setAIDJPrompt: (prompt: string) => void;
+  setAIDJGeneratedSongs: (songs: Song[]) => void;
+  setAIDJFilter: (filter: SmartPlaylistFilter | null) => void;
+  setAIDJIsLoading: (isLoading: boolean) => void;
+  setAIDJDiscoverMode: (mode: 'balanced' | 'discover' | 'favorites') => void;
+  setAIDJAvoidRecentlyHours: (hours: number) => void;
+  setAIDJOnePerArtist: (onePerArtist: boolean) => void;
+  setAIDJUseTimeContext: (useTimeContext: boolean) => void;
+  setAIDJResult: (prompt: string, songs: Song[], filter: SmartPlaylistFilter | null) => void;
+  clearAIDJ: () => void;
+}
+
+export type AppState = PlayerSlice & LibrarySlice & SpotifySlice & UISlice & AIDJSlice;

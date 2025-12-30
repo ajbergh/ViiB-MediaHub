@@ -655,8 +655,11 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 }
 
 // SaveSong inserts or updates a single Song record in the database.
+// Genres are normalized to consistent Title Case capitalization.
 func (d *DB) SaveSong(s *Song) error {
-	genreJSON, _ := json.Marshal(s.Genre)
+	// Normalize genres for consistent capitalization
+	normalizedGenres := NormalizeGenres(s.Genre)
+	genreJSON, _ := json.Marshal(normalizedGenres)
 
 	_, err := d.conn.Exec(`
 		INSERT INTO songs (
@@ -725,7 +728,9 @@ func (d *DB) SaveSongs(songs []Song) error {
 	defer stmt.Close()
 
 	for _, s := range songs {
-		genreJSON, _ := json.Marshal(s.Genre)
+		// Normalize genres for consistent capitalization
+		normalizedGenres := NormalizeGenres(s.Genre)
+		genreJSON, _ := json.Marshal(normalizedGenres)
 		_, err = stmt.Exec(
 			s.ID, s.Title, s.Artist, s.Album, s.AlbumArtist, s.TrackNumber, s.DiscNumber,
 			string(genreJSON), s.Year, s.Duration, s.FilePath, s.CoverPath, s.AddedAt,
@@ -3002,8 +3007,12 @@ func (d *DB) GetSongsForEnrichment(limit int, force bool, offset int) ([]Song, e
 }
 
 // UpdateSongGenres updates the genre list for a specific song.
+// Genres are normalized to consistent Title Case capitalization before saving.
 func (d *DB) UpdateSongGenres(songID string, genres []string) error {
-	genreJSON, err := json.Marshal(genres)
+	// Normalize genres for consistent capitalization
+	normalized := NormalizeGenres(genres)
+
+	genreJSON, err := json.Marshal(normalized)
 	if err != nil {
 		return fmt.Errorf("failed to marshal genres: %w", err)
 	}

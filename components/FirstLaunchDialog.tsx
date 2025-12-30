@@ -47,9 +47,21 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
   const [clientSecret, setClientSecret] = useState('');
   const [savingCredentials, setSavingCredentials] = useState(false);
 
-  // Gemini API key state
+  // Gemini API key state (legacy, for backward compatibility with enrichment)
   const [geminiKey, setGeminiKey] = useState('');
   const [savingGemini, setSavingGemini] = useState(false);
+
+  // LLM Provider state for AI DJ
+  const [llmProvider, setLlmProvider] = useState('ollama');
+  const [llmModel, setLlmModel] = useState('llama3.2:8b');
+  const [llmApiKey, setLlmApiKey] = useState('');
+  const [llmBaseURL, setLlmBaseURL] = useState('http://localhost:11434');
+  const [llmProviders, setLlmProviders] = useState<import('../services/api').LLMProviderInfo[]>([]);
+  const [llmModels, setLlmModels] = useState<Record<string, import('../services/api').LLMModelInfo[]>>({});
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [savingLlm, setSavingLlm] = useState(false);
+  const [llmTestStatus, setLlmTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [llmTestMessage, setLlmTestMessage] = useState('');
 
   // Spotify download folder browser state
   const [showDownloadFolderBrowser, setShowDownloadFolderBrowser] = useState(false);
@@ -75,6 +87,33 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       loadScanFolders();
     }
   }, [isOpen, loadScanFolders]);
+
+  // Load LLM settings when dialog opens
+  useEffect(() => {
+    const loadLLMSettings = async () => {
+      if (!isOpen) return;
+      try {
+        setLlmLoading(true);
+        const settings = await api.getLLMSettings();
+        setLlmProvider(settings.provider || 'ollama');
+        setLlmModel(settings.model || 'llama3.2:8b');
+        setLlmApiKey(settings.apiKey || '');
+        setLlmBaseURL(settings.baseURL || 'http://localhost:11434');
+        setLlmProviders(settings.providers || []);
+        setLlmModels(settings.models || {});
+      } catch (e) {
+        console.error('Failed to load LLM settings:', e);
+        // Set defaults if backend doesn't return settings
+        setLlmProviders([
+          { id: 'ollama', name: 'Ollama (Local)', requiresKey: false, defaultModel: 'llama3.2:8b', description: 'Run AI models locally on your computer' },
+          { id: 'gemini', name: 'Google Gemini', requiresKey: true, defaultModel: 'gemini-2.0-flash', description: 'Cloud-based AI from Google' },
+        ]);
+      } finally {
+        setLlmLoading(false);
+      }
+    };
+    loadLLMSettings();
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -209,6 +248,51 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       addLog('error', 'Failed to save Gemini API key', e);
     } finally {
       setSavingGemini(false);
+    }
+  };
+
+  const handleSaveLlmSettings = async () => {
+    setSavingLlm(true);
+    try {
+      // Save LLM settings for AI DJ
+      await api.updateLLMSettings({
+        provider: llmProvider,
+        model: llmModel,
+        apiKey: llmApiKey.startsWith('****') ? '' : llmApiKey,
+        baseURL: llmBaseURL,
+      });
+
+      // If using Gemini as LLM provider and no geminiKey set, also save the API key for enrichment
+      if (llmProvider === 'gemini' && llmApiKey && !llmApiKey.startsWith('****')) {
+        await api.setSetting('gemini_api_key', llmApiKey);
+      }
+
+      addLog('success', 'AI provider settings saved');
+      setStep(5);
+    } catch (e) {
+      addLog('error', 'Failed to save AI provider settings', e);
+    } finally {
+      setSavingLlm(false);
+    }
+  };
+
+  const handleTestLlmConnection = async () => {
+    setLlmTestStatus('testing');
+    setLlmTestMessage('');
+    try {
+      // First save current settings so test uses them
+      await api.updateLLMSettings({
+        provider: llmProvider,
+        model: llmModel,
+        apiKey: llmApiKey.startsWith('****') ? '' : llmApiKey,
+        baseURL: llmBaseURL,
+      });
+      const result = await api.testLLMConnection();
+      setLlmTestStatus(result.success ? 'success' : 'error');
+      setLlmTestMessage(result.message);
+    } catch (e) {
+      setLlmTestStatus('error');
+      setLlmTestMessage(e instanceof Error ? e.message : 'Connection test failed');
     }
   };
 
@@ -609,7 +693,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
     </div>
   );
 
-  // Step 4: Gemini Integration (Optional)
+  // Step 4: AI Provider Setup (Optional)
   const renderGeminiSetup = () => (
     <div className="py-6">
       <div className="flex items-center gap-3 mb-6">
@@ -617,14 +701,15 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <Sparkles size={28} className="text-brand" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-white">AI Enrichment</h2>
-          <p className="text-text-secondary">Optional - Enhance metadata with Google Gemini</p>
+          <h2 className="text-2xl font-bold text-white">AI DJ Provider</h2>
+          <p className="text-text-secondary">Optional - Power the AI DJ with your preferred AI</p>
         </div>
       </div>
 
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
         <p className="text-sm text-text-secondary mb-4">
-          Connect your Google Gemini API key to automatically fill in missing genres, moods, and other metadata using AI analysis.
+          Choose which AI provider powers the AI DJ for natural language playlist generation.
+          Ollama runs locally (free, no API key), or use cloud providers for more powerful models.
         </p>
 
         <div className="bg-surface-2 border border-brand/30 rounded-lg p-4 mb-6">
@@ -632,45 +717,159 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <ul className="text-sm text-text-secondary space-y-1">
             <li className="flex items-start gap-2">
               <Check size={16} className="text-brand mt-0.5 flex-shrink-0" />
-              <span>Intelligent genre classification</span>
+              <span>Natural language playlist generation ("upbeat jazz for coding")</span>
             </li>
             <li className="flex items-start gap-2">
               <Check size={16} className="text-brand mt-0.5 flex-shrink-0" />
-              <span>Mood and style detection</span>
+              <span>Intelligent genre and mood interpretation</span>
             </li>
             <li className="flex items-start gap-2">
               <Check size={16} className="text-brand mt-0.5 flex-shrink-0" />
-              <span>Contextual metadata enrichment</span>
+              <span>Local-first with Ollama (no data leaves your computer)</span>
             </li>
           </ul>
         </div>
 
-        <div className="space-y-4 mb-4">
-          <div>
-            <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
-              Gemini API Key
-            </label>
-            <TextInput
-              type="password"
-              value={geminiKey}
-              onChange={(e) => setGeminiKey(e.target.value)}
-              placeholder="Enter your Gemini API Key"
-              className="w-full bg-surface-2 px-4 py-3"
-            />
+        {llmLoading ? (
+          <div className="flex items-center gap-2 text-text-subtle py-4">
+            <Loader2 size={16} className="animate-spin" />
+            Loading provider settings...
           </div>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Provider Selection */}
+            <div>
+              <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
+                Provider
+              </label>
+              <select
+                value={llmProvider}
+                onChange={(e) => {
+                  const newProvider = e.target.value;
+                  setLlmProvider(newProvider);
+                  // Set default model for this provider
+                  const providerModels = llmModels[newProvider];
+                  if (providerModels && providerModels.length > 0) {
+                    setLlmModel(providerModels[0].id);
+                  }
+                  // Set default base URL for Ollama
+                  if (newProvider === 'ollama') {
+                    setLlmBaseURL('http://localhost:11434');
+                  } else {
+                    setLlmBaseURL('');
+                  }
+                  setLlmTestStatus('idle');
+                }}
+                className="w-full px-4 py-3 rounded-lg bg-surface-2 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
+              >
+                {llmProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} {!p.requiresKey && '(No API Key)'}
+                  </option>
+                ))}
+              </select>
+              {llmProviders.find(p => p.id === llmProvider)?.description && (
+                <p className="text-xs text-text-subtle mt-1">
+                  {llmProviders.find(p => p.id === llmProvider)?.description}
+                </p>
+              )}
+            </div>
 
-        <div className="text-xs text-text-subtle">
-          Don't have a key? Get one at{' '}
-          <a
-            href="https://makersuite.google.com/app/apikey"
-            target="_blank"
-            rel="noreferrer"
-            className="text-brand hover:underline"
-          >
-            makersuite.google.com
-          </a>
-        </div>
+            {/* Model Selection */}
+            <div>
+              <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
+                Model
+              </label>
+              <select
+                value={llmModel}
+                onChange={(e) => {
+                  setLlmModel(e.target.value);
+                  setLlmTestStatus('idle');
+                }}
+                className="w-full px-4 py-3 rounded-lg bg-surface-2 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
+              >
+                {(llmModels[llmProvider] || []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* API Key - only show for cloud providers */}
+            {llmProviders.find(p => p.id === llmProvider)?.requiresKey && (
+              <div>
+                <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
+                  API Key
+                </label>
+                <TextInput
+                  type="password"
+                  value={llmApiKey}
+                  onChange={(e) => {
+                    setLlmApiKey(e.target.value);
+                    setLlmTestStatus('idle');
+                  }}
+                  placeholder={llmApiKey.startsWith('****') ? 'API Key Saved' : 'Enter your API Key'}
+                  className="w-full bg-surface-2 px-4 py-3"
+                />
+                {llmProvider === 'gemini' && (
+                  <p className="text-xs text-text-subtle mt-1">
+                    Get a key at{' '}
+                    <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-brand hover:underline">
+                      aistudio.google.com
+                    </a>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Base URL - only show for Ollama */}
+            {llmProvider === 'ollama' && (
+              <div>
+                <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
+                  Ollama Server URL
+                </label>
+                <TextInput
+                  value={llmBaseURL}
+                  onChange={(e) => {
+                    setLlmBaseURL(e.target.value);
+                    setLlmTestStatus('idle');
+                  }}
+                  placeholder="http://localhost:11434"
+                  className="w-full bg-surface-2 px-4 py-3"
+                />
+                <p className="text-xs text-text-subtle mt-1">
+                  Install Ollama from{' '}
+                  <a href="https://ollama.ai" target="_blank" rel="noreferrer" className="text-brand hover:underline">
+                    ollama.ai
+                  </a>
+                  {' '}and pull a model: <code className="bg-surface-3 px-1 rounded">ollama pull llama3.2</code>
+                </p>
+              </div>
+            )}
+
+            {/* Test Connection Button */}
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={handleTestLlmConnection}
+                disabled={llmTestStatus === 'testing'}
+                leftIcon={llmTestStatus === 'testing' ? <Loader2 size={16} className="animate-spin" /> : undefined}
+                className="text-sm font-bold"
+              >
+                {llmTestStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+              </Button>
+              {llmTestStatus === 'success' && (
+                <span className="text-success text-sm flex items-center gap-1">
+                  <Check size={16} /> Connected
+                </span>
+              )}
+              {llmTestStatus === 'error' && (
+                <span className="text-error text-sm">{llmTestMessage}</span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between">
@@ -693,13 +892,13 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           <Button
             variant="primary"
             accent="brand"
-            onClick={handleSaveGeminiKey}
-            disabled={!geminiKey.trim() || savingGemini}
-            leftIcon={savingGemini ? <Loader2 size={18} className="animate-spin" /> : undefined}
-            rightIcon={!savingGemini ? <ChevronRight size={18} /> : undefined}
+            onClick={handleSaveLlmSettings}
+            disabled={savingLlm || llmLoading}
+            leftIcon={savingLlm ? <Loader2 size={18} className="animate-spin" /> : undefined}
+            rightIcon={!savingLlm ? <ChevronRight size={18} /> : undefined}
             className="font-bold py-3 px-6"
           >
-            {savingGemini ? 'Saving...' : 'Save & Continue'}
+            {savingLlm ? 'Saving...' : 'Save & Continue'}
           </Button>
         </div>
       </div>
