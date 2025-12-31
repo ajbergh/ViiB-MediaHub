@@ -23,7 +23,7 @@
 
 import React from 'react';
 import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType } from '../types';
-import { SmartPlaylistFilter } from '../services/api';
+import { SmartPlaylistFilter, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
 
 export interface PlayerSlice {
   isPlaying: boolean;
@@ -321,6 +321,16 @@ export interface AIDJSlice {
   aiDjOnePerArtist: boolean;
   aiDjUseTimeContext: boolean;
   
+  // DJ Mode state
+  aiDjMode: boolean; // true = DJ mode, false = playlist mode
+  aiDjPersona: DJPersona;
+  aiDjTargetDurationMinutes: number;
+  aiDjFlowStrictness: number; // 0-100
+  aiDjTalkMode: boolean;
+  aiDjPlan: DJSetPlan | null;
+  aiDjPhases: DJPhaseResult[];
+  aiDjNarration: DJNarration | null;
+  
   // Actions
   setAIDJPrompt: (prompt: string) => void;
   setAIDJGeneratedSongs: (songs: Song[]) => void;
@@ -331,6 +341,27 @@ export interface AIDJSlice {
   setAIDJOnePerArtist: (onePerArtist: boolean) => void;
   setAIDJUseTimeContext: (useTimeContext: boolean) => void;
   setAIDJResult: (prompt: string, songs: Song[], filter: SmartPlaylistFilter | null) => void;
+  
+  // DJ Mode actions
+  setAIDJMode: (djMode: boolean) => void;
+  setAIDJPersona: (persona: DJPersona) => void;
+  setAIDJTargetDurationMinutes: (minutes: number) => void;
+  setAIDJFlowStrictness: (strictness: number) => void;
+  setAIDJTalkMode: (talkMode: boolean) => void;
+  setAIDJPlan: (plan: DJSetPlan | null) => void;
+  setAIDJPhases: (phases: DJPhaseResult[]) => void;
+  setAIDJNarration: (narration: DJNarration | null) => void;
+  
+  // Bulk update for DJ mode result
+  setAIDJDJResult: (
+    prompt: string, 
+    songs: Song[], 
+    filter: SmartPlaylistFilter | null,
+    plan: DJSetPlan | null,
+    phases: DJPhaseResult[],
+    narration: DJNarration | null
+  ) => void;
+  
   clearAIDJ: () => void;
 }
 

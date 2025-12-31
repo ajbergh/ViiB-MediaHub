@@ -11,17 +11,148 @@
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Four-Tier Matching System](#four-tier-matching-system)
-3. [LLM Provider Integration](#llm-provider-integration)
-4. [Genre Scoring Algorithm](#genre-scoring-algorithm)
-5. [Multi-Genre Blending](#multi-genre-blending)
-6. [Mood & Energy Analysis](#mood--energy-analysis)
-7. [Play History Filters](#play-history-filters)
-8. [Time-Aware Context](#time-aware-context)
-9. [Caching Strategy](#caching-strategy)
-10. [Known Shortcomings](#known-shortcomings)
-11. [Preference Learning System](#preference-learning-system)
-12. [Improvement Opportunities](#improvement-opportunities)
+2. [DJ Set Planning System (NEW)](#dj-set-planning-system)
+3. [Four-Tier Matching System](#four-tier-matching-system)
+4. [LLM Provider Integration](#llm-provider-integration)
+5. [Genre Scoring Algorithm](#genre-scoring-algorithm)
+6. [Multi-Genre Blending](#multi-genre-blending)
+7. [Mood & Energy Analysis](#mood--energy-analysis)
+8. [Play History Filters](#play-history-filters)
+9. [Time-Aware Context](#time-aware-context)
+10. [Caching Strategy](#caching-strategy)
+11. [Known Shortcomings](#known-shortcomings)
+12. [Preference Learning System](#preference-learning-system)
+13. [Improvement Opportunities](#improvement-opportunities)
+
+---
+
+## DJ Set Planning System
+
+> **Status:** ✅ Backend Complete (Phases 1-6) | ✅ Frontend Complete (Phases 7-8) | 🟡 Polish In Progress (Phase 9)
+
+The DJ Set Planning system adds a structured layer on top of the existing smart playlist functionality, turning user prompts into curated DJ sets with energy arcs, phase structure, and deliberate sequencing.
+
+### Key Files (DJ Mode)
+
+| File | Purpose |
+|------|---------|
+| `backend/internal/dj/types.go` | Core types: DJSetPlan, DJPhase, ScoreContext, etc. |
+| `backend/internal/dj/constants.go` | BPM defaults, phase weights, energy/tempo mappings |
+| `backend/internal/dj/personas.go` | Persona definitions with scoring weights ✅ |
+| `backend/internal/dj/dj_set_planner.go` | LLM-backed plan builder with cache ✅ |
+| `backend/internal/dj/scoring.go` | Song scoring per phase with persona weights ✅ |
+| `backend/internal/dj/sequencer.go` | Phase-based song sequencing ✅ |
+| `backend/internal/api/smart_playlist.go` | API integration with handleDJMode() ✅ |
+| `backend/internal/llm/provider.go` | Added Generate() method for DJ planner ✅ |
+| `backend/internal/llm/prompts.go` | DJ set plan & narration prompts ✅ |
+| `services/api.ts` | DJ mode TypeScript types ✅ |
+| `slices/aiDjSlice.ts` | Frontend state for DJ mode ✅ |
+| `slices/types.ts` | AIDJSlice interface with DJ mode properties ✅ |
+| `pages/SmartPlaylists.tsx` | Complete DJ Console UI with loading/error states ✅ |
+
+### DJ Mode Request Flow
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  Frontend (SmartPlaylists.tsx - DJ Console)                          │
+│  POST /api/smart-playlist                                            │
+│  { prompt, mode: "dj", persona, targetDurationMinutes, ... }         │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  handleGenerateSmartPlaylist() [mode === "dj"]                       │
+│  ├─ Existing matching logic (Tiers 0-4)                              │
+│  ├─ Planner.BuildPlan() → LLM generates phase structure              │
+│  ├─ Gather candidate songs from matched genres                       │
+│  ├─ Sequencer.BuildQueue() → Score & sequence by phase               │
+│  └─ Apply play history filters as final safety net                   │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  JSON Response: { filter, songs, dj: { plan, phases, narration } }   │
+│  ├─ filter: LocalPlaylistFilter (same as playlist mode)              │
+│  ├─ songs: Sequenced song list matching phase structure              │
+│  └─ dj: DJResponse with plan, phase results, optional narration      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Structures (DJ Mode)
+
+```go
+// DJPhase - represents a single phase in a DJ set
+type DJPhase struct {
+    Name         string   // "Warm-up", "Build", "Peak", "Cooldown", "Afterhours"
+    TargetEnergy string   // "low", "medium", "high"
+    TargetTempo  string   // "slow", "medium", "fast"
+    TargetMoods  []string // e.g., ["calm", "dreamy"]
+    TargetCount  int      // Number of songs for this phase
+    MinBPM       int      // Minimum BPM for this phase
+    MaxBPM       int      // Maximum BPM for this phase
+    Notes        string   // Short DJ note for this phase
+}
+
+// DJSetPlan - complete structure of a DJ set
+type DJSetPlan struct {
+    IntentSummary     string    // 1-sentence summary of vibe and intent
+    TargetDurationMin int       // Target set duration in minutes
+    Persona           string    // Active persona key
+    FlowStrictness    int       // 0-100, higher = stricter BPM continuity
+    Phases            []DJPhase // Ordered list of phases
+    SeedGenres        []string  // Matched genres from filter
+    SeedArtists       []string  // Matched artists from filter
+    CreatedAtUnix     int64     // Unix timestamp of creation
+    FromCache         bool      // True if loaded from cache
+}
+
+// ScoreContext - contextual information for scoring songs
+type ScoreContext struct {
+    GenreAffinity       map[string]float64 // Genre affinity scores
+    ArtistSeen          map[string]bool    // Artists already used
+    RecentlyPlayedIDs   map[string]bool    // Recently played songs
+    LastSongBPM         int                // For continuity scoring
+    LastSongMood        string
+    LastSongEnergy      string
+    DiscoverMode        string             // "balanced", "discover", "favorites"
+    FlowStrictness      int                // 0-100
+    SongSkipRates       map[string]float64 // Per-song skip rates
+    GenreCompletionRate map[string]float64 // Per-genre completion rates
+}
+```
+
+### Personas
+
+| Persona | Description | Key Weights |
+|---------|-------------|-------------|
+| FlowMaster | Default: strong continuity, balanced novelty | High BPM continuity, medium favorites |
+| CrowdPleaser | Favors high completion, favorites | High favorites boost, low novelty |
+| DeepCutDJ | Heavy underplayed boost, novelty | High underplayed, high novelty |
+| Explorer | Controlled novelty, medium continuity | Medium novelty, medium continuity |
+| Curator | Strict genre purity, one-per-artist | High one-per-artist, strict genre |
+| NightDrive | Smoother tempos, medium energy | Low energy variance, slow-medium tempo |
+
+### Constants
+
+```go
+// BPM defaults for tempo categories
+DefaultBPMSlow   = 90
+DefaultBPMMedium = 120
+DefaultBPMFast   = 150
+
+// Valid BPM range
+MinValidBPM = 60
+MaxValidBPM = 190
+
+// Phase distribution weights (typical)
+PhaseWarmUp   = 25%
+PhaseBuild    = 25%
+PhasePeak     = 30%
+PhaseCooldown = 20%
+
+// Average song duration for calculations
+DefaultAvgSongLengthSec = 210 (3.5 minutes)
+```
 
 ---
 
@@ -851,6 +982,28 @@ Songs are NOT cached because:
 **Impact:** AI DJ playlists could not be created - all genre-based queries failed.
 
 **Fix:** Changed `ESCAPE '\\'` to `ESCAPE '\'` in raw string literals in genres.go.
+
+### 12. ~~DJ Mode Not Filtering By Prompt~~ ✅ FIXED (2025-12-31)
+
+**Issue:** DJ mode was returning songs from the entire library regardless of prompt content.
+
+**Root Cause:** The `handleDJMode()` function in `smart_playlist.go` was:
+1. Passing ALL songs to the sequencer without filtering by prompt-derived genres
+2. Setting `SeedGenres` to empty array `[]string{}`
+3. Not using the existing matching tiers (local genre, LLM filter) to extract intent
+
+**Impact:** "90s west coast hip-hop bangers" returned completely unrelated songs.
+
+**Fix:** 
+1. Added `tryLocalGenreMatch()` call to extract matching genres from prompt
+2. Added `tryMoodBasedMatchInfo()` call to extract mood/energy/tempo hints
+3. Added LLM filter parsing via `ParsePlaylistFilterWithContext()` to get genres/artists
+4. Added filtering logic to match candidates by seed genres/artists before passing to sequencer
+5. Fallback to all songs only if filtered candidates < 10
+6. Added 15+ log statements for complete request traceability
+
+**Files Modified:**
+- `backend/internal/api/smart_playlist.go`: Added `moodMatchInfo` type, `tryMoodBasedMatchInfo()` function, comprehensive filtering in `handleDJMode()`
 
 See [Preference Learning System](#preference-learning-system) for details.
 

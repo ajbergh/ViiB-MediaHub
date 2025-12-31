@@ -441,6 +441,28 @@ func parseFilterFromResponse(content string) (*PlaylistFilter, error) {
 	return &filter, nil
 }
 
+// Generate sends a system prompt and user prompt to the LLM and returns the response text.
+// This is a generic method for use cases that need custom prompt handling.
+func (p *Provider) Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	resp, err := p.client.CreateChatCompletion(ctx, &omnillm.ChatCompletionRequest{
+		Model: p.model,
+		Messages: []omnillm.Message{
+			{Role: omnillm.RoleSystem, Content: systemPrompt},
+			{Role: omnillm.RoleUser, Content: userPrompt},
+		},
+		Temperature: floatPtr(0.4), // Slightly higher temp for creative generation
+	})
+	if err != nil {
+		return "", fmt.Errorf("LLM request failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("empty response from LLM")
+	}
+
+	return resp.Choices[0].Message.Content, nil
+}
+
 // Helper functions
 func floatPtr(f float64) *float64 { return &f }
 func intPtr(i int) *int           { return &i }

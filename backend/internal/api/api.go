@@ -31,6 +31,7 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/dj"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
@@ -153,6 +154,9 @@ func (a *API) Routes() chi.Router {
 	// Library events SSE
 	r.Get("/library/events", a.libraryEventsSSE)
 
+	// DJ Mode endpoints
+	r.Get("/dj/personas", a.getDJPersonas)
+
 	// File serving
 	r.Get("/audio/*", a.serveAudio)
 	r.Get("/cover/*", a.serveCover)
@@ -239,6 +243,12 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 func (a *API) healthCheck(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "ok", "version": "1.0.0"})
+}
+
+// getDJPersonas returns all available DJ personas for the DJ mode feature.
+func (a *API) getDJPersonas(w http.ResponseWriter, r *http.Request) {
+	personas := dj.ListPersonas()
+	respondJSON(w, personas)
 }
 
 func (a *API) getSongs(w http.ResponseWriter, r *http.Request) {

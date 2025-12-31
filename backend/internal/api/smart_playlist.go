@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/dj"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
@@ -322,6 +323,40 @@ var moodKeywords = map[string]struct {
 	"morning": {mood: "uplifting", energy: "medium", tempo: "medium"},
 	"wake up": {mood: "uplifting", energy: "medium", tempo: "medium"},
 	"evening": {mood: "calm", energy: "low", tempo: "slow"},
+}
+
+// moodMatchInfo holds extracted mood/energy/tempo from a prompt without querying songs.
+// Used by DJ mode to inform phase filtering.
+type moodMatchInfo struct {
+	mood   string
+	energy string
+	tempo  string
+}
+
+// tryMoodBasedMatchInfo extracts mood/energy/tempo hints from the prompt without querying songs.
+// Returns nil if no mood keywords are found.
+func (a *API) tryMoodBasedMatchInfo(prompt string) *moodMatchInfo {
+	promptLower := strings.ToLower(strings.TrimSpace(prompt))
+	if promptLower == "" {
+		return nil
+	}
+
+	// Check for mood keywords in the prompt (allow longer prompts for DJ mode)
+	for keyword, attrs := range moodKeywords {
+		// Check if keyword appears as a word boundary in the prompt
+		if strings.Contains(" "+promptLower+" ", " "+keyword+" ") ||
+			strings.HasPrefix(promptLower, keyword+" ") ||
+			strings.HasSuffix(promptLower, " "+keyword) ||
+			promptLower == keyword {
+			return &moodMatchInfo{
+				mood:   attrs.mood,
+				energy: attrs.energy,
+				tempo:  attrs.tempo,
+			}
+		}
+	}
+
+	return nil
 }
 
 // tryMoodBasedMatch attempts to match the prompt against mood/activity keywords.
@@ -1291,6 +1326,12 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		AvoidRecentlyHours int    `json:"avoidRecentlyHours"` // Avoid songs played in last N hours (0 = disabled)
 		OnePerArtist       bool   `json:"onePerArtist"`       // Limit to one song per artist
 		UseTimeContext     bool   `json:"useTimeContext"`     // Add time-of-day context to prompt
+		// DJ Mode fields
+		Mode                  string `json:"mode"`                  // "playlist" (default) or "dj"
+		Persona               string `json:"persona"`               // DJ persona key (default "FlowMaster")
+		TargetDurationMinutes int    `json:"targetDurationMinutes"` // DJ set duration in minutes (default 45)
+		TalkMode              bool   `json:"talkMode"`              // Enable DJ narration cues
+		FlowStrictness        int    `json:"flowStrictness"`        // BPM continuity strictness 0-100 (default 60)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -1306,6 +1347,27 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	}
 	if req.DiscoverMode == "" {
 		req.DiscoverMode = "balanced"
+	}
+	// DJ Mode defaults
+	if req.Mode == "" {
+		req.Mode = dj.ModePlaylist
+	}
+	if req.Persona == "" {
+		req.Persona = dj.PersonaFlowMaster
+	}
+	if req.TargetDurationMinutes <= 0 {
+		req.TargetDurationMinutes = 45
+	}
+	if req.FlowStrictness <= 0 || req.FlowStrictness > 100 {
+		req.FlowStrictness = 60
+	}
+
+	// Handle DJ Mode separately
+	if req.Mode == dj.ModeDJ {
+		a.handleDJMode(w, r, req.Prompt, req.Persona, req.TargetDurationMinutes,
+			req.FlowStrictness, req.TalkMode, req.UseTimeContext,
+			req.DiscoverMode, req.AvoidRecentlyHours)
+		return
 	}
 
 	// Get recently played song IDs to exclude
@@ -1560,5 +1622,286 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"filter": filter,
 		"songs":  songsAny,
+	})
+}
+
+// handleDJMode processes DJ mode requests using the intelligent sequencer.
+// This is called when the request has mode="dj" instead of "playlist".
+func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
+	prompt string, persona string, durationMinutes int,
+	flowStrictness int, talkMode bool, useTimeContext bool,
+	discoverMode string, avoidRecentlyHours int) {
+
+	ctx := r.Context()
+
+	logger.API("DJ Mode request: prompt=%q persona=%s duration=%dmin flow=%d talkMode=%v",
+		prompt, persona, durationMinutes, flowStrictness, talkMode)
+
+	// Get the persona definition (returns default if not found)
+	personaDef := dj.GetPersona(persona)
+	logger.API("DJ Mode using persona: %s (%s)", personaDef.Name, personaDef.Description)
+
+	// Get all songs from the database for analysis
+	allSongs, err := a.db.GetAllSongs()
+	if err != nil {
+		logger.API("DJ Mode failed to get songs: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get songs: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if len(allSongs) == 0 {
+		logger.API("DJ Mode failed: library is empty")
+		http.Error(w, "Library is empty", http.StatusNotFound)
+		return
+	}
+
+	logger.API("DJ Mode: %d songs in library", len(allSongs))
+
+	// First, try to match the prompt against genres using existing logic
+	// This extracts seed genres from the user's prompt
+	seedGenres := []string{}
+	seedArtists := []string{}
+
+	// Try local genre matching first
+	if genreName, _, matched := a.tryLocalGenreMatch(prompt); matched {
+		seedGenres = append(seedGenres, genreName)
+		logger.API("DJ Mode: Local genre match found: %s", genreName)
+	}
+
+	// Try mood-based matching to extract mood/energy/tempo hints
+	moodMatch := a.tryMoodBasedMatchInfo(prompt)
+	if moodMatch != nil {
+		logger.API("DJ Mode: Mood match found: mood=%s energy=%s tempo=%s",
+			moodMatch.mood, moodMatch.energy, moodMatch.tempo)
+	}
+
+	// If no local match and we have LLM, try to get genres from LLM
+	if len(seedGenres) == 0 {
+		llmSettings := getLLMSettings(a)
+		if llmSettings.Provider == llm.ProviderOllama || llmSettings.APIKey != "" {
+			provider, err := llm.NewProvider(llmSettings)
+			if err == nil {
+				defer provider.Close()
+				availableGenres := a.getAvailableGenreNames()
+				llmFilter, err := provider.ParsePlaylistFilterWithContext(ctx, prompt, availableGenres)
+				if err == nil && llmFilter != nil {
+					seedGenres = llmFilter.Genres
+					seedArtists = llmFilter.Artists
+					logger.API("DJ Mode: LLM extracted genres=%v artists=%v", seedGenres, seedArtists)
+
+					// Apply mood match info from LLM filter if not already matched
+					if moodMatch == nil && (llmFilter.Mood != "" || llmFilter.Energy != "" || llmFilter.Tempo != "") {
+						moodMatch = &moodMatchInfo{
+							mood:   llmFilter.Mood,
+							energy: llmFilter.Energy,
+							tempo:  llmFilter.Tempo,
+						}
+					}
+				} else {
+					logger.API("DJ Mode: LLM filter failed: %v", err)
+				}
+			}
+		}
+	}
+
+	// Collect genre stats and calculate avg song length
+	genreCounts := make(map[string]int)
+	var totalDuration float64
+	for _, song := range allSongs {
+		for _, g := range song.Genre {
+			genreCounts[g]++
+		}
+		totalDuration += song.Duration
+	}
+	var genres []string
+	for genre := range genreCounts {
+		genres = append(genres, genre)
+	}
+	avgSongLengthSec := 210 // Default 3.5 min
+	if len(allSongs) > 0 {
+		avgSongLengthSec = int(totalDuration / float64(len(allSongs)))
+	}
+
+	// Get recently played song IDs if avoidance is enabled
+	recentlyPlayedIDs := make(map[string]bool)
+	if avoidRecentlyHours > 0 {
+		recentPlays, err := a.db.GetRecentlyPlayedSongIDs(avoidRecentlyHours)
+		if err == nil {
+			for _, songID := range recentPlays {
+				recentlyPlayedIDs[songID] = true
+			}
+		}
+	}
+
+	// Build library context for planner
+	libContext := dj.LibraryContext{
+		AvailableGenres:  genres,
+		SeedGenres:       seedGenres,
+		SeedArtists:      seedArtists,
+		AvgSongLengthSec: avgSongLengthSec,
+		TotalSongs:       len(allSongs),
+	}
+
+	// Build plan options
+	planOpts := dj.PlanOptions{
+		Persona:           persona,
+		TargetDurationMin: durationMinutes,
+		FlowStrictness:    flowStrictness,
+		UseTimeContext:    useTimeContext,
+		TalkMode:          talkMode,
+	}
+
+	// Get LLM settings for the planner
+	llmSettings := getLLMSettings(a)
+
+	// Validate we have the required API key (Ollama doesn't need one)
+	if llmSettings.Provider != llm.ProviderOllama && llmSettings.APIKey == "" {
+		// Fall back to Gemini API key if LLM not configured
+		geminiKey, err := a.db.GetSetting("gemini_api_key")
+		if err != nil || geminiKey == "" {
+			http.Error(w, "AI provider not configured. Set up Ollama locally or add an API key in Settings.", http.StatusServiceUnavailable)
+			return
+		}
+		llmSettings.Provider = llm.ProviderGemini
+		llmSettings.APIKey = geminiKey
+		llmSettings.Model = llm.DefaultGeminiModel
+	}
+
+	// Create the LLM planner
+	planner := dj.NewLLMPlanner(llmSettings)
+
+	// Build the DJ set plan
+	plan, err := planner.BuildPlan(ctx, prompt, planOpts, libContext)
+	if err != nil {
+		logger.API("DJ planner failed: %v, using default plan", err)
+	}
+	if plan == nil {
+		logger.API("DJ Mode: Plan is nil, returning error")
+		http.Error(w, "Failed to create DJ set plan", http.StatusInternalServerError)
+		return
+	}
+
+	logger.API("DJ Mode plan created: %d phases, intent: %s", len(plan.Phases), plan.IntentSummary)
+	for i, phase := range plan.Phases {
+		logger.API("  Phase %d: %s - %s energy, %s tempo, %d songs, BPM %d-%d",
+			i+1, phase.Name, phase.TargetEnergy, phase.TargetTempo, phase.TargetCount, phase.MinBPM, phase.MaxBPM)
+	}
+
+	// Filter candidates based on:
+	// 1. Recently played (if avoidance enabled)
+	// 2. Matching genres (if seed genres were extracted)
+	// 3. Matching mood/energy/tempo (if mood match was found)
+	candidates := make([]db.Song, 0, len(allSongs))
+	for _, song := range allSongs {
+		// Skip recently played
+		if recentlyPlayedIDs[song.ID] {
+			continue
+		}
+
+		// If we have seed genres, filter to matching songs
+		if len(seedGenres) > 0 {
+			matchesGenre := false
+			for _, sg := range seedGenres {
+				for _, songGenre := range song.Genre {
+					if strings.EqualFold(songGenre, sg) || strings.Contains(strings.ToLower(songGenre), strings.ToLower(sg)) {
+						matchesGenre = true
+						break
+					}
+				}
+				if matchesGenre {
+					break
+				}
+			}
+			if !matchesGenre {
+				continue
+			}
+		}
+
+		// If we have seed artists, include their songs
+		if len(seedArtists) > 0 {
+			matchesArtist := false
+			for _, sa := range seedArtists {
+				if strings.EqualFold(song.Artist, sa) || strings.Contains(strings.ToLower(song.Artist), strings.ToLower(sa)) {
+					matchesArtist = true
+					break
+				}
+			}
+			// Note: We include if artist matches OR genre matches, not AND
+			if matchesArtist {
+				candidates = append(candidates, song)
+				continue
+			}
+		}
+
+		candidates = append(candidates, song)
+	}
+
+	logger.API("DJ Mode: %d candidate songs after filtering (from %d total)", len(candidates), len(allSongs))
+
+	// If we have too few candidates, fall back to all songs
+	if len(candidates) < 10 && len(allSongs) > 10 {
+		logger.API("DJ Mode: Too few candidates (%d), falling back to all songs", len(candidates))
+		candidates = make([]db.Song, 0, len(allSongs))
+		for _, song := range allSongs {
+			if !recentlyPlayedIDs[song.ID] {
+				candidates = append(candidates, song)
+			}
+		}
+	}
+
+	// Create score context
+	scoreCtx := dj.NewScoreContext()
+	scoreCtx.DiscoverMode = discoverMode
+	scoreCtx.FlowStrictness = flowStrictness
+	scoreCtx.RecentlyPlayedIDs = recentlyPlayedIDs
+
+	// Create the sequencer
+	sequencer := dj.NewSequencer()
+
+	// Build the queue using the sequencer
+	queue, phaseResults, err := sequencer.BuildQueue(candidates, plan, personaDef, scoreCtx)
+	if err != nil {
+		logger.API("DJ Mode: Failed to build queue: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to build DJ queue: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	logger.API("DJ Mode: Built queue with %d songs across %d phases", len(queue), len(phaseResults))
+
+	// Generate narration if talk mode is enabled
+	var narration *dj.DJNarration
+	if talkMode && len(queue) > 0 {
+		narration, err = planner.GenerateNarration(ctx, plan)
+		if err != nil {
+			logger.API("Failed to generate DJ narration: %v", err)
+		}
+	}
+
+	// Transform paths to API URLs
+	songsAny := make([]any, len(queue))
+	for i, s := range queue {
+		songsAny[i] = s
+	}
+	songsAny = transformSongsForAPI(songsAny)
+
+	// Build the DJ response
+	djResponse := dj.DJResponse{
+		Plan:      plan,
+		Phases:    phaseResults,
+		Narration: narration,
+	}
+
+	logger.API("DJ Mode: Returning %d songs for prompt %q", len(queue), prompt)
+
+	// Return combined response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"filter": map[string]interface{}{
+			"mode":    "dj",
+			"persona": persona,
+			"prompt":  prompt,
+		},
+		"songs": songsAny,
+		"dj":    djResponse,
 	})
 }
