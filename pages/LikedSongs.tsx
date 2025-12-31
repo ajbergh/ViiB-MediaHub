@@ -7,13 +7,21 @@
  * Features:
  * - Virtualized list for performance with large libraries
  * - Play all liked songs in order
+ * - Shuffle play functionality
  * - Unlike songs directly from the list
- * - Empty state for users with no liked songs
+ * - Context menu support for additional actions
+ * - Empty state using EmptyState component with centralized copy
+ * 
+ * Design System Usage:
+ * - EmptyState component with copy from lib/emptyStateCopy.ts
+ * - ListHeader for virtualized list header
+ * - LikeButton for consistent like/unlike UI
  * 
  * @module LikedSongs
  */
 
 import React, { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore, useAlbumCovers } from '../store';
 import { Play, Heart, MoreHorizontal, Shuffle } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
@@ -21,6 +29,8 @@ import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
 import { LikeButton } from '../components/LikeButton';
 import { ListHeader } from '../components/ui/Page';
+import { EmptyState } from '../components/EmptyState';
+import { EMPTY_STATE } from '../lib/emptyStateCopy';
 
 // Context interface for the Virtuoso list
 interface LikedContext {
@@ -108,6 +118,7 @@ const Footer: React.FC = () => <div className="h-8" />;
 export const LikedSongs: React.FC = () => {
     const { songs, likedSongIds, currentSong, isPlaying, playSong, openContextMenu } = useStore();
     const albumCovers = useAlbumCovers();
+    const navigate = useNavigate();
     
     const scrollParent = document.getElementById('main-content-scroll') as HTMLElement | undefined;
 
@@ -140,6 +151,7 @@ export const LikedSongs: React.FC = () => {
     };
 
     // Empty state
+    const likedCopy = EMPTY_STATE.likedSongs;
     if (likedSongs.length === 0) {
         return (
             <div className="h-full animate-fade-in">
@@ -158,12 +170,20 @@ export const LikedSongs: React.FC = () => {
                     </div>
                 </div>
                 
-                <div className="flex flex-col items-center justify-center p-12 text-center">
-                    <Heart size={64} className="text-text-subtle mb-4" />
-                    <h2 className="text-section font-semibold text-text-main mb-2">Songs you like will appear here</h2>
-                    <p className="text-text-secondary max-w-md">
-                        Click the heart icon on any song to add it to your Liked Songs collection.
-                    </p>
+                <div className="flex items-center justify-center py-12">
+                    <EmptyState
+                        icon={<likedCopy.icon size={48} />}
+                        title={likedCopy.title}
+                        description={likedCopy.description}
+                        action={likedCopy.primaryAction ? {
+                            label: likedCopy.primaryAction,
+                            onClick: () => navigate('/songs')
+                        } : undefined}
+                        secondaryAction={likedCopy.secondaryAction ? {
+                            label: likedCopy.secondaryAction,
+                            onClick: () => navigate('/smart-playlists')
+                        } : undefined}
+                    />
                 </div>
             </div>
         );

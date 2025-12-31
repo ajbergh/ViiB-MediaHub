@@ -70,6 +70,9 @@ export interface ApiSong {
   discNumber?: number;
   genre?: string[];
   year?: number;
+  originalYear?: number; // Original release year (for remasters)
+  yearUncertain?: boolean; // True if year may be remaster date
+  yearAnalyzedAt?: number; // timestamp of year analysis
   duration: number;
   filePath: string; // This will be the API URL like /api/audio/{id}
   coverPath?: string; // This will be /api/cover/{id}
@@ -183,6 +186,11 @@ export const api = {
     }));
   },
 
+  async normalizeGenres(): Promise<{ normalized: number; errors: number }> {
+    const response = await fetch(`${API_BASE}/genres/normalize`, { method: 'POST' });
+    return handleResponse(response);
+  },
+
   async clearSongs(): Promise<void> {
     const response = await fetch(`${API_BASE}/songs`, { method: 'DELETE' });
     await handleResponse(response);
@@ -191,6 +199,24 @@ export const api = {
   async recordPlay(songId: string): Promise<void> {
     const response = await fetch(`${API_BASE}/songs/${songId}/play`, { method: 'POST' });
     await handleResponse(response);
+  },
+
+  /**
+   * Record a listening event for AI DJ preference learning.
+   * Called when a song ends or is skipped to track user behavior.
+   * @param songId - The ID of the song
+   * @param playDuration - How many seconds the song was played
+   * @param songDuration - Total duration of the song
+   * @param context - Playback context: 'ai_dj', 'album', 'playlist', 'queue', 'search'
+   * @returns The auto-detected event type
+   */
+  async recordListenEvent(songId: string, playDuration: number, songDuration: number, context: string): Promise<{ status: string; eventType: string }> {
+    const response = await fetch(`${API_BASE}/songs/${songId}/listen-event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playDuration, songDuration, context }),
+    });
+    return handleResponse(response);
   },
 
   /**
@@ -870,6 +896,54 @@ export const api = {
     const response = await fetch(`${API_BASE}/artists/metadata/unchecked`);
     return handleResponse<ApiArtistMetadata[]>(response);
   },
+
+  // ==================== LLM Settings API ====================
+
+  /**
+   * Gets current LLM settings and available providers/models.
+   * 
+   * @returns Current LLM configuration with provider/model options
+   */
+  async getLLMSettings(): Promise<LLMSettingsResponse> {
+    const response = await fetch(`${API_BASE}/llm/settings`);
+    return handleResponse<LLMSettingsResponse>(response);
+  },
+
+  /**
+   * Updates LLM settings.
+   * 
+   * @param settings - New LLM configuration
+   * @returns Success status
+   */
+  async updateLLMSettings(settings: LLMSettingsRequest): Promise<{ status: string }> {
+    const response = await fetch(`${API_BASE}/llm/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Gets available LLM providers and models.
+   * 
+   * @returns List of providers and models
+   */
+  async getLLMProviders(): Promise<{ providers: LLMProviderInfo[]; models: Record<string, LLMModelInfo[]> }> {
+    const response = await fetch(`${API_BASE}/llm/providers`);
+    return handleResponse(response);
+  },
+
+  /**
+   * Tests the connection to the currently configured LLM provider.
+   * 
+   * @returns Test result with success status and message
+   */
+  async testLLMConnection(): Promise<LLMTestResponse> {
+    const response = await fetch(`${API_BASE}/llm/test`, { method: 'POST' });
+    return handleResponse<LLMTestResponse>(response);
+  },
+
   /**
    * Triggers the Gemini genre enrichment process.
    * @param apiKey - Optional Gemini API key. If not provided, backend will use stored key.
@@ -899,6 +973,67 @@ export const api = {
     onProgress: (progress: EnrichmentProgress) => void
   ): EventSource {
     const url = `${API_BASE}/library/enrich-genres/stream?force=${force}`;
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const progress = JSON.parse(event.data) as EnrichmentProgress;
+        onProgress(progress);
+        
+        // Auto-close on completion or error
+        if (progress.status === 'complete' || progress.status === 'error') {
+          eventSource.close();
+        }
+      } catch (e) {
+        console.error('Failed to parse enrichment progress:', e);
+      }
+    };
+
+    eventSource.onerror = () => {
+      onProgress({
+        status: 'error',
+        message: 'Connection lost',
+        error: 'SSE connection failed',
+        totalSongs: 0,
+        processedSongs: 0,
+        currentBatch: 0,
+        totalBatches: 0,
+      });
+      eventSource.close();
+    };
+
+    return eventSource;
+  },
+
+  /**
+   * Streams unified metadata enrichment progress via SSE.
+   * 
+   * This is the RECOMMENDED enrichment endpoint - it enriches ALL metadata in a single
+   * efficient API call per batch using TOON (Token-Oriented Object Notation) format.
+   * 
+   * Enriches:
+   * - genres: Detailed genre classifications
+   * - mood: happy, sad, energetic, calm, melancholic, uplifting, aggressive, romantic, chill, intense, dreamy, nostalgic
+   * - energy: high, medium, low
+   * - tempo: fast, medium, slow
+   * - bpm: Estimated beats per minute (integer)
+   * - instrumental: Whether the song has vocals
+   * - originalYear: Original release year (for remasters)
+   * 
+   * Benefits:
+   * - 3x more token efficient than JSON-based methods
+   * - 200 songs per batch (vs 50 for JSON)
+   * - Single API call gets all data (vs 3 separate calls)
+   * 
+   * @param force - If true, re-enriches songs that already have metadata
+   * @param onProgress - Callback for progress updates with batch status
+   * @returns EventSource instance (auto-closes on completion/error)
+   */
+  enrichAllMetadataStream(
+    force: boolean = false,
+    onProgress: (progress: EnrichmentProgress) => void
+  ): EventSource {
+    const url = `${API_BASE}/library/enrich-all/stream?force=${force}`;
     const eventSource = new EventSource(url);
 
     eventSource.onmessage = (event) => {
@@ -984,6 +1119,102 @@ export const api = {
   },
 
   /**
+   * Backfills missing song year values from album_metadata.release_date.
+   * This enables the AI DJ to correctly filter by decade (e.g., "90s hip hop").
+   * @returns The count of songs updated.
+   */
+  async backfillSongYears(): Promise<{ updated: number; message: string }> {
+    const response = await fetch(`${API_BASE}/library/backfill-years`, {
+      method: 'POST',
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Detects potential remaster songs using heuristic pattern matching.
+   * Scans album/title for patterns like "Remastered", "Deluxe Edition", "Anniversary"
+   * and flags songs with year_uncertain for later AI analysis.
+   * @returns The count of songs processed and flagged.
+   */
+  async detectRemasters(): Promise<{ processed: number; flagged: number; message: string }> {
+    const response = await fetch(`${API_BASE}/library/detect-remasters`, {
+      method: 'POST',
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Stream original year enrichment using SSE.
+   * Uses Gemini AI to determine the original release year of songs that may have remaster dates.
+   * @param onProgress Callback for progress updates
+   * @param onComplete Callback when enrichment completes
+   * @param onError Callback for errors
+   * @returns AbortController to cancel the stream
+   */
+  enrichOriginalYearsStream(
+    onProgress: (progress: EnrichmentProgress) => void,
+    onComplete: (progress: EnrichmentProgress) => void,
+    onError: (error: string) => void
+  ): AbortController {
+    const controller = new AbortController();
+    
+    fetch(`${API_BASE}/library/enrich-years/stream`, {
+      signal: controller.signal,
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        
+        const readStream = async () => {
+          if (!reader) return;
+          
+          let buffer = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6)) as EnrichmentProgress;
+                  if (data.status === 'complete') {
+                    onComplete(data);
+                  } else if (data.status === 'error') {
+                    onError(data.error || data.message);
+                  } else {
+                    onProgress(data);
+                  }
+                } catch (e) {
+                  console.error('Failed to parse SSE data:', e);
+                }
+              }
+            }
+          }
+        };
+        
+        readStream().catch(err => {
+          if (err.name !== 'AbortError') {
+            onError(err.message);
+          }
+        });
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') {
+          onError(err.message);
+        }
+      });
+    
+    return controller;
+  },
+
+  /**
    * Generate a smart playlist using the AI DJ feature.
    * 
    * The backend uses a three-tier matching system:
@@ -991,14 +1222,21 @@ export const api = {
    * 2. Local genre matching: Direct match against indexed genres
    * 3. Gemini AI fallback: For complex prompts requiring AI interpretation
    * 
+   * Always uses multi-genre blending to create cross-genre playlists based on user input.
+   * 
    * @param prompt - Natural language description of desired playlist
-   * @param options.blendMode - 'single' for one genre, 'mixed' for multi-genre blending
+   * @param options.blendMode - 'mixed' for multi-genre blending (always used)
    * @param options.targetSongs - Number of songs to return (default: 50, max: 100)
    * @param options.discoverMode - 'balanced', 'discover' (underplayed), or 'favorites'
    * @param options.avoidRecentlyHours - Exclude songs played within N hours (0 = off)
    * @param options.onePerArtist - Limit to one song per artist for variety
    * @param options.useTimeContext - Add time-of-day context to AI recommendations
-   * @returns Playlist filter and matching songs
+   * @param options.mode - 'playlist' (default) or 'dj' for DJ mode
+   * @param options.persona - DJ persona key (FlowMaster, CrowdPleaser, etc.)
+   * @param options.targetDurationMinutes - DJ set duration in minutes
+   * @param options.flowStrictness - BPM continuity strictness 0-100
+   * @param options.talkMode - Enable DJ narration cues
+   * @returns Playlist filter and matching songs, plus DJ payload when mode='dj'
    */
   async generateSmartPlaylist(
     prompt: string, 
@@ -1009,6 +1247,12 @@ export const api = {
       avoidRecentlyHours?: number;
       onePerArtist?: boolean;
       useTimeContext?: boolean;
+      // DJ Mode options
+      mode?: SmartPlaylistMode;
+      persona?: string;
+      targetDurationMinutes?: number;
+      flowStrictness?: number;
+      talkMode?: boolean;
     }
   ): Promise<SmartPlaylistResponse> {
     const response = await fetch(`${API_BASE}/smart-playlist`, {
@@ -1016,14 +1260,30 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         prompt,
-        blendMode: options?.blendMode || 'single',
+        blendMode: options?.blendMode || 'mixed',
         targetSongs: options?.targetSongs || 50,
         discoverMode: options?.discoverMode || 'balanced',
         avoidRecentlyHours: options?.avoidRecentlyHours || 0,
         onePerArtist: options?.onePerArtist || false,
         useTimeContext: options?.useTimeContext || false,
+        // DJ Mode fields
+        mode: options?.mode || 'playlist',
+        persona: options?.persona || 'FlowMaster',
+        targetDurationMinutes: options?.targetDurationMinutes || 45,
+        flowStrictness: options?.flowStrictness || 60,
+        talkMode: options?.talkMode || false,
       }),
     });
+    return handleResponse(response);
+  },
+
+  // DJ Mode
+  /**
+   * Get all available DJ personas.
+   * @returns Array of persona definitions with keys, names, descriptions
+   */
+  async getDJPersonas(): Promise<DJPersonaDefinition[]> {
+    const response = await fetch(`${API_BASE}/dj/personas`);
     return handleResponse(response);
   },
 };
@@ -1058,12 +1318,101 @@ export interface SmartPlaylistFilter {
   matchedGenres?: MatchedGenre[];
 }
 
+// ==================== DJ Mode Types ====================
+
+/**
+ * Mode for smart playlist generation.
+ */
+export type SmartPlaylistMode = 'playlist' | 'dj';
+
+/**
+ * Persona keys for DJ mode.
+ * Each persona applies different scoring weights.
+ */
+export type DJPersona = 
+  | 'FlowMaster'    // Default: strong continuity, balanced novelty
+  | 'CrowdPleaser'  // Favors high completion, favorites, familiar songs
+  | 'DeepCutDJ'     // Heavy underplayed boost, novelty, low favorites bias
+  | 'Explorer'      // Controlled novelty, medium continuity
+  | 'Curator'       // Strict genre purity, one-per-artist
+  | 'NightDrive';   // Smoother tempos, medium energy, nostalgic
+
+/**
+ * Persona definition with weights and description.
+ */
+export interface DJPersonaDefinition {
+  key: DJPersona;
+  name: string;
+  description: string;
+}
+
+/**
+ * A single phase in a DJ set plan.
+ */
+export interface DJPhase {
+  name: string;         // "Warm-up", "Build", "Peak", "Cooldown", "Afterhours"
+  targetEnergy: string; // "low", "medium", "high"
+  targetTempo: string;  // "slow", "medium", "fast"
+  targetMoods: string[];
+  targetCount: number;
+  minBPM: number;
+  maxBPM: number;
+  notes: string;
+}
+
+/**
+ * Complete DJ set plan generated by LLM.
+ */
+export interface DJSetPlan {
+  intentSummary: string;
+  targetDurationMin: number;
+  persona: string;
+  flowStrictness: number;
+  phases: DJPhase[];
+  seedGenres: string[];
+  seedArtists: string[];
+  createdAtUnix: number;
+  fromCache: boolean;
+}
+
+/**
+ * Result of song selection for a specific phase.
+ */
+export interface DJPhaseResult {
+  name: string;
+  songIds: string[];
+  avgBpm: number;
+  minBpm: number;
+  maxBpm: number;
+  notes: string;
+  songCount: number;
+}
+
+/**
+ * Optional DJ narration cues for talk mode.
+ */
+export interface DJNarration {
+  intro: string;
+  phaseIntros: string[];
+  outro: string;
+}
+
+/**
+ * DJ mode response payload.
+ */
+export interface DJModeResponse {
+  plan: DJSetPlan;
+  phases: DJPhaseResult[];
+  narration?: DJNarration;
+}
+
 /**
  * Response from the smart playlist API.
  */
 export interface SmartPlaylistResponse {
   filter: SmartPlaylistFilter;
   songs: ApiSong[];
+  dj?: DJModeResponse; // Present when mode === 'dj'
 }
 
 /**
@@ -1103,6 +1452,59 @@ export interface ApiArtistMetadata {
   spotifyFound: boolean;
   fetchedAt?: number;
   updatedAt?: number;
+}
+
+// ==================== LLM Settings Types ====================
+
+/**
+ * Information about an available LLM provider.
+ */
+export interface LLMProviderInfo {
+  id: string;           // e.g., "ollama", "gemini", "openai"
+  name: string;         // e.g., "Ollama (Local)"
+  requiresKey: boolean; // Whether an API key is required
+  defaultModel: string; // Default model for this provider
+  description?: string;  // Brief description of the provider
+  freeformModel: boolean; // Whether user can type any model name (true for Ollama)
+}
+
+/**
+ * Information about an available LLM model.
+ */
+export interface LLMModelInfo {
+  id: string;       // e.g., "llama3.2:8b", "gpt-4o"
+  name: string;     // e.g., "Llama 3.2 8B"
+  description?: string; // Brief description
+}
+
+/**
+ * LLM settings response from backend.
+ */
+export interface LLMSettingsResponse {
+  provider: string;
+  model: string;
+  apiKey?: string;  // Masked for security (e.g., "****abc1")
+  baseURL?: string;
+  providers: LLMProviderInfo[];
+  models: Record<string, LLMModelInfo[]>;
+}
+
+/**
+ * LLM settings request for updating configuration.
+ */
+export interface LLMSettingsRequest {
+  provider: string;
+  model: string;
+  apiKey?: string;
+  baseURL?: string;
+}
+
+/**
+ * LLM connection test response.
+ */
+export interface LLMTestResponse {
+  success: boolean;
+  message: string;
 }
 
 export default api;

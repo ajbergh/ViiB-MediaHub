@@ -9,6 +9,7 @@
  * - LibrarySlice: Songs, playlists, metadata, scanning
  * - SpotifySlice: OAuth tokens and user profile
  * - UISlice: Context menus, dialogs, logs, panel states, toast notifications
+ * - AIDJSlice: AI DJ search state and preferences (persisted)
  * 
  * Key Types:
  * - ToastConfig: Toast notification structure (type, message, action, duration)
@@ -22,6 +23,7 @@
 
 import React from 'react';
 import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType } from '../types';
+import { SmartPlaylistFilter, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
 
 export interface PlayerSlice {
   isPlaying: boolean;
@@ -105,6 +107,12 @@ export interface StreamingStats {
 
 export type StreamingEventType = 'start' | 'complete' | 'error' | 'buffer_start' | 'buffer_end' | 'retry' | 'skip';
 
+/**
+ * Playback context for AI DJ preference learning.
+ * Tracks where the user initiated playback from.
+ */
+export type PlaybackContext = 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search' | 'artist' | 'liked' | 'smart_mix';
+
 export interface StreamingEvent {
   type: StreamingEventType;
   trackId?: string;
@@ -164,6 +172,15 @@ export interface LibrarySlice {
   refreshSmartMixes: () => void;
   saveSmartMixAsPlaylist: (mixId: string) => Promise<Playlist | void>;
   recordPlay: (songId: string) => void;
+  /**
+   * Record a listening event for AI DJ preference learning.
+   * Called when a song ends or is skipped.
+   * @param songId - The song ID
+   * @param playDuration - Seconds played before event
+   * @param songDuration - Total song duration
+   * @param context - 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search'
+   */
+  recordListenEvent: (songId: string, playDuration: number, songDuration: number, context: PlaybackContext) => void;
   updateSongDuration: (songId: string, duration: number) => void;
   
   fetchArtistMetadata: (artistName: string) => Promise<void>;
@@ -291,4 +308,61 @@ export interface UISlice {
   setLocalSearchTab: (tab: 'all' | 'tracks' | 'albums' | 'artists' | 'playlists') => void;
 }
 
-export type AppState = PlayerSlice & LibrarySlice & SpotifySlice & UISlice;
+export interface AIDJSlice {
+  // Search and results
+  aiDjPrompt: string;
+  aiDjGeneratedSongs: Song[];
+  aiDjFilter: SmartPlaylistFilter | null;
+  aiDjIsLoading: boolean;
+  
+  // User preferences
+  aiDjDiscoverMode: 'balanced' | 'discover' | 'favorites';
+  aiDjAvoidRecentlyHours: number;
+  aiDjOnePerArtist: boolean;
+  aiDjUseTimeContext: boolean;
+  
+  // DJ Mode state
+  aiDjMode: boolean; // true = DJ mode, false = playlist mode
+  aiDjPersona: DJPersona;
+  aiDjTargetDurationMinutes: number;
+  aiDjFlowStrictness: number; // 0-100
+  aiDjTalkMode: boolean;
+  aiDjPlan: DJSetPlan | null;
+  aiDjPhases: DJPhaseResult[];
+  aiDjNarration: DJNarration | null;
+  
+  // Actions
+  setAIDJPrompt: (prompt: string) => void;
+  setAIDJGeneratedSongs: (songs: Song[]) => void;
+  setAIDJFilter: (filter: SmartPlaylistFilter | null) => void;
+  setAIDJIsLoading: (isLoading: boolean) => void;
+  setAIDJDiscoverMode: (mode: 'balanced' | 'discover' | 'favorites') => void;
+  setAIDJAvoidRecentlyHours: (hours: number) => void;
+  setAIDJOnePerArtist: (onePerArtist: boolean) => void;
+  setAIDJUseTimeContext: (useTimeContext: boolean) => void;
+  setAIDJResult: (prompt: string, songs: Song[], filter: SmartPlaylistFilter | null) => void;
+  
+  // DJ Mode actions
+  setAIDJMode: (djMode: boolean) => void;
+  setAIDJPersona: (persona: DJPersona) => void;
+  setAIDJTargetDurationMinutes: (minutes: number) => void;
+  setAIDJFlowStrictness: (strictness: number) => void;
+  setAIDJTalkMode: (talkMode: boolean) => void;
+  setAIDJPlan: (plan: DJSetPlan | null) => void;
+  setAIDJPhases: (phases: DJPhaseResult[]) => void;
+  setAIDJNarration: (narration: DJNarration | null) => void;
+  
+  // Bulk update for DJ mode result
+  setAIDJDJResult: (
+    prompt: string, 
+    songs: Song[], 
+    filter: SmartPlaylistFilter | null,
+    plan: DJSetPlan | null,
+    phases: DJPhaseResult[],
+    narration: DJNarration | null
+  ) => void;
+  
+  clearAIDJ: () => void;
+}
+
+export type AppState = PlayerSlice & LibrarySlice & SpotifySlice & UISlice & AIDJSlice;

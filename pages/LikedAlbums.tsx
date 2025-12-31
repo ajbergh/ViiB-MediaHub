@@ -2,13 +2,21 @@
  * ViiB MediaHub - Liked Albums Page
  * 
  * Displays all albums that the user has liked (favorited).
- * Albums are sorted by when they were liked (newest first).
+ * Albums are sorted by when they were liked (newest first) by default.
  * 
  * Features:
  * - Grid view using virtualized scrolling for performance
+ * - Multiple sort options (recent, name, artist)
  * - Unlike albums directly from the grid
- * - Empty state for users with no liked albums
+ * - Context menu support for additional actions
  * - Click to navigate to album detail
+ * - Empty state using EmptyState component with centralized copy
+ * 
+ * Design System Usage:
+ * - EmptyState component with copy from lib/emptyStateCopy.ts
+ * - Page component for consistent layout
+ * - AlbumLikeButton for consistent like/unlike UI
+ * - VirtuosoGrid for performant virtualized grid
  * 
  * @module LikedAlbums
  */
@@ -22,6 +30,8 @@ import { VirtuosoGrid } from 'react-virtuoso';
 import { useNavigate } from 'react-router-dom';
 import { AlbumLikeButton } from '../components/AlbumLikeButton';
 import { Page } from '../components/ui/Page';
+import { EmptyState } from '../components/EmptyState';
+import { EMPTY_STATE } from '../lib/emptyStateCopy';
 
 type LikedAlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc';
 
@@ -99,6 +109,7 @@ export const LikedAlbums: React.FC = () => {
     }, [likedAlbums, sortBy, albumMetadata]);
 
     // Empty state
+    const likedAlbumsCopy = EMPTY_STATE.likedAlbums;
     if (sortedLikedAlbums.length === 0) {
         return (
             <Page withPlayerPadding={false}>
@@ -115,12 +126,20 @@ export const LikedAlbums: React.FC = () => {
                     </div>
                 </div>
                 
-                <div className="flex flex-col items-center justify-center p-12 text-center">
-                    <Heart size={64} className="text-text-subtle mb-4" />
-                    <h2 className="text-section font-semibold text-text-main mb-2">Albums you like will appear here</h2>
-                    <p className="text-text-secondary max-w-md">
-                        Click the heart icon on any album to add it to your Liked Albums collection.
-                    </p>
+                <div className="flex items-center justify-center py-12">
+                    <EmptyState
+                        icon={<likedAlbumsCopy.icon size={48} />}
+                        title={likedAlbumsCopy.title}
+                        description={likedAlbumsCopy.description}
+                        action={likedAlbumsCopy.primaryAction ? {
+                            label: likedAlbumsCopy.primaryAction,
+                            onClick: () => navigate('/albums')
+                        } : undefined}
+                        secondaryAction={likedAlbumsCopy.secondaryAction ? {
+                            label: likedAlbumsCopy.secondaryAction,
+                            onClick: () => navigate('/artists')
+                        } : undefined}
+                    />
                 </div>
             </Page>
         );

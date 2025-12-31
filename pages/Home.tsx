@@ -2,13 +2,23 @@
  * ViiB MediaHub - Home Page
  * 
  * Landing page displaying personalized content and quick navigation.
+ * Establishes visual hierarchy with a hero section, stats cards, and content grids.
  * 
  * Sections:
  * - Global search bar for songs, albums, artists
- * - Smart Mixes: Auto-generated playlists based on listening habits
+ * - Featured Mix Hero: Prominent card featuring first available Smart Mix (uses Card variant="hero")
+ * - Smart Mixes: Horizontal scroll of auto-generated playlists (uses SmartMixCard component)
+ * - Stats Cards: Quick library overview with Total Songs, Albums, Artists (uses Card component)
  * - Recently Played: Last 20 played tracks with timestamps
  * - Recently Added: Latest additions to the library
  * - Top Artists: Most listened artists
+ * 
+ * Design System Usage:
+ * - Card component with variant="hero" for featured content
+ * - Card component with interactive prop for clickable stats
+ * - SmartMixCard component for gradient Smart Mix cards
+ * - Page component for consistent layout
+ * - TextInput component for search
  * 
  * @module Home
  */
@@ -21,6 +31,8 @@ import { generateGradient, coverBackground, formatTime } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { TextInput } from '../components/ui/TextInput';
 import { Page } from '../components/ui/Page';
+import { Card } from '../components/ui/Card';
+import { SmartMixCard } from '../components/SmartMixCard';
 
 export const Home: React.FC = () => {
   const { songs, smartMixes, refreshSmartMixes, playSong, openContextMenu, showSmartMixes } = useStore();
@@ -95,6 +107,29 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
+      {/* Featured Mix Hero */}
+      {songs.length > 0 && showSmartMixes && smartMixes.length > 0 && (
+        <section className="mb-12">
+          <Card 
+            variant="hero" 
+            interactive 
+            className="cursor-pointer relative overflow-hidden"
+            onClick={() => navigate(`/smart-mix/${smartMixes[0].id}`)}
+            style={{ 
+              background: `linear-gradient(135deg, ${smartMixes[0].coverColors[0]}40, ${smartMixes[0].coverColors[1]}40)` 
+            }}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <Sparkles className="text-brand" size={28} />
+              <span className="text-meta font-semibold uppercase tracking-wide text-text-secondary">Featured Mix</span>
+            </div>
+            <h2 className="text-display mb-2">{smartMixes[0].name}</h2>
+            <p className="text-text-secondary text-body">{smartMixes[0].description}</p>
+            <p className="text-text-subtle text-sm mt-4">{smartMixes[0].songIds.length} tracks • Ready to play</p>
+          </Card>
+        </section>
+      )}
+
       {/* Smart Mixes Section */}
       {songs.length > 0 && showSmartMixes && (
           <section className="mb-12">
@@ -105,30 +140,13 @@ export const Home: React.FC = () => {
             
             <div className="flex overflow-x-auto gap-6 pb-4 scrollbar-hide snap-x">
                 {smartMixes.map((mix) => (
-                    <div 
+                    <SmartMixCard
                         key={mix.id}
-                        className="flex-shrink-0 w-80 bg-surface-2 rounded-xl overflow-hidden group cursor-pointer border border-transparent hover:border-surface-border transition-all relative snap-start"
+                        mix={mix}
+                        onPlay={() => playMix(mix.id)}
                         onClick={() => navigate(`/smart-mix/${mix.id}`)}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SMART_MIX, mix)}
-                    >
-                        <div 
-                            className="h-40 p-6 flex flex-col justify-end relative"
-                            style={{ background: `linear-gradient(135deg, ${mix.coverColors[0]}, ${mix.coverColors[1]})` }}
-                        >
-                            <h3 className="text-2xl font-bold text-white shadow-black drop-shadow-md">{mix.name}</h3>
-                            <p className="text-white/80 text-sm font-medium drop-shadow">{mix.songIds.length} tracks</p>
-                            
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); playMix(mix.id); }}
-                                className="absolute bottom-4 right-4 w-12 h-12 bg-brand text-black rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all shadow-xl hover:scale-105 hover:bg-brand-hover"
-                            >
-                                <Play size={24} className="fill-current ml-1" />
-                            </button>
-                        </div>
-                        <div className="p-4">
-                            <p className="text-text-secondary text-sm line-clamp-2">{mix.description}</p>
-                        </div>
-                    </div>
+                    />
                 ))}
             </div>
           </section>
@@ -136,8 +154,9 @@ export const Home: React.FC = () => {
 
       {/* Stats Cards */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        <div 
-            className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors group relative overflow-hidden cursor-pointer"
+        <Card 
+            interactive
+            className="group relative overflow-hidden cursor-pointer"
             onClick={() => navigate('/songs')}
         >
             <div className="relative z-10">
@@ -146,10 +165,11 @@ export const Home: React.FC = () => {
                 <p className="text-text-secondary text-sm font-medium">Total Songs</p>
             </div>
           <div className="absolute top-0 right-0 w-24 h-24 bg-brand/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-brand/20"></div>
-        </div>
+        </Card>
 
-        <div 
-            className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors group relative overflow-hidden cursor-pointer"
+        <Card 
+            interactive
+            className="group relative overflow-hidden cursor-pointer"
             onClick={() => navigate('/albums')}
         >
             <div className="relative z-10">
@@ -158,10 +178,11 @@ export const Home: React.FC = () => {
                 <p className="text-text-secondary text-sm font-medium">Albums</p>
             </div>
           <div className="absolute top-0 right-0 w-24 h-24 bg-brand/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-brand/20"></div>
-        </div>
+        </Card>
 
-        <div 
-            className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors group relative overflow-hidden cursor-pointer"
+        <Card 
+            interactive
+            className="group relative overflow-hidden cursor-pointer"
             onClick={() => navigate('/artists')}
         >
              <div className="relative z-10">
@@ -170,7 +191,7 @@ export const Home: React.FC = () => {
                 <p className="text-text-secondary text-sm font-medium">Artists</p>
             </div>
           <div className="absolute top-0 right-0 w-24 h-24 bg-brand/10 rounded-full -mr-4 -mt-4 blur-2xl transition-all group-hover:bg-brand/20"></div>
-        </div>
+        </Card>
       </section>
 
       {/* Recently Played Section */}

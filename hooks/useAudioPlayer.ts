@@ -73,6 +73,16 @@ export const useAudioPlayer = () => {
     // Track if we've already fixed duration for current song
     const hasFixedDuration = useRef<string | null>(null);
     
+    // Track listening events for AI DJ preference learning
+    // Stores the current song being tracked and its cumulative play duration
+    const listenTrackingRef = useRef<{
+        songId: string;
+        songDuration: number;
+        accumulatedPlayTime: number;
+        lastPlayStartTime: number | null;
+        isTracking: boolean;
+    } | null>(null);
+    
     // Local state for UI updates
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -82,7 +92,7 @@ export const useAudioPlayer = () => {
 
     const { 
         currentSong, isPlaying, volume, audioSettings,
-        nextSong, recordPlay, preloadNextTrack, setBuffering, setBufferProgress,
+        nextSong, recordPlay, recordListenEvent, preloadNextTrack, setBuffering, setBufferProgress,
         setStreamError, retryStream, clearStreamError, showToast, retryCount,
         recordStreamEvent, updateSongDuration
     } = useStore();
@@ -337,6 +347,36 @@ export const useAudioPlayer = () => {
         // Note: We use .getAttribute('src') or check exact string match to avoid resolved URL issues
         if (currentPlayer.getAttribute('src') !== currentSong.url) {
             // Song Changed!
+            
+            // Record listen event for the PREVIOUS song before switching
+            if (listenTrackingRef.current && listenTrackingRef.current.isTracking) {
+                // Calculate final play duration
+                let finalPlayTime = listenTrackingRef.current.accumulatedPlayTime;
+                if (listenTrackingRef.current.lastPlayStartTime !== null) {
+                    finalPlayTime += (Date.now() - listenTrackingRef.current.lastPlayStartTime) / 1000;
+                }
+                
+                // Only record if we actually played for some time
+                if (finalPlayTime > 0.5) {
+                    recordListenEvent(
+                        listenTrackingRef.current.songId,
+                        finalPlayTime,
+                        listenTrackingRef.current.songDuration,
+                        'queue' // Default context - could be enhanced to track actual context
+                    );
+                    console.log(`[AudioPlayer] Listen event recorded: ${finalPlayTime.toFixed(1)}s / ${listenTrackingRef.current.songDuration.toFixed(1)}s`);
+                }
+            }
+            
+            // Start tracking the NEW song
+            listenTrackingRef.current = {
+                songId: currentSong.id,
+                songDuration: currentSong.duration || 0,
+                accumulatedPlayTime: 0,
+                lastPlayStartTime: isPlaying ? Date.now() : null,
+                isTracking: true
+            };
+            
             const nextIndex = (currentIndex + 1) % 2;
             const nextPlayer = nextIndex === 0 ? primary : secondary;
             
@@ -383,9 +423,21 @@ export const useAudioPlayer = () => {
                  // If paused, resume. 
                  if (currentPlayer.paused) {
                     audioEngine.transition(null, currentPlayer, 0.3);
+                    
+                    // Resume listen tracking
+                    if (listenTrackingRef.current && listenTrackingRef.current.songId === currentSong.id) {
+                        listenTrackingRef.current.lastPlayStartTime = Date.now();
+                    }
                  }
             } else {
                  currentPlayer.pause();
+                 
+                 // Pause listen tracking - accumulate time played so far
+                 if (listenTrackingRef.current && listenTrackingRef.current.lastPlayStartTime !== null) {
+                     listenTrackingRef.current.accumulatedPlayTime += 
+                         (Date.now() - listenTrackingRef.current.lastPlayStartTime) / 1000;
+                     listenTrackingRef.current.lastPlayStartTime = null;
+                 }
             }
         }
 
@@ -431,6 +483,29 @@ export const useAudioPlayer = () => {
         
         if (currentSong) {
             recordPlay(currentSong.id);
+            
+            // Record listen event as play_complete (full song played)
+            // Calculate the total play time including any accumulated from pause/resume
+            if (listenTrackingRef.current && listenTrackingRef.current.songId === currentSong.id) {
+                let finalPlayTime = listenTrackingRef.current.accumulatedPlayTime;
+                if (listenTrackingRef.current.lastPlayStartTime !== null) {
+                    finalPlayTime += (Date.now() - listenTrackingRef.current.lastPlayStartTime) / 1000;
+                }
+                
+                // Use actual song duration if available, otherwise use tracked duration
+                const songDuration = currentSong.duration || listenTrackingRef.current.songDuration;
+                
+                recordListenEvent(
+                    currentSong.id,
+                    finalPlayTime,
+                    songDuration,
+                    'queue' // Default context
+                );
+                console.log(`[AudioPlayer] Song completed: ${finalPlayTime.toFixed(1)}s / ${songDuration.toFixed(1)}s`);
+                
+                // Clear tracking for this song
+                listenTrackingRef.current = null;
+            }
             
             // Record stream complete event for streaming tracks
             if (currentSong.isStreaming) {

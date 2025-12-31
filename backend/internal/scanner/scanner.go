@@ -16,6 +16,7 @@
 package scanner
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -27,7 +28,7 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
-	"github.com/ajbergh/viib-mediahub/internal/gemini"
+	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	taglib "go.senan.xyz/taglib"
 )
@@ -97,6 +98,25 @@ func shouldSkipDirectory(dirName string) bool {
 		}
 	}
 
+	return false
+}
+
+// pathContainsSkippedDirectory checks if a file path contains any directory that should be skipped.
+// This is used to clean up songs that were added before skip logic was in place.
+func pathContainsSkippedDirectory(filePath string) bool {
+	// Split the path into directory components
+	dir := filepath.Dir(filePath)
+	for dir != "" && dir != "." && dir != "/" && dir != filepath.VolumeName(filePath)+"\\" {
+		dirName := filepath.Base(dir)
+		if shouldSkipDirectory(dirName) {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break // Reached root
+		}
+		dir = parent
+	}
 	return false
 }
 
@@ -532,17 +552,19 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 	s.setProgress(fmt.Sprintf("Scan complete: %d files found, %d new, %d updated, %d removed (%s)",
 		result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.RemovedSongs, result.Duration.Round(time.Millisecond)))
 
-	// Check for Gemini API key and trigger enrichment
-	apiKey, err := s.db.GetSetting("gemini_api_key")
-	if err == nil && apiKey != "" {
+	// Check for LLM provider and trigger enrichment
+	provider, err := llm.GetConfiguredProvider(s.db)
+	if err == nil {
+		defer provider.Close()
+
 		// Get total count of songs needing enrichment
 		allSongsToEnrich, err := s.db.GetSongsWithMissingGenres(10000)
 		if err == nil && len(allSongsToEnrich) > 0 {
 			totalToEnrich := len(allSongsToEnrich)
-			batchSize := 50
+			batchSize := provider.GetOptimalBatchSize()
 			totalBatches := (totalToEnrich + batchSize - 1) / batchSize
 
-			logger.Scanner("Found %d songs with missing genres, starting enrichment (%d batches)...", totalToEnrich, totalBatches)
+			logger.Scanner("Found %d songs with missing genres, starting enrichment (%d batches) using %s...", totalToEnrich, totalBatches, provider.GetProviderName())
 
 			// Emit enrichment started event
 			s.emitEvent(LibraryEvent{
@@ -554,7 +576,6 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 				},
 			})
 
-			client := gemini.NewClient(apiKey)
 			totalEnriched := 0
 
 			for batch := 0; batch < totalBatches; batch++ {
@@ -578,9 +599,9 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 					},
 				})
 
-				enrichedGenres, err := client.EnrichGenres(songsToEnrich)
+				enrichedGenres, err := provider.EnrichGenres(context.Background(), songsToEnrich)
 				if err != nil {
-					logger.Scanner("Gemini enrichment failed for batch %d: %v", batch+1, err)
+					logger.Scanner("LLM enrichment failed for batch %d: %v", batch+1, err)
 					continue
 				}
 
@@ -616,7 +637,7 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 						"totalSongs":    totalToEnrich,
 					},
 				})
-				logger.Scanner("Enriched %d songs with genres via Gemini", totalEnriched)
+				logger.Scanner("Enriched %d songs with genres via %s", totalEnriched, provider.GetProviderName())
 
 				// Update stats after enrichment
 				s.db.UpdateGenreStats()
@@ -1258,9 +1279,9 @@ func (s *Scanner) processEnrichmentQueue() {
 	logger.ScannerDebug("Enrichment worker started")
 
 	for batch := range s.enrichmentQueue {
-		// Check for API key (reload each time to catch updates)
-		apiKey, err := s.db.GetSetting("gemini_api_key")
-		if err != nil || apiKey == "" {
+		// Get configured LLM provider (checks unified settings, falls back to legacy gemini_api_key)
+		provider, err := llm.GetConfiguredProvider(s.db)
+		if err != nil {
 			continue
 		}
 
@@ -1275,7 +1296,7 @@ func (s *Scanner) processEnrichmentQueue() {
 
 		// Emit enrichment_started on first batch
 		if isFirstBatch {
-			logger.Scanner("Starting enrichment of %d songs needing genres across %d batches", totalSongs, totalBatches)
+			logger.Scanner("Starting enrichment of %d songs needing genres across %d batches using %s", totalSongs, totalBatches, provider.GetProviderName())
 			s.emitEvent(LibraryEvent{
 				Type:    "enrichment_started",
 				Message: fmt.Sprintf("Enriching %d songs", totalSongs),
@@ -1286,12 +1307,10 @@ func (s *Scanner) processEnrichmentQueue() {
 			})
 		}
 
-		client := gemini.NewClient(apiKey)
-
 		// Retry loop for rate limits
 		maxRetries := 3
 		for i := 0; i < maxRetries; i++ {
-			enrichedGenres, err := client.EnrichGenres(batch)
+			enrichedGenres, err := provider.EnrichGenres(context.Background(), batch)
 			if err == nil {
 				// Success - update DB
 				count := 0
@@ -1351,15 +1370,18 @@ func (s *Scanner) processEnrichmentQueue() {
 
 			// Check if it's a rate limit error (429)
 			if strings.Contains(err.Error(), "429") || strings.Contains(strings.ToLower(err.Error()), "quota") {
-				logger.Scanner("Gemini rate limit hit, waiting 30s (attempt %d/%d)...", i+1, maxRetries)
+				logger.Scanner("LLM rate limit hit, waiting 30s (attempt %d/%d)...", i+1, maxRetries)
 				time.Sleep(30 * time.Second)
 				continue
 			}
 
 			// Other error
-			logger.Scanner("Gemini enrichment failed: %v", err)
+			logger.Scanner("LLM enrichment failed: %v", err)
 			break
 		}
+
+		// Close provider after use
+		provider.Close()
 
 		// Small delay between batches to be nice to the API
 		time.Sleep(2 * time.Second)

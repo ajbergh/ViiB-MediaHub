@@ -374,6 +374,18 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   },
 
   /**
+   * recordListenEvent - Record a listening event for AI DJ preference learning.
+   * Called when a song ends (play_complete) or is skipped.
+   * The backend auto-detects event type based on playDuration vs songDuration.
+   */
+  recordListenEvent: (songId, playDuration, songDuration, context) => {
+      const { backendAvailable } = get();
+      if (backendAvailable) {
+          backendService.recordListenEvent(songId, playDuration, songDuration, context);
+      }
+  },
+
+  /**
    * updateSongDuration - Update a song's duration with the actual audio duration.
    * This fixes cases where metadata extraction reports incorrect duration.
    * Only updates if the difference is significant (> 5%).

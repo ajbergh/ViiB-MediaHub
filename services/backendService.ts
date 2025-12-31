@@ -55,6 +55,9 @@ export function apiSongToSong(apiSong: ApiSong): Song {
     discNumber: apiSong.discNumber,
     genre: apiSong.genre,
     year: apiSong.year,
+    originalYear: apiSong.originalYear,
+    yearUncertain: apiSong.yearUncertain,
+    yearAnalyzedAt: apiSong.yearAnalyzedAt,
     duration: apiSong.duration,
     url: apiSong.filePath, // API URL like /api/audio/{id}
     coverUrl: apiSong.coverPath, // API URL like /api/cover/{id}
@@ -101,6 +104,29 @@ export const backendService = {
   async recordPlay(songId: string): Promise<void> {
     if (await isBackendAvailable()) {
       await api.recordPlay(songId);
+    }
+  },
+
+  /**
+   * Record a listening event for AI DJ preference learning.
+   * Called when a song ends or is skipped to track user behavior.
+   * @param songId - The ID of the song
+   * @param playDuration - How many seconds the song was played
+   * @param songDuration - Total duration of the song
+   * @param context - Playback context: 'ai_dj', 'album', 'playlist', 'queue', 'search'
+   */
+  async recordListenEvent(
+    songId: string,
+    playDuration: number,
+    songDuration: number,
+    context: string
+  ): Promise<void> {
+    if (await isBackendAvailable()) {
+      try {
+        await api.recordListenEvent(songId, playDuration, songDuration, context);
+      } catch (e) {
+        console.error('Failed to record listen event:', e);
+      }
     }
   },
 

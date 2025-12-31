@@ -1,27 +1,38 @@
 // Package api provides HTTP handlers for the ViiB MediaHub API.
 //
 // smart_playlist.go implements the AI DJ feature, which generates smart playlists
-// based on natural language prompts. It uses a three-tier matching system:
+// based on natural language prompts. It uses a four-tier matching system:
 //
-//  1. Artist-Based Matching: Detects "more like [artist]" patterns and returns
-//     songs from that artist plus similar artists (based on shared genres).
+//  1. Tier 0 - Artist-Based Matching: Detects "more like [artist]" patterns and
+//     returns songs from that artist plus similar artists (based on shared genres).
 //
-//  2. Local Genre Matching: Direct match against indexed genre names without
-//     calling external APIs. Handles exact and partial matches.
+//  2. Tier 1 - Local Genre Matching: Direct match against indexed genre names
+//     without calling external APIs. Handles exact and partial matches.
 //
-//  3. Gemini AI Fallback: For complex prompts, uses Google's Gemini AI to
-//     parse intent and smart-score indexed genres.
+//  3. Tier 1.5 - Mood/Activity Keyword Matching: Intercepts 85+ common mood/vibe
+//     keywords (chill, workout, focus, party, etc.) and queries by mood/energy/tempo
+//     directly, bypassing Gemini API entirely. Added 2025-01-13.
+//
+//  4. Tier 2 - Gemini AI Fallback: For complex prompts, uses Google's Gemini AI
+//     to parse intent and smart-score indexed genres.
+//
+// The AI DJ always uses multi-genre blending to create cross-genre playlists based
+// on the user's input query. The backend intelligently selects the best matching
+// genres and blends them proportionally for a cohesive listening experience.
 //
 // Additional features include:
 //   - Multi-genre blending with proportional song selection
 //   - Play history integration (discover mode, avoid recently played)
 //   - Time-of-day awareness for contextual recommendations
 //   - Decade extraction from prompts (supports early/mid/late qualifiers)
+//   - True random shuffling using Fisher-Yates algorithm (seeded at init)
+//   - Mood/energy/tempo filtering in database queries
 //
 // Key functions:
 //   - handleGenerateSmartPlaylist: Main HTTP handler for /api/smart-playlist
-//   - tryArtistBasedMatch: Detects artist-based prompts
-//   - tryLocalGenreMatch: Matches against indexed genres locally
+//   - tryArtistBasedMatch: Detects artist-based prompts (Tier 0)
+//   - tryLocalGenreMatch: Matches against indexed genres locally (Tier 1)
+//   - tryMoodBasedMatch: Intercepts mood/activity keywords (Tier 1.5)
 //   - tryMatchMultipleGenres: Returns top matching genres for blending
 //   - scoreGenreMatch: Calculates genre match scores
 //   - applyPlayHistoryFilters: Filters based on play history preferences
@@ -31,14 +42,23 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/ajbergh/viib-mediahub/internal/gemini"
+	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/dj"
+	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
+
+// init seeds the random number generator for true shuffle randomness.
+// This ensures each request produces different playlist ordering.
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 // LocalPlaylistFilter represents the filter criteria used to generate a playlist.
 // It contains all the parameters extracted from the user's prompt or determined
@@ -67,9 +87,65 @@ type MatchedGenre struct {
 	Proportion float64 `json:"proportion"` // 0.0-1.0, percentage of playlist from this genre
 }
 
+// transformSongsForAPI converts raw database songs to have API URLs for FilePath and CoverPath.
+// This is required because the frontend expects URLs like /api/audio/{id} and /api/cover/{id},
+// but database songs store the actual filesystem paths.
+// The function handles both []db.Song and []any (containing db.Song values).
+func transformSongsForAPI(songs []any) []any {
+	result := make([]any, 0, len(songs))
+	for _, s := range songs {
+		switch song := s.(type) {
+		case db.Song:
+			// Transform paths to API URLs
+			song.FilePath = "/api/audio/" + song.ID
+			if song.CoverPath != "" {
+				song.CoverPath = "/api/cover/" + song.ID
+			}
+			result = append(result, song)
+		case *db.Song:
+			// Transform paths to API URLs (pointer case)
+			song.FilePath = "/api/audio/" + song.ID
+			if song.CoverPath != "" {
+				song.CoverPath = "/api/cover/" + song.ID
+			}
+			result = append(result, *song)
+		default:
+			// If not a recognized song type, include as-is
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+// getLLMSettings retrieves the LLM configuration from the database.
+// Falls back to default settings (Ollama) if not configured.
+func getLLMSettings(a *API) llm.Settings {
+	settings := llm.DefaultSettings()
+
+	if provider, err := a.db.GetSetting("llm_provider"); err == nil && provider != "" {
+		settings.Provider = provider
+	}
+	if model, err := a.db.GetSetting("llm_model"); err == nil && model != "" {
+		settings.Model = model
+	}
+	if apiKey, err := a.db.GetSetting("llm_api_key"); err == nil && apiKey != "" {
+		settings.APIKey = apiKey
+	}
+	if baseURL, err := a.db.GetSetting("llm_base_url"); err == nil && baseURL != "" {
+		settings.BaseURL = baseURL
+	}
+
+	return settings
+}
+
 // tryLocalGenreMatch attempts to match the prompt against known local genres.
 // Returns matched genre name, songs, and whether a match was found.
+//
+// IMPORTANT: This only matches if the genre has at least 20 songs to ensure
+// a good playlist experience. For small genres, we fall back to LLM blending.
 func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
+	const minSongsForLocalMatch = 20 // Require at least this many songs for direct match
+
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return "", nil, false
@@ -92,14 +168,17 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 				logger.API("Failed to get songs for genre %s: %v", genreName, err)
 				return "", nil, false
 			}
-			if len(songs) > 0 {
+			// Only use direct match if we have enough songs
+			if len(songs) >= minSongsForLocalMatch {
 				// Convert to interface slice for JSON encoding
 				result := make([]any, len(songs))
 				for i, s := range songs {
 					result[i] = s
 				}
+				logger.API("Local genre exact match: '%s' with %d songs (>= %d min)", genreName, len(songs), minSongsForLocalMatch)
 				return genreName, result, true
 			}
+			logger.API("Local genre exact match '%s' has only %d songs (< %d min), falling back to LLM", genreName, len(songs), minSongsForLocalMatch)
 		}
 	}
 
@@ -118,13 +197,16 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 					logger.API("Failed to get songs for genre %s: %v", genreName, err)
 					continue
 				}
-				if len(songs) > 0 {
+				// Only use direct match if we have enough songs
+				if len(songs) >= minSongsForLocalMatch {
 					result := make([]any, len(songs))
 					for i, s := range songs {
 						result[i] = s
 					}
+					logger.API("Local genre partial match: '%s' with %d songs (>= %d min)", genreName, len(songs), minSongsForLocalMatch)
 					return genreName, result, true
 				}
+				logger.API("Local genre partial match '%s' has only %d songs (< %d min), continuing", genreName, len(songs), minSongsForLocalMatch)
 			}
 		}
 		// Or if the prompt is contained in the genre name (e.g., "alternative" matches "90s Alternative")
@@ -134,17 +216,235 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 				logger.API("Failed to get songs for genre %s: %v", genreName, err)
 				continue
 			}
-			if len(songs) > 0 {
+			// Only use direct match if we have enough songs
+			if len(songs) >= minSongsForLocalMatch {
 				result := make([]any, len(songs))
 				for i, s := range songs {
 					result[i] = s
 				}
+				logger.API("Local genre inverse match: '%s' with %d songs (>= %d min)", genreName, len(songs), minSongsForLocalMatch)
 				return genreName, result, true
 			}
 		}
 	}
 
 	return "", nil, false
+}
+
+// moodKeywords maps common user keywords to database mood/energy/tempo values.
+// This allows the AI DJ to match mood-based prompts without calling Gemini,
+// reducing API costs and latency for common activity-based requests.
+var moodKeywords = map[string]struct {
+	mood   string
+	energy string
+	tempo  string
+}{
+	// Relaxation/Calm prompts
+	"chill":      {mood: "calm", energy: "low", tempo: "slow"},
+	"chillout":   {mood: "calm", energy: "low", tempo: "slow"},
+	"relax":      {mood: "calm", energy: "low", tempo: "slow"},
+	"relaxing":   {mood: "calm", energy: "low", tempo: "slow"},
+	"relaxation": {mood: "calm", energy: "low", tempo: "slow"},
+	"calm":       {mood: "calm", energy: "low", tempo: "slow"},
+	"peaceful":   {mood: "peaceful", energy: "low", tempo: "slow"},
+	"sleep":      {mood: "calm", energy: "low", tempo: "slow"},
+	"sleeping":   {mood: "calm", energy: "low", tempo: "slow"},
+	"bedtime":    {mood: "calm", energy: "low", tempo: "slow"},
+	"meditation": {mood: "peaceful", energy: "low", tempo: "slow"},
+	"zen":        {mood: "peaceful", energy: "low", tempo: "slow"},
+	"ambient":    {mood: "calm", energy: "low", tempo: "slow"},
+	"mellow":     {mood: "calm", energy: "low", tempo: "medium"},
+	"soft":       {mood: "calm", energy: "low", tempo: "slow"},
+	"gentle":     {mood: "calm", energy: "low", tempo: "slow"},
+
+	// Focus/Study prompts
+	"focus":         {mood: "peaceful", energy: "medium", tempo: "medium"},
+	"study":         {mood: "calm", energy: "low", tempo: "medium"},
+	"studying":      {mood: "calm", energy: "low", tempo: "medium"},
+	"concentration": {mood: "peaceful", energy: "medium", tempo: "medium"},
+	"work":          {mood: "peaceful", energy: "medium", tempo: "medium"},
+	"coding":        {mood: "calm", energy: "medium", tempo: "medium"},
+
+	// Energy/Workout prompts
+	"workout":   {mood: "energetic", energy: "high", tempo: "fast"},
+	"exercise":  {mood: "energetic", energy: "high", tempo: "fast"},
+	"gym":       {mood: "energetic", energy: "high", tempo: "fast"},
+	"running":   {mood: "energetic", energy: "high", tempo: "fast"},
+	"run":       {mood: "energetic", energy: "high", tempo: "fast"},
+	"pump":      {mood: "energetic", energy: "high", tempo: "fast"},
+	"pump up":   {mood: "energetic", energy: "high", tempo: "fast"},
+	"energetic": {mood: "energetic", energy: "high", tempo: "fast"},
+	"energy":    {mood: "energetic", energy: "high", tempo: "fast"},
+	"upbeat":    {mood: "happy", energy: "high", tempo: "fast"},
+	"hype":      {mood: "energetic", energy: "high", tempo: "fast"},
+
+	// Happy/Party prompts
+	"happy":       {mood: "happy", energy: "high", tempo: "medium"},
+	"party":       {mood: "happy", energy: "high", tempo: "fast"},
+	"dance":       {mood: "happy", energy: "high", tempo: "fast"},
+	"dancing":     {mood: "happy", energy: "high", tempo: "fast"},
+	"fun":         {mood: "happy", energy: "high", tempo: "fast"},
+	"celebration": {mood: "happy", energy: "high", tempo: "fast"},
+	"celebrate":   {mood: "happy", energy: "high", tempo: "fast"},
+
+	// Sad/Melancholic prompts
+	"sad":         {mood: "sad", energy: "low", tempo: "slow"},
+	"melancholy":  {mood: "melancholic", energy: "low", tempo: "slow"},
+	"melancholic": {mood: "melancholic", energy: "low", tempo: "slow"},
+	"emotional":   {mood: "sad", energy: "low", tempo: "slow"},
+	"cry":         {mood: "sad", energy: "low", tempo: "slow"},
+	"heartbreak":  {mood: "sad", energy: "low", tempo: "slow"},
+	"breakup":     {mood: "sad", energy: "low", tempo: "slow"},
+
+	// Romantic prompts
+	"romantic":   {mood: "romantic", energy: "low", tempo: "slow"},
+	"love":       {mood: "romantic", energy: "low", tempo: "slow"},
+	"dinner":     {mood: "romantic", energy: "low", tempo: "slow"},
+	"date":       {mood: "romantic", energy: "low", tempo: "slow"},
+	"date night": {mood: "romantic", energy: "low", tempo: "slow"},
+
+	// Aggressive/Intense prompts
+	"aggressive": {mood: "aggressive", energy: "high", tempo: "fast"},
+	"angry":      {mood: "aggressive", energy: "high", tempo: "fast"},
+	"intense":    {mood: "intense", energy: "high", tempo: "fast"},
+	"metal":      {mood: "aggressive", energy: "high", tempo: "fast"},
+
+	// Driving prompts
+	"driving":   {mood: "energetic", energy: "medium", tempo: "medium"},
+	"road trip": {mood: "happy", energy: "medium", tempo: "medium"},
+	"roadtrip":  {mood: "happy", energy: "medium", tempo: "medium"},
+
+	// Nostalgic/Dreamy prompts
+	"nostalgic": {mood: "nostalgic", energy: "low", tempo: "medium"},
+	"nostalgia": {mood: "nostalgic", energy: "low", tempo: "medium"},
+	"dreamy":    {mood: "dreamy", energy: "low", tempo: "slow"},
+
+	// Morning/Evening prompts
+	"morning": {mood: "uplifting", energy: "medium", tempo: "medium"},
+	"wake up": {mood: "uplifting", energy: "medium", tempo: "medium"},
+	"evening": {mood: "calm", energy: "low", tempo: "slow"},
+}
+
+// moodMatchInfo holds extracted mood/energy/tempo from a prompt without querying songs.
+// Used by DJ mode to inform phase filtering.
+type moodMatchInfo struct {
+	mood   string
+	energy string
+	tempo  string
+}
+
+// tryMoodBasedMatchInfo extracts mood/energy/tempo hints from the prompt without querying songs.
+// Returns nil if no mood keywords are found.
+func (a *API) tryMoodBasedMatchInfo(prompt string) *moodMatchInfo {
+	promptLower := strings.ToLower(strings.TrimSpace(prompt))
+	if promptLower == "" {
+		return nil
+	}
+
+	// Check for mood keywords in the prompt (allow longer prompts for DJ mode)
+	for keyword, attrs := range moodKeywords {
+		// Check if keyword appears as a word boundary in the prompt
+		if strings.Contains(" "+promptLower+" ", " "+keyword+" ") ||
+			strings.HasPrefix(promptLower, keyword+" ") ||
+			strings.HasSuffix(promptLower, " "+keyword) ||
+			promptLower == keyword {
+			return &moodMatchInfo{
+				mood:   attrs.mood,
+				energy: attrs.energy,
+				tempo:  attrs.tempo,
+			}
+		}
+	}
+
+	return nil
+}
+
+// tryMoodBasedMatch attempts to match the prompt against mood/activity keywords.
+// This avoids Gemini API calls for common vibe-based requests like "chill music"
+// or "workout playlist". Returns filter, songs, and whether a match was found.
+//
+// This is Tier 1.5 in the matching hierarchy:
+//   - Tier 0: Artist-based matching
+//   - Tier 1: Local genre matching
+//   - Tier 1.5: Mood/activity keyword matching (this function)
+//   - Tier 2: Gemini AI fallback
+func (a *API) tryMoodBasedMatch(prompt string) (*LocalPlaylistFilter, []any, bool) {
+	promptLower := strings.ToLower(strings.TrimSpace(prompt))
+	if promptLower == "" {
+		return nil, nil, false
+	}
+
+	// Count words in the prompt
+	words := strings.Fields(promptLower)
+	wordCount := len(words)
+
+	// Only use mood-based matching for simple prompts (1-2 words)
+	// This prevents "upbeat 90s hip hop" from matching just "upbeat"
+	// Complex prompts should go to Gemini for full parsing
+	if wordCount > 2 {
+		return nil, nil, false
+	}
+
+	// Check for mood keywords in the prompt
+	var matchedMood, matchedEnergy, matchedTempo string
+	var matchedKeyword string
+
+	for keyword, attrs := range moodKeywords {
+		// Check if keyword appears as a word boundary in the prompt
+		// This prevents "focus" matching "unfocused" etc.
+		if strings.Contains(" "+promptLower+" ", " "+keyword+" ") ||
+			strings.HasPrefix(promptLower, keyword+" ") ||
+			strings.HasSuffix(promptLower, " "+keyword) ||
+			promptLower == keyword {
+			matchedMood = attrs.mood
+			matchedEnergy = attrs.energy
+			matchedTempo = attrs.tempo
+			matchedKeyword = keyword
+			break
+		}
+	}
+
+	if matchedMood == "" {
+		return nil, nil, false
+	}
+
+	logger.API("Mood keyword match: '%s' → mood=%s, energy=%s, tempo=%s",
+		matchedKeyword, matchedMood, matchedEnergy, matchedTempo)
+
+	// Query songs by mood (using empty strings for genres/artists lets the mood filter take over)
+	songs, err := a.db.GetSongsBySmartFilter(nil, nil, 0, 0, matchedMood, matchedEnergy, matchedTempo)
+	if err != nil {
+		logger.API("Failed to get songs by mood filter: %v", err)
+		return nil, nil, false
+	}
+
+	if len(songs) == 0 {
+		// No songs with this exact mood - try with just mood, ignoring energy/tempo
+		songs, err = a.db.GetSongsBySmartFilter(nil, nil, 0, 0, matchedMood, "", "")
+		if err != nil || len(songs) == 0 {
+			logger.API("No songs found for mood '%s'", matchedMood)
+			return nil, nil, false
+		}
+	}
+
+	logger.API("Mood-based match found: %d songs for '%s' vibe", len(songs), matchedKeyword)
+
+	// Convert to interface slice
+	result := make([]any, len(songs))
+	for i, s := range songs {
+		result[i] = s
+	}
+
+	filter := &LocalPlaylistFilter{
+		Mood:        matchedMood,
+		Energy:      matchedEnergy,
+		Tempo:       matchedTempo,
+		Description: fmt.Sprintf("%s music - %s vibes", matchedKeyword, matchedMood),
+		LocalMatch:  true,
+		BlendMode:   "single",
+	}
+
+	return filter, result, true
 }
 
 // tryArtistBasedMatch detects "more like [artist]" or similar patterns and returns songs
@@ -348,11 +648,32 @@ func enhancePromptWithTimeContext(prompt string, useTimeContext bool) string {
 	return enhanced
 }
 
-// scoreGenreMatch calculates how well an indexed genre matches the Gemini filter intent.
+// scoreGenreMatch calculates how well an indexed genre matches the LLM filter intent.
 // Returns a score from 0-100 where higher is better.
-func scoreGenreMatch(genreName string, filter *gemini.PlaylistFilter) int {
+// The originalPrompt parameter allows boosting exact subgenre matches (e.g., "jazz trios" → "Jazz Trio").
+func scoreGenreMatch(genreName string, filter *llm.PlaylistFilter, originalPrompt string) int {
 	genreLower := strings.ToLower(genreName)
+	promptLower := strings.ToLower(originalPrompt)
 	score := 0
+
+	// PRIORITY BOOST: Check if the indexed genre name appears as a phrase in the original prompt
+	// This handles cases like "upbeat jazz trios" matching "Jazz Trio" directly
+	// Apply a high bonus (+60) to prioritize subgenre matches over generic genre matches
+	if strings.Contains(promptLower, genreLower) {
+		score += 60
+		// Even higher bonus for near-exact matches (genre is significant portion of prompt)
+		if len(genreLower) >= len(promptLower)/2 {
+			score += 20
+		}
+	}
+
+	// Also check if prompt words form the genre name (e.g., "jazz trio" matches "Jazz Trio")
+	// Normalize the genre name by removing hyphens and extra spaces
+	genreNormalized := strings.ReplaceAll(genreLower, "-", " ")
+	genreNormalized = strings.Join(strings.Fields(genreNormalized), " ")
+	if strings.Contains(promptLower, genreNormalized) && genreNormalized != genreLower {
+		score += 50
+	}
 
 	// Check for decade indicators in genre name
 	decadePatterns := map[string][2]int{
@@ -495,9 +816,35 @@ func getGenreVariations(genre string) []string {
 	return []string{}
 }
 
-// tryMatchIndexedGenre attempts to find the best indexed genre that matches the Gemini filter intent.
-// This bridges the gap between Gemini's generic understanding and the user's actual indexed genres.
-func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any, bool) {
+// getAvailableGenreNames returns a list of genre names from the user's library,
+// sorted by popularity (most songs first). This is used to help the LLM select
+// genres that actually exist in the user's collection.
+func (a *API) getAvailableGenreNames() []string {
+	stats, err := a.db.GetAllGenreStats()
+	if err != nil {
+		logger.API("Failed to get genre stats for context: %v", err)
+		return nil
+	}
+
+	names := make([]string, len(stats))
+	for i, stat := range stats {
+		names[i] = stat.Name
+	}
+	return names
+}
+
+// truncateSlice returns the first n elements of a slice for logging purposes.
+func truncateSlice(slice []string, n int) []string {
+	if len(slice) <= n {
+		return slice
+	}
+	return slice[:n]
+}
+
+// tryMatchIndexedGenre attempts to find the best indexed genre that matches the LLM filter intent.
+// This bridges the gap between the LLM's generic understanding and the user's actual indexed genres.
+// The originalPrompt is used to boost exact subgenre matches (e.g., "jazz trios" → "Jazz Trio").
+func (a *API) tryMatchIndexedGenre(filter *llm.PlaylistFilter, originalPrompt string) (string, []any, bool) {
 	genreNames, err := a.db.GetGenreNames()
 	if err != nil {
 		logger.API("Failed to get genre names for indexed matching: %v", err)
@@ -528,11 +875,11 @@ func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any
 	var candidates []scoredGenre
 
 	// Log scoring for debugging
-	logger.API("Scoring indexed genres against filter: genres=%v, years=%d-%d",
-		filter.Genres, filter.MinYear, filter.MaxYear)
+	logger.API("Scoring indexed genres against filter: genres=%v, years=%d-%d, prompt='%s'",
+		filter.Genres, filter.MinYear, filter.MaxYear, originalPrompt)
 
 	for _, genreName := range genreNames {
-		score := scoreGenreMatch(genreName, filter)
+		score := scoreGenreMatch(genreName, filter, originalPrompt)
 		if score > 50 { // Only consider genres with meaningful scores
 			count := genreCounts[genreName]
 			logger.API("  Genre '%s' scored %d (%d songs)", genreName, score, count)
@@ -574,7 +921,14 @@ func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any
 	// Only accept matches with a reasonable score threshold
 	// A score of 55+ means we matched both decade and genre concept
 	if bestScore >= 55 {
-		songs, err := a.db.GetSongsByExactGenre(bestGenre)
+		// Use year-filtered query if year range is specified (e.g., "90s hip hop")
+		var songs []db.Song
+		var err error
+		if filter.MinYear > 0 || filter.MaxYear > 0 {
+			songs, err = a.db.GetSongsByExactGenreWithYears(bestGenre, filter.MinYear, filter.MaxYear)
+		} else {
+			songs, err = a.db.GetSongsByExactGenre(bestGenre)
+		}
 		if err != nil {
 			logger.API("Failed to get songs for matched genre %s: %v", bestGenre, err)
 			return "", nil, false
@@ -584,7 +938,7 @@ func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any
 			for i, s := range songs {
 				result[i] = s
 			}
-			logger.API("Smart indexed genre match: '%s' with score %d (%d songs)", bestGenre, bestScore, len(songs))
+			logger.API("Smart indexed genre match: '%s' with score %d (%d songs, years: %d-%d)", bestGenre, bestScore, len(songs), filter.MinYear, filter.MaxYear)
 			return bestGenre, result, true
 		}
 	}
@@ -593,8 +947,10 @@ func (a *API) tryMatchIndexedGenre(filter *gemini.PlaylistFilter) (string, []any
 }
 
 // tryMatchMultipleGenres finds the top matching genres and blends songs proportionally.
+// The originalPrompt is used to boost exact subgenre matches (e.g., "jazz trios" → "Jazz Trio").
+// When the LLM provides mood/energy/tempo values, they are used to filter songs within each genre.
 // Returns matched genres, blended songs, and whether any matches were found.
-func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres int, targetSongs int) ([]MatchedGenre, []any, bool) {
+func (a *API) tryMatchMultipleGenres(filter *llm.PlaylistFilter, originalPrompt string, maxGenres int, targetSongs int) ([]MatchedGenre, []any, bool) {
 	genreNames, err := a.db.GetGenreNames()
 	if err != nil {
 		logger.API("Failed to get genre names for multi-genre matching: %v", err)
@@ -623,11 +979,11 @@ func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres in
 	}
 	var candidates []scoredGenre
 
-	logger.API("Multi-genre scoring against filter: genres=%v, years=%d-%d",
-		filter.Genres, filter.MinYear, filter.MaxYear)
+	logger.API("Multi-genre scoring against filter: genres=%v, years=%d-%d, mood=%s, energy=%s, tempo=%s, prompt='%s'",
+		filter.Genres, filter.MinYear, filter.MaxYear, filter.Mood, filter.Energy, filter.Tempo, originalPrompt)
 
 	for _, genreName := range genreNames {
-		score := scoreGenreMatch(genreName, filter)
+		score := scoreGenreMatch(genreName, filter, originalPrompt)
 		if score > 50 {
 			count := genreCounts[genreName]
 			logger.API("  Genre '%s' scored %d (%d songs)", genreName, score, count)
@@ -653,10 +1009,32 @@ func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres in
 	// Take top N genres (within 30 points of highest)
 	highestScore := candidates[0].score
 	var topGenres []scoredGenre
+
+	// Determine the score threshold for including genres
+	// Default is within 30 points of the highest score
+	scoreThreshold := 30
+
+	// If the top genre has few songs, widen the threshold to include more genres
+	// This helps blend "Classic Rock" (11 songs) with "60s Rock" (100 songs) etc.
+	if candidates[0].count < 30 {
+		scoreThreshold = 60 // Widen threshold to include more related genres
+		logger.API("Multi-genre: Top genre '%s' has only %d songs, widening threshold to %d points",
+			candidates[0].name, candidates[0].count, scoreThreshold)
+	}
+
 	for _, c := range candidates {
-		if c.score >= highestScore-30 && len(topGenres) < maxGenres {
+		if c.score >= highestScore-scoreThreshold && len(topGenres) < maxGenres {
 			topGenres = append(topGenres, c)
 		}
+	}
+
+	// If we still have only 1 genre with few songs, try to add the next best genre
+	// even if it's further below the threshold
+	if len(topGenres) == 1 && topGenres[0].count < targetSongs && len(candidates) > 1 {
+		// Add the next best genre regardless of score threshold
+		topGenres = append(topGenres, candidates[1])
+		logger.API("Multi-genre: Forced additional genre '%s' (%d songs) to supplement '%s' (%d songs)",
+			candidates[1].name, candidates[1].count, topGenres[0].name, topGenres[0].count)
 	}
 
 	// Only proceed if we have good matches (score >= 55)
@@ -689,15 +1067,41 @@ func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres in
 			songsFromGenre = 1 // At least 1 song per genre
 		}
 
-		songs, err := a.db.GetSongsByExactGenre(g.name)
+		// Use GetSongsByExactGenreWithMood to filter by genre AND mood/energy/tempo
+		// This enables prompts like "upbeat jazz trios" to filter by both genre and energy
+		var songs []db.Song
+		var err error
+
+		// Determine mood/energy/tempo to use for filtering
+		// Map Gemini's mood values to database mood values if needed
+		mood := filter.Mood
+		energy := filter.Energy
+		tempo := filter.Tempo
+
+		// Use the new function that combines exact genre matching with mood filtering
+		songs, err = a.db.GetSongsByExactGenreWithMood(g.name, filter.MinYear, filter.MaxYear, mood, energy, tempo)
 		if err != nil {
-			logger.API("Failed to get songs for genre %s: %v", g.name, err)
+			logger.API("Failed to get songs for genre %s with mood filter: %v", g.name, err)
 			continue
 		}
 
-		// Shuffle songs for variety (simple Fisher-Yates)
+		// If mood filtering returned too few songs, fall back to genre-only query
+		if len(songs) < songsFromGenre && (mood != "" || energy != "" || tempo != "") {
+			logger.API("Mood filter too restrictive for genre %s (%d songs), falling back to genre-only", g.name, len(songs))
+			if filter.MinYear > 0 || filter.MaxYear > 0 {
+				songs, err = a.db.GetSongsByExactGenreWithYears(g.name, filter.MinYear, filter.MaxYear)
+			} else {
+				songs, err = a.db.GetSongsByExactGenre(g.name)
+			}
+			if err != nil {
+				logger.API("Failed to get songs for genre %s: %v", g.name, err)
+				continue
+			}
+		}
+
+		// Shuffle songs for variety using true random (Fisher-Yates algorithm)
 		for j := len(songs) - 1; j > 0; j-- {
-			k := (j * 7) % (j + 1) // Pseudo-random swap
+			k := rand.Intn(j + 1)
 			songs[j], songs[k] = songs[k], songs[j]
 		}
 
@@ -710,12 +1114,12 @@ func (a *API) tryMatchMultipleGenres(filter *gemini.PlaylistFilter, maxGenres in
 			allSongs = append(allSongs, s)
 		}
 
-		logger.API("  Added %d songs from '%s' (proportion: %.0f%%)", songsFromGenre, g.name, proportion*100)
+		logger.API("  Added %d songs from '%s' (proportion: %.0f%%, years: %d-%d)", songsFromGenre, g.name, proportion*100, filter.MinYear, filter.MaxYear)
 	}
 
-	// Shuffle the combined playlist for natural mixing
+	// Shuffle the combined playlist for natural mixing using true random
 	for i := len(allSongs) - 1; i > 0; i-- {
-		j := (i * 13) % (i + 1) // Pseudo-random swap
+		j := rand.Intn(i + 1)
 		allSongs[i], allSongs[j] = allSongs[j], allSongs[i]
 	}
 
@@ -863,9 +1267,9 @@ func (a *API) applyPlayHistoryFilters(songs []any, recentlyPlayedIDs map[string]
 		// Sort by play count descending (favorites first)
 		sortSongsByPlayCount(songs, false)
 	default:
-		// "balanced" - shuffle for variety
+		// "balanced" - shuffle for variety using true random (Fisher-Yates)
 		for i := len(songs) - 1; i > 0; i-- {
-			j := (i * 17) % (i + 1)
+			j := rand.Intn(i + 1)
 			songs[i], songs[j] = songs[j], songs[i]
 		}
 	}
@@ -922,6 +1326,12 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		AvoidRecentlyHours int    `json:"avoidRecentlyHours"` // Avoid songs played in last N hours (0 = disabled)
 		OnePerArtist       bool   `json:"onePerArtist"`       // Limit to one song per artist
 		UseTimeContext     bool   `json:"useTimeContext"`     // Add time-of-day context to prompt
+		// DJ Mode fields
+		Mode                  string `json:"mode"`                  // "playlist" (default) or "dj"
+		Persona               string `json:"persona"`               // DJ persona key (default "FlowMaster")
+		TargetDurationMinutes int    `json:"targetDurationMinutes"` // DJ set duration in minutes (default 45)
+		TalkMode              bool   `json:"talkMode"`              // Enable DJ narration cues
+		FlowStrictness        int    `json:"flowStrictness"`        // BPM continuity strictness 0-100 (default 60)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -930,13 +1340,34 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 	// Set defaults
 	if req.BlendMode == "" {
-		req.BlendMode = "single"
+		req.BlendMode = "mixed"
 	}
 	if req.TargetSongs <= 0 || req.TargetSongs > 100 {
 		req.TargetSongs = 50
 	}
 	if req.DiscoverMode == "" {
 		req.DiscoverMode = "balanced"
+	}
+	// DJ Mode defaults
+	if req.Mode == "" {
+		req.Mode = dj.ModePlaylist
+	}
+	if req.Persona == "" {
+		req.Persona = dj.PersonaFlowMaster
+	}
+	if req.TargetDurationMinutes <= 0 {
+		req.TargetDurationMinutes = 45
+	}
+	if req.FlowStrictness <= 0 || req.FlowStrictness > 100 {
+		req.FlowStrictness = 60
+	}
+
+	// Handle DJ Mode separately
+	if req.Mode == dj.ModeDJ {
+		a.handleDJMode(w, r, req.Prompt, req.Persona, req.TargetDurationMinutes,
+			req.FlowStrictness, req.TalkMode, req.UseTimeContext,
+			req.DiscoverMode, req.AvoidRecentlyHours)
+		return
 	}
 
 	// Get recently played song IDs to exclude
@@ -958,6 +1389,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 		// Apply filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+
+		// Transform paths to API URLs for frontend consumption
+		songs = transformSongsForAPI(songs)
 
 		filter := LocalPlaylistFilter{
 			Artists:     []string{artistName},
@@ -982,6 +1416,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		// Apply filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
 
+		// Transform paths to API URLs for frontend consumption
+		songs = transformSongsForAPI(songs)
+
 		filter := LocalPlaylistFilter{
 			Genres:      []string{matchedGenre},
 			Description: fmt.Sprintf("Songs from the %s genre", matchedGenre),
@@ -1003,45 +1440,99 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// No local match found - fall back to Gemini AI for complex prompts
-	apiKey, err := a.db.GetSetting("gemini_api_key")
-	if err != nil || apiKey == "" {
-		http.Error(w, "Gemini API key not configured", http.StatusServiceUnavailable)
+	// Third, try mood/activity keyword matching (Tier 1.5)
+	// This intercepts common vibe prompts like "chill", "workout", "relaxing"
+	// to avoid Gemini API calls for simple mood-based requests
+	if moodFilter, songs, matched := a.tryMoodBasedMatch(req.Prompt); matched {
+		logger.API("Mood-based match found: mood=%s, energy=%s with %d songs",
+			moodFilter.Mood, moodFilter.Energy, len(songs))
+
+		// Apply filters
+		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+
+		// Transform paths to API URLs for frontend consumption
+		songs = transformSongsForAPI(songs)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"filter": moodFilter,
+			"songs":  songs,
+		})
 		return
+	}
+
+	// No local match found - fall back to LLM AI for complex prompts
+	// Get LLM settings from database (falls back to Gemini for backward compatibility)
+	llmSettings := getLLMSettings(a)
+
+	// Validate we have the required API key (Ollama doesn't need one)
+	if llmSettings.Provider != llm.ProviderOllama && llmSettings.APIKey == "" {
+		// Fall back to Gemini API key if LLM not configured
+		geminiKey, err := a.db.GetSetting("gemini_api_key")
+		if err != nil || geminiKey == "" {
+			http.Error(w, "AI provider not configured. Set up Ollama locally or add an API key in Settings.", http.StatusServiceUnavailable)
+			return
+		}
+		llmSettings.Provider = llm.ProviderGemini
+		llmSettings.APIKey = geminiKey
+		llmSettings.Model = llm.DefaultGeminiModel
 	}
 
 	// Enhance prompt with time context if enabled
 	promptToUse := enhancePromptWithTimeContext(req.Prompt, req.UseTimeContext)
 
-	client := gemini.NewClient(apiKey)
-	filter, err := client.GeneratePlaylistFilter(promptToUse)
+	// Create LLM provider and parse the playlist filter
+	provider, err := llm.NewProvider(llmSettings)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create AI provider: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer provider.Close()
+
+	// Get available genres from user's library to help LLM select relevant genres
+	availableGenres := a.getAvailableGenreNames()
+	logger.API("AI DJ: Available genres in library: %d total, top 10: %v", len(availableGenres), truncateSlice(availableGenres, 10))
+
+	// Use context-aware parsing if we have local genres, otherwise fall back to generic
+	var llmFilter *llm.PlaylistFilter
+	if len(availableGenres) > 0 {
+		llmFilter, err = provider.ParsePlaylistFilterWithContext(r.Context(), promptToUse, availableGenres)
+	} else {
+		llmFilter, err = provider.ParsePlaylistFilter(r.Context(), promptToUse)
+	}
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to generate filter: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Log what Gemini returned
-	logger.API("Gemini filter for '%s': genres=%v, minYear=%d, maxYear=%d, blendMode=%s",
-		req.Prompt, filter.Genres, filter.MinYear, filter.MaxYear, req.BlendMode)
+	// Use the LLM filter directly (no conversion needed)
+	filter := llmFilter
 
-	// If Gemini didn't extract year information, try to extract it from the prompt
+	// Log what the LLM returned with detailed info
+	logger.API("AI DJ Result: prompt='%s' → genres=%v mood=%s energy=%s years=%d-%d blendMode=%s",
+		req.Prompt, filter.Genres, filter.Mood, filter.Energy, filter.MinYear, filter.MaxYear, req.BlendMode)
+
+	// If the LLM didn't extract year information, try to extract it from the prompt
 	if filter.MinYear == 0 && filter.MaxYear == 0 {
 		minYear, maxYear := extractDecadeFromPrompt(req.Prompt)
 		if minYear > 0 {
 			filter.MinYear = minYear
 			filter.MaxYear = maxYear
-			logger.API("Extracted decade from prompt: %d-%d", minYear, maxYear)
+			logger.API("AI DJ: Extracted decade from prompt: %d-%d", minYear, maxYear)
 		}
 	}
 
 	// Multi-genre blending mode
 	if req.BlendMode == "mixed" {
-		matchedGenres, songs, matched := a.tryMatchMultipleGenres(filter, 3, req.TargetSongs)
+		matchedGenres, songs, matched := a.tryMatchMultipleGenres(filter, req.Prompt, 3, req.TargetSongs)
 		if matched {
 			logger.API("Multi-genre blend: %d genres, %d songs", len(matchedGenres), len(songs))
 
 			// Apply play history filters
 			songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+
+			// Transform paths to API URLs for frontend consumption
+			songs = transformSongsForAPI(songs)
 
 			genreNames := make([]string, len(matchedGenres))
 			for i, g := range matchedGenres {
@@ -1068,11 +1559,14 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	// SMART MATCHING: Try to match Gemini's intent against indexed genres (single mode)
 	// This bridges the gap between Gemini's generic understanding (e.g., "Alternative" + 1990-1999)
 	// and the user's actual indexed genres (e.g., "90s Alternative")
-	if matchedGenre, songs, matched := a.tryMatchIndexedGenre(filter); matched {
+	if matchedGenre, songs, matched := a.tryMatchIndexedGenre(filter, req.Prompt); matched {
 		logger.API("Smart indexed genre match after Gemini: '%s' with %d songs", matchedGenre, len(songs))
 
 		// Apply play history filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+
+		// Transform paths to API URLs for frontend consumption
+		songs = transformSongsForAPI(songs)
 
 		smartFilter := LocalPlaylistFilter{
 			Genres:      []string{matchedGenre},
@@ -1096,11 +1590,16 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	}
 
 	// No indexed genre match - use Gemini's filter directly
+	// This is the Tier 3 fallback when smart indexed matching fails.
+	// Now includes mood/energy/tempo filters when Gemini extracts them from the prompt.
 	songs, err := a.db.GetSongsBySmartFilter(
 		filter.Genres,
 		filter.Artists,
 		filter.MinYear,
 		filter.MaxYear,
+		filter.Mood,
+		filter.Energy,
+		filter.Tempo,
 	)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to query songs: %v", err), http.StatusInternalServerError)
@@ -1116,9 +1615,293 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	// Apply play history filters
 	songsAny = a.applyPlayHistoryFilters(songsAny, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
 
+	// Transform paths to API URLs for frontend consumption
+	songsAny = transformSongsForAPI(songsAny)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"filter": filter,
 		"songs":  songsAny,
+	})
+}
+
+// handleDJMode processes DJ mode requests using the intelligent sequencer.
+// This is called when the request has mode="dj" instead of "playlist".
+func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
+	prompt string, persona string, durationMinutes int,
+	flowStrictness int, talkMode bool, useTimeContext bool,
+	discoverMode string, avoidRecentlyHours int) {
+
+	ctx := r.Context()
+
+	logger.API("DJ Mode request: prompt=%q persona=%s duration=%dmin flow=%d talkMode=%v",
+		prompt, persona, durationMinutes, flowStrictness, talkMode)
+
+	// Get the persona definition (returns default if not found)
+	personaDef := dj.GetPersona(persona)
+	logger.API("DJ Mode using persona: %s (%s)", personaDef.Name, personaDef.Description)
+
+	// Get all songs from the database for analysis
+	allSongs, err := a.db.GetAllSongs()
+	if err != nil {
+		logger.API("DJ Mode failed to get songs: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get songs: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if len(allSongs) == 0 {
+		logger.API("DJ Mode failed: library is empty")
+		http.Error(w, "Library is empty", http.StatusNotFound)
+		return
+	}
+
+	logger.API("DJ Mode: %d songs in library", len(allSongs))
+
+	// First, try to match the prompt against genres using existing logic
+	// This extracts seed genres from the user's prompt
+	seedGenres := []string{}
+	seedArtists := []string{}
+
+	// Try local genre matching first
+	if genreName, _, matched := a.tryLocalGenreMatch(prompt); matched {
+		seedGenres = append(seedGenres, genreName)
+		logger.API("DJ Mode: Local genre match found: %s", genreName)
+	}
+
+	// Try mood-based matching to extract mood/energy/tempo hints
+	moodMatch := a.tryMoodBasedMatchInfo(prompt)
+	if moodMatch != nil {
+		logger.API("DJ Mode: Mood match found: mood=%s energy=%s tempo=%s",
+			moodMatch.mood, moodMatch.energy, moodMatch.tempo)
+	}
+
+	// If no local match and we have LLM, try to get genres from LLM
+	if len(seedGenres) == 0 {
+		llmSettings := getLLMSettings(a)
+		if llmSettings.Provider == llm.ProviderOllama || llmSettings.APIKey != "" {
+			provider, err := llm.NewProvider(llmSettings)
+			if err == nil {
+				defer provider.Close()
+				availableGenres := a.getAvailableGenreNames()
+				llmFilter, err := provider.ParsePlaylistFilterWithContext(ctx, prompt, availableGenres)
+				if err == nil && llmFilter != nil {
+					seedGenres = llmFilter.Genres
+					seedArtists = llmFilter.Artists
+					logger.API("DJ Mode: LLM extracted genres=%v artists=%v", seedGenres, seedArtists)
+
+					// Apply mood match info from LLM filter if not already matched
+					if moodMatch == nil && (llmFilter.Mood != "" || llmFilter.Energy != "" || llmFilter.Tempo != "") {
+						moodMatch = &moodMatchInfo{
+							mood:   llmFilter.Mood,
+							energy: llmFilter.Energy,
+							tempo:  llmFilter.Tempo,
+						}
+					}
+				} else {
+					logger.API("DJ Mode: LLM filter failed: %v", err)
+				}
+			}
+		}
+	}
+
+	// Collect genre stats and calculate avg song length
+	genreCounts := make(map[string]int)
+	var totalDuration float64
+	for _, song := range allSongs {
+		for _, g := range song.Genre {
+			genreCounts[g]++
+		}
+		totalDuration += song.Duration
+	}
+	var genres []string
+	for genre := range genreCounts {
+		genres = append(genres, genre)
+	}
+	avgSongLengthSec := 210 // Default 3.5 min
+	if len(allSongs) > 0 {
+		avgSongLengthSec = int(totalDuration / float64(len(allSongs)))
+	}
+
+	// Get recently played song IDs if avoidance is enabled
+	recentlyPlayedIDs := make(map[string]bool)
+	if avoidRecentlyHours > 0 {
+		recentPlays, err := a.db.GetRecentlyPlayedSongIDs(avoidRecentlyHours)
+		if err == nil {
+			for _, songID := range recentPlays {
+				recentlyPlayedIDs[songID] = true
+			}
+		}
+	}
+
+	// Build library context for planner
+	libContext := dj.LibraryContext{
+		AvailableGenres:  genres,
+		SeedGenres:       seedGenres,
+		SeedArtists:      seedArtists,
+		AvgSongLengthSec: avgSongLengthSec,
+		TotalSongs:       len(allSongs),
+	}
+
+	// Build plan options
+	planOpts := dj.PlanOptions{
+		Persona:           persona,
+		TargetDurationMin: durationMinutes,
+		FlowStrictness:    flowStrictness,
+		UseTimeContext:    useTimeContext,
+		TalkMode:          talkMode,
+	}
+
+	// Get LLM settings for the planner
+	llmSettings := getLLMSettings(a)
+
+	// Validate we have the required API key (Ollama doesn't need one)
+	if llmSettings.Provider != llm.ProviderOllama && llmSettings.APIKey == "" {
+		// Fall back to Gemini API key if LLM not configured
+		geminiKey, err := a.db.GetSetting("gemini_api_key")
+		if err != nil || geminiKey == "" {
+			http.Error(w, "AI provider not configured. Set up Ollama locally or add an API key in Settings.", http.StatusServiceUnavailable)
+			return
+		}
+		llmSettings.Provider = llm.ProviderGemini
+		llmSettings.APIKey = geminiKey
+		llmSettings.Model = llm.DefaultGeminiModel
+	}
+
+	// Create the LLM planner
+	planner := dj.NewLLMPlanner(llmSettings)
+
+	// Build the DJ set plan
+	plan, err := planner.BuildPlan(ctx, prompt, planOpts, libContext)
+	if err != nil {
+		logger.API("DJ planner failed: %v, using default plan", err)
+	}
+	if plan == nil {
+		logger.API("DJ Mode: Plan is nil, returning error")
+		http.Error(w, "Failed to create DJ set plan", http.StatusInternalServerError)
+		return
+	}
+
+	logger.API("DJ Mode plan created: %d phases, intent: %s", len(plan.Phases), plan.IntentSummary)
+	for i, phase := range plan.Phases {
+		logger.API("  Phase %d: %s - %s energy, %s tempo, %d songs, BPM %d-%d",
+			i+1, phase.Name, phase.TargetEnergy, phase.TargetTempo, phase.TargetCount, phase.MinBPM, phase.MaxBPM)
+	}
+
+	// Filter candidates based on:
+	// 1. Recently played (if avoidance enabled)
+	// 2. Matching genres (if seed genres were extracted)
+	// 3. Matching mood/energy/tempo (if mood match was found)
+	candidates := make([]db.Song, 0, len(allSongs))
+	for _, song := range allSongs {
+		// Skip recently played
+		if recentlyPlayedIDs[song.ID] {
+			continue
+		}
+
+		// If we have seed genres, filter to matching songs
+		if len(seedGenres) > 0 {
+			matchesGenre := false
+			for _, sg := range seedGenres {
+				for _, songGenre := range song.Genre {
+					if strings.EqualFold(songGenre, sg) || strings.Contains(strings.ToLower(songGenre), strings.ToLower(sg)) {
+						matchesGenre = true
+						break
+					}
+				}
+				if matchesGenre {
+					break
+				}
+			}
+			if !matchesGenre {
+				continue
+			}
+		}
+
+		// If we have seed artists, include their songs
+		if len(seedArtists) > 0 {
+			matchesArtist := false
+			for _, sa := range seedArtists {
+				if strings.EqualFold(song.Artist, sa) || strings.Contains(strings.ToLower(song.Artist), strings.ToLower(sa)) {
+					matchesArtist = true
+					break
+				}
+			}
+			// Note: We include if artist matches OR genre matches, not AND
+			if matchesArtist {
+				candidates = append(candidates, song)
+				continue
+			}
+		}
+
+		candidates = append(candidates, song)
+	}
+
+	logger.API("DJ Mode: %d candidate songs after filtering (from %d total)", len(candidates), len(allSongs))
+
+	// If we have too few candidates, fall back to all songs
+	if len(candidates) < 10 && len(allSongs) > 10 {
+		logger.API("DJ Mode: Too few candidates (%d), falling back to all songs", len(candidates))
+		candidates = make([]db.Song, 0, len(allSongs))
+		for _, song := range allSongs {
+			if !recentlyPlayedIDs[song.ID] {
+				candidates = append(candidates, song)
+			}
+		}
+	}
+
+	// Create score context
+	scoreCtx := dj.NewScoreContext()
+	scoreCtx.DiscoverMode = discoverMode
+	scoreCtx.FlowStrictness = flowStrictness
+	scoreCtx.RecentlyPlayedIDs = recentlyPlayedIDs
+
+	// Create the sequencer
+	sequencer := dj.NewSequencer()
+
+	// Build the queue using the sequencer
+	queue, phaseResults, err := sequencer.BuildQueue(candidates, plan, personaDef, scoreCtx)
+	if err != nil {
+		logger.API("DJ Mode: Failed to build queue: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to build DJ queue: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	logger.API("DJ Mode: Built queue with %d songs across %d phases", len(queue), len(phaseResults))
+
+	// Generate narration if talk mode is enabled
+	var narration *dj.DJNarration
+	if talkMode && len(queue) > 0 {
+		narration, err = planner.GenerateNarration(ctx, plan)
+		if err != nil {
+			logger.API("Failed to generate DJ narration: %v", err)
+		}
+	}
+
+	// Transform paths to API URLs
+	songsAny := make([]any, len(queue))
+	for i, s := range queue {
+		songsAny[i] = s
+	}
+	songsAny = transformSongsForAPI(songsAny)
+
+	// Build the DJ response
+	djResponse := dj.DJResponse{
+		Plan:      plan,
+		Phases:    phaseResults,
+		Narration: narration,
+	}
+
+	logger.API("DJ Mode: Returning %d songs for prompt %q", len(queue), prompt)
+
+	// Return combined response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"filter": map[string]interface{}{
+			"mode":    "dj",
+			"persona": persona,
+			"prompt":  prompt,
+		},
+		"songs": songsAny,
+		"dj":    djResponse,
 	})
 }

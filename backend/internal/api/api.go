@@ -14,9 +14,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -24,11 +26,13 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
-	"github.com/ajbergh/viib-mediahub/internal/gemini"
+	"github.com/ajbergh/viib-mediahub/internal/dj"
+	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/go-chi/chi/v5"
@@ -108,14 +112,20 @@ func (a *API) Routes() chi.Router {
 	// Library endpoints
 	r.Get("/songs", a.getSongs)
 	r.Get("/genres", a.getGenres)
+	r.Post("/genres/normalize", a.normalizeGenres) // Normalize genre capitalization
 	r.Post("/smart-playlist", a.handleGenerateSmartPlaylist)
 	r.Delete("/songs", a.clearSongs)
 	r.Post("/library/enrich-genres", a.enrichGenres)
-	r.Get("/library/enrich-genres/stream", a.enrichGenresStream) // SSE streaming enrichment
-	r.Post("/library/enrich-mood", a.enrichMood)                 // Mood/energy enrichment
-	r.Get("/library/enrich-mood/stream", a.enrichMoodStream)     // SSE streaming mood enrichment
+	r.Get("/library/enrich-genres/stream", a.enrichGenresStream)       // SSE streaming enrichment
+	r.Get("/library/enrich-all/stream", a.enrichAllMetadataStream)     // SSE unified enrichment (genres+mood+years)
+	r.Post("/library/enrich-mood", a.enrichMood)                       // Mood/energy enrichment
+	r.Get("/library/enrich-mood/stream", a.enrichMoodStream)           // SSE streaming mood enrichment
+	r.Post("/library/backfill-years", a.backfillSongYears)             // Backfill song years from album metadata
+	r.Post("/library/detect-remasters", a.detectRemasters)             // Heuristic remaster detection
+	r.Get("/library/enrich-years/stream", a.enrichOriginalYearsStream) // SSE streaming year enrichment
 	r.Post("/songs/{id}/play", a.recordPlay)
-	r.Patch("/songs/{id}/duration", a.updateSongDuration) // Update song duration from actual audio
+	r.Post("/songs/{id}/listen-event", a.recordListeningEvent) // AI DJ preference learning
+	r.Patch("/songs/{id}/duration", a.updateSongDuration)      // Update song duration from actual audio
 
 	// Likes endpoints
 	r.Post("/songs/{id}/like", a.toggleLike)    // Toggle like status for a song
@@ -143,6 +153,9 @@ func (a *API) Routes() chi.Router {
 
 	// Library events SSE
 	r.Get("/library/events", a.libraryEventsSSE)
+
+	// DJ Mode endpoints
+	r.Get("/dj/personas", a.getDJPersonas)
 
 	// File serving
 	r.Get("/audio/*", a.serveAudio)
@@ -200,6 +213,12 @@ func (a *API) Routes() chi.Router {
 	r.Post("/artists/metadata/download-image", a.downloadArtistImage)
 	r.Delete("/artists/metadata/{name}", a.resetArtistMetadata)
 
+	// LLM (AI) configuration
+	r.Get("/llm/settings", a.getLLMSettings)
+	r.Put("/llm/settings", a.updateLLMSettings)
+	r.Get("/llm/providers", a.getLLMProviders)
+	r.Post("/llm/test", a.testLLMConnection)
+
 	// Settings
 	r.Get("/settings/{key}", a.getSetting)
 	r.Post("/settings/{key}", a.setSetting)
@@ -224,6 +243,12 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 func (a *API) healthCheck(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "ok", "version": "1.0.0"})
+}
+
+// getDJPersonas returns all available DJ personas for the DJ mode feature.
+func (a *API) getDJPersonas(w http.ResponseWriter, r *http.Request) {
+	personas := dj.ListPersonas()
+	respondJSON(w, personas)
 }
 
 func (a *API) getSongs(w http.ResponseWriter, r *http.Request) {
@@ -268,6 +293,103 @@ func (a *API) recordPlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, map[string]string{"status": "ok"})
+}
+
+// recordListeningEvent records a listening event for AI DJ preference learning.
+// This endpoint is called when a song finishes playing or is skipped.
+// POST /api/songs/{id}/listen-event
+// Request body: {
+//
+//	"playDuration": 15.5,      // seconds played
+//	"songDuration": 180.0,     // total duration
+//	"context": "ai_dj"         // playback context
+//
+// }
+// Event type is automatically determined:
+//   - play_complete: playDuration >= 90% of songDuration
+//   - skip_early: playDuration < 10s
+//   - skip_mid: playDuration 10-30s
+//   - skip_late: playDuration > 30s but < 90%
+func (a *API) recordListeningEvent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "Missing song ID")
+		return
+	}
+
+	var body struct {
+		PlayDuration float64 `json:"playDuration"`
+		SongDuration float64 `json:"songDuration"`
+		Context      string  `json:"context"` // 'ai_dj', 'album', 'playlist', 'queue', 'search'
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Get song metadata for genre/mood/energy
+	song, err := a.db.GetSongByID(id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Song not found")
+		return
+	}
+
+	// Determine event type based on play duration
+	var eventType string
+	completionRatio := body.PlayDuration / body.SongDuration
+	switch {
+	case completionRatio >= 0.9:
+		eventType = "play_complete"
+	case body.PlayDuration < 10:
+		eventType = "skip_early"
+	case body.PlayDuration < 30:
+		eventType = "skip_mid"
+	default:
+		eventType = "skip_late"
+	}
+
+	// Get primary genre (first in list) for preference tracking
+	primaryGenre := ""
+	if len(song.Genre) > 0 {
+		primaryGenre = song.Genre[0]
+	}
+
+	// Record the event
+	event := db.ListeningEvent{
+		SongID:       id,
+		EventType:    eventType,
+		PlayDuration: body.PlayDuration,
+		SongDuration: body.SongDuration,
+		Genre:        primaryGenre,
+		Mood:         song.Mood,
+		Energy:       song.Energy,
+		Context:      body.Context,
+	}
+	if err := a.db.RecordListeningEvent(event); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Update skip count if this was a skip
+	if eventType != "play_complete" {
+		if err := a.db.UpdateSkipCount(id); err != nil {
+			// Log but don't fail the request
+			log.Printf("Failed to update skip count for %s: %v", id, err)
+		}
+	}
+
+	// Update genre preferences for all genres on this song
+	for _, genre := range song.Genre {
+		if err := a.db.UpdateGenrePreferences(genre); err != nil {
+			// Log but don't fail the request
+			log.Printf("Failed to update genre preferences for %s: %v", genre, err)
+		}
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"status":    "ok",
+		"eventType": eventType,
+	})
 }
 
 // updateSongDuration updates the duration of a song from the actual audio playback.
@@ -1578,22 +1700,26 @@ func (a *API) enrichGenres(w http.ResponseWriter, r *http.Request) {
 		// It's okay if body is empty, we might have key in settings
 	}
 
-	if req.APIKey == "" {
-		// Try to get from settings if not provided
-		key, err := a.db.GetSetting("gemini_api_key")
-		if err != nil || key == "" {
-			respondError(w, http.StatusBadRequest, "API key is required")
-			return
-		}
-		req.APIKey = key
-	} else {
-		// Save for future use
+	// If API key provided, save it as legacy gemini_api_key for backward compatibility
+	if req.APIKey != "" {
 		a.db.SetSetting("gemini_api_key", req.APIKey)
 	}
 
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "No LLM configured. Set AI Provider in Settings or provide a Gemini API key.")
+		return
+	}
+	defer provider.Close()
+
 	// Get songs for enrichment
-	// Limit to 50 to avoid hitting token limits
-	songs, err := a.db.GetSongsForEnrichment(50, req.Force, req.Offset)
+	// Limit to provider's optimal batch size to avoid hitting token limits
+	batchSize := provider.GetOptimalBatchSize()
+	if batchSize > 50 {
+		batchSize = 50 // Cap at 50 for this sync endpoint
+	}
+	songs, err := a.db.GetSongsForEnrichment(batchSize, req.Force, req.Offset)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get songs: %v", err))
 		return
@@ -1608,10 +1734,9 @@ func (a *API) enrichGenres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := gemini.NewClient(req.APIKey)
-	genresMap, err := client.EnrichGenres(songs)
+	genresMap, err := provider.EnrichGenres(r.Context(), songs)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Gemini API error: %v", err))
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("LLM error: %v", err))
 		return
 	}
 
@@ -1626,7 +1751,7 @@ func (a *API) enrichGenres(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, map[string]interface{}{
 		"status":  "ok",
-		"message": fmt.Sprintf("Successfully enriched %d songs", updatedCount),
+		"message": fmt.Sprintf("Successfully enriched %d songs using %s", updatedCount, provider.GetProviderName()),
 		"count":   updatedCount,
 	})
 }
@@ -1666,16 +1791,23 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	// Get API key
-	apiKey, err := a.db.GetSetting("gemini_api_key")
-	if err != nil || apiKey == "" {
+	// Helper to send SSE keepalive comment (invisible to EventSource.onmessage)
+	sendKeepalive := func() {
+		fmt.Fprintf(w, ": keepalive %d\n\n", time.Now().Unix())
+		flusher.Flush()
+	}
+
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
 		sendEvent(EnrichmentProgress{
 			Status:  "error",
-			Message: "Gemini API key not configured",
-			Error:   "API key is required. Configure it in Settings.",
+			Message: "No LLM configured",
+			Error:   "Configure AI Provider in Settings or add a Gemini API key.",
 		})
 		return
 	}
+	defer provider.Close()
 
 	// Get total songs needing enrichment
 	allSongs, err := a.db.GetSongsForEnrichment(10000, force, 0) // Get all for counting
@@ -1698,18 +1830,17 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate batches
-	batchSize := 50
+	// Calculate batches - use provider's optimal batch size
+	batchSize := provider.GetOptimalBatchSize()
 	totalBatches := (totalSongs + batchSize - 1) / batchSize
 
 	sendEvent(EnrichmentProgress{
 		Status:       "started",
-		Message:      fmt.Sprintf("Starting enrichment of %d songs in %d batches", totalSongs, totalBatches),
+		Message:      fmt.Sprintf("Starting enrichment of %d songs in %d batches using %s", totalSongs, totalBatches, provider.GetProviderName()),
 		TotalSongs:   totalSongs,
 		TotalBatches: totalBatches,
 	})
 
-	client := gemini.NewClient(apiKey)
 	processedSongs := 0
 	updatedTotal := 0
 
@@ -1750,12 +1881,46 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 			TotalBatches:   totalBatches,
 		})
 
-		genresMap, err := client.EnrichGenres(songs)
-		if err != nil {
+		logger.API("enrichGenresStream: Calling EnrichGenres for batch %d with %d songs", batch+1, len(songs))
+
+		// Create a channel to signal when LLM call completes
+		llmDone := make(chan struct{})
+		var genresMap map[string][]string
+		var llmErr error
+
+		// Run LLM call in goroutine
+		go func() {
+			genresMap, llmErr = provider.EnrichGenres(r.Context(), songs)
+			close(llmDone)
+		}()
+
+		// Send keepalive events every 5 seconds while waiting for LLM
+		keepaliveTicker := time.NewTicker(5 * time.Second)
+		defer keepaliveTicker.Stop()
+
+	llmWait:
+		for {
+			select {
+			case <-r.Context().Done():
+				logger.API("enrichGenresStream: Client disconnected during LLM call")
+				return
+			case <-llmDone:
+				break llmWait
+			case <-keepaliveTicker.C:
+				// Send SSE keepalive comment to prevent browser timeout
+				logger.API("enrichGenresStream: Sending keepalive for batch %d", batch+1)
+				sendKeepalive()
+			}
+		}
+		keepaliveTicker.Stop()
+
+		logger.API("enrichGenresStream: EnrichGenres returned, err=%v, resultCount=%d", llmErr, len(genresMap))
+
+		if llmErr != nil {
 			sendEvent(EnrichmentProgress{
 				Status:         "error",
-				Message:        "Gemini API error",
-				Error:          err.Error(),
+				Message:        "LLM API error",
+				Error:          llmErr.Error(),
 				ProcessedSongs: processedSongs,
 				CurrentBatch:   batch + 1,
 				TotalBatches:   totalBatches,
@@ -1764,6 +1929,7 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Update songs in database
+		logger.API("enrichGenresStream: Updating %d songs in database", len(genresMap))
 		batchUpdated := 0
 		for id, genres := range genresMap {
 			if err := a.db.UpdateSongGenres(id, genres); err != nil {
@@ -1772,6 +1938,7 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 			}
 			batchUpdated++
 		}
+		logger.API("enrichGenresStream: Updated %d songs, sending batch_complete", batchUpdated)
 
 		processedSongs += len(songs)
 		updatedTotal += batchUpdated
@@ -1784,6 +1951,7 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 			CurrentBatch:   batch + 1,
 			TotalBatches:   totalBatches,
 		})
+		logger.API("enrichGenresStream: Batch %d complete, looping to next batch", batch+1)
 
 		// Small delay between batches to avoid rate limiting
 		if batch < totalBatches-1 {
@@ -1801,6 +1969,501 @@ func (a *API) enrichGenresStream(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// backfillSongYears populates missing song year values from album_metadata.release_date
+// This enables the AI DJ to correctly filter by decade (e.g., "90s hip hop")
+func (a *API) backfillSongYears(w http.ResponseWriter, r *http.Request) {
+	count, err := a.db.BackfillSongYearsFromAlbumMetadata()
+	if err != nil {
+		logger.API("backfillSongYears: Failed to backfill years: %v", err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to backfill years: %v", err))
+		return
+	}
+	logger.API("backfillSongYears: Updated %d songs with year from album metadata", count)
+	respondJSON(w, map[string]interface{}{
+		"updated": count,
+		"message": fmt.Sprintf("Updated %d songs with year from album metadata", count),
+	})
+}
+
+// detectRemasters uses heuristics to identify songs that may be remasters
+// It scans album/title for patterns like "Remastered", "Deluxe Edition", "Anniversary"
+// and flags songs with year_uncertain for later AI analysis
+func (a *API) detectRemasters(w http.ResponseWriter, r *http.Request) {
+	processed, flagged, err := a.db.DetectRemasterSongs()
+	if err != nil {
+		logger.API("detectRemasters: Failed to detect remasters: %v", err)
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to detect remasters: %v", err))
+		return
+	}
+	logger.API("detectRemasters: Processed %d songs, flagged %d as potential remasters", processed, flagged)
+	respondJSON(w, map[string]interface{}{
+		"processed": processed,
+		"flagged":   flagged,
+		"message":   fmt.Sprintf("Processed %d songs, flagged %d as potential remasters", processed, flagged),
+	})
+}
+
+// enrichAllMetadataStream provides SSE streaming for unified metadata enrichment.
+// This is the recommended endpoint - it enriches genres, mood, energy, tempo, BPM,
+// instrumental detection, and original year in a single efficient API call per batch.
+// Uses TOON format for ~3x token efficiency compared to JSON-based methods.
+// Supports any configured LLM provider (Ollama, Gemini, OpenAI, Anthropic, X.AI).
+func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
+	logger.API("enrichAllMetadataStream: Starting unified metadata enrichment")
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Get parameters from query string
+	force := r.URL.Query().Get("force") == "true"
+
+	// Helper to send SSE event
+	sendEvent := func(progress EnrichmentProgress) {
+		data, _ := json.Marshal(progress)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	// Helper to send SSE keepalive comment (invisible to EventSource.onmessage)
+	sendKeepalive := func() {
+		fmt.Fprintf(w, ": keepalive %d\n\n", time.Now().Unix())
+		flusher.Flush()
+	}
+
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
+		sendEvent(EnrichmentProgress{
+			Status:  "error",
+			Message: "No LLM configured",
+			Error:   "Configure AI Provider in Settings or add a Gemini API key.",
+		})
+		return
+	}
+	defer provider.Close()
+
+	// Get all songs needing any enrichment
+	// Use GetSongsForEnrichment to get songs without genres (primary need)
+	logger.API("enrichAllMetadataStream: Querying songs for enrichment (force=%v)", force)
+	allSongs, err := a.db.GetSongsForEnrichment(10000, force, 0)
+	logger.API("enrichAllMetadataStream: Got %d songs, err=%v", len(allSongs), err)
+	if err != nil {
+		sendEvent(EnrichmentProgress{
+			Status:  "error",
+			Message: "Failed to query songs",
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	totalSongs := len(allSongs)
+	if totalSongs == 0 {
+		sendEvent(EnrichmentProgress{
+			Status:     "complete",
+			Message:    "No songs need enrichment",
+			TotalSongs: 0,
+		})
+		return
+	}
+
+	// Use provider's optimal batch size
+	batchSize := provider.GetOptimalBatchSize()
+	totalBatches := (totalSongs + batchSize - 1) / batchSize
+
+	// Concurrency settings - adapt based on provider type
+	// Cloud APIs can handle parallel requests, but local Ollama should be single-threaded
+	// to avoid overloading the GPU/CPU and causing timeouts
+	concurrency := provider.GetOptimalConcurrency()
+	if totalBatches < concurrency {
+		concurrency = totalBatches
+	}
+
+	sendEvent(EnrichmentProgress{
+		Status:       "started",
+		Message:      fmt.Sprintf("Starting unified enrichment of %d songs in %d batches using %s", totalSongs, totalBatches, provider.GetProviderName()),
+		TotalSongs:   totalSongs,
+		TotalBatches: totalBatches,
+	})
+
+	// Thread-safe counters
+	var mu sync.Mutex
+	processedSongs := 0
+	genresUpdated := 0
+	moodUpdated := 0
+	yearsUpdated := 0
+	completedBatches := 0
+	failedBatches := 0 // Track failed batches for reporting
+
+	// Create batch job channel
+	type batchJob struct {
+		batchNum int
+		songs    []db.Song
+	}
+	jobs := make(chan batchJob, totalBatches)
+	results := make(chan struct{}, totalBatches)
+
+	// Worker function
+	workerFunc := func(workerID int) {
+		for job := range jobs {
+			// Check if client disconnected
+			select {
+			case <-r.Context().Done():
+				return
+			default:
+			}
+
+			logger.API("enrichAllMetadataStream: Worker %d processing batch %d with %d songs", workerID, job.batchNum+1, len(job.songs))
+
+			// Call LLM API
+			unified, err := provider.EnrichAllMetadata(r.Context(), job.songs)
+
+			if err != nil {
+				logger.API("enrichAllMetadataStream: Worker %d batch %d error: %v", workerID, job.batchNum+1, err)
+				mu.Lock()
+				failedBatches++
+				completedBatches++ // Count as completed (attempted) even if failed
+				mu.Unlock()
+				// Continue processing other batches - don't stop everything for one failure
+				results <- struct{}{}
+				continue
+			}
+
+			logger.API("enrichAllMetadataStream: Worker %d batch %d returned %d results", workerID, job.batchNum+1, len(unified))
+
+			// Update database
+			batchGenres := 0
+			batchMood := 0
+			batchYears := 0
+
+			for id, meta := range unified {
+				if meta == nil {
+					continue
+				}
+
+				if len(meta.Genres) > 0 {
+					if err := a.db.UpdateSongGenres(id, meta.Genres); err != nil {
+						logger.API("enrichAllMetadataStream: Failed to update genres for %s: %v", id, err)
+					} else {
+						batchGenres++
+					}
+				}
+
+				if meta.Mood != "" {
+					if err := a.db.UpdateSongMood(id, meta.Mood, meta.Energy, meta.Tempo, meta.BPM, meta.Instrumental); err != nil {
+						logger.API("enrichAllMetadataStream: Failed to update mood for %s: %v", id, err)
+					} else {
+						batchMood++
+					}
+				}
+
+				if meta.OriginalYear > 0 {
+					if err := a.db.SetOriginalYear(id, meta.OriginalYear); err != nil {
+						logger.API("enrichAllMetadataStream: Failed to update year for %s: %v", id, err)
+					} else {
+						batchYears++
+					}
+				}
+			}
+
+			// Update totals thread-safely
+			mu.Lock()
+			processedSongs += len(job.songs)
+			genresUpdated += batchGenres
+			moodUpdated += batchMood
+			yearsUpdated += batchYears
+			completedBatches++
+			currentCompleted := completedBatches
+			currentProcessed := processedSongs
+			mu.Unlock()
+
+			logger.API("enrichAllMetadataStream: Batch %d complete - genres=%d, mood=%d, years=%d (total: %d/%d batches)",
+				job.batchNum+1, batchGenres, batchMood, batchYears, currentCompleted, totalBatches)
+
+			// Send progress event
+			mu.Lock()
+			sendEvent(EnrichmentProgress{
+				Status:         "batch_complete",
+				Message:        fmt.Sprintf("Batch %d: genres=%d, mood=%d, years=%d (%d/%d batches)", job.batchNum+1, batchGenres, batchMood, batchYears, currentCompleted, totalBatches),
+				TotalSongs:     totalSongs,
+				ProcessedSongs: currentProcessed,
+				CurrentBatch:   currentCompleted,
+				TotalBatches:   totalBatches,
+			})
+			mu.Unlock()
+
+			results <- struct{}{}
+		}
+	}
+
+	// Start workers
+	var wg sync.WaitGroup
+	for w := 0; w < concurrency; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			workerFunc(workerID)
+		}(w)
+	}
+
+	// Start keepalive goroutine
+	keepaliveDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-keepaliveDone:
+				return
+			case <-r.Context().Done():
+				return
+			case <-ticker.C:
+				mu.Lock()
+				logger.API("enrichAllMetadataStream: Keepalive - %d/%d batches complete", completedBatches, totalBatches)
+				sendKeepalive()
+				mu.Unlock()
+			}
+		}
+	}()
+
+	// Submit all batch jobs
+	for batch := 0; batch < totalBatches; batch++ {
+		start := batch * batchSize
+		end := start + batchSize
+		if end > totalSongs {
+			end = totalSongs
+		}
+		jobs <- batchJob{batchNum: batch, songs: allSongs[start:end]}
+	}
+	close(jobs)
+
+	// Wait for all results
+	for i := 0; i < totalBatches; i++ {
+		select {
+		case <-r.Context().Done():
+			close(keepaliveDone)
+			logger.API("enrichAllMetadataStream: Client disconnected, cancelling")
+			return
+		case <-results:
+			// Batch completed
+		}
+	}
+
+	// Stop keepalive and wait for workers
+	close(keepaliveDone)
+	wg.Wait()
+
+	// Build completion message
+	completionMsg := fmt.Sprintf("Enrichment complete! Genres: %d, Mood: %d, Years: %d", genresUpdated, moodUpdated, yearsUpdated)
+	if failedBatches > 0 {
+		completionMsg = fmt.Sprintf("%s (%d batches failed)", completionMsg, failedBatches)
+	}
+	logger.API("enrichAllMetadataStream: Complete - genres=%d, mood=%d, years=%d, failedBatches=%d", genresUpdated, moodUpdated, yearsUpdated, failedBatches)
+
+	sendEvent(EnrichmentProgress{
+		Status:         "complete",
+		Message:        completionMsg,
+		TotalSongs:     totalSongs,
+		ProcessedSongs: processedSongs,
+		TotalBatches:   totalBatches,
+		CurrentBatch:   totalBatches,
+	})
+}
+
+// enrichOriginalYearsStream provides SSE streaming for original year enrichment
+// Uses LLM AI to determine the original release year of songs that may have remaster dates
+func (a *API) enrichOriginalYearsStream(w http.ResponseWriter, r *http.Request) {
+	logger.API("enrichOriginalYearsStream: Starting original year analysis stream")
+
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
+		logger.API("enrichOriginalYearsStream: No LLM configured")
+		http.Error(w, "No LLM configured. Set AI Provider in Settings.", http.StatusServiceUnavailable)
+		return
+	}
+	defer provider.Close()
+
+	// Setup SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "SSE not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Get songs flagged as uncertain (potential remasters) that need AI analysis
+	songs, err := a.db.GetUncertainYearSongs(500)
+	if err != nil {
+		logger.API("enrichOriginalYearsStream: Failed to get songs: %v", err)
+		jsonData, _ := json.Marshal(EnrichmentProgress{
+			Status:  "error",
+			Message: "Failed to get songs",
+			Error:   err.Error(),
+		})
+		fmt.Fprintf(w, "data: %s\n\n", jsonData)
+		flusher.Flush()
+		return
+	}
+
+	totalSongs := len(songs)
+	if totalSongs == 0 {
+		logger.API("enrichOriginalYearsStream: No songs need year analysis")
+		jsonData, _ := json.Marshal(EnrichmentProgress{
+			Status:  "complete",
+			Message: "No songs need year analysis. Run 'Detect Remasters' first to flag songs.",
+		})
+		fmt.Fprintf(w, "data: %s\n\n", jsonData)
+		flusher.Flush()
+		return
+	}
+
+	batchSize := 20 // Smaller batches for year analysis
+	totalBatches := (totalSongs + batchSize - 1) / batchSize
+
+	logger.API("enrichOriginalYearsStream: Starting analysis of %d songs in %d batches", totalSongs, totalBatches)
+
+	// Send initial event to client
+	jsonData, _ := json.Marshal(EnrichmentProgress{
+		Status:       "started",
+		Message:      fmt.Sprintf("Starting year analysis of %d songs in %d batches", totalSongs, totalBatches),
+		TotalSongs:   totalSongs,
+		TotalBatches: totalBatches,
+	})
+	fmt.Fprintf(w, "data: %s\n\n", jsonData)
+	flusher.Flush()
+
+	// Create channels for communication
+	type progressUpdate struct {
+		data EnrichmentProgress
+		done bool
+	}
+	progressChan := make(chan progressUpdate, 100)
+
+	// Start background goroutine for processing
+	go func() {
+		defer close(progressChan)
+
+		processedSongs := 0
+		updatedTotal := 0
+
+		for batch := 0; batch < totalBatches; batch++ {
+			start := batch * batchSize
+			end := start + batchSize
+			if end > totalSongs {
+				end = totalSongs
+			}
+			batchSongs := songs[start:end]
+
+			logger.API("enrichOriginalYearsStream: Processing batch %d/%d (%d songs)", batch+1, totalBatches, len(batchSongs))
+
+			// Send progress update
+			select {
+			case progressChan <- progressUpdate{
+				data: EnrichmentProgress{
+					Status:         "processing",
+					Message:        fmt.Sprintf("Analyzing years for batch %d of %d (%d songs)", batch+1, totalBatches, len(batchSongs)),
+					TotalSongs:     totalSongs,
+					ProcessedSongs: processedSongs,
+					CurrentBatch:   batch + 1,
+					TotalBatches:   totalBatches,
+				},
+			}:
+			default:
+			}
+
+			// Call LLM API
+			results, err := provider.AnalyzeOriginalYear(context.Background(), batchSongs)
+			if err != nil {
+				logger.API("enrichOriginalYearsStream: LLM API error on batch %d: %v", batch+1, err)
+				select {
+				case progressChan <- progressUpdate{
+					data: EnrichmentProgress{
+						Status:         "error",
+						Message:        fmt.Sprintf("API error on batch %d: %v", batch+1, err),
+						TotalSongs:     totalSongs,
+						ProcessedSongs: processedSongs,
+						CurrentBatch:   batch + 1,
+						TotalBatches:   totalBatches,
+						Error:          err.Error(),
+					},
+				}:
+				default:
+				}
+				continue
+			}
+
+			// Update database with results
+			batchUpdated := 0
+			for id, analysis := range results {
+				if analysis != nil && analysis.OriginalYear > 0 {
+					if err := a.db.SetOriginalYear(id, analysis.OriginalYear); err != nil {
+						logger.API("enrichOriginalYearsStream: Failed to update year for song %s: %v", id, err)
+						continue
+					}
+					batchUpdated++
+					updatedTotal++
+				}
+			}
+			processedSongs += len(batchSongs)
+
+			logger.API("enrichOriginalYearsStream: Batch %d complete - analyzed %d songs (total: %d/%d)", batch+1, batchUpdated, processedSongs, totalSongs)
+
+			// Send batch complete update
+			select {
+			case progressChan <- progressUpdate{
+				data: EnrichmentProgress{
+					Status:         "batch_complete",
+					Message:        fmt.Sprintf("Batch %d complete - analyzed %d songs", batch+1, batchUpdated),
+					TotalSongs:     totalSongs,
+					ProcessedSongs: processedSongs,
+					CurrentBatch:   batch + 1,
+					TotalBatches:   totalBatches,
+				},
+			}:
+			default:
+			}
+		}
+
+		logger.API("enrichOriginalYearsStream: Year analysis complete - analyzed %d songs total", updatedTotal)
+
+		// Send final complete message
+		select {
+		case progressChan <- progressUpdate{
+			data: EnrichmentProgress{
+				Status:         "complete",
+				Message:        fmt.Sprintf("Year analysis complete! Analyzed %d songs, found original years for %d", totalSongs, updatedTotal),
+				TotalSongs:     totalSongs,
+				ProcessedSongs: totalSongs,
+				TotalBatches:   totalBatches,
+				CurrentBatch:   totalBatches,
+			},
+			done: true,
+		}:
+		default:
+		}
+	}()
+
+	// Stream updates to client
+	for update := range progressChan {
+		jsonData, _ := json.Marshal(update.data)
+		fmt.Fprintf(w, "data: %s\n\n", jsonData)
+		flusher.Flush()
+	}
+}
+
 // enrichMood triggers mood/energy/tempo analysis for songs without mood data
 func (a *API) enrichMood(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
@@ -1813,12 +2476,14 @@ func (a *API) enrichMood(w http.ResponseWriter, r *http.Request) {
 func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 	logger.API("enrichMoodStream: Starting mood analysis stream")
 
-	apiKey, err := a.db.GetSetting("gemini_api_key")
-	if err != nil || apiKey == "" {
-		logger.API("enrichMoodStream: Gemini API key not configured")
-		http.Error(w, "Gemini API key not configured", http.StatusServiceUnavailable)
+	// Get LLM provider (checks unified settings first, then legacy gemini_api_key)
+	provider, err := llm.GetConfiguredProvider(a.db)
+	if err != nil {
+		logger.API("enrichMoodStream: No LLM configured")
+		http.Error(w, "No LLM configured. Set AI Provider in Settings.", http.StatusServiceUnavailable)
 		return
 	}
+	defer provider.Close()
 
 	// Setup SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -1896,7 +2561,6 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer close(progressChan)
 
-		client := gemini.NewClient(apiKey)
 		processedSongs := 0
 		updatedTotal := 0
 
@@ -1943,14 +2607,14 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 			// Always broadcast to sidebar
 			broadcastMoodEvent("mood_progress", fmt.Sprintf("Analyzing batch %d/%d", batch+1, totalBatches), processedSongs, totalSongs, batch+1, totalBatches)
 
-			moodMap, err := client.AnalyzeSongMood(batchSongs)
+			moodMap, err := provider.AnalyzeSongMood(context.Background(), batchSongs)
 			if err != nil {
-				logger.API("enrichMoodStream: Gemini API error on batch %d: %v", batch+1, err)
+				logger.API("enrichMoodStream: LLM API error on batch %d: %v", batch+1, err)
 				select {
 				case progressChan <- progressUpdate{
 					data: EnrichmentProgress{
 						Status:         "error",
-						Message:        "Gemini API error",
+						Message:        "LLM API error",
 						Error:          err.Error(),
 						ProcessedSongs: processedSongs,
 						CurrentBatch:   batch + 1,
