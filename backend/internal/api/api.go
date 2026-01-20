@@ -5,6 +5,8 @@
 //   - Likes: song and album favorites with persistence
 //   - Media serving: audio streaming, cover art
 //   - Spotify integration: OAuth, search proxy, downloads, streaming
+//   - Last.FM integration: settings, testing, enrichment endpoints
+//   - Metadata enrichment: AI or Last.FM based on user preference
 //   - Metadata caching: album and artist enrichment
 //   - Settings: key-value configuration storage
 //   - SSE endpoints: real-time download progress and library events
@@ -32,6 +34,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/dj"
+	"github.com/ajbergh/viib-mediahub/internal/lastfm"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
@@ -47,6 +50,7 @@ type API struct {
 	coverDir        string
 	downloadManager *DownloadManager
 	scanner         *scanner.Scanner
+	lastfmClient    *lastfm.Client
 }
 
 // New constructs a new API instance using the given database and
@@ -91,6 +95,9 @@ func New(database *db.DB, dataDir string) *API {
 		downloadManager: dm,
 		scanner:         sc,
 	}
+
+	// Initialize Last.FM client if configured
+	api.initLastFMClient()
 
 	// Trigger scan on startup (in background)
 	go api.scanOnStartup()
@@ -218,6 +225,17 @@ func (a *API) Routes() chi.Router {
 	r.Put("/llm/settings", a.updateLLMSettings)
 	r.Get("/llm/providers", a.getLLMProviders)
 	r.Post("/llm/test", a.testLLMConnection)
+
+	// Last.FM integration
+	r.Get("/lastfm/settings", a.handleGetLastFMSettings)
+	r.Post("/lastfm/settings", a.handleSaveLastFMSettings)
+	r.Get("/lastfm/status", a.handleLastFMStatus)
+	r.Post("/lastfm/test", a.handleTestLastFMConnection)
+	r.Post("/lastfm/authenticate", a.handleLastFMAuthenticate)
+	r.Post("/lastfm/enrich/songs", a.handleLastFMEnrichSongs)
+	r.Post("/lastfm/enrich/artists", a.handleLastFMEnrichArtists)
+	r.Get("/lastfm/track", a.handleGetTrackLastFM)
+	r.Get("/lastfm/similar", a.handleGetSimilarTracks)
 
 	// Settings
 	r.Get("/settings/{key}", a.getSetting)
@@ -800,7 +818,7 @@ func (a *API) getScanStatus(w http.ResponseWriter, r *http.Request) {
 
 // libraryEventsSSE streams library events (scan complete, etc.) to the frontend via SSE
 func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
-	logger.APIDebug("libraryEventsSSE: Connection started")
+	logger.API("libraryEventsSSE: Connection started from client")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -817,7 +835,7 @@ func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
 	eventChan := a.scanner.Subscribe()
 	defer a.scanner.Unsubscribe(eventChan)
 
-	logger.APIDebug("libraryEventsSSE: Subscribed and entering event loop")
+	logger.API("libraryEventsSSE: Subscribed to scanner events, entering event loop")
 	for {
 		select {
 		case <-r.Context().Done():
@@ -828,9 +846,9 @@ func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
 				logger.API("libraryEventsSSE: Event channel closed")
 				return
 			}
-			// Only log non-progress events to reduce log noise during bulk operations
-			if event.Type != "background_progress" {
-				logger.APIDebug("libraryEventsSSE: Sending event: %s", event.Type)
+			// Log library_updated and important events
+			if event.Type == "library_updated" || event.Type == "scan_started" || event.Type == "scan_complete" {
+				logger.API("libraryEventsSSE: Sending event: %s - %s", event.Type, event.Message)
 			}
 			data, _ := json.Marshal(event)
 			fmt.Fprintf(w, "data: %s\n\n", data)

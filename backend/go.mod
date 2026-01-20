@@ -14,10 +14,12 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
+	github.com/twoscott/gobble-fm v1.0.8
 	github.com/wailsapp/wails/v2 v2.11.0
 	go.senan.xyz/taglib v0.11.1
 	golang.org/x/crypto v0.46.0
 	golang.org/x/sys v0.39.0
+	golang.org/x/time v0.14.0
 )
 
 require (
@@ -47,6 +49,7 @@ require (
 	github.com/gofrs/uuid/v5 v5.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.7 // indirect
 	github.com/googleapis/gax-go/v2 v2.16.0 // indirect

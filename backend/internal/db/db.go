@@ -104,6 +104,13 @@ type Song struct {
 	MoodAnalyzedAt int64    `json:"moodAnalyzedAt,omitempty"` // Timestamp of mood analysis
 	Liked          bool     `json:"liked,omitempty"`          // true if user has liked this song
 	LikedAt        int64    `json:"likedAt,omitempty"`        // Timestamp when song was liked
+	// Last.FM enrichment data
+	LastFMListeners  int    `json:"lastfmListeners,omitempty"`  // Global listener count
+	LastFMPlaycount  int    `json:"lastfmPlaycount,omitempty"`  // Global play count
+	LastFMTags       string `json:"lastfmTags,omitempty"`       // JSON array of tags
+	LastFMURL        string `json:"lastfmUrl,omitempty"`        // Last.FM track page URL
+	LastFMMBID       string `json:"lastfmMbid,omitempty"`       // MusicBrainz track ID
+	LastFMEnrichedAt int64  `json:"lastfmEnrichedAt,omitempty"` // Timestamp of Last.FM enrichment
 }
 
 // Playlist represents a user-defined playlist persisted in the database.
@@ -497,6 +504,90 @@ func (d *DB) migrateColumns() error {
 	}
 	if _, err := d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_songs_year_uncertain ON songs(year_uncertain) WHERE year_uncertain = 1`); err != nil {
 		// Ignore if index already exists
+	}
+
+	// Migration: Add Last.FM enrichment columns to songs table
+	// These columns store metadata from Last.FM API for AI DJ and playlist generation.
+	lastfmSongMigrations := []string{
+		`ALTER TABLE songs ADD COLUMN lastfm_listeners INTEGER`,
+		`ALTER TABLE songs ADD COLUMN lastfm_playcount INTEGER`,
+		`ALTER TABLE songs ADD COLUMN lastfm_tags TEXT`,
+		`ALTER TABLE songs ADD COLUMN lastfm_url TEXT`,
+		`ALTER TABLE songs ADD COLUMN lastfm_mbid TEXT`,
+		`ALTER TABLE songs ADD COLUMN lastfm_enriched_at INTEGER`,
+	}
+	for _, m := range lastfmSongMigrations {
+		if _, err := d.conn.Exec(m); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				// Ignore duplicate column errors
+			}
+		}
+	}
+
+	// Migration: Create lastfm_similar_tracks table for track similarity data
+	lastfmSimilarTracksTable := `
+	CREATE TABLE IF NOT EXISTS lastfm_similar_tracks (
+		song_id TEXT NOT NULL,
+		similar_artist TEXT NOT NULL,
+		similar_track TEXT NOT NULL,
+		match_score REAL NOT NULL,
+		similar_song_id TEXT,
+		FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE,
+		PRIMARY KEY (song_id, similar_artist, similar_track)
+	);
+	CREATE INDEX IF NOT EXISTS idx_similar_tracks_song ON lastfm_similar_tracks(song_id);
+	CREATE INDEX IF NOT EXISTS idx_similar_tracks_similar_song ON lastfm_similar_tracks(similar_song_id);
+	`
+	for _, stmt := range strings.Split(lastfmSimilarTracksTable, ";") {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if _, err := d.conn.Exec(stmt); err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				// Log but don't fail
+			}
+		}
+	}
+
+	// Migration: Create lastfm_similar_artists table for artist similarity data
+	lastfmSimilarArtistsTable := `
+	CREATE TABLE IF NOT EXISTS lastfm_similar_artists (
+		artist_name TEXT NOT NULL,
+		similar_artist TEXT NOT NULL,
+		match_score REAL NOT NULL,
+		PRIMARY KEY (artist_name, similar_artist)
+	);
+	CREATE INDEX IF NOT EXISTS idx_similar_artists ON lastfm_similar_artists(artist_name);
+	`
+	for _, stmt := range strings.Split(lastfmSimilarArtistsTable, ";") {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if _, err := d.conn.Exec(stmt); err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				// Log but don't fail
+			}
+		}
+	}
+
+	// Migration: Add Last.FM columns to artist_metadata table
+	lastfmArtistMigrations := []string{
+		`ALTER TABLE artist_metadata ADD COLUMN lastfm_listeners INTEGER`,
+		`ALTER TABLE artist_metadata ADD COLUMN lastfm_playcount INTEGER`,
+		`ALTER TABLE artist_metadata ADD COLUMN lastfm_tags TEXT`,
+		`ALTER TABLE artist_metadata ADD COLUMN lastfm_bio TEXT`,
+		`ALTER TABLE artist_metadata ADD COLUMN lastfm_url TEXT`,
+		`ALTER TABLE artist_metadata ADD COLUMN lastfm_mbid TEXT`,
+		`ALTER TABLE artist_metadata ADD COLUMN lastfm_enriched_at INTEGER`,
+	}
+	for _, m := range lastfmArtistMigrations {
+		if _, err := d.conn.Exec(m); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				// Ignore duplicate column errors
+			}
+		}
 	}
 
 	return nil
@@ -3553,4 +3644,605 @@ func (d *DB) GetRandomFileSample(count int) ([]FileMetadataCache, error) {
 		caches = append(caches, cache)
 	}
 	return caches, rows.Err()
+}
+
+// ============================================================================
+// Last.FM Integration Types and Methods
+// ============================================================================
+
+// LastFMSongUpdate contains Last.FM enrichment data for a song
+type LastFMSongUpdate struct {
+	Listeners    int      `json:"listeners"`
+	Playcount    int      `json:"playcount"`
+	Tags         []string `json:"tags"`
+	URL          string   `json:"url"`
+	MBID         string   `json:"mbid"`
+	Mood         string   `json:"mood,omitempty"`
+	Energy       string   `json:"energy,omitempty"`
+	Tempo        string   `json:"tempo,omitempty"`
+	Genres       []string `json:"genres,omitempty"`
+	Instrumental bool     `json:"instrumental,omitempty"`
+}
+
+// LastFMArtistUpdate contains Last.FM enrichment data for an artist
+type LastFMArtistUpdate struct {
+	Listeners int      `json:"listeners"`
+	Playcount int      `json:"playcount"`
+	Tags      []string `json:"tags"`
+	Bio       string   `json:"bio"`
+	URL       string   `json:"url"`
+	MBID      string   `json:"mbid"`
+}
+
+// LastFMSimilarTrack represents a similar track from Last.FM
+type LastFMSimilarTrack struct {
+	SongID        string  `json:"songId"`
+	SimilarArtist string  `json:"similarArtist"`
+	SimilarTrack  string  `json:"similarTrack"`
+	MatchScore    float64 `json:"matchScore"`
+	SimilarSongID string  `json:"similarSongId,omitempty"` // If we have this song in our library
+}
+
+// LastFMSimilarArtist represents a similar artist from Last.FM
+type LastFMSimilarArtist struct {
+	ArtistName    string  `json:"artistName"`
+	SimilarArtist string  `json:"similarArtist"`
+	MatchScore    float64 `json:"matchScore"`
+}
+
+// UpdateSongLastFM updates a song with Last.FM enrichment data
+func (d *DB) UpdateSongLastFM(songID string, update LastFMSongUpdate) error {
+	tagsJSON, err := json.Marshal(update.Tags)
+	if err != nil {
+		return fmt.Errorf("failed to marshal tags: %w", err)
+	}
+
+	now := time.Now().Unix()
+
+	// Build dynamic update query based on what data we have
+	query := `UPDATE songs SET 
+		lastfm_listeners = ?,
+		lastfm_playcount = ?,
+		lastfm_tags = ?,
+		lastfm_url = ?,
+		lastfm_mbid = ?,
+		lastfm_enriched_at = ?`
+
+	args := []interface{}{
+		update.Listeners,
+		update.Playcount,
+		string(tagsJSON),
+		update.URL,
+		update.MBID,
+		now,
+	}
+
+	// Also update mood/energy/tempo if provided and not already set
+	if update.Mood != "" {
+		query += `, mood = COALESCE(NULLIF(mood, ''), ?)`
+		args = append(args, update.Mood)
+	}
+	if update.Energy != "" {
+		query += `, energy = COALESCE(NULLIF(energy, ''), ?)`
+		args = append(args, update.Energy)
+	}
+	if update.Tempo != "" {
+		query += `, tempo = COALESCE(NULLIF(tempo, ''), ?)`
+		args = append(args, update.Tempo)
+	}
+	if len(update.Genres) > 0 {
+		genresJSON, _ := json.Marshal(update.Genres)
+		query += `, genre = COALESCE(NULLIF(genre, ''), NULLIF(genre, '[]'), ?)`
+		args = append(args, string(genresJSON))
+	}
+	if update.Instrumental {
+		query += `, instrumental = 1`
+	}
+
+	query += ` WHERE id = ?`
+	args = append(args, songID)
+
+	_, err = d.conn.Exec(query, args...)
+	return err
+}
+
+// StoreSimilarTracks stores similar track relationships from Last.FM
+func (d *DB) StoreSimilarTracks(songID string, tracks []LastFMSimilarTrack) error {
+	if len(tracks) == 0 {
+		return nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Clear existing similar tracks for this song
+	_, err = tx.Exec(`DELETE FROM lastfm_similar_tracks WHERE song_id = ?`, songID)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO lastfm_similar_tracks (song_id, similar_artist, similar_track, match_score, similar_song_id)
+		VALUES (?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, track := range tracks {
+		var similarSongID interface{}
+		if track.SimilarSongID != "" {
+			similarSongID = track.SimilarSongID
+		}
+		_, err = stmt.Exec(songID, track.SimilarArtist, track.SimilarTrack, track.MatchScore, similarSongID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GetSimilarTracks retrieves similar tracks for a song
+func (d *DB) GetSimilarTracks(songID string) ([]LastFMSimilarTrack, error) {
+	rows, err := d.conn.Query(`
+		SELECT song_id, similar_artist, similar_track, match_score, similar_song_id
+		FROM lastfm_similar_tracks
+		WHERE song_id = ?
+		ORDER BY match_score DESC
+	`, songID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tracks []LastFMSimilarTrack
+	for rows.Next() {
+		var t LastFMSimilarTrack
+		var similarSongID sql.NullString
+		err := rows.Scan(&t.SongID, &t.SimilarArtist, &t.SimilarTrack, &t.MatchScore, &similarSongID)
+		if err != nil {
+			return nil, err
+		}
+		if similarSongID.Valid {
+			t.SimilarSongID = similarSongID.String
+		}
+		tracks = append(tracks, t)
+	}
+	return tracks, rows.Err()
+}
+
+// StoreSimilarArtists stores similar artist relationships from Last.FM
+func (d *DB) StoreSimilarArtists(artistName string, similar []LastFMSimilarArtist) error {
+	if len(similar) == 0 {
+		return nil
+	}
+
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Clear existing similar artists
+	_, err = tx.Exec(`DELETE FROM lastfm_similar_artists WHERE artist_name = ?`, artistName)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO lastfm_similar_artists (artist_name, similar_artist, match_score)
+		VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, artist := range similar {
+		_, err = stmt.Exec(artistName, artist.SimilarArtist, artist.MatchScore)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GetLastFMSimilarArtists retrieves similar artists from Last.FM data
+func (d *DB) GetLastFMSimilarArtists(artistName string) ([]LastFMSimilarArtist, error) {
+	rows, err := d.conn.Query(`
+		SELECT artist_name, similar_artist, match_score
+		FROM lastfm_similar_artists
+		WHERE artist_name = ?
+		ORDER BY match_score DESC
+	`, artistName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var artists []LastFMSimilarArtist
+	for rows.Next() {
+		var a LastFMSimilarArtist
+		err := rows.Scan(&a.ArtistName, &a.SimilarArtist, &a.MatchScore)
+		if err != nil {
+			return nil, err
+		}
+		artists = append(artists, a)
+	}
+	return artists, rows.Err()
+}
+
+// GetSongsWithoutLastFM retrieves songs that haven't been enriched with Last.FM data
+func (d *DB) GetSongsWithoutLastFM(limit int) ([]Song, error) {
+	rows, err := d.conn.Query(`
+		SELECT id, title, artist, album, album_artist, track_number, disc_number, genre,
+		       year, original_year, year_uncertain, year_analyzed_at, duration, file_path, cover_path,
+		       added_at, play_count, last_played, skip_count, file_hash, mood, energy, tempo,
+		       bpm, instrumental, mood_analyzed_at, liked, liked_at,
+		       lastfm_listeners, lastfm_playcount, lastfm_tags, lastfm_url, lastfm_mbid, lastfm_enriched_at
+		FROM songs
+		WHERE lastfm_enriched_at IS NULL OR lastfm_enriched_at = 0
+		ORDER BY play_count DESC, added_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return d.scanSongsWithLastFM(rows)
+}
+
+// scanSongsWithLastFM is a helper to scan songs including Last.FM fields
+func (d *DB) scanSongsWithLastFM(rows *sql.Rows) ([]Song, error) {
+	var songs []Song
+	for rows.Next() {
+		var s Song
+		var albumArtist, coverPath, fileHash, mood, energy, tempo, genreStr sql.NullString
+		var trackNum, discNum, year, originalYear, bpm, playCount, skipCount sql.NullInt64
+		var lastPlayed, moodAnalyzedAt, likedAt, yearAnalyzedAt sql.NullInt64
+		var instrumental, liked, yearUncertain sql.NullInt64
+		var lastfmListeners, lastfmPlaycount sql.NullInt64
+		var lastfmTags, lastfmURL, lastfmMBID sql.NullString
+		var lastfmEnrichedAt sql.NullInt64
+
+		err := rows.Scan(
+			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist, &trackNum, &discNum, &genreStr,
+			&year, &originalYear, &yearUncertain, &yearAnalyzedAt, &s.Duration, &s.FilePath, &coverPath,
+			&s.AddedAt, &playCount, &lastPlayed, &skipCount, &fileHash, &mood, &energy, &tempo,
+			&bpm, &instrumental, &moodAnalyzedAt, &liked, &likedAt,
+			&lastfmListeners, &lastfmPlaycount, &lastfmTags, &lastfmURL, &lastfmMBID, &lastfmEnrichedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if albumArtist.Valid {
+			s.AlbumArtist = albumArtist.String
+		}
+		if trackNum.Valid {
+			s.TrackNumber = int(trackNum.Int64)
+		}
+		if discNum.Valid {
+			s.DiscNumber = int(discNum.Int64)
+		}
+		if genreStr.Valid && genreStr.String != "" {
+			_ = json.Unmarshal([]byte(genreStr.String), &s.Genre)
+		}
+		if year.Valid {
+			s.Year = int(year.Int64)
+		}
+		if originalYear.Valid {
+			s.OriginalYear = int(originalYear.Int64)
+		}
+		if yearUncertain.Valid {
+			s.YearUncertain = yearUncertain.Int64 == 1
+		}
+		if yearAnalyzedAt.Valid {
+			s.YearAnalyzedAt = yearAnalyzedAt.Int64
+		}
+		if coverPath.Valid {
+			s.CoverPath = coverPath.String
+		}
+		if playCount.Valid {
+			s.PlayCount = int(playCount.Int64)
+		}
+		if lastPlayed.Valid {
+			s.LastPlayed = lastPlayed.Int64
+		}
+		if skipCount.Valid {
+			s.SkipCount = int(skipCount.Int64)
+		}
+		if fileHash.Valid {
+			s.FileHash = fileHash.String
+		}
+		if mood.Valid {
+			s.Mood = mood.String
+		}
+		if energy.Valid {
+			s.Energy = energy.String
+		}
+		if tempo.Valid {
+			s.Tempo = tempo.String
+		}
+		if bpm.Valid {
+			s.BPM = int(bpm.Int64)
+		}
+		if instrumental.Valid {
+			s.Instrumental = instrumental.Int64 == 1
+		}
+		if moodAnalyzedAt.Valid {
+			s.MoodAnalyzedAt = moodAnalyzedAt.Int64
+		}
+		if liked.Valid {
+			s.Liked = liked.Int64 == 1
+		}
+		if likedAt.Valid {
+			s.LikedAt = likedAt.Int64
+		}
+		if lastfmListeners.Valid {
+			s.LastFMListeners = int(lastfmListeners.Int64)
+		}
+		if lastfmPlaycount.Valid {
+			s.LastFMPlaycount = int(lastfmPlaycount.Int64)
+		}
+		if lastfmTags.Valid {
+			s.LastFMTags = lastfmTags.String
+		}
+		if lastfmURL.Valid {
+			s.LastFMURL = lastfmURL.String
+		}
+		if lastfmMBID.Valid {
+			s.LastFMMBID = lastfmMBID.String
+		}
+		if lastfmEnrichedAt.Valid {
+			s.LastFMEnrichedAt = lastfmEnrichedAt.Int64
+		}
+
+		songs = append(songs, s)
+	}
+	return songs, rows.Err()
+}
+
+// UpdateArtistLastFM updates artist metadata with Last.FM enrichment data
+func (d *DB) UpdateArtistLastFM(artistName string, update LastFMArtistUpdate) error {
+	tagsJSON, err := json.Marshal(update.Tags)
+	if err != nil {
+		return fmt.Errorf("failed to marshal tags: %w", err)
+	}
+
+	now := time.Now().Unix()
+
+	// First check if artist exists in metadata table
+	var exists int
+	err = d.conn.QueryRow(`SELECT COUNT(*) FROM artist_metadata WHERE artist_name = ?`, artistName).Scan(&exists)
+	if err != nil {
+		return err
+	}
+
+	if exists == 0 {
+		// Insert new artist metadata record
+		_, err = d.conn.Exec(`
+			INSERT INTO artist_metadata (artist_name, lastfm_listeners, lastfm_playcount, lastfm_tags, lastfm_bio, lastfm_url, lastfm_mbid, lastfm_enriched_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, artistName, update.Listeners, update.Playcount, string(tagsJSON), update.Bio, update.URL, update.MBID, now, now)
+	} else {
+		// Update existing record
+		_, err = d.conn.Exec(`
+			UPDATE artist_metadata SET
+				lastfm_listeners = ?,
+				lastfm_playcount = ?,
+				lastfm_tags = ?,
+				lastfm_bio = ?,
+				lastfm_url = ?,
+				lastfm_mbid = ?,
+				lastfm_enriched_at = ?,
+				updated_at = ?
+			WHERE artist_name = ?
+		`, update.Listeners, update.Playcount, string(tagsJSON), update.Bio, update.URL, update.MBID, now, now, artistName)
+	}
+
+	return err
+}
+
+// GetArtistsWithoutLastFM retrieves artists that haven't been enriched with Last.FM data
+func (d *DB) GetArtistsWithoutLastFM(limit int) ([]string, error) {
+	// Get unique artists from songs that don't have Last.FM data in artist_metadata
+	rows, err := d.conn.Query(`
+		SELECT DISTINCT s.artist
+		FROM songs s
+		LEFT JOIN artist_metadata am ON s.artist = am.artist_name
+		WHERE am.lastfm_enriched_at IS NULL OR am.lastfm_enriched_at = 0
+		ORDER BY (SELECT COUNT(*) FROM songs WHERE artist = s.artist) DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var artists []string
+	for rows.Next() {
+		var artist string
+		if err := rows.Scan(&artist); err != nil {
+			return nil, err
+		}
+		artists = append(artists, artist)
+	}
+	return artists, rows.Err()
+}
+
+// GetLastFMEnrichmentStats returns statistics about Last.FM enrichment
+func (d *DB) GetLastFMEnrichmentStats() (map[string]interface{}, error) {
+	stats := make(map[string]interface{})
+
+	// Count songs with Last.FM data
+	var enrichedSongs, totalSongs int
+	err := d.conn.QueryRow(`SELECT COUNT(*) FROM songs WHERE lastfm_enriched_at > 0`).Scan(&enrichedSongs)
+	if err != nil {
+		return nil, err
+	}
+	err = d.conn.QueryRow(`SELECT COUNT(*) FROM songs`).Scan(&totalSongs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Count artists with Last.FM data
+	var enrichedArtists, totalArtists int
+	err = d.conn.QueryRow(`SELECT COUNT(*) FROM artist_metadata WHERE lastfm_enriched_at > 0`).Scan(&enrichedArtists)
+	if err != nil {
+		return nil, err
+	}
+	err = d.conn.QueryRow(`SELECT COUNT(DISTINCT artist) FROM songs`).Scan(&totalArtists)
+	if err != nil {
+		return nil, err
+	}
+
+	// Count similar track/artist relationships
+	var similarTracks, similarArtists int
+	err = d.conn.QueryRow(`SELECT COUNT(*) FROM lastfm_similar_tracks`).Scan(&similarTracks)
+	if err != nil {
+		return nil, err
+	}
+	err = d.conn.QueryRow(`SELECT COUNT(*) FROM lastfm_similar_artists`).Scan(&similarArtists)
+	if err != nil {
+		return nil, err
+	}
+
+	stats["enrichedSongs"] = enrichedSongs
+	stats["totalSongs"] = totalSongs
+	stats["enrichedArtists"] = enrichedArtists
+	stats["totalArtists"] = totalArtists
+	stats["similarTracks"] = similarTracks
+	stats["similarArtists"] = similarArtists
+
+	return stats, nil
+}
+
+// FindSongByArtistAndTitle finds a song in the library by artist and title (case-insensitive)
+func (d *DB) FindSongByArtistAndTitle(artist, title string) (*Song, error) {
+	row := d.conn.QueryRow(`
+		SELECT id, title, artist, album, album_artist, track_number, disc_number, genre,
+		       year, original_year, year_uncertain, year_analyzed_at, duration, file_path, cover_path,
+		       added_at, play_count, last_played, skip_count, file_hash, mood, energy, tempo,
+		       bpm, instrumental, mood_analyzed_at, liked, liked_at,
+		       lastfm_listeners, lastfm_playcount, lastfm_tags, lastfm_url, lastfm_mbid, lastfm_enriched_at
+		FROM songs
+		WHERE LOWER(artist) = LOWER(?) AND LOWER(title) = LOWER(?)
+		LIMIT 1
+	`, artist, title)
+
+	var s Song
+	var albumArtist, coverPath, fileHash, mood, energy, tempo, genreStr sql.NullString
+	var trackNum, discNum, year, originalYear, bpm, playCount, skipCount sql.NullInt64
+	var lastPlayed, moodAnalyzedAt, likedAt, yearAnalyzedAt sql.NullInt64
+	var instrumental, liked, yearUncertain sql.NullInt64
+	var lastfmListeners, lastfmPlaycount sql.NullInt64
+	var lastfmTags, lastfmURL, lastfmMBID sql.NullString
+	var lastfmEnrichedAt sql.NullInt64
+
+	err := row.Scan(
+		&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist, &trackNum, &discNum, &genreStr,
+		&year, &originalYear, &yearUncertain, &yearAnalyzedAt, &s.Duration, &s.FilePath, &coverPath,
+		&s.AddedAt, &playCount, &lastPlayed, &skipCount, &fileHash, &mood, &energy, &tempo,
+		&bpm, &instrumental, &moodAnalyzedAt, &liked, &likedAt,
+		&lastfmListeners, &lastfmPlaycount, &lastfmTags, &lastfmURL, &lastfmMBID, &lastfmEnrichedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Populate optional fields
+	if albumArtist.Valid {
+		s.AlbumArtist = albumArtist.String
+	}
+	if trackNum.Valid {
+		s.TrackNumber = int(trackNum.Int64)
+	}
+	if discNum.Valid {
+		s.DiscNumber = int(discNum.Int64)
+	}
+	if genreStr.Valid && genreStr.String != "" {
+		_ = json.Unmarshal([]byte(genreStr.String), &s.Genre)
+	}
+	if year.Valid {
+		s.Year = int(year.Int64)
+	}
+	if originalYear.Valid {
+		s.OriginalYear = int(originalYear.Int64)
+	}
+	if yearUncertain.Valid {
+		s.YearUncertain = yearUncertain.Int64 == 1
+	}
+	if yearAnalyzedAt.Valid {
+		s.YearAnalyzedAt = yearAnalyzedAt.Int64
+	}
+	if coverPath.Valid {
+		s.CoverPath = coverPath.String
+	}
+	if playCount.Valid {
+		s.PlayCount = int(playCount.Int64)
+	}
+	if lastPlayed.Valid {
+		s.LastPlayed = lastPlayed.Int64
+	}
+	if skipCount.Valid {
+		s.SkipCount = int(skipCount.Int64)
+	}
+	if fileHash.Valid {
+		s.FileHash = fileHash.String
+	}
+	if mood.Valid {
+		s.Mood = mood.String
+	}
+	if energy.Valid {
+		s.Energy = energy.String
+	}
+	if tempo.Valid {
+		s.Tempo = tempo.String
+	}
+	if bpm.Valid {
+		s.BPM = int(bpm.Int64)
+	}
+	if instrumental.Valid {
+		s.Instrumental = instrumental.Int64 == 1
+	}
+	if moodAnalyzedAt.Valid {
+		s.MoodAnalyzedAt = moodAnalyzedAt.Int64
+	}
+	if liked.Valid {
+		s.Liked = liked.Int64 == 1
+	}
+	if likedAt.Valid {
+		s.LikedAt = likedAt.Int64
+	}
+	if lastfmListeners.Valid {
+		s.LastFMListeners = int(lastfmListeners.Int64)
+	}
+	if lastfmPlaycount.Valid {
+		s.LastFMPlaycount = int(lastfmPlaycount.Int64)
+	}
+	if lastfmTags.Valid {
+		s.LastFMTags = lastfmTags.String
+	}
+	if lastfmURL.Valid {
+		s.LastFMURL = lastfmURL.String
+	}
+	if lastfmMBID.Valid {
+		s.LastFMMBID = lastfmMBID.String
+	}
+	if lastfmEnrichedAt.Valid {
+		s.LastFMEnrichedAt = lastfmEnrichedAt.Int64
+	}
+
+	return &s, nil
 }

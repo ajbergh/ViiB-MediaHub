@@ -22,6 +22,14 @@
  * - enrichGenresStream: SSE-based genre enrichment using Gemini AI
  * - enrichMoodStream: SSE-based mood/energy/tempo analysis using Gemini AI
  * 
+ * Last.FM Features (added 2025-12-31):
+ * - getLastFMSettings/saveLastFMSettings: API key configuration
+ * - testLastFMConnection: Verify API credentials
+ * - authenticateLastFM: Mobile auth for scrobbling
+ * - getLastFMStatus: Connection status and enrichment stats
+ * - triggerLastFMEnrichment: Batch enrich songs with Last.FM tags
+ * - getLastFMTrackInfo/getLastFMSimilarTracks: Individual track lookups
+ * 
  * Smart Playlist Options:
  * - blendMode: 'single' or 'mixed' for genre blending
  * - discoverMode: 'balanced', 'discover', 'favorites' for play history preferences
@@ -1286,6 +1294,143 @@ export const api = {
     const response = await fetch(`${API_BASE}/dj/personas`);
     return handleResponse(response);
   },
+
+  // ==================== Last.FM API ====================
+
+  /**
+   * Gets current Last.FM settings.
+   * API key is masked for security if configured.
+   * 
+   * @returns Current Last.FM configuration
+   */
+  async getLastFMSettings(): Promise<LastFMSettings> {
+    const response = await fetch(`${API_BASE}/lastfm/settings`);
+    return handleResponse<LastFMSettings>(response);
+  },
+
+  /**
+   * Saves Last.FM settings.
+   * Sensitive fields (API key, shared secret) are encrypted at rest.
+   * 
+   * @param settings - Last.FM configuration to save
+   * @returns Success status
+   */
+  async saveLastFMSettings(settings: LastFMSettingsRequest): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/lastfm/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Tests the Last.FM API connection.
+   * Attempts to fetch a known artist to verify credentials.
+   * 
+   * @returns Test result with success status and message
+   */
+  async testLastFMConnection(): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/lastfm/test`, { method: 'POST' });
+    return handleResponse(response);
+  },
+
+  /**
+   * Authenticates with Last.FM for scrobbling support.
+   * Uses mobile authentication flow - session key is stored encrypted.
+   * 
+   * @param username - Last.FM username
+   * @param password - Last.FM password (not stored, only used for session)
+   * @returns Authentication result with username
+   */
+  async authenticateLastFM(username: string, password: string): Promise<{ success: boolean; username: string }> {
+    const response = await fetch(`${API_BASE}/lastfm/authenticate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Gets current Last.FM integration status.
+   * Includes connection status, scrobbling capability, and enrichment stats.
+   * 
+   * @returns Last.FM status with stats
+   */
+  async getLastFMStatus(): Promise<LastFMStatus> {
+    const response = await fetch(`${API_BASE}/lastfm/status`);
+    return handleResponse<LastFMStatus>(response);
+  },
+
+  /**
+   * Triggers Last.FM song enrichment.
+   * Fetches track info and tags from Last.FM for songs without enrichment data.
+   * 
+   * @param options - Enrichment options
+   * @returns Enrichment start result with queued count
+   */
+  async triggerLastFMEnrichment(options?: {
+    limit?: number;
+    force?: boolean;
+    fetchSimilar?: boolean;
+  }): Promise<{ message: string; queued: number; inFlight: boolean }> {
+    const response = await fetch(`${API_BASE}/lastfm/enrich/songs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Triggers Last.FM artist enrichment.
+   * Fetches artist info and similar artists from Last.FM.
+   * 
+   * @param options - Enrichment options
+   * @returns Enrichment start result with queued count
+   */
+  async triggerLastFMArtistEnrichment(options?: {
+    limit?: number;
+    fetchSimilar?: boolean;
+  }): Promise<{ message: string; queued: number; inFlight: boolean }> {
+    const response = await fetch(`${API_BASE}/lastfm/enrich/artists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Gets track info from Last.FM.
+   * Fetches metadata, tags, and popularity data for a specific track.
+   * 
+   * @param artist - Artist name
+   * @param track - Track title
+   * @returns Track info from Last.FM
+   */
+  async getLastFMTrackInfo(artist: string, track: string): Promise<LastFMTrackInfo> {
+    const params = new URLSearchParams({ artist, track });
+    const response = await fetch(`${API_BASE}/lastfm/track?${params}`);
+    return handleResponse<LastFMTrackInfo>(response);
+  },
+
+  /**
+   * Gets similar tracks from Last.FM.
+   * Returns tracks similar to the given track with match scores.
+   * 
+   * @param artist - Artist name
+   * @param track - Track title
+   * @param limit - Maximum number of results (default 20)
+   * @returns Array of similar tracks
+   */
+  async getLastFMSimilarTracks(artist: string, track: string, limit?: number): Promise<LastFMSimilarTrack[]> {
+    const params = new URLSearchParams({ artist, track });
+    if (limit) params.append('limit', limit.toString());
+    const response = await fetch(`${API_BASE}/lastfm/similar?${params}`);
+    return handleResponse<LastFMSimilarTrack[]>(response);
+  },
 };
 
 /**
@@ -1505,6 +1650,96 @@ export interface LLMSettingsRequest {
 export interface LLMTestResponse {
   success: boolean;
   message: string;
+}
+
+// ==================== Last.FM Types ====================
+
+/**
+ * Enrichment source type - controls which system is used for metadata enrichment.
+ * - "ai": Use configured LLM provider (Gemini, OpenAI, etc.)
+ * - "lastfm": Use Last.FM community metadata
+ * - "hybrid": Use Last.FM first, fall back to AI for missing data
+ */
+export type EnrichmentSource = 'ai' | 'lastfm' | 'hybrid';
+
+/**
+ * Last.FM settings configuration.
+ */
+export interface LastFMSettings {
+  apiKey: string;       // Masked for security (e.g., "abcd...wxyz")
+  sharedSecret?: string;
+  sessionKey?: string;
+  username?: string;
+  enabled: boolean;
+  enrichmentSource?: EnrichmentSource;
+}
+
+/**
+ * Last.FM settings request for saving configuration.
+ */
+export interface LastFMSettingsRequest {
+  apiKey?: string;
+  sharedSecret?: string;
+  username?: string;
+  password?: string;    // Only used for authentication, not stored
+  enabled?: boolean;
+  enrichmentSource?: EnrichmentSource;
+}
+
+/**
+ * Last.FM integration status.
+ */
+export interface LastFMStatus {
+  configured: boolean;
+  connected: boolean;
+  canScrobble: boolean;
+  username?: string;
+  stats?: {
+    totalSongs?: number;
+    enrichedSongs?: number;
+    songsWithTags?: number;
+    songsWithSimilar?: number;
+  };
+  lastError?: string;
+  lastSyncTime?: number;
+}
+
+/**
+ * Last.FM tag with usage count.
+ */
+export interface LastFMTag {
+  name: string;
+  count?: number;
+  url?: string;
+}
+
+/**
+ * Last.FM track info.
+ */
+export interface LastFMTrackInfo {
+  name: string;
+  artist: string;
+  album?: string;
+  duration: number;
+  listeners: number;
+  playcount: number;
+  mbid?: string;
+  url: string;
+  topTags: LastFMTag[];
+  wiki?: string;
+  corrected: boolean;
+  fetchedAt: string;
+}
+
+/**
+ * Similar track from Last.FM.
+ */
+export interface LastFMSimilarTrack {
+  name: string;
+  artist: string;
+  match: number;    // 0-1, higher = more similar
+  mbid?: string;
+  url: string;
 }
 
 export default api;
