@@ -520,10 +520,16 @@ func (s *Scanner) DetectDeletedFiles() ([]FileChange, error) {
 	return changes, nil
 }
 
-// ProcessChanges processes detected file changes (add/update/delete songs)
+// ProcessChanges processes detected file changes (add/update/delete songs).
+// Processes files in batches of 50, emitting library_updated SSE events
+// after each batch to enable real-time UI updates during large imports.
+// This allows the frontend to show songs appearing progressively as they are scanned.
 func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 	result := &ScanResult{}
 	startTime := time.Now()
+
+	// Batch size for saving songs and emitting updates (matches ScanFolder)
+	const batchSize = 50
 
 	var filesToAdd []string
 	var filesToUpdate []string
@@ -540,18 +546,21 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 		}
 	}
 
-	// Process additions and updates
+	// Process additions and updates in batches for real-time UI updates
 	allFilesToProcess := append(filesToAdd, filesToUpdate...)
 	if len(allFilesToProcess) > 0 {
-		// Only log when processing multiple files to reduce log noise
+		// Log when processing multiple files
 		if len(allFilesToProcess) > 1 {
 			logger.Scanner("Processing %d files (%d new, %d updated)",
 				len(allFilesToProcess), len(filesToAdd), len(filesToUpdate))
 		}
 
-		// Process each file individually
+		// Process files in batches for real-time UI updates
 		var songs []db.Song
-		for _, filePath := range allFilesToProcess {
+		var processedPaths []string
+		totalProcessed := 0
+
+		for i, filePath := range allFilesToProcess {
 			metadata, err := s.extractMetadata(filePath)
 			if err != nil {
 				logger.Scanner("Error extracting metadata from %s: %v", filePath, err)
@@ -580,17 +589,99 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 			}
 
 			songs = append(songs, dbSong)
+			processedPaths = append(processedPaths, filePath)
 			result.TotalFiles++
+
+			// Save batch when we reach the limit for real-time UI updates
+			if len(songs) >= batchSize {
+				batchNewCount := 0
+				batchUpdateCount := 0
+				for _, song := range songs {
+					// Determine if this was an add or update based on original lists
+					for _, addPath := range filesToAdd {
+						if song.FilePath == addPath {
+							batchNewCount++
+							break
+						}
+					}
+					for _, updatePath := range filesToUpdate {
+						if song.FilePath == updatePath {
+							batchUpdateCount++
+							break
+						}
+					}
+				}
+
+				logger.Scanner("Saving batch of %d songs (%d/%d processed)...", len(songs), totalProcessed+len(songs), len(allFilesToProcess))
+				if err := s.db.SaveSongs(songs); err != nil {
+					logger.Scanner("Error saving batch: %v", err)
+					result.Errors++
+				} else {
+					result.NewSongs += batchNewCount
+					result.UpdatedSongs += batchUpdateCount
+					totalProcessed += len(songs)
+
+					// Create album metadata entries for this batch
+					s.createAlbumMetadataEntries(songs)
+
+					// Emit progress update for real-time UI
+					s.SetProgress(fmt.Sprintf("Processing files... (%d/%d)", totalProcessed, len(allFilesToProcess)))
+					s.emitEvent(LibraryEvent{
+						Type:    "scan_progress",
+						Message: fmt.Sprintf("Processing files... (%d/%d)", totalProcessed, len(allFilesToProcess)),
+					})
+
+					// Emit library_updated event so UI refreshes with new songs
+					s.emitEvent(LibraryEvent{
+						Type:         "library_updated",
+						Message:      fmt.Sprintf("Added %d songs", len(songs)),
+						NewSongs:     batchNewCount,
+						UpdatedSongs: batchUpdateCount,
+					})
+				}
+
+				// Update metadata cache for processed files
+				if err := s.UpdateFileMetadataCache(processedPaths); err != nil {
+					logger.Scanner("Error updating metadata cache: %v", err)
+				}
+
+				// Reset batch
+				songs = []db.Song{}
+				processedPaths = []string{}
+			}
+
+			// Update progress every 10 files for responsiveness
+			if i > 0 && i%10 == 0 {
+				s.SetProgress(fmt.Sprintf("Processing files... (%d/%d)", i, len(allFilesToProcess)))
+			}
 		}
 
-		// Save all songs
+		// Save any remaining songs
 		if len(songs) > 0 {
+			batchNewCount := 0
+			batchUpdateCount := 0
+			for _, song := range songs {
+				for _, addPath := range filesToAdd {
+					if song.FilePath == addPath {
+						batchNewCount++
+						break
+					}
+				}
+				for _, updatePath := range filesToUpdate {
+					if song.FilePath == updatePath {
+						batchUpdateCount++
+						break
+					}
+				}
+			}
+
+			logger.Scanner("Saving final batch of %d songs...", len(songs))
 			if err := s.db.SaveSongs(songs); err != nil {
-				logger.Scanner("Error saving songs: %v", err)
+				logger.Scanner("Error saving final batch: %v", err)
 				result.Errors++
 			} else {
-				result.NewSongs = len(filesToAdd)
-				result.UpdatedSongs = len(filesToUpdate)
+				result.NewSongs += batchNewCount
+				result.UpdatedSongs += batchUpdateCount
 
 				// Create album metadata entries
 				s.createAlbumMetadataEntries(songs)
@@ -599,18 +690,18 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 				s.emitEvent(LibraryEvent{
 					Type:         "library_updated",
 					Message:      fmt.Sprintf("Added %d songs", len(songs)),
-					NewSongs:     len(filesToAdd),
-					UpdatedSongs: len(filesToUpdate),
+					NewSongs:     batchNewCount,
+					UpdatedSongs: batchUpdateCount,
 				})
 
 				// Update genre stats
 				go s.db.UpdateGenreStats()
 			}
-		}
 
-		// Update metadata cache for processed files
-		if err := s.UpdateFileMetadataCache(allFilesToProcess); err != nil {
-			logger.Scanner("Error updating metadata cache: %v", err)
+			// Update metadata cache for remaining files
+			if err := s.UpdateFileMetadataCache(processedPaths); err != nil {
+				logger.Scanner("Error updating metadata cache: %v", err)
+			}
 		}
 	}
 

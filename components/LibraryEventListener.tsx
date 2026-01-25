@@ -251,39 +251,39 @@ const LibraryEventListener = () => {
       eventSource.onopen = () => {
         console.log('✅ Library events SSE connected', isReconnectRef.current ? '(reconnect)' : '(initial)');
         
-        // Only check scan status on RECONNECTS, not initial connection
-        // Initial connection should trust the UI state set by initLibrary (which sets isScanning=true for startup scan)
-        if (!isReconnectRef.current) {
-          console.log('📡 Initial SSE connection - not resetting scan state');
-          isReconnectRef.current = true; // Mark that next connect will be a reconnect
-          return;
-        }
-        
-        // After reconnecting, check if a scan is in progress or just completed
-        // This handles the case where we missed events during disconnect
+        // Always check scan status when SSE connects (even on initial connect)
+        // This handles the case where the scan started before SSE connected
         const checkScanStatus = async () => {
           try {
             const { getScanStatus } = await import('../services/backendService').then(m => m.backendService);
             const status = await getScanStatus();
-            const { setScanning, setScanProgress, refreshLibrary } = storeRef.current;
+            const { setScanning, setScanProgress, refreshLibrary, isScanning } = storeRef.current;
+            
+            console.log('📡 SSE connected - checking scan status:', { scanning: status.scanning, progress: status.progress, uiIsScanning: isScanning });
             
             if (status.scanning) {
-              console.log('🔍 SSE reconnected - scan in progress, updating UI state...');
+              // Scan is in progress - make sure UI reflects this
+              console.log('🔍 Scan in progress, updating UI state...');
               setScanning(true);
-              setScanProgress(status.progress || 'Scanning...');
-            } else {
-              // Scan may have just finished while we were disconnected
-              // Refresh the library to get latest state
-              console.log('🔍 SSE reconnected - no scan in progress, refreshing library...');
+              if (status.progress) {
+                setScanProgress(status.progress);
+              }
+            } else if (isReconnectRef.current) {
+              // Only refresh on reconnect if not initial connection
+              // (initial connection already loaded library in initLibrary)
+              console.log('🔍 No scan in progress (reconnect), refreshing library...');
               setScanning(false);
               setScanProgress('');
               refreshLibrary();
             }
           } catch (e) {
-            console.warn('Could not check scan status after SSE reconnect:', e);
+            console.warn('Could not check scan status after SSE connect:', e);
           }
         };
         checkScanStatus();
+        
+        // Mark that next connect will be a reconnect
+        isReconnectRef.current = true;
       };
 
       eventSource.onmessage = (event) => handleEventRef.current(event);

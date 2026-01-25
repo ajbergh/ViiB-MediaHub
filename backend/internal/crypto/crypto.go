@@ -53,8 +53,10 @@ const (
 
 // sensitiveKeys is the list of setting keys that should be encrypted
 var sensitiveKeys = map[string]bool{
-	"spotify_credentials": true,
-	"gemini_api_key":      true,
+	"spotify_credentials":  true,
+	"gemini_api_key":       true,
+	"lastfm_shared_secret": true,
+	"lastfm_session_key":   true,
 }
 
 var (

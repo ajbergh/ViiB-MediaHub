@@ -2,25 +2,39 @@
  * ViiB MediaHub - First Launch Configuration Dialog
  * 
  * Welcome screen shown on first launch to guide users through initial setup.
+ * This multi-step wizard helps configure the essential integrations needed
+ * for the best music experience.
  * 
  * Features:
- * - Multi-step wizard interface
- * - Music folder selection with browser
- * - Optional Spotify integration setup
- * - Skip option for minimal setup
- * - Progress indicators
+ * - Multi-step wizard interface with progress indicator
+ * - Music folder selection with native folder browser
+ * - Optional Spotify integration setup for metadata enrichment
+ * - AI Provider (LLM) configuration for AI DJ and mood analysis
+ * - Last.FM integration for community-powered metadata enrichment
+ * - Enrichment source selection when both LLM and Last.FM are configured
+ * - Skip options at each step for minimal setup
+ * - Automatic library scan trigger on completion
  * 
  * Setup Steps:
- * 1. Welcome screen with overview
- * 2. Add music folder(s)
+ * 1. Welcome screen with feature overview
+ * 2. Add music folder(s) to scan
  * 3. Configure Spotify credentials (optional)
- * 4. Complete and start scanning
+ * 4. Configure AI Provider for AI DJ (optional)
+ * 5. Configure Last.FM for metadata enrichment (optional)
+ * 6. Enrichment source selection (shown only if both LLM and Last.FM configured)
+ * 7. Complete and start scanning
+ * 
+ * State Management:
+ * - Uses Zustand store for scan folders, scanning state, and settings
+ * - Local state for wizard step and form inputs
+ * - Triggers background scan on completion
  * 
  * @module FirstLaunchDialog
+ * @see {@link Settings} for post-setup configuration changes
  */
 
 import React, { useState, useEffect } from 'react';
-import { Music, FolderOpen, Wifi, Check, Loader2, X, Plus, ChevronRight, Sparkles, HardDrive } from 'lucide-react';
+import { Music, FolderOpen, Wifi, Check, Loader2, X, Plus, ChevronRight, Sparkles, HardDrive, AlertCircle } from 'lucide-react';
 import { useStore } from '../store';
 import { api } from '../services/api';
 import { Button } from './ui/Button';
@@ -62,6 +76,18 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
   const [savingLlm, setSavingLlm] = useState(false);
   const [llmTestStatus, setLlmTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [llmTestMessage, setLlmTestMessage] = useState('');
+
+  // Last.FM state for metadata enrichment
+  const [lastfmApiKey, setLastfmApiKey] = useState('');
+  const [lastfmSecret, setLastfmSecret] = useState('');
+  const [lastfmEnabled, setLastfmEnabled] = useState(false);
+  const [savingLastfm, setSavingLastfm] = useState(false);
+  const [lastfmTestStatus, setLastfmTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [lastfmTestMessage, setLastfmTestMessage] = useState('');
+
+  // Enrichment source selection (shown when both LLM and Last.FM are configured)
+  const [enrichmentSource, setEnrichmentSource] = useState<'ai' | 'lastfm' | 'hybrid'>('hybrid');
+  const [savingEnrichmentSource, setSavingEnrichmentSource] = useState(false);
 
   // Spotify download folder browser state
   const [showDownloadFolderBrowser, setShowDownloadFolderBrowser] = useState(false);
@@ -105,8 +131,8 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         console.error('Failed to load LLM settings:', e);
         // Set defaults if backend doesn't return settings
         setLlmProviders([
-          { id: 'ollama', name: 'Ollama (Local)', requiresKey: false, defaultModel: 'llama3.2:8b', description: 'Run AI models locally on your computer' },
-          { id: 'gemini', name: 'Google Gemini', requiresKey: true, defaultModel: 'gemini-2.0-flash', description: 'Cloud-based AI from Google' },
+          { id: 'ollama', name: 'Ollama (Local)', requiresKey: false, defaultModel: 'llama3.2:8b', description: 'Run AI models locally on your computer', freeformModel: true },
+          { id: 'gemini', name: 'Google Gemini', requiresKey: true, defaultModel: 'gemini-2.0-flash', description: 'Cloud-based AI from Google', freeformModel: false },
         ]);
       } finally {
         setLlmLoading(false);
@@ -268,11 +294,62 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       }
 
       addLog('success', 'AI provider settings saved');
-      setStep(5);
+      setStep(5); // Go to Last.FM step
     } catch (e) {
       addLog('error', 'Failed to save AI provider settings', e);
     } finally {
       setSavingLlm(false);
+    }
+  };
+
+  const handleSaveLastfmSettings = async () => {
+    setSavingLastfm(true);
+    try {
+      await api.saveLastFMSettings({
+        apiKey: lastfmApiKey || undefined,
+        sharedSecret: lastfmSecret || undefined,
+        enabled: lastfmEnabled,
+      });
+      addLog('success', 'Last.FM settings saved');
+      
+      // If both LLM provider and Last.FM are configured, show enrichment source selection
+      const hasLLM = llmApiKey || llmProvider === 'ollama';
+      const hasLastFM = lastfmEnabled && lastfmApiKey;
+      
+      if (hasLLM && hasLastFM) {
+        setStep(6); // Go to Enrichment Source selection step
+      } else if (hasLastFM) {
+        // Only Last.FM configured - set enrichment source to lastfm
+        await api.setSetting('enrichment_source', 'lastfm');
+        setStep(7); // Go to Complete step
+      } else {
+        // Only AI or nothing - set enrichment source to ai
+        await api.setSetting('enrichment_source', 'ai');
+        setStep(7); // Go to Complete step
+      }
+    } catch (e) {
+      addLog('error', 'Failed to save Last.FM settings', e);
+    } finally {
+      setSavingLastfm(false);
+    }
+  };
+
+  const handleTestLastfmConnection = async () => {
+    setLastfmTestStatus('testing');
+    setLastfmTestMessage('');
+    try {
+      // First save settings so test uses them
+      await api.saveLastFMSettings({
+        apiKey: lastfmApiKey || undefined,
+        sharedSecret: lastfmSecret || undefined,
+        enabled: true,
+      });
+      const result = await api.testLastFMConnection();
+      setLastfmTestStatus(result.success ? 'success' : 'error');
+      setLastfmTestMessage(result.message);
+    } catch (e) {
+      setLastfmTestStatus('error');
+      setLastfmTestMessage(e instanceof Error ? e.message : 'Connection test failed');
     }
   };
 
@@ -365,7 +442,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
   };
 
   const handleSkipToEnd = () => {
-    setStep(5);
+    setStep(7);
   };
 
   const handleFinish = () => {
@@ -922,7 +999,278 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
     </div>
   );
 
-  // Step 5: Complete Setup
+  // Step 5: Last.FM Setup
+  const renderLastFMSetup = () => (
+    <div className="py-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-3 bg-brand/10 rounded-lg">
+          <Music size={28} className="text-brand" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-white">Last.FM Integration</h2>
+          <p className="text-text-secondary">Enrich your library with community-powered metadata</p>
+        </div>
+      </div>
+
+      <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
+        <div className="flex items-start gap-4 mb-6">
+          <div className="p-3 bg-[#d51007]/10 rounded-lg">
+            <Music size={24} className="text-[#d51007]" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-white mb-2">What is Last.FM?</h3>
+            <p className="text-sm text-text-secondary leading-relaxed">
+              Last.FM provides rich metadata for your music library including genres, tags, 
+              play counts, and similar artist recommendations. It's completely free and helps 
+              power Smart Mixes with accurate genre and style information.
+            </p>
+          </div>
+        </div>
+
+        {/* Enable Toggle */}
+        <div className="flex items-center justify-between py-4 border-b border-surface-border mb-4">
+          <div>
+            <p className="font-medium text-white">Enable Last.FM Enrichment</p>
+            <p className="text-xs text-text-subtle">Automatically fetch metadata when scanning</p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={lastfmEnabled}
+              onChange={(e) => setLastfmEnabled(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-surface-3 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
+          </label>
+        </div>
+
+        {/* API Key Section - Optional */}
+        <div className="space-y-4">
+          <div className="flex items-start gap-2">
+            <AlertCircle size={16} className="text-text-subtle mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-text-subtle">
+              API keys are <strong>optional</strong> for basic metadata. Get free keys at{' '}
+              <a href="https://www.last.fm/api/account/create" target="_blank" rel="noreferrer" className="text-brand hover:underline">
+                last.fm/api
+              </a>
+              {' '}to enable scrobbling and higher rate limits.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
+              API Key (Optional)
+            </label>
+            <TextInput
+              type="password"
+              value={lastfmApiKey}
+              onChange={(e) => {
+                setLastfmApiKey(e.target.value);
+                setLastfmTestStatus('idle');
+              }}
+              placeholder="Your Last.FM API Key"
+              className="w-full bg-surface-2 px-4 py-3"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
+              Shared Secret (Optional)
+            </label>
+            <TextInput
+              type="password"
+              value={lastfmSecret}
+              onChange={(e) => {
+                setLastfmSecret(e.target.value);
+                setLastfmTestStatus('idle');
+              }}
+              placeholder="Your Last.FM Shared Secret"
+              className="w-full bg-surface-2 px-4 py-3"
+            />
+          </div>
+
+          {/* Test Connection Button */}
+          {lastfmApiKey && (
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={handleTestLastfmConnection}
+                disabled={lastfmTestStatus === 'testing'}
+                leftIcon={lastfmTestStatus === 'testing' ? <Loader2 size={16} className="animate-spin" /> : undefined}
+                className="text-sm font-bold"
+              >
+                {lastfmTestStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+              </Button>
+              {lastfmTestStatus === 'success' && (
+                <span className="text-success text-sm flex items-center gap-1">
+                  <Check size={16} /> Connected
+                </span>
+              )}
+              {lastfmTestStatus === 'error' && (
+                <span className="text-error text-sm">{lastfmTestMessage}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <Button
+          variant="ghost"
+          onClick={() => setStep(4)}
+          className="px-0 py-0 text-text-secondary hover:text-text-main hover:bg-transparent"
+        >
+          ← Back
+        </Button>
+
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            onClick={async () => {
+              // Skip Last.FM setup - check if LLM is configured to determine enrichment source
+              const hasLLM = llmApiKey || llmProvider === 'ollama';
+              if (hasLLM) {
+                await api.setSetting('enrichment_source', 'ai');
+              }
+              setStep(7);
+            }}
+            className="px-0 py-0 text-text-subtle hover:text-text-secondary underline hover:bg-transparent"
+          >
+            Skip for now
+          </Button>
+          <Button
+            variant="primary"
+            accent="brand"
+            onClick={handleSaveLastfmSettings}
+            disabled={savingLastfm}
+            leftIcon={savingLastfm ? <Loader2 size={18} className="animate-spin" /> : undefined}
+            rightIcon={!savingLastfm ? <ChevronRight size={18} /> : undefined}
+            className="font-bold py-3 px-6"
+          >
+            {savingLastfm ? 'Saving...' : 'Save & Continue'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Step 6: Enrichment Source Selection (shown when both LLM and Last.FM are configured)
+  const renderEnrichmentSourceSelection = () => {
+    const handleSaveEnrichmentSource = async () => {
+      setSavingEnrichmentSource(true);
+      try {
+        await api.setSetting('enrichment_source', enrichmentSource);
+        addLog('success', `Enrichment source set to: ${enrichmentSource}`);
+        setStep(7);
+      } catch (e) {
+        addLog('error', 'Failed to save enrichment source', e);
+      } finally {
+        setSavingEnrichmentSource(false);
+      }
+    };
+
+    return (
+      <div className="py-6 animate-fade-in">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="p-3 bg-gradient-to-br from-brand/20 to-brand/5 rounded-xl">
+            <Sparkles size={28} className="text-brand" />
+          </div>
+          <div>
+            <h2 className="text-section font-bold text-text-main">
+              Choose Metadata Source
+            </h2>
+            <p className="text-sm text-text-secondary">
+              You've configured both AI and Last.FM - how should we enrich your library?
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4 mb-8">
+          <p className="text-text-secondary">
+            Select how ViiB should automatically tag and categorize your music:
+          </p>
+
+          <div className="space-y-3">
+            <label 
+              className={`flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all ${
+                enrichmentSource === 'lastfm' 
+                  ? 'border-brand bg-brand/10' 
+                  : 'border-surface-border bg-surface-1 hover:border-surface-border-hover'
+              }`}
+              onClick={() => setEnrichmentSource('lastfm')}
+            >
+              <input
+                type="radio"
+                name="enrichmentSource"
+                checked={enrichmentSource === 'lastfm'}
+                onChange={() => setEnrichmentSource('lastfm')}
+                className="mt-1 accent-brand"
+              />
+              <div className="flex-1">
+                <span className="font-medium text-text-main block">Last.FM Only</span>
+                <span className="text-sm text-text-secondary block mt-1">
+                  Use community-powered tags from Last.FM. Free, fast, and based on millions of listeners' tags.
+                  AI is reserved for the AI DJ feature only.
+                </span>
+              </div>
+            </label>
+
+            <label 
+              className={`flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all ${
+                enrichmentSource === 'hybrid' 
+                  ? 'border-brand bg-brand/10' 
+                  : 'border-surface-border bg-surface-1 hover:border-surface-border-hover'
+              }`}
+              onClick={() => setEnrichmentSource('hybrid')}
+            >
+              <input
+                type="radio"
+                name="enrichmentSource"
+                checked={enrichmentSource === 'hybrid'}
+                onChange={() => setEnrichmentSource('hybrid')}
+                className="mt-1 accent-brand"
+              />
+              <div className="flex-1">
+                <span className="font-medium text-text-main block">Hybrid (Recommended)</span>
+                <span className="text-sm text-text-secondary block mt-1">
+                  Try Last.FM first for speed and cost savings, fall back to AI for tracks not found.
+                  Best coverage with minimal AI usage.
+                </span>
+              </div>
+            </label>
+          </div>
+
+          <p className="text-xs text-text-subtle mt-4">
+            You can change this anytime in Settings → Library Intelligence.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <Button
+            variant="ghost"
+            onClick={() => setStep(5)}
+            className="px-0 py-0 text-text-secondary hover:text-text-main hover:bg-transparent"
+          >
+            ← Back
+          </Button>
+
+          <Button
+            variant="primary"
+            accent="brand"
+            onClick={handleSaveEnrichmentSource}
+            disabled={savingEnrichmentSource}
+            leftIcon={savingEnrichmentSource ? <Loader2 size={18} className="animate-spin" /> : undefined}
+            rightIcon={!savingEnrichmentSource ? <ChevronRight size={18} /> : undefined}
+            className="font-bold py-3 px-6"
+          >
+            {savingEnrichmentSource ? 'Saving...' : 'Continue'}
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  // Step 7: Complete Setup
   const renderComplete = () => (
     <div className="text-center py-8">
       <div className="flex justify-center mb-6">
@@ -1019,16 +1367,16 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
         <div className="bg-surface-2 border border-surface-3 rounded-2xl p-8 max-w-3xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
           {/* Progress Indicator */}
-          {step > 1 && step < 5 && (
+          {step > 1 && step < 7 && (
             <div className="mb-8">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-text-subtle uppercase">Setup Progress</span>
-                <span className="text-xs text-text-subtle">Step {step - 1} of 4</span>
+                <span className="text-xs text-text-subtle">Step {step - 1} of 6</span>
               </div>
               <div className="h-2 bg-surface-1 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-brand transition-all duration-500 ease-out rounded-full"
-                  style={{ width: `${((step - 1) / 4) * 100}%` }}
+                  style={{ width: `${((step - 1) / 6) * 100}%` }}
                 />
               </div>
             </div>
@@ -1039,7 +1387,9 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
           {step === 2 && renderFolderSetup()}
           {step === 3 && renderSpotifySetup()}
           {step === 4 && renderGeminiSetup()}
-          {step === 5 && renderComplete()}
+          {step === 5 && renderLastFMSetup()}
+          {step === 6 && renderEnrichmentSourceSelection()}
+          {step === 7 && renderComplete()}
         </div>
       </div>
 

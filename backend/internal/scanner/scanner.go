@@ -9,6 +9,7 @@
 //   - Removal detection: removes songs when source files are deleted
 //   - SSE event broadcasting: notifies frontend of scan progress
 //   - Spotify download monitoring: auto-rescans after downloads complete
+//   - Metadata enrichment: uses Last.FM or LLM based on user settings
 //
 // Supported audio extensions:
 //
@@ -28,6 +29,7 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/lastfm"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	taglib "go.senan.xyz/taglib"
@@ -235,8 +237,10 @@ func (s *Scanner) emitEvent(event LibraryEvent) {
 	s.subscriberMutex.RLock()
 	defer s.subscriberMutex.RUnlock()
 
-	// Only log non-progress events to reduce log noise during bulk operations
-	if event.Type != "background_progress" {
+	// Log library_updated and important events to main log for debugging
+	if event.Type == "library_updated" || event.Type == "scan_started" || event.Type == "scan_complete" {
+		logger.Scanner("SSE Broadcasting '%s' to %d subscribers: %s", event.Type, len(s.subscribers), event.Message)
+	} else if event.Type != "background_progress" {
 		logger.ScannerDebug("Broadcasting event to %d subscribers: %s - %s", len(s.subscribers), event.Type, event.Message)
 	}
 
@@ -552,97 +556,32 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 	s.setProgress(fmt.Sprintf("Scan complete: %d files found, %d new, %d updated, %d removed (%s)",
 		result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.RemovedSongs, result.Duration.Round(time.Millisecond)))
 
-	// Check for LLM provider and trigger enrichment
-	provider, err := llm.GetConfiguredProvider(s.db)
-	if err == nil {
-		defer provider.Close()
+	// Check enrichment source setting to determine enrichment method
+	enrichmentSource, _ := s.db.GetSetting("enrichment_source")
+	if enrichmentSource == "" {
+		enrichmentSource = "ai" // Default to AI
+	}
 
-		// Get total count of songs needing enrichment
-		allSongsToEnrich, err := s.db.GetSongsWithMissingGenres(10000)
-		if err == nil && len(allSongsToEnrich) > 0 {
-			totalToEnrich := len(allSongsToEnrich)
-			batchSize := provider.GetOptimalBatchSize()
-			totalBatches := (totalToEnrich + batchSize - 1) / batchSize
+	logger.Scanner("Enrichment source configured: %s", enrichmentSource)
 
-			logger.Scanner("Found %d songs with missing genres, starting enrichment (%d batches) using %s...", totalToEnrich, totalBatches, provider.GetProviderName())
+	// Handle Last.FM enrichment
+	if enrichmentSource == "lastfm" || enrichmentSource == "hybrid" {
+		// Check if Last.FM is enabled and configured
+		lastfmEnabled, _ := s.db.GetSetting("lastfm_enabled")
+		lastfmAPIKey, _ := s.db.GetSetting("lastfm_api_key")
 
-			// Emit enrichment started event
-			s.emitEvent(LibraryEvent{
-				Type:    "enrichment_started",
-				Message: fmt.Sprintf("Starting genre enrichment for %d songs", totalToEnrich),
-				Data: map[string]interface{}{
-					"totalSongs":   totalToEnrich,
-					"totalBatches": totalBatches,
-				},
-			})
-
-			totalEnriched := 0
-
-			for batch := 0; batch < totalBatches; batch++ {
-				start := batch * batchSize
-				end := start + batchSize
-				if end > totalToEnrich {
-					end = totalToEnrich
-				}
-
-				songsToEnrich := allSongsToEnrich[start:end]
-
-				// Emit progress event before processing
-				s.emitEvent(LibraryEvent{
-					Type:    "enrichment_progress",
-					Message: fmt.Sprintf("Enriching batch %d of %d", batch+1, totalBatches),
-					Data: map[string]interface{}{
-						"currentBatch":   batch + 1,
-						"totalBatches":   totalBatches,
-						"processedSongs": totalEnriched,
-						"totalSongs":     totalToEnrich,
-					},
-				})
-
-				enrichedGenres, err := provider.EnrichGenres(context.Background(), songsToEnrich)
-				if err != nil {
-					logger.Scanner("LLM enrichment failed for batch %d: %v", batch+1, err)
-					continue
-				}
-
-				batchEnriched := 0
-				for songID, genres := range enrichedGenres {
-					if err := s.db.UpdateSongGenres(songID, genres); err == nil {
-						totalEnriched++
-						batchEnriched++
-					}
-				}
-
-				logger.Scanner("Batch %d/%d: Enriched %d songs (total: %d/%d)", batch+1, totalBatches, batchEnriched, totalEnriched, totalToEnrich)
-
-				// Emit progress event after batch completes with updated count
-				s.emitEvent(LibraryEvent{
-					Type:    "enrichment_progress",
-					Message: fmt.Sprintf("Completed batch %d of %d (%d songs)", batch+1, totalBatches, batchEnriched),
-					Data: map[string]interface{}{
-						"currentBatch":   batch + 1,
-						"totalBatches":   totalBatches,
-						"processedSongs": totalEnriched,
-						"totalSongs":     totalToEnrich,
-					},
-				})
-			}
-
-			if totalEnriched > 0 {
-				s.emitEvent(LibraryEvent{
-					Type:    "enrichment_complete",
-					Message: fmt.Sprintf("Enriched %d songs with genres", totalEnriched),
-					Data: map[string]interface{}{
-						"enrichedSongs": totalEnriched,
-						"totalSongs":    totalToEnrich,
-					},
-				})
-				logger.Scanner("Enriched %d songs with genres via %s", totalEnriched, provider.GetProviderName())
-
-				// Update stats after enrichment
-				s.db.UpdateGenreStats()
-			}
+		if lastfmEnabled == "true" && lastfmAPIKey != "" {
+			logger.Scanner("Using Last.FM for metadata enrichment...")
+			s.enrichWithLastFM()
+		} else if enrichmentSource == "hybrid" {
+			logger.Scanner("Last.FM not configured, falling back to AI enrichment...")
+			s.enrichWithLLM()
+		} else {
+			logger.Scanner("Last.FM enrichment selected but not configured")
 		}
+	} else {
+		// Use AI/LLM enrichment
+		s.enrichWithLLM()
 	}
 
 	// Reset download counter after scan
@@ -827,6 +766,214 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 
 	logger.Scanner("Completed scan of %s: %d files, %d errors", folderPath, fileCount, result.Errors)
 	return result, scannedPaths, nil
+}
+
+// enrichWithLastFM enriches songs using Last.FM API.
+// Gets songs needing enrichment and uses Last.FM tags to update genres.
+func (s *Scanner) enrichWithLastFM() {
+	// Get songs needing enrichment (those without genres or Last.FM data)
+	songsToEnrich, err := s.db.GetSongsWithMissingGenres(10000)
+	if err != nil {
+		logger.Scanner("Error getting songs for Last.FM enrichment: %v", err)
+		return
+	}
+
+	if len(songsToEnrich) == 0 {
+		logger.Scanner("No songs need enrichment")
+		return
+	}
+
+	// Get Last.FM API key
+	apiKey, _ := s.db.GetSetting("lastfm_api_key")
+	if apiKey == "" {
+		logger.Scanner("Last.FM API key not configured")
+		return
+	}
+
+	// Create Last.FM client
+	client := lastfm.NewClient(apiKey, "")
+	enricher := lastfm.NewEnricher(client, s.db)
+
+	totalToEnrich := len(songsToEnrich)
+	batchSize := 50 // Process in batches for progress updates
+	totalBatches := (totalToEnrich + batchSize - 1) / batchSize
+
+	logger.Scanner("Starting Last.FM enrichment for %d songs (%d batches)...", totalToEnrich, totalBatches)
+
+	// Emit enrichment started event
+	s.emitEvent(LibraryEvent{
+		Type:    "enrichment_started",
+		Message: fmt.Sprintf("Starting Last.FM enrichment for %d songs", totalToEnrich),
+		Data: map[string]interface{}{
+			"totalSongs":   totalToEnrich,
+			"totalBatches": totalBatches,
+		},
+	})
+
+	totalEnriched := 0
+
+	for batch := 0; batch < totalBatches; batch++ {
+		start := batch * batchSize
+		end := start + batchSize
+		if end > totalToEnrich {
+			end = totalToEnrich
+		}
+
+		batchSongs := songsToEnrich[start:end]
+
+		// Emit progress event
+		s.emitEvent(LibraryEvent{
+			Type:    "enrichment_progress",
+			Message: fmt.Sprintf("Last.FM enrichment batch %d of %d", batch+1, totalBatches),
+			Data: map[string]interface{}{
+				"currentBatch":   batch + 1,
+				"totalBatches":   totalBatches,
+				"processedSongs": totalEnriched,
+				"totalSongs":     totalToEnrich,
+			},
+		})
+
+		// Enrich batch with Last.FM
+		result, err := enricher.EnrichSongs(context.Background(), batchSongs, lastfm.EnrichOptions{
+			MinTagCount:    30,
+			MaxConcurrency: 3,
+			FetchSimilar:   false, // Don't fetch similar tracks during scan for speed
+		})
+		if err != nil {
+			logger.Scanner("Last.FM enrichment error for batch %d: %v", batch+1, err)
+			continue
+		}
+
+		totalEnriched += result.Enriched
+		logger.Scanner("Batch %d/%d: Enriched %d songs via Last.FM (total: %d/%d)",
+			batch+1, totalBatches, result.Enriched, totalEnriched, totalToEnrich)
+
+		// Emit progress after batch
+		s.emitEvent(LibraryEvent{
+			Type:    "enrichment_progress",
+			Message: fmt.Sprintf("Completed Last.FM batch %d of %d (%d songs)", batch+1, totalBatches, result.Enriched),
+			Data: map[string]interface{}{
+				"currentBatch":   batch + 1,
+				"totalBatches":   totalBatches,
+				"processedSongs": totalEnriched,
+				"totalSongs":     totalToEnrich,
+			},
+		})
+	}
+
+	if totalEnriched > 0 {
+		s.emitEvent(LibraryEvent{
+			Type:    "enrichment_complete",
+			Message: fmt.Sprintf("Last.FM enriched %d songs", totalEnriched),
+			Data: map[string]interface{}{
+				"enrichedSongs": totalEnriched,
+				"totalSongs":    totalToEnrich,
+			},
+		})
+		logger.Scanner("Last.FM enrichment complete: %d songs enriched", totalEnriched)
+		s.db.UpdateGenreStats()
+	}
+}
+
+// enrichWithLLM enriches songs using AI/LLM provider.
+// Falls back gracefully if no LLM is configured.
+func (s *Scanner) enrichWithLLM() {
+	provider, err := llm.GetConfiguredProvider(s.db)
+	if err != nil {
+		logger.Scanner("No LLM provider configured for enrichment: %v", err)
+		return
+	}
+	defer provider.Close()
+
+	// Get songs needing enrichment
+	allSongsToEnrich, err := s.db.GetSongsWithMissingGenres(10000)
+	if err != nil || len(allSongsToEnrich) == 0 {
+		logger.Scanner("No songs need LLM enrichment")
+		return
+	}
+
+	totalToEnrich := len(allSongsToEnrich)
+	batchSize := provider.GetOptimalBatchSize()
+	totalBatches := (totalToEnrich + batchSize - 1) / batchSize
+
+	logger.Scanner("Starting LLM enrichment for %d songs (%d batches) using %s...",
+		totalToEnrich, totalBatches, provider.GetProviderName())
+
+	// Emit enrichment started event
+	s.emitEvent(LibraryEvent{
+		Type:    "enrichment_started",
+		Message: fmt.Sprintf("Starting AI enrichment for %d songs", totalToEnrich),
+		Data: map[string]interface{}{
+			"totalSongs":   totalToEnrich,
+			"totalBatches": totalBatches,
+		},
+	})
+
+	totalEnriched := 0
+
+	for batch := 0; batch < totalBatches; batch++ {
+		start := batch * batchSize
+		end := start + batchSize
+		if end > totalToEnrich {
+			end = totalToEnrich
+		}
+
+		songsToEnrich := allSongsToEnrich[start:end]
+
+		// Emit progress event before processing
+		s.emitEvent(LibraryEvent{
+			Type:    "enrichment_progress",
+			Message: fmt.Sprintf("AI enrichment batch %d of %d", batch+1, totalBatches),
+			Data: map[string]interface{}{
+				"currentBatch":   batch + 1,
+				"totalBatches":   totalBatches,
+				"processedSongs": totalEnriched,
+				"totalSongs":     totalToEnrich,
+			},
+		})
+
+		enrichedGenres, err := provider.EnrichGenres(context.Background(), songsToEnrich)
+		if err != nil {
+			logger.Scanner("LLM enrichment failed for batch %d: %v", batch+1, err)
+			continue
+		}
+
+		batchEnriched := 0
+		for songID, genres := range enrichedGenres {
+			if err := s.db.UpdateSongGenres(songID, genres); err == nil {
+				totalEnriched++
+				batchEnriched++
+			}
+		}
+
+		logger.Scanner("Batch %d/%d: Enriched %d songs via %s (total: %d/%d)",
+			batch+1, totalBatches, batchEnriched, provider.GetProviderName(), totalEnriched, totalToEnrich)
+
+		// Emit progress event after batch
+		s.emitEvent(LibraryEvent{
+			Type:    "enrichment_progress",
+			Message: fmt.Sprintf("Completed AI batch %d of %d (%d songs)", batch+1, totalBatches, batchEnriched),
+			Data: map[string]interface{}{
+				"currentBatch":   batch + 1,
+				"totalBatches":   totalBatches,
+				"processedSongs": totalEnriched,
+				"totalSongs":     totalToEnrich,
+			},
+		})
+	}
+
+	if totalEnriched > 0 {
+		s.emitEvent(LibraryEvent{
+			Type:    "enrichment_complete",
+			Message: fmt.Sprintf("AI enriched %d songs with genres", totalEnriched),
+			Data: map[string]interface{}{
+				"enrichedSongs": totalEnriched,
+				"totalSongs":    totalToEnrich,
+			},
+		})
+		logger.Scanner("LLM enrichment complete: %d songs enriched via %s", totalEnriched, provider.GetProviderName())
+		s.db.UpdateGenreStats()
+	}
 }
 
 // SongMetadata holds extracted metadata from an audio file

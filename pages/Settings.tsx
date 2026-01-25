@@ -10,9 +10,16 @@
  * - Spotify: OAuth credentials, download location, concurrent downloads
  * - Library Intelligence: AI-powered features
  *   - AI Provider: Configure LLM provider (Gemini, OpenAI, Anthropic, Ollama, X.AI)
+ *   - Last.FM Integration: Community-sourced metadata enrichment (added 2025-12-31)
  *   - Genre Enrichment: Uses configured AI to populate genre metadata
  *   - Unified Enrichment: Full metadata enrichment (genres, mood, energy, tempo, BPM, year)
  * - Activity Log: Debug log viewer
+ * 
+ * Last.FM Features (added 2025-12-31):
+ * - API key and shared secret configuration
+ * - Connection testing
+ * - Optional scrobbling with username/password authentication
+ * - Last.FM-based enrichment trigger
  * 
  * Folder browser dialogs allow navigation and selection of:
  * - Music scan directories
@@ -28,7 +35,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap } from 'lucide-react';
+import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music } from 'lucide-react';
 import { useStore } from '../store';
 import { VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
@@ -119,6 +126,26 @@ export const Settings: React.FC = () => {
   const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingBrowser, setLoadingBrowser] = useState(false);
 
+  // Last.FM Settings State
+  const [lastfmApiKey, setLastfmApiKey] = useState('');
+  const [lastfmSecret, setLastfmSecret] = useState('');
+  const [lastfmEnabled, setLastfmEnabled] = useState(false);
+  const [lastfmUsername, setLastfmUsername] = useState('');
+  const [lastfmPassword, setLastfmPassword] = useState('');
+  const [lastfmConfigured, setLastfmConfigured] = useState(false);
+  const [lastfmConnected, setLastfmConnected] = useState(false);
+  const [lastfmCanScrobble, setLastfmCanScrobble] = useState(false);
+  const [lastfmLoading, setLastfmLoading] = useState(false);
+  const [lastfmSaveStatus, setLastfmSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [lastfmTestStatus, setLastfmTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [lastfmTestMessage, setLastfmTestMessage] = useState('');
+  const [lastfmEnrichStatus, setLastfmEnrichStatus] = useState('');
+  const [lastfmEnrichProgress, setLastfmEnrichProgress] = useState<{ queued: number } | null>(null);
+  const [isLastfmEnriching, setIsLastfmEnriching] = useState(false);
+  
+  // Enrichment Source Selection - controls whether to use AI or Last.FM for metadata
+  const [enrichmentSource, setEnrichmentSource] = useState<'ai' | 'lastfm' | 'hybrid'>('ai');
+
   // Load LLM Settings
   useEffect(() => {
       const loadLLMSettings = async () => {
@@ -139,6 +166,41 @@ export const Settings: React.FC = () => {
       };
       if (backendAvailable) {
           loadLLMSettings();
+      }
+  }, [backendAvailable]);
+
+  // Load Last.FM Settings
+  useEffect(() => {
+      const loadLastFMSettings = async () => {
+          try {
+              setLastfmLoading(true);
+              const settings = await api.getLastFMSettings();
+              setLastfmConfigured(settings.apiKey !== '');
+              setLastfmEnabled(settings.enabled);
+              setLastfmUsername(settings.username || '');
+              // Load enrichment source preference (default to 'ai' if not set)
+              setEnrichmentSource(settings.enrichmentSource || 'ai');
+              // Don't load masked API key into input
+              if (settings.apiKey && !settings.apiKey.includes('...')) {
+                  setLastfmApiKey(settings.apiKey);
+              }
+              
+              // Get status for connection info
+              try {
+                  const status = await api.getLastFMStatus();
+                  setLastfmConnected(status.connected);
+                  setLastfmCanScrobble(status.canScrobble);
+              } catch (e) {
+                  console.error('Failed to get Last.FM status:', e);
+              }
+          } catch (e) {
+              console.error('Failed to load Last.FM settings:', e);
+          } finally {
+              setLastfmLoading(false);
+          }
+      };
+      if (backendAvailable) {
+          loadLastFMSettings();
       }
   }, [backendAvailable]);
 
@@ -1451,15 +1513,364 @@ export const Settings: React.FC = () => {
             )}
           </div>
 
+          {/* Last.FM Integration */}
+          <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
+            <h3 className="text-lg font-bold text-text-main mb-2">Last.FM Integration</h3>
+            <p className="text-text-subtle text-sm mb-4">
+              Use Last.FM's community-sourced tags and metadata as an alternative to AI enrichment.
+              Free API with no usage costs. Can also enable scrobbling to track your listening history.
+            </p>
+
+            {lastfmLoading ? (
+              <div className="flex items-center gap-2 text-text-subtle">
+                <Loader2 size={16} className="animate-spin" />
+                Loading Last.FM settings...
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {/* Connection Status */}
+                {lastfmConfigured && (
+                  <div className={`flex items-center gap-2 text-sm ${lastfmConnected ? 'text-success' : 'text-text-subtle'}`}>
+                    <span className={`w-2 h-2 rounded-full ${lastfmConnected ? 'bg-success' : 'bg-text-subtle'} inline-block`}></span>
+                    {lastfmConnected ? 'Connected to Last.FM' : 'Not connected'} 
+                    {lastfmCanScrobble && ' • Scrobbling enabled'}
+                    {lastfmUsername && ` • ${lastfmUsername}`}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* API Key */}
+                  <div>
+                    <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
+                      API Key
+                    </label>
+                    <TextInput
+                      type="password"
+                      value={lastfmApiKey}
+                      onChange={(e) => {
+                        setLastfmApiKey(e.target.value);
+                        setLastfmSaveStatus('idle');
+                      }}
+                      placeholder={lastfmConfigured ? 'API Key saved (hidden)' : 'Enter your Last.FM API Key'}
+                      className="w-full bg-surface-3"
+                    />
+                  </div>
+
+                  {/* Shared Secret */}
+                  <div>
+                    <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">
+                      Shared Secret
+                    </label>
+                    <TextInput
+                      type="password"
+                      value={lastfmSecret}
+                      onChange={(e) => {
+                        setLastfmSecret(e.target.value);
+                        setLastfmSaveStatus('idle');
+                      }}
+                      placeholder="Enter your Shared Secret"
+                      className="w-full bg-surface-3"
+                    />
+                    <p className="text-xs text-text-subtle mt-1">
+                      Get your API key from <a href="https://www.last.fm/api/account/create" target="_blank" rel="noreferrer" className="text-brand hover:underline">last.fm/api/account/create</a>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Enable Toggle */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="lastfm-enabled"
+                    checked={lastfmEnabled}
+                    onChange={(e) => {
+                      setLastfmEnabled(e.target.checked);
+                      setLastfmSaveStatus('idle');
+                    }}
+                    className="rounded border-surface-border bg-surface-3 text-brand focus:ring-brand"
+                  />
+                  <label htmlFor="lastfm-enabled" className="text-sm text-text-main cursor-pointer select-none">
+                    Enable Last.FM integration
+                  </label>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="primary"
+                    onClick={async () => {
+                      try {
+                        setLastfmSaveStatus('saving');
+                        await api.saveLastFMSettings({
+                          apiKey: lastfmApiKey || undefined,
+                          sharedSecret: lastfmSecret || undefined,
+                          enabled: lastfmEnabled,
+                        });
+                        setLastfmConfigured(true);
+                        setLastfmSaveStatus('saved');
+                        setTimeout(() => setLastfmSaveStatus('idle'), 3000);
+                      } catch (e) {
+                        console.error('Failed to save Last.FM settings:', e);
+                        setLastfmSaveStatus('error');
+                      }
+                    }}
+                    disabled={lastfmSaveStatus === 'saving'}
+                    leftIcon={lastfmSaveStatus === 'saving' ? <Loader2 size={16} className="animate-spin" /> : undefined}
+                    className="text-sm font-bold"
+                  >
+                    {lastfmSaveStatus === 'saved' ? 'Saved!' : lastfmSaveStatus === 'saving' ? 'Saving...' : 'Save Settings'}
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      try {
+                        setLastfmTestStatus('testing');
+                        setLastfmTestMessage('');
+                        const result = await api.testLastFMConnection();
+                        setLastfmTestStatus(result.success ? 'success' : 'error');
+                        setLastfmTestMessage(result.message);
+                        setLastfmConnected(result.success);
+                        setTimeout(() => setLastfmTestStatus('idle'), 5000);
+                      } catch (e) {
+                        console.error('Failed to test Last.FM connection:', e);
+                        setLastfmTestStatus('error');
+                        setLastfmTestMessage(e instanceof Error ? e.message : 'Unknown error');
+                      }
+                    }}
+                    disabled={lastfmTestStatus === 'testing' || !lastfmConfigured}
+                    leftIcon={lastfmTestStatus === 'testing' ? <Loader2 size={16} className="animate-spin" /> : undefined}
+                    className="text-sm font-bold"
+                  >
+                    {lastfmTestStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+                  </Button>
+                </div>
+
+                {/* Test Result */}
+                {lastfmTestStatus !== 'idle' && lastfmTestStatus !== 'testing' && lastfmTestMessage && (
+                  <div className={`text-sm p-2 rounded ${lastfmTestStatus === 'success' ? 'bg-success/20 text-success' : 'bg-error/20 text-error'}`}>
+                    {lastfmTestMessage}
+                  </div>
+                )}
+
+                {/* Scrobbling Authentication (Optional) */}
+                {lastfmEnabled && lastfmConfigured && (
+                  <div className="border-t border-surface-border pt-4">
+                    <h4 className="text-sm font-bold text-text-main mb-2">Scrobbling (Optional)</h4>
+                    <p className="text-text-subtle text-xs mb-3">
+                      Authenticate with your Last.FM account to track your listening history.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <TextInput
+                        value={lastfmUsername}
+                        onChange={(e) => setLastfmUsername(e.target.value)}
+                        placeholder="Last.FM Username"
+                        className="bg-surface-3"
+                      />
+                      <TextInput
+                        type="password"
+                        value={lastfmPassword}
+                        onChange={(e) => setLastfmPassword(e.target.value)}
+                        placeholder="Last.FM Password"
+                        className="bg-surface-3"
+                      />
+                    </div>
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          const result = await api.authenticateLastFM(lastfmUsername, lastfmPassword);
+                          if (result.success) {
+                            setLastfmCanScrobble(true);
+                            setLastfmPassword(''); // Clear password after auth
+                            addLog('success', `Authenticated with Last.FM as ${result.username}`);
+                          }
+                        } catch (e) {
+                          addLog('error', 'Last.FM authentication failed', e);
+                        }
+                      }}
+                      disabled={!lastfmUsername || !lastfmPassword}
+                      className="text-sm font-bold mt-2"
+                    >
+                      Authenticate for Scrobbling
+                    </Button>
+                  </div>
+                )}
+
+                {/* Last.FM Enrichment Trigger */}
+                {lastfmEnabled && lastfmConnected && (
+                  <div className="border-t border-surface-border pt-4">
+                    <h4 className="text-sm font-bold text-text-main mb-2">Last.FM Enrichment</h4>
+                    <p className="text-text-subtle text-xs mb-3">
+                      Enrich your library with Last.FM's community tags, similar tracks, and popularity data.
+                    </p>
+                    <Button
+                      variant="primary"
+                      onClick={async () => {
+                        try {
+                          setIsLastfmEnriching(true);
+                          setLastfmEnrichStatus('Starting Last.FM enrichment...');
+                          const result = await api.triggerLastFMEnrichment({
+                            limit: 500,
+                            fetchSimilar: true,
+                          });
+                          setLastfmEnrichProgress({ queued: result.queued });
+                          setLastfmEnrichStatus(result.message);
+                          if (!result.inFlight) {
+                            setIsLastfmEnriching(false);
+                          }
+                          // Poll for completion (simplified - real impl might use SSE)
+                          setTimeout(() => {
+                            setIsLastfmEnriching(false);
+                            setLastfmEnrichProgress(null);
+                          }, 5000);
+                        } catch (e) {
+                          setIsLastfmEnriching(false);
+                          setLastfmEnrichStatus(`Error: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                        }
+                      }}
+                      disabled={isLastfmEnriching}
+                      leftIcon={isLastfmEnriching ? <Loader2 size={16} className="animate-spin" /> : undefined}
+                      className="text-sm font-bold"
+                    >
+                      {isLastfmEnriching ? 'Enriching...' : '🎵 Enrich with Last.FM'}
+                    </Button>
+                    {lastfmEnrichStatus && (
+                      <p className={`text-xs mt-2 ${lastfmEnrichStatus.startsWith('Error') ? 'text-error' : 'text-text-subtle'}`}>
+                        {lastfmEnrichStatus}
+                        {lastfmEnrichProgress && ` (${lastfmEnrichProgress.queued} songs queued)`}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Enrichment Source Selection */}
+          <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
+            <h3 className="text-lg font-bold text-text-main mb-2">Metadata Enrichment Source</h3>
+            <p className="text-text-subtle text-sm mb-4">
+              Choose which system to use for automatic metadata enrichment during library scans.
+              AI DJ features will still use the configured AI provider regardless of this setting.
+            </p>
+            
+            <div className="space-y-3">
+              <label className="flex items-start gap-3 p-3 rounded-lg border border-surface-border hover:border-brand/50 cursor-pointer transition-colors">
+                <input
+                  type="radio"
+                  name="enrichment-source"
+                  value="ai"
+                  checked={enrichmentSource === 'ai'}
+                  onChange={() => {
+                    setEnrichmentSource('ai');
+                    // Auto-save preference
+                    api.saveLastFMSettings({ enrichmentSource: 'ai' }).catch(console.error);
+                  }}
+                  className="mt-1 text-brand focus:ring-brand"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={16} className="text-brand" />
+                    <span className="font-medium text-text-main">AI Enrichment</span>
+                    {enrichmentSource === 'ai' && (
+                      <span className="text-xs bg-brand/20 text-brand px-2 py-0.5 rounded-full">Active</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-text-subtle mt-1">
+                    Uses configured LLM provider (Gemini, OpenAI, Anthropic, Ollama) for genre, mood, energy, and tempo analysis.
+                    May incur API costs depending on provider.
+                  </p>
+                </div>
+              </label>
+
+              <label className={`flex items-start gap-3 p-3 rounded-lg border border-surface-border hover:border-brand/50 cursor-pointer transition-colors ${!lastfmConfigured ? 'opacity-50' : ''}`}>
+                <input
+                  type="radio"
+                  name="enrichment-source"
+                  value="lastfm"
+                  checked={enrichmentSource === 'lastfm'}
+                  onChange={() => {
+                    if (lastfmConfigured) {
+                      setEnrichmentSource('lastfm');
+                      // Auto-save preference
+                      api.saveLastFMSettings({ enrichmentSource: 'lastfm' }).catch(console.error);
+                    }
+                  }}
+                  disabled={!lastfmConfigured}
+                  className="mt-1 text-brand focus:ring-brand"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Music size={16} className="text-[#d51007]" />
+                    <span className="font-medium text-text-main">Last.FM Enrichment</span>
+                    {enrichmentSource === 'lastfm' && (
+                      <span className="text-xs bg-brand/20 text-brand px-2 py-0.5 rounded-full">Active</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-text-subtle mt-1">
+                    Uses Last.FM's community-sourced tags and metadata. Free, no API costs.
+                    {!lastfmConfigured && <span className="text-warning"> Configure Last.FM above to enable.</span>}
+                  </p>
+                </div>
+              </label>
+
+              <label className={`flex items-start gap-3 p-3 rounded-lg border border-surface-border hover:border-brand/50 cursor-pointer transition-colors ${!lastfmConfigured ? 'opacity-50' : ''}`}>
+                <input
+                  type="radio"
+                  name="enrichment-source"
+                  value="hybrid"
+                  checked={enrichmentSource === 'hybrid'}
+                  onChange={() => {
+                    if (lastfmConfigured) {
+                      setEnrichmentSource('hybrid');
+                      // Auto-save preference
+                      api.saveLastFMSettings({ enrichmentSource: 'hybrid' }).catch(console.error);
+                    }
+                  }}
+                  disabled={!lastfmConfigured}
+                  className="mt-1 text-brand focus:ring-brand"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Zap size={16} className="text-warning" />
+                    <span className="font-medium text-text-main">Hybrid Mode</span>
+                    {enrichmentSource === 'hybrid' && (
+                      <span className="text-xs bg-brand/20 text-brand px-2 py-0.5 rounded-full">Active</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-text-subtle mt-1">
+                    Uses Last.FM first for free metadata, falls back to AI for songs not found in Last.FM.
+                    Best coverage with minimal API costs.
+                    {!lastfmConfigured && <span className="text-warning"> Configure Last.FM above to enable.</span>}
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
           {/* Genre Enrichment - Uses Unified LLM */}
           <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
-            <h3 className="text-lg font-bold text-text-main mb-2">Genre Enrichment</h3>
+            <h3 className="text-lg font-bold text-text-main mb-2">Genre Enrichment (AI-Powered)</h3>
             <p className="text-text-subtle text-sm mb-4">
               Use AI to automatically populate detailed genre information for your songs. 
               This enables smarter "Vibe" mixes and better organization.
             </p>
             
             <div className="flex flex-col gap-4">
+              {/* Note when Last.FM is the enrichment source */}
+              {enrichmentSource === 'lastfm' && (
+                <div className="bg-surface-2 border border-blue-500/30 rounded-lg p-3">
+                  <p className="text-sm text-text-subtle flex items-center gap-2">
+                    <Music size={16} className="text-[#d51007]" />
+                    <span>
+                      <strong>Last.FM is your current enrichment source.</strong> The button below 
+                      is for manual AI enrichment. Automatic enrichment during scans uses Last.FM.
+                    </span>
+                  </p>
+                </div>
+              )}
+
               {/* Status based on AI Provider */}
               {llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey) ? (
                 <div className="text-brand text-sm flex items-center gap-1">
