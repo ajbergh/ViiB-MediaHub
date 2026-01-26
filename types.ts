@@ -239,6 +239,8 @@ export interface AudioSettings {
   visualizerFullscreenEnabled: boolean;
   /** Opacity of fullscreen background visualizer (0-100) */
   visualizerFullscreenOpacity: number;
+  /** Background visualizer mode - can differ from album art mode */
+  visualizerBackgroundMode: VisualizerMode;
   eqEnabled: boolean;
   eqBands: number[]; // 10 bands, -12 to +12 dB
   activePresetId: string;

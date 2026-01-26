@@ -66,7 +66,7 @@
 
 import React, { useState } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers } from 'lucide-react';
 import { formatTime, generateGradient, cssUrl } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { api } from '../services/api';
@@ -75,6 +75,7 @@ import { LyricsView } from './now-playing/LyricsView';
 import { QueueList } from './now-playing/QueueList';
 import { WebGLVisualizer } from './now-playing/webgl';
 import { MilkdropVisualizer } from './now-playing/MilkdropVisualizer';
+import { VisualizerSelector } from './now-playing/VisualizerSelector';
 import { LikeButton } from './LikeButton';
 import { Button } from './ui/Button';
 import { VIIB_COLOR_VALUES } from './ui/tokens';
@@ -112,6 +113,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS'>('LYRICS');
     const [isDownloading, setIsDownloading] = useState(false);
     const [showVisualizerOverlay, setShowVisualizerOverlay] = useState(false);
+    const [showVisualizerSelector, setShowVisualizerSelector] = useState(false);
 
     if (!currentSong) return null;
 
@@ -210,9 +212,10 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
             </div>
 
             {/* Fullscreen Background Visualizer - Behind all UI when enabled */}
-            {audioSettings.visualizerFullscreenEnabled && audioSettings.visualizerMode !== 'OFF' && isPlaying && (
+            {/* Uses separate visualizerBackgroundMode so it can differ from album art overlay */}
+            {audioSettings.visualizerFullscreenEnabled && audioSettings.visualizerBackgroundMode !== 'OFF' && isPlaying && (
                 <>
-                    {audioSettings.visualizerMode === 'MILKDROP' ? (
+                    {audioSettings.visualizerBackgroundMode === 'MILKDROP' ? (
                         <MilkdropVisualizer
                             settings={milkdropSettings}
                             isActive={true}
@@ -227,7 +230,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                             style={{ opacity: (audioSettings.visualizerFullscreenOpacity ?? 20) / 100 }}
                         >
                             <WebGLVisualizer 
-                                mode={audioSettings.visualizerMode}
+                                mode={audioSettings.visualizerBackgroundMode}
                                 isActive={true}
                             />
                         </div>
@@ -257,6 +260,19 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button
+                        onClick={() => setShowVisualizerSelector(true)}
+                        variant="ghost"
+                        className={`rounded-full p-2 backdrop-blur-md ${
+                            audioSettings.visualizerMode !== 'OFF' || audioSettings.visualizerFullscreenEnabled 
+                                ? 'text-brand bg-surface-1/50 ring-1 ring-brand/20' 
+                                : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'
+                        }`}
+                        title="Visualizer Layers"
+                        aria-label="Open visualizer layer selector"
+                    >
+                        <Layers size={24} />
+                    </Button>
                     <Button
                         onClick={cycleVisualizer}
                         variant="ghost"
@@ -501,6 +517,12 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     </div>
                  </div>
             </div>
+            
+            {/* Visualizer Layer Selector Modal */}
+            <VisualizerSelector 
+                isOpen={showVisualizerSelector} 
+                onClose={() => setShowVisualizerSelector(false)} 
+            />
         </div>
     );
 };

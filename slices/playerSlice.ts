@@ -98,6 +98,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         visualizerArtworkOpacity: 30,         // Show artwork at 30% when visualizer active
         visualizerFullscreenEnabled: false,   // Fullscreen background visualizer off by default
         visualizerFullscreenOpacity: 20,      // Fullscreen background at 20% opacity
+        visualizerBackgroundMode: 'AURORA_RIBBON', // Background visualizer mode (can differ from album art)
         eqEnabled: false,
         eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         activePresetId: 'flat',
@@ -360,6 +361,13 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     setVisualizerMode: (mode) => {
         set((state) => {
             const newSettings = { ...state.audioSettings, visualizerMode: mode };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setVisualizerBackgroundMode: (mode) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, visualizerBackgroundMode: mode };
             saveAudioSettingsToBackend(newSettings);
             return { audioSettings: newSettings };
         });

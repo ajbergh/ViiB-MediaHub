@@ -60,6 +60,7 @@ export interface PlayerSlice {
   playQueueItem: (index: number) => void;
   
   setVisualizerMode: (mode: VisualizerMode) => void;
+  setVisualizerBackgroundMode: (mode: VisualizerMode) => void;
   setVisualizerArtworkOpacity: (opacity: number) => void;
   setVisualizerFullscreenEnabled: (enabled: boolean) => void;
   setVisualizerFullscreenOpacity: (opacity: number) => void;
