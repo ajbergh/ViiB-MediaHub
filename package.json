@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "buffer": "5.7.1",
+    "butterchurn": "^2.6.7",
+    "butterchurn-presets": "^2.4.7",
     "idb": "8.0.0",
     "lucide-react": "^0.554.0",
     "music-metadata": "10.0.0",

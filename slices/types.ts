@@ -22,7 +22,7 @@
  */
 
 import React from 'react';
-import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType } from '../types';
+import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType, MilkdropSettings } from '../types';
 import { SmartPlaylistFilter, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
 
 export interface PlayerSlice {
@@ -33,6 +33,10 @@ export interface PlayerSlice {
   volume: number;
   audioSettings: AudioSettings;
   isEqOpen: boolean;
+  
+  // Milkdrop visualization settings
+  milkdropSettings: MilkdropSettings;
+  milkdropPresetKeys: string[]; // Available preset keys (loaded from Butterchurn)
   
   // Buffering state for streaming
   isBuffering: boolean;
@@ -56,6 +60,9 @@ export interface PlayerSlice {
   playQueueItem: (index: number) => void;
   
   setVisualizerMode: (mode: VisualizerMode) => void;
+  setVisualizerArtworkOpacity: (opacity: number) => void;
+  setVisualizerFullscreenEnabled: (enabled: boolean) => void;
+  setVisualizerFullscreenOpacity: (opacity: number) => void;
   setEqEnabled: (enabled: boolean) => void;
   setEqBand: (index: number, gain: number) => void;
   setEqPreset: (presetId: string) => void;
@@ -64,6 +71,12 @@ export interface PlayerSlice {
   setNormalization: (enabled: boolean) => void;
   toggleEqPanel: () => void;
   loadAudioSettings: () => Promise<void>; // Load audio settings from backend on startup
+  
+  // Milkdrop actions
+  setMilkdropSettings: (settings: Partial<MilkdropSettings>) => void;
+  setMilkdropPreset: (preset: string | null) => void;
+  toggleMilkdropFavorite: (preset: string) => void;
+  setMilkdropPresetKeys: (keys: string[]) => void;
   
   // Buffering actions
   setBuffering: (isBuffering: boolean) => void;
