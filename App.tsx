@@ -35,6 +35,7 @@ import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
 import { Stats } from './pages/Stats';
 import { SmartMixDetail } from './pages/SmartMixDetail';
+import { DJMode } from './pages/DJMode';
 import { useStore } from './store';
 import { api } from './services/api';
 import DownloadManager from './components/DownloadManager';
@@ -168,6 +169,7 @@ const App: React.FC = () => {
           <Route path="/downloads" element={<Downloads />} />
           <Route path="/search" element={<Search />} />
           <Route path="/stats" element={<Stats />} />
+          <Route path="/dj" element={<DJMode />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

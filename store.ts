@@ -28,6 +28,7 @@ import { createLibrarySlice } from './slices/librarySlice';
 import { createSpotifySlice } from './slices/spotifySlice';
 import { createUISlice } from './slices/uiSlice';
 import { createAIDJSlice } from './slices/aiDjSlice';
+import { createDJMixerSlice } from './slices/djMixerSlice';
 
 export const useStore = create<AppState>()(
   persist(
@@ -37,6 +38,7 @@ export const useStore = create<AppState>()(
       ...createSpotifySlice(...a),
       ...createUISlice(...a),
       ...createAIDJSlice(...a),
+      ...createDJMixerSlice(...a),
     }),
     {
       name: 'mediahub-storage',
@@ -60,6 +62,8 @@ export const useStore = create<AppState>()(
           aiDjAvoidRecentlyHours: state.aiDjAvoidRecentlyHours,
           aiDjOnePerArtist: state.aiDjOnePerArtist,
           aiDjUseTimeContext: state.aiDjUseTimeContext,
+          // DJ Mixer settings (persist mixer preferences, not track state)
+          djMixer: state.djMixer,
       }),
       // Deep merge audioSettings to preserve nested values properly
       merge: (persistedState: any, currentState: AppState) => {

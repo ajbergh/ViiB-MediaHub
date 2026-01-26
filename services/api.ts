@@ -1295,6 +1295,45 @@ export const api = {
     return handleResponse(response);
   },
 
+  /**
+   * Get waveform data for a track.
+   * If not cached, the backend will generate it from the audio file.
+   * 
+   * @param trackId - Song ID
+   * @returns Waveform response with peaks array
+   */
+  async getDJWaveform(trackId: string): Promise<DJWaveformResponse> {
+    const response = await fetch(`${API_BASE}/dj/waveform/${trackId}`);
+    return handleResponse<DJWaveformResponse>(response);
+  },
+
+  /**
+   * Get hot cues for a track.
+   * 
+   * @param trackId - Song ID
+   * @returns Hot cues response with array of cue points
+   */
+  async getDJHotCues(trackId: string): Promise<DJHotCuesResponse> {
+    const response = await fetch(`${API_BASE}/dj/hotcues/${trackId}`);
+    return handleResponse<DJHotCuesResponse>(response);
+  },
+
+  /**
+   * Save hot cues for a track.
+   * 
+   * @param trackId - Song ID
+   * @param hotCues - Array of hot cue points
+   * @returns Success status
+   */
+  async saveDJHotCues(trackId: string, hotCues: DJHotCue[]): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/dj/hotcues/${trackId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hotCues }),
+    });
+    return handleResponse(response);
+  },
+
   // ==================== Last.FM API ====================
 
   /**
@@ -1490,6 +1529,41 @@ export interface DJPersonaDefinition {
   name: string;
   description: string;
 }
+
+// ==================== DJ Mixer Waveform Types ====================
+
+/**
+ * Waveform data response from backend.
+ * Used for visual waveform display in DJ mode.
+ */
+export interface DJWaveformResponse {
+  trackId: string;
+  duration: number;      // Track duration in seconds
+  sampleRate: number;    // Source audio sample rate
+  resolution: number;    // Samples per peak point
+  peaks: number[];       // Normalized peak values (0-1)
+}
+
+/**
+ * Hot cue point for DJ mode.
+ * Allows instant jump to marked positions.
+ */
+export interface DJHotCue {
+  slot: number;          // 1-8
+  position: number;      // Position in seconds
+  label?: string;        // Optional user label
+  color: string;         // Hex color (e.g., "#ef4444")
+}
+
+/**
+ * Hot cues response from backend.
+ */
+export interface DJHotCuesResponse {
+  trackId: string;
+  hotCues: DJHotCue[];
+}
+
+// ==================== DJ Set Planning Types ====================
 
 /**
  * A single phase in a DJ set plan.

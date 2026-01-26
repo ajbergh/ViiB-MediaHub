@@ -382,4 +382,8 @@ export interface AIDJSlice {
   clearAIDJ: () => void;
 }
 
-export type AppState = PlayerSlice & LibrarySlice & SpotifySlice & UISlice & AIDJSlice;
+// DJ Mixer types are defined in djMixerSlice.ts to avoid circular dependencies
+// Import them when needed: import { DJMixerSlice } from './djMixerSlice';
+import type { DJMixerSlice } from './djMixerSlice';
+
+export type AppState = PlayerSlice & LibrarySlice & SpotifySlice & UISlice & AIDJSlice & DJMixerSlice;

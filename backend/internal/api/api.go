@@ -163,6 +163,9 @@ func (a *API) Routes() chi.Router {
 
 	// DJ Mode endpoints
 	r.Get("/dj/personas", a.getDJPersonas)
+	r.Get("/dj/waveform/{id}", a.getDJWaveform) // Get or generate waveform data
+	r.Get("/dj/hotcues/{id}", a.getDJHotCues)   // Get hot cues for a track
+	r.Put("/dj/hotcues/{id}", a.saveDJHotCues)  // Save hot cues for a track
 
 	// File serving
 	r.Get("/audio/*", a.serveAudio)

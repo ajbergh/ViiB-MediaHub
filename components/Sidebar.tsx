@@ -29,7 +29,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { 
   Home, Music, Disc, Mic2, ListMusic, Tags,
   Download, Search, Settings, Library, Sparkles, Loader2,
-  ChevronLeft, ChevronRight, Menu, BarChart3, Heart
+  ChevronLeft, ChevronRight, Menu, BarChart3, Heart, Disc3
 } from 'lucide-react';
 import { useStore } from '../store';
 import { SpotifyIcon } from './icons/SpotifyIcon';
@@ -127,6 +127,7 @@ export const Sidebar: React.FC = () => {
         <SidebarItem to="/artists" icon={Mic2} label="Artists" collapsed={collapsed} />
         <SidebarItem to="/genres" icon={Tags} label="Genres" collapsed={collapsed} />
         <SidebarItem to="/smart-playlists" icon={Sparkles} label="AI DJ" collapsed={collapsed} />
+        <SidebarItem to="/dj" icon={Disc3} label="DJ Mode" collapsed={collapsed} />
         <SidebarItem to="/playlists" icon={ListMusic} label="Playlists" collapsed={collapsed} />
         <SidebarItem to="/liked" icon={Heart} label="Liked Songs" collapsed={collapsed} />
         <SidebarItem to="/liked-albums" icon={Disc} label="Liked Albums" collapsed={collapsed} />
