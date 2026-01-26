@@ -26,7 +26,7 @@ import { AppState, PlayerSlice, StreamingError, StreamingStats, StreamingEvent }
 import { EQ_PRESETS } from '../utils';
 import { libraryService } from '../services/libraryService';
 import { api } from '../services/api';
-import { AudioSettings } from '../types';
+import { AudioSettings, MilkdropSettings } from '../types';
 
 // Maximum retry attempts for streaming errors
 const MAX_RETRY_ATTEMPTS = 3;
@@ -72,6 +72,17 @@ const initialStreamingStats: StreamingStats = {
     sessionStartTime: Date.now()
 };
 
+// Default Milkdrop settings
+const defaultMilkdropSettings: MilkdropSettings = {
+    enabled: false,
+    currentPreset: null,
+    presetCycleEnabled: true,
+    presetCycleInterval: 30, // seconds
+    blendDuration: 2.7, // seconds (classic Milkdrop default)
+    quality: 'medium',
+    favoritePresets: []
+};
+
 export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (set, get) => ({
     isPlaying: false,
     currentSong: null,
@@ -84,11 +95,19 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         normalization: false,
         visualizerMode: 'SPECTRUM',
         visualizerEnabled: true,
+        visualizerArtworkOpacity: 30,         // Show artwork at 30% when visualizer active
+        visualizerFullscreenEnabled: false,   // Fullscreen background visualizer off by default
+        visualizerFullscreenOpacity: 20,      // Fullscreen background at 20% opacity
+        visualizerBackgroundMode: 'AURORA_RIBBON', // Background visualizer mode (can differ from album art)
         eqEnabled: false,
         eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         activePresetId: 'flat',
     },
     isEqOpen: false,
+    
+    // Milkdrop visualization state
+    milkdropSettings: { ...defaultMilkdropSettings },
+    milkdropPresetKeys: [],
     
     // Buffering state for streaming
     isBuffering: false,
@@ -346,6 +365,34 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             return { audioSettings: newSettings };
         });
     },
+    setVisualizerBackgroundMode: (mode) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, visualizerBackgroundMode: mode };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setVisualizerArtworkOpacity: (opacity) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, visualizerArtworkOpacity: opacity };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setVisualizerFullscreenEnabled: (enabled) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, visualizerFullscreenEnabled: enabled };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setVisualizerFullscreenOpacity: (opacity) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, visualizerFullscreenOpacity: opacity };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
     setEqEnabled: (enabled) => {
         set((state) => {
             const newSettings = { ...state.audioSettings, eqEnabled: enabled };
@@ -397,6 +444,30 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         });
     },
     toggleEqPanel: () => set((state) => ({ isEqOpen: !state.isEqOpen })),
+    
+    // Milkdrop visualization actions
+    setMilkdropSettings: (settings) => set((state) => ({
+        milkdropSettings: { ...state.milkdropSettings, ...settings }
+    })),
+    
+    setMilkdropPreset: (preset) => set((state) => ({
+        milkdropSettings: { ...state.milkdropSettings, currentPreset: preset }
+    })),
+    
+    toggleMilkdropFavorite: (preset) => set((state) => {
+        const favorites = state.milkdropSettings.favoritePresets;
+        const isFavorite = favorites.includes(preset);
+        return {
+            milkdropSettings: {
+                ...state.milkdropSettings,
+                favoritePresets: isFavorite
+                    ? favorites.filter(p => p !== preset)
+                    : [...favorites, preset]
+            }
+        };
+    }),
+    
+    setMilkdropPresetKeys: (keys) => set({ milkdropPresetKeys: keys }),
     
     // Load audio settings from backend database on startup
     loadAudioSettings: async () => {

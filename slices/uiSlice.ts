@@ -8,6 +8,7 @@
  * - isNowPlayingOpen: Full-screen now playing view
  * - showSmartMixes: Smart mix section visibility on home
  * - hasCompletedSetup: First-launch wizard completion flag
+ * - isPartyMode: Fullscreen immersive mode with minimal UI
  * - logs: Application log entries for debugging
  * - toasts: User-visible toast notifications (success, error, info, warning)
  * - contextMenu: Right-click menu state and position
@@ -18,17 +19,23 @@
  * - dismissToast(id): Manually dismiss a toast
  * - Auto-dismisses after duration (default 4s), max 5 toasts displayed
  * 
+ * Party Mode:
+ * - Immersive fullscreen with minimal UI (just album art, visualizers, track info)
+ * - Toggles native fullscreen in Wails or browser Fullscreen API
+ * 
  * @module uiSlice
  */
 
 import { StateCreator } from 'zustand';
 import { AppState, UISlice } from './types';
+import { enterFullscreen, exitFullscreen } from '../services/fullscreenService';
 
-export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => ({
+export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get) => ({
   isQueueOpen: false,
   isNowPlayingOpen: false,
   showSmartMixes: true,
   hasCompletedSetup: false,
+  isPartyMode: false,
   logs: [],
   toasts: [],
   contextMenu: {
@@ -48,6 +55,25 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => (
   setNowPlayingOpen: (isOpen) => set({ isNowPlayingOpen: isOpen }),
   setShowSmartMixes: (show) => set({ showSmartMixes: show }),
   setHasCompletedSetup: (completed) => set({ hasCompletedSetup: completed }),
+  
+  setPartyMode: (enabled) => {
+    if (enabled) {
+      enterFullscreen();
+    } else {
+      exitFullscreen();
+    }
+    set({ isPartyMode: enabled });
+  },
+  
+  togglePartyMode: () => {
+    const current = get().isPartyMode;
+    if (current) {
+      exitFullscreen();
+    } else {
+      enterFullscreen();
+    }
+    set({ isPartyMode: !current });
+  },
   
   // Local search persistence
   setLocalSearchQuery: (query) => set({ localSearchQuery: query }),

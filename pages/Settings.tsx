@@ -47,7 +47,11 @@ import { TextInput } from '../components/ui/TextInput';
 export const Settings: React.FC = () => {
   const { 
       audioSettings, setCrossfade, setGapless, setNormalization, 
-      setVisualizerMode, setEqEnabled, toggleEqPanel,
+      setVisualizerMode, setVisualizerArtworkOpacity, 
+      setVisualizerFullscreenEnabled, setVisualizerFullscreenOpacity,
+      setEqEnabled, toggleEqPanel,
+      // Milkdrop settings
+      milkdropSettings, setMilkdropSettings, milkdropPresetKeys,
       showSmartMixes, setShowSmartMixes,
       spotifyClientId, spotifyClientSecret, setSpotifyCredentials,
       streamingEnabled, streamingQuality, setStreamingEnabled, setStreamingQuality,
@@ -822,26 +826,179 @@ export const Settings: React.FC = () => {
                     <option value="OFF">Disabled</option>
                     <option value="WAVE">Waveform</option>
                     <option value="SPECTRUM">Spectrum Bars</option>
-                    <option value="AURORA">Ambient Aurora</option>
-                    <option value="CIRCULAR">Circular Pulse</option>
-                    <option value="PARTICLES">Particle Storm</option>
-                    <option value="NEBULA">Deep Space Nebula</option>
                     <option value="FLAME_SPECTRUM">Flame Spectrum Crown</option>
                     <option value="STARDUST_HALO">Stardust Pulse Halo</option>
                     <option value="AURORA_RIBBON">Aurora Ribbon</option>
                     <option value="ELECTRIC_ARC">Electric Arc Wireframe</option>
                     <option value="GRASS_OSCILLOSCOPE">Growing Grass Oscilloscope</option>
-                    <option value="CRYSTAL_SHARDS">Crystal Shards Burst</option>
-                    <option value="WATERCOLOR_BLOOM">Watercolor Bloom</option>
-                    <option value="ICE_FRACTURE">Ice Fracture Pulse</option>
                     <option value="FIREFLY_FIELD">Holiday Firefly Field</option>
-                    <option value="VINYL_SPIN">Vinyl Spin Overlay</option>
-                    <option value="BEAT_ORBS">Beat Explosion Orbs</option>
                     <option value="TUNNEL_WAVEFORM">3D Tunnel Waveform</option>
-                    <option value="GLASS_SHARDS">Reflective Glass Shards</option>
                     <option value="WIND_FIELD">Soft Wind Field</option>
+                    <option value="MILKDROP">Milkdrop (WebGL)</option>
                 </select>
             </div>
+
+            {/* Milkdrop Settings - Only show when Milkdrop is selected */}
+            {audioSettings.visualizerMode === 'MILKDROP' && (
+                <div className="pl-4 ml-4 border-l-2 border-surface-hover space-y-4">
+                    {/* Current Preset Display */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-medium text-text-main">Current Preset</h3>
+                            <p className="text-sm text-text-subtle">
+                                {milkdropSettings.currentPreset 
+                                    ? milkdropSettings.currentPreset.replace(/_/g, ' ').replace(/\.milk$/i, '')
+                                    : 'Random (auto-selected)'
+                                }
+                            </p>
+                        </div>
+                        <span className="text-xs text-text-subtle">
+                            {milkdropPresetKeys.length} presets available
+                        </span>
+                    </div>
+
+                    {/* Auto-Cycle Toggle */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-medium text-text-main">Auto-Cycle Presets</h3>
+                            <p className="text-sm text-text-subtle">Automatically switch presets over time</p>
+                        </div>
+                        <div 
+                            className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${milkdropSettings.presetCycleEnabled ? 'bg-brand' : 'bg-surface-border'}`}
+                            onClick={() => setMilkdropSettings({ presetCycleEnabled: !milkdropSettings.presetCycleEnabled })}
+                        >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${milkdropSettings.presetCycleEnabled ? 'right-1' : 'left-1'}`}></div>
+                        </div>
+                    </div>
+
+                    {/* Cycle Interval */}
+                    {milkdropSettings.presetCycleEnabled && (
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="font-medium text-text-main">Cycle Interval</h3>
+                                <p className="text-sm text-text-subtle">Seconds between preset changes</p>
+                            </div>
+                            <select
+                                value={milkdropSettings.presetCycleInterval}
+                                onChange={(e) => setMilkdropSettings({ presetCycleInterval: parseInt(e.target.value) })}
+                                className="bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
+                            >
+                                <option value={15}>15 seconds</option>
+                                <option value={30}>30 seconds</option>
+                                <option value={45}>45 seconds</option>
+                                <option value={60}>1 minute</option>
+                                <option value={90}>90 seconds</option>
+                                <option value={120}>2 minutes</option>
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Blend Duration */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-medium text-text-main">Blend Duration</h3>
+                            <p className="text-sm text-text-subtle">Transition time between presets</p>
+                        </div>
+                        <select
+                            value={milkdropSettings.blendDuration}
+                            onChange={(e) => setMilkdropSettings({ blendDuration: parseFloat(e.target.value) })}
+                            className="bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
+                        >
+                            <option value={0}>Instant</option>
+                            <option value={1}>1 second</option>
+                            <option value={2}>2 seconds</option>
+                            <option value={2.7}>2.7s (classic)</option>
+                            <option value={4}>4 seconds</option>
+                            <option value={5}>5 seconds</option>
+                        </select>
+                    </div>
+
+                    {/* Quality Setting */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-medium text-text-main">Quality</h3>
+                            <p className="text-sm text-text-subtle">Rendering resolution (higher = more GPU usage)</p>
+                        </div>
+                        <select
+                            value={milkdropSettings.quality}
+                            onChange={(e) => setMilkdropSettings({ quality: e.target.value as 'low' | 'medium' | 'high' })}
+                            className="bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
+                        >
+                            <option value="low">Low (640×480)</option>
+                            <option value="medium">Medium (720p)</option>
+                            <option value="high">High (1080p)</option>
+                        </select>
+                    </div>
+
+                    {/* Favorites Count */}
+                    {milkdropSettings.favoritePresets.length > 0 && (
+                        <div className="text-xs text-text-subtle">
+                            ★ {milkdropSettings.favoritePresets.length} favorite preset{milkdropSettings.favoritePresets.length !== 1 ? 's' : ''}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Visualizer Overlay Settings - Show when visualizer is not OFF */}
+            {audioSettings.visualizerMode !== 'OFF' && (
+                <div className="space-y-4 pl-4 ml-4 border-l-2 border-surface-hover">
+                    {/* Album Art Opacity */}
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <div>
+                                <h3 className="font-medium text-text-main">Album Art Opacity</h3>
+                                <p className="text-sm text-text-subtle">Visibility of album artwork behind visualizer</p>
+                            </div>
+                            <span className="font-mono text-sm text-brand">{audioSettings.visualizerArtworkOpacity}%</span>
+                        </div>
+                        <input 
+                            type="range" 
+                            min="0" 
+                            max="100" 
+                            step="5"
+                            value={audioSettings.visualizerArtworkOpacity}
+                            onChange={(e) => setVisualizerArtworkOpacity(parseInt(e.target.value))}
+                            className="w-full accent-brand"
+                        />
+                    </div>
+
+                    {/* Fullscreen Background Visualizer Toggle */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-medium text-text-main">Fullscreen Background</h3>
+                            <p className="text-sm text-text-subtle">Show visualizer across entire Now Playing screen</p>
+                        </div>
+                        <div 
+                            className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${audioSettings.visualizerFullscreenEnabled ? 'bg-brand' : 'bg-surface-border'}`}
+                            onClick={() => setVisualizerFullscreenEnabled(!audioSettings.visualizerFullscreenEnabled)}
+                        >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${audioSettings.visualizerFullscreenEnabled ? 'right-1' : 'left-1'}`}></div>
+                        </div>
+                    </div>
+
+                    {/* Fullscreen Opacity - Only show when fullscreen is enabled */}
+                    {audioSettings.visualizerFullscreenEnabled && (
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <div>
+                                    <h3 className="font-medium text-text-main">Background Opacity</h3>
+                                    <p className="text-sm text-text-subtle">Intensity of fullscreen visualizer</p>
+                                </div>
+                                <span className="font-mono text-sm text-brand">{audioSettings.visualizerFullscreenOpacity}%</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="5" 
+                                max="50" 
+                                step="5"
+                                value={audioSettings.visualizerFullscreenOpacity}
+                                onChange={(e) => setVisualizerFullscreenOpacity(parseInt(e.target.value))}
+                                className="w-full accent-brand"
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Crossfade */}
             <div>

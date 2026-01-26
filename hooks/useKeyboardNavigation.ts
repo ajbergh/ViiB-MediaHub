@@ -14,6 +14,11 @@ import { useStore } from '../store';
  * - M: Toggle mute
  * - Q: Toggle queue panel
  * - E: Toggle equalizer panel
+ * - N: Toggle Now Playing view
+ * - V: Cycle visualizer mode (in Now Playing)
+ * - ]: Next Milkdrop preset (when in Milkdrop mode)
+ * - [: Previous Milkdrop preset (when in Milkdrop mode) 
+ * - F: Toggle favorite for current Milkdrop preset
  * - Escape: Close panels
  */
 export function useKeyboardNavigation() {
@@ -31,6 +36,13 @@ export function useKeyboardNavigation() {
     isNowPlayingOpen,
     setNowPlayingOpen,
     closeContextMenu,
+    // Milkdrop state
+    audioSettings,
+    setVisualizerMode,
+    milkdropSettings,
+    setMilkdropPreset,
+    toggleMilkdropFavorite,
+    milkdropPresetKeys,
   } = useStore();
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -106,6 +118,50 @@ export function useKeyboardNavigation() {
         }
         break;
 
+      // Milkdrop shortcuts (only active in Now Playing with Milkdrop mode)
+      case 'v':
+      case 'V':
+        // Cycle visualizer mode when in Now Playing
+        if (isNowPlayingOpen) {
+          const modes = ['OFF', 'WAVE', 'SPECTRUM', 'FLAME_SPECTRUM', 'STARDUST_HALO', 
+            'AURORA_RIBBON', 'ELECTRIC_ARC', 'GRASS_OSCILLOSCOPE', 'FIREFLY_FIELD',
+            'TUNNEL_WAVEFORM', 'WIND_FIELD', 'MILKDROP'] as const;
+          const currentIdx = modes.indexOf(audioSettings.visualizerMode as typeof modes[number]);
+          const nextIdx = (currentIdx + 1) % modes.length;
+          setVisualizerMode(modes[nextIdx]);
+        }
+        break;
+
+      case ']':
+        // Next Milkdrop preset
+        if (isNowPlayingOpen && audioSettings.visualizerMode === 'MILKDROP' && milkdropPresetKeys.length > 0) {
+          const currentIdx = milkdropSettings.currentPreset 
+            ? milkdropPresetKeys.indexOf(milkdropSettings.currentPreset)
+            : -1;
+          const nextIdx = (currentIdx + 1) % milkdropPresetKeys.length;
+          setMilkdropPreset(milkdropPresetKeys[nextIdx]);
+        }
+        break;
+
+      case '[':
+        // Previous Milkdrop preset
+        if (isNowPlayingOpen && audioSettings.visualizerMode === 'MILKDROP' && milkdropPresetKeys.length > 0) {
+          const currentIdx = milkdropSettings.currentPreset 
+            ? milkdropPresetKeys.indexOf(milkdropSettings.currentPreset)
+            : 0;
+          const prevIdx = (currentIdx - 1 + milkdropPresetKeys.length) % milkdropPresetKeys.length;
+          setMilkdropPreset(milkdropPresetKeys[prevIdx]);
+        }
+        break;
+
+      case 'f':
+      case 'F':
+        // Toggle favorite for current Milkdrop preset
+        if (isNowPlayingOpen && audioSettings.visualizerMode === 'MILKDROP' && milkdropSettings.currentPreset) {
+          toggleMilkdropFavorite(milkdropSettings.currentPreset);
+        }
+        break;
+
       case 'Escape':
         // Close any open panels/menus
         if (isNowPlayingOpen) {
@@ -132,6 +188,12 @@ export function useKeyboardNavigation() {
     isNowPlayingOpen,
     setNowPlayingOpen,
     closeContextMenu,
+    audioSettings,
+    setVisualizerMode,
+    milkdropSettings,
+    setMilkdropPreset,
+    toggleMilkdropFavorite,
+    milkdropPresetKeys,
   ]);
 
   useEffect(() => {

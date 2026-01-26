@@ -27,10 +27,11 @@
  * - Volume slider with icon indication
  * 
  * Visualizer System:
- * - 21 visualization modes: OFF, WAVE, SPECTRUM, AURORA, CIRCULAR, PARTICLES, NEBULA,
+ * - 22 visualization modes: OFF, WAVE, SPECTRUM, AURORA, CIRCULAR, PARTICLES, NEBULA,
  *   FLAME_SPECTRUM, STARDUST_HALO, AURORA_RIBBON, ELECTRIC_ARC, GRASS_OSCILLOSCOPE,
  *   CRYSTAL_SHARDS, WATERCOLOR_BLOOM, ICE_FRACTURE, FIREFLY_FIELD, VINYL_SPIN,
- *   BEAT_ORBS, TUNNEL_WAVEFORM, GLASS_SHARDS, WIND_FIELD
+ *   BEAT_ORBS, TUNNEL_WAVEFORM, GLASS_SHARDS, WIND_FIELD, MILKDROP
+ * - MILKDROP mode uses WebGL Butterchurn library for classic Winamp-style visualizations
  * - Cycle through modes via Activity button (bottom-left controls)
  * - Real-time audio analysis via Web Audio API
  * - Smooth fade transitions between modes
@@ -63,16 +64,18 @@
  * @requires QueueList - Mini queue preview component
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Image as ImageIcon, Volume2, Download, Loader2, CheckCircle } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2 } from 'lucide-react';
 import { formatTime, generateGradient, cssUrl } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { api } from '../services/api';
 import { Visualizer } from './Visualizer';
 import { LyricsView } from './now-playing/LyricsView';
 import { QueueList } from './now-playing/QueueList';
-import { AlbumArtVisualizer } from './now-playing/AlbumArtVisualizer';
+import { WebGLVisualizer } from './now-playing/webgl';
+import { MilkdropVisualizer } from './now-playing/MilkdropVisualizer';
+import { VisualizerSelector } from './now-playing/VisualizerSelector';
 import { LikeButton } from './LikeButton';
 import { Button } from './ui/Button';
 import { VIIB_COLOR_VALUES } from './ui/tokens';
@@ -99,13 +102,64 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
         audioSettings,
         setVisualizerMode,
         toggleEqPanel,
-        showToast
+        showToast,
+        // Milkdrop state
+        milkdropSettings,
+        setMilkdropPreset,
+        setMilkdropPresetKeys,
+        // Party mode state
+        isPartyMode,
+        togglePartyMode,
+        setPartyMode
     } = useStore();
     
     const albumCovers = useAlbumCovers();
     const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS'>('LYRICS');
     const [isDownloading, setIsDownloading] = useState(false);
     const [showVisualizerOverlay, setShowVisualizerOverlay] = useState(false);
+    const [showVisualizerSelector, setShowVisualizerSelector] = useState(false);
+    const [showPartyControls, setShowPartyControls] = useState(false);
+    
+    // Handle escape key to exit party mode or close now playing
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (isPartyMode) {
+                    setPartyMode(false);
+                } else {
+                    setNowPlayingOpen(false);
+                }
+            }
+        };
+        
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isPartyMode, setPartyMode, setNowPlayingOpen]);
+    
+    // Auto-hide controls in party mode after inactivity
+    useEffect(() => {
+        if (!isPartyMode) return;
+        
+        let timeout: NodeJS.Timeout;
+        
+        const showControls = () => {
+            setShowPartyControls(true);
+            clearTimeout(timeout);
+            timeout = setTimeout(() => setShowPartyControls(false), 3000);
+        };
+        
+        window.addEventListener('mousemove', showControls);
+        window.addEventListener('click', showControls);
+        
+        // Show initially then fade
+        showControls();
+        
+        return () => {
+            window.removeEventListener('mousemove', showControls);
+            window.removeEventListener('click', showControls);
+            clearTimeout(timeout);
+        };
+    }, [isPartyMode]);
 
     if (!currentSong) return null;
 
@@ -163,6 +217,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
      * - TUNNEL_WAVEFORM: 3D ring tunnel
      * - GLASS_SHARDS: Reflective fragments
      * - WIND_FIELD: Flowing particles
+     * - MILKDROP: WebGL Milkdrop/Butterchurn visualization
      * 
      * Triggered by clicking the Activity button in the Now Playing view.
      * Updates global audio settings via Zustand store.
@@ -172,24 +227,15 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
             'OFF', 
             'WAVE', 
             'SPECTRUM', 
-            'AURORA', 
-            'CIRCULAR', 
-            'PARTICLES', 
-            'NEBULA',
             'FLAME_SPECTRUM',
             'STARDUST_HALO',
             'AURORA_RIBBON',
             'ELECTRIC_ARC',
             'GRASS_OSCILLOSCOPE',
-            'CRYSTAL_SHARDS',
-            'WATERCOLOR_BLOOM',
-            'ICE_FRACTURE',
             'FIREFLY_FIELD',
-            'VINYL_SPIN',
-            'BEAT_ORBS',
             'TUNNEL_WAVEFORM',
-            'GLASS_SHARDS',
-            'WIND_FIELD'
+            'WIND_FIELD',
+            'MILKDROP'
         ];
         const currentIdx = modes.indexOf(audioSettings.visualizerMode);
         const nextIdx = (currentIdx + 1) % modes.length;
@@ -211,20 +257,51 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                 <Visualizer mode={audioSettings.visualizerMode} barColor={VIIB_COLOR_VALUES.visualizerMuted} />
             </div>
 
+            {/* Fullscreen Background Visualizer - Behind all UI when enabled */}
+            {/* Uses separate visualizerBackgroundMode so it can differ from album art overlay */}
+            {audioSettings.visualizerFullscreenEnabled && audioSettings.visualizerBackgroundMode !== 'OFF' && isPlaying && (
+                <>
+                    {audioSettings.visualizerBackgroundMode === 'MILKDROP' ? (
+                        <MilkdropVisualizer
+                            settings={milkdropSettings}
+                            isActive={true}
+                            onPresetChange={setMilkdropPreset}
+                            onPresetsLoaded={setMilkdropPresetKeys}
+                            className="z-[1] pointer-events-none"
+                            style={{ opacity: (audioSettings.visualizerFullscreenOpacity ?? 20) / 100 }}
+                        />
+                    ) : (
+                        <div 
+                            className="absolute inset-0 z-[1] pointer-events-none"
+                            style={{ opacity: (audioSettings.visualizerFullscreenOpacity ?? 20) / 100 }}
+                        >
+                            <WebGLVisualizer 
+                                mode={audioSettings.visualizerBackgroundMode}
+                                isActive={true}
+                            />
+                        </div>
+                    )}
+                </>
+            )}
+
             <div className="absolute inset-0 z-0 bg-surface-0/70 backdrop-blur-[60px] pointer-events-none"></div>
 
-            {/* Header */}
-            <div className="relative z-10 flex items-center justify-between p-6 md:p-8">
+            {/* Header - Hidden in party mode unless mouse active */}
+            <div className={`relative z-10 flex items-center justify-between p-6 md:p-8 transition-opacity duration-300 ${
+                isPartyMode ? (showPartyControls ? 'opacity-100' : 'opacity-0') : 'opacity-100'
+            }`}>
                 <Button
-                    onClick={() => setNowPlayingOpen(false)}
+                    onClick={() => isPartyMode ? setPartyMode(false) : setNowPlayingOpen(false)}
                     variant="ghost"
                     className="rounded-full p-2 bg-surface-1/40 hover:bg-surface-1/60 backdrop-blur-md"
-                    aria-label="Close now playing"
+                    aria-label={isPartyMode ? "Exit party mode" : "Close now playing"}
                 >
-                    <X size={24} />
+                    {isPartyMode ? <Minimize2 size={24} /> : <X size={24} />}
                 </Button>
                 <div className="flex flex-col items-center">
-                    <span className="text-xs font-bold uppercase tracking-widest text-text-secondary">Now Playing</span>
+                    <span className="text-xs font-bold uppercase tracking-widest text-text-secondary">
+                        {isPartyMode ? 'Party Mode' : 'Now Playing'}
+                    </span>
                     <span 
                         className="text-sm font-semibold truncate max-w-[200px]"
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, { name: currentSong.album, artist: currentSong.artist })}
@@ -234,139 +311,218 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                 </div>
                 <div className="flex items-center gap-2">
                     <Button
+                        onClick={togglePartyMode}
+                        variant="ghost"
+                        className={`rounded-full p-2 backdrop-blur-md ${
+                            isPartyMode 
+                                ? 'text-amber-400 bg-amber-400/20 ring-1 ring-amber-400/30' 
+                                : 'text-text-secondary bg-surface-1/40 hover:text-amber-400 hover:bg-surface-1/60'
+                        }`}
+                        title={isPartyMode ? "Exit Party Mode" : "Enter Party Mode"}
+                        aria-label={isPartyMode ? "Exit party mode" : "Enter party mode"}
+                    >
+                        <Maximize2 size={24} />
+                    </Button>
+                    <Button
+                        onClick={() => setShowVisualizerSelector(true)}
+                        variant="ghost"
+                        className={`rounded-full p-2 backdrop-blur-md ${
+                            audioSettings.visualizerMode !== 'OFF' || audioSettings.visualizerFullscreenEnabled 
+                                ? 'text-brand bg-surface-1/50 ring-1 ring-brand/20' 
+                                : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'
+                        }`}
+                        title="Visualizer Layers"
+                        aria-label="Open visualizer layer selector"
+                    >
+                        <Layers size={24} />
+                    </Button>
+                    <Button
                         onClick={cycleVisualizer}
                         variant="ghost"
                         className={`rounded-full p-2 backdrop-blur-md ${audioSettings.visualizerMode !== 'OFF' ? 'text-accent-green bg-surface-1/50 ring-1 ring-accent-green/20' : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'}`}
                         title={`Visualizer: ${audioSettings.visualizerMode}`}
                         aria-label="Change visualizer mode"
                     >
-                        {audioSettings.visualizerMode === 'AURORA' ? <ImageIcon size={24} /> : <Activity size={24} />}
+                        <Activity size={24} />
                     </Button>
-                    <Button
-                        onClick={() => setActiveTab('QUEUE')}
-                        variant="ghost"
-                        className={`rounded-full p-2 backdrop-blur-md ${activeTab === 'QUEUE' ? 'text-text-main bg-surface-1/60 ring-1 ring-text-main/10' : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'}`}
-                        title="Queue"
-                        aria-label="Show queue"
-                    >
-                        <ListMusic size={24} />
-                    </Button>
+                    {!isPartyMode && (
+                        <Button
+                            onClick={() => setActiveTab('QUEUE')}
+                            variant="ghost"
+                            className={`rounded-full p-2 backdrop-blur-md ${activeTab === 'QUEUE' ? 'text-text-main bg-surface-1/60 ring-1 ring-text-main/10' : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'}`}
+                            title="Queue"
+                            aria-label="Show queue"
+                        >
+                            <ListMusic size={24} />
+                        </Button>
+                    )}
                 </div>
             </div>
 
             {/* Main Content */}
-            <div className="relative z-10 flex-1 flex flex-col md:flex-row gap-8 md:gap-16 px-8 md:px-16 overflow-hidden">
-                {/* Left Side: Artwork & Metadata */}
-                <div className="flex-1 flex flex-col justify-center max-w-2xl mx-auto w-full min-h-[400px]">
+            <div className={`relative z-10 flex-1 flex ${isPartyMode ? 'items-center justify-center' : 'flex-col md:flex-row gap-8 md:gap-16'} px-8 md:px-16 overflow-hidden`}>
+                {/* Left Side: Artwork & Metadata - Full screen centered in party mode */}
+                <div className={`flex flex-col ${isPartyMode ? 'items-center justify-center' : 'flex-1 justify-center max-w-2xl mx-auto w-full min-h-[400px]'}`}>
                     <div 
-                        className="aspect-square w-full max-w-[500px] mx-auto bg-surface-2 rounded-xl shadow-2xl relative group overflow-hidden mb-8 md:mb-12 cursor-pointer ring-1 ring-surface-3/60"
+                        className={`aspect-square bg-surface-2 rounded-xl shadow-2xl relative group overflow-hidden cursor-pointer ring-1 ring-surface-3/60 ${
+                            isPartyMode 
+                                ? 'w-[70vh] max-w-[80vw] mb-8' 
+                                : 'w-full max-w-[500px] mx-auto mb-8 md:mb-12'
+                        }`}
                         onClick={() => setShowVisualizerOverlay(!showVisualizerOverlay)}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
                     >
+                         {/* Album Art - opacity controlled by artwork setting when legacy visualizer is active */}
                          {coverUrl ? (
                             <img 
                                 src={coverUrl} 
                                 alt="Album Art" 
-                                className={`w-full h-full object-contain transition-opacity duration-300 ${
-                                    showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' ? 'opacity-30' : 'opacity-100'
-                                }`} 
+                                className="w-full h-full object-contain transition-opacity duration-300"
+                                style={{
+                                    // Legacy visualizers: album art dims, visualizer at full opacity
+                                    // Milkdrop: album art stays full, visualizer dims
+                                    opacity: showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && audioSettings.visualizerMode !== 'MILKDROP' && isPlaying
+                                        ? (audioSettings.visualizerArtworkOpacity ?? 30) / 100
+                                        : 1
+                                }}
                             />
                          ) : (
                              <div 
-                                className={`w-full h-full flex items-center justify-center text-display font-bold text-text-subtle/30 transition-opacity duration-300 ${
-                                    showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' ? 'opacity-30' : 'opacity-100'
-                                }`}
-                                style={{ background: generateGradient(currentSong.album) }}
+                                className="w-full h-full flex items-center justify-center text-display font-bold text-text-subtle/30 transition-opacity duration-300"
+                                style={{ 
+                                    background: generateGradient(currentSong.album),
+                                    // Legacy visualizers: album art dims, visualizer at full opacity
+                                    // Milkdrop: album art stays full, visualizer dims
+                                    opacity: showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && audioSettings.visualizerMode !== 'MILKDROP' && isPlaying
+                                        ? (audioSettings.visualizerArtworkOpacity ?? 30) / 100
+                                        : 1
+                                }}
                             >
                                 {currentSong.title.charAt(0)}
                             </div>
                          )}
                          
-                         {/* Album Art Visualizer Overlay */}
-                         <AlbumArtVisualizer 
-                            mode={audioSettings.visualizerMode}
-                            isActive={showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && isPlaying}
-                         />
+                         {/* Album Art Visualizer Overlay - WebGL modes with Canvas 2D fallback */}
+                         {/* Legacy visualizers: render at full opacity over dimmed album art */}
+                         {audioSettings.visualizerMode !== 'MILKDROP' && (
+                             <div 
+                                className="absolute inset-0 transition-opacity duration-300"
+                                style={{ 
+                                    opacity: showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && isPlaying
+                                        ? 1
+                                        : 0
+                                }}
+                             >
+                                <WebGLVisualizer 
+                                    mode={audioSettings.visualizerMode}
+                                    isActive={showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && isPlaying}
+                                />
+                             </div>
+                         )}
+                         
+                         {/* Milkdrop Visualizer Overlay - WebGL mode */}
+                         {/* Milkdrop: visualizer opacity is reduced to let album art show through */}
+                         {audioSettings.visualizerMode === 'MILKDROP' && showVisualizerOverlay && isPlaying && (
+                             <MilkdropVisualizer
+                                settings={milkdropSettings}
+                                isActive={true}
+                                onPresetChange={setMilkdropPreset}
+                                onPresetsLoaded={setMilkdropPresetKeys}
+                                className="transition-opacity duration-300"
+                                style={{ opacity: 1 - ((audioSettings.visualizerArtworkOpacity ?? 30) / 100) }}
+                             />
+                         )}
                     </div>
                     
-                    <div className="flex items-end justify-between mb-2">
-                        <div className="flex flex-col min-w-0 pr-4">
-                            <h1 className="text-section md:text-display font-bold truncate leading-tight mb-2" title={currentSong.title}>
+                    {/* Track info - centered in party mode */}
+                    <div className={`flex ${isPartyMode ? 'flex-col items-center text-center' : 'items-end justify-between'} mb-2`}>
+                        <div className={`flex flex-col min-w-0 ${isPartyMode ? 'items-center' : 'pr-4'}`}>
+                            <h1 className={`font-bold truncate leading-tight mb-2 ${
+                                isPartyMode ? 'text-display md:text-4xl max-w-[80vw]' : 'text-section md:text-display'
+                            }`} title={currentSong.title}>
                                 {currentSong.title}
                             </h1>
                             <h2 
-                                className="text-card md:text-section text-text-secondary font-medium truncate cursor-pointer hover:underline hover:text-text-main transition-colors"
+                                className={`text-text-secondary font-medium truncate cursor-pointer hover:underline hover:text-text-main transition-colors ${
+                                    isPartyMode ? 'text-section max-w-[80vw]' : 'text-card md:text-section'
+                                }`}
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, { name: currentSong.artist })}
                             >
                                 {currentSong.artist}
                             </h2>
                         </div>
-                        <div className="flex items-center gap-3">
-                            {/* Download button for streaming Spotify tracks */}
-                            {isSpotifyStreaming && (
-                                <Button
-                                    onClick={handleDownloadTrack}
-                                    disabled={isDownloading}
-                                    variant="ghost"
-                                    className="rounded-full p-2 text-text-secondary hover:text-accent-green hover:bg-surface-1/40 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title="Download for offline"
-                                    aria-label="Download for offline"
-                                >
-                                    {isDownloading ? (
-                                        <Loader2 size={28} className="animate-spin" />
-                                    ) : (
-                                        <Download size={28} />
-                                    )}
-                                </Button>
-                            )}
-                            {/* Show checkmark if track is downloaded (has spotifyId but not streaming) */}
-                            {currentSong.spotifyId && !currentSong.isStreaming && (
-                                <div className="text-accent-green" title="Downloaded">
-                                    <CheckCircle size={28} />
-                                </div>
-                            )}
-                            <LikeButton songId={currentSong.id} size={32} />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right Side: Tabs */}
-                <div className="flex-1 flex flex-col h-full min-h-[400px] max-w-xl mx-auto w-full bg-surface-1/30 rounded-t-2xl md:rounded-2xl ring-1 ring-surface-3/60 backdrop-blur-md overflow-hidden">
-                    {/* Tabs Header */}
-                    <div className="flex items-center border-b border-surface-3/60 p-2 gap-2">
-                        <Button
-                            onClick={() => setActiveTab('QUEUE')}
-                            variant={activeTab === 'QUEUE' ? 'secondary' : 'ghost'}
-                            className="flex-1 justify-center rounded-lg"
-                        >
-                            Queue
-                        </Button>
-                        <Button
-                            onClick={() => setActiveTab('LYRICS')}
-                            variant={activeTab === 'LYRICS' ? 'secondary' : 'ghost'}
-                            className="flex-1 justify-center rounded-lg"
-                        >
-                            Lyrics
-                        </Button>
-                    </div>
-
-                    {/* Tab Content */}
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 relative">
-                        {activeTab === 'LYRICS' && (
-                            <div className="h-full flex flex-col">
-                                <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} />
+                        {!isPartyMode && (
+                            <div className="flex items-center gap-3">
+                                {/* Download button for streaming Spotify tracks */}
+                                {isSpotifyStreaming && (
+                                    <Button
+                                        onClick={handleDownloadTrack}
+                                        disabled={isDownloading}
+                                        variant="ghost"
+                                        className="rounded-full p-2 text-text-secondary hover:text-accent-green hover:bg-surface-1/40 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Download for offline"
+                                        aria-label="Download for offline"
+                                    >
+                                        {isDownloading ? (
+                                            <Loader2 size={28} className="animate-spin" />
+                                        ) : (
+                                            <Download size={28} />
+                                        )}
+                                    </Button>
+                                )}
+                                {/* Show checkmark if track is downloaded (has spotifyId but not streaming) */}
+                                {currentSong.spotifyId && !currentSong.isStreaming && (
+                                    <div className="text-accent-green" title="Downloaded">
+                                        <CheckCircle size={28} />
+                                    </div>
+                                )}
+                                <LikeButton songId={currentSong.id} size={32} />
                             </div>
                         )}
-
-                        {activeTab === 'QUEUE' && (
-                            <QueueList queue={queue} currentSongIndex={currentSongIndex} />
-                        )}
                     </div>
                 </div>
+
+                {/* Right Side: Tabs - Hidden in party mode */}
+                {!isPartyMode && (
+                    <div className="flex-1 flex flex-col h-full min-h-[400px] max-w-xl mx-auto w-full bg-surface-1/30 rounded-t-2xl md:rounded-2xl ring-1 ring-surface-3/60 backdrop-blur-md overflow-hidden">
+                        {/* Tabs Header */}
+                        <div className="flex items-center border-b border-surface-3/60 p-2 gap-2">
+                            <Button
+                                onClick={() => setActiveTab('QUEUE')}
+                                variant={activeTab === 'QUEUE' ? 'secondary' : 'ghost'}
+                                className="flex-1 justify-center rounded-lg"
+                            >
+                                Queue
+                            </Button>
+                            <Button
+                                onClick={() => setActiveTab('LYRICS')}
+                                variant={activeTab === 'LYRICS' ? 'secondary' : 'ghost'}
+                                className="flex-1 justify-center rounded-lg"
+                            >
+                                Lyrics
+                            </Button>
+                        </div>
+
+                        {/* Tab Content */}
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 relative">
+                            {activeTab === 'LYRICS' && (
+                                <div className="h-full flex flex-col">
+                                    <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} />
+                                </div>
+                            )}
+
+                            {activeTab === 'QUEUE' && (
+                                <QueueList queue={queue} currentSongIndex={currentSongIndex} />
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Bottom Controls */}
-            <div className="relative z-10 px-8 py-8 md:px-16 bg-gradient-to-t from-surface-0 via-surface-0/80 to-transparent">
+            {/* Bottom Controls - Hidden in party mode unless mouse active */}
+            <div className={`relative z-10 px-8 py-8 md:px-16 bg-gradient-to-t from-surface-0 via-surface-0/80 to-transparent transition-opacity duration-300 ${
+                isPartyMode ? (showPartyControls ? 'opacity-100' : 'opacity-0 pointer-events-none') : 'opacity-100'
+            }`}>
                  <div className="max-w-4xl mx-auto w-full flex flex-col gap-6">
                      {/* Seek Bar */}
                     <div className="flex items-center gap-4 text-xs font-mono font-medium text-text-secondary">
@@ -441,6 +597,12 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     </div>
                  </div>
             </div>
+            
+            {/* Visualizer Layer Selector Modal */}
+            <VisualizerSelector 
+                isOpen={showVisualizerSelector} 
+                onClose={() => setShowVisualizerSelector(false)} 
+            />
         </div>
     );
 };

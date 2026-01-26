@@ -176,6 +176,26 @@ class AudioEngine {
   getAnalyser() {
       return this.analyser;
   }
+
+  /**
+   * Get the master gain node for external audio connections.
+   * Used by Butterchurn/Milkdrop to receive audio for analysis.
+   * 
+   * @returns {GainNode | null} The master gain node, or null if not initialized
+   */
+  getMasterGainNode(): GainNode | null {
+      return this.masterGain;
+  }
+
+  /**
+   * Get the audio context for external use.
+   * Required by Butterchurn visualizer initialization.
+   * 
+   * @returns {AudioContext | null} The audio context, or null if not initialized
+   */
+  getAudioContext(): AudioContext | null {
+      return this.context;
+  }
 }
 
 export const audioEngine = new AudioEngine();

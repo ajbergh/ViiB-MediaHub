@@ -7,10 +7,6 @@
  * - OFF: No visualization
  * - WAVE: Waveform display (time domain)
  * - SPECTRUM: Frequency bar graph (FFT)
- * - AURORA: Animated gradient wave effect
- * - CIRCULAR: Circular equalizer with rotating bars
- * - PARTICLES: Particle system reacting to audio frequencies
- * - NEBULA: Cosmic nebula effect with flowing gradients
  * 
  * Uses requestAnimationFrame for smooth 60fps rendering.
  * Automatically cleans up animation on unmount or mode change.
@@ -146,42 +142,6 @@ export const Visualizer: React.FC<Props> = ({ mode, className = '', barColor = V
 
         ctx.lineTo(width, height / 2);
         ctx.stroke();
-      } else if (mode === 'AURORA' || mode === 'CIRCULAR' || mode === 'PARTICLES' || mode === 'NEBULA') {
-        // Aurora-style gradient background for ambient modes
-        analyser.getByteFrequencyData(dataArray);
-        
-        let bass = 0;
-        let treble = 0;
-        // Safety checks for array bounds
-        for (let i = 0; i < 50 && i < dataArray.length; i++) bass += dataArray[i];
-        for (let i = 200; i < 400 && i < dataArray.length; i++) treble += dataArray[i];
-        
-        bass = bass / 50 / 255;
-        treble = treble / 200 / 255;
-
-        const gradient = ctx.createLinearGradient(0, 0, width, height);
-        
-        // Different color schemes for different modes
-        if (mode === 'NEBULA') {
-          gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPurple, bass * 0.5));
-          gradient.addColorStop(0.5, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPink, (bass + treble) * 0.3));
-          gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerBlue, treble * 0.5));
-        } else if (mode === 'PARTICLES') {
-          gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.visualizerGreen, bass * 0.4));
-          gradient.addColorStop(0.5, rgbaFromRgb(VIIB_COLOR_RGB.white, (bass + treble) * 0.2));
-          gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPurple, treble * 0.4));
-        } else if (mode === 'CIRCULAR') {
-          gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.visualizerGreen, bass * 0.6));
-          gradient.addColorStop(0.5, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPurple, (bass + treble) * 0.4));
-          gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerBlue, treble * 0.5));
-        } else {
-          gradient.addColorStop(0, rgbaFromRgb(VIIB_COLOR_RGB.spotifyGreen, bass * 0.6));
-          gradient.addColorStop(0.5, rgbaFromRgb(VIIB_COLOR_RGB.visualizerPurple, (bass + treble) * 0.4));
-          gradient.addColorStop(1, rgbaFromRgb(VIIB_COLOR_RGB.visualizerBlue, treble * 0.6));
-        }
-        
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
       }
     };
 

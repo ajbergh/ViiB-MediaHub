@@ -172,33 +172,26 @@ export enum ContextMenuType {
 /**
  * Audio Visualizer Mode
  * 
- * Defines 21 available visualization modes for the Now Playing view.
- * Each mode renders audio-reactive graphics using Canvas 2D API.
+ * Defines 12 available visualization modes for the Now Playing view.
+ * Canvas 2D modes render audio-reactive graphics, MILKDROP uses WebGL via Butterchurn.
  * 
- * Classic Modes (Original 6):
+ * Basic Modes:
  * - OFF: No visualization
  * - WAVE: Smooth glowing waveform with quadratic curve interpolation
  * - SPECTRUM: Circular frequency bars radiating from center (sun-burst effect)
- * - AURORA: Ambient flowing gradients reacting to bass/mid/treble bands
- * - CIRCULAR: Enhanced circular with rotating bars, pulsing rings, inner waveform
- * - PARTICLES: Dynamic particle system with gravity effects and audio-reactive spawning
- * - NEBULA: Cosmic atmosphere with swirling nebula clouds, stars, and lens flares
  * 
- * Next-Gen Modes (15 New):
+ * Custom Canvas 2D Modes:
  * - FLAME_SPECTRUM: Stylized flame tongues rising with frequency-based height and color intensity
  * - STARDUST_HALO: Pulsing particle halo with stardust bursts on bass hits
  * - AURORA_RIBBON: Translucent ribbon with waveform modulation and frequency-based colors
  * - ELECTRIC_ARC: TRON-style geometric light beams with crackling effects on treble
  * - GRASS_OSCILLOSCOPE: Organic swaying grass blades with amplitude height and stereo sway
- * - CRYSTAL_SHARDS: Prismatic diamond shards bursting outward with refraction effects
- * - WATERCOLOR_BLOOM: Painterly circular blooms with multi-layer depth
- * - ICE_FRACTURE: Cracking ice radiating from center with branching fractures
  * - FIREFLY_FIELD: Drifting fireflies with warm glow and gentle flicker (seasonal)
- * - VINYL_SPIN: Rotating vinyl grooves with tempo-based rotation and treble glints
- * - BEAT_ORBS: Volumetric orbs expanding on bass hits with soft gradients
  * - TUNNEL_WAVEFORM: 3D tunnel of pulsating rings with perspective depth
- * - GLASS_SHARDS: Reflective rotating glass fragments with prismatic colors
  * - WIND_FIELD: Flowing particle wind effect with bass intensity and treble sparkles
+ * 
+ * WebGL Mode:
+ * - MILKDROP: Butterchurn-powered Winamp preset visualizations (GPU-accelerated)
  * 
  * Audio Mapping:
  * - Bass (0-30 Hz): Triggers bursts, expansions, intensity
@@ -206,36 +199,27 @@ export enum ContextMenuType {
  * - Treble (150-300 Hz): Sparkles, glints, shimmer effects
  * 
  * Performance:
- * - All modes target 60 FPS rendering
+ * - Canvas 2D modes target 60 FPS rendering
  * - Particle systems capped at 40-300 particles
- * - Canvas 2D for broad compatibility
  * - Automatic cleanup on mode switch
  * 
- * @see AlbumArtVisualizer - Component that renders these visualizations
+ * @see AlbumArtVisualizer - Component that renders Canvas 2D visualizations
+ * @see MilkdropVisualizer - Component that renders WebGL Butterchurn visualizations
  * @see audioEngine - Web Audio API wrapper providing frequency data
  */
 export type VisualizerMode = 
   | 'OFF' 
   | 'WAVE' 
   | 'SPECTRUM' 
-  | 'AURORA' 
-  | 'CIRCULAR' 
-  | 'PARTICLES' 
-  | 'NEBULA'
   | 'FLAME_SPECTRUM'
   | 'STARDUST_HALO'
   | 'AURORA_RIBBON'
   | 'ELECTRIC_ARC'
   | 'GRASS_OSCILLOSCOPE'
-  | 'CRYSTAL_SHARDS'
-  | 'WATERCOLOR_BLOOM'
-  | 'ICE_FRACTURE'
   | 'FIREFLY_FIELD'
-  | 'VINYL_SPIN'
-  | 'BEAT_ORBS'
   | 'TUNNEL_WAVEFORM'
-  | 'GLASS_SHARDS'
-  | 'WIND_FIELD';
+  | 'WIND_FIELD'
+  | 'MILKDROP';
 
 export interface EqPreset {
   id: string;
@@ -249,7 +233,54 @@ export interface AudioSettings {
   normalization: boolean;
   visualizerMode: VisualizerMode;
   visualizerEnabled: boolean;
+  /** Opacity of album artwork when visualizer is active (0-100) */
+  visualizerArtworkOpacity: number;
+  /** Enable fullscreen background visualizer behind entire Now Playing UI */
+  visualizerFullscreenEnabled: boolean;
+  /** Opacity of fullscreen background visualizer (0-100) */
+  visualizerFullscreenOpacity: number;
+  /** Background visualizer mode - can differ from album art mode */
+  visualizerBackgroundMode: VisualizerMode;
   eqEnabled: boolean;
   eqBands: number[]; // 10 bands, -12 to +12 dB
   activePresetId: string;
+}
+
+/**
+ * Milkdrop Visualization Settings
+ * 
+ * Configuration for WebGL-based Milkdrop visualizations via Butterchurn.
+ * Stored separately from AudioSettings to manage the additional preset state.
+ * 
+ * @see MilkdropVisualizer - Component that uses these settings
+ */
+export interface MilkdropSettings {
+  /** Whether Milkdrop is the active visualizer */
+  enabled: boolean;
+  /** Currently selected preset key (null = random) */
+  currentPreset: string | null;
+  /** Auto-cycle through presets */
+  presetCycleEnabled: boolean;
+  /** Seconds between preset changes (15-120) */
+  presetCycleInterval: number;
+  /** Transition blend duration in seconds (0-5) */
+  blendDuration: number;
+  /** Rendering quality/resolution setting */
+  quality: 'low' | 'medium' | 'high';
+  /** User's favorite preset keys */
+  favoritePresets: string[];
+}
+
+/**
+ * Milkdrop Preset Info for UI display
+ */
+export interface MilkdropPresetInfo {
+  /** Display name of the preset */
+  name: string;
+  /** Unique key for loading the preset */
+  key: string;
+  /** Whether user has favorited this preset */
+  isFavorite: boolean;
+  /** Optional category for organization */
+  category?: string;
 }
