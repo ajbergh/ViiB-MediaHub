@@ -64,9 +64,9 @@
  * @requires QueueList - Mini queue preview component
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2 } from 'lucide-react';
 import { formatTime, generateGradient, cssUrl } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { api } from '../services/api';
@@ -106,7 +106,11 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
         // Milkdrop state
         milkdropSettings,
         setMilkdropPreset,
-        setMilkdropPresetKeys
+        setMilkdropPresetKeys,
+        // Party mode state
+        isPartyMode,
+        togglePartyMode,
+        setPartyMode
     } = useStore();
     
     const albumCovers = useAlbumCovers();
@@ -114,6 +118,48 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     const [isDownloading, setIsDownloading] = useState(false);
     const [showVisualizerOverlay, setShowVisualizerOverlay] = useState(false);
     const [showVisualizerSelector, setShowVisualizerSelector] = useState(false);
+    const [showPartyControls, setShowPartyControls] = useState(false);
+    
+    // Handle escape key to exit party mode or close now playing
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (isPartyMode) {
+                    setPartyMode(false);
+                } else {
+                    setNowPlayingOpen(false);
+                }
+            }
+        };
+        
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isPartyMode, setPartyMode, setNowPlayingOpen]);
+    
+    // Auto-hide controls in party mode after inactivity
+    useEffect(() => {
+        if (!isPartyMode) return;
+        
+        let timeout: NodeJS.Timeout;
+        
+        const showControls = () => {
+            setShowPartyControls(true);
+            clearTimeout(timeout);
+            timeout = setTimeout(() => setShowPartyControls(false), 3000);
+        };
+        
+        window.addEventListener('mousemove', showControls);
+        window.addEventListener('click', showControls);
+        
+        // Show initially then fade
+        showControls();
+        
+        return () => {
+            window.removeEventListener('mousemove', showControls);
+            window.removeEventListener('click', showControls);
+            clearTimeout(timeout);
+        };
+    }, [isPartyMode]);
 
     if (!currentSong) return null;
 
@@ -240,18 +286,22 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
 
             <div className="absolute inset-0 z-0 bg-surface-0/70 backdrop-blur-[60px] pointer-events-none"></div>
 
-            {/* Header */}
-            <div className="relative z-10 flex items-center justify-between p-6 md:p-8">
+            {/* Header - Hidden in party mode unless mouse active */}
+            <div className={`relative z-10 flex items-center justify-between p-6 md:p-8 transition-opacity duration-300 ${
+                isPartyMode ? (showPartyControls ? 'opacity-100' : 'opacity-0') : 'opacity-100'
+            }`}>
                 <Button
-                    onClick={() => setNowPlayingOpen(false)}
+                    onClick={() => isPartyMode ? setPartyMode(false) : setNowPlayingOpen(false)}
                     variant="ghost"
                     className="rounded-full p-2 bg-surface-1/40 hover:bg-surface-1/60 backdrop-blur-md"
-                    aria-label="Close now playing"
+                    aria-label={isPartyMode ? "Exit party mode" : "Close now playing"}
                 >
-                    <X size={24} />
+                    {isPartyMode ? <Minimize2 size={24} /> : <X size={24} />}
                 </Button>
                 <div className="flex flex-col items-center">
-                    <span className="text-xs font-bold uppercase tracking-widest text-text-secondary">Now Playing</span>
+                    <span className="text-xs font-bold uppercase tracking-widest text-text-secondary">
+                        {isPartyMode ? 'Party Mode' : 'Now Playing'}
+                    </span>
                     <span 
                         className="text-sm font-semibold truncate max-w-[200px]"
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, { name: currentSong.album, artist: currentSong.artist })}
@@ -260,6 +310,19 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button
+                        onClick={togglePartyMode}
+                        variant="ghost"
+                        className={`rounded-full p-2 backdrop-blur-md ${
+                            isPartyMode 
+                                ? 'text-amber-400 bg-amber-400/20 ring-1 ring-amber-400/30' 
+                                : 'text-text-secondary bg-surface-1/40 hover:text-amber-400 hover:bg-surface-1/60'
+                        }`}
+                        title={isPartyMode ? "Exit Party Mode" : "Enter Party Mode"}
+                        aria-label={isPartyMode ? "Exit party mode" : "Enter party mode"}
+                    >
+                        <Maximize2 size={24} />
+                    </Button>
                     <Button
                         onClick={() => setShowVisualizerSelector(true)}
                         variant="ghost"
@@ -282,24 +345,30 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     >
                         <Activity size={24} />
                     </Button>
-                    <Button
-                        onClick={() => setActiveTab('QUEUE')}
-                        variant="ghost"
-                        className={`rounded-full p-2 backdrop-blur-md ${activeTab === 'QUEUE' ? 'text-text-main bg-surface-1/60 ring-1 ring-text-main/10' : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'}`}
-                        title="Queue"
-                        aria-label="Show queue"
-                    >
-                        <ListMusic size={24} />
-                    </Button>
+                    {!isPartyMode && (
+                        <Button
+                            onClick={() => setActiveTab('QUEUE')}
+                            variant="ghost"
+                            className={`rounded-full p-2 backdrop-blur-md ${activeTab === 'QUEUE' ? 'text-text-main bg-surface-1/60 ring-1 ring-text-main/10' : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'}`}
+                            title="Queue"
+                            aria-label="Show queue"
+                        >
+                            <ListMusic size={24} />
+                        </Button>
+                    )}
                 </div>
             </div>
 
             {/* Main Content */}
-            <div className="relative z-10 flex-1 flex flex-col md:flex-row gap-8 md:gap-16 px-8 md:px-16 overflow-hidden">
-                {/* Left Side: Artwork & Metadata */}
-                <div className="flex-1 flex flex-col justify-center max-w-2xl mx-auto w-full min-h-[400px]">
+            <div className={`relative z-10 flex-1 flex ${isPartyMode ? 'items-center justify-center' : 'flex-col md:flex-row gap-8 md:gap-16'} px-8 md:px-16 overflow-hidden`}>
+                {/* Left Side: Artwork & Metadata - Full screen centered in party mode */}
+                <div className={`flex flex-col ${isPartyMode ? 'items-center justify-center' : 'flex-1 justify-center max-w-2xl mx-auto w-full min-h-[400px]'}`}>
                     <div 
-                        className="aspect-square w-full max-w-[500px] mx-auto bg-surface-2 rounded-xl shadow-2xl relative group overflow-hidden mb-8 md:mb-12 cursor-pointer ring-1 ring-surface-3/60"
+                        className={`aspect-square bg-surface-2 rounded-xl shadow-2xl relative group overflow-hidden cursor-pointer ring-1 ring-surface-3/60 ${
+                            isPartyMode 
+                                ? 'w-[70vh] max-w-[80vw] mb-8' 
+                                : 'w-full max-w-[500px] mx-auto mb-8 md:mb-12'
+                        }`}
                         onClick={() => setShowVisualizerOverlay(!showVisualizerOverlay)}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
                     >
@@ -365,84 +434,95 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                          )}
                     </div>
                     
-                    <div className="flex items-end justify-between mb-2">
-                        <div className="flex flex-col min-w-0 pr-4">
-                            <h1 className="text-section md:text-display font-bold truncate leading-tight mb-2" title={currentSong.title}>
+                    {/* Track info - centered in party mode */}
+                    <div className={`flex ${isPartyMode ? 'flex-col items-center text-center' : 'items-end justify-between'} mb-2`}>
+                        <div className={`flex flex-col min-w-0 ${isPartyMode ? 'items-center' : 'pr-4'}`}>
+                            <h1 className={`font-bold truncate leading-tight mb-2 ${
+                                isPartyMode ? 'text-display md:text-4xl max-w-[80vw]' : 'text-section md:text-display'
+                            }`} title={currentSong.title}>
                                 {currentSong.title}
                             </h1>
                             <h2 
-                                className="text-card md:text-section text-text-secondary font-medium truncate cursor-pointer hover:underline hover:text-text-main transition-colors"
+                                className={`text-text-secondary font-medium truncate cursor-pointer hover:underline hover:text-text-main transition-colors ${
+                                    isPartyMode ? 'text-section max-w-[80vw]' : 'text-card md:text-section'
+                                }`}
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, { name: currentSong.artist })}
                             >
                                 {currentSong.artist}
                             </h2>
                         </div>
-                        <div className="flex items-center gap-3">
-                            {/* Download button for streaming Spotify tracks */}
-                            {isSpotifyStreaming && (
-                                <Button
-                                    onClick={handleDownloadTrack}
-                                    disabled={isDownloading}
-                                    variant="ghost"
-                                    className="rounded-full p-2 text-text-secondary hover:text-accent-green hover:bg-surface-1/40 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title="Download for offline"
-                                    aria-label="Download for offline"
-                                >
-                                    {isDownloading ? (
-                                        <Loader2 size={28} className="animate-spin" />
-                                    ) : (
-                                        <Download size={28} />
-                                    )}
-                                </Button>
-                            )}
-                            {/* Show checkmark if track is downloaded (has spotifyId but not streaming) */}
-                            {currentSong.spotifyId && !currentSong.isStreaming && (
-                                <div className="text-accent-green" title="Downloaded">
-                                    <CheckCircle size={28} />
-                                </div>
-                            )}
-                            <LikeButton songId={currentSong.id} size={32} />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right Side: Tabs */}
-                <div className="flex-1 flex flex-col h-full min-h-[400px] max-w-xl mx-auto w-full bg-surface-1/30 rounded-t-2xl md:rounded-2xl ring-1 ring-surface-3/60 backdrop-blur-md overflow-hidden">
-                    {/* Tabs Header */}
-                    <div className="flex items-center border-b border-surface-3/60 p-2 gap-2">
-                        <Button
-                            onClick={() => setActiveTab('QUEUE')}
-                            variant={activeTab === 'QUEUE' ? 'secondary' : 'ghost'}
-                            className="flex-1 justify-center rounded-lg"
-                        >
-                            Queue
-                        </Button>
-                        <Button
-                            onClick={() => setActiveTab('LYRICS')}
-                            variant={activeTab === 'LYRICS' ? 'secondary' : 'ghost'}
-                            className="flex-1 justify-center rounded-lg"
-                        >
-                            Lyrics
-                        </Button>
-                    </div>
-
-                    {/* Tab Content */}
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 relative">
-                        {activeTab === 'LYRICS' && (
-                            <div className="h-full flex flex-col">
-                                <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} />
+                        {!isPartyMode && (
+                            <div className="flex items-center gap-3">
+                                {/* Download button for streaming Spotify tracks */}
+                                {isSpotifyStreaming && (
+                                    <Button
+                                        onClick={handleDownloadTrack}
+                                        disabled={isDownloading}
+                                        variant="ghost"
+                                        className="rounded-full p-2 text-text-secondary hover:text-accent-green hover:bg-surface-1/40 hover:scale-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Download for offline"
+                                        aria-label="Download for offline"
+                                    >
+                                        {isDownloading ? (
+                                            <Loader2 size={28} className="animate-spin" />
+                                        ) : (
+                                            <Download size={28} />
+                                        )}
+                                    </Button>
+                                )}
+                                {/* Show checkmark if track is downloaded (has spotifyId but not streaming) */}
+                                {currentSong.spotifyId && !currentSong.isStreaming && (
+                                    <div className="text-accent-green" title="Downloaded">
+                                        <CheckCircle size={28} />
+                                    </div>
+                                )}
+                                <LikeButton songId={currentSong.id} size={32} />
                             </div>
                         )}
-
-                        {activeTab === 'QUEUE' && (
-                            <QueueList queue={queue} currentSongIndex={currentSongIndex} />
-                        )}
                     </div>
                 </div>
+
+                {/* Right Side: Tabs - Hidden in party mode */}
+                {!isPartyMode && (
+                    <div className="flex-1 flex flex-col h-full min-h-[400px] max-w-xl mx-auto w-full bg-surface-1/30 rounded-t-2xl md:rounded-2xl ring-1 ring-surface-3/60 backdrop-blur-md overflow-hidden">
+                        {/* Tabs Header */}
+                        <div className="flex items-center border-b border-surface-3/60 p-2 gap-2">
+                            <Button
+                                onClick={() => setActiveTab('QUEUE')}
+                                variant={activeTab === 'QUEUE' ? 'secondary' : 'ghost'}
+                                className="flex-1 justify-center rounded-lg"
+                            >
+                                Queue
+                            </Button>
+                            <Button
+                                onClick={() => setActiveTab('LYRICS')}
+                                variant={activeTab === 'LYRICS' ? 'secondary' : 'ghost'}
+                                className="flex-1 justify-center rounded-lg"
+                            >
+                                Lyrics
+                            </Button>
+                        </div>
+
+                        {/* Tab Content */}
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 relative">
+                            {activeTab === 'LYRICS' && (
+                                <div className="h-full flex flex-col">
+                                    <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} />
+                                </div>
+                            )}
+
+                            {activeTab === 'QUEUE' && (
+                                <QueueList queue={queue} currentSongIndex={currentSongIndex} />
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Bottom Controls */}
-            <div className="relative z-10 px-8 py-8 md:px-16 bg-gradient-to-t from-surface-0 via-surface-0/80 to-transparent">
+            {/* Bottom Controls - Hidden in party mode unless mouse active */}
+            <div className={`relative z-10 px-8 py-8 md:px-16 bg-gradient-to-t from-surface-0 via-surface-0/80 to-transparent transition-opacity duration-300 ${
+                isPartyMode ? (showPartyControls ? 'opacity-100' : 'opacity-0 pointer-events-none') : 'opacity-100'
+            }`}>
                  <div className="max-w-4xl mx-auto w-full flex flex-col gap-6">
                      {/* Seek Bar */}
                     <div className="flex items-center gap-4 text-xs font-mono font-medium text-text-secondary">

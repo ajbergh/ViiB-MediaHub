@@ -285,6 +285,7 @@ export interface UISlice {
   isNowPlayingOpen: boolean;
   showSmartMixes: boolean;
   hasCompletedSetup: boolean;
+  isPartyMode: boolean; // Fullscreen immersive mode with minimal UI
   contextMenu: {
     isOpen: boolean;
     x: number;
@@ -304,6 +305,8 @@ export interface UISlice {
   setNowPlayingOpen: (isOpen: boolean) => void;
   setShowSmartMixes: (show: boolean) => void;
   setHasCompletedSetup: (completed: boolean) => void;
+  setPartyMode: (enabled: boolean) => void;
+  togglePartyMode: () => void;
   
   openContextMenu: (e: React.MouseEvent, type: ContextMenuType, data: any) => void;
   closeContextMenu: () => void;
