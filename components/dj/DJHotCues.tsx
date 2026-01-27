@@ -31,11 +31,13 @@ const HOT_CUE_COLORS = [
 ];
 
 export const DJHotCues: React.FC<DJHotCuesProps> = ({ deck }) => {
-  const deckState = useStore(state => deck === 'A' ? state.djDeckA : state.djDeckB);
+  // Only subscribe to specific state needed for rendering, NOT position
+  // Position is read from store directly when setting hot cue to avoid re-renders
+  const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
+  const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
   const { setHotCue, triggerHotCue, clearHotCue } = useStore();
   const { seek } = useDJAudioEngine();
   
-  const { track, position, hotCues } = deckState;
   const [longPressSlot, setLongPressSlot] = useState<number | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -61,16 +63,18 @@ export const DJHotCues: React.FC<DJHotCuesProps> = ({ deck }) => {
   // Handle setting a new hot cue (right-click or shift+click)
   const handleSetHotCue = useCallback((slot: number, e: React.MouseEvent) => {
     e.preventDefault();
-    console.log(`🎯 DJHotCues: handleSetHotCue slot=${slot}, track=${track?.title}, position=${position}`);
+    // Get current position directly from store to avoid stale closures and unnecessary re-renders
+    const currentPosition = useStore.getState()[deck === 'A' ? 'djDeckA' : 'djDeckB'].position;
+    console.log(`🎯 DJHotCues: handleSetHotCue slot=${slot}, track=${track?.title}, position=${currentPosition}`);
     if (!track) {
       console.log(`🎯 DJHotCues: No track loaded, can't set hot cue`);
       return;
     }
     
     const color = HOT_CUE_COLORS[slot - 1] || '#ffffff';
-    setHotCue(deck, slot, position, color);
-    console.log(`🎯 DJHotCues: Set hot cue at slot ${slot}, position ${position}, color ${color}`);
-  }, [deck, track, position, setHotCue]);
+    setHotCue(deck, slot, currentPosition, color);
+    console.log(`🎯 DJHotCues: Set hot cue at slot ${slot}, position ${currentPosition}, color ${color}`);
+  }, [deck, track, setHotCue]);
 
   // Handle long press to delete
   const handleMouseDown = useCallback((slot: number) => {

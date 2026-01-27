@@ -16,6 +16,9 @@ import { useStore } from '../store';
 import type { DeckId, DeckState } from '../slices/djMixerSlice';
 import type { Song } from '../types';
 
+// Debug flag - set to false for production to reduce console overhead
+const DJ_DEBUG = false;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -85,8 +88,10 @@ export class DJAudioEngine {
   // Filter FX
   private filterFXA: BiquadFilterNode | null = null;
   private filterFXB: BiquadFilterNode | null = null;
-  private filterFXGainA: GainNode | null = null;  // Dry/wet
+  private filterFXGainA: GainNode | null = null;  // Wet gain (filtered signal)
   private filterFXGainB: GainNode | null = null;
+  private filterDryGainA: GainNode | null = null;  // Dry gain (unfiltered signal)
+  private filterDryGainB: GainNode | null = null;
   
   // Delay FX
   private delayNodeA: DelayNode | null = null;
@@ -118,6 +123,10 @@ export class DJAudioEngine {
   private reverbDryGainA: GainNode | null = null;
   private reverbDryGainB: GainNode | null = null;
   
+  // Reverb parameter cache (to avoid regenerating impulse response unnecessarily)
+  private reverbParamsA: { roomSize: number; damping: number } = { roomSize: -1, damping: -1 };
+  private reverbParamsB: { roomSize: number; damping: number } = { roomSize: -1, damping: -1 };
+  
   // FX bypass nodes (connect dry signal around FX)
   private fxSendA: GainNode | null = null;  // Input to FX chain
   private fxSendB: GainNode | null = null;
@@ -137,12 +146,27 @@ export class DJAudioEngine {
   private analyserB: AnalyserNode | null = null;
   private analyserMaster: AnalyserNode | null = null;
 
+  // Headphone cue nodes (Phase 4)
+  private headphoneCueGainA: GainNode | null = null;  // Deck A cue send
+  private headphoneCueGainB: GainNode | null = null;  // Deck B cue send
+  private headphoneCueMix: GainNode | null = null;    // Mixed cue signal
+  private headphoneMasterMix: GainNode | null = null; // Master signal to headphones
+  private headphoneMixer: GainNode | null = null;     // Final headphone output
+  private cueEnabledA = false;
+  private cueEnabledB = false;
+  private headphoneMixValue = 0.5;  // 0 = cue only, 1 = master only
+
   // Configuration
   private config: Required<DJAudioEngineConfig>;
 
   // Animation frame for position updates
   private animationFrameId: number | null = null;
   private vuAnimationFrameId: number | null = null;
+
+  // Throttling for position updates (reduce state updates to ~15 fps instead of 60)
+  private lastPositionUpdateA = 0;
+  private lastPositionUpdateB = 0;
+  private readonly POSITION_UPDATE_INTERVAL = 66; // ~15 updates/second (ms)
 
   // Callbacks
   private onPositionUpdate?: (deck: DeckId, position: number) => void;
@@ -326,6 +350,49 @@ export class DJAudioEngine {
       .connect(this.analyserMaster)
       .connect(ctx.destination);
 
+    // ========== Headphone Cue Section (Phase 4) ==========
+    // Create cue send gains for each deck (taps signal after EQ, before crossfader)
+    this.headphoneCueGainA = ctx.createGain();
+    this.headphoneCueGainA.gain.value = 0;  // CUE disabled by default
+    
+    this.headphoneCueGainB = ctx.createGain();
+    this.headphoneCueGainB.gain.value = 0;  // CUE disabled by default
+    
+    // Mix node for cue signals
+    this.headphoneCueMix = ctx.createGain();
+    this.headphoneCueMix.gain.value = 1.0;
+    
+    // Master signal to headphones
+    this.headphoneMasterMix = ctx.createGain();
+    this.headphoneMasterMix.gain.value = 0.5;  // 50% master by default
+    
+    // Final headphone output
+    this.headphoneMixer = ctx.createGain();
+    this.headphoneMixer.gain.value = 1.0;  // Headphone volume
+    
+    // Connect deck signals to cue sends (tap from after FX return, before crossfader)
+    this.fxReturnA!.connect(this.headphoneCueGainA);
+    this.fxReturnB!.connect(this.headphoneCueGainB);
+    
+    // Mix cue signals
+    this.headphoneCueGainA.connect(this.headphoneCueMix);
+    this.headphoneCueGainB.connect(this.headphoneCueMix);
+    
+    // Connect master to headphone master mix
+    this.analyserMaster.connect(this.headphoneMasterMix);
+    
+    // Mix cue and master into headphone output
+    this.headphoneCueMix.connect(this.headphoneMixer);
+    this.headphoneMasterMix.connect(this.headphoneMixer);
+    
+    // Headphone output goes to destination (same as main for now)
+    // In a real DJ setup, this would go to a separate output device
+    // For browser compatibility, we just mix it in (user can use headphone splitter)
+    this.headphoneMixer.connect(ctx.destination);
+    
+    // Set initial mix (0.5 = balanced cue/master)
+    this.updateHeadphoneMix(0.5);
+
     console.log('🎧 Audio graph created');
   }
 
@@ -342,23 +409,27 @@ export class DJAudioEngine {
     const fxReturn = ctx.createGain();
     fxReturn.gain.value = 1.0;
     
-    // Dry path (bypass)
-    const dryGain = ctx.createGain();
-    dryGain.gain.value = 1.0;
-    fxSend.connect(dryGain).connect(fxReturn);
-    
     // ========== Filter FX ==========
+    // Filter replaces the dry signal when enabled (not additive)
     const filterFX = ctx.createBiquadFilter();
     filterFX.type = 'lowpass';
-    filterFX.frequency.value = 20000; // Full open by default
+    filterFX.frequency.value = 1000; // Start at midpoint
     filterFX.Q.value = 1;
     
+    // Wet path (filtered signal)
     const filterGain = ctx.createGain();
-    filterGain.gain.value = 0; // Disabled by default
+    filterGain.gain.value = 0; // Disabled by default (wet = 0)
     
+    // Dry path (unfiltered signal) - this IS the main signal path
+    const filterDryGain = ctx.createGain();
+    filterDryGain.gain.value = 1.0; // Enabled by default (dry = 1)
+    
+    // Both filter wet and dry go to fxReturn
     fxSend.connect(filterFX).connect(filterGain).connect(fxReturn);
+    fxSend.connect(filterDryGain).connect(fxReturn);
     
     // ========== Delay FX ==========
+    // Delay is additive (adds echoes to the signal)
     const delayNode = ctx.createDelay(2.0); // Max 2 second delay
     delayNode.delayTime.value = 0.375; // Default ~3/8 note at 120 BPM
     
@@ -371,10 +442,10 @@ export class DJAudioEngine {
     const delayDryGain = ctx.createGain();
     delayDryGain.gain.value = 1.0;
     
-    // Delay with feedback loop
+    // Delay with feedback loop - signal goes from fxSend, wet output added to fxReturn
     fxSend.connect(delayNode).connect(delayWetGain).connect(fxReturn);
     delayNode.connect(delayFeedback).connect(delayNode); // Feedback loop
-    fxSend.connect(delayDryGain).connect(fxReturn);
+    // Note: delayDryGain controls the original signal level, managed in setDelayFX
     
     // ========== Flanger FX ==========
     const flangerDelay = ctx.createDelay(0.02); // Max 20ms for flanger
@@ -403,6 +474,7 @@ export class DJAudioEngine {
     
     // ========== Reverb FX (simplified - convolver) ==========
     // We'll create an impulse response programmatically for simplicity
+    // Reverb is additive (only adds wet signal)
     const reverbConvolver = ctx.createConvolver();
     this.createReverbImpulse(ctx, reverbConvolver, 0.5, 0.5);
     
@@ -410,10 +482,11 @@ export class DJAudioEngine {
     reverbWetGain.gain.value = 0; // Disabled by default
     
     const reverbDryGain = ctx.createGain();
-    reverbDryGain.gain.value = 1.0;
+    reverbDryGain.gain.value = 1.0; // Kept for compatibility but not used
     
+    // Reverb wet goes to fxReturn (additive)
     fxSend.connect(reverbConvolver).connect(reverbWetGain).connect(fxReturn);
-    fxSend.connect(reverbDryGain).connect(fxReturn);
+    // Note: no separate dry path for reverb - filter handles the main signal path
     
     // Store references based on deck
     if (deck === 'A') {
@@ -421,6 +494,7 @@ export class DJAudioEngine {
       this.fxReturnA = fxReturn;
       this.filterFXA = filterFX;
       this.filterFXGainA = filterGain;
+      this.filterDryGainA = filterDryGain;
       this.delayNodeA = delayNode;
       this.delayFeedbackA = delayFeedback;
       this.delayWetGainA = delayWetGain;
@@ -438,6 +512,7 @@ export class DJAudioEngine {
       this.fxReturnB = fxReturn;
       this.filterFXB = filterFX;
       this.filterFXGainB = filterGain;
+      this.filterDryGainB = filterDryGain;
       this.delayNodeB = delayNode;
       this.delayFeedbackB = delayFeedback;
       this.delayWetGainB = delayWetGain;
@@ -864,6 +939,75 @@ export class DJAudioEngine {
   }
 
   // ============================================================================
+  // Headphone Cue (Phase 4)
+  // ============================================================================
+
+  /**
+   * Enable/disable cue for a deck
+   * When enabled, deck's post-EQ signal is sent to headphones
+   */
+  setCueEnabled(deck: DeckId, enabled: boolean): void {
+    if (!this.audioContext) return;
+    
+    const cueGain = deck === 'A' ? this.headphoneCueGainA : this.headphoneCueGainB;
+    if (!cueGain) return;
+    
+    if (deck === 'A') {
+      this.cueEnabledA = enabled;
+    } else {
+      this.cueEnabledB = enabled;
+    }
+    
+    // Set cue send gain (1 = enabled, 0 = disabled)
+    const now = this.audioContext.currentTime;
+    cueGain.gain.setValueAtTime(enabled ? 1 : 0, now);
+    
+    if (DJ_DEBUG) console.log(`🎧 Deck ${deck} CUE ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Update headphone mix (cue vs master balance)
+   * @param mix - 0 = cue only, 1 = master only
+   */
+  updateHeadphoneMix(mix: number): void {
+    if (!this.audioContext || !this.headphoneCueMix || !this.headphoneMasterMix) return;
+    
+    this.headphoneMixValue = Math.max(0, Math.min(1, mix));
+    
+    // Constant-power crossfade between cue and master
+    const cueGain = Math.cos(this.headphoneMixValue * Math.PI / 2);  // 1 at mix=0, 0 at mix=1
+    const masterGain = Math.sin(this.headphoneMixValue * Math.PI / 2);  // 0 at mix=0, 1 at mix=1
+    
+    const now = this.audioContext.currentTime;
+    this.headphoneCueMix.gain.setValueAtTime(cueGain, now);
+    this.headphoneMasterMix.gain.setValueAtTime(masterGain, now);
+    
+    if (DJ_DEBUG) console.log(`🎧 Headphone mix: ${(mix * 100).toFixed(0)}% master`);
+  }
+
+  /**
+   * Set headphone output volume
+   */
+  setHeadphoneVolume(volume: number): void {
+    if (!this.audioContext || !this.headphoneMixer) return;
+    
+    const now = this.audioContext.currentTime;
+    this.headphoneMixer.gain.setValueAtTime(
+      Math.max(0, Math.min(1, volume)),
+      now
+    );
+    
+    if (DJ_DEBUG) console.log(`🎧 Headphone volume: ${(volume * 100).toFixed(0)}%`);
+  }
+
+  /**
+   * Get current cue state for a deck
+   */
+  getCueEnabled(deck: DeckId): boolean {
+    return deck === 'A' ? this.cueEnabledA : this.cueEnabledB;
+  }
+
+  // ============================================================================
   // EQ
   // ============================================================================
 
@@ -904,6 +1048,88 @@ export class DJAudioEngine {
     }
   }
 
+  /**
+   * Nudge deck position slightly for beat-phase sync
+   * @param deck - Deck to nudge
+   * @param offsetMs - Offset in milliseconds (positive = forward, negative = backward)
+   */
+  nudgePosition(deck: DeckId, offsetMs: number): void {
+    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
+    if (!audioElement) return;
+    
+    const currentTime = audioElement.currentTime;
+    const offsetSeconds = offsetMs / 1000;
+    const newTime = Math.max(0, currentTime + offsetSeconds);
+    
+    audioElement.currentTime = newTime;
+    
+    if (DJ_DEBUG) console.log(`🎯 Deck ${deck} nudged by ${offsetMs.toFixed(1)}ms`);
+  }
+
+  /**
+   * Perform beat-phase sync: align target deck's beat phase with source deck
+   * @param targetDeck - Deck to sync
+   * @param targetBeatGrid - Beat grid timestamps for target deck
+   * @param sourceBeatGrid - Beat grid timestamps for source deck
+   * @param sourcePosition - Current position of source deck (seconds)
+   */
+  syncBeatPhase(
+    targetDeck: DeckId,
+    targetBeatGrid: number[],
+    sourceBeatGrid: number[],
+    sourcePosition: number
+  ): void {
+    const targetElement = targetDeck === 'A' ? this.audioElementA : this.audioElementB;
+    if (!targetElement || !sourceBeatGrid.length || !targetBeatGrid.length) {
+      console.warn('Beat-phase sync: Missing audio element or beat grids');
+      return;
+    }
+    
+    const targetPosition = targetElement.currentTime;
+    
+    // Find current beat in source
+    let sourceBeatIndex = 0;
+    for (let i = 0; i < sourceBeatGrid.length - 1; i++) {
+      if (sourcePosition >= sourceBeatGrid[i] && sourcePosition < sourceBeatGrid[i + 1]) {
+        sourceBeatIndex = i;
+        break;
+      }
+    }
+    
+    // Calculate source's phase within current beat (0-1)
+    const sourceBeatStart = sourceBeatGrid[sourceBeatIndex];
+    const sourceBeatEnd = sourceBeatGrid[sourceBeatIndex + 1] || sourceBeatStart + 0.5;
+    const sourceBeatDuration = sourceBeatEnd - sourceBeatStart;
+    const sourcePhase = (sourcePosition - sourceBeatStart) / sourceBeatDuration;
+    
+    // Find current beat in target
+    let targetBeatIndex = 0;
+    for (let i = 0; i < targetBeatGrid.length - 1; i++) {
+      if (targetPosition >= targetBeatGrid[i] && targetPosition < targetBeatGrid[i + 1]) {
+        targetBeatIndex = i;
+        break;
+      }
+    }
+    
+    // Calculate where target should be to match source phase
+    const targetBeatStart = targetBeatGrid[targetBeatIndex];
+    const targetBeatEnd = targetBeatGrid[targetBeatIndex + 1] || targetBeatStart + 0.5;
+    const targetBeatDuration = targetBeatEnd - targetBeatStart;
+    const targetIdealPosition = targetBeatStart + (sourcePhase * targetBeatDuration);
+    
+    // Calculate offset needed
+    const phaseOffset = targetIdealPosition - targetPosition;
+    
+    // Only nudge if offset is significant but not too large (avoid jumping beats)
+    const maxOffset = targetBeatDuration / 2;  // Max half a beat
+    if (Math.abs(phaseOffset) > 0.005 && Math.abs(phaseOffset) < maxOffset) {
+      this.nudgePosition(targetDeck, phaseOffset * 1000);
+      console.log(`🎯 Beat-phase sync: Deck ${targetDeck} nudged by ${(phaseOffset * 1000).toFixed(1)}ms`);
+    } else if (Math.abs(phaseOffset) >= maxOffset) {
+      console.log(`🎯 Beat-phase sync: Offset too large (${(phaseOffset * 1000).toFixed(1)}ms), skipping nudge`);
+    }
+  }
+
   // ============================================================================
   // Effects (Phase 3)
   // ============================================================================
@@ -920,17 +1146,22 @@ export class DJAudioEngine {
   ): void {
     const filterFX = deck === 'A' ? this.filterFXA : this.filterFXB;
     const filterGain = deck === 'A' ? this.filterFXGainA : this.filterFXGainB;
+    const filterDryGain = deck === 'A' ? this.filterDryGainA : this.filterDryGainB;
     
-    if (!filterFX || !filterGain || !this.audioContext) return;
+    if (!filterFX || !filterGain || !filterDryGain || !this.audioContext) return;
     
     const now = this.audioContext.currentTime;
     
     filterFX.type = type;
     filterFX.frequency.setValueAtTime(Math.max(20, Math.min(20000, frequency)), now);
     filterFX.Q.setValueAtTime(Math.max(0.1, Math.min(30, resonance)), now);
-    filterGain.gain.setValueAtTime(enabled ? 1 : 0, now);
     
-    console.log(`🎛️ Filter FX ${deck}: ${enabled ? 'ON' : 'OFF'}, ${type}, freq=${frequency}Hz, Q=${resonance}`);
+    // When enabled: wet=1, dry=0 (only filtered signal)
+    // When disabled: wet=0, dry=1 (only dry signal)
+    filterGain.gain.setValueAtTime(enabled ? 1 : 0, now);
+    filterDryGain.gain.setValueAtTime(enabled ? 0 : 1, now);
+    
+    if (DJ_DEBUG) console.log(`🎛️ Filter FX ${deck}: ${enabled ? 'ON' : 'OFF'}, ${type}, freq=${frequency}Hz, Q=${resonance}`);
   }
 
   /**
@@ -946,24 +1177,24 @@ export class DJAudioEngine {
     const delayNode = deck === 'A' ? this.delayNodeA : this.delayNodeB;
     const delayFeedback = deck === 'A' ? this.delayFeedbackA : this.delayFeedbackB;
     const delayWetGain = deck === 'A' ? this.delayWetGainA : this.delayWetGainB;
-    const delayDryGain = deck === 'A' ? this.delayDryGainA : this.delayDryGainB;
     
-    if (!delayNode || !delayFeedback || !delayWetGain || !delayDryGain || !this.audioContext) return;
+    if (!delayNode || !delayFeedback || !delayWetGain || !this.audioContext) return;
     
     const now = this.audioContext.currentTime;
     
+    // Set delay time and feedback
     delayNode.delayTime.setValueAtTime(Math.max(0.01, Math.min(2, time)), now);
-    delayFeedback.gain.setValueAtTime(Math.max(0, Math.min(0.95, feedback)), now);
     
     if (enabled) {
       delayWetGain.gain.setValueAtTime(mix, now);
-      delayDryGain.gain.setValueAtTime(1 - mix * 0.5, now); // Don't fully cut dry signal
+      delayFeedback.gain.setValueAtTime(Math.max(0, Math.min(0.9, feedback)), now);
     } else {
+      // When disabled: no wet signal, no feedback (stop echoes)
       delayWetGain.gain.setValueAtTime(0, now);
-      delayDryGain.gain.setValueAtTime(1, now);
+      delayFeedback.gain.setValueAtTime(0, now);
     }
     
-    console.log(`🎛️ Delay FX ${deck}: ${enabled ? 'ON' : 'OFF'}, time=${time}s, feedback=${feedback}, mix=${mix}`);
+    if (DJ_DEBUG) console.log(`🎛️ Delay FX ${deck}: ${enabled ? 'ON' : 'OFF'}, time=${time}s, feedback=${feedback}, mix=${mix}`);
   }
 
   /**
@@ -985,12 +1216,19 @@ export class DJAudioEngine {
     
     const now = this.audioContext.currentTime;
     
-    flangerLfo.frequency.setValueAtTime(Math.max(0.1, Math.min(10, rate)), now);
-    flangerLfoGain.gain.setValueAtTime(depth * 0.005, now); // Scale depth to delay time modulation
-    flangerFeedback.gain.setValueAtTime(Math.max(0, Math.min(0.95, feedback)), now);
-    flangerWetGain.gain.setValueAtTime(enabled ? 0.5 : 0, now);
+    if (enabled) {
+      flangerLfo.frequency.setValueAtTime(Math.max(0.1, Math.min(10, rate)), now);
+      flangerLfoGain.gain.setValueAtTime(depth * 0.005, now); // Scale depth to delay time modulation
+      flangerFeedback.gain.setValueAtTime(Math.max(0, Math.min(0.9, feedback)), now);
+      flangerWetGain.gain.setValueAtTime(0.5, now);
+    } else {
+      // When disabled: stop modulation, no feedback, no wet signal
+      flangerLfoGain.gain.setValueAtTime(0, now);
+      flangerFeedback.gain.setValueAtTime(0, now);
+      flangerWetGain.gain.setValueAtTime(0, now);
+    }
     
-    console.log(`🎛️ Flanger FX ${deck}: ${enabled ? 'ON' : 'OFF'}, rate=${rate}Hz, depth=${depth}, feedback=${feedback}`);
+    if (DJ_DEBUG) console.log(`🎛️ Flanger FX ${deck}: ${enabled ? 'ON' : 'OFF'}, rate=${rate}Hz, depth=${depth}, feedback=${feedback}`);
   }
 
   /**
@@ -1005,24 +1243,27 @@ export class DJAudioEngine {
   ): void {
     const reverbConvolver = deck === 'A' ? this.reverbConvolverA : this.reverbConvolverB;
     const reverbWetGain = deck === 'A' ? this.reverbWetGainA : this.reverbWetGainB;
-    const reverbDryGain = deck === 'A' ? this.reverbDryGainA : this.reverbDryGainB;
+    const cachedParams = deck === 'A' ? this.reverbParamsA : this.reverbParamsB;
     
-    if (!reverbConvolver || !reverbWetGain || !reverbDryGain || !this.audioContext) return;
+    if (!reverbConvolver || !reverbWetGain || !this.audioContext) return;
     
     const now = this.audioContext.currentTime;
     
-    // Regenerate impulse response with new parameters
-    this.createReverbImpulse(this.audioContext, reverbConvolver, roomSize, damping);
+    // Only regenerate impulse response when roomSize or damping changes
+    // This is expensive, so we cache and compare
+    if (cachedParams.roomSize !== roomSize || cachedParams.damping !== damping) {
+      this.createReverbImpulse(this.audioContext, reverbConvolver, roomSize, damping);
+      cachedParams.roomSize = roomSize;
+      cachedParams.damping = damping;
+    }
     
     if (enabled) {
       reverbWetGain.gain.setValueAtTime(mix, now);
-      reverbDryGain.gain.setValueAtTime(1 - mix * 0.5, now);
     } else {
       reverbWetGain.gain.setValueAtTime(0, now);
-      reverbDryGain.gain.setValueAtTime(1, now);
     }
     
-    console.log(`🎛️ Reverb FX ${deck}: ${enabled ? 'ON' : 'OFF'}, room=${roomSize}, damp=${damping}, mix=${mix}`);
+    if (DJ_DEBUG) console.log(`🎛️ Reverb FX ${deck}: ${enabled ? 'ON' : 'OFF'}, room=${roomSize}, damp=${damping}, mix=${mix}`);
   }
 
   // ============================================================================
@@ -1044,7 +1285,7 @@ export class DJAudioEngine {
     
     // Update store
     useStore.getState().setLoop(deck, startTime, endTime);
-    console.log(`🔁 Loop set for deck ${deck}: ${startTime.toFixed(2)}s - ${endTime.toFixed(2)}s`);
+    if (DJ_DEBUG) console.log(`🔁 Loop set for deck ${deck}: ${startTime.toFixed(2)}s - ${endTime.toFixed(2)}s`);
   }
 
   /**
@@ -1053,7 +1294,7 @@ export class DJAudioEngine {
   toggleLoop(deck: DeckId): void {
     useStore.getState().toggleLoop(deck);
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-    console.log(`🔁 Loop ${deck}: ${deckState.loop.enabled ? 'ON' : 'OFF'}`);
+    if (DJ_DEBUG) console.log(`🔁 Loop ${deck}: ${deckState.loop.enabled ? 'ON' : 'OFF'}`);
   }
 
   /**
@@ -1061,7 +1302,7 @@ export class DJAudioEngine {
    */
   clearLoop(deck: DeckId): void {
     useStore.getState().clearLoop(deck);
-    console.log(`🔁 Loop cleared for deck ${deck}`);
+    if (DJ_DEBUG) console.log(`🔁 Loop cleared for deck ${deck}`);
   }
 
   /**
@@ -1081,7 +1322,7 @@ export class DJAudioEngine {
       // Just set the start point, keep end at 0 (will be set by setLoopOut)
       useStore.getState().setLoop(deck, position, deckState.loop.end || position + 4);
     }
-    console.log(`🔁 Loop IN set for deck ${deck}: ${position.toFixed(2)}s`);
+    if (DJ_DEBUG) console.log(`🔁 Loop IN set for deck ${deck}: ${position.toFixed(2)}s`);
   }
 
   /**
@@ -1104,7 +1345,7 @@ export class DJAudioEngine {
     } else {
       console.warn(`⚠️ Loop OUT must be after loop IN point`);
     }
-    console.log(`🔁 Loop OUT set for deck ${deck}: ${position.toFixed(2)}s`);
+    if (DJ_DEBUG) console.log(`🔁 Loop OUT set for deck ${deck}: ${position.toFixed(2)}s`);
   }
 
   /**
@@ -1138,7 +1379,7 @@ export class DJAudioEngine {
     if (!deckState.loop.enabled) {
       useStore.getState().toggleLoop(deck);
     }
-    console.log(`🔁 ${beats}-beat loop set for deck ${deck}: ${loopDuration.toFixed(2)}s @ ${bpm.toFixed(1)} BPM`);
+    if (DJ_DEBUG) console.log(`🔁 ${beats}-beat loop set for deck ${deck}: ${loopDuration.toFixed(2)}s @ ${bpm.toFixed(1)} BPM`);
   }
 
   /**
@@ -1153,7 +1394,7 @@ export class DJAudioEngine {
     const newEnd = Math.min(deckState.loop.start + currentLength * 2, audioElement.duration);
     
     useStore.getState().setLoop(deck, deckState.loop.start, newEnd);
-    console.log(`🔁 Loop doubled for deck ${deck}: ${(newEnd - deckState.loop.start).toFixed(2)}s`);
+    if (DJ_DEBUG) console.log(`🔁 Loop doubled for deck ${deck}: ${(newEnd - deckState.loop.start).toFixed(2)}s`);
   }
 
   /**
@@ -1168,7 +1409,7 @@ export class DJAudioEngine {
     const newEnd = deckState.loop.start + Math.max(currentLength / 2, minLength);
     
     useStore.getState().setLoop(deck, deckState.loop.start, newEnd);
-    console.log(`🔁 Loop halved for deck ${deck}: ${(newEnd - deckState.loop.start).toFixed(2)}s`);
+    if (DJ_DEBUG) console.log(`🔁 Loop halved for deck ${deck}: ${(newEnd - deckState.loop.start).toFixed(2)}s`);
   }
 
   // ============================================================================
@@ -1178,34 +1419,45 @@ export class DJAudioEngine {
   private startPositionTracking(): void {
     const updatePositions = () => {
       const storeState = useStore.getState();
+      const now = performance.now();
       
       // Deck A position and loop handling
       if (this.audioElementA && !this.audioElementA.paused) {
         const currentTime = this.audioElementA.currentTime;
-        this.onPositionUpdate?.('A', currentTime);
-        storeState.setDeckPosition('A', currentTime);
         
-        // Check for loop
+        // Check for loop at full frame rate (critical for tight loops)
         const loopA = storeState.djDeckA.loop;
         if (loopA.enabled && loopA.end > loopA.start) {
           if (currentTime >= loopA.end) {
             this.audioElementA.currentTime = loopA.start;
           }
         }
+        
+        // Throttle state updates to reduce React re-renders (~15 fps)
+        if (now - this.lastPositionUpdateA >= this.POSITION_UPDATE_INTERVAL) {
+          this.lastPositionUpdateA = now;
+          this.onPositionUpdate?.('A', currentTime);
+          storeState.setDeckPosition('A', currentTime);
+        }
       }
       
       // Deck B position and loop handling
       if (this.audioElementB && !this.audioElementB.paused) {
         const currentTime = this.audioElementB.currentTime;
-        this.onPositionUpdate?.('B', currentTime);
-        storeState.setDeckPosition('B', currentTime);
         
-        // Check for loop
+        // Check for loop at full frame rate (critical for tight loops)
         const loopB = storeState.djDeckB.loop;
         if (loopB.enabled && loopB.end > loopB.start) {
           if (currentTime >= loopB.end) {
             this.audioElementB.currentTime = loopB.start;
           }
+        }
+        
+        // Throttle state updates to reduce React re-renders (~15 fps)
+        if (now - this.lastPositionUpdateB >= this.POSITION_UPDATE_INTERVAL) {
+          this.lastPositionUpdateB = now;
+          this.onPositionUpdate?.('B', currentTime);
+          storeState.setDeckPosition('B', currentTime);
         }
       }
       

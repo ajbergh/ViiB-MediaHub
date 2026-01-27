@@ -20,10 +20,11 @@
  * @module pages/DJMode
  */
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useStore } from '../store';
 import { useDJAudioEngine } from '../hooks/useDJAudioEngine';
 import { DeckView, DJWaveform, DJMixer, DJLibraryBrowser, DJHotCues, DJFXPanel, DJLoopPanel } from '../components/dj';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { DeckId } from '../slices/djMixerSlice';
 
 export const DJMode: React.FC = () => {
@@ -37,6 +38,10 @@ export const DJMode: React.FC = () => {
     djDeckB,
     djMixer,
   } = useStore();
+  
+  // Collapse state for sections
+  const [fxCollapsed, setFxCollapsed] = useState(false);
+  const [libraryCollapsed, setLibraryCollapsed] = useState(false);
   
   // Initialize DJ audio engine and get control functions
   const { initialize, isInitialized, togglePlay, returnToCue, setCrossfader, seek } = useDJAudioEngine();
@@ -241,33 +246,73 @@ export const DJMode: React.FC = () => {
         </div>
       </div>
 
-      {/* FX & Loop Section */}
-      <div className="flex-shrink-0 bg-surface-0 border-t border-white/10 p-2">
-        <div className="flex gap-4">
-          {/* Deck A FX & Loop */}
-          <div className="flex-1 flex gap-2">
-            <div className="flex-1">
-              <DJFXPanel deck="A" />
-            </div>
-            <div className="w-48">
-              <DJLoopPanel deck="A" />
-            </div>
-          </div>
-          {/* Deck B FX & Loop */}
-          <div className="flex-1 flex gap-2">
-            <div className="w-48">
-              <DJLoopPanel deck="B" />
-            </div>
-            <div className="flex-1">
-              <DJFXPanel deck="B" />
-            </div>
-          </div>
+      {/* FX & Loop Section - Collapsible */}
+      <div className="flex-shrink-0 bg-surface-0 border-t border-white/10">
+        {/* Section Header */}
+        <div 
+          className="flex items-center justify-between px-4 py-1.5 cursor-pointer select-none hover:bg-white/5 transition-colors"
+          onClick={() => setFxCollapsed(!fxCollapsed)}
+        >
+          <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
+            FX & Loop Controls
+          </h3>
+          {fxCollapsed ? (
+            <ChevronDown size={14} className="text-neutral-400" />
+          ) : (
+            <ChevronUp size={14} className="text-neutral-400" />
+          )}
         </div>
+        
+        {/* Collapsible content */}
+        {!fxCollapsed && (
+          <div className="p-2 pt-0">
+            <div className="flex gap-4">
+              {/* Deck A FX & Loop */}
+              <div className="flex-1 flex gap-2">
+                <div className="flex-1">
+                  <DJFXPanel deck="A" />
+                </div>
+                <div className="w-48">
+                  <DJLoopPanel deck="A" />
+                </div>
+              </div>
+              {/* Deck B FX & Loop */}
+              <div className="flex-1 flex gap-2">
+                <div className="w-48">
+                  <DJLoopPanel deck="B" />
+                </div>
+                <div className="flex-1">
+                  <DJFXPanel deck="B" />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Library Browser */}
-      <div className="flex-shrink-0 h-64 bg-surface-1 border-t border-white/10">
-        <DJLibraryBrowser />
+      {/* Library Browser - Collapsible */}
+      <div className={`flex-shrink-0 bg-surface-1 border-t border-white/10 ${libraryCollapsed ? '' : 'h-64'}`}>
+        {/* Section Header */}
+        <div 
+          className="flex items-center justify-between px-4 py-1.5 cursor-pointer select-none hover:bg-white/5 transition-colors"
+          onClick={() => setLibraryCollapsed(!libraryCollapsed)}
+        >
+          <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
+            Library
+          </h3>
+          {libraryCollapsed ? (
+            <ChevronDown size={14} className="text-neutral-400" />
+          ) : (
+            <ChevronUp size={14} className="text-neutral-400" />
+          )}
+        </div>
+        
+        {/* Collapsible content */}
+        {!libraryCollapsed && (
+          <div className="h-[calc(100%-28px)]">
+            <DJLibraryBrowser />
+          </div>
+        )}
       </div>
     </div>
   );

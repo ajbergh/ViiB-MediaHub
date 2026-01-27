@@ -10,23 +10,25 @@
  * @module components/dj/DJFXPanel
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useStore } from '../../store';
 import { useDJAudioEngine } from '../../hooks/useDJAudioEngine';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { DeckId, EffectType } from '../../slices/djMixerSlice';
 
 interface DJFXPanelProps {
   deck: DeckId;
+  defaultCollapsed?: boolean;
 }
 
-export const DJFXPanel: React.FC<DJFXPanelProps> = ({ deck }) => {
-  const deckState = useStore(state => deck === 'A' ? state.djDeckA : state.djDeckB);
+export const DJFXPanel: React.FC<DJFXPanelProps> = ({ deck, defaultCollapsed = false }) => {
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+  // Only subscribe to fx state, not the entire deck state (avoids re-renders on position updates)
+  const fx = useStore(state => deck === 'A' ? state.djDeckA.fx : state.djDeckB.fx);
   const { setFilterFX: storeSetFilterFX, setDelayFX: storeSetDelayFX, 
           setReverbFX: storeSetReverbFX, setFlangerFX: storeSetFlangerFX,
           toggleFX } = useStore();
   const { setFilterFX, setDelayFX, setFlangerFX, setReverbFX } = useDJAudioEngine();
-  
-  const { fx } = deckState;
 
   // Handle Filter FX toggle
   const handleFilterToggle = useCallback(() => {
@@ -197,15 +199,37 @@ export const DJFXPanel: React.FC<DJFXPanelProps> = ({ deck }) => {
     </div>
   );
 
+  // Count active effects for collapsed view indicator
+  const activeEffectsCount = [fx.filter.enabled, fx.delay.enabled, fx.reverb.enabled, fx.flanger.enabled].filter(Boolean).length;
+
   return (
-    <div className="bg-surface-1 rounded-lg p-3">
-      <div className="flex items-center justify-between mb-3">
+    <div className="bg-surface-1 rounded-lg p-2">
+      {/* Header with collapse toggle */}
+      <div 
+        className="flex items-center justify-between cursor-pointer select-none"
+        onClick={() => setIsCollapsed(!isCollapsed)}
+      >
         <h3 className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
           FX - Deck {deck}
         </h3>
+        <div className="flex items-center gap-2">
+          {/* Active effects indicator (visible when collapsed) */}
+          {activeEffectsCount > 0 && (
+            <span className="text-[10px] font-bold text-brand bg-brand/20 px-1.5 py-0.5 rounded">
+              {activeEffectsCount} ON
+            </span>
+          )}
+          {isCollapsed ? (
+            <ChevronDown size={14} className="text-neutral-400" />
+          ) : (
+            <ChevronUp size={14} className="text-neutral-400" />
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      {/* Collapsible content */}
+      {!isCollapsed && (
+        <div className="grid grid-cols-2 gap-2 mt-2">
         {/* Filter FX */}
         <div className="bg-surface-0 rounded p-2">
           <div className="flex items-center justify-between mb-2">
@@ -386,6 +410,7 @@ export const DJFXPanel: React.FC<DJFXPanelProps> = ({ deck }) => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

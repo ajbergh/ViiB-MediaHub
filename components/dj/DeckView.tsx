@@ -26,6 +26,7 @@ export const DeckView: React.FC<DeckViewProps> = ({ deck }) => {
   const deckState = useStore(state => deck === 'A' ? state.djDeckA : state.djDeckB);
   const otherDeckState = useStore(state => deck === 'A' ? state.djDeckB : state.djDeckA);
   const activeDeck = useStore(state => state.djActiveDeck);
+  const syncMode = useStore(state => state.djMixer.syncMode);
   const {
     setCuePoint,
     setActiveDeck,
@@ -33,7 +34,7 @@ export const DeckView: React.FC<DeckViewProps> = ({ deck }) => {
   } = useStore();
   
   // Use audio engine hook for actual playback control
-  const { togglePlay, setCue, returnToCue, setVolume, setTempo, seek } = useDJAudioEngine();
+  const { togglePlay, setCue, returnToCue, setVolume, setTempo, seek, syncBeatPhase } = useDJAudioEngine();
 
   const isActive = activeDeck === deck;
   const { track, isPlaying, position, duration, volume, cuePoint, originalBpm, effectiveBpm, tempo } = deckState;
@@ -70,7 +71,10 @@ export const DeckView: React.FC<DeckViewProps> = ({ deck }) => {
   }, [deck, setTempo]);
 
   const handleSync = useCallback(() => {
-    // Calculate tempo needed to match other deck's BPM
+    // If sync mode is 'off', do nothing
+    if (syncMode === 'off') return;
+    
+    // BPM sync: Match tempo to other deck's BPM
     if (originalBpm && otherDeckState.effectiveBpm) {
       const targetBpm = otherDeckState.effectiveBpm;
       const newTempo = targetBpm / originalBpm;
@@ -78,7 +82,12 @@ export const DeckView: React.FC<DeckViewProps> = ({ deck }) => {
       const clampedTempo = Math.max(0.5, Math.min(1.5, newTempo));
       setTempo(deck, clampedTempo);
     }
-  }, [deck, originalBpm, otherDeckState.effectiveBpm, setTempo]);
+    
+    // Beat-phase sync: Also align beat phase if in beat-phase mode
+    if (syncMode === 'beat-phase') {
+      syncBeatPhase(deck);
+    }
+  }, [deck, originalBpm, otherDeckState.effectiveBpm, setTempo, syncMode, syncBeatPhase]);
 
   const handleProgressBarClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!track || !duration) return;
@@ -218,18 +227,22 @@ export const DeckView: React.FC<DeckViewProps> = ({ deck }) => {
           {/* SYNC Button */}
           <button
             onClick={handleSync}
-            disabled={!originalBpm || !otherDeckState.effectiveBpm}
+            disabled={syncMode === 'off' || !originalBpm || !otherDeckState.effectiveBpm}
             className={`
               px-3 py-1 rounded text-xs font-bold uppercase tracking-wider
               transition-colors flex items-center gap-1
-              ${originalBpm && otherDeckState.effectiveBpm
-                ? 'bg-brand hover:bg-brand/80 text-white'
-                : 'bg-surface-2 text-neutral-600 cursor-not-allowed'}
+              ${syncMode === 'off'
+                ? 'bg-surface-2 text-neutral-600 cursor-not-allowed opacity-50'
+                : originalBpm && otherDeckState.effectiveBpm
+                  ? syncMode === 'beat-phase' 
+                    ? 'bg-amber-500 hover:bg-amber-500/80 text-white'
+                    : 'bg-brand hover:bg-brand/80 text-white'
+                  : 'bg-surface-2 text-neutral-600 cursor-not-allowed'}
             `}
-            title="Sync BPM to other deck"
+            title={`Sync ${syncMode === 'beat-phase' ? 'BPM + Phase' : syncMode === 'bpm' ? 'BPM' : 'disabled'} to other deck`}
           >
             <RefreshCw size={12} />
-            SYNC
+            {syncMode === 'beat-phase' ? 'SYNC+' : 'SYNC'}
           </button>
         </div>
       </div>

@@ -26,8 +26,9 @@ type SortDirection = 'asc' | 'desc';
 
 export const DJLibraryBrowser: React.FC = () => {
   const songs = useStore(state => state.songs);
-  const djDeckA = useStore(state => state.djDeckA);
-  const djDeckB = useStore(state => state.djDeckB);
+  // Only subscribe to track info, not entire deck state (avoids re-renders on position updates)
+  const djDeckATrack = useStore(state => state.djDeckA.track);
+  const djDeckBTrack = useStore(state => state.djDeckB.track);
   
   // Use DJ audio engine hook for loading tracks (includes waveform fetching)
   const { loadTrack, initialize } = useDJAudioEngine();
@@ -102,10 +103,10 @@ export const DJLibraryBrowser: React.FC = () => {
   }, [loadTrack]);
 
   const isLoadedOnDeck = useCallback((songId: string) => {
-    if (djDeckA.track?.id === songId) return 'A';
-    if (djDeckB.track?.id === songId) return 'B';
+    if (djDeckATrack?.id === songId) return 'A';
+    if (djDeckBTrack?.id === songId) return 'B';
     return null;
-  }, [djDeckA.track, djDeckB.track]);
+  }, [djDeckATrack, djDeckBTrack]);
 
   const SortHeader: React.FC<{ label: string; sortKeyValue: SortKey; width?: string }> = 
     ({ label, sortKeyValue, width }) => (

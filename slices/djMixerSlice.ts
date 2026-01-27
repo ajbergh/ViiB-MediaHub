@@ -18,6 +18,7 @@
 
 import { StateCreator } from 'zustand';
 import { Song } from '../types';
+import { api } from '../services/api';
 
 // ============================================================================
 // Types
@@ -120,12 +121,25 @@ export interface DeckState {
   
   // Effects (Phase 3+)
   fx: DeckFX;
+  
+  // Headphone Cue (Phase 4) - whether this deck is routed to headphones
+  cueEnabled: boolean;
 }
+
+// Sync mode types
+export type SyncMode = 'off' | 'bpm' | 'beat-phase';
 
 export interface MixerState {
   crossfader: number;      // -1 (full A) to +1 (full B)
   masterVolume: number;    // 0-1
   crossfaderCurve: 'linear' | 'constant-power' | 'sharp';
+  
+  // Headphone Cue (Phase 4)
+  headphoneVolume: number;  // 0-1
+  headphoneMix: number;     // 0 = cue only, 1 = master only, 0.5 = 50/50
+  
+  // Sync Mode (Phase 4)
+  syncMode: SyncMode;       // off, bpm only, or beat-phase sync
 }
 
 // ============================================================================
@@ -194,6 +208,8 @@ export interface DJMixerSlice {
   setHotCue: (deck: DeckId, slot: number, position: number, label?: string, color?: string) => void;
   triggerHotCue: (deck: DeckId, slot: number) => void;
   clearHotCue: (deck: DeckId, slot: number) => void;
+  loadHotCues: (deck: DeckId, hotCues: HotCue[]) => void;
+  saveHotCuesToBackend: (deck: DeckId) => Promise<void>;
   
   // Effects (Phase 3+)
   setFilterFX: (deck: DeckId, params: Partial<FilterFX>) => void;
@@ -201,6 +217,16 @@ export interface DJMixerSlice {
   setReverbFX: (deck: DeckId, params: Partial<ReverbFX>) => void;
   setFlangerFX: (deck: DeckId, params: Partial<FlangerFX>) => void;
   toggleFX: (deck: DeckId, fxType: EffectType) => void;
+  
+  // Headphone Cue (Phase 4)
+  setDeckCue: (deck: DeckId, enabled: boolean) => void;
+  toggleDeckCue: (deck: DeckId) => void;
+  setHeadphoneVolume: (volume: number) => void;
+  setHeadphoneMix: (mix: number) => void;
+  
+  // Beat-Phase Sync (Phase 4)
+  setSyncMode: (mode: SyncMode) => void;
+  syncBeatPhase: (targetDeck: DeckId) => void;
   
   // Bulk state (for initialization)
   getDeckState: (deck: DeckId) => DeckState;
@@ -258,12 +284,16 @@ const createDefaultDeckState = (): DeckState => ({
   loop: { enabled: false, start: 0, end: 0 },
   hotCues: [],
   fx: createDefaultFX(),
+  cueEnabled: false,  // Headphone cue (Phase 4)
 });
 
 const createDefaultMixerState = (): MixerState => ({
   crossfader: 0,         // Center position
   masterVolume: 0.8,
   crossfaderCurve: 'constant-power',
+  headphoneVolume: 1.0,  // Phase 4: Headphone cue volume
+  headphoneMix: 0.5,     // Phase 4: 0 = cue only, 1 = master only
+  syncMode: 'bpm',       // Phase 4: Default to BPM sync
 });
 
 // ============================================================================
@@ -579,6 +609,8 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         [deckKey]: { ...state[deckKey], hotCues }
       };
     });
+    // Auto-save to backend after setting
+    get().saveHotCuesToBackend(deck);
   },
   
   triggerHotCue: (deck, slot) => {
@@ -605,6 +637,44 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         hotCues: state[deckKey].hotCues.filter(hc => hc.slot !== slot)
       }
     }));
+    // Auto-save to backend after clearing
+    get().saveHotCuesToBackend(deck);
+  },
+  
+  loadHotCues: (deck, hotCues) => {
+    const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    set((state) => ({
+      [deckKey]: { 
+        ...state[deckKey], 
+        hotCues 
+      }
+    }));
+    console.log(`🎯 loadHotCues: Loaded ${hotCues.length} hot cues for Deck ${deck}`);
+  },
+  
+  saveHotCuesToBackend: async (deck) => {
+    const state = get();
+    const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    const deckState = state[deckKey];
+    
+    if (!deckState.track?.id) {
+      console.log(`🎯 saveHotCuesToBackend: No track loaded on Deck ${deck}, skipping`);
+      return;
+    }
+    
+    try {
+      const hotCuesToSave = deckState.hotCues.map(hc => ({
+        slot: hc.slot,
+        position: hc.position,
+        label: hc.label || '',
+        color: hc.color || '#FF5500'
+      }));
+      
+      await api.saveDJHotCues(deckState.track.id, hotCuesToSave);
+      console.log(`🎯 saveHotCuesToBackend: Saved ${hotCuesToSave.length} hot cues for track ${deckState.track.id}`);
+    } catch (error) {
+      console.error(`🎯 saveHotCuesToBackend: Failed to save hot cues for Deck ${deck}:`, error);
+    }
   },
   
   // ============================================================================
@@ -677,6 +747,122 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         },
       },
     }));
+  },
+  
+  // Headphone Cue (Phase 4)
+  setDeckCue: (deck, enabled) => {
+    const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    set((state) => ({
+      [deckKey]: {
+        ...state[deckKey],
+        cueEnabled: enabled,
+      },
+    }));
+  },
+  
+  toggleDeckCue: (deck) => {
+    const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    set((state) => ({
+      [deckKey]: {
+        ...state[deckKey],
+        cueEnabled: !state[deckKey].cueEnabled,
+      },
+    }));
+  },
+  
+  setHeadphoneVolume: (volume) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        headphoneVolume: Math.max(0, Math.min(1, volume)),
+      },
+    }));
+  },
+  
+  setHeadphoneMix: (mix) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        headphoneMix: Math.max(0, Math.min(1, mix)),
+      },
+    }));
+  },
+  
+  // Beat-Phase Sync (Phase 4)
+  setSyncMode: (mode) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        syncMode: mode,
+      },
+    }));
+  },
+  
+  syncBeatPhase: (targetDeck) => {
+    // Beat-phase sync: Align the target deck's beat phase with the other deck
+    // This is called when user presses SYNC and syncMode is 'beat-phase'
+    const state = get();
+    const sourceDeck = targetDeck === 'A' ? state.djDeckB : state.djDeckA;
+    const target = targetDeck === 'A' ? state.djDeckA : state.djDeckB;
+    
+    // Both decks need beat grids for phase sync
+    if (!sourceDeck.beatGrid?.length || !target.beatGrid?.length) {
+      console.warn('Beat-phase sync requires beat grids on both decks');
+      return;
+    }
+    
+    // Calculate current beat position in source deck
+    const sourcePosition = sourceDeck.position;
+    const sourceBeatGrid = sourceDeck.beatGrid;
+    
+    // Find the current beat index in source
+    let sourceBeatIndex = 0;
+    for (let i = 0; i < sourceBeatGrid.length - 1; i++) {
+      if (sourcePosition >= sourceBeatGrid[i] && sourcePosition < sourceBeatGrid[i + 1]) {
+        sourceBeatIndex = i;
+        break;
+      }
+    }
+    
+    // Calculate source's phase within current beat (0-1)
+    const sourceBeatStart = sourceBeatGrid[sourceBeatIndex];
+    const sourceBeatEnd = sourceBeatGrid[sourceBeatIndex + 1] || sourceBeatStart + 0.5;
+    const sourceBeatDuration = sourceBeatEnd - sourceBeatStart;
+    const sourcePhase = (sourcePosition - sourceBeatStart) / sourceBeatDuration;
+    
+    // Find target's current beat position
+    const targetPosition = target.position;
+    const targetBeatGrid = target.beatGrid;
+    
+    let targetBeatIndex = 0;
+    for (let i = 0; i < targetBeatGrid.length - 1; i++) {
+      if (targetPosition >= targetBeatGrid[i] && targetPosition < targetBeatGrid[i + 1]) {
+        targetBeatIndex = i;
+        break;
+      }
+    }
+    
+    // Calculate where target should be to match source phase
+    const targetBeatStart = targetBeatGrid[targetBeatIndex];
+    const targetBeatEnd = targetBeatGrid[targetBeatIndex + 1] || targetBeatStart + 0.5;
+    const targetBeatDuration = targetBeatEnd - targetBeatStart;
+    const targetIdealPosition = targetBeatStart + (sourcePhase * targetBeatDuration);
+    
+    // Calculate offset needed
+    const phaseOffset = targetIdealPosition - targetPosition;
+    
+    // Store the offset for the audio engine to apply
+    // The actual seek will be handled by the audio engine
+    const deckKey = targetDeck === 'A' ? 'djDeckA' : 'djDeckB';
+    set((state) => ({
+      [deckKey]: {
+        ...state[deckKey],
+        // Store a small nudge offset - audio engine will pick this up
+        position: Math.max(0, targetPosition + phaseOffset),
+      },
+    }));
+    
+    console.log(`Beat-phase sync: Deck ${targetDeck} nudged by ${(phaseOffset * 1000).toFixed(1)}ms`);
   },
   
   // Utility
