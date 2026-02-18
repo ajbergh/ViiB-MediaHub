@@ -36,6 +36,7 @@ import { Settings } from './pages/Settings';
 import { Stats } from './pages/Stats';
 import { SmartMixDetail } from './pages/SmartMixDetail';
 import { DJMode } from './pages/DJMode';
+import { DJModeV2 } from './pages/DJModeV2';
 import { useStore } from './store';
 import { api } from './services/api';
 import DownloadManager from './components/DownloadManager';
@@ -43,6 +44,12 @@ import LibraryEventListener from './components/LibraryEventListener';
 import ConfirmDialog from './components/ConfirmDialog';
 import FirstLaunchDialog from './components/FirstLaunchDialog';
 import { useBackgroundEnrichment } from './hooks/useBackgroundEnrichment';
+import { setupGlobalErrorHandlers, createLogger } from './services/loggerService';
+
+// Initialize global error handlers early
+setupGlobalErrorHandlers();
+
+const appLogger = createLogger('App');
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -55,7 +62,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    appLogger.logError(error, `ErrorBoundary caught an error in ${errorInfo.componentStack}`);
   }
 
   render() {
@@ -170,6 +177,7 @@ const App: React.FC = () => {
           <Route path="/search" element={<Search />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/dj" element={<DJMode />} />
+          <Route path="/dj-v2" element={<DJModeV2 />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

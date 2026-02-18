@@ -102,6 +102,8 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         eqEnabled: false,
         eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         activePresetId: 'flat',
+        mainOutputDevice: '',        // Empty = default device
+        headphoneOutputDevice: '',   // Empty = default device (same as main)
     },
     isEqOpen: false,
     
@@ -439,6 +441,20 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     setNormalization: (val) => {
         set((state) => {
             const newSettings = { ...state.audioSettings, normalization: val };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setMainOutputDevice: (deviceId) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, mainOutputDevice: deviceId };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setHeadphoneOutputDevice: (deviceId) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, headphoneOutputDevice: deviceId };
             saveAudioSettingsToBackend(newSettings);
             return { audioSettings: newSettings };
         });

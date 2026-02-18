@@ -156,6 +156,12 @@ export class DJAudioEngine {
   private cueEnabledB = false;
   private headphoneMixValue = 0.5;  // 0 = cue only, 1 = master only
 
+  // Output device routing (Phase 4)
+  private mainOutputDeviceId: string = '';       // Empty = default
+  private headphoneOutputDeviceId: string = '';  // Empty = default
+  private headphoneStreamDestination: MediaStreamAudioDestinationNode | null = null;
+  private headphoneAudioElement: HTMLAudioElement | null = null;  // For routing to separate device
+
   // Configuration
   private config: Required<DJAudioEngineConfig>;
 
@@ -385,10 +391,26 @@ export class DJAudioEngine {
     this.headphoneCueMix.connect(this.headphoneMixer);
     this.headphoneMasterMix.connect(this.headphoneMixer);
     
-    // Headphone output goes to destination (same as main for now)
-    // In a real DJ setup, this would go to a separate output device
-    // For browser compatibility, we just mix it in (user can use headphone splitter)
-    this.headphoneMixer.connect(ctx.destination);
+    // ========== Headphone Output Device Routing ==========
+    // Create a MediaStreamDestination to capture headphone audio
+    // This allows routing to a separate audio device via HTMLAudioElement.setSinkId()
+    this.headphoneStreamDestination = ctx.createMediaStreamDestination();
+    this.headphoneMixer.connect(this.headphoneStreamDestination);
+    
+    // Create audio element for headphone output
+    this.headphoneAudioElement = new Audio();
+    this.headphoneAudioElement.srcObject = this.headphoneStreamDestination.stream;
+    this.headphoneAudioElement.volume = 1.0;
+    // Don't play through main output - the stream goes to the specified device
+    // The play() call is needed to start audio flowing
+    this.headphoneAudioElement.play().catch(e => {
+      if (DJ_DEBUG) console.warn('Headphone audio autoplay blocked:', e);
+    });
+    
+    // Apply saved headphone device if set
+    if (this.headphoneOutputDeviceId) {
+      this.setHeadphoneOutputDevice(this.headphoneOutputDeviceId);
+    }
     
     // Set initial mix (0.5 = balanced cue/master)
     this.updateHeadphoneMix(0.5);
@@ -637,6 +659,90 @@ export class DJAudioEngine {
     });
 
     console.log(`🎧 Loaded track to Deck ${deck}: ${track.title}`);
+
+    // Auto-gain: analyze track loudness and compute normalization factor
+    const storeState = useStore.getState();
+    const autoGainEnabled = deck === 'A' ? storeState.djMixer.autoGainA : storeState.djMixer.autoGainB;
+    if (autoGainEnabled) {
+      this.analyzeAutoGain(deck, audioUrl).catch(err => {
+        console.warn(`🎧 Auto-gain analysis failed for Deck ${deck}:`, err);
+      });
+    } else {
+      // Reset auto-gain factor when disabled
+      if (deck === 'A') this.autoGainFactorA = 1.0;
+      else this.autoGainFactorB = 1.0;
+    }
+  }
+
+  /**
+   * Analyze track loudness for auto-gain normalization.
+   * Fetches audio data, decodes it, and computes peak/RMS to determine gain correction.
+   * Target: -3 dBFS peak (~0.71 linear) for consistent loudness across tracks.
+   */
+  private async analyzeAutoGain(deck: DeckId, audioUrl: string): Promise<void> {
+    if (!this.audioContext) return;
+    
+    try {
+      const response = await fetch(audioUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+      
+      // Find peak amplitude across all channels
+      let peak = 0;
+      for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+        const channelData = audioBuffer.getChannelData(ch);
+        for (let i = 0; i < channelData.length; i++) {
+          const abs = Math.abs(channelData[i]);
+          if (abs > peak) peak = abs;
+        }
+      }
+      
+      // Compute gain factor to normalize peak to target (-3 dBFS = 0.707)
+      const targetPeak = 0.707;
+      const gainFactor = peak > 0.01 ? Math.min(3.0, targetPeak / peak) : 1.0; // Cap at +9.5dB
+      
+      if (deck === 'A') {
+        this.autoGainFactorA = gainFactor;
+      } else {
+        this.autoGainFactorB = gainFactor;
+      }
+      
+      const gainDb = 20 * Math.log10(gainFactor);
+      console.log(`🎧 Auto-gain Deck ${deck}: peak=${peak.toFixed(3)}, factor=${gainFactor.toFixed(2)} (${gainDb.toFixed(1)}dB)`);
+      
+      // Apply auto-gain by adjusting the channel gain node
+      this.applyAutoGain(deck);
+    } catch (err) {
+      console.warn(`🎧 Auto-gain analysis error for Deck ${deck}:`, err);
+      if (deck === 'A') this.autoGainFactorA = 1.0;
+      else this.autoGainFactorB = 1.0;
+    }
+  }
+
+  /**
+   * Apply the auto-gain factor to the deck's gain node.
+   * Multiplies auto-gain factor with the user's volume setting.
+   */
+  private applyAutoGain(deck: DeckId): void {
+    const gainNode = deck === 'A' ? this.gainNodeA : this.gainNodeB;
+    if (!gainNode || !this.audioContext) return;
+    
+    const storeState = useStore.getState();
+    const deckState = deck === 'A' ? storeState.djDeckA : storeState.djDeckB;
+    const autoGainFactor = deck === 'A' ? this.autoGainFactorA : this.autoGainFactorB;
+    
+    const effectiveGain = deckState.volume * autoGainFactor;
+    gainNode.gain.setValueAtTime(
+      Math.max(0, Math.min(3, effectiveGain)),
+      this.audioContext.currentTime
+    );
+  }
+
+  /**
+   * Get the current auto-gain factor for a deck
+   */
+  getAutoGainFactor(deck: DeckId): number {
+    return deck === 'A' ? this.autoGainFactorA : this.autoGainFactorB;
   }
 
   /**
@@ -709,6 +815,14 @@ export class DJAudioEngine {
   private scratchStateA: { active: boolean; baseTime: number; baseTempo: number; lastDragTime: number } | null = null;
   private scratchStateB: { active: boolean; baseTime: number; baseTempo: number; lastDragTime: number } | null = null;
 
+  // Slip mode: shadow position tracks where playback would be if scratch hadn't happened
+  private slipShadowA: { startRealTime: number; startPosition: number; tempo: number } | null = null;
+  private slipShadowB: { startRealTime: number; startPosition: number; tempo: number } | null = null;
+
+  // Auto-gain: normalization gain factor per deck (1.0 = no adjustment)
+  private autoGainFactorA: number = 1.0;
+  private autoGainFactorB: number = 1.0;
+
   /**
    * Start scratch mode - call when user begins dragging waveform
    * Captures current state and prepares for vinyl-style scrubbing
@@ -728,6 +842,23 @@ export class DJAudioEngine {
       this.scratchStateA = scratchState;
     } else {
       this.scratchStateB = scratchState;
+    }
+
+    // If slip mode is enabled, capture shadow position for background playback tracking
+    const storeState = useStore.getState();
+    const slipEnabled = deck === 'A' ? storeState.djMixer.slipModeA : storeState.djMixer.slipModeB;
+    if (slipEnabled) {
+      const shadow = {
+        startRealTime: Date.now(),
+        startPosition: audioElement.currentTime,
+        tempo: audioElement.playbackRate,
+      };
+      if (deck === 'A') {
+        this.slipShadowA = shadow;
+      } else {
+        this.slipShadowB = shadow;
+      }
+      console.log(`🔀 Slip shadow started on Deck ${deck} at ${shadow.startPosition.toFixed(2)}s`);
     }
 
     // During scratch, we control playbackRate directly based on drag velocity
@@ -806,6 +937,32 @@ export class DJAudioEngine {
     const deckState = useStore.getState();
     const targetTempo = deck === 'A' ? deckState.djDeckA.tempo : deckState.djDeckB.tempo;
     audioElement.playbackRate = targetTempo;
+
+    // Slip mode: seek to shadow position (where playback would have been)
+    const slipShadow = deck === 'A' ? this.slipShadowA : this.slipShadowB;
+    if (slipShadow) {
+      const elapsedRealMs = Date.now() - slipShadow.startRealTime;
+      const elapsedAudioSec = (elapsedRealMs / 1000) * slipShadow.tempo;
+      const shadowPosition = slipShadow.startPosition + elapsedAudioSec;
+      const clampedPosition = Math.max(0, Math.min(audioElement.duration || 0, shadowPosition));
+      
+      console.log(`🔀 Slip resume on Deck ${deck}: shadow=${clampedPosition.toFixed(2)}s (elapsed ${elapsedRealMs}ms)`);
+      audioElement.currentTime = clampedPosition;
+      
+      // Clear shadow
+      if (deck === 'A') {
+        this.slipShadowA = null;
+      } else {
+        this.slipShadowB = null;
+      }
+      
+      // Resume playback (skip momentum in slip mode for instant resume)
+      const wasPlaying = deck === 'A' ? deckState.djDeckA.isPlaying : deckState.djDeckB.isPlaying;
+      if (wasPlaying && resumePlayback) {
+        audioElement.play().catch(() => {});
+      }
+      return;
+    }
 
     if (resumePlayback) {
       // Apply momentum if there was significant final velocity
@@ -892,15 +1049,25 @@ export class DJAudioEngine {
   // ============================================================================
 
   /**
-   * Set deck volume (0-1)
+   * Set deck volume (0-1), accounting for auto-gain factor when enabled
    */
   setVolume(deck: DeckId, volume: number): void {
     const gainNode = deck === 'A' ? this.gainNodeA : this.gainNodeB;
-    if (gainNode) {
-      gainNode.gain.setValueAtTime(
-        Math.max(0, Math.min(1, volume)),
-        this.audioContext?.currentTime || 0
-      );
+    if (gainNode && this.audioContext) {
+      // Guard against NaN/Infinity
+      const safeVolume = (typeof volume === 'number' && isFinite(volume))
+        ? Math.max(0, Math.min(1, volume))
+        : 1.0;
+      
+      // Apply auto-gain factor if enabled
+      const storeState = useStore.getState();
+      const autoGainEnabled = deck === 'A' ? storeState.djMixer.autoGainA : storeState.djMixer.autoGainB;
+      const autoGainFactor = autoGainEnabled
+        ? (deck === 'A' ? this.autoGainFactorA : this.autoGainFactorB)
+        : 1.0;
+      
+      const effectiveVolume = Math.max(0, Math.min(3, safeVolume * autoGainFactor));
+      gainNode.gain.setValueAtTime(effectiveVolume, this.audioContext.currentTime);
     }
   }
 
@@ -911,8 +1078,10 @@ export class DJAudioEngine {
   setCrossfader(position: number): void {
     if (!this.crossfaderGainA || !this.crossfaderGainB || !this.audioContext) return;
 
-    // Clamp position to -1 to 1
-    const pos = Math.max(-1, Math.min(1, position));
+    // Guard against NaN/Infinity - clamp position to -1 to 1
+    const pos = (typeof position === 'number' && isFinite(position))
+      ? Math.max(-1, Math.min(1, position))
+      : 0;
 
     // Constant-power crossfade
     // At position -1: A=1, B=0
@@ -931,10 +1100,11 @@ export class DJAudioEngine {
    */
   setMasterVolume(volume: number): void {
     if (this.masterGain && this.audioContext) {
-      this.masterGain.gain.setValueAtTime(
-        Math.max(0, Math.min(1, volume)),
-        this.audioContext.currentTime
-      );
+      // Guard against NaN/Infinity
+      const safeVolume = (typeof volume === 'number' && isFinite(volume))
+        ? Math.max(0, Math.min(1, volume))
+        : 0.8;
+      this.masterGain.gain.setValueAtTime(safeVolume, this.audioContext.currentTime);
     }
   }
 
@@ -972,17 +1142,22 @@ export class DJAudioEngine {
   updateHeadphoneMix(mix: number): void {
     if (!this.audioContext || !this.headphoneCueMix || !this.headphoneMasterMix) return;
     
-    this.headphoneMixValue = Math.max(0, Math.min(1, mix));
+    // Guard against NaN/Infinity - use safe default if invalid
+    const safeMix = (typeof mix === 'number' && isFinite(mix))
+      ? Math.max(0, Math.min(1, mix))
+      : 0.5;
+    
+    this.headphoneMixValue = safeMix;
     
     // Constant-power crossfade between cue and master
-    const cueGain = Math.cos(this.headphoneMixValue * Math.PI / 2);  // 1 at mix=0, 0 at mix=1
-    const masterGain = Math.sin(this.headphoneMixValue * Math.PI / 2);  // 0 at mix=0, 1 at mix=1
+    const cueGain = Math.cos(safeMix * Math.PI / 2);  // 1 at mix=0, 0 at mix=1
+    const masterGain = Math.sin(safeMix * Math.PI / 2);  // 0 at mix=0, 1 at mix=1
     
     const now = this.audioContext.currentTime;
     this.headphoneCueMix.gain.setValueAtTime(cueGain, now);
     this.headphoneMasterMix.gain.setValueAtTime(masterGain, now);
     
-    if (DJ_DEBUG) console.log(`🎧 Headphone mix: ${(mix * 100).toFixed(0)}% master`);
+    if (DJ_DEBUG) console.log(`🎧 Headphone mix: ${(safeMix * 100).toFixed(0)}% master`);
   }
 
   /**
@@ -991,13 +1166,15 @@ export class DJAudioEngine {
   setHeadphoneVolume(volume: number): void {
     if (!this.audioContext || !this.headphoneMixer) return;
     
-    const now = this.audioContext.currentTime;
-    this.headphoneMixer.gain.setValueAtTime(
-      Math.max(0, Math.min(1, volume)),
-      now
-    );
+    // Guard against NaN/Infinity - use safe default if invalid
+    const safeVolume = (typeof volume === 'number' && isFinite(volume))
+      ? Math.max(0, Math.min(1, volume))
+      : 1.0;
     
-    if (DJ_DEBUG) console.log(`🎧 Headphone volume: ${(volume * 100).toFixed(0)}%`);
+    const now = this.audioContext.currentTime;
+    this.headphoneMixer.gain.setValueAtTime(safeVolume, now);
+    
+    if (DJ_DEBUG) console.log(`🎧 Headphone volume: ${(safeVolume * 100).toFixed(0)}%`);
   }
 
   /**
@@ -1005,6 +1182,80 @@ export class DJAudioEngine {
    */
   getCueEnabled(deck: DeckId): boolean {
     return deck === 'A' ? this.cueEnabledA : this.cueEnabledB;
+  }
+
+  // ============================================================================
+  // Output Device Routing
+  // ============================================================================
+
+  /**
+   * Set the main/live audio output device
+   * Uses AudioContext.setSinkId() (Chrome 110+, Edge 110+)
+   * @param deviceId - Device ID from navigator.mediaDevices.enumerateDevices(), or empty for default
+   */
+  async setMainOutputDevice(deviceId: string): Promise<void> {
+    this.mainOutputDeviceId = deviceId;
+    
+    if (!this.audioContext) {
+      console.warn('Audio context not initialized, main output device will be set on next init');
+      return;
+    }
+    
+    // Check if setSinkId is supported on AudioContext
+    const ctx = this.audioContext as AudioContext & { setSinkId?: (deviceId: string) => Promise<void> };
+    if (typeof ctx.setSinkId === 'function') {
+      try {
+        await ctx.setSinkId(deviceId || '');
+        console.log(`🔊 Main output device set to: ${deviceId || 'default'}`);
+      } catch (error) {
+        console.error('Failed to set main output device:', error);
+        throw error;
+      }
+    } else {
+      console.warn('AudioContext.setSinkId() not supported in this browser');
+    }
+  }
+
+  /**
+   * Set the headphone/cue audio output device
+   * Uses HTMLAudioElement.setSinkId() for routing headphone mix to separate device
+   * @param deviceId - Device ID from navigator.mediaDevices.enumerateDevices(), or empty for default
+   */
+  async setHeadphoneOutputDevice(deviceId: string): Promise<void> {
+    this.headphoneOutputDeviceId = deviceId;
+    
+    if (!this.headphoneAudioElement) {
+      console.warn('Headphone audio element not initialized, device will be set on next init');
+      return;
+    }
+    
+    // Check if setSinkId is supported on HTMLAudioElement
+    const audio = this.headphoneAudioElement as HTMLAudioElement & { setSinkId?: (deviceId: string) => Promise<void> };
+    if (typeof audio.setSinkId === 'function') {
+      try {
+        await audio.setSinkId(deviceId || '');
+        console.log(`🎧 Headphone output device set to: ${deviceId || 'default'}`);
+      } catch (error) {
+        console.error('Failed to set headphone output device:', error);
+        throw error;
+      }
+    } else {
+      console.warn('HTMLAudioElement.setSinkId() not supported in this browser');
+    }
+  }
+
+  /**
+   * Get current main output device ID
+   */
+  getMainOutputDeviceId(): string {
+    return this.mainOutputDeviceId;
+  }
+
+  /**
+   * Get current headphone output device ID
+   */
+  getHeadphoneOutputDeviceId(): string {
+    return this.headphoneOutputDeviceId;
   }
 
   // ============================================================================
@@ -1027,9 +1278,11 @@ export class DJAudioEngine {
     }
 
     if (eqNode && this.audioContext) {
-      // Clamp gain to reasonable range
-      const clampedGain = Math.max(-24, Math.min(12, gain));
-      eqNode.gain.setValueAtTime(clampedGain, this.audioContext.currentTime);
+      // Guard against NaN/Infinity and clamp gain to reasonable range
+      const safeGain = (typeof gain === 'number' && isFinite(gain))
+        ? Math.max(-24, Math.min(12, gain))
+        : 0;
+      eqNode.gain.setValueAtTime(safeGain, this.audioContext.currentTime);
     }
   }
 
@@ -1045,6 +1298,17 @@ export class DJAudioEngine {
     const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
     if (audioElement) {
       audioElement.playbackRate = Math.max(0.5, Math.min(1.5, tempo));
+    }
+  }
+
+  /**
+   * Set key lock (preservesPitch) for a deck
+   * When ON, tempo changes don't affect pitch. When OFF, pitch follows tempo.
+   */
+  setKeyLock(deck: DeckId, enabled: boolean): void {
+    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
+    if (audioElement) {
+      audioElement.preservesPitch = enabled;
     }
   }
 
@@ -1152,9 +1416,17 @@ export class DJAudioEngine {
     
     const now = this.audioContext.currentTime;
     
+    // Guard against NaN/Infinity
+    const safeFrequency = (typeof frequency === 'number' && isFinite(frequency))
+      ? Math.max(20, Math.min(20000, frequency))
+      : 1000;
+    const safeResonance = (typeof resonance === 'number' && isFinite(resonance))
+      ? Math.max(0.1, Math.min(30, resonance))
+      : 1;
+    
     filterFX.type = type;
-    filterFX.frequency.setValueAtTime(Math.max(20, Math.min(20000, frequency)), now);
-    filterFX.Q.setValueAtTime(Math.max(0.1, Math.min(30, resonance)), now);
+    filterFX.frequency.setValueAtTime(safeFrequency, now);
+    filterFX.Q.setValueAtTime(safeResonance, now);
     
     // When enabled: wet=1, dry=0 (only filtered signal)
     // When disabled: wet=0, dry=1 (only dry signal)
@@ -1182,12 +1454,23 @@ export class DJAudioEngine {
     
     const now = this.audioContext.currentTime;
     
+    // Guard against NaN/Infinity
+    const safeTime = (typeof time === 'number' && isFinite(time))
+      ? Math.max(0.01, Math.min(2, time))
+      : 0.3;
+    const safeFeedback = (typeof feedback === 'number' && isFinite(feedback))
+      ? Math.max(0, Math.min(0.9, feedback))
+      : 0.3;
+    const safeMix = (typeof mix === 'number' && isFinite(mix))
+      ? Math.max(0, Math.min(1, mix))
+      : 0.5;
+    
     // Set delay time and feedback
-    delayNode.delayTime.setValueAtTime(Math.max(0.01, Math.min(2, time)), now);
+    delayNode.delayTime.setValueAtTime(safeTime, now);
     
     if (enabled) {
-      delayWetGain.gain.setValueAtTime(mix, now);
-      delayFeedback.gain.setValueAtTime(Math.max(0, Math.min(0.9, feedback)), now);
+      delayWetGain.gain.setValueAtTime(safeMix, now);
+      delayFeedback.gain.setValueAtTime(safeFeedback, now);
     } else {
       // When disabled: no wet signal, no feedback (stop echoes)
       delayWetGain.gain.setValueAtTime(0, now);
@@ -1216,10 +1499,21 @@ export class DJAudioEngine {
     
     const now = this.audioContext.currentTime;
     
+    // Guard against NaN/Infinity
+    const safeRate = (typeof rate === 'number' && isFinite(rate))
+      ? Math.max(0.1, Math.min(10, rate))
+      : 0.5;
+    const safeDepth = (typeof depth === 'number' && isFinite(depth))
+      ? Math.max(0, Math.min(1, depth))
+      : 0.5;
+    const safeFeedback = (typeof feedback === 'number' && isFinite(feedback))
+      ? Math.max(0, Math.min(0.9, feedback))
+      : 0.3;
+    
     if (enabled) {
-      flangerLfo.frequency.setValueAtTime(Math.max(0.1, Math.min(10, rate)), now);
-      flangerLfoGain.gain.setValueAtTime(depth * 0.005, now); // Scale depth to delay time modulation
-      flangerFeedback.gain.setValueAtTime(Math.max(0, Math.min(0.9, feedback)), now);
+      flangerLfo.frequency.setValueAtTime(safeRate, now);
+      flangerLfoGain.gain.setValueAtTime(safeDepth * 0.005, now); // Scale depth to delay time modulation
+      flangerFeedback.gain.setValueAtTime(safeFeedback, now);
       flangerWetGain.gain.setValueAtTime(0.5, now);
     } else {
       // When disabled: stop modulation, no feedback, no wet signal
@@ -1562,6 +1856,14 @@ export class DJAudioEngine {
       this.audioElementB.src = '';
     }
 
+    // Clean up headphone audio element
+    if (this.headphoneAudioElement) {
+      this.headphoneAudioElement.pause();
+      this.headphoneAudioElement.srcObject = null;
+      this.headphoneAudioElement = null;
+    }
+    this.headphoneStreamDestination = null;
+
     // Close audio context
     if (this.audioContext) {
       this.audioContext.close();
@@ -1587,6 +1889,65 @@ export class DJAudioEngine {
   isLoaded(deck: DeckId): boolean {
     const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
     return audioElement ? !!audioElement.src && audioElement.readyState >= 2 : false;
+  }
+
+  /**
+   * Get current VU levels synchronously by reading analyser nodes.
+   * Call this inside a requestAnimationFrame loop for real-time meters.
+   */
+  getVULevels(): VULevels {
+    const levels: VULevels = {
+      deckA: { left: 0, right: 0 },
+      deckB: { left: 0, right: 0 },
+      master: { left: 0, right: 0 },
+    };
+
+    if (this.analyserA) {
+      const data = new Uint8Array(this.analyserA.frequencyBinCount);
+      this.analyserA.getByteFrequencyData(data);
+      const avg = this.getAverageLevel(data);
+      levels.deckA = { left: avg, right: avg };
+    }
+
+    if (this.analyserB) {
+      const data = new Uint8Array(this.analyserB.frequencyBinCount);
+      this.analyserB.getByteFrequencyData(data);
+      const avg = this.getAverageLevel(data);
+      levels.deckB = { left: avg, right: avg };
+    }
+
+    if (this.analyserMaster) {
+      const data = new Uint8Array(this.analyserMaster.frequencyBinCount);
+      this.analyserMaster.getByteFrequencyData(data);
+      const avg = this.getAverageLevel(data);
+      levels.master = { left: avg, right: avg };
+    }
+
+    return levels;
+  }
+  /**
+   * Get a MediaStream from the master output for recording.
+   * Creates a MediaStreamDestinationNode connected to the master gain.
+   */
+  getMasterStream(): MediaStream | null {
+    if (!this.audioContext || !this.masterGain) return null;
+    
+    const dest = this.audioContext.createMediaStreamDestination();
+    // Tap after masterGain (before limiter) to get clean signal
+    this.masterGain.connect(dest);
+    return dest.stream;
+  }
+
+  /**
+   * Get the current slip shadow position for a deck (null if not in slip).
+   * This is where normal playback would be if scratch hadn't happened.
+   */
+  getSlipShadowPosition(deck: DeckId): number | null {
+    const shadow = deck === 'A' ? this.slipShadowA : this.slipShadowB;
+    if (!shadow) return null;
+    const elapsedRealMs = Date.now() - shadow.startRealTime;
+    const elapsedAudioSec = (elapsedRealMs / 1000) * shadow.tempo;
+    return shadow.startPosition + elapsedAudioSec;
   }
 }
 

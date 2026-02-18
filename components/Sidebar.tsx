@@ -128,6 +128,7 @@ export const Sidebar: React.FC = () => {
         <SidebarItem to="/genres" icon={Tags} label="Genres" collapsed={collapsed} />
         <SidebarItem to="/smart-playlists" icon={Sparkles} label="AI DJ" collapsed={collapsed} />
         <SidebarItem to="/dj" icon={Disc3} label="DJ Mode" collapsed={collapsed} />
+        <SidebarItem to="/dj-v2" icon={Disc3} label="DJ Mode v2" collapsed={collapsed} />
         <SidebarItem to="/playlists" icon={ListMusic} label="Playlists" collapsed={collapsed} />
         <SidebarItem to="/liked" icon={Heart} label="Liked Songs" collapsed={collapsed} />
         <SidebarItem to="/liked-albums" icon={Disc} label="Liked Albums" collapsed={collapsed} />

@@ -112,6 +112,7 @@ export interface DeckState {
   key: string | null;      // e.g., "Am", "C#m"
   waveformPeaks: number[] | null;
   beatGrid: number[] | null;
+  beatGridOffset: number;  // Manual beat grid offset in seconds (for alignment editing)
   
   // Loop (Phase 3+)
   loop: Loop;
@@ -124,6 +125,37 @@ export interface DeckState {
   
   // Headphone Cue (Phase 4) - whether this deck is routed to headphones
   cueEnabled: boolean;
+}
+
+// ============================================================================
+// Sampler Types
+// ============================================================================
+
+export interface SamplerPad {
+  id: number;              // 0-7 pad index
+  name: string;            // Display name (custom or filename)
+  url: string | null;      // Audio URL (blob or file URL)
+  isPlaying: boolean;      // Currently playing
+  volume: number;          // 0-1
+  mode: 'oneshot' | 'loop' | 'gate'; // oneshot: play once, loop: repeat, gate: play while held
+  color: string;           // Pad color for UI
+}
+
+export const DEFAULT_PAD_COLORS = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e', 
+  '#3b82f6', '#a855f7', '#ec4899', '#06b6d4'
+] as const;
+
+export function createDefaultSamplerPad(id: number): SamplerPad {
+  return {
+    id,
+    name: `Pad ${id + 1}`,
+    url: null,
+    isPlaying: false,
+    volume: 0.8,
+    mode: 'oneshot',
+    color: DEFAULT_PAD_COLORS[id] || '#888',
+  };
 }
 
 // Sync mode types
@@ -140,6 +172,24 @@ export interface MixerState {
   
   // Sync Mode (Phase 4)
   syncMode: SyncMode;       // off, bpm only, or beat-phase sync
+  
+  // Quantize
+  quantize: boolean;         // Snap actions to beat grid
+  
+  // Key Lock
+  keyLockA: boolean;         // Preserve pitch when changing tempo (Deck A)
+  keyLockB: boolean;         // Preserve pitch when changing tempo (Deck B)
+  
+  // Slip Mode
+  slipModeA: boolean;        // Slip mode Deck A (playback continues in background during scratch)
+  slipModeB: boolean;        // Slip mode Deck B
+  
+  // Auto-Gain
+  autoGainA: boolean;        // Auto-gain normalization Deck A
+  autoGainB: boolean;        // Auto-gain normalization Deck B
+  
+  // Rendering
+  useWebGLWaveform: boolean; // Use WebGL2 waveform renderer (vs Canvas 2D fallback)
 }
 
 // ============================================================================
@@ -153,6 +203,7 @@ export interface DJMixerSlice {
   djDeckA: DeckState;
   djDeckB: DeckState;
   djMixer: MixerState;
+  djSampler: SamplerPad[];
   
   // DJ Mode toggle
   setDJMixerEnabled: (enabled: boolean) => void;
@@ -199,6 +250,10 @@ export interface DJMixerSlice {
   setDeckWaveform: (deck: DeckId, peaks: number[]) => void;
   setDeckAnalysis: (deck: DeckId, bpm: number | null, key: string | null, beatGrid?: number[]) => void;
   
+  // Beat grid editing (Phase 3)
+  shiftBeatGrid: (deck: DeckId, offsetDelta: number) => void;  // Shift by ±ms
+  resetBeatGridOffset: (deck: DeckId) => void;
+  
   // Loop (Phase 3+)
   setLoop: (deck: DeckId, start: number, end: number) => void;
   toggleLoop: (deck: DeckId) => void;
@@ -227,6 +282,18 @@ export interface DJMixerSlice {
   // Beat-Phase Sync (Phase 4)
   setSyncMode: (mode: SyncMode) => void;
   syncBeatPhase: (targetDeck: DeckId) => void;
+  toggleQuantize: () => void;
+  toggleKeyLock: (deck: DeckId) => void;
+  toggleSlipMode: (deck: DeckId) => void;
+  toggleAutoGain: (deck: DeckId) => void;
+  toggleWebGLWaveform: () => void;
+  
+  // Sampler
+  loadSamplerPad: (padId: number, name: string, url: string) => void;
+  clearSamplerPad: (padId: number) => void;
+  setSamplerPadPlaying: (padId: number, playing: boolean) => void;
+  setSamplerPadVolume: (padId: number, volume: number) => void;
+  setSamplerPadMode: (padId: number, mode: SamplerPad['mode']) => void;
   
   // Bulk state (for initialization)
   getDeckState: (deck: DeckId) => DeckState;
@@ -281,6 +348,7 @@ const createDefaultDeckState = (): DeckState => ({
   key: null,
   waveformPeaks: null,
   beatGrid: null,
+  beatGridOffset: 0,     // No offset by default
   loop: { enabled: false, start: 0, end: 0 },
   hotCues: [],
   fx: createDefaultFX(),
@@ -294,6 +362,14 @@ const createDefaultMixerState = (): MixerState => ({
   headphoneVolume: 1.0,  // Phase 4: Headphone cue volume
   headphoneMix: 0.5,     // Phase 4: 0 = cue only, 1 = master only
   syncMode: 'bpm',       // Phase 4: Default to BPM sync
+  quantize: true,          // Default quantize on
+  keyLockA: true,          // Default key lock ON (preserve pitch)
+  keyLockB: true,          // Default key lock ON (preserve pitch)
+  slipModeA: false,        // Default slip mode OFF
+  slipModeB: false,        // Default slip mode OFF
+  autoGainA: false,        // Default auto-gain OFF
+  autoGainB: false,        // Default auto-gain OFF
+  useWebGLWaveform: false, // Default Canvas 2D (safer fallback)
 });
 
 // ============================================================================
@@ -307,6 +383,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
   djDeckA: createDefaultDeckState(),
   djDeckB: createDefaultDeckState(),
   djMixer: createDefaultMixerState(),
+  djSampler: Array.from({ length: 8 }, (_, i) => createDefaultSamplerPad(i)),
   
   // DJ Mode toggle
   setDJMixerEnabled: (enabled) => set({ djMixerEnabled: enabled }),
@@ -550,7 +627,29 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         originalBpm: bpm,
         effectiveBpm: bpm ? Math.round(bpm * state[deckKey].tempo * 10) / 10 : null,
         key,
-        beatGrid: beatGrid || null
+        beatGrid: beatGrid || null,
+        beatGridOffset: 0  // Reset offset when new analysis arrives
+      }
+    }));
+  },
+  
+  // Beat grid editing
+  shiftBeatGrid: (deck, offsetDelta) => {
+    const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    set((state) => ({
+      [deckKey]: {
+        ...state[deckKey],
+        beatGridOffset: state[deckKey].beatGridOffset + offsetDelta,
+      }
+    }));
+  },
+  
+  resetBeatGridOffset: (deck) => {
+    const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    set((state) => ({
+      [deckKey]: {
+        ...state[deckKey],
+        beatGridOffset: 0,
       }
     }));
   },
@@ -771,19 +870,27 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
   },
   
   setHeadphoneVolume: (volume) => {
+    // Guard against NaN/undefined - use default if invalid
+    const safeVolume = (typeof volume === 'number' && isFinite(volume))
+      ? Math.max(0, Math.min(1, volume))
+      : 1.0;
     set((state) => ({
       djMixer: {
         ...state.djMixer,
-        headphoneVolume: Math.max(0, Math.min(1, volume)),
+        headphoneVolume: safeVolume,
       },
     }));
   },
   
   setHeadphoneMix: (mix) => {
+    // Guard against NaN/undefined - use default if invalid
+    const safeMix = (typeof mix === 'number' && isFinite(mix))
+      ? Math.max(0, Math.min(1, mix))
+      : 0.5;
     set((state) => ({
       djMixer: {
         ...state.djMixer,
-        headphoneMix: Math.max(0, Math.min(1, mix)),
+        headphoneMix: safeMix,
       },
     }));
   },
@@ -865,6 +972,98 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
     console.log(`Beat-phase sync: Deck ${targetDeck} nudged by ${(phaseOffset * 1000).toFixed(1)}ms`);
   },
   
+  toggleQuantize: () => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        quantize: !state.djMixer.quantize,
+      },
+    }));
+  },
+  
+  toggleKeyLock: (deck) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        ...(deck === 'A'
+          ? { keyLockA: !state.djMixer.keyLockA }
+          : { keyLockB: !state.djMixer.keyLockB }),
+      },
+    }));
+  },
+  
+  toggleSlipMode: (deck) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        ...(deck === 'A'
+          ? { slipModeA: !state.djMixer.slipModeA }
+          : { slipModeB: !state.djMixer.slipModeB }),
+      },
+    }));
+  },
+  
+  toggleAutoGain: (deck) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        ...(deck === 'A'
+          ? { autoGainA: !state.djMixer.autoGainA }
+          : { autoGainB: !state.djMixer.autoGainB }),
+      },
+    }));
+  },
+  
+  toggleWebGLWaveform: () => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        useWebGLWaveform: !state.djMixer.useWebGLWaveform,
+      },
+    }));
+  },
+  
+  // Sampler pad actions
+  loadSamplerPad: (padId, name, url) => {
+    set((state) => ({
+      djSampler: state.djSampler.map(pad =>
+        pad.id === padId ? { ...pad, name, url, isPlaying: false } : pad
+      ),
+    }));
+  },
+  
+  clearSamplerPad: (padId) => {
+    set((state) => ({
+      djSampler: state.djSampler.map(pad =>
+        pad.id === padId ? createDefaultSamplerPad(padId) : pad
+      ),
+    }));
+  },
+  
+  setSamplerPadPlaying: (padId, playing) => {
+    set((state) => ({
+      djSampler: state.djSampler.map(pad =>
+        pad.id === padId ? { ...pad, isPlaying: playing } : pad
+      ),
+    }));
+  },
+  
+  setSamplerPadVolume: (padId, volume) => {
+    set((state) => ({
+      djSampler: state.djSampler.map(pad =>
+        pad.id === padId ? { ...pad, volume: Math.max(0, Math.min(1, volume)) } : pad
+      ),
+    }));
+  },
+  
+  setSamplerPadMode: (padId, mode) => {
+    set((state) => ({
+      djSampler: state.djSampler.map(pad =>
+        pad.id === padId ? { ...pad, mode } : pad
+      ),
+    }));
+  },
+  
   // Utility
   getDeckState: (deck) => {
     const state = get();
@@ -878,5 +1077,6 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
     djDeckA: createDefaultDeckState(),
     djDeckB: createDefaultDeckState(),
     djMixer: createDefaultMixerState(),
+    djSampler: Array.from({ length: 8 }, (_, i) => createDefaultSamplerPad(i)),
   }),
 });

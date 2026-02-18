@@ -70,6 +70,8 @@ export interface PlayerSlice {
   setCrossfade: (seconds: number) => void;
   setGapless: (enabled: boolean) => void;
   setNormalization: (enabled: boolean) => void;
+  setMainOutputDevice: (deviceId: string) => void;
+  setHeadphoneOutputDevice: (deviceId: string) => void;
   toggleEqPanel: () => void;
   loadAudioSettings: () => Promise<void>; // Load audio settings from backend on startup
   

@@ -240,6 +240,9 @@ func (a *API) Routes() chi.Router {
 	r.Get("/lastfm/track", a.handleGetTrackLastFM)
 	r.Get("/lastfm/similar", a.handleGetSimilarTracks)
 
+	// Frontend Logging (writes to viib.log)
+	r.Post("/log", a.handleFrontendLog)
+
 	// Settings
 	r.Get("/settings/{key}", a.getSetting)
 	r.Post("/settings/{key}", a.setSetting)
@@ -264,6 +267,57 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 func (a *API) healthCheck(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "ok", "version": "1.0.0"})
+}
+
+// FrontendLogRequest represents a log message from the frontend
+type FrontendLogRequest struct {
+	Level     string `json:"level"`     // "debug", "info", "warn", "error"
+	Message   string `json:"message"`   // Log message
+	Component string `json:"component"` // Component name (e.g., "DJMode", "DJJogWheel")
+	Data      any    `json:"data"`      // Optional additional data
+}
+
+// handleFrontendLog accepts log messages from the frontend and writes them to viib.log
+func (a *API) handleFrontendLog(w http.ResponseWriter, r *http.Request) {
+	var req FrontendLogRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid log request")
+		return
+	}
+
+	// Validate level
+	level := strings.ToLower(req.Level)
+	if level != "debug" && level != "info" && level != "warn" && level != "error" {
+		level = "info"
+	}
+
+	// Format the log message
+	component := req.Component
+	if component == "" {
+		component = "Frontend"
+	}
+
+	// Build full message with optional data
+	fullMessage := fmt.Sprintf("[%s] %s", component, req.Message)
+	if req.Data != nil {
+		if dataBytes, err := json.Marshal(req.Data); err == nil {
+			fullMessage = fmt.Sprintf("%s | Data: %s", fullMessage, string(dataBytes))
+		}
+	}
+
+	// Log using appropriate level
+	switch level {
+	case "debug":
+		logger.Debug("FE: %s", fullMessage)
+	case "info":
+		logger.Log("FE: %s", fullMessage)
+	case "warn":
+		logger.Log("FE WARN: %s", fullMessage)
+	case "error":
+		logger.Log("FE ERROR: %s", fullMessage)
+	}
+
+	respondJSON(w, map[string]string{"status": "logged"})
 }
 
 // getDJPersonas returns all available DJ personas for the DJ mode feature.

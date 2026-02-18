@@ -15,6 +15,40 @@
  */
 
 const WAVEFORM_RESOLUTION = 1200; // Number of peaks to generate
+const OVERVIEW_RESOLUTION = 200;  // Downsampled for overview strip (saves memory/CPU)
+const WAVEFORM_CACHE_MAX = 10;    // Max cached waveforms (LRU eviction)
+
+// LRU waveform cache to avoid regenerating peaks for previously loaded tracks
+const waveformCache = new Map<string, { peaks: number[]; overview: number[] }>();
+
+/**
+ * Get cached waveform data for a URL if available.
+ */
+export function getCachedWaveform(audioUrl: string): { peaks: number[]; overview: number[] } | null {
+  return waveformCache.get(audioUrl) || null;
+}
+
+/**
+ * Downsample a peaks array to a lower resolution for overview display.
+ */
+function downsamplePeaks(peaks: number[], targetResolution: number): number[] {
+  if (peaks.length <= targetResolution) return peaks;
+  
+  const result: number[] = [];
+  const samplesPerBin = peaks.length / targetResolution;
+  
+  for (let i = 0; i < targetResolution; i++) {
+    const start = Math.floor(i * samplesPerBin);
+    const end = Math.floor((i + 1) * samplesPerBin);
+    let max = 0;
+    for (let j = start; j < end; j++) {
+      if (peaks[j] > max) max = peaks[j];
+    }
+    result.push(max);
+  }
+  
+  return result;
+}
 
 /**
  * Generates waveform peak data from an audio URL using Web Audio API.
@@ -28,6 +62,14 @@ export async function generateClientWaveform(
   onProgress?: (progress: number) => void
 ): Promise<number[]> {
   console.log(`🎵 clientWaveform: Starting generation for ${audioUrl}`);
+  
+  // Check cache first
+  const cached = waveformCache.get(audioUrl);
+  if (cached) {
+    console.log(`🎵 clientWaveform: Cache hit for ${audioUrl} (${cached.peaks.length} peaks)`);
+    onProgress?.(1.0);
+    return cached.peaks;
+  }
   
   try {
     // Fetch the audio file
@@ -69,6 +111,15 @@ export async function generateClientWaveform(
     
     console.log(`🎵 clientWaveform: Generated ${peaks.length} peaks`);
     onProgress?.(1.0);
+    
+    // Cache the results (with LRU eviction)
+    const overview = downsamplePeaks(peaks, OVERVIEW_RESOLUTION);
+    if (waveformCache.size >= WAVEFORM_CACHE_MAX) {
+      // Evict oldest entry (first key in Map)
+      const firstKey = waveformCache.keys().next().value;
+      if (firstKey) waveformCache.delete(firstKey);
+    }
+    waveformCache.set(audioUrl, { peaks, overview });
     
     return peaks;
     
