@@ -17,7 +17,7 @@ interface DJEQKnobProps {
   size?: number;
 }
 
-export const DJEQKnob: React.FC<DJEQKnobProps> = ({ 
+export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({ 
   label, 
   value, 
   onChange, 
@@ -232,6 +232,6 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = ({
       </span>
     </div>
   );
-};
+});
 
-export default React.memo(DJEQKnob);
+export default DJEQKnob;

@@ -13,7 +13,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect, memo } from 'react';
 import { useStore } from '../../../store';
-import { useDJAudioEngine } from '../../../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getKeyCompatibility } from '../../../lib/keyDetection';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
@@ -71,9 +71,9 @@ const TrackRow = memo(({
 }) => {
   const [showColorPicker, setShowColorPicker] = React.useState(false);
   const deckIndicatorClass = loadedDeck === 'A' 
-    ? 'bg-blue-600/20 border-l-2 border-blue-500' 
+    ? 'bg-blue-600/15 border-l-2 border-blue-500 shadow-[inset_0_0_12px_rgba(59,130,246,0.08)]' 
     : loadedDeck === 'B' 
-      ? 'bg-purple-600/20 border-l-2 border-purple-500'
+      ? 'bg-purple-600/15 border-l-2 border-purple-500 shadow-[inset_0_0_12px_rgba(139,92,246,0.08)]'
       : 'border-l-2 border-transparent';
 
   return (
@@ -122,31 +122,31 @@ const TrackRow = memo(({
       </td>
       
       {/* Load buttons */}
-      <td className="px-2 py-1.5 w-16">
-        <div className="flex gap-0.5">
+      <td className="px-2 py-1.5 w-20">
+        <div className="flex gap-1">
           <button
             onClick={(e) => { e.stopPropagation(); onLoadToDeck(song, 'A'); }}
             className={`
-              w-6 h-5 text-[10px] rounded font-bold transition-all
+              w-8 h-7 text-[11px] rounded font-bold transition-all
               ${loadedDeck === 'A' 
                 ? 'bg-blue-600 text-white shadow-[0_0_8px_rgba(59,130,246,0.5)]' 
                 : 'bg-surface-2 text-neutral-500 hover:bg-blue-600/50 hover:text-white'}
             `}
             title="Load to Deck A"
           >
-            A
+            {loadedDeck === 'A' ? '▶A' : 'A'}
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onLoadToDeck(song, 'B'); }}
             className={`
-              w-6 h-5 text-[10px] rounded font-bold transition-all
+              w-8 h-7 text-[11px] rounded font-bold transition-all
               ${loadedDeck === 'B' 
                 ? 'bg-purple-600 text-white shadow-[0_0_8px_rgba(139,92,246,0.5)]' 
                 : 'bg-surface-2 text-neutral-500 hover:bg-purple-600/50 hover:text-white'}
             `}
             title="Load to Deck B"
           >
-            B
+            {loadedDeck === 'B' ? '▶B' : 'B'}
           </button>
         </div>
       </td>
@@ -169,20 +169,6 @@ const TrackRow = memo(({
       <td className="px-2 py-1.5">
         <span className="text-neutral-400 truncate max-w-[120px] block" title={song.artist}>
           {song.artist}
-        </span>
-      </td>
-      
-      {/* Album */}
-      <td className="px-2 py-1.5 hidden xl:table-cell">
-        <span className="text-neutral-500 truncate max-w-[120px] block" title={song.album}>
-          {song.album}
-        </span>
-      </td>
-      
-      {/* Time */}
-      <td className="px-2 py-1.5 w-14 text-right">
-        <span className="font-mono text-neutral-400">
-          {formatDuration(song.duration)}
         </span>
       </td>
       
@@ -212,6 +198,20 @@ const TrackRow = memo(({
         )}
       </td>
       
+      {/* Album */}
+      <td className="px-2 py-1.5 hidden xl:table-cell">
+        <span className="text-neutral-500 truncate max-w-[120px] block" title={song.album}>
+          {song.album}
+        </span>
+      </td>
+      
+      {/* Time */}
+      <td className="px-2 py-1.5 w-14 text-right">
+        <span className="font-mono text-neutral-400">
+          {formatDuration(song.duration)}
+        </span>
+      </td>
+      
       {/* Genre */}
       <td className="px-2 py-1.5 w-20 hidden lg:table-cell">
         <span className="text-neutral-500 truncate block text-[10px]">
@@ -234,7 +234,7 @@ export const DJLibraryBrowserV2: React.FC = () => {
   const djDeckAIsPlaying = useStore(state => state.djDeckA.isPlaying);
   const djDeckBIsPlaying = useStore(state => state.djDeckB.isPlaying);
   
-  const { loadTrack } = useDJAudioEngine();
+  const { loadTrack } = useDJAudioEngineActions();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('title');
@@ -516,7 +516,7 @@ export const DJLibraryBrowserV2: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Search header */}
         <div className="flex items-center gap-3 px-3 py-2 border-b border-white/10 bg-[#1a1a1a]">
-          <div className="relative flex-1 max-w-xs">
+          <div className="relative flex-1 max-w-md">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-600" />
             <input
               type="text"
@@ -540,13 +540,13 @@ export const DJLibraryBrowserV2: React.FC = () => {
               <tr className="border-b border-white/10">
                 <th className="w-5 px-1 py-1.5 text-left text-[10px] font-medium text-neutral-500" title="Color label">🎨</th>
                 <th className="w-10 px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500">#</th>
-                <th className="w-16 px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500">LOAD</th>
+                <th className="w-20 px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500">LOAD</th>
                 <SortHeader label="Title" sortKeyValue="title" />
                 <SortHeader label="Artist" sortKeyValue="artist" />
-                <SortHeader label="Album" sortKeyValue="album" className="hidden xl:table-cell" />
-                <SortHeader label="Time" sortKeyValue="duration" className="w-14 text-right" />
                 <SortHeader label="BPM" sortKeyValue="bpm" className="w-12 text-right" />
                 <SortHeader label="Key" sortKeyValue="key" className="w-14 text-center" />
+                <SortHeader label="Album" sortKeyValue="album" className="hidden xl:table-cell" />
+                <SortHeader label="Time" sortKeyValue="duration" className="w-14 text-right" />
                 <SortHeader label="Genre" sortKeyValue="genre" className="w-20 hidden lg:table-cell" />
               </tr>
             </thead>

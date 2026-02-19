@@ -8,7 +8,7 @@
 
 import React, { useCallback } from 'react';
 import { useStore } from '../../../store';
-import { useDJAudioEngine } from '../../../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -24,7 +24,7 @@ export const DJLoopSection: React.FC<DJLoopSectionProps> = ({ deck }) => {
   const originalBpm = useStore(state => deck === 'A' ? state.djDeckA.originalBpm : state.djDeckB.originalBpm);
   const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
   
-  const { setLoopBeats, toggleLoop, halveLoop, doubleLoop } = useDJAudioEngine();
+  const { setLoopBeats, toggleLoop, halveLoop, doubleLoop } = useDJAudioEngineActions();
   
   const bpm = effectiveBpm || originalBpm;
   

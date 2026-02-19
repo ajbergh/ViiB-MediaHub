@@ -25,128 +25,82 @@ export const DJFXPanel: React.FC<DJFXPanelProps> = ({ deck, defaultCollapsed = f
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   // Only subscribe to fx state, not the entire deck state (avoids re-renders on position updates)
   const fx = useStore(state => deck === 'A' ? state.djDeckA.fx : state.djDeckB.fx);
-  const { setFilterFX: storeSetFilterFX, setDelayFX: storeSetDelayFX, 
-          setReverbFX: storeSetReverbFX, setFlangerFX: storeSetFlangerFX,
-          toggleFX } = useStore();
+  // Unified action callbacks — each does store + engine in a single write
   const { setFilterFX, setDelayFX, setFlangerFX, setReverbFX } = useDJAudioEngine();
 
-  // Handle Filter FX toggle
+  // Handle Filter FX toggle — single call writes store + engine
   const handleFilterToggle = useCallback(() => {
-    const newEnabled = !fx.filter.enabled;
-    toggleFX(deck, 'filter');
-    setFilterFX(deck, newEnabled, fx.filter.type, fx.filter.frequency, fx.filter.resonance);
-  }, [deck, fx.filter, toggleFX, setFilterFX]);
+    setFilterFX(deck, !fx.filter.enabled, fx.filter.type, fx.filter.frequency, fx.filter.resonance);
+  }, [deck, fx.filter, setFilterFX]);
 
   // Handle Filter type change
   const handleFilterTypeChange = useCallback((type: 'lowpass' | 'highpass') => {
-    storeSetFilterFX(deck, { type });
-    if (fx.filter.enabled) {
-      setFilterFX(deck, true, type, fx.filter.frequency, fx.filter.resonance);
-    }
-  }, [deck, fx.filter, storeSetFilterFX, setFilterFX]);
+    setFilterFX(deck, fx.filter.enabled, type, fx.filter.frequency, fx.filter.resonance);
+  }, [deck, fx.filter, setFilterFX]);
 
   // Handle Filter frequency change
   const handleFilterFrequencyChange = useCallback((frequency: number) => {
-    storeSetFilterFX(deck, { frequency });
-    if (fx.filter.enabled) {
-      setFilterFX(deck, true, fx.filter.type, frequency, fx.filter.resonance);
-    }
-  }, [deck, fx.filter, storeSetFilterFX, setFilterFX]);
+    setFilterFX(deck, fx.filter.enabled, fx.filter.type, frequency, fx.filter.resonance);
+  }, [deck, fx.filter, setFilterFX]);
 
   // Handle Filter resonance change
   const handleFilterResonanceChange = useCallback((resonance: number) => {
-    storeSetFilterFX(deck, { resonance });
-    if (fx.filter.enabled) {
-      setFilterFX(deck, true, fx.filter.type, fx.filter.frequency, resonance);
-    }
-  }, [deck, fx.filter, storeSetFilterFX, setFilterFX]);
+    setFilterFX(deck, fx.filter.enabled, fx.filter.type, fx.filter.frequency, resonance);
+  }, [deck, fx.filter, setFilterFX]);
 
   // Handle Delay FX toggle
   const handleDelayToggle = useCallback(() => {
-    const newEnabled = !fx.delay.enabled;
-    toggleFX(deck, 'delay');
-    setDelayFX(deck, newEnabled, fx.delay.time, fx.delay.feedback, fx.delay.mix);
-  }, [deck, fx.delay, toggleFX, setDelayFX]);
+    setDelayFX(deck, !fx.delay.enabled, fx.delay.time, fx.delay.feedback, fx.delay.mix);
+  }, [deck, fx.delay, setDelayFX]);
 
   // Handle Delay parameter changes
   const handleDelayTimeChange = useCallback((time: number) => {
-    storeSetDelayFX(deck, { time });
-    if (fx.delay.enabled) {
-      setDelayFX(deck, true, time, fx.delay.feedback, fx.delay.mix);
-    }
-  }, [deck, fx.delay, storeSetDelayFX, setDelayFX]);
+    setDelayFX(deck, fx.delay.enabled, time, fx.delay.feedback, fx.delay.mix);
+  }, [deck, fx.delay, setDelayFX]);
 
   const handleDelayFeedbackChange = useCallback((feedback: number) => {
-    storeSetDelayFX(deck, { feedback });
-    if (fx.delay.enabled) {
-      setDelayFX(deck, true, fx.delay.time, feedback, fx.delay.mix);
-    }
-  }, [deck, fx.delay, storeSetDelayFX, setDelayFX]);
+    setDelayFX(deck, fx.delay.enabled, fx.delay.time, feedback, fx.delay.mix);
+  }, [deck, fx.delay, setDelayFX]);
 
   const handleDelayMixChange = useCallback((mix: number) => {
-    storeSetDelayFX(deck, { mix });
-    if (fx.delay.enabled) {
-      setDelayFX(deck, true, fx.delay.time, fx.delay.feedback, mix);
-    }
-  }, [deck, fx.delay, storeSetDelayFX, setDelayFX]);
+    setDelayFX(deck, fx.delay.enabled, fx.delay.time, fx.delay.feedback, mix);
+  }, [deck, fx.delay, setDelayFX]);
 
   // Handle Reverb FX toggle
   const handleReverbToggle = useCallback(() => {
-    const newEnabled = !fx.reverb.enabled;
-    toggleFX(deck, 'reverb');
-    setReverbFX(deck, newEnabled, fx.reverb.roomSize, fx.reverb.damping, fx.reverb.mix);
-  }, [deck, fx.reverb, toggleFX, setReverbFX]);
+    setReverbFX(deck, !fx.reverb.enabled, fx.reverb.roomSize, fx.reverb.damping, fx.reverb.mix);
+  }, [deck, fx.reverb, setReverbFX]);
 
   // Handle Reverb parameter changes
   const handleReverbRoomChange = useCallback((roomSize: number) => {
-    storeSetReverbFX(deck, { roomSize });
-    if (fx.reverb.enabled) {
-      setReverbFX(deck, true, roomSize, fx.reverb.damping, fx.reverb.mix);
-    }
-  }, [deck, fx.reverb, storeSetReverbFX, setReverbFX]);
+    setReverbFX(deck, fx.reverb.enabled, roomSize, fx.reverb.damping, fx.reverb.mix);
+  }, [deck, fx.reverb, setReverbFX]);
 
   const handleReverbDampingChange = useCallback((damping: number) => {
-    storeSetReverbFX(deck, { damping });
-    if (fx.reverb.enabled) {
-      setReverbFX(deck, true, fx.reverb.roomSize, damping, fx.reverb.mix);
-    }
-  }, [deck, fx.reverb, storeSetReverbFX, setReverbFX]);
+    setReverbFX(deck, fx.reverb.enabled, fx.reverb.roomSize, damping, fx.reverb.mix);
+  }, [deck, fx.reverb, setReverbFX]);
 
   const handleReverbMixChange = useCallback((mix: number) => {
-    storeSetReverbFX(deck, { mix });
-    if (fx.reverb.enabled) {
-      setReverbFX(deck, true, fx.reverb.roomSize, fx.reverb.damping, mix);
-    }
-  }, [deck, fx.reverb, storeSetReverbFX, setReverbFX]);
+    setReverbFX(deck, fx.reverb.enabled, fx.reverb.roomSize, fx.reverb.damping, mix);
+  }, [deck, fx.reverb, setReverbFX]);
 
   // Handle Flanger FX toggle
   const handleFlangerToggle = useCallback(() => {
-    const newEnabled = !fx.flanger.enabled;
-    toggleFX(deck, 'flanger');
-    setFlangerFX(deck, newEnabled, fx.flanger.rate, fx.flanger.depth, fx.flanger.feedback);
-  }, [deck, fx.flanger, toggleFX, setFlangerFX]);
+    setFlangerFX(deck, !fx.flanger.enabled, fx.flanger.rate, fx.flanger.depth, fx.flanger.feedback);
+  }, [deck, fx.flanger, setFlangerFX]);
 
   // Handle Flanger parameter changes
   const handleFlangerRateChange = useCallback((rate: number) => {
-    storeSetFlangerFX(deck, { rate });
-    if (fx.flanger.enabled) {
-      setFlangerFX(deck, true, rate, fx.flanger.depth, fx.flanger.feedback);
-    }
-  }, [deck, fx.flanger, storeSetFlangerFX, setFlangerFX]);
+    setFlangerFX(deck, fx.flanger.enabled, rate, fx.flanger.depth, fx.flanger.feedback);
+  }, [deck, fx.flanger, setFlangerFX]);
 
   const handleFlangerDepthChange = useCallback((depth: number) => {
-    storeSetFlangerFX(deck, { depth });
-    if (fx.flanger.enabled) {
-      setFlangerFX(deck, true, fx.flanger.rate, depth, fx.flanger.feedback);
-    }
-  }, [deck, fx.flanger, storeSetFlangerFX, setFlangerFX]);
+    setFlangerFX(deck, fx.flanger.enabled, fx.flanger.rate, depth, fx.flanger.feedback);
+  }, [deck, fx.flanger, setFlangerFX]);
 
   const handleFlangerFeedbackChange = useCallback((feedback: number) => {
-    storeSetFlangerFX(deck, { feedback });
-    if (fx.flanger.enabled) {
-      setFlangerFX(deck, true, fx.flanger.rate, fx.flanger.depth, feedback);
-    }
-  }, [deck, fx.flanger, storeSetFlangerFX, setFlangerFX]);
+    setFlangerFX(deck, fx.flanger.enabled, fx.flanger.rate, fx.flanger.depth, feedback);
+  }, [deck, fx.flanger, setFlangerFX]);
 
   // FX Button component
   const FXButton: React.FC<{ 

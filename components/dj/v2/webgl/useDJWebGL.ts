@@ -134,35 +134,63 @@ export function useDJWebGL(options: UseDJWebGLOptions = {}): UseDJWebGLReturn {
 export function useDJWebGLAnimation(
   renderCallback: (timestamp: number) => void,
   isEnabled: boolean = true,
-  targetFPS: number = 60
+  targetFPS: number = 60,
+  idleFPS: number = 4,
+  isIdle: boolean = false
 ): void {
   const frameIdRef = useRef<number>(0);
+  const timerIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
-  const frameInterval = 1000 / targetFPS;
 
   useEffect(() => {
     if (!isEnabled) return;
+    lastFrameTimeRef.current = 0;
+    let cancelled = false;
+
+    const scheduleNext = (idle: boolean) => {
+      if (cancelled) return;
+      const hidden = typeof document !== 'undefined' && document.hidden;
+      if (idle || hidden) {
+        // True low-frequency wakeups: setTimeout sleeps for the interval,
+        // then a single-shot RAF provides vsync alignment
+        const interval = 1000 / Math.max(1, hidden ? 1 : idleFPS);
+        timerIdRef.current = setTimeout(() => {
+          if (cancelled) return;
+          frameIdRef.current = requestAnimationFrame(animate);
+        }, interval);
+      } else {
+        frameIdRef.current = requestAnimationFrame(animate);
+      }
+    };
 
     const animate = (timestamp: number) => {
-      // Throttle to target FPS
+      if (cancelled) return;
+      const hidden = typeof document !== 'undefined' && document.hidden;
+      const effectiveFPS = hidden ? 1 : (isIdle ? idleFPS : targetFPS);
+      const frameInterval = 1000 / Math.max(1, effectiveFPS);
       const elapsed = timestamp - lastFrameTimeRef.current;
-      
+
       if (elapsed >= frameInterval) {
         lastFrameTimeRef.current = timestamp - (elapsed % frameInterval);
         renderCallback(timestamp);
       }
-      
-      frameIdRef.current = requestAnimationFrame(animate);
+
+      scheduleNext(isIdle);
     };
 
+    // Kick off the first frame
     frameIdRef.current = requestAnimationFrame(animate);
 
     return () => {
+      cancelled = true;
       if (frameIdRef.current) {
         cancelAnimationFrame(frameIdRef.current);
       }
+      if (timerIdRef.current !== null) {
+        clearTimeout(timerIdRef.current);
+      }
     };
-  }, [renderCallback, isEnabled, frameInterval]);
+  }, [renderCallback, isEnabled, targetFPS, idleFPS, isIdle]);
 }
 
 export default useDJWebGL;

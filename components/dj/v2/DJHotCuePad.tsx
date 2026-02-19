@@ -9,7 +9,7 @@
 
 import React, { useCallback, useState, useRef } from 'react';
 import { useStore } from '../../../store';
-import { useDJAudioEngine } from '../../../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import type { DeckId } from '../../../slices/djMixerSlice';
 
 interface DJHotCuePadProps {
@@ -37,8 +37,10 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
 }) => {
   const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
-  const { setHotCue, triggerHotCue, clearHotCue } = useStore();
-  const { seek } = useDJAudioEngine();
+  const setHotCue = useStore(state => state.setHotCue);
+  const triggerHotCue = useStore(state => state.triggerHotCue);
+  const clearHotCue = useStore(state => state.clearHotCue);
+  const { seek } = useDJAudioEngineActions();
   
   const [longPressSlot, setLongPressSlot] = useState<number | null>(null);
   const [pressedSlot, setPressedSlot] = useState<number | null>(null);
@@ -96,7 +98,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
         const color = hotCue?.color || HOT_CUE_COLORS[slot - 1] || '#22c55e';
         const displayNum = slot;
         
-        const buttonSize = compact ? 'w-5 h-5 text-[9px]' : 'w-7 h-6 text-[10px]';
+        const buttonSize = compact ? 'w-5 h-5 text-[9px]' : 'w-8 h-7 text-[10px]';
         
         return (
           <button

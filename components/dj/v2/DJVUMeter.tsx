@@ -63,10 +63,12 @@ const DJVUMeter = memo(function DJVUMeter({
 }: DJVUMeterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const peakRef = useRef(0);
   const peakHoldRef = useRef(0);
   const peakTimerRef = useRef(0);
   const smoothLevelRef = useRef(0);
+  const idleFrameCount = useRef(0);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -83,6 +85,19 @@ const DJVUMeter = memo(function DJVUMeter({
       : current + (target - current) * 0.08; // slow release (ballistic)
     
     const level = smoothLevelRef.current;
+    
+    // Skip redraw when idle: level near-zero, peak decayed, nothing to show
+    if (level < 0.001 && peakHoldRef.current < 1) {
+      smoothLevelRef.current = 0;
+      idleFrameCount.current++;
+      // Draw once at idle to show dim segments, then throttle to ~4fps via setTimeout
+      if (idleFrameCount.current > 2) {
+        idleTimerRef.current = setTimeout(() => { rafRef.current = requestAnimationFrame(draw); }, 250);
+        return;
+      }
+    } else {
+      idleFrameCount.current = 0;
+    }
 
     const segHeight = Math.floor((height - (segments - 1)) / segments);
     const gap = 1;
@@ -138,6 +153,7 @@ const DJVUMeter = memo(function DJVUMeter({
     rafRef.current = requestAnimationFrame(draw);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
   }, [draw]);
 
@@ -182,13 +198,27 @@ export const DJStereoVUMeter = memo(function DJStereoVUMeter({
   label,
   showPeak = true,
 }: DJStereoVUMeterProps) {
-  const getLevelLeft = useCallback(() => getLevels().left, [getLevels]);
-  const getLevelRight = useCallback(() => getLevels().right, [getLevels]);
+  const cachedLevelsRef = useRef<{ ts: number; levels: { left: number; right: number } }>({
+    ts: 0,
+    levels: { left: 0, right: 0 },
+  });
+
+  const readLevels = useCallback(() => {
+    const now = performance.now();
+    if (now - cachedLevelsRef.current.ts >= 16) {
+      cachedLevelsRef.current.levels = getLevels();
+      cachedLevelsRef.current.ts = now;
+    }
+    return cachedLevelsRef.current.levels;
+  }, [getLevels]);
+
+  const getLevelLeft = useCallback(() => readLevels().left, [readLevels]);
+  const getLevelRight = useCallback(() => readLevels().right, [readLevels]);
 
   return (
     <div className="flex flex-col items-center">
       {label && (
-        <span className="text-[7px] text-[#555] font-bold mb-0.5 tracking-wider">{label}</span>
+        <span className="text-[7px] text-[#777] font-bold mb-0.5 tracking-wider">{label}</span>
       )}
       <div className="flex items-end" style={{ gap }}>
         <DJVUMeter

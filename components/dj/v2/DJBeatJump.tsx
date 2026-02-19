@@ -9,7 +9,7 @@
 
 import React, { memo, useCallback } from 'react';
 import { useStore } from '../../../store';
-import { useDJAudioEngine } from '../../../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import type { DeckId } from '../../../slices/djMixerSlice';
 
 interface DJBeatJumpProps {
@@ -24,7 +24,7 @@ export const DJBeatJump = memo(function DJBeatJump({ deck }: DJBeatJumpProps) {
   const duration = useStore(state => deck === 'A' ? state.djDeckA.duration : state.djDeckB.duration);
   const effectiveBpm = useStore(state => deck === 'A' ? state.djDeckA.effectiveBpm : state.djDeckB.effectiveBpm);
   const originalBpm = useStore(state => deck === 'A' ? state.djDeckA.originalBpm : state.djDeckB.originalBpm);
-  const { seek } = useDJAudioEngine();
+  const { seek } = useDJAudioEngineActions();
 
   const handleJump = useCallback((beats: number) => {
     if (!track || !duration) return;
@@ -50,7 +50,7 @@ export const DJBeatJump = memo(function DJBeatJump({ deck }: DJBeatJumpProps) {
 
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[7px] font-bold text-[#555] uppercase tracking-wider text-center">BEAT JUMP</span>
+      <span className="text-[7px] font-bold text-[#777] uppercase tracking-wider text-center">BEAT JUMP</span>
       <div className="flex items-center gap-0.5">
         {/* Backward jumps */}
         {BEAT_AMOUNTS.map(amt => (

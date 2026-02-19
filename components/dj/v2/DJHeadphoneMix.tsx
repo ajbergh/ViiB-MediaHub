@@ -1,6 +1,5 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useStore } from '../../../store';
-import { getDJAudioEngine } from '../../../lib/djAudio';
 
 interface DJHeadphoneMixProps {
   width?: number;
@@ -22,33 +21,21 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
   width = 120,
   className = '',
 }) => {
-  const { djMixer, setHeadphoneMix, setHeadphoneVolume } = useStore();
+  const mix = useStore(state => state.djMixer.headphoneMix);
+  const volume = useStore(state => state.djMixer.headphoneVolume);
+  const setHeadphoneMix = useStore(state => state.setHeadphoneMix);
+  const setHeadphoneVolume = useStore(state => state.setHeadphoneVolume);
   const sliderRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-
-  const mix = djMixer.headphoneMix;
-  const volume = djMixer.headphoneVolume;
 
   const handleMixChange = useCallback((newMix: number) => {
     const clampedMix = Math.max(0, Math.min(1, newMix));
     setHeadphoneMix(clampedMix);
-    
-    // Also update audio engine
-    const engine = getDJAudioEngine();
-    if (engine.initialized) {
-      engine.updateHeadphoneMix(clampedMix);
-    }
   }, [setHeadphoneMix]);
 
   const handleVolumeChange = useCallback((newVolume: number) => {
     const clampedVolume = Math.max(0, Math.min(1, newVolume));
     setHeadphoneVolume(clampedVolume);
-    
-    // Also update audio engine
-    const engine = getDJAudioEngine();
-    if (engine.initialized) {
-      engine.setHeadphoneVolume(clampedVolume);
-    }
   }, [setHeadphoneVolume]);
 
   // Handle slider drag

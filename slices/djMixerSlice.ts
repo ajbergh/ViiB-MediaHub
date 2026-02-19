@@ -161,6 +161,9 @@ export function createDefaultSamplerPad(id: number): SamplerPad {
 // Sync mode types
 export type SyncMode = 'off' | 'bpm' | 'beat-phase';
 
+// Layout mode for DJ V2 UI
+export type DJLayoutMode = 'perf' | 'browse' | 'fx';
+
 export interface MixerState {
   crossfader: number;      // -1 (full A) to +1 (full B)
   masterVolume: number;    // 0-1
@@ -190,6 +193,9 @@ export interface MixerState {
   
   // Rendering
   useWebGLWaveform: boolean; // Use WebGL2 waveform renderer (vs Canvas 2D fallback)
+
+  // UI Layout
+  djLayoutMode: DJLayoutMode; // perf (default), browse (expanded library), fx (expanded FX)
 }
 
 // ============================================================================
@@ -284,9 +290,11 @@ export interface DJMixerSlice {
   syncBeatPhase: (targetDeck: DeckId) => void;
   toggleQuantize: () => void;
   toggleKeyLock: (deck: DeckId) => void;
+  setKeyLock: (deck: DeckId, enabled: boolean) => void;
   toggleSlipMode: (deck: DeckId) => void;
   toggleAutoGain: (deck: DeckId) => void;
   toggleWebGLWaveform: () => void;
+  setDJLayoutMode: (mode: DJLayoutMode) => void;
   
   // Sampler
   loadSamplerPad: (padId: number, name: string, url: string) => void;
@@ -370,6 +378,7 @@ const createDefaultMixerState = (): MixerState => ({
   autoGainA: false,        // Default auto-gain OFF
   autoGainB: false,        // Default auto-gain OFF
   useWebGLWaveform: false, // Default Canvas 2D (safer fallback)
+  djLayoutMode: 'perf',   // Default layout mode: Performance
 });
 
 // ============================================================================
@@ -535,7 +544,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         filter: { 
           ...state[deckKey].filter, 
           value: clampedValue,
-          enabled: clampedValue !== 0
+          enabled: Math.abs(clampedValue) >= 0.05
         }
       }
     }));
@@ -991,6 +1000,17 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
       },
     }));
   },
+
+  setKeyLock: (deck, enabled) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        ...(deck === 'A'
+          ? { keyLockA: enabled }
+          : { keyLockB: enabled }),
+      },
+    }));
+  },
   
   toggleSlipMode: (deck) => {
     set((state) => ({
@@ -1019,6 +1039,15 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
       djMixer: {
         ...state.djMixer,
         useWebGLWaveform: !state.djMixer.useWebGLWaveform,
+      },
+    }));
+  },
+
+  setDJLayoutMode: (mode) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        djLayoutMode: mode,
       },
     }));
   },

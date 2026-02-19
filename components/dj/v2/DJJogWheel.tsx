@@ -10,7 +10,8 @@
 
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useStore } from '../../../store';
-import { useDJAudioEngine } from '../../../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
+import { getDJAudioEngine } from '../../../lib/djAudio';
 // BPM glow now handled directly in RAF loop (no useBpmGlow hook)
 import type { DeckId } from '../../../slices/djMixerSlice';
 
@@ -23,6 +24,7 @@ interface DJJogWheelProps {
 export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, responsive = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
   const [computedSize, setComputedSize] = useState(size > 0 ? size : 140);
   const lastAngleRef = useRef<number | null>(null);
   const rotationRef = useRef(0);
@@ -42,7 +44,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   const tempo = useStore(state => deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo);
   const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
   const duration = useStore(state => deck === 'A' ? state.djDeckA.duration : state.djDeckB.duration);
-  const { startScratch, updateScratch, endScratch } = useDJAudioEngine();
+  const { startScratch, updateScratch, endScratch } = useDJAudioEngineActions();
   
   const bpm = effectiveBpm || originalBpm || 0;
   const tempoPercent = ((tempo - 1) * 100).toFixed(1);
@@ -81,18 +83,48 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   // Uses refs + direct DOM manipulation to avoid React re-renders entirely
   useEffect(() => {
     let animationId: number;
+    let idleTimeoutId: ReturnType<typeof setTimeout>;
+    const lastPosRef = { current: -1 };
+    const lastGlowRef = { current: -1 };
+    
+    const scheduleNext = (idle: boolean) => {
+      if (idle) {
+        // Throttle to ~4fps when idle — allows GPU to enter low-power mode
+        idleTimeoutId = setTimeout(() => { animationId = requestAnimationFrame(animate); }, 250);
+      } else {
+        animationId = requestAnimationFrame(animate);
+      }
+    };
     
     const animate = () => {
-      // Read position directly from store (not reactive - no re-render)
+      // Read position directly from engine when playing/scratching for smooth 60fps,
+      // fall back to store position when paused (store is throttled to ~15fps)
       const state = useStore.getState();
       const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
-      const pos = deckState.position;
       const currentBpm = deckState.effectiveBpm || deckState.originalBpm || 0;
       const playing = deckState.isPlaying;
+      const engine = getDJAudioEngine();
+      const scratching = engine?.isScratching(deck) ?? false;
+      const pos = (playing || scratching) && engine?.initialized
+        ? engine.getPosition(deck)
+        : deckState.position;
       const currentSize = computedSize;
       
+      // Skip all DOM work when no track loaded — nothing to animate
+      if (!deckState.track) {
+        scheduleNext(true);
+        return;
+      }
+      
+      // Skip DOM work when paused, not dragging, and position hasn't changed
+      if (!playing && !isDraggingRef.current && pos === lastPosRef.current) {
+        scheduleNext(true);
+        return;
+      }
+      lastPosRef.current = pos;
+      
       // --- Rotation ---
-      if (playing && currentBpm > 0 && typeof pos === 'number' && !isNaN(pos)) {
+      if ((playing || scratching || isDraggingRef.current) && currentBpm > 0 && typeof pos === 'number' && !isNaN(pos)) {
         const beatsElapsed = (pos / 60) * currentBpm;
         const targetRotation = (beatsElapsed * 360) % 360;
         
@@ -125,15 +157,23 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
         glowIntensityRef.current = 0;
       }
       
-      // Apply glow to ring via DOM
+      // Apply glow to ring via DOM — only update when intensity changes meaningfully
+      // to avoid costly SVG Gaussian blur filter recomposition every frame
       if (glowRingRef.current) {
         const gi = glowIntensityRef.current;
         if (playing && gi > 0) {
-          glowRingRef.current.setAttribute('stroke-width', String(2 + gi * 3));
-          glowRingRef.current.setAttribute('opacity', String(0.3 + gi * 0.5));
+          // Only update DOM when glow changes by >5% — reduces SVG filter recomp from 60fps to ~20fps
+          if (Math.abs(gi - lastGlowRef.current) > 0.05) {
+            lastGlowRef.current = gi;
+            glowRingRef.current.setAttribute('stroke-width', String(2 + gi * 3));
+            glowRingRef.current.setAttribute('opacity', String(0.3 + gi * 0.5));
+          }
           glowRingRef.current.style.display = '';
         } else {
-          glowRingRef.current.style.display = 'none';
+          if (lastGlowRef.current !== 0) {
+            lastGlowRef.current = 0;
+            glowRingRef.current.style.display = 'none';
+          }
         }
       }
       
@@ -173,11 +213,11 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
         }
       }
       
-      animationId = requestAnimationFrame(animate);
+      scheduleNext(false);
     };
     
     animationId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationId);
+    return () => { cancelAnimationFrame(animationId); clearTimeout(idleTimeoutId); };
   }, [deck, computedSize]); // Only depends on deck identity and size - NOT position/bpm/isPlaying
 
   // formatTime no longer needed in render - handled by RAF loop via DOM ref
@@ -197,6 +237,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     
     setIsDragging(true);
+    isDraggingRef.current = true;
     lastAngleRef.current = getAngleFromCenter(e.clientX, e.clientY);
     startScratch(deck);
   }, [deck, track, startScratch]);
@@ -222,6 +263,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     
     setIsDragging(false);
+    isDraggingRef.current = false;
     lastAngleRef.current = null;
     endScratch(deck, 0, true);
   }, [deck, isDragging, endScratch]);
@@ -305,14 +347,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
             <stop offset="100%" stopColor="#1a1a1a"/>
           </radialGradient>
           
-          {/* Accent glow filter - static stdDeviation, animated via ref on the circle */}
-          <filter id={`accentGlow-${deck}`} x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="5" result="blur"/>
-            <feMerge>
-              <feMergeNode in="blur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
+
           
           {/* Text glow */}
           <filter id={`textGlow-${deck}`}>
@@ -339,7 +374,6 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
           stroke={accentColor} 
           strokeWidth="2"
           opacity="0.3"
-          filter={`url(#accentGlow-${deck})`}
           style={{ display: 'none' }}
         />
         
@@ -483,7 +517,6 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
           cy={computedSize * 0.14}
           r={computedSize * 0.035}
           fill={accentColor}
-          filter={isPlaying ? `url(#accentGlow-${deck})` : undefined}
           transform={`rotate(0, ${computedSize/2}, ${computedSize/2})`}
         />
         

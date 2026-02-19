@@ -2,6 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════
+   DJ Mode V2 — Design System CSS Variables
+   ═══════════════════════════════════════════════════════ */
+:root {
+  /* Surface palette (dark → light) */
+  --dj-bg:            #0d0d0d;
+  --dj-surface-0:     #121212;
+  --dj-surface-1:     #161616;
+  --dj-surface-2:     #1a1a1a;
+  --dj-surface-3:     #222222;
+  --dj-border:        #2a2a2a;
+  --dj-border-light:  #333333;
+  --dj-border-hover:  #444444;
+
+  /* Text hierarchy */
+  --dj-text-primary:   rgba(255, 255, 255, 0.92);
+  --dj-text-secondary: rgba(255, 255, 255, 0.60);
+  --dj-text-muted:     rgba(255, 255, 255, 0.38);
+  --dj-text-disabled:  rgba(255, 255, 255, 0.22);
+
+  /* Deck identity */
+  --dj-deck-a:       #3b82f6;
+  --dj-deck-a-dim:   rgba(59, 130, 246, 0.20);
+  --dj-deck-a-glow:  rgba(59, 130, 246, 0.40);
+  --dj-deck-b:       #8b5cf6;
+  --dj-deck-b-dim:   rgba(139, 92, 246, 0.20);
+  --dj-deck-b-glow:  rgba(139, 92, 246, 0.40);
+
+  /* Semantic state colors */
+  --dj-active:   #22c55e;
+  --dj-warning:  #f59e0b;
+  --dj-danger:   #ef4444;
+  --dj-info:     #06b6d4;
+
+  /* Spacing base (8px grid) */
+  --dj-space:    8px;
+  --dj-space-xs: 4px;
+  --dj-space-sm: 6px;
+  --dj-space-lg: 12px;
+  --dj-space-xl: 16px;
+
+  /* Layout section sizes (overridden per layout mode) */
+  --dj-waveform-h: 180px;
+  --dj-library-h:  250px;
+  --dj-mixer-w:    320px;
+  --dj-topbar-h:   44px;
+  --dj-fx-h:       auto;
+
+  /* Hit target minimums */
+  --dj-target-primary:   48px;
+  --dj-target-secondary: 32px;
+
+  /* Transition defaults */
+  --dj-transition-fast:   75ms ease-out;
+  --dj-transition-normal: 150ms ease-out;
+  --dj-transition-layout: 300ms ease-out;
+}
+
+/* Layout mode overrides */
+[data-dj-mode="perf"] {
+  --dj-waveform-h: 180px;
+  --dj-library-h:  18vh;
+  --dj-fx-h:       auto;
+}
+
+[data-dj-mode="browse"] {
+  --dj-waveform-h: 140px;
+  --dj-library-h:  45vh;
+  --dj-fx-h:       auto;
+}
+
+[data-dj-mode="fx"] {
+  --dj-waveform-h: 160px;
+  --dj-library-h:  12vh;
+  --dj-fx-h:       200px;
+}
+
 @layer base {
   body {
     font-family: 'Inter', sans-serif;
@@ -14,6 +91,15 @@
   :focus-visible {
     outline: 2px solid rgba(155, 92, 255, 0.55);
     outline-offset: 2px;
+  }
+
+  /* DJ Mode focus-visible: sharper ring on very dark backgrounds */
+  [data-dj-mode] button:focus-visible,
+  [data-dj-mode] input:focus-visible,
+  [data-dj-mode] [role="slider"]:focus-visible {
+    outline: 2px solid rgba(155, 92, 255, 0.7);
+    outline-offset: 1px;
+    box-shadow: 0 0 0 4px rgba(155, 92, 255, 0.15);
   }
 
   @media (prefers-reduced-motion: reduce) {

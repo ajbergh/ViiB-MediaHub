@@ -9,7 +9,7 @@
 
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useStore } from '../../../store';
-import { useDJAudioEngine } from '../../../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { Play, Pause, SkipBack } from 'lucide-react';
 
@@ -30,7 +30,7 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   const otherEffectiveBpm = useStore(state => deck === 'A' ? state.djDeckB.effectiveBpm : state.djDeckA.effectiveBpm);
   const syncMode = useStore(state => state.djMixer.syncMode);
   
-  const { togglePlay, returnToCue, setCue, setTempo, syncBeatPhase } = useDJAudioEngine();
+  const { togglePlay, returnToCue, setCue, setTempo, syncBeatPhase } = useDJAudioEngineActions();
   
   // Button press states
   const [cuePressed, setCuePressed] = useState(false);
@@ -99,7 +99,8 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   }, [deck, originalBpm, otherEffectiveBpm, setTempo, syncMode, syncBeatPhase]);
 
   const accentColor = deck === 'A' ? '#3b82f6' : '#8b5cf6';
-  const buttonSize = compact ? 'w-9 h-9' : 'w-10 h-10';
+  const cueSize = compact ? 'w-10 h-10' : 'w-11 h-11';
+  const playSize = compact ? 'w-11 h-11' : 'w-12 h-12';
   const iconSize = compact ? 16 : 18;
 
   return (
@@ -113,7 +114,7 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
         onMouseLeave={() => setCuePressed(false)}
         disabled={!track}
         className={`
-          ${buttonSize} rounded-lg flex items-center justify-center
+          ${cueSize} rounded-lg flex items-center justify-center
           transition-all duration-75
           ${track 
             ? 'bg-amber-600 hover:bg-amber-500 text-white' 
@@ -155,6 +156,25 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
         }}
       >
         {isPlaying ? <Pause size={iconSize + 2} /> : <Play size={iconSize + 2} className="ml-0.5" />}
+      </button>
+
+      {/* Sync Button */}
+      <button
+        onClick={handleSync}
+        disabled={!track || syncMode === 'off'}
+        className={`
+          ${compact ? 'h-8 px-3' : 'h-9 px-4'} rounded-lg text-[10px] font-bold uppercase tracking-wider
+          transition-all duration-100 border flex items-center gap-1
+          ${!track || syncMode === 'off'
+            ? 'bg-[#2a2a2a] text-neutral-600 border-[#333] cursor-not-allowed'
+            : syncMode === 'beat-phase'
+              ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500'
+              : 'bg-[#333] hover:bg-[#444] text-white border-[#555]'}
+        `}
+        title={syncMode === 'off' ? 'Sync disabled — set sync mode in mixer' : `Sync to other deck (${syncMode})`}
+      >
+        {syncMode === 'beat-phase' ? 'SYNC' : 'SYNC'}
+        {syncMode !== 'off' && track && <span className='w-1.5 h-1.5 rounded-full bg-current opacity-80' />}
       </button>
     </div>
   );

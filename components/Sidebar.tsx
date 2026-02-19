@@ -51,10 +51,10 @@ const SidebarItem = ({ to, icon: Icon, label, badge, collapsed }: SidebarItemPro
       title={collapsed ? label : undefined}
       aria-label={label}
       className={({ isActive }) =>
-        `flex items-center gap-4 px-4 py-3 text-sm font-medium transition-all duration-200 ease-out border-l-4 relative ${
+        `flex items-center gap-4 px-4 py-3 text-sm font-medium transition-all duration-200 ease-out relative ${
           isActive
-            ? 'border-brand bg-surface-2 text-brand ring-1 ring-brand/15'
-            : 'border-transparent text-text-secondary hover:text-text-main hover:bg-surface-2/60'
+            ? 'border-l-[3px] border-brand rounded-r-lg bg-brand/10 text-white ring-1 ring-brand/15'
+            : 'border-l-[3px] border-transparent text-text-secondary hover:text-text-main hover:bg-surface-2/60'
         } ${collapsed ? 'justify-center px-2' : ''}`
       }
     >
@@ -120,30 +120,47 @@ export const Sidebar: React.FC = () => {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2" role="navigation" aria-label="Main navigation">
+        {/* Performance */}
         <div className="space-y-1">
           <SidebarItem to="/" icon={Home} label="Home" collapsed={collapsed} />
-          <SidebarItem to="/songs" icon={Music} label="Songs" collapsed={collapsed} />
-          <SidebarItem to="/albums" icon={Disc} label="Albums" collapsed={collapsed} />
-        <SidebarItem to="/artists" icon={Mic2} label="Artists" collapsed={collapsed} />
-        <SidebarItem to="/genres" icon={Tags} label="Genres" collapsed={collapsed} />
-        <SidebarItem to="/smart-playlists" icon={Sparkles} label="AI DJ" collapsed={collapsed} />
-        <SidebarItem to="/dj" icon={Disc3} label="DJ Mode" collapsed={collapsed} />
-        <SidebarItem to="/dj-v2" icon={Disc3} label="DJ Mode v2" collapsed={collapsed} />
-        <SidebarItem to="/playlists" icon={ListMusic} label="Playlists" collapsed={collapsed} />
-        <SidebarItem to="/liked" icon={Heart} label="Liked Songs" collapsed={collapsed} />
-        <SidebarItem to="/liked-albums" icon={Disc} label="Liked Albums" collapsed={collapsed} />
+          <SidebarItem to="/dj" icon={Disc3} label="DJ Mode" collapsed={collapsed} />
+          <SidebarItem to="/dj-v2" icon={Disc3} label="DJ Mode v2" collapsed={collapsed} />
         </div>
 
-        <div className={`my-4 border-t border-surface-highlight ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>
+        <div className={`my-2 border-t border-surface-highlight/50 ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>
 
+        {/* Library */}
+        <div className="space-y-1">
+          <SidebarItem to="/songs" icon={Music} label="Songs" collapsed={collapsed} />
+          <SidebarItem to="/albums" icon={Disc} label="Albums" collapsed={collapsed} />
+          <SidebarItem to="/artists" icon={Mic2} label="Artists" collapsed={collapsed} />
+          <SidebarItem to="/genres" icon={Tags} label="Genres" collapsed={collapsed} />
+          <SidebarItem to="/playlists" icon={ListMusic} label="Playlists" collapsed={collapsed} />
+        </div>
+
+        <div className={`my-2 border-t border-surface-highlight/50 ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>
+
+        {/* Collections */}
+        <div className="space-y-1">
+          <SidebarItem to="/liked" icon={Heart} label="Liked Songs" collapsed={collapsed} />
+          <SidebarItem to="/liked-albums" icon={Disc} label="Liked Albums" collapsed={collapsed} />
+          <SidebarItem to="/smart-playlists" icon={Sparkles} label="AI DJ" collapsed={collapsed} />
+        </div>
+
+        <div className={`my-2 border-t border-surface-highlight/50 ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>
+
+        {/* Services */}
         <div className="space-y-1">
           <SidebarItem to="/spotify" icon={SpotifyIcon} label="Spotify" collapsed={collapsed} />
           <SidebarItem to="/downloads" icon={Download} label="Downloads" badge={downloadCount} collapsed={collapsed} />
+        </div>
+
+        <div className={`my-2 border-t border-surface-highlight/50 ${collapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>
+
+        {/* Utilities */}
+        <div className="space-y-1">
           <SidebarItem to="/search" icon={Search} label="Search" collapsed={collapsed} />
           <SidebarItem to="/stats" icon={BarChart3} label="Stats" collapsed={collapsed} />
-        </div>
-        
-        <div className="space-y-1 mt-4">
           <SidebarItem to="/settings" icon={Settings} label="Settings" collapsed={collapsed} />
         </div>
       </nav>

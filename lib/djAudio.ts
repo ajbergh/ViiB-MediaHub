@@ -178,6 +178,13 @@ export class DJAudioEngine {
   private onPositionUpdate?: (deck: DeckId, position: number) => void;
   private onVUUpdate?: (levels: VULevels) => void;
   private onTrackEnd?: (deck: DeckId) => void;
+  private vuLevels: VULevels = {
+    deckA: { left: 0, right: 0 },
+    deckB: { left: 0, right: 0 },
+    master: { left: 0, right: 0 },
+  };
+  private positionIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  private vuIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config?: DJAudioEngineConfig) {
     this.config = {
@@ -1714,9 +1721,13 @@ export class DJAudioEngine {
     const updatePositions = () => {
       const storeState = useStore.getState();
       const now = performance.now();
+      const aPaused = !this.audioElementA || this.audioElementA.paused;
+      const bPaused = !this.audioElementB || this.audioElementB.paused;
+      const aScratch = this.scratchStateA?.active ?? false;
+      const bScratch = this.scratchStateB?.active ?? false;
       
-      // Deck A position and loop handling
-      if (this.audioElementA && !this.audioElementA.paused) {
+      // Deck A position and loop handling — also update during scratch even when paused
+      if (this.audioElementA && (!aPaused || aScratch)) {
         const currentTime = this.audioElementA.currentTime;
         
         // Check for loop at full frame rate (critical for tight loops)
@@ -1735,8 +1746,8 @@ export class DJAudioEngine {
         }
       }
       
-      // Deck B position and loop handling
-      if (this.audioElementB && !this.audioElementB.paused) {
+      // Deck B position and loop handling — also update during scratch even when paused
+      if (this.audioElementB && (!this.audioElementB.paused || bScratch)) {
         const currentTime = this.audioElementB.currentTime;
         
         // Check for loop at full frame rate (critical for tight loops)
@@ -1755,7 +1766,19 @@ export class DJAudioEngine {
         }
       }
       
-      this.animationFrameId = requestAnimationFrame(updatePositions);
+      // Throttle to ~4fps when both decks paused AND not scratching
+      if ((aPaused && !aScratch) && (bPaused && !bScratch)) {
+        if (this.positionIdleTimer) clearTimeout(this.positionIdleTimer);
+        this.positionIdleTimer = setTimeout(() => {
+          this.animationFrameId = requestAnimationFrame(updatePositions);
+        }, 250);
+      } else {
+        if (this.positionIdleTimer) {
+          clearTimeout(this.positionIdleTimer);
+          this.positionIdleTimer = null;
+        }
+        this.animationFrameId = requestAnimationFrame(updatePositions);
+      }
     };
     this.animationFrameId = requestAnimationFrame(updatePositions);
   }
@@ -1774,6 +1797,27 @@ export class DJAudioEngine {
     const dataArrayMaster = new Uint8Array(bufferLengthMaster);
 
     const updateVU = () => {
+      // When both decks are paused, skip expensive FFT and throttle to ~4fps
+      const aPaused = !this.audioElementA || this.audioElementA.paused;
+      const bPaused = !this.audioElementB || this.audioElementB.paused;
+      if (aPaused && bPaused) {
+        this.vuLevels = {
+          deckA: { left: 0, right: 0 },
+          deckB: { left: 0, right: 0 },
+          master: { left: 0, right: 0 },
+        };
+        this.onVUUpdate?.(this.vuLevels);
+        if (this.vuIdleTimer) clearTimeout(this.vuIdleTimer);
+        this.vuIdleTimer = setTimeout(() => {
+          this.vuAnimationFrameId = requestAnimationFrame(updateVU);
+        }, 250);
+        return;
+      }
+      if (this.vuIdleTimer) {
+        clearTimeout(this.vuIdleTimer);
+        this.vuIdleTimer = null;
+      }
+
       const levels: VULevels = {
         deckA: { left: 0, right: 0 },
         deckB: { left: 0, right: 0 },
@@ -1799,6 +1843,7 @@ export class DJAudioEngine {
         levels.master = { left: avg, right: avg };
       }
 
+      this.vuLevels = levels;
       this.onVUUpdate?.(levels);
       this.vuAnimationFrameId = requestAnimationFrame(updateVU);
     };
@@ -1844,6 +1889,14 @@ export class DJAudioEngine {
     }
     if (this.vuAnimationFrameId) {
       cancelAnimationFrame(this.vuAnimationFrameId);
+    }
+    if (this.positionIdleTimer) {
+      clearTimeout(this.positionIdleTimer);
+      this.positionIdleTimer = null;
+    }
+    if (this.vuIdleTimer) {
+      clearTimeout(this.vuIdleTimer);
+      this.vuIdleTimer = null;
     }
 
     // Stop and clean up audio elements
@@ -1892,38 +1945,10 @@ export class DJAudioEngine {
   }
 
   /**
-   * Get current VU levels synchronously by reading analyser nodes.
-   * Call this inside a requestAnimationFrame loop for real-time meters.
+   * Get cached VU levels (updated by startVUMetering loop).
    */
   getVULevels(): VULevels {
-    const levels: VULevels = {
-      deckA: { left: 0, right: 0 },
-      deckB: { left: 0, right: 0 },
-      master: { left: 0, right: 0 },
-    };
-
-    if (this.analyserA) {
-      const data = new Uint8Array(this.analyserA.frequencyBinCount);
-      this.analyserA.getByteFrequencyData(data);
-      const avg = this.getAverageLevel(data);
-      levels.deckA = { left: avg, right: avg };
-    }
-
-    if (this.analyserB) {
-      const data = new Uint8Array(this.analyserB.frequencyBinCount);
-      this.analyserB.getByteFrequencyData(data);
-      const avg = this.getAverageLevel(data);
-      levels.deckB = { left: avg, right: avg };
-    }
-
-    if (this.analyserMaster) {
-      const data = new Uint8Array(this.analyserMaster.frequencyBinCount);
-      this.analyserMaster.getByteFrequencyData(data);
-      const avg = this.getAverageLevel(data);
-      levels.master = { left: avg, right: avg };
-    }
-
-    return levels;
+    return this.vuLevels;
   }
   /**
    * Get a MediaStream from the master output for recording.

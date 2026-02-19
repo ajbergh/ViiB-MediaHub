@@ -9,6 +9,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { useStore } from '../../../store';
+import type { DJLayoutMode } from '../../../slices/djMixerSlice';
 
 type ViewMode = 'timeline' | 'scope' | 'fx';
 
@@ -19,26 +20,35 @@ const TopBarTimeDisplay: React.FC<{ deck: 'A' | 'B'; colorClass: string }> = Rea
 
   useEffect(() => {
     let rafId: number;
+    let idleTimeoutId: ReturnType<typeof setTimeout>;
+    let lastPos = -1;
     const update = () => {
-      const pos = deck === 'A'
-        ? useStore.getState().djDeckA.position
-        : useStore.getState().djDeckB.position;
+      const deckState = deck === 'A'
+        ? useStore.getState().djDeckA
+        : useStore.getState().djDeckB;
+      const pos = deckState.position;
       if (spanRef.current) {
         const mins = Math.floor(pos / 60);
         const secs = Math.floor(pos % 60);
         spanRef.current.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
       }
-      rafId = requestAnimationFrame(update);
+      // Throttle to ~4fps when paused (position unchanging) or no track
+      if ((!deckState.isPlaying && pos === lastPos) || deckState.duration <= 0) {
+        idleTimeoutId = setTimeout(() => { rafId = requestAnimationFrame(update); }, 250);
+      } else {
+        rafId = requestAnimationFrame(update);
+      }
+      lastPos = pos;
     };
     rafId = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(rafId);
+    return () => { cancelAnimationFrame(rafId); clearTimeout(idleTimeoutId); };
   }, [deck]);
 
   return (
     <span
       ref={spanRef}
       className={`font-mono text-sm tabular-nums px-2 py-0.5 rounded ${
-        isPlaying ? colorClass : 'text-[#555]'
+        isPlaying ? colorClass : 'text-[#777]'
       }`}
     >
       00:00
@@ -52,13 +62,17 @@ interface DJTopBarProps {
   onViewModeChange: (mode: ViewMode) => void;
   isRecording?: boolean;
   onRecordToggle?: () => void;
+  layoutMode?: DJLayoutMode;
+  onLayoutModeChange?: (mode: DJLayoutMode) => void;
 }
 
 export const DJTopBar: React.FC<DJTopBarProps> = ({ 
   viewMode, 
   onViewModeChange,
   isRecording = false,
-  onRecordToggle
+  onRecordToggle,
+  layoutMode = 'perf',
+  onLayoutModeChange,
 }) => {
   // Granular selectors - avoid subscribing to position/volume/eq changes
   const deckATrack = useStore(state => state.djDeckA.track);
@@ -66,7 +80,7 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
 
   return (
     <div className="h-11 bg-gradient-to-b from-[#1f1f1f] to-[#1a1a1a] border-b border-[#2a2a2a] flex items-center justify-between px-3">
-      {/* Left - View Mode Tabs */}
+      {/* Left - View Mode Tabs + Layout Mode Toggle */}
       <div className="flex items-center gap-1">
         {(['scope', 'timeline', 'fx'] as ViewMode[]).map(mode => (
           <button
@@ -83,6 +97,29 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
             {mode}
           </button>
         ))}
+
+        {/* Separator */}
+        <div className='w-px h-5 bg-[#333] mx-1.5' />
+
+        {/* Layout Mode Toggle */}
+        <div className='flex items-center bg-[#1a1a1a] rounded border border-[#333] p-0.5'>
+          {(['perf', 'browse', 'fx'] as DJLayoutMode[]).map(mode => (
+            <button
+              key={mode}
+              onClick={() => onLayoutModeChange?.(mode)}
+              className={`
+                px-2.5 py-1 rounded text-[9px] font-bold uppercase tracking-wider
+                transition-all duration-150
+                ${layoutMode === mode
+                  ? 'bg-brand text-white shadow-sm'
+                  : 'text-[#666] hover:text-[#aaa]'}
+              `}
+              title={mode === 'perf' ? 'Performance layout — full decks' : mode === 'browse' ? 'Browse layout — expanded library' : 'FX layout — expanded effects'}
+            >
+              {mode === 'perf' ? 'PERF' : mode === 'browse' ? 'BROWSE' : 'FX'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Center - Track Info + Record */}

@@ -1,7 +1,6 @@
 import React, { useCallback } from 'react';
 import { Headphones } from 'lucide-react';
 import { useStore } from '../../../store';
-import { getDJAudioEngine } from '../../../lib/djAudio';
 import type { DeckId } from '../../../slices/djMixerSlice';
 
 interface DJCueButtonProps {
@@ -15,22 +14,14 @@ export const DJCueButton: React.FC<DJCueButtonProps> = ({
   compact = false,
   className = '',
 }) => {
-  const { djDeckA, djDeckB, toggleDeckCue } = useStore();
-  
-  const deckState = deck === 'A' ? djDeckA : djDeckB;
-  const isActive = deckState.cueEnabled;
+  const isActive = useStore(state => deck === 'A' ? state.djDeckA.cueEnabled : state.djDeckB.cueEnabled);
+  const toggleDeckCue = useStore(state => state.toggleDeckCue);
   
   const activeColor = deck === 'A' ? '#f97316' : '#f59e0b';
   
   const handleClick = useCallback(() => {
     toggleDeckCue(deck);
-    
-    const engine = getDJAudioEngine();
-    if (engine.initialized) {
-      const newState = !isActive;
-      engine.setCueEnabled(deck, newState);
-    }
-  }, [deck, isActive, toggleDeckCue]);
+  }, [deck, toggleDeckCue]);
 
   const compactClasses = isActive
     ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/40'

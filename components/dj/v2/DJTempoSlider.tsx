@@ -163,7 +163,7 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
       {/* BPM Display */}
       <div className="text-[10px] font-mono text-neutral-400 text-center">
         <span className={effectiveBpm ? 'text-green-400' : ''}>{bpmDisplay}</span>
-        <span className="text-neutral-600 ml-0.5">BPM</span>
+        <span className="text-neutral-500 ml-0.5">BPM</span>
       </div>
       
       {/* Slider Track */}

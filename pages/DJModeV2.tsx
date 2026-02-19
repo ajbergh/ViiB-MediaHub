@@ -24,7 +24,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '../store';
-import { useDJAudioEngine } from '../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions, useDJAudioEngineSync } from '../hooks/useDJAudioEngine';
 import { DJTopBar } from '../components/dj/v2/DJTopBar';
 import { DJDualWaveform } from '../components/dj/v2/DJDualWaveform';
 import { DJWebGLWaveform } from '../components/dj/v2/webgl';
@@ -46,8 +46,10 @@ import { DJBeatGridEdit } from '../components/dj/v2/DJBeatGridEdit';
 import { DJSamplerPads } from '../components/dj/v2/DJSamplerPads';
 import { DJMidiMapping } from '../components/dj/v2/DJMidiMapping';
 import { DJErrorBoundary } from '../components/dj/v2/DJErrorBoundary';
+import { DJScopeView } from '../components/dj/v2/DJScopeView';
+import { DJDeckStatusBar } from '../components/dj/v2/DJDeckStatusBar';
 import { createLogger } from '../services/loggerService';
-import type { DeckId, DeckEQ } from '../slices/djMixerSlice';
+import type { DeckId, DeckEQ, DJLayoutMode } from '../slices/djMixerSlice';
 
 const logger = createLogger('DJModeV2');
 
@@ -59,6 +61,8 @@ const DeckTimeDisplay = React.memo(({ deck, color, showRemaining = false }: { de
   
   useEffect(() => {
     let animId: number;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let lastPos = -1;
     const update = () => {
       const state = useStore.getState();
       const d = deck === 'A' ? state.djDeckA : state.djDeckB;
@@ -76,11 +80,20 @@ const DeckTimeDisplay = React.memo(({ deck, color, showRemaining = false }: { de
         } else {
           el.textContent = formatT(pos);
         }
+        // Throttle to ~4fps when paused (position unchanging)
+        if (!d.isPlaying && pos === lastPos) {
+          timeoutId = setTimeout(() => { animId = requestAnimationFrame(update); }, 250);
+        } else {
+          animId = requestAnimationFrame(update);
+        }
+        lastPos = pos;
+      } else {
+        // No track loaded — throttle to ~2fps instead of 60fps
+        timeoutId = setTimeout(() => { animId = requestAnimationFrame(update); }, 500);
       }
-      animId = requestAnimationFrame(update);
     };
     animId = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(animId);
+    return () => { cancelAnimationFrame(animId); clearTimeout(timeoutId); };
   }, [deck, showRemaining]);
   
   return <span ref={containerRef} className={`text-[10px] font-mono`} style={{ color }}>--:--</span>;
@@ -96,81 +109,176 @@ const DeckHasTrack = React.memo(({ deck, children }: { deck: DeckId; children: R
 });
 DeckHasTrack.displayName = 'DeckHasTrack';
 
-// Scope view - real-time VU meter visualization as bars
-const DJScopeView = React.memo(({ getVULevels }: { getVULevels: () => { deckA: { left: number; right: number }; deckB: { left: number; right: number }; master: { left: number; right: number } } }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    let animId: number;
-    const draw = () => {
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { animId = requestAnimationFrame(draw); return; }
-      
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      if (canvas.width !== w * 2) { canvas.width = w * 2; canvas.height = h * 2; ctx.scale(2, 2); }
-      
-      ctx.fillStyle = '#0d0d0d';
-      ctx.fillRect(0, 0, w, h);
-      
-      const levels = getVULevels();
-      const bars = [
-        { label: 'A-L', value: levels.deckA.left, color: '#3b82f6' },
-        { label: 'A-R', value: levels.deckA.right, color: '#3b82f6' },
-        { label: 'M-L', value: levels.master.left, color: '#22c55e' },
-        { label: 'M-R', value: levels.master.right, color: '#22c55e' },
-        { label: 'B-L', value: levels.deckB.left, color: '#8b5cf6' },
-        { label: 'B-R', value: levels.deckB.right, color: '#8b5cf6' },
-      ];
-      
-      const barWidth = Math.min(60, (w - 80) / bars.length);
-      const gap = 8;
-      const totalWidth = bars.length * (barWidth + gap) - gap;
-      const startX = (w - totalWidth) / 2;
-      const maxH = h - 30;
-      
-      bars.forEach((bar, i) => {
-        const x = startX + i * (barWidth + gap);
-        const barH = bar.value * maxH;
-        
-        // Bar
-        const gradient = ctx.createLinearGradient(x, h - 15, x, h - 15 - maxH);
-        gradient.addColorStop(0, bar.color);
-        gradient.addColorStop(0.6, bar.color);
-        gradient.addColorStop(0.85, '#eab308');
-        gradient.addColorStop(1, '#ef4444');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(x, h - 15 - barH, barWidth, barH);
-        
-        // Background
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(x, h - 15 - maxH, barWidth, maxH - barH);
-        
-        // Label
-        ctx.fillStyle = '#666';
-        ctx.font = '9px system-ui';
-        ctx.textAlign = 'center';
-        ctx.fillText(bar.label, x + barWidth / 2, h - 3);
-      });
-      
-      // Title
-      ctx.fillStyle = '#444';
-      ctx.font = 'bold 10px system-ui';
-      ctx.textAlign = 'center';
-      ctx.fillText('SCOPE VIEW — AUDIO LEVELS', w / 2, 14);
-      
-      animId = requestAnimationFrame(draw);
-    };
-    
-    animId = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animId);
-  }, [getVULevels]);
-  
-  return <canvas ref={canvasRef} className='w-full h-full' />;
+// Self-subscribing Channel Strip — isolates EQ/filter/volume from parent re-renders
+const DJChannelStrip = React.memo(({ deckId, getDeckLevels, onEQChange, onVolumeChange, onFilterChange }: {
+  deckId: DeckId;
+  getDeckLevels: () => { left: number; right: number };
+  onEQChange: (deck: DeckId, band: keyof DeckEQ, value: number) => void;
+  onVolumeChange: (deck: DeckId, value: number) => void;
+  onFilterChange: (deck: DeckId, knobValue: number) => void;
+}) => {
+  const isA = deckId === 'A';
+  const accentColor = isA ? '#3b82f6' : '#8b5cf6';
+
+  // Granular selectors — only re-render when these specific fields change
+  const eqHigh = useStore(s => isA ? s.djDeckA.eq.high : s.djDeckB.eq.high);
+  const eqMid = useStore(s => isA ? s.djDeckA.eq.mid : s.djDeckB.eq.mid);
+  const eqLow = useStore(s => isA ? s.djDeckA.eq.low : s.djDeckB.eq.low);
+  const filterValue = useStore(s => isA ? s.djDeckA.filter.value : s.djDeckB.filter.value);
+  const filterEnabled = useStore(s => isA ? s.djDeckA.filter.enabled : s.djDeckB.filter.enabled);
+  const volume = useStore(s => isA ? s.djDeckA.volume : s.djDeckB.volume);
+  const isPlaying = useStore(s => isA ? s.djDeckA.isPlaying : s.djDeckB.isPlaying);
+
+  const filterKnobValue = ((filterValue + 1) / 2) * 36 - 24;
+
+  return (
+    <div className={`flex-1 flex flex-col items-center py-2 gap-3 min-w-[90px] border-[#2a2a2a]`}>
+      {/* Gain / Trim */}
+      <div className='relative pt-2'>
+        <DJEQKnob
+          label='TRIM'
+          value={0}
+          onChange={(v) => {
+            const normalized = (v + 24) / 36;
+            const trimmedVol = Math.max(0, Math.min(1, normalized * 1.5));
+            onVolumeChange(deckId, trimmedVol);
+          }}
+          color='#aaaaaa'
+          size={38}
+        />
+      </div>
+
+      {/* EQ Section */}
+      <div className='flex flex-col gap-2 p-1.5 bg-[#151515] rounded-md border border-[#222] shadow-inner'>
+        <DJEQKnob
+          label='HIGH'
+          value={eqHigh}
+          onChange={(v) => onEQChange(deckId, 'high', v)}
+          color='#06b6d4'
+          size={38}
+        />
+        <DJEQKnob
+          label='MID'
+          value={eqMid}
+          onChange={(v) => onEQChange(deckId, 'mid', v)}
+          color='#22c55e'
+          size={38}
+        />
+        <DJEQKnob
+          label='LOW'
+          value={eqLow}
+          onChange={(v) => onEQChange(deckId, 'low', v)}
+          color='#f59e0b'
+          size={38}
+        />
+      </div>
+
+      {/* Separator */}
+      <div className='h-px bg-[#333] mx-1' />
+
+      {/* Filter Knob */}
+      <div className='p-1.5 bg-[#151515] rounded-md border border-[#222] shadow-inner'>
+        <DJEQKnob
+          label='FILTER'
+          value={filterKnobValue}
+          onChange={(v) => onFilterChange(deckId, v)}
+          color={filterEnabled ? '#ef4444' : '#666'}
+          size={38}
+        />
+      </div>
+
+      {/* Spacer */}
+      <div className='flex-1'></div>
+
+      {/* Headphone Cue */}
+      <div className='mb-2'>
+        <DJCueButton deck={deckId} />
+      </div>
+
+      {/* Channel Fader with VU */}
+      <div className='w-full px-2 flex items-center justify-center gap-1'>
+        <DJStereoVUMeter
+          getLevels={getDeckLevels}
+          height={140}
+          channelWidth={4}
+          gap={2}
+          segments={18}
+          showPeak={true}
+        />
+        <DJVolumeFader
+          value={volume}
+          onChange={(v) => onVolumeChange(deckId, v)}
+          label=''
+          height={160}
+          isPlaying={isPlaying}
+          accentColor={accentColor}
+        />
+      </div>
+    </div>
+  );
 });
+DJChannelStrip.displayName = 'DJChannelStrip';
+
+// Self-subscribing BPM badge — avoids parent re-render on effectiveBpm change
+const DeckBpmBadge = React.memo(({ deck }: { deck: DeckId }) => {
+  const bpm = useStore(s => deck === 'A' ? s.djDeckA.effectiveBpm : s.djDeckB.effectiveBpm);
+  if (!bpm) return null;
+  return <span className='text-[9px] font-mono text-neutral-400'>{bpm.toFixed(1)}</span>;
+});
+DeckBpmBadge.displayName = 'DeckBpmBadge';
+
+// Self-subscribing master volume knob — avoids parent re-render during volume drag
+const DJMasterKnob = React.memo(({ onChange }: { onChange: (v: number) => void }) => {
+  const masterVolume = useStore(s => s.djMixer?.masterVolume ?? 0.8);
+  return (
+    <DJEQKnob
+      label='MAIN'
+      value={((masterVolume) * 36 - 24)}
+      onChange={onChange}
+      size={40}
+      color='#fff'
+    />
+  );
+});
+DJMasterKnob.displayName = 'DJMasterKnob';
+
+// Self-subscribing crossfader — avoids parent re-render during crossfader drag
+const DJCrossfaderSelfSub = React.memo(({ onChange, width, responsive }: {
+  onChange: (v: number) => void;
+  width: number;
+  responsive?: boolean;
+}) => {
+  const crossfader = useStore(s => s.djMixer?.crossfader ?? 0);
+  return <DJCrossfader value={crossfader} onChange={onChange} width={width} responsive={responsive} />;
+});
+DJCrossfaderSelfSub.displayName = 'DJCrossfaderSelfSub';
+
+// Self-subscribing tempo slider — avoids parent re-render during tempo drag
+const DJTempoSliderSelfSub = React.memo(({ deck, onChange, disabled, height, responsive }: {
+  deck: DeckId;
+  onChange: (v: number) => void;
+  disabled?: boolean;
+  height: number;
+  responsive?: boolean;
+}) => {
+  const isA = deck === 'A';
+  const tempo = useStore(s => isA ? s.djDeckA.tempo : s.djDeckB.tempo);
+  const effectiveBpm = useStore(s => isA ? s.djDeckA.effectiveBpm : s.djDeckB.effectiveBpm);
+  const originalBpm = useStore(s => isA ? s.djDeckA.originalBpm : s.djDeckB.originalBpm);
+  return (
+    <DJTempoSlider
+      deck={deck}
+      value={tempo}
+      onChange={onChange}
+      originalBpm={originalBpm}
+      effectiveBpm={effectiveBpm}
+      disabled={disabled}
+      height={height}
+      responsive={responsive}
+    />
+  );
+});
+DJTempoSliderSelfSub.displayName = 'DJTempoSliderSelfSub';
 
 export const DJModeV2: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');
@@ -185,29 +293,41 @@ export const DJModeV2: React.FC = () => {
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
   
-  const {
-    setDJMixerEnabled,
-    djActiveDeck,
-    toggleActiveDeck,
-    djDeckA,
-    djDeckB,
-    djMixer,
-    setDeckEQ,
-    setDeckFilter,
-    setDeckFilterEnabled,
-    setMasterVolume: storeSetMasterVolume,
-    setSyncMode,
-    toggleQuantize,
-    setCrossfaderCurve,
-    toggleKeyLock,
-    toggleSlipMode,
-    toggleAutoGain,
-    toggleWebGLWaveform,
-    setHotCue,
-    triggerHotCue,
-  } = useStore();
+  // Actions — stable Zustand references, never trigger re-renders
+  const setDJMixerEnabled = useStore(s => s.setDJMixerEnabled);
+  const toggleActiveDeck = useStore(s => s.toggleActiveDeck);
+  const setSyncMode = useStore(s => s.setSyncMode);
+  const toggleQuantize = useStore(s => s.toggleQuantize);
+  const setCrossfaderCurve = useStore(s => s.setCrossfaderCurve);
+  const toggleWebGLWaveform = useStore(s => s.toggleWebGLWaveform);
+  const setHotCue = useStore(s => s.setHotCue);
+  const triggerHotCue = useStore(s => s.triggerHotCue);
+  const setDJLayoutMode = useStore(s => s.setDJLayoutMode);
+  const setDeckFilter = useStore(s => s.setDeckFilter);
+  const storeSetMasterVolume = useStore(s => s.setMasterVolume);
 
-  // Initialize DJ audio engine and get control functions
+  // Render-path state — granular selectors prevent position-driven re-renders (~15fps)
+  const djActiveDeck = useStore(s => s.djActiveDeck);
+
+  // Deck A header info (excludes position/duration/hotCues — those update at 15fps)
+  const deckATrack = useStore(s => s.djDeckA.track);
+  const deckAKey = useStore(s => s.djDeckA.key);
+
+  // Deck B header info
+  const deckBTrack = useStore(s => s.djDeckB.track);
+  const deckBKey = useStore(s => s.djDeckB.key);
+
+  // Mixer render state (low-frequency values only — high-freq moved to self-subscribing wrappers)
+  const djLayoutMode = useStore(s => s.djMixer?.djLayoutMode || 'perf') as DJLayoutMode;
+  const useWebGLWaveform = useStore(s => s.djMixer?.useWebGLWaveform);
+  const syncMode = useStore(s => s.djMixer?.syncMode);
+  const quantize = useStore(s => s.djMixer?.quantize);
+  const crossfaderCurve = useStore(s => s.djMixer?.crossfaderCurve);
+
+  // Zero-rerender store→engine sync (crossfader, volumes, EQ, tempo, cue, headphone, keylock)
+  useDJAudioEngineSync();
+
+  // Stable action callbacks — no store subscriptions, no sync effects
   const { 
     togglePlay, 
     returnToCue, 
@@ -216,13 +336,11 @@ export const DJModeV2: React.FC = () => {
     setVolume,
     setEQ,
     setTempo,
-    setKeyLock,
     syncBeatPhase,
-    setMasterVolume: engineSetMasterVolume,
     setFilterFX,
     getVULevels,
     getMasterStream,
-  } = useDJAudioEngine();
+  } = useDJAudioEngineActions();
 
   // Enable DJ mode when page mounts
   useEffect(() => {
@@ -240,6 +358,15 @@ export const DJModeV2: React.FC = () => {
       }
     };
   }, [setDJMixerEnabled]);
+
+  // Adjust library height defaults when layout mode changes
+  useEffect(() => {
+    if (djLayoutMode === 'browse') {
+      setLibraryHeight(prev => Math.max(prev, 350));
+    } else if (djLayoutMode === 'perf') {
+      setLibraryHeight(prev => Math.min(prev, 250));
+    }
+  }, [djLayoutMode]);
 
   // VU meter level getters (stable callbacks for rAF-based meters)
   const getMasterLevels = useCallback(() => {
@@ -266,13 +393,6 @@ export const DJModeV2: React.FC = () => {
   const handleCrossfaderChange = useCallback((value: number) => {
     setCrossfader(value);
   }, [setCrossfader]);
-
-  // Key lock handler - toggle store + sync engine
-  const handleKeyLockToggle = useCallback((deck: DeckId) => {
-    const current = deck === 'A' ? djMixer.keyLockA : djMixer.keyLockB;
-    toggleKeyLock(deck);
-    setKeyLock(deck, !current);
-  }, [djMixer.keyLockA, djMixer.keyLockB, toggleKeyLock, setKeyLock]);
 
   // Recording handler - capture master output via MediaRecorder
   const handleRecordToggle = useCallback(() => {
@@ -440,6 +560,12 @@ export const DJModeV2: React.FC = () => {
         case '?':
           setShowShortcuts(prev => !prev);
           break;
+        case '/':
+          e.preventDefault();
+          // Focus the library browser search input
+          const searchInput = document.querySelector('[data-dj-mode] input[type="text"][placeholder*="Search"]') as HTMLInputElement;
+          if (searchInput) searchInput.focus();
+          break;
         case 'escape':
           setShowShortcuts(false);
           break;
@@ -457,15 +583,14 @@ export const DJModeV2: React.FC = () => {
     const filterValue = normalized * 2 - 1;   // -1 to +1
     const clamped = Math.max(-1, Math.min(1, filterValue));
     
+    // Single store write — setDeckFilter sets both value and enabled (threshold 0.05)
     setDeckFilter(deck, clamped);
     
-    // Enable/disable filter in audio engine based on value
+    // Update audio engine filter
     const isNeutral = Math.abs(clamped) < 0.05;
     if (isNeutral) {
       setFilterFX(deck, false, 'lowpass', 20000, 0.5);
-      setDeckFilterEnabled(deck, false);
     } else {
-      setDeckFilterEnabled(deck, true);
       if (clamped < 0) {
         // Low-pass: map -1..0 to 200Hz..20000Hz
         const freq = 200 * Math.pow(100, 1 + clamped);
@@ -476,15 +601,14 @@ export const DJModeV2: React.FC = () => {
         setFilterFX(deck, true, 'highpass', freq, 2);
       }
     }
-  }, [setDeckFilter, setDeckFilterEnabled, setFilterFX]);
+  }, [setDeckFilter, setFilterFX]);
 
   // Master volume handler - maps -24..+12 knob range to 0..1 volume
   const handleMasterVolumeChange = useCallback((knobValue: number) => {
     const normalized = (knobValue + 24) / 36; // 0 to 1
     const clamped = Math.max(0, Math.min(1, normalized));
     storeSetMasterVolume(clamped);
-    engineSetMasterVolume(clamped);
-  }, [storeSetMasterVolume, engineSetMasterVolume]);
+  }, [storeSetMasterVolume]);
 
   // Format seconds to MM:SS or -MM:SS
   const formatTime = useCallback((seconds: number, negative = false): string => {
@@ -495,111 +619,22 @@ export const DJModeV2: React.FC = () => {
     return `${prefix}${m}:${s.toString().padStart(2, '0')}`;
   }, []);
 
-  // Helper for rendering channel strip
-  const renderChannelStrip = (deckId: DeckId, deckState: any) => {
-    const isA = deckId === 'A';
-    const accentColor = isA ? '#3b82f6' : '#8b5cf6';
-    
-    // Convert filter value (-1..+1) to knob range (-24..+12)
-    const filterKnobValue = ((deckState.filter.value + 1) / 2) * 36 - 24;
-    const filterActive = deckState.filter.enabled;
-
-    return (
-      <div className={`flex-1 flex flex-col items-center py-2 gap-3 min-w-[90px] border-[#2a2a2a]`}>
-        {/* Gain / Trim - currently maps to volume as pre-gain */}
-        <div className='relative pt-2'>
-            <DJEQKnob 
-                label='TRIM' 
-                value={deckState.eq.high !== undefined ? 0 : 0}
-                onChange={(v) => {
-                  // Trim acts as a master volume modifier
-                  // Map -24..+12 to 0..1.5 volume range
-                  const normalized = (v + 24) / 36;
-                  const trimmedVol = Math.max(0, Math.min(1, normalized * 1.5));
-                  handleVolumeChange(deckId, trimmedVol);
-                }}
-                color='#aaaaaa' 
-                size={38} 
-            />
-        </div>
-        
-        {/* EQ Section - Grouped with background */}
-        <div className='flex flex-col gap-2 p-1.5 bg-[#151515] rounded-md border border-[#222] shadow-inner'>
-          <DJEQKnob 
-            label='HIGH' 
-            value={deckState.eq.high} 
-            onChange={(v) => handleEQChange(deckId, 'high', v)}
-            color='#06b6d4' // Cyan
-            size={36}
-          />
-          <DJEQKnob 
-            label='MID' 
-            value={deckState.eq.mid} 
-            onChange={(v) => handleEQChange(deckId, 'mid', v)}
-            color='#22c55e' // Green
-            size={36}
-          />
-          <DJEQKnob 
-            label='LOW' 
-            value={deckState.eq.low} 
-            onChange={(v) => handleEQChange(deckId, 'low', v)}
-            color='#f59e0b' // Orange
-            size={36}
-          />
-        </div>
-
-        {/* Filter Knob */}
-        <div className='p-1.5 bg-[#151515] rounded-md border border-[#222] shadow-inner'>
-          <DJEQKnob 
-            label='FILTER' 
-            value={filterKnobValue}
-            onChange={(v) => handleFilterChange(deckId, v)}
-            color={filterActive ? '#ef4444' : '#666'}
-            size={36}
-          />
-        </div>
-
-        {/* Spacer */}
-        <div className='flex-1'></div>
-
-        {/* Headphone Cue */}
-        <div className='mb-2'>
-             <DJCueButton deck={deckId} />
-        </div>
-
-        {/* Channel Fader with VU */}
-        <div className='w-full px-2 flex items-center justify-center gap-1'>
-             <DJStereoVUMeter
-               getLevels={isA ? getDeckALevels : getDeckBLevels}
-               height={140}
-               channelWidth={3}
-               gap={1}
-               segments={18}
-               showPeak={true}
-             />
-             <DJVolumeFader 
-                value={deckState.volume}
-                onChange={(v) => handleVolumeChange(deckId, v)}
-                label=''
-                height={160}
-                isPlaying={deckState.isPlaying}
-                accentColor={accentColor}
-             />
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <div className='h-full flex flex-col bg-[#121212] overflow-hidden min-w-[1024px]'>
+    <div
+      className='h-full flex flex-col overflow-hidden min-w-[1024px] transition-[grid-template-rows] duration-200'
+      data-dj-mode={djLayoutMode}
+      style={{
+        backgroundColor: 'var(--dj-bg)',
+      }}
+    >
       
       {/* Keyboard Shortcuts Overlay */}
       {showShortcuts && (
-        <div className='fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center' onClick={() => setShowShortcuts(false)}>
+        <div className='fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center' onClick={() => setShowShortcuts(false)} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
           <div className='bg-[#1a1a1a] border border-[#333] rounded-lg p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto' onClick={e => e.stopPropagation()}>
             <div className='flex items-center justify-between mb-4'>
               <h2 className='text-lg font-bold text-white'>Keyboard Shortcuts</h2>
-              <button onClick={() => setShowShortcuts(false)} className='text-neutral-500 hover:text-white text-xl'>✕</button>
+              <button onClick={() => setShowShortcuts(false)} className='text-neutral-500 hover:text-white text-xl' aria-label="Close shortcuts overlay">✕</button>
             </div>
             <div className='grid grid-cols-2 gap-x-6 gap-y-0.5 text-[11px]'>
               {[
@@ -625,6 +660,9 @@ export const DJModeV2: React.FC = () => {
                 ['Hot Cues', null],
                 ['1-8', 'Trigger Hot Cue'],
                 ['Shift+1-8', 'Set Hot Cue'],
+                ['', ''],
+                ['Browser', null],
+                ['/', 'Focus Search Input'],
                 ['', ''],
                 ['View', null],
                 ['F11', 'Toggle Fullscreen'],
@@ -656,6 +694,8 @@ export const DJModeV2: React.FC = () => {
           onViewModeChange={setViewMode}
           isRecording={isRecording}
           onRecordToggle={handleRecordToggle}
+          layoutMode={djLayoutMode}
+          onLayoutModeChange={setDJLayoutMode}
         />
         {/* MIDI button */}
         <button
@@ -673,21 +713,21 @@ export const DJModeV2: React.FC = () => {
 
       {/* 2. WAVEFORM / SCOPE / FX VIEW */}
       {viewMode === 'timeline' && (
-        <div className='flex-shrink-0 bg-[#0d0d0d] border-b border-[#2a2a2a] relative' style={{ height: '180px' }}>
+        <div className='flex-shrink-0 border-b border-[#2a2a2a] relative' style={{ height: 'var(--dj-waveform-h)', backgroundColor: 'var(--dj-bg)' }}>
           {/* WebGL / Canvas 2D toggle */}
           <button
             onClick={toggleWebGLWaveform}
             className={`absolute top-1 right-1 z-10 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase transition-colors ${
-              djMixer.useWebGLWaveform
+              useWebGLWaveform
                 ? 'bg-green-600/30 text-green-400 border border-green-500/40'
                 : 'bg-neutral-800/80 text-neutral-500 border border-neutral-700 hover:text-neutral-300'
             }`}
-            title={djMixer.useWebGLWaveform ? 'WebGL waveform active — click for Canvas 2D' : 'Canvas 2D waveform — click for WebGL'}
+            title={useWebGLWaveform ? 'WebGL waveform active — click for Canvas 2D' : 'Canvas 2D waveform — click for WebGL'}
           >
-            {djMixer.useWebGLWaveform ? 'WebGL' : '2D'}
+            {useWebGLWaveform ? 'WebGL' : '2D'}
           </button>
           <DJErrorBoundary componentName='DJWaveform'>
-            {djMixer.useWebGLWaveform ? (
+            {useWebGLWaveform ? (
               <DJWebGLWaveform height={180} allowFallback />
             ) : (
               <DJDualWaveform height={-1} responsive />
@@ -696,12 +736,12 @@ export const DJModeV2: React.FC = () => {
         </div>
       )}
       {viewMode === 'scope' && (
-        <div className='flex-shrink-0 bg-[#0d0d0d] border-b border-[#2a2a2a] flex items-center justify-center' style={{ height: '180px' }}>
+        <div className='flex-shrink-0 border-b border-[#2a2a2a] flex items-center justify-center' style={{ height: 'var(--dj-waveform-h)', backgroundColor: 'var(--dj-bg)' }}>
           <DJScopeView getVULevels={getVULevels} />
         </div>
       )}
       {viewMode === 'fx' && (
-        <div className='flex-shrink-0 bg-[#0d0d0d] border-b border-[#2a2a2a]' style={{ height: '180px' }}>
+        <div className='flex-shrink-0 border-b border-[#2a2a2a]' style={{ height: 'var(--dj-waveform-h)', backgroundColor: 'var(--dj-bg)' }}>
           <div className='h-full flex flex-col'>
             <DJFXSection />
             <div className='flex-1 flex items-center justify-center text-neutral-600 text-xs'>
@@ -715,7 +755,7 @@ export const DJModeV2: React.FC = () => {
       {viewMode !== 'fx' && <DJFXSection />}
 
       {/* 4. MAIN CONTROL DECK (Decks + Mixer) */}
-      <div className='flex-1 flex min-h-0 bg-[#121212]'>
+      <div className='flex-1 flex min-h-0' style={{ backgroundColor: 'var(--dj-bg)' }}>
         
         {/* === DECK A === */}
         <div className={`flex-1 flex flex-col min-w-0 border-r border-[#2a2a2a] relative ${djActiveDeck === 'A' ? 'ring-1 ring-inset ring-blue-500/40' : ''}`}>
@@ -728,13 +768,13 @@ export const DJModeV2: React.FC = () => {
                   <div className='flex items-center justify-between px-4 py-1.5 border-b border-[#1a1a1a]'>
                       <div className='flex items-center gap-2 min-w-0 flex-1'>
                         <span className='text-[9px] font-bold text-blue-400 uppercase tracking-wider flex-shrink-0'>DECK A</span>
-                        {djDeckA.track ? (
+                        {deckATrack ? (
                           <div className='min-w-0 flex-1'>
                             <div className='text-[11px] font-bold text-white truncate leading-tight'>
-                              {djDeckA.track.title || 'Unknown'}
+                              {deckATrack.title || 'Unknown'}
                             </div>
                             <div className='text-[9px] text-neutral-400 truncate leading-tight'>
-                              {djDeckA.track.artist || 'Unknown Artist'}
+                              {deckATrack.artist || 'Unknown Artist'}
                             </div>
                           </div>
                         ) : (
@@ -742,46 +782,13 @@ export const DJModeV2: React.FC = () => {
                         )}
                       </div>
                       <div className='flex items-center gap-2 flex-shrink-0'>
-                        {djDeckA.key && (
+                        {deckAKey && (
                           <span className='text-[9px] font-bold text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded'>
-                            {djDeckA.key}
+                            {deckAKey}
                           </span>
                         )}
-                        <button
-                          onClick={() => handleKeyLockToggle('A')}
-                          className={`text-[8px] font-bold px-1 py-0.5 rounded border transition-all duration-100
-                            ${djMixer.keyLockA
-                              ? 'bg-emerald-600/40 text-emerald-300 border-emerald-500/50'
-                              : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400'}`}
-                          title={`Key Lock ${djMixer.keyLockA ? 'ON' : 'OFF'} - ${djMixer.keyLockA ? 'Pitch preserved when tempo changes' : 'Pitch follows tempo'}`}
-                        >
-                          🔒
-                        </button>
-                        <button
-                          onClick={() => toggleSlipMode('A')}
-                          className={`text-[8px] font-bold px-1 py-0.5 rounded border transition-all duration-100
-                            ${djMixer.slipModeA
-                              ? 'bg-orange-600/40 text-orange-300 border-orange-500/50'
-                              : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400'}`}
-                          title={`Slip Mode ${djMixer.slipModeA ? 'ON' : 'OFF'} - ${djMixer.slipModeA ? 'Playback continues in background during scratch' : 'Normal scratch behavior'}`}
-                        >
-                          SLIP
-                        </button>
-                        <button
-                          onClick={() => toggleAutoGain('A')}
-                          className={`text-[8px] font-bold px-1 py-0.5 rounded border transition-all duration-100
-                            ${djMixer.autoGainA
-                              ? 'bg-cyan-600/40 text-cyan-300 border-cyan-500/50'
-                              : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400'}`}
-                          title={`Auto-Gain ${djMixer.autoGainA ? 'ON' : 'OFF'} - Normalizes track loudness`}
-                        >
-                          AG
-                        </button>
-                        {djDeckA.effectiveBpm && (
-                          <span className='text-[9px] font-mono text-neutral-400'>
-                            {djDeckA.effectiveBpm.toFixed(1)}
-                          </span>
-                        )}
+                        <DJDeckStatusBar deck='A' />
+                        <DeckBpmBadge deck='A' />
                         <DeckHasTrack deck='A'>
                           <div className='flex items-center gap-1.5 font-mono'>
                             <DeckTimeDisplay deck='A' color='#93c5fd' />
@@ -810,13 +817,10 @@ export const DJModeV2: React.FC = () => {
             <div className='flex-1 relative bg-[#141414] flex items-center justify-center overflow-hidden'>
                 {/* Tempo Slider (Left for Deck A to mirror outer edge if deck A is left) */}
                 <div className='absolute left-4 top-4 bottom-4 w-12 z-10'>
-                     <DJTempoSlider 
+                     <DJTempoSliderSelfSub
                         deck='A'
-                        value={djDeckA.tempo}
                         onChange={(v) => handleTempoChange('A', v)}
-                        originalBpm={djDeckA.originalBpm}
-                        effectiveBpm={djDeckA.effectiveBpm}
-                        disabled={!djDeckA.track}
+                        disabled={!deckATrack}
                         height={-1}
                         responsive
                      />
@@ -831,40 +835,33 @@ export const DJModeV2: React.FC = () => {
             </div>
 
             {/* Deck Footer: Transport */}
-            <div className='h-[70px] bg-[#161616] border-t border-[#222] flex items-center justify-center gap-6 shadow-[-inset_0_10px_20px_rgba(0,0,0,0.5)]'>
+            <div className='h-[60px] bg-[#161616] border-t border-[#222] flex items-center justify-center gap-4 shadow-[-inset_0_10px_20px_rgba(0,0,0,0.5)]'>
                  <DJTransportButtons deck='A' />
-                 
-                 <button
-                    onClick={() => handleSync('A')}
-                    disabled={!djDeckA.track || djMixer.syncMode === 'off'}
-                    className={`
-                      h-8 px-4 rounded text-[10px] font-bold uppercase tracking-wider
-                      transition-all duration-100 border
-                      ${!djDeckA.track || djMixer.syncMode === 'off'
-                        ? 'bg-[#2a2a2a] text-neutral-600 border-[#333] cursor-not-allowed'
-                        : djMixer.syncMode === 'beat-phase'
-                          ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500'
-                          : 'bg-[#333] hover:bg-[#444] text-white border-[#555]'}
-                    `}
-                  >
-                    {djMixer.syncMode === 'beat-phase' ? 'SYNC+' : 'SYNC'}
-                  </button>
             </div>
         </div>
 
         {/* === MIXER CENTER (Fixed Width) === */}
-        <div className='w-[300px] flex-shrink-0 bg-[#181818] flex flex-col border-x border-[#333] shadow-2xl z-20 relative'>
+        <div className='flex-shrink-0 flex flex-col border-x border-[#333] shadow-2xl z-20 relative' style={{ width: 'var(--dj-mixer-w)', backgroundColor: 'var(--dj-surface-1, #181818)' }}>
              {/* Mixer Body */}
              <div className='flex-1 flex w-full relative'>
                  {/* Channel A */}
-                 {renderChannelStrip('A', djDeckA)}
+                 <DJChannelStrip
+                   deckId='A'
+                   getDeckLevels={getDeckALevels}
+                   onEQChange={handleEQChange}
+                   onVolumeChange={handleVolumeChange}
+                   onFilterChange={handleFilterChange}
+                 />
 
                  {/* Center Master Strip */}
-                 <div className='w-[80px] bg-[#131313] flex flex-col items-center py-3 border-x border-[#222]/50'>
+                 <div className='w-[90px] bg-[#131313] flex flex-col items-center py-3 border-x border-[#222]/50'>
                       <div className='text-[9px] text-[#444] font-bold mb-2 tracking-widest'>MASTER</div>
                       
+                      {/* OUTPUT Section */}
+                      <div className='text-[7px] text-[#555] font-bold tracking-widest mb-1'>OUTPUT</div>
+
                       {/* Real-time Master VU Meters */}
-                      <div className='flex-1 flex items-center justify-center mb-4'>
+                      <div className='flex-1 flex items-center justify-center mb-3'>
                            <DJStereoVUMeter
                              getLevels={getMasterLevels}
                              height={100}
@@ -875,9 +872,15 @@ export const DJModeV2: React.FC = () => {
                            />
                       </div>
 
+                      {/* Separator */}
+                      <div className='w-8 h-px bg-[#333] mb-3' />
+
+                      {/* MONITOR Section */}
+                      <div className='text-[7px] text-[#555] font-bold tracking-widest mb-1'>MONITOR</div>
+
                       {/* Headphone Mix Knob */}
                       <div className='mb-4 flex flex-col items-center'>
-                          <span className='text-[8px] text-[#555] mb-1 font-bold'>CUE MIX</span>
+                          <span className='text-[8px] text-[#666] mb-1 font-bold'>CUE MIX</span>
                           <div className='scale-75 origin-center'>
                             <DJHeadphoneMix width={60} />
                           </div>
@@ -885,18 +888,18 @@ export const DJModeV2: React.FC = () => {
                       
                       {/* Master Volume */}
                       <div className='mb-2'>
-                           <DJEQKnob 
-                             label='MAIN' 
-                             value={((djMixer.masterVolume) * 36 - 24)}
-                             onChange={handleMasterVolumeChange}
-                             size={40} 
-                             color='#fff' 
-                           />
+                           <DJMasterKnob onChange={handleMasterVolumeChange} />
                       </div>
                  </div>
 
                  {/* Channel B */}
-                 {renderChannelStrip('B', djDeckB)}
+                 <DJChannelStrip
+                   deckId='B'
+                   getDeckLevels={getDeckBLevels}
+                   onEQChange={handleEQChange}
+                   onVolumeChange={handleVolumeChange}
+                   onFilterChange={handleFilterChange}
+                 />
              </div>
 
              {/* Sync Mode + Crossfader Section */}
@@ -910,7 +913,7 @@ export const DJModeV2: React.FC = () => {
                        className={`
                          px-3 py-1 rounded text-[9px] font-bold uppercase tracking-wider
                          transition-all duration-100 border
-                         ${djMixer.syncMode === mode
+                         ${syncMode === mode
                            ? mode === 'off'
                              ? 'bg-neutral-600 text-white border-neutral-500'
                              : mode === 'bpm'
@@ -928,11 +931,11 @@ export const DJModeV2: React.FC = () => {
                      className={`
                        px-2.5 py-1 rounded text-[9px] font-bold uppercase tracking-wider
                        transition-all duration-100 border
-                       ${djMixer.quantize
+                       ${quantize
                          ? 'bg-cyan-600 text-white border-cyan-500'
                          : 'bg-[#222] text-neutral-500 border-[#333] hover:bg-[#2a2a2a] hover:text-neutral-300'}
                      `}
-                     title={`Quantize ${djMixer.quantize ? 'ON' : 'OFF'} - Snap actions to beat grid`}
+                     title={`Quantize ${quantize ? 'ON' : 'OFF'} - Snap actions to beat grid`}
                    >
                      Q
                    </button>
@@ -948,7 +951,7 @@ export const DJModeV2: React.FC = () => {
                        className={`
                          px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider
                          transition-all duration-100 border
-                         ${djMixer.crossfaderCurve === curve
+                         ${crossfaderCurve === curve
                            ? 'bg-orange-600/80 text-white border-orange-500/60'
                            : 'bg-[#222] text-neutral-600 border-[#333] hover:bg-[#2a2a2a] hover:text-neutral-400'}
                        `}
@@ -964,8 +967,7 @@ export const DJModeV2: React.FC = () => {
                      <span className='absolute left-4 text-[10px] font-bold text-[#333]'>A</span>
                      <span className='absolute right-4 text-[10px] font-bold text-[#333]'>B</span>
                      
-                     <DJCrossfader 
-                        value={djMixer.crossfader}
+                     <DJCrossfaderSelfSub
                         onChange={handleCrossfaderChange}
                         width={-1}
                         responsive
@@ -996,55 +998,22 @@ export const DJModeV2: React.FC = () => {
                             <DeckTimeDisplay deck='B' color='#d8b4fe' />
                           </div>
                         </DeckHasTrack>
-                        {djDeckB.effectiveBpm && (
-                          <span className='text-[9px] font-mono text-neutral-400'>
-                            {djDeckB.effectiveBpm.toFixed(1)}
-                          </span>
-                        )}
-                        {djDeckB.key && (
+                        <DeckBpmBadge deck='B' />
+                        {deckBKey && (
                           <span className='text-[9px] font-bold text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded'>
-                            {djDeckB.key}
+                            {deckBKey}
                           </span>
                         )}
-                        <button
-                          onClick={() => handleKeyLockToggle('B')}
-                          className={`text-[8px] font-bold px-1 py-0.5 rounded border transition-all duration-100
-                            ${djMixer.keyLockB
-                              ? 'bg-emerald-600/40 text-emerald-300 border-emerald-500/50'
-                              : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400'}`}
-                          title={`Key Lock ${djMixer.keyLockB ? 'ON' : 'OFF'} - ${djMixer.keyLockB ? 'Pitch preserved when tempo changes' : 'Pitch follows tempo'}`}
-                        >
-                          🔒
-                        </button>
-                        <button
-                          onClick={() => toggleSlipMode('B')}
-                          className={`text-[8px] font-bold px-1 py-0.5 rounded border transition-all duration-100
-                            ${djMixer.slipModeB
-                              ? 'bg-orange-600/40 text-orange-300 border-orange-500/50'
-                              : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400'}`}
-                          title={`Slip Mode ${djMixer.slipModeB ? 'ON' : 'OFF'} - ${djMixer.slipModeB ? 'Playback continues in background during scratch' : 'Normal scratch behavior'}`}
-                        >
-                          SLIP
-                        </button>
-                        <button
-                          onClick={() => toggleAutoGain('B')}
-                          className={`text-[8px] font-bold px-1 py-0.5 rounded border transition-all duration-100
-                            ${djMixer.autoGainB
-                              ? 'bg-cyan-600/40 text-cyan-300 border-cyan-500/50'
-                              : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400'}`}
-                          title={`Auto-Gain ${djMixer.autoGainB ? 'ON' : 'OFF'} - Normalizes track loudness`}
-                        >
-                          AG
-                        </button>
+                        <DJDeckStatusBar deck='B' />
                       </div>
                       <div className='flex items-center gap-2 min-w-0 flex-1 justify-end'>
-                        {djDeckB.track ? (
+                        {deckBTrack ? (
                           <div className='min-w-0 text-right'>
                             <div className='text-[11px] font-bold text-white truncate leading-tight'>
-                              {djDeckB.track.title || 'Unknown'}
+                              {deckBTrack.title || 'Unknown'}
                             </div>
                             <div className='text-[9px] text-neutral-400 truncate leading-tight'>
-                              {djDeckB.track.artist || 'Unknown Artist'}
+                              {deckBTrack.artist || 'Unknown Artist'}
                             </div>
                           </div>
                         ) : (
@@ -1080,13 +1049,10 @@ export const DJModeV2: React.FC = () => {
 
                 {/* Tempo Slider - Right Edge for Deck B */}
                 <div className='absolute right-4 top-4 bottom-4 w-12 z-10'>
-                     <DJTempoSlider 
+                     <DJTempoSliderSelfSub
                         deck='B'
-                        value={djDeckB.tempo}
                         onChange={(v) => handleTempoChange('B', v)}
-                        originalBpm={djDeckB.originalBpm}
-                        effectiveBpm={djDeckB.effectiveBpm}
-                        disabled={!djDeckB.track}
+                        disabled={!deckBTrack}
                         height={-1}
                         responsive
                      />
@@ -1094,23 +1060,7 @@ export const DJModeV2: React.FC = () => {
             </div>
 
             {/* Deck Footer: Transport */}
-            <div className='h-[70px] bg-[#161616] border-t border-[#222] flex items-center justify-center gap-6 shadow-[-inset_0_10px_20px_rgba(0,0,0,0.5)]'>
-                 <button
-                    onClick={() => handleSync('B')}
-                    disabled={!djDeckB.track || djMixer.syncMode === 'off'}
-                    className={`
-                      h-8 px-4 rounded text-[10px] font-bold uppercase tracking-wider
-                      transition-all duration-100 border
-                      ${!djDeckB.track || djMixer.syncMode === 'off'
-                        ? 'bg-[#2a2a2a] text-neutral-600 border-[#333] cursor-not-allowed'
-                        : djMixer.syncMode === 'beat-phase'
-                          ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500'
-                          : 'bg-[#333] hover:bg-[#444] text-white border-[#555]'}
-                    `}
-                  >
-                    {djMixer.syncMode === 'beat-phase' ? 'SYNC+' : 'SYNC'}
-                  </button>
-                 
+            <div className='h-[60px] bg-[#161616] border-t border-[#222] flex items-center justify-center gap-4 shadow-[-inset_0_10px_20px_rgba(0,0,0,0.5)]'>
                  <DJTransportButtons deck='B' />
             </div>
         </div>

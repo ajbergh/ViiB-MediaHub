@@ -16,9 +16,10 @@
  * @module DJWebGLWaveform
  */
 
-import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useStore } from '../../../../store';
-import { useDJAudioEngine } from '../../../../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions } from '../../../../hooks/useDJAudioEngine';
+import { getDJAudioEngine } from '../../../../lib/djAudio';
 import { useDJWebGL, useDJWebGLAnimation } from './useDJWebGL';
 import type { DeckId } from '../../../../slices/djMixerSlice';
 import { DJWaveformRenderState } from './DJWebGLRenderer';
@@ -42,10 +43,12 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [useFallback, setUseFallback] = useState(false);
   
-  // Get deck states from store
-  const deckA = useStore(state => state.djDeckA);
-  const deckB = useStore(state => state.djDeckB);
-  const { seek } = useDJAudioEngine();
+  // Get only what we need from store — granular selectors to avoid re-renders
+  const deckAWaveformPeaks = useStore(state => state.djDeckA.waveformPeaks);
+  const deckBWaveformPeaks = useStore(state => state.djDeckB.waveformPeaks);
+  const deckAIsPlaying = useStore(state => state.djDeckA.isPlaying);
+  const deckBIsPlaying = useStore(state => state.djDeckB.isPlaying);
+  const { seek } = useDJAudioEngineActions();
   
   // Calculate heights
   const mainHeight = (height - OVERVIEW_HEIGHT - 8) / 2;
@@ -79,41 +82,90 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   useEffect(() => {
     if (!isReady) return;
     
-    if (deckA.waveformPeaks) {
-      deckAWebGL.updatePeaks('A', deckA.waveformPeaks);
-      overviewWebGL.updatePeaks('A', deckA.waveformPeaks);
+    if (deckAWaveformPeaks) {
+      deckAWebGL.updatePeaks('A', deckAWaveformPeaks);
+      overviewWebGL.updatePeaks('A', deckAWaveformPeaks);
     }
-  }, [deckA.waveformPeaks, isReady, deckAWebGL, overviewWebGL]);
+  }, [deckAWaveformPeaks, isReady, deckAWebGL, overviewWebGL]);
   
   useEffect(() => {
     if (!isReady) return;
     
-    if (deckB.waveformPeaks) {
-      deckBWebGL.updatePeaks('B', deckB.waveformPeaks);
-      overviewWebGL.updatePeaks('B', deckB.waveformPeaks);
+    if (deckBWaveformPeaks) {
+      deckBWebGL.updatePeaks('B', deckBWaveformPeaks);
+      overviewWebGL.updatePeaks('B', deckBWaveformPeaks);
     }
-  }, [deckB.waveformPeaks, isReady, deckBWebGL, overviewWebGL]);
+  }, [deckBWaveformPeaks, isReady, deckBWebGL, overviewWebGL]);
   
-  // Store refs for RAF to avoid stale closures
-  const deckARef = useRef(deckA);
-  const deckBRef = useRef(deckB);
+  // Track last idle state to skip redundant renders
+  const lastIdleFrameRef = useRef({
+    aPos: -1,
+    bPos: -1,
+    aTrackId: null as string | null,
+    bTrackId: null as string | null,
+    aCue: null as number | null,
+    bCue: null as number | null,
+    aHotCues: null as any,
+    bHotCues: null as any,
+    aBeatGrid: null as any,
+    bBeatGrid: null as any,
+  });
   
-  useEffect(() => {
-    deckARef.current = deckA;
-    deckBRef.current = deckB;
-  }, [deckA, deckB]);
-  
-  // Animation render callback
+  // Animation render callback — reads store directly via getState() to avoid stale closures
   const renderFrame = useCallback(() => {
     if (!isReady) return;
     
-    const currentDeckA = deckARef.current;
-    const currentDeckB = deckBRef.current;
+    const state = useStore.getState();
+    const currentDeckA = state.djDeckA;
+    const currentDeckB = state.djDeckB;
+    const aTrackId = currentDeckA.track?.id ?? null;
+    const bTrackId = currentDeckB.track?.id ?? null;
+    const aPlaying = currentDeckA.isPlaying;
+    const bPlaying = currentDeckB.isPlaying;
+    const idle = !aPlaying && !bPlaying;
+
+    // Read position from engine when playing for smooth 60fps,
+    // fall back to store position when paused (store is throttled ~15fps)
+    const engine = getDJAudioEngine();
+    const posA = aPlaying && engine?.initialized
+      ? engine.getPosition('A') : currentDeckA.position;
+    const posB = bPlaying && engine?.initialized
+      ? engine.getPosition('B') : currentDeckB.position;
+
+    // Skip render when idle and nothing visual has changed
+    if (
+      idle &&
+      posA === lastIdleFrameRef.current.aPos &&
+      posB === lastIdleFrameRef.current.bPos &&
+      aTrackId === lastIdleFrameRef.current.aTrackId &&
+      bTrackId === lastIdleFrameRef.current.bTrackId &&
+      currentDeckA.cuePoint === lastIdleFrameRef.current.aCue &&
+      currentDeckB.cuePoint === lastIdleFrameRef.current.bCue &&
+      currentDeckA.hotCues === lastIdleFrameRef.current.aHotCues &&
+      currentDeckB.hotCues === lastIdleFrameRef.current.bHotCues &&
+      currentDeckA.beatGrid === lastIdleFrameRef.current.aBeatGrid &&
+      currentDeckB.beatGrid === lastIdleFrameRef.current.bBeatGrid
+    ) {
+      return;
+    }
+
+    lastIdleFrameRef.current = {
+      aPos: posA,
+      bPos: posB,
+      aTrackId,
+      bTrackId,
+      aCue: currentDeckA.cuePoint,
+      bCue: currentDeckB.cuePoint,
+      aHotCues: currentDeckA.hotCues,
+      bHotCues: currentDeckB.hotCues,
+      aBeatGrid: currentDeckA.beatGrid,
+      bBeatGrid: currentDeckB.beatGrid,
+    };
     
     // Render Deck A waveform
     const stateA: DJWaveformRenderState = {
       peaks: currentDeckA.waveformPeaks,
-      position: currentDeckA.position,
+      position: posA,
       duration: currentDeckA.duration,
       bpm: currentDeckA.effectiveBpm || currentDeckA.originalBpm || 0,
       beatGrid: currentDeckA.beatGrid,
@@ -127,7 +179,7 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     // Render Deck B waveform
     const stateB: DJWaveformRenderState = {
       peaks: currentDeckB.waveformPeaks,
-      position: currentDeckB.position,
+      position: posB,
       duration: currentDeckB.duration,
       bpm: currentDeckB.effectiveBpm || currentDeckB.originalBpm || 0,
       beatGrid: currentDeckB.beatGrid,
@@ -142,19 +194,25 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     overviewWebGL.renderOverview(
       {
         peaks: currentDeckA.waveformPeaks,
-        position: currentDeckA.position,
+        position: posA,
         duration: currentDeckA.duration,
       },
       {
         peaks: currentDeckB.waveformPeaks,
-        position: currentDeckB.position,
+        position: posB,
         duration: currentDeckB.duration,
       }
     );
   }, [isReady, visibleSeconds, deckAWebGL, deckBWebGL, overviewWebGL]);
   
-  // Run animation loop
-  useDJWebGLAnimation(renderFrame, isReady && !useFallback, 60);
+  // Run animation loop — throttle to 4fps when both decks idle
+  useDJWebGLAnimation(
+    renderFrame,
+    isReady && !useFallback,
+    60,
+    4,
+    !deckAIsPlaying && !deckBIsPlaying
+  );
   
   // Handle waveform click to seek
   const handleWaveformClick = useCallback((
@@ -166,7 +224,8 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     const x = e.clientX - rect.left;
     const width = rect.width;
     
-    const deckState = deck === 'A' ? deckA : deckB;
+    const state = useStore.getState();
+    const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
     if (!deckState.duration) return;
     
     // Calculate time from click position
@@ -176,7 +235,7 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     const clampedTime = Math.max(0, Math.min(deckState.duration, clickTime));
     
     seek(deck, clampedTime);
-  }, [deckA, deckB, visibleSeconds, seek]);
+  }, [visibleSeconds, seek]);
   
   // Render fallback Canvas 2D if WebGL not available
   if (useFallback) {

@@ -12,9 +12,9 @@
 
 import React, { useCallback, useState, memo } from 'react';
 import { useStore } from '../../../store';
-import { useDJAudioEngine } from '../../../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { DJEQKnob } from './DJEQKnob';
-import type { DeckId, EffectType } from '../../../slices/djMixerSlice';
+import type { DeckId, EffectType, DJLayoutMode } from '../../../slices/djMixerSlice';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 // ============================================================================
@@ -27,6 +27,8 @@ interface FXUnitProps {
   label: string;
   color: string;
   enabledColor: string;
+  compact?: boolean;
+  expanded?: boolean;
 }
 
 const FX_CONFIGS = {
@@ -36,136 +38,91 @@ const FX_CONFIGS = {
   flanger: { label: 'FLANGER', color: '#f97316', enabledColor: '#fb923c' },
 } as const;
 
-const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor }) => {
+const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, compact = false, expanded = false }) => {
   const fx = useStore(state => {
     const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
     return deckState.fx[type];
   });
 
-  const { setFilterFX: storeSetFilterFX, setDelayFX: storeSetDelayFX,
-          setReverbFX: storeSetReverbFX, setFlangerFX: storeSetFlangerFX,
-          toggleFX } = useStore();
-  const { setFilterFX, setDelayFX, setFlangerFX, setReverbFX } = useDJAudioEngine();
+  // Unified action callbacks — each does store + engine in a single write
+  const { setFilterFX, setDelayFX, setFlangerFX, setReverbFX } = useDJAudioEngineActions();
 
   const isEnabled = fx.enabled;
 
-  // Toggle enable/disable
+  // Toggle enable/disable — single call writes store + engine
   const handleToggle = useCallback(() => {
     const newEnabled = !fx.enabled;
-    toggleFX(deck, type);
-
+    const f = fx as any;
     switch (type) {
-      case 'filter': {
-        const f = fx as any;
+      case 'filter':
         setFilterFX(deck, newEnabled, f.type || 'lowpass', f.frequency || 1000, f.resonance || 5);
         break;
-      }
-      case 'delay': {
-        const d = fx as any;
-        setDelayFX(deck, newEnabled, d.time || 0.25, d.feedback || 0.3, d.mix || 0.5);
+      case 'delay':
+        setDelayFX(deck, newEnabled, f.time || 0.25, f.feedback || 0.3, f.mix || 0.5);
         break;
-      }
-      case 'reverb': {
-        const r = fx as any;
-        setReverbFX(deck, newEnabled, r.roomSize || 0.5, r.damping || 0.5, r.mix || 0.3);
+      case 'reverb':
+        setReverbFX(deck, newEnabled, f.roomSize || 0.5, f.damping || 0.5, f.mix || 0.3);
         break;
-      }
-      case 'flanger': {
-        const fl = fx as any;
-        setFlangerFX(deck, newEnabled, fl.rate || 0.5, fl.depth || 0.5, fl.feedback || 0.3);
+      case 'flanger':
+        setFlangerFX(deck, newEnabled, f.rate || 0.5, f.depth || 0.5, f.feedback || 0.3);
         break;
-      }
     }
-  }, [deck, type, fx, toggleFX, setFilterFX, setDelayFX, setReverbFX, setFlangerFX]);
+  }, [deck, type, fx, setFilterFX, setDelayFX, setReverbFX, setFlangerFX]);
 
-  // Parameter change handlers - specific to FX type
+  // Parameter change handlers — single call per change (store + engine)
   const handleParam1Change = useCallback((value: number) => {
+    const f = fx as any;
     switch (type) {
-      case 'filter': {
-        const f = fx as any;
-        storeSetFilterFX(deck, { frequency: value });
-        if (f.enabled) setFilterFX(deck, true, f.type, value, f.resonance);
+      case 'filter':
+        setFilterFX(deck, f.enabled, f.type, value, f.resonance);
         break;
-      }
-      case 'delay': {
-        const d = fx as any;
-        storeSetDelayFX(deck, { time: value });
-        if (d.enabled) setDelayFX(deck, true, value, d.feedback, d.mix);
+      case 'delay':
+        setDelayFX(deck, f.enabled, value, f.feedback, f.mix);
         break;
-      }
-      case 'reverb': {
-        const r = fx as any;
-        storeSetReverbFX(deck, { roomSize: value });
-        if (r.enabled) setReverbFX(deck, true, value, r.damping, r.mix);
+      case 'reverb':
+        setReverbFX(deck, f.enabled, value, f.damping, f.mix);
         break;
-      }
-      case 'flanger': {
-        const fl = fx as any;
-        storeSetFlangerFX(deck, { rate: value });
-        if (fl.enabled) setFlangerFX(deck, true, value, fl.depth, fl.feedback);
+      case 'flanger':
+        setFlangerFX(deck, f.enabled, value, f.depth, f.feedback);
         break;
-      }
     }
-  }, [deck, type, fx, storeSetFilterFX, storeSetDelayFX, storeSetReverbFX, storeSetFlangerFX,
-      setFilterFX, setDelayFX, setReverbFX, setFlangerFX]);
+  }, [deck, type, fx, setFilterFX, setDelayFX, setReverbFX, setFlangerFX]);
 
   const handleParam2Change = useCallback((value: number) => {
+    const f = fx as any;
     switch (type) {
-      case 'filter': {
-        const f = fx as any;
-        storeSetFilterFX(deck, { resonance: value });
-        if (f.enabled) setFilterFX(deck, true, f.type, f.frequency, value);
+      case 'filter':
+        setFilterFX(deck, f.enabled, f.type, f.frequency, value);
         break;
-      }
-      case 'delay': {
-        const d = fx as any;
-        storeSetDelayFX(deck, { feedback: value });
-        if (d.enabled) setDelayFX(deck, true, d.time, value, d.mix);
+      case 'delay':
+        setDelayFX(deck, f.enabled, f.time, value, f.mix);
         break;
-      }
-      case 'reverb': {
-        const r = fx as any;
-        storeSetReverbFX(deck, { damping: value });
-        if (r.enabled) setReverbFX(deck, true, r.roomSize, value, r.mix);
+      case 'reverb':
+        setReverbFX(deck, f.enabled, f.roomSize, value, f.mix);
         break;
-      }
-      case 'flanger': {
-        const fl = fx as any;
-        storeSetFlangerFX(deck, { depth: value });
-        if (fl.enabled) setFlangerFX(deck, true, fl.rate, value, fl.feedback);
+      case 'flanger':
+        setFlangerFX(deck, f.enabled, f.rate, value, f.feedback);
         break;
-      }
     }
-  }, [deck, type, fx, storeSetFilterFX, storeSetDelayFX, storeSetReverbFX, storeSetFlangerFX,
-      setFilterFX, setDelayFX, setReverbFX, setFlangerFX]);
+  }, [deck, type, fx, setFilterFX, setDelayFX, setReverbFX, setFlangerFX]);
 
   const handleDryWetChange = useCallback((value: number) => {
+    const f = fx as any;
     switch (type) {
-      case 'filter': {
-        // Filter doesn't have mix - use resonance as secondary
+      case 'filter':
+        // Filter doesn't have mix
         break;
-      }
-      case 'delay': {
-        const d = fx as any;
-        storeSetDelayFX(deck, { mix: value });
-        if (d.enabled) setDelayFX(deck, true, d.time, d.feedback, value);
+      case 'delay':
+        setDelayFX(deck, f.enabled, f.time, f.feedback, value);
         break;
-      }
-      case 'reverb': {
-        const r = fx as any;
-        storeSetReverbFX(deck, { mix: value });
-        if (r.enabled) setReverbFX(deck, true, r.roomSize, r.damping, value);
+      case 'reverb':
+        setReverbFX(deck, f.enabled, f.roomSize, f.damping, value);
         break;
-      }
-      case 'flanger': {
-        const fl = fx as any;
-        storeSetFlangerFX(deck, { feedback: value });
-        if (fl.enabled) setFlangerFX(deck, true, fl.rate, fl.depth, value);
+      case 'flanger':
+        setFlangerFX(deck, f.enabled, f.rate, f.depth, value);
         break;
-      }
     }
-  }, [deck, type, fx, storeSetDelayFX, storeSetReverbFX, storeSetFlangerFX,
-      setDelayFX, setReverbFX, setFlangerFX]);
+  }, [deck, type, fx, setDelayFX, setReverbFX, setFlangerFX]);
 
   // Get current param values based on FX type
   const getParams = () => {
@@ -268,16 +225,57 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor }) =>
     }
   }, [type, handleDryWetChange]);
 
+  const knobSize = expanded ? 38 : 30;
+
+  // Compact mode: just a toggle tab + optional macro knob
+  if (compact) {
+    return (
+      <div className={`flex items-center gap-1.5 px-1 py-0.5 rounded transition-all duration-150 ${
+        isEnabled ? 'bg-[#1e1e1e]' : 'bg-transparent'
+      }`}>
+        <button
+          onClick={handleToggle}
+          className={`
+            flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider
+            transition-all duration-100 border min-w-[48px] justify-center
+            ${isEnabled
+              ? 'text-white border-current/30'
+              : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400 hover:border-[#444]'}
+          `}
+          style={isEnabled ? {
+            backgroundColor: color,
+            borderColor: `${color}60`,
+            boxShadow: `0 0 6px ${color}30`,
+          } : undefined}
+        >
+          {isEnabled && <span className="w-1.5 h-1.5 rounded-full bg-white/80 flex-shrink-0" />}
+          {label}
+        </button>
+        {isEnabled && params.hasWet && (
+          <DJEQKnob
+            label={params.wet.label}
+            value={params.wet.value}
+            onChange={handleKnobWet}
+            color={enabledColor}
+            size={26}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={`flex flex-col items-center gap-1 px-1.5 py-1 rounded-md transition-all duration-150 ${
-      isEnabled ? 'bg-[#1a1a1a]' : 'bg-[#141414]'
-    }`}>
+      isEnabled ? 'bg-[#1e1e1e] border border-current/20' : 'bg-[#141414] border border-transparent'
+    }`}
+      style={isEnabled ? { borderColor: `${color}30` } : undefined}
+    >
       {/* Enable/Disable button */}
       <button
         onClick={handleToggle}
         className={`
           w-full px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider
-          transition-all duration-100 border
+          transition-all duration-100 border flex items-center justify-center gap-1
           ${isEnabled
             ? 'text-white border-transparent'
             : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400 hover:border-[#444]'}
@@ -287,24 +285,25 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor }) =>
           boxShadow: `0 0 8px ${color}40`,
         } : undefined}
       >
+        {isEnabled && <span className="w-1.5 h-1.5 rounded-full bg-white/80 flex-shrink-0" />}
         {label}
       </button>
 
       {/* Knobs row */}
-      <div className="flex gap-0.5">
+      <div className={`flex ${expanded ? 'gap-1.5' : 'gap-0.5'}`}>
         <DJEQKnob
           label={params.param1.label}
           value={params.param1.value}
           onChange={handleKnobParam1}
           color={isEnabled ? enabledColor : '#555'}
-          size={30}
+          size={knobSize}
         />
         <DJEQKnob
           label={params.param2.label}
           value={params.param2.value}
           onChange={handleKnobParam2}
           color={isEnabled ? enabledColor : '#555'}
-          size={30}
+          size={knobSize}
         />
         {params.hasWet && (
           <DJEQKnob
@@ -312,7 +311,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor }) =>
             value={params.wet.value}
             onChange={handleKnobWet}
             color={isEnabled ? enabledColor : '#555'}
-            size={30}
+            size={knobSize}
           />
         )}
       </div>
@@ -349,6 +348,11 @@ interface DJFXSectionProps {
 export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
   const [collapsed, setCollapsed] = useState(false);
 
+  // Layout mode awareness
+  const layoutMode = useStore(s => s.djMixer?.djLayoutMode || 'perf') as DJLayoutMode;
+  const isCompact = layoutMode === 'perf' || layoutMode === 'browse';
+  const isExpanded = layoutMode === 'fx';
+
   // Count active effects per deck
   const deckAFX = useStore(state => state.djDeckA.fx);
   const deckBFX = useStore(state => state.djDeckB.fx);
@@ -367,7 +371,7 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
         onClick={() => setCollapsed(!collapsed)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-[9px] font-bold text-[#555] uppercase tracking-widest">FX</span>
+          <span className="text-[9px] font-bold text-[#777] uppercase tracking-widest">FX</span>
           {activeA > 0 && (
             <span className="text-[8px] font-bold text-blue-400 bg-blue-500/15 px-1.5 py-0.5 rounded">
               A: {activeA}
@@ -380,17 +384,17 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
           )}
         </div>
         {collapsed ? (
-          <ChevronDown size={12} className="text-neutral-600" />
+          <ChevronDown size={12} className="text-neutral-500" />
         ) : (
-          <ChevronUp size={12} className="text-neutral-600" />
+          <ChevronUp size={12} className="text-neutral-500" />
         )}
       </div>
 
       {/* FX Strip */}
       {!collapsed && (
-        <div className="flex items-stretch px-2 pb-2 gap-2">
+        <div className={`flex items-stretch px-2 pb-2 gap-2 ${isExpanded ? 'pt-1' : ''}`}>
           {/* Deck A FX */}
-          <div className="flex-1 flex gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]">
+          <div className={`flex-1 flex ${isCompact ? 'items-center' : ''} gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]`}>
             <div className="text-[8px] font-bold text-blue-400 writing-vertical flex items-center justify-center w-3 mr-0.5"
                  style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
               A
@@ -403,12 +407,14 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
                 label={FX_CONFIGS[fxType].label}
                 color={FX_CONFIGS[fxType].color}
                 enabledColor={FX_CONFIGS[fxType].enabledColor}
+                compact={isCompact}
+                expanded={isExpanded}
               />
             ))}
           </div>
 
           {/* Deck B FX */}
-          <div className="flex-1 flex gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]">
+          <div className={`flex-1 flex ${isCompact ? 'items-center' : ''} gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]`}>
             {(Object.keys(FX_CONFIGS) as EffectType[]).map(fxType => (
               <FXUnit
                 key={`B-${fxType}`}
@@ -417,6 +423,8 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
                 label={FX_CONFIGS[fxType].label}
                 color={FX_CONFIGS[fxType].color}
                 enabledColor={FX_CONFIGS[fxType].enabledColor}
+                compact={isCompact}
+                expanded={isExpanded}
               />
             ))}
             <div className="text-[8px] font-bold text-purple-400 writing-vertical flex items-center justify-center w-3 ml-0.5"

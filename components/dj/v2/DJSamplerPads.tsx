@@ -144,7 +144,11 @@ SamplerPadButton.displayName = 'SamplerPadButton';
 
 export const DJSamplerPads: React.FC = memo(() => {
   const djSampler = useStore(state => state.djSampler);
-  const { loadSamplerPad, clearSamplerPad, setSamplerPadVolume, setSamplerPadMode, setSamplerPadPlaying } = useStore();
+  const loadSamplerPad = useStore(state => state.loadSamplerPad);
+  const clearSamplerPad = useStore(state => state.clearSamplerPad);
+  const setSamplerPadVolume = useStore(state => state.setSamplerPadVolume);
+  const setSamplerPadMode = useStore(state => state.setSamplerPadMode);
+  const setSamplerPadPlaying = useStore(state => state.setSamplerPadPlaying);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingPadId = useRef<number>(0);

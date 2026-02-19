@@ -17,7 +17,8 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useStore } from '../../../store';
-import { useDJAudioEngine } from '../../../hooks/useDJAudioEngine';
+import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
+import { getDJAudioEngine } from '../../../lib/djAudio';
 import type { DeckId, HotCue } from '../../../slices/djMixerSlice';
 
 interface DJDualWaveformProps {
@@ -83,7 +84,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
   
   // Get deck states via non-reactive getState for RAF drawing
   // Only subscribe reactively to fields that affect layout/controls (not position)
-  const { seek } = useDJAudioEngine();
+  const { seek } = useDJAudioEngineActions();
   
   const VISIBLE_SECONDS_DEFAULT = 10;
   const VISIBLE_SECONDS_MIN = 2;
@@ -126,8 +127,10 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = canvas.width;
-    const h = canvas.height;
+    // Use CSS dimensions (canvas stores device pixels = css * dpr)
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.width / dpr;
+    const h = canvas.height / dpr;
     const centerY = h / 2;
 
     // Clear
@@ -194,8 +197,10 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = canvas.width;
-    const h = canvas.height;
+    // Use CSS dimensions (canvas stores device pixels = css * dpr)
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.width / dpr;
+    const h = canvas.height / dpr;
     const centerY = h / 2;
 
     // Clear
@@ -248,6 +253,17 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     // For now, simulate frequency bands with amplitude zones
     const maxAmplitude = h / 2 - 4;
 
+    // Pre-compute RGB gradient once per frame (reused for all bars)
+    let rgbGradient: CanvasGradient | null = null;
+    if (colorMode === 'rgb') {
+      rgbGradient = ctx.createLinearGradient(0, centerY - maxAmplitude, 0, centerY + maxAmplitude);
+      rgbGradient.addColorStop(0, FREQ_COLORS.bass);
+      rgbGradient.addColorStop(0.25, FREQ_COLORS.lowMid);
+      rgbGradient.addColorStop(0.5, FREQ_COLORS.mid);
+      rgbGradient.addColorStop(0.75, FREQ_COLORS.highMid);
+      rgbGradient.addColorStop(1, FREQ_COLORS.bass);
+    }
+
     for (let x = 0; x < width; x++) {
       const pixelTime = visibleStartTime + (x * secondsPerPixel);
       if (pixelTime < 0 || pixelTime > duration) continue;
@@ -274,14 +290,8 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
           }
           ctx.fillRect(x, centerY - amplitude, 1, amplitude * 2);
         } else {
-          // RGB mode: gradient from bass to highs
-          const gradient = ctx.createLinearGradient(x, centerY - amplitude, x, centerY + amplitude);
-          gradient.addColorStop(0, FREQ_COLORS.bass);
-          gradient.addColorStop(0.25, FREQ_COLORS.lowMid);
-          gradient.addColorStop(0.5, FREQ_COLORS.mid);
-          gradient.addColorStop(0.75, FREQ_COLORS.highMid);
-          gradient.addColorStop(1, FREQ_COLORS.bass);
-          ctx.fillStyle = gradient;
+          // RGB mode: reuse pre-computed gradient (1 per frame vs ~1000 per frame)
+          ctx.fillStyle = rgbGradient!;
           ctx.fillRect(x, centerY - amplitude, 1, amplitude * 2);
         }
       }
@@ -297,10 +307,10 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
           
           // Downbeat (every 4) more prominent
           if (beatCount % 4 === 0) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.lineWidth = 2;
           } else {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
             ctx.lineWidth = 1;
           }
           
@@ -332,6 +342,14 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
       ctx.closePath();
       ctx.fill();
     }
+
+    // Draw playhead glow
+    ctx.strokeStyle = 'rgba(255, 51, 51, 0.25)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(playheadX, 0);
+    ctx.lineTo(playheadX, h);
+    ctx.stroke();
 
     // Draw playhead
     ctx.strokeStyle = '#ff3333';
@@ -391,9 +409,22 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     if (!container) return;
     
     let animationId: number;
+    let idleTimeoutId: ReturnType<typeof setTimeout>;
     let lastFrameTime = 0;
     const targetFps = 60;
     const frameInterval = 1000 / targetFps;
+    let lastPosA = -1;
+    let lastPosB = -1;
+    let needsInitialDraw = true;
+
+    const scheduleNext = (idle: boolean, ts?: number) => {
+      if (idle) {
+        // Throttle to ~4fps when idle — allows GPU to enter low-power mode
+        idleTimeoutId = setTimeout(() => { animationId = requestAnimationFrame(drawFrame); }, 250);
+      } else {
+        animationId = requestAnimationFrame(drawFrame);
+      }
+    };
 
     const drawFrame = (timestamp: number) => {
       // Throttle to target FPS
@@ -407,12 +438,33 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
       const width = container.clientWidth;
       // Guard against zero width (can happen during mount/unmount)
       if (width <= 0) {
-        animationId = requestAnimationFrame(drawFrame);
+        scheduleNext(true);
         return;
       }
       
       const currentDeckA = useStore.getState().djDeckA;
       const currentDeckB = useStore.getState().djDeckB;
+      
+      // Read position from engine when playing for smooth 60fps,
+      // fall back to store position when paused (store is throttled ~15fps)
+      const engine = getDJAudioEngine();
+      const aPlaying = currentDeckA.isPlaying;
+      const bPlaying = currentDeckB.isPlaying;
+
+      // Skip redraw if neither deck is playing AND positions haven't changed
+      // (allows one initial draw for placeholder text, then idles)
+      const posA = aPlaying && engine?.initialized
+        ? engine.getPosition('A') : currentDeckA.position;
+      const posB = bPlaying && engine?.initialized
+        ? engine.getPosition('B') : currentDeckB.position;
+      const bothIdle = !aPlaying && !bPlaying;
+      if (bothIdle && posA === lastPosA && posB === lastPosB && !needsInitialDraw) {
+        scheduleNext(true);
+        return;
+      }
+      lastPosA = posA;
+      lastPosB = posB;
+      needsInitialDraw = false;
 
       // Draw overview (combined view)
       const overviewCanvas = overviewRef.current;
@@ -441,7 +493,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
               ctx.fillRect(x, OVERVIEW_HEIGHT / 2 - amp, 1, amp * 2);
             }
             // Playhead - guard against NaN
-            const playheadX = (currentDeckA.position / currentDeckA.duration) * halfWidth;
+            const playheadX = (posA / currentDeckA.duration) * halfWidth;
             if (!isNaN(playheadX) && isFinite(playheadX)) {
               ctx.strokeStyle = '#3b82f6';
               ctx.lineWidth = 2;
@@ -477,7 +529,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
               ctx.fillRect(halfWidth + x, OVERVIEW_HEIGHT / 2 - amp, 1, amp * 2);
             }
             // Playhead - guard against NaN
-            const playheadX = halfWidth + (currentDeckB.position / currentDeckB.duration) * halfWidth;
+            const playheadX = halfWidth + (posB / currentDeckB.duration) * halfWidth;
             if (!isNaN(playheadX) && isFinite(playheadX)) {
               ctx.strokeStyle = '#8b5cf6';
               ctx.lineWidth = 2;
@@ -514,6 +566,12 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
           ctx.strokeStyle = '#333';
           ctx.lineWidth = 1;
           ctx.strokeRect(0, 0, width, OVERVIEW_HEIGHT);
+
+          // Overview label
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.font = 'bold 9px system-ui';
+          ctx.textAlign = 'left';
+          ctx.fillText('OVERVIEW', 4, OVERVIEW_HEIGHT - 4);
         }
       }
 
@@ -521,7 +579,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
       drawMainWaveform(
         mainCanvasARef.current,
         currentDeckA.waveformPeaks,
-        currentDeckA.position,
+        posA,
         currentDeckA.duration,
         currentDeckA.beatGrid,
         currentDeckA.cuePoint,
@@ -532,7 +590,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
       drawMainWaveform(
         mainCanvasBRef.current,
         currentDeckB.waveformPeaks,
-        currentDeckB.position,
+        posB,
         currentDeckB.duration,
         currentDeckB.beatGrid,
         currentDeckB.cuePoint,
@@ -544,7 +602,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     };
 
     animationId = requestAnimationFrame(drawFrame);
-    return () => cancelAnimationFrame(animationId);
+    return () => { cancelAnimationFrame(animationId); clearTimeout(idleTimeoutId); };
   }, [drawMainWaveform, MAIN_HEIGHT]);
 
   // Handle click to seek
@@ -612,8 +670,8 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
         style={{ height: OVERVIEW_HEIGHT }}
       />
       
-      {/* Separator */}
-      <div className="h-1 bg-surface-1" />
+      {/* Overview → Main separator */}
+      <div className="h-px bg-[#444]" />
       
       {/* Main waveform Deck A */}
       <canvas 
