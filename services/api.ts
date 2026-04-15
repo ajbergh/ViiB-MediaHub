@@ -178,6 +178,8 @@ export interface ApiSpotifyDownload {
 // API Functions
 
 export const api = {
+  _smartPlaylistAbort: null as AbortController | null,
+
   // Songs
   async getSongs(): Promise<ApiSong[]> {
     const response = await fetch(`${API_BASE}/songs`);
@@ -1263,9 +1265,16 @@ export const api = {
       talkMode?: boolean;
     }
   ): Promise<SmartPlaylistResponse> {
+    // Cancel any previous in-flight smart playlist request
+    if (this._smartPlaylistAbort) {
+      this._smartPlaylistAbort.abort();
+    }
+    this._smartPlaylistAbort = new AbortController();
+
     const response = await fetch(`${API_BASE}/smart-playlist`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: this._smartPlaylistAbort.signal,
       body: JSON.stringify({ 
         prompt,
         blendMode: options?.blendMode || 'mixed',

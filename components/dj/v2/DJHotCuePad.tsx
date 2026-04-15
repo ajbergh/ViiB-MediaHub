@@ -16,6 +16,8 @@ interface DJHotCuePadProps {
   deck: DeckId;
   slots?: number[];
   compact?: boolean;
+  /** When true, renders all 8 slots in a single horizontal row instead of 2×4 grid */
+  singleRow?: boolean;
 }
 
 // Hot cue colors matching professional DJ software
@@ -33,7 +35,8 @@ const HOT_CUE_COLORS = [
 export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({ 
   deck, 
   slots = [1, 2, 3, 4, 5, 6, 7, 8],
-  compact = false 
+  compact = false,
+  singleRow = false,
 }) => {
   const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
@@ -89,7 +92,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
   }, []);
 
   return (
-    <div className="grid grid-cols-4 gap-0.5">
+    <div className={singleRow ? 'flex items-center gap-0.5' : 'grid grid-cols-4 gap-0.5'}>
       {slots.map(slot => {
         const hotCue = hotCues.find(hc => hc.slot === slot);
         const isActive = !!hotCue;
@@ -98,7 +101,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
         const color = hotCue?.color || HOT_CUE_COLORS[slot - 1] || '#22c55e';
         const displayNum = slot;
         
-        const buttonSize = compact ? 'w-5 h-5 text-[9px]' : 'w-8 h-7 text-[10px]';
+        const buttonSize = singleRow ? 'w-8 h-7 text-[10px]' : compact ? 'w-6 h-6 text-[9px]' : 'w-10 h-9 text-[11px]';
         
         return (
           <button

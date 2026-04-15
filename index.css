@@ -44,9 +44,9 @@
   --dj-space-xl: 16px;
 
   /* Layout section sizes (overridden per layout mode) */
-  --dj-waveform-h: 180px;
-  --dj-library-h:  250px;
-  --dj-mixer-w:    320px;
+  --dj-waveform-h: 210px;
+  --dj-library-h:  300px;
+  --dj-mixer-w:    300px;
   --dj-topbar-h:   44px;
   --dj-fx-h:       auto;
 
@@ -62,19 +62,19 @@
 
 /* Layout mode overrides */
 [data-dj-mode="perf"] {
-  --dj-waveform-h: 180px;
-  --dj-library-h:  18vh;
+  --dj-waveform-h: 210px;
+  --dj-library-h:  20vh;
   --dj-fx-h:       auto;
 }
 
 [data-dj-mode="browse"] {
-  --dj-waveform-h: 140px;
+  --dj-waveform-h: 170px;
   --dj-library-h:  45vh;
   --dj-fx-h:       auto;
 }
 
 [data-dj-mode="fx"] {
-  --dj-waveform-h: 160px;
+  --dj-waveform-h: 180px;
   --dj-library-h:  12vh;
   --dj-fx-h:       200px;
 }

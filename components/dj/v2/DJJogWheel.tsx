@@ -64,9 +64,9 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
       const parent = container.parentElement;
       if (parent) {
         const availableWidth = parent.clientWidth - 20; // padding
-        const availableHeight = parent.clientHeight - 100; // space for controls below
-        const newSize = Math.min(availableWidth, availableHeight, 500);
-        setComputedSize(Math.max(100, newSize));
+        const availableHeight = parent.clientHeight - 16;
+        const newSize = Math.min(availableWidth, availableHeight, 560);
+        setComputedSize(Math.max(170, newSize));
       }
     };
     

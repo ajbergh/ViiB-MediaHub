@@ -68,7 +68,7 @@ func init() {
 	}
 	dataDir := filepath.Join(configDir, "ViiB-MediaHub")
 	crashLogPath = filepath.Join(dataDir, "crash.log")
-	os.MkdirAll(dataDir, 0755)
+	os.MkdirAll(dataDir, 0700)
 
 	// Write immediately to crash log
 	f, err := os.OpenFile(crashLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
@@ -137,7 +137,7 @@ func main() {
 
 	logCrash(fmt.Sprintf("CHECKPOINT: Data dir = %s", *dataDir))
 
-	if err := os.MkdirAll(*dataDir, 0755); err != nil {
+	if err := os.MkdirAll(*dataDir, 0700); err != nil {
 		logCrash(fmt.Sprintf("ERROR: Failed to create data directory: %v", err))
 		log.Fatal("Failed to create data directory:", err)
 	}

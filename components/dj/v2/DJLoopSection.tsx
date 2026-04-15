@@ -54,62 +54,61 @@ export const DJLoopSection: React.FC<DJLoopSectionProps> = ({ deck }) => {
       : '---';
 
   return (
-    <div className="flex items-center gap-1">
-      {/* Loop label */}
-      <span className="text-[10px] text-neutral-500 font-medium mr-1">LOOP</span>
-      
-      {/* Halve button */}
-      <button
-        onClick={() => halveLoop(deck)}
-        disabled={!track || !loop.enabled}
-        className={`
-          w-6 h-6 rounded flex items-center justify-center
-          transition-all duration-100
-          ${track && loop.enabled
-            ? 'bg-[#2a2a2a] hover:bg-[#3a3a3a] text-neutral-400'
-            : 'bg-[#222] text-neutral-700 cursor-not-allowed'}
-        `}
-        title="Halve loop"
-      >
-        <ChevronLeft size={14} />
-      </button>
-      
-      {/* Loop size display / toggle */}
-      <button
-        onClick={() => toggleLoop(deck)}
-        disabled={!track}
-        className={`
-          w-10 h-6 rounded text-[11px] font-bold
-          transition-all duration-100
-          ${!track
-            ? 'bg-[#222] text-neutral-700 cursor-not-allowed'
-            : loop.enabled
-              ? 'bg-green-500 text-white'
-              : 'bg-[#2a2a2a] text-neutral-400 hover:bg-[#3a3a3a]'}
-        `}
-        style={{
-          boxShadow: loop.enabled ? '0 0 8px rgba(34, 197, 94, 0.4)' : undefined,
-        }}
-        title="Toggle loop"
-      >
-        {displaySize}
-      </button>
-      
-      {/* Double button */}
-      <button
-        onClick={() => doubleLoop(deck)}
-        disabled={!track || !loop.enabled}
-        className={`
-          w-6 h-6 rounded flex items-center justify-center
-          transition-all duration-100
-          ${track && loop.enabled
-            ? 'bg-[#2a2a2a] hover:bg-[#3a3a3a] text-neutral-400'
-            : 'bg-[#222] text-neutral-700 cursor-not-allowed'}
-        `}
-        title="Double loop"
-      >
-        <ChevronRight size={14} />
-      </button>
+    <div className="flex flex-col items-center gap-1 w-full px-2">
+      <div className="flex items-center justify-between w-full gap-1">
+        {/* Halve button */}
+        <button
+          onClick={() => halveLoop(deck)}
+          disabled={!track || !loop.enabled}
+          className={`
+            flex-1 h-8 rounded flex items-center justify-center
+            transition-all duration-100
+            ${track && loop.enabled
+              ? 'bg-[#2a2a2a] hover:bg-[#3a3a3a] text-neutral-400'
+              : 'bg-[#222] text-neutral-700 cursor-not-allowed'}
+          `}
+          title="Halve loop"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        
+        {/* Loop size display / toggle */}
+        <button
+          onClick={() => toggleLoop(deck)}
+          disabled={!track}
+          className={`
+            w-14 h-8 rounded text-[12px] font-bold flex-shrink-0
+            transition-all duration-100
+            ${!track
+              ? 'bg-[#222] text-neutral-700 cursor-not-allowed'
+              : loop.enabled
+                ? 'bg-green-500 text-white'
+                : 'bg-[#2a2a2a] text-neutral-400 hover:bg-[#3a3a3a]'}
+          `}
+          style={{
+            boxShadow: loop.enabled ? '0 0 8px rgba(34, 197, 94, 0.4)' : undefined,
+          }}
+          title="Toggle loop"
+        >
+          {displaySize}
+        </button>
+        
+        {/* Double button */}
+        <button
+          onClick={() => doubleLoop(deck)}
+          disabled={!track || !loop.enabled}
+          className={`
+            flex-1 h-8 rounded flex items-center justify-center
+            transition-all duration-100
+            ${track && loop.enabled
+              ? 'bg-[#2a2a2a] hover:bg-[#3a3a3a] text-neutral-400'
+              : 'bg-[#222] text-neutral-700 cursor-not-allowed'}
+          `}
+          title="Double loop"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
     </div>
   );
 };

@@ -18,7 +18,6 @@ export function useBackgroundEnrichment() {
     const { fetchAlbumMetadata, backendAvailable, spotifyAccessToken } = useStore();
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const processingRef = useRef(false);
-    const idleTimeRef = useRef(0);
     
     useEffect(() => {
         // Only run if backend is available and Spotify is connected
@@ -61,29 +60,16 @@ export function useBackgroundEnrichment() {
             }
         };
         
-        // Track user activity to pause enrichment during interaction
-        const handleActivity = () => {
-            idleTimeRef.current = 0;
-        };
-        
         // Start enrichment after 10 seconds of startup
         const startupTimer = setTimeout(() => {
             processNextAlbum();
         }, 10000);
-        
-        // Add activity listeners
-        window.addEventListener('mousemove', handleActivity);
-        window.addEventListener('keydown', handleActivity);
-        window.addEventListener('click', handleActivity);
         
         return () => {
             clearTimeout(startupTimer);
             if (timerRef.current) {
                 clearTimeout(timerRef.current);
             }
-            window.removeEventListener('mousemove', handleActivity);
-            window.removeEventListener('keydown', handleActivity);
-            window.removeEventListener('click', handleActivity);
         };
     }, [backendAvailable, spotifyAccessToken, fetchAlbumMetadata]);
 }

@@ -67,7 +67,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 
   render() {
     if (this.state.hasError) {
-      return null; // Silently fail for DownloadManager
+      return <div className="p-2 text-xs text-red-400">Component error — try refreshing</div>;
     }
     return this.props.children;
   }

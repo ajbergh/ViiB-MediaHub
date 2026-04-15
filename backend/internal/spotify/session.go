@@ -139,7 +139,7 @@ func (sm *SessionManager) Initialize() (err error) {
 
 	// Ensure cache directory exists
 	sLog("Creating cache directory: %s", sm.cacheDir)
-	if err := os.MkdirAll(sm.cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(sm.cacheDir, 0700); err != nil {
 		sLog("Failed to create cache directory: %v", err)
 		return fmt.Errorf("failed to create cache directory: %w", err)
 	}

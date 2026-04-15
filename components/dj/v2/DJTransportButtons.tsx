@@ -99,9 +99,9 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   }, [deck, originalBpm, otherEffectiveBpm, setTempo, syncMode, syncBeatPhase]);
 
   const accentColor = deck === 'A' ? '#3b82f6' : '#8b5cf6';
-  const cueSize = compact ? 'w-10 h-10' : 'w-11 h-11';
-  const playSize = compact ? 'w-11 h-11' : 'w-12 h-12';
-  const iconSize = compact ? 16 : 18;
+  const cueSize = compact ? 'w-10 h-10' : 'w-12 h-12';
+  const playSize = compact ? 'w-11 h-11' : 'w-14 h-14';
+  const iconSize = compact ? 16 : 20;
 
   return (
     <div className="flex items-center gap-2">
@@ -163,8 +163,8 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
         onClick={handleSync}
         disabled={!track || syncMode === 'off'}
         className={`
-          ${compact ? 'h-8 px-3' : 'h-9 px-4'} rounded-lg text-[10px] font-bold uppercase tracking-wider
-          transition-all duration-100 border flex items-center gap-1
+          ${compact ? 'h-8 px-3' : 'h-10 px-5'} rounded-lg text-[11px] font-bold uppercase tracking-wider
+          transition-all duration-100 border flex items-center gap-1.5
           ${!track || syncMode === 'off'
             ? 'bg-[#2a2a2a] text-neutral-600 border-[#333] cursor-not-allowed'
             : syncMode === 'beat-phase'
@@ -173,7 +173,7 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
         `}
         title={syncMode === 'off' ? 'Sync disabled — set sync mode in mixer' : `Sync to other deck (${syncMode})`}
       >
-        {syncMode === 'beat-phase' ? 'SYNC' : 'SYNC'}
+        SYNC
         {syncMode !== 'off' && track && <span className='w-1.5 h-1.5 rounded-full bg-current opacity-80' />}
       </button>
     </div>

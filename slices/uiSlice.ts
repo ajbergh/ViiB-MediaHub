@@ -93,7 +93,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   closeConfirmDialog: () => set({ confirmDialog: null }),
 
   showToast: (toast) => set((state) => ({
-    toasts: [...state.toasts, { ...toast, id: Math.random().toString(36).substr(2, 9) }].slice(-5) // Max 5 toasts
+    toasts: [...state.toasts, { ...toast, id: crypto.randomUUID() }].slice(-5) // Max 5 toasts
   })),
   
   dismissToast: (id) => set((state) => ({
@@ -102,7 +102,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
 
   addLog: (level, message, details) => set((state) => ({
       logs: [{
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           timestamp: Date.now(),
           level,
           message,

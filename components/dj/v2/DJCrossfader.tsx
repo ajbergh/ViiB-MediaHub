@@ -102,7 +102,7 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
       {/* Fader track container */}
       <div
         className="relative cursor-pointer touch-none bg-[#1a1a1a] rounded-lg p-1"
-        style={{ width, height: 36 }}
+        style={{ width: computedWidth, height: 36 }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -136,8 +136,8 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
           <div 
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             style={{
-              left: 18 + ((value + 1) / 2) * (width - 36),
-              width: (width / 2) - 18 - ((value + 1) / 2) * (width - 36),
+              left: 18 + ((value + 1) / 2) * (computedWidth - 36),
+              width: (computedWidth / 2) - 18 - ((value + 1) / 2) * (computedWidth - 36),
               height: 6,
               background: 'linear-gradient(to right, #3b82f6, #3b82f640)',
               boxShadow: '0 0 6px #3b82f640',
@@ -148,8 +148,8 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
           <div 
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             style={{
-              left: width / 2,
-              width: (value / 2) * (width - 36),
+              left: computedWidth / 2,
+              width: (value / 2) * (computedWidth - 36),
               height: 6,
               background: 'linear-gradient(to right, #8b5cf640, #8b5cf6)',
               boxShadow: '0 0 6px #8b5cf640',

@@ -180,7 +180,7 @@ func main() {
 		*dataDir = filepath.Join(configDir, "ViiB-MediaHub")
 	}
 
-	if err := os.MkdirAll(*dataDir, 0755); err != nil {
+	if err := os.MkdirAll(*dataDir, 0700); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create data directory: %v\n", err)
 		os.Exit(1)
 	}

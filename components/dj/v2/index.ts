@@ -17,6 +17,8 @@ export { DJVolumeFader } from './DJVolumeFader';
 export { DJCrossfader } from './DJCrossfader';
 export { DJTempoSlider } from './DJTempoSlider';
 export { DJLibraryBrowserV2 } from './DJLibraryBrowserV2';
+export { DeckTimeDisplay, DeckHasTrack, DeckBpmBadge } from './DJDeckComponents';
+export { DJChannelStrip, DJMasterKnob, DJCrossfaderSelfSub, DJTempoSliderSelfSub } from './DJMixerComponents';
 
 // WebGL high-performance waveform (Phase 2)
 export { DJWebGLWaveform } from './webgl';

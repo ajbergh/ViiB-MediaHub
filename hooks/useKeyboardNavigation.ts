@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useStore } from '../store';
 
 /**
@@ -22,184 +22,150 @@ import { useStore } from '../store';
  * - Escape: Close panels
  */
 export function useKeyboardNavigation() {
-  const { 
-    currentSong,
-    togglePlay, 
-    prevSong, 
-    nextSong,
-    setVolume,
-    volume,
-    isQueueOpen,
-    setQueueOpen,
-    isEqOpen,
-    toggleEqPanel,
-    isNowPlayingOpen,
-    setNowPlayingOpen,
-    closeContextMenu,
-    // Milkdrop state
-    audioSettings,
-    setVisualizerMode,
-    milkdropSettings,
-    setMilkdropPreset,
-    toggleMilkdropFavorite,
-    milkdropPresetKeys,
-  } = useStore();
-
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Don't trigger shortcuts when typing in inputs
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-      // Allow Escape to blur inputs
-      if (e.key === 'Escape') {
-        target.blur();
-      }
-      return;
-    }
-
-    switch (e.key) {
-      // Playback controls
-      case ' ':
-        if (currentSong) {
-          e.preventDefault();
-          togglePlay();
-        }
-        break;
-      
-      case 'ArrowLeft':
-        if (e.shiftKey) {
-          // Shift + Left: Previous track
-          prevSong();
-        }
-        // Note: Seeking is handled by the audio element directly
-        break;
-
-      case 'ArrowRight':
-        if (e.shiftKey) {
-          // Shift + Right: Next track
-          nextSong();
-        }
-        break;
-
-      case 'ArrowUp':
-        e.preventDefault();
-        // Increase volume by 5%
-        setVolume(Math.min(1, volume + 0.05));
-        break;
-
-      case 'ArrowDown':
-        e.preventDefault();
-        // Decrease volume by 5%
-        setVolume(Math.max(0, volume - 0.05));
-        break;
-
-      case 'm':
-      case 'M':
-        // Toggle mute
-        setVolume(volume > 0 ? 0 : 0.5);
-        break;
-
-      case 'q':
-      case 'Q':
-        // Toggle queue panel
-        setQueueOpen(!isQueueOpen);
-        break;
-
-      case 'e':
-      case 'E':
-        // Toggle equalizer panel
-        toggleEqPanel();
-        break;
-
-      case 'n':
-      case 'N':
-        // Toggle now playing view
-        if (currentSong) {
-          setNowPlayingOpen(!isNowPlayingOpen);
-        }
-        break;
-
-      // Milkdrop shortcuts (only active in Now Playing with Milkdrop mode)
-      case 'v':
-      case 'V':
-        // Cycle visualizer mode when in Now Playing
-        if (isNowPlayingOpen) {
-          const modes = ['OFF', 'WAVE', 'SPECTRUM', 'FLAME_SPECTRUM', 'STARDUST_HALO', 
-            'AURORA_RIBBON', 'ELECTRIC_ARC', 'GRASS_OSCILLOSCOPE', 'FIREFLY_FIELD',
-            'TUNNEL_WAVEFORM', 'WIND_FIELD', 'MILKDROP'] as const;
-          const currentIdx = modes.indexOf(audioSettings.visualizerMode as typeof modes[number]);
-          const nextIdx = (currentIdx + 1) % modes.length;
-          setVisualizerMode(modes[nextIdx]);
-        }
-        break;
-
-      case ']':
-        // Next Milkdrop preset
-        if (isNowPlayingOpen && audioSettings.visualizerMode === 'MILKDROP' && milkdropPresetKeys.length > 0) {
-          const currentIdx = milkdropSettings.currentPreset 
-            ? milkdropPresetKeys.indexOf(milkdropSettings.currentPreset)
-            : -1;
-          const nextIdx = (currentIdx + 1) % milkdropPresetKeys.length;
-          setMilkdropPreset(milkdropPresetKeys[nextIdx]);
-        }
-        break;
-
-      case '[':
-        // Previous Milkdrop preset
-        if (isNowPlayingOpen && audioSettings.visualizerMode === 'MILKDROP' && milkdropPresetKeys.length > 0) {
-          const currentIdx = milkdropSettings.currentPreset 
-            ? milkdropPresetKeys.indexOf(milkdropSettings.currentPreset)
-            : 0;
-          const prevIdx = (currentIdx - 1 + milkdropPresetKeys.length) % milkdropPresetKeys.length;
-          setMilkdropPreset(milkdropPresetKeys[prevIdx]);
-        }
-        break;
-
-      case 'f':
-      case 'F':
-        // Toggle favorite for current Milkdrop preset
-        if (isNowPlayingOpen && audioSettings.visualizerMode === 'MILKDROP' && milkdropSettings.currentPreset) {
-          toggleMilkdropFavorite(milkdropSettings.currentPreset);
-        }
-        break;
-
-      case 'Escape':
-        // Close any open panels/menus
-        if (isNowPlayingOpen) {
-          setNowPlayingOpen(false);
-        } else if (isQueueOpen) {
-          setQueueOpen(false);
-        } else if (isEqOpen) {
-          toggleEqPanel();
-        }
-        closeContextMenu();
-        break;
-    }
-  }, [
-    currentSong,
-    togglePlay, 
-    prevSong, 
-    nextSong, 
-    volume, 
-    setVolume, 
-    isQueueOpen,
-    setQueueOpen,
-    isEqOpen,
-    toggleEqPanel,
-    isNowPlayingOpen,
-    setNowPlayingOpen,
-    closeContextMenu,
-    audioSettings,
-    setVisualizerMode,
-    milkdropSettings,
-    setMilkdropPreset,
-    toggleMilkdropFavorite,
-    milkdropPresetKeys,
-  ]);
-
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in inputs
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        // Allow Escape to blur inputs
+        if (e.key === 'Escape') {
+          target.blur();
+        }
+        return;
+      }
+
+      // Read current state at event time to avoid stale closures
+      const state = useStore.getState();
+      const {
+        currentSong,
+        togglePlay,
+        prevSong,
+        nextSong,
+        setVolume,
+        volume,
+        isQueueOpen,
+        setQueueOpen,
+        isEqOpen,
+        toggleEqPanel,
+        isNowPlayingOpen,
+        setNowPlayingOpen,
+        closeContextMenu,
+        audioSettings,
+        setVisualizerMode,
+        milkdropSettings,
+        setMilkdropPreset,
+        toggleMilkdropFavorite,
+        milkdropPresetKeys,
+      } = state;
+
+      switch (e.key) {
+        // Playback controls
+        case ' ':
+          if (currentSong) {
+            e.preventDefault();
+            togglePlay();
+          }
+          break;
+        
+        case 'ArrowLeft':
+          if (e.shiftKey) {
+            prevSong();
+          }
+          break;
+
+        case 'ArrowRight':
+          if (e.shiftKey) {
+            nextSong();
+          }
+          break;
+
+        case 'ArrowUp':
+          e.preventDefault();
+          setVolume(Math.min(1, volume + 0.05));
+          break;
+
+        case 'ArrowDown':
+          e.preventDefault();
+          setVolume(Math.max(0, volume - 0.05));
+          break;
+
+        case 'm':
+        case 'M':
+          setVolume(volume > 0 ? 0 : 0.5);
+          break;
+
+        case 'q':
+        case 'Q':
+          setQueueOpen(!isQueueOpen);
+          break;
+
+        case 'e':
+        case 'E':
+          toggleEqPanel();
+          break;
+
+        case 'n':
+        case 'N':
+          if (currentSong) {
+            setNowPlayingOpen(!isNowPlayingOpen);
+          }
+          break;
+
+        case 'v':
+        case 'V':
+          if (isNowPlayingOpen) {
+            const modes = ['OFF', 'WAVE', 'SPECTRUM', 'FLAME_SPECTRUM', 'STARDUST_HALO', 
+              'AURORA_RIBBON', 'ELECTRIC_ARC', 'GRASS_OSCILLOSCOPE', 'FIREFLY_FIELD',
+              'TUNNEL_WAVEFORM', 'WIND_FIELD', 'MILKDROP'] as const;
+            const currentIdx = modes.indexOf(audioSettings.visualizerMode as typeof modes[number]);
+            const nextIdx = (currentIdx + 1) % modes.length;
+            setVisualizerMode(modes[nextIdx]);
+          }
+          break;
+
+        case ']':
+          if (isNowPlayingOpen && audioSettings.visualizerMode === 'MILKDROP' && milkdropPresetKeys.length > 0) {
+            const currentIdx = milkdropSettings.currentPreset 
+              ? milkdropPresetKeys.indexOf(milkdropSettings.currentPreset)
+              : -1;
+            const nextIdx = (currentIdx + 1) % milkdropPresetKeys.length;
+            setMilkdropPreset(milkdropPresetKeys[nextIdx]);
+          }
+          break;
+
+        case '[':
+          if (isNowPlayingOpen && audioSettings.visualizerMode === 'MILKDROP' && milkdropPresetKeys.length > 0) {
+            const currentIdx = milkdropSettings.currentPreset 
+              ? milkdropPresetKeys.indexOf(milkdropSettings.currentPreset)
+              : 0;
+            const prevIdx = (currentIdx - 1 + milkdropPresetKeys.length) % milkdropPresetKeys.length;
+            setMilkdropPreset(milkdropPresetKeys[prevIdx]);
+          }
+          break;
+
+        case 'f':
+        case 'F':
+          if (isNowPlayingOpen && audioSettings.visualizerMode === 'MILKDROP' && milkdropSettings.currentPreset) {
+            toggleMilkdropFavorite(milkdropSettings.currentPreset);
+          }
+          break;
+
+        case 'Escape':
+          if (isNowPlayingOpen) {
+            setNowPlayingOpen(false);
+          } else if (isQueueOpen) {
+            setQueueOpen(false);
+          } else if (isEqOpen) {
+            toggleEqPanel();
+          }
+          closeContextMenu();
+          break;
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+  }, []);
 }
 
 export default useKeyboardNavigation;

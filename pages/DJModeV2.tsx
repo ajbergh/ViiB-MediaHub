@@ -32,15 +32,8 @@ import { DJJogWheel } from '../components/dj/v2/DJJogWheel';
 import { DJHotCuePad } from '../components/dj/v2/DJHotCuePad';
 import { DJTransportButtons } from '../components/dj/v2/DJTransportButtons';
 import { DJLoopSection } from '../components/dj/v2/DJLoopSection';
-import { DJEQKnob } from '../components/dj/v2/DJEQKnob';
-import { DJVolumeFader } from '../components/dj/v2/DJVolumeFader';
-import { DJCrossfader } from '../components/dj/v2/DJCrossfader';
-import { DJTempoSlider } from '../components/dj/v2/DJTempoSlider';
-import { DJCueButton } from '../components/dj/v2/DJCueButton';
 import { DJHeadphoneMix } from '../components/dj/v2/DJHeadphoneMix';
-import { DJLibraryBrowserV2 } from '../components/dj/v2/DJLibraryBrowserV2';
 import { DJFXSection } from '../components/dj/v2/DJFXSection';
-import { DJStereoVUMeter } from '../components/dj/v2/DJVUMeter';
 import { DJBeatJump } from '../components/dj/v2/DJBeatJump';
 import { DJBeatGridEdit } from '../components/dj/v2/DJBeatGridEdit';
 import { DJSamplerPads } from '../components/dj/v2/DJSamplerPads';
@@ -48,6 +41,11 @@ import { DJMidiMapping } from '../components/dj/v2/DJMidiMapping';
 import { DJErrorBoundary } from '../components/dj/v2/DJErrorBoundary';
 import { DJScopeView } from '../components/dj/v2/DJScopeView';
 import { DJDeckStatusBar } from '../components/dj/v2/DJDeckStatusBar';
+import { DJStereoVUMeter } from '../components/dj/v2/DJVUMeter';
+import { DJLibraryBrowserV2 } from '../components/dj/v2/DJLibraryBrowserV2';
+import { DeckTimeDisplay, DeckHasTrack, DeckBpmBadge } from '../components/dj/v2/DJDeckComponents';
+import { DJChannelStrip, DJMasterKnob, DJCrossfaderSelfSub, DJTempoSliderSelfSub } from '../components/dj/v2/DJMixerComponents';
+import { useDJShortcuts } from '../components/dj/v2/hooks/useDJShortcuts';
 import { createLogger } from '../services/loggerService';
 import type { DeckId, DeckEQ, DJLayoutMode } from '../slices/djMixerSlice';
 
@@ -55,239 +53,17 @@ const logger = createLogger('DJModeV2');
 
 type ViewMode = 'timeline' | 'scope' | 'fx';
 
-// Self-subscribing time display to avoid parent re-renders from position updates
-const DeckTimeDisplay = React.memo(({ deck, color, showRemaining = false }: { deck: DeckId; color: string; showRemaining?: boolean }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  
-  useEffect(() => {
-    let animId: number;
-    let timeoutId: ReturnType<typeof setTimeout>;
-    let lastPos = -1;
-    const update = () => {
-      const state = useStore.getState();
-      const d = deck === 'A' ? state.djDeckA : state.djDeckB;
-      const el = containerRef.current;
-      if (el && d.duration > 0) {
-        const pos = d.position;
-        const remaining = d.duration - pos;
-        const formatT = (s: number, neg = false) => {
-          const m = Math.floor(Math.abs(s) / 60);
-          const sec = Math.floor(Math.abs(s) % 60);
-          return `${neg ? '-' : ''}${m}:${sec.toString().padStart(2, '0')}`;
-        };
-        if (showRemaining) {
-          el.textContent = formatT(remaining, true);
-        } else {
-          el.textContent = formatT(pos);
-        }
-        // Throttle to ~4fps when paused (position unchanging)
-        if (!d.isPlaying && pos === lastPos) {
-          timeoutId = setTimeout(() => { animId = requestAnimationFrame(update); }, 250);
-        } else {
-          animId = requestAnimationFrame(update);
-        }
-        lastPos = pos;
-      } else {
-        // No track loaded — throttle to ~2fps instead of 60fps
-        timeoutId = setTimeout(() => { animId = requestAnimationFrame(update); }, 500);
-      }
-    };
-    animId = requestAnimationFrame(update);
-    return () => { cancelAnimationFrame(animId); clearTimeout(timeoutId); };
-  }, [deck, showRemaining]);
-  
-  return <span ref={containerRef} className={`text-[10px] font-mono`} style={{ color }}>--:--</span>;
-});
-DeckTimeDisplay.displayName = 'DeckTimeDisplay';
 
-// Self-subscribing deck duration check (avoids position subscription in parent)
-const DeckHasTrack = React.memo(({ deck, children }: { deck: DeckId; children: React.ReactNode }) => {
-  const hasTrack = useStore(state => deck === 'A' ? !!state.djDeckA.track : !!state.djDeckB.track);
-  const hasDuration = useStore(state => deck === 'A' ? state.djDeckA.duration > 0 : state.djDeckB.duration > 0);
-  if (!hasTrack || !hasDuration) return null;
-  return <>{children}</>;
-});
-DeckHasTrack.displayName = 'DeckHasTrack';
-
-// Self-subscribing Channel Strip — isolates EQ/filter/volume from parent re-renders
-const DJChannelStrip = React.memo(({ deckId, getDeckLevels, onEQChange, onVolumeChange, onFilterChange }: {
-  deckId: DeckId;
-  getDeckLevels: () => { left: number; right: number };
-  onEQChange: (deck: DeckId, band: keyof DeckEQ, value: number) => void;
-  onVolumeChange: (deck: DeckId, value: number) => void;
-  onFilterChange: (deck: DeckId, knobValue: number) => void;
-}) => {
-  const isA = deckId === 'A';
-  const accentColor = isA ? '#3b82f6' : '#8b5cf6';
-
-  // Granular selectors — only re-render when these specific fields change
-  const eqHigh = useStore(s => isA ? s.djDeckA.eq.high : s.djDeckB.eq.high);
-  const eqMid = useStore(s => isA ? s.djDeckA.eq.mid : s.djDeckB.eq.mid);
-  const eqLow = useStore(s => isA ? s.djDeckA.eq.low : s.djDeckB.eq.low);
-  const filterValue = useStore(s => isA ? s.djDeckA.filter.value : s.djDeckB.filter.value);
-  const filterEnabled = useStore(s => isA ? s.djDeckA.filter.enabled : s.djDeckB.filter.enabled);
-  const volume = useStore(s => isA ? s.djDeckA.volume : s.djDeckB.volume);
-  const isPlaying = useStore(s => isA ? s.djDeckA.isPlaying : s.djDeckB.isPlaying);
-
-  const filterKnobValue = ((filterValue + 1) / 2) * 36 - 24;
-
-  return (
-    <div className={`flex-1 flex flex-col items-center py-2 gap-3 min-w-[90px] border-[#2a2a2a]`}>
-      {/* Gain / Trim */}
-      <div className='relative pt-2'>
-        <DJEQKnob
-          label='TRIM'
-          value={0}
-          onChange={(v) => {
-            const normalized = (v + 24) / 36;
-            const trimmedVol = Math.max(0, Math.min(1, normalized * 1.5));
-            onVolumeChange(deckId, trimmedVol);
-          }}
-          color='#aaaaaa'
-          size={38}
-        />
-      </div>
-
-      {/* EQ Section */}
-      <div className='flex flex-col gap-2 p-1.5 bg-[#151515] rounded-md border border-[#222] shadow-inner'>
-        <DJEQKnob
-          label='HIGH'
-          value={eqHigh}
-          onChange={(v) => onEQChange(deckId, 'high', v)}
-          color='#06b6d4'
-          size={38}
-        />
-        <DJEQKnob
-          label='MID'
-          value={eqMid}
-          onChange={(v) => onEQChange(deckId, 'mid', v)}
-          color='#22c55e'
-          size={38}
-        />
-        <DJEQKnob
-          label='LOW'
-          value={eqLow}
-          onChange={(v) => onEQChange(deckId, 'low', v)}
-          color='#f59e0b'
-          size={38}
-        />
-      </div>
-
-      {/* Separator */}
-      <div className='h-px bg-[#333] mx-1' />
-
-      {/* Filter Knob */}
-      <div className='p-1.5 bg-[#151515] rounded-md border border-[#222] shadow-inner'>
-        <DJEQKnob
-          label='FILTER'
-          value={filterKnobValue}
-          onChange={(v) => onFilterChange(deckId, v)}
-          color={filterEnabled ? '#ef4444' : '#666'}
-          size={38}
-        />
-      </div>
-
-      {/* Spacer */}
-      <div className='flex-1'></div>
-
-      {/* Headphone Cue */}
-      <div className='mb-2'>
-        <DJCueButton deck={deckId} />
-      </div>
-
-      {/* Channel Fader with VU */}
-      <div className='w-full px-2 flex items-center justify-center gap-1'>
-        <DJStereoVUMeter
-          getLevels={getDeckLevels}
-          height={140}
-          channelWidth={4}
-          gap={2}
-          segments={18}
-          showPeak={true}
-        />
-        <DJVolumeFader
-          value={volume}
-          onChange={(v) => onVolumeChange(deckId, v)}
-          label=''
-          height={160}
-          isPlaying={isPlaying}
-          accentColor={accentColor}
-        />
-      </div>
-    </div>
-  );
-});
-DJChannelStrip.displayName = 'DJChannelStrip';
-
-// Self-subscribing BPM badge — avoids parent re-render on effectiveBpm change
-const DeckBpmBadge = React.memo(({ deck }: { deck: DeckId }) => {
-  const bpm = useStore(s => deck === 'A' ? s.djDeckA.effectiveBpm : s.djDeckB.effectiveBpm);
-  if (!bpm) return null;
-  return <span className='text-[9px] font-mono text-neutral-400'>{bpm.toFixed(1)}</span>;
-});
-DeckBpmBadge.displayName = 'DeckBpmBadge';
-
-// Self-subscribing master volume knob — avoids parent re-render during volume drag
-const DJMasterKnob = React.memo(({ onChange }: { onChange: (v: number) => void }) => {
-  const masterVolume = useStore(s => s.djMixer?.masterVolume ?? 0.8);
-  return (
-    <DJEQKnob
-      label='MAIN'
-      value={((masterVolume) * 36 - 24)}
-      onChange={onChange}
-      size={40}
-      color='#fff'
-    />
-  );
-});
-DJMasterKnob.displayName = 'DJMasterKnob';
-
-// Self-subscribing crossfader — avoids parent re-render during crossfader drag
-const DJCrossfaderSelfSub = React.memo(({ onChange, width, responsive }: {
-  onChange: (v: number) => void;
-  width: number;
-  responsive?: boolean;
-}) => {
-  const crossfader = useStore(s => s.djMixer?.crossfader ?? 0);
-  return <DJCrossfader value={crossfader} onChange={onChange} width={width} responsive={responsive} />;
-});
-DJCrossfaderSelfSub.displayName = 'DJCrossfaderSelfSub';
-
-// Self-subscribing tempo slider — avoids parent re-render during tempo drag
-const DJTempoSliderSelfSub = React.memo(({ deck, onChange, disabled, height, responsive }: {
-  deck: DeckId;
-  onChange: (v: number) => void;
-  disabled?: boolean;
-  height: number;
-  responsive?: boolean;
-}) => {
-  const isA = deck === 'A';
-  const tempo = useStore(s => isA ? s.djDeckA.tempo : s.djDeckB.tempo);
-  const effectiveBpm = useStore(s => isA ? s.djDeckA.effectiveBpm : s.djDeckB.effectiveBpm);
-  const originalBpm = useStore(s => isA ? s.djDeckA.originalBpm : s.djDeckB.originalBpm);
-  return (
-    <DJTempoSlider
-      deck={deck}
-      value={tempo}
-      onChange={onChange}
-      originalBpm={originalBpm}
-      effectiveBpm={effectiveBpm}
-      disabled={disabled}
-      height={height}
-      responsive={responsive}
-    />
-  );
-});
-DJTempoSliderSelfSub.displayName = 'DJTempoSliderSelfSub';
 
 export const DJModeV2: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');
   const [isRecording, setIsRecording] = useState(false);
-  const [libraryHeight, setLibraryHeight] = useState(250);
+  const [libraryHeight, setLibraryHeight] = useState(300);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showMidiMapping, setShowMidiMapping] = useState(false);
   const [libraryCollapsed, setLibraryCollapsed] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -361,11 +137,32 @@ export const DJModeV2: React.FC = () => {
 
   // Adjust library height defaults when layout mode changes
   useEffect(() => {
+    const maxH = Math.floor(window.innerHeight * 0.42);
     if (djLayoutMode === 'browse') {
-      setLibraryHeight(prev => Math.max(prev, 350));
+      setLibraryHeight(prev => Math.max(prev, Math.min(350, maxH)));
     } else if (djLayoutMode === 'perf') {
-      setLibraryHeight(prev => Math.min(prev, 250));
+      setLibraryHeight(prev => Math.min(prev, Math.min(250, maxH)));
+    } else if (djLayoutMode === 'fx') {
+      setLibraryHeight(prev => Math.min(prev, Math.min(180, maxH)));
     }
+  }, [djLayoutMode]);
+
+  // Re-clamp library height on any layout shift (sidebar open/close, window resize)
+  // Uses ResizeObserver on the container so it reacts to ALL size changes, not just
+  // window resize (see DJ_MODE_V2_SUGGESTIONS.md §2.3).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      const baseMax = Math.floor(el.clientHeight * 0.42);
+      let maxH = baseMax;
+      if (djLayoutMode === 'fx') maxH = Math.min(180, baseMax);
+      else if (djLayoutMode === 'perf') maxH = Math.min(350, baseMax);
+      else maxH = Math.min(600, baseMax);
+      setLibraryHeight(prev => Math.max(100, Math.min(prev, maxH)));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [djLayoutMode]);
 
   // VU meter level getters (stable callbacks for rAF-based meters)
@@ -485,96 +282,18 @@ export const DJModeV2: React.FC = () => {
     }
   }, [setTempo, syncBeatPhase]);
 
-  // Keyboard shortcuts (reads state snapshot to avoid position-driven deps)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      // Read current state snapshot (not reactive - avoids position-driven re-binding)
-      const state = useStore.getState();
-      const activeDeck = state.djActiveDeck;
-
-      // Hot cue keys 1-8 (use e.code to work with Shift held - e.key changes to !@# etc.)
-      const digitMatch = e.code.match(/^Digit([1-8])$/);
-      if (digitMatch) {
-        const slot = parseInt(digitMatch[1]);
-        const deck = activeDeck;
-        const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
-        if (!deckState.track) return;
-        
-        if (e.shiftKey) {
-          // Set hot cue at current position
-          const HOT_CUE_COLORS = ['#22c55e', '#22c55e', '#22c55e', '#eab308', '#f97316', '#3b82f6', '#8b5cf6', '#ec4899'];
-          const color = HOT_CUE_COLORS[slot - 1] || '#22c55e';
-          setHotCue(deck, slot, deckState.position, undefined, color);
-        } else {
-          // Trigger existing hot cue
-          const hotCue = deckState.hotCues.find(hc => hc.slot === slot);
-          if (hotCue) {
-            seek(deck, hotCue.position);
-            triggerHotCue(deck, slot);
-          }
-        }
-        return;
-      }
-
-      switch (e.key.toLowerCase()) {
-        case 'q': returnToCue('A'); break;
-        case 'w': togglePlay('A'); break;
-        case 'o': returnToCue('B'); break;
-        case 'p': togglePlay('B'); break;
-        case ' ':
-          e.preventDefault();
-          togglePlay(activeDeck);
-          break;
-        case 'tab':
-          e.preventDefault();
-          toggleActiveDeck();
-          break;
-        case 'z': setCrossfader(-1); break;
-        case 'x': setCrossfader(0); break;
-        case 'c': setCrossfader(1); break;
-        case 'e': handleSync('A'); break;
-        case '[': handleSync('B'); break;
-        case 'arrowleft':
-          if (e.shiftKey) {
-            setCrossfader(Math.max(-1, state.djMixer.crossfader - 0.1));
-          }
-          break;
-        case 'arrowright':
-          if (e.shiftKey) {
-            setCrossfader(Math.min(1, state.djMixer.crossfader + 0.1));
-          }
-          break;
-        case 'f11':
-          e.preventDefault();
-          if (document.fullscreenElement) {
-            document.exitFullscreen();
-          } else {
-            document.documentElement.requestFullscreen();
-          }
-          break;
-        case '?':
-          setShowShortcuts(prev => !prev);
-          break;
-        case '/':
-          e.preventDefault();
-          // Focus the library browser search input
-          const searchInput = document.querySelector('[data-dj-mode] input[type="text"][placeholder*="Search"]') as HTMLInputElement;
-          if (searchInput) searchInput.focus();
-          break;
-        case 'escape':
-          setShowShortcuts(false);
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, returnToCue, setCrossfader, toggleActiveDeck, seek, setHotCue, triggerHotCue, handleSync]);
+  // Keyboard shortcuts — single-mount listener via useDJShortcuts (see §2.2)
+  useDJShortcuts({
+    togglePlay,
+    returnToCue,
+    setCrossfader,
+    toggleActiveDeck,
+    seek,
+    setHotCue,
+    triggerHotCue,
+    handleSync,
+    setShowShortcuts,
+  });
 
   // Filter knob handler - maps -24..+12 knob range to -1..+1 filter value
   const handleFilterChange = useCallback((deck: DeckId, knobValue: number) => {
@@ -621,7 +340,8 @@ export const DJModeV2: React.FC = () => {
 
   return (
     <div
-      className='h-full flex flex-col overflow-hidden min-w-[1024px] transition-[grid-template-rows] duration-200'
+      ref={containerRef}
+      className='h-full flex flex-col overflow-hidden min-w-[1152px] transition-[grid-template-rows] duration-200'
       data-dj-mode={djLayoutMode}
       style={{
         backgroundColor: 'var(--dj-bg)',
@@ -751,8 +471,8 @@ export const DJModeV2: React.FC = () => {
         </div>
       )}
 
-      {/* 3. FX SECTION (always shown in timeline/scope mode) */}
-      {viewMode !== 'fx' && <DJFXSection />}
+      {/* 3. FX SECTION (shown in timeline/scope mode, hidden in FX layout to avoid double-render) */}
+      {viewMode !== 'fx' && djLayoutMode !== 'fx' && <DJFXSection />}
 
       {/* 4. MAIN CONTROL DECK (Decks + Mixer) */}
       <div className='flex-1 flex min-h-0' style={{ backgroundColor: 'var(--dj-bg)' }}>
@@ -762,28 +482,28 @@ export const DJModeV2: React.FC = () => {
             {/* Active Deck Indicator Bar */}
             {djActiveDeck === 'A' && <div className='absolute top-0 left-0 right-0 h-[2px] bg-blue-500 z-30' />}
             
-            {/* Deck Header: Track Info + Loops / Pads */}
+            {/* Deck Header: Track Info + Controls */}
             <div className='bg-[#161616] border-b border-[#222]'>
                   {/* Track Info Bar */}
-                  <div className='flex items-center justify-between px-4 py-1.5 border-b border-[#1a1a1a]'>
+                  <div className='flex items-center justify-between px-3 py-2 border-b border-[#1a1a1a]'>
                       <div className='flex items-center gap-2 min-w-0 flex-1'>
-                        <span className='text-[9px] font-bold text-blue-400 uppercase tracking-wider flex-shrink-0'>DECK A</span>
+                        <span className='text-[10px] font-bold text-blue-400 uppercase tracking-wider flex-shrink-0'>DECK A</span>
                         {deckATrack ? (
                           <div className='min-w-0 flex-1'>
-                            <div className='text-[11px] font-bold text-white truncate leading-tight'>
+                            <div className='text-[13px] font-bold text-white truncate leading-tight'>
                               {deckATrack.title || 'Unknown'}
                             </div>
-                            <div className='text-[9px] text-neutral-400 truncate leading-tight'>
+                            <div className='text-[10px] text-neutral-400 truncate leading-tight'>
                               {deckATrack.artist || 'Unknown Artist'}
                             </div>
                           </div>
                         ) : (
-                          <span className='text-[9px] text-neutral-600 italic'>No track loaded</span>
+                          <span className='text-[10px] text-neutral-600 italic'>No track loaded</span>
                         )}
                       </div>
-                      <div className='flex items-center gap-2 flex-shrink-0'>
+                      <div className='flex items-center gap-2.5 flex-shrink-0'>
                         {deckAKey && (
-                          <span className='text-[9px] font-bold text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded'>
+                          <span className='text-[10px] font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded'>
                             {deckAKey}
                           </span>
                         )}
@@ -792,31 +512,37 @@ export const DJModeV2: React.FC = () => {
                         <DeckHasTrack deck='A'>
                           <div className='flex items-center gap-1.5 font-mono'>
                             <DeckTimeDisplay deck='A' color='#93c5fd' />
-                            <span className='text-[8px] text-neutral-600'>/</span>
+                            <span className='text-[9px] text-neutral-600'>/</span>
                             <DeckTimeDisplay deck='A' color='#737373' showRemaining />
                           </div>
                         </DeckHasTrack>
                       </div>
                   </div>
-                  {/* Controls Row */}
-                  <div className='flex items-center justify-between px-4 py-1.5'>
-                      <div className='flex flex-col gap-0.5'>
+                  {/* Hot Cues Row */}
+                  <div className='flex items-center gap-2 px-3 py-1.5 border-b border-[#1a1a1a]'>
+                      <span className='text-[8px] font-bold text-[#555] uppercase tracking-wider flex-shrink-0 w-7'>CUES</span>
+                      <DJHotCuePad deck='A' singleRow />
+                  </div>
+                  {/* Controls Row: Loop + Beat Jump + Grid */}
+                  <div className='flex items-center gap-0 px-3 py-1.5'>
+                      <div className='flex flex-col gap-0.5 items-start flex-shrink-0'>
                           <span className='text-[8px] font-bold text-[#555] uppercase tracking-wider'>LOOP</span>
                           <DJLoopSection deck='A' />
                       </div>
-                      <DJBeatJump deck='A' />
-                      <DJBeatGridEdit deck='A' />
-                      <div className='flex flex-col gap-0.5 items-end'>
-                          <span className='text-[8px] font-bold text-[#555] uppercase tracking-wider'>HOT CUES</span>
-                          <DJHotCuePad deck='A' />
+                      <div className='w-px h-8 bg-[#2a2a2a] mx-2.5 flex-shrink-0' />
+                      <div className='flex flex-col gap-0.5 items-start flex-shrink-0'>
+                          <span className='text-[8px] font-bold text-[#555] uppercase tracking-wider'>BEAT JUMP</span>
+                          <DJBeatJump deck='A' compact />
                       </div>
+                      <div className='w-px h-8 bg-[#2a2a2a] mx-2.5 flex-shrink-0' />
+                      <DJBeatGridEdit deck='A' />
                   </div>
             </div>
 
-            {/* Deck Jog Area */}
-            <div className='flex-1 relative bg-[#141414] flex items-center justify-center overflow-hidden'>
-                {/* Tempo Slider (Left for Deck A to mirror outer edge if deck A is left) */}
-                <div className='absolute left-4 top-4 bottom-4 w-12 z-10'>
+            {/* Deck Jog Area — clean, no side rails (DJay Pro-style) */}
+            <div className='flex-1 relative bg-[#141414] flex items-stretch overflow-hidden'>
+                {/* Tempo Slider — slim outer edge */}
+                <div className='w-12 flex-shrink-0 flex flex-col items-center justify-center py-4 z-10'>
                      <DJTempoSliderSelfSub
                         deck='A'
                         onChange={(v) => handleTempoChange('A', v)}
@@ -826,24 +552,24 @@ export const DJModeV2: React.FC = () => {
                      />
                 </div>
 
-                {/* Jog Wheel */}
-                <div className='pl-16 pr-4 w-full h-full flex items-center justify-center'>
+                {/* Jog Wheel — fills full remaining space */}
+                <div className='flex-1 min-w-0 h-full flex items-center justify-center'>
                     <DJErrorBoundary componentName='DJJogWheel-A'>
                         <DJJogWheel deck='A' size={-1} responsive />
                     </DJErrorBoundary>
                 </div>
             </div>
 
-            {/* Deck Footer: Transport */}
-            <div className='h-[60px] bg-[#161616] border-t border-[#222] flex items-center justify-center gap-4 shadow-[-inset_0_10px_20px_rgba(0,0,0,0.5)]'>
+            {/* Deck Footer: Transport — taller, more prominent (DJay Pro-style) */}
+            <div className='h-[76px] bg-[#161616] border-t border-[#222] flex items-center justify-center gap-5 shadow-[inset_0_8px_24px_rgba(0,0,0,0.6)]'>
                  <DJTransportButtons deck='A' />
             </div>
         </div>
 
         {/* === MIXER CENTER (Fixed Width) === */}
-        <div className='flex-shrink-0 flex flex-col border-x border-[#333] shadow-2xl z-20 relative' style={{ width: 'var(--dj-mixer-w)', backgroundColor: 'var(--dj-surface-1, #181818)' }}>
+        <div className='flex-shrink-0 flex flex-col border-x border-[#333] z-0 relative @container/mixer' style={{ width: 'var(--dj-mixer-w)', backgroundColor: 'var(--dj-surface-1, #181818)' }}>
              {/* Mixer Body */}
-             <div className='flex-1 flex w-full relative'>
+             <div className='flex-1 flex w-full relative min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar'>
                  {/* Channel A */}
                  <DJChannelStrip
                    deckId='A'
@@ -854,7 +580,7 @@ export const DJModeV2: React.FC = () => {
                  />
 
                  {/* Center Master Strip */}
-                 <div className='w-[90px] bg-[#131313] flex flex-col items-center py-3 border-x border-[#222]/50'>
+                 <div className='w-[64px] bg-[#131313] flex flex-col items-center py-3 border-x border-[#222]/50'>
                       <div className='text-[9px] text-[#444] font-bold mb-2 tracking-widest'>MASTER</div>
                       
                       {/* OUTPUT Section */}
@@ -875,17 +601,6 @@ export const DJModeV2: React.FC = () => {
                       {/* Separator */}
                       <div className='w-8 h-px bg-[#333] mb-3' />
 
-                      {/* MONITOR Section */}
-                      <div className='text-[7px] text-[#555] font-bold tracking-widest mb-1'>MONITOR</div>
-
-                      {/* Headphone Mix Knob */}
-                      <div className='mb-4 flex flex-col items-center'>
-                          <span className='text-[8px] text-[#666] mb-1 font-bold'>CUE MIX</span>
-                          <div className='scale-75 origin-center'>
-                            <DJHeadphoneMix width={60} />
-                          </div>
-                      </div>
-                      
                       {/* Master Volume */}
                       <div className='mb-2'>
                            <DJMasterKnob onChange={handleMasterVolumeChange} />
@@ -903,7 +618,7 @@ export const DJModeV2: React.FC = () => {
              </div>
 
              {/* Sync Mode + Crossfader Section */}
-             <div className='bg-[#1a1a1a] border-t border-[#333] flex flex-col items-center'>
+             <div className='bg-[#1a1a1a] border-t border-[#333] flex flex-col items-center flex-shrink-0'>
                  {/* Sync Mode Selector + Quantize */}
                  <div className='flex gap-1 py-2 items-center'>
                    {(['off', 'bpm', 'beat-phase'] as const).map(mode => (
@@ -962,6 +677,16 @@ export const DJModeV2: React.FC = () => {
                    ))}
                  </div>
 
+                 {/* Headphone Mix */}
+                 <div className='flex items-center justify-center py-1'>
+                   <div className='flex flex-col items-center'>
+                     <span className='text-[7px] text-[#555] font-bold tracking-widest mb-0.5'>CUE MIX</span>
+                     <div className='scale-75 origin-center'>
+                       <DJHeadphoneMix width={60} />
+                     </div>
+                   </div>
+                 </div>
+
                  {/* Crossfader */}
                  <div className='h-[50px] flex items-center justify-center px-8 relative w-full'>
                      <span className='absolute left-4 text-[10px] font-bold text-[#333]'>A</span>
@@ -974,8 +699,8 @@ export const DJModeV2: React.FC = () => {
                      />
                  </div>
                  
-                 {/* Sampler Pads */}
-                 <div className='px-2 pb-2'>
+                 {/* Sampler Pads — hidden at small mixer heights to prevent clipping */}
+                 <div className='px-2 pb-2 hidden @[min-height:500px]/mixer:block'>
                    <DJSamplerPads />
                  </div>
              </div>
@@ -986,21 +711,21 @@ export const DJModeV2: React.FC = () => {
             {/* Active Deck Indicator Bar */}
             {djActiveDeck === 'B' && <div className='absolute top-0 left-0 right-0 h-[2px] bg-purple-500 z-30' />}
             
-             {/* Deck Header: Track Info + Loops / Pads */}
+             {/* Deck Header: Track Info + Controls */}
              <div className='bg-[#161616] border-b border-[#222]'>
                   {/* Track Info Bar */}
-                  <div className='flex items-center justify-between px-4 py-1.5 border-b border-[#1a1a1a]'>
-                      <div className='flex items-center gap-2 flex-shrink-0'>
+                  <div className='flex items-center justify-between px-3 py-2 border-b border-[#1a1a1a]'>
+                      <div className='flex items-center gap-2.5 flex-shrink-0'>
                         <DeckHasTrack deck='B'>
                           <div className='flex items-center gap-1.5 font-mono'>
                             <DeckTimeDisplay deck='B' color='#737373' showRemaining />
-                            <span className='text-[8px] text-neutral-600'>/</span>
+                            <span className='text-[9px] text-neutral-600'>/</span>
                             <DeckTimeDisplay deck='B' color='#d8b4fe' />
                           </div>
                         </DeckHasTrack>
                         <DeckBpmBadge deck='B' />
                         {deckBKey && (
-                          <span className='text-[9px] font-bold text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded'>
+                          <span className='text-[10px] font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded'>
                             {deckBKey}
                           </span>
                         )}
@@ -1009,46 +734,52 @@ export const DJModeV2: React.FC = () => {
                       <div className='flex items-center gap-2 min-w-0 flex-1 justify-end'>
                         {deckBTrack ? (
                           <div className='min-w-0 text-right'>
-                            <div className='text-[11px] font-bold text-white truncate leading-tight'>
+                            <div className='text-[13px] font-bold text-white truncate leading-tight'>
                               {deckBTrack.title || 'Unknown'}
                             </div>
-                            <div className='text-[9px] text-neutral-400 truncate leading-tight'>
+                            <div className='text-[10px] text-neutral-400 truncate leading-tight'>
                               {deckBTrack.artist || 'Unknown Artist'}
                             </div>
                           </div>
                         ) : (
-                          <span className='text-[9px] text-neutral-600 italic'>No track loaded</span>
+                          <span className='text-[10px] text-neutral-600 italic'>No track loaded</span>
                         )}
-                        <span className='text-[9px] font-bold text-purple-400 uppercase tracking-wider flex-shrink-0'>DECK B</span>
+                        <span className='text-[10px] font-bold text-purple-400 uppercase tracking-wider flex-shrink-0'>DECK B</span>
                       </div>
                   </div>
-                  {/* Controls Row */}
-                  <div className='flex items-center justify-between px-4 py-1.5'>
-                      <div className='flex flex-col gap-0.5'>
-                          <span className='text-[8px] font-bold text-[#555] uppercase tracking-wider'>HOT CUES</span>
-                          <DJHotCuePad deck='B' />
-                      </div>
-                      <DJBeatJump deck='B' />
+                  {/* Hot Cues Row */}
+                  <div className='flex items-center gap-2 px-3 py-1.5 border-b border-[#1a1a1a] justify-end'>
+                      <DJHotCuePad deck='B' singleRow />
+                      <span className='text-[8px] font-bold text-[#555] uppercase tracking-wider flex-shrink-0 w-7 text-right'>CUES</span>
+                  </div>
+                  {/* Controls Row: Loop + Beat Jump + Grid */}
+                  <div className='flex items-center gap-0 px-3 py-1.5 justify-end'>
                       <DJBeatGridEdit deck='B' />
-                      <div className='flex flex-col gap-0.5 items-end'>
+                      <div className='w-px h-8 bg-[#2a2a2a] mx-2.5 flex-shrink-0' />
+                      <div className='flex flex-col gap-0.5 items-end flex-shrink-0'>
+                          <span className='text-[8px] font-bold text-[#555] uppercase tracking-wider'>BEAT JUMP</span>
+                          <DJBeatJump deck='B' compact />
+                      </div>
+                      <div className='w-px h-8 bg-[#2a2a2a] mx-2.5 flex-shrink-0' />
+                      <div className='flex flex-col gap-0.5 items-end flex-shrink-0'>
                           <span className='text-[8px] font-bold text-[#555] uppercase tracking-wider'>LOOP</span>
                           <DJLoopSection deck='B' />
                       </div>
                   </div>
             </div>
 
-            {/* Deck Jog Area */}
-            <div className='flex-1 relative bg-[#141414] flex items-center justify-center overflow-hidden'>
+            {/* Deck Jog Area — clean, no side rails (DJay Pro-style) */}
+            <div className='flex-1 relative bg-[#141414] flex items-stretch overflow-hidden'>
                 
-                {/* Jog Wheel */}
-                <div className='pr-16 pl-4 w-full h-full flex items-center justify-center'>
+                {/* Jog Wheel — fills full remaining space */}
+                <div className='flex-1 min-w-0 h-full flex items-center justify-center'>
                     <DJErrorBoundary componentName='DJJogWheel-B'>
                         <DJJogWheel deck='B' size={-1} responsive />
                     </DJErrorBoundary>
                 </div>
 
-                {/* Tempo Slider - Right Edge for Deck B */}
-                <div className='absolute right-4 top-4 bottom-4 w-12 z-10'>
+                {/* Tempo Slider — slim outer edge */}
+                <div className='w-12 flex-shrink-0 flex flex-col items-center justify-center py-4 z-10'>
                      <DJTempoSliderSelfSub
                         deck='B'
                         onChange={(v) => handleTempoChange('B', v)}
@@ -1059,8 +790,8 @@ export const DJModeV2: React.FC = () => {
                 </div>
             </div>
 
-            {/* Deck Footer: Transport */}
-            <div className='h-[60px] bg-[#161616] border-t border-[#222] flex items-center justify-center gap-4 shadow-[-inset_0_10px_20px_rgba(0,0,0,0.5)]'>
+            {/* Deck Footer: Transport — taller, more prominent (DJay Pro-style) */}
+            <div className='h-[76px] bg-[#161616] border-t border-[#222] flex items-center justify-center gap-5 shadow-[inset_0_8px_24px_rgba(0,0,0,0.6)]'>
                  <DJTransportButtons deck='B' />
             </div>
         </div>
@@ -1077,7 +808,13 @@ export const DJModeV2: React.FC = () => {
           const onMouseMove = (me: MouseEvent) => {
             if (!dragRef.current) return;
             const delta = dragRef.current.startY - me.clientY;
-            const newHeight = Math.max(100, Math.min(600, dragRef.current.startHeight + delta));
+            const baseMax = Math.floor(window.innerHeight * 0.42);
+            let maxH = baseMax;
+            if (djLayoutMode === 'fx') maxH = Math.min(180, baseMax);
+            else if (djLayoutMode === 'perf') maxH = Math.min(350, baseMax);
+            else maxH = Math.min(600, baseMax);
+            
+            const newHeight = Math.max(100, Math.min(maxH, dragRef.current.startHeight + delta));
             setLibraryHeight(newHeight);
             if (libraryCollapsed) setLibraryCollapsed(false);
           };

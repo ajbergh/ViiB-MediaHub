@@ -554,11 +554,16 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
                 
                 preloadAudio.addEventListener('canplaythrough', () => {
                     clearTimeout(timeout);
+                    // Release the Audio element to prevent memory leak
+                    preloadAudio.src = '';
+                    preloadAudio.removeAttribute('src');
                     resolve();
                 }, { once: true });
                 
                 preloadAudio.addEventListener('error', (e) => {
                     clearTimeout(timeout);
+                    preloadAudio.src = '';
+                    preloadAudio.removeAttribute('src');
                     reject(e);
                 }, { once: true });
             });

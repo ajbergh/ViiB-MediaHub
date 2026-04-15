@@ -28,7 +28,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon } from 'lucide-react';
-import { formatTime, generateGradient, cssUrl } from '../utils';
+import { formatTime, generateGradient } from '../utils';
 import { NowPlaying } from './NowPlaying';
 import { ContextMenuType } from '../types';
 import { Visualizer } from './Visualizer';
@@ -91,7 +91,7 @@ export const Player: React.FC = () => {
         <div className="flex items-center gap-2 md:gap-4 min-w-0">
             <div 
                 className="w-12 h-12 md:w-14 md:h-14 rounded overflow-hidden flex-shrink-0 shadow-lg cursor-pointer group relative"
-                style={{ background: currentSong.coverUrl ? cssUrl(currentSong.coverUrl) : generateGradient(currentSong.album) }}
+                style={{ background: !currentSong.coverUrl ? generateGradient(currentSong.album) : undefined }}
                 onClick={() => setNowPlayingOpen(true)}
                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
             >

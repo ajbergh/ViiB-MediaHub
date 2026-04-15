@@ -2452,6 +2452,34 @@ func (d *DB) SetSetting(key, value string) error {
 	return err
 }
 
+// SetSettingsBatch atomically saves multiple settings in a single transaction.
+func (d *DB) SetSettingsBatch(settings map[string]string) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	for key, value := range settings {
+		storeValue := value
+		if crypto.IsSensitiveKey(key) && value != "" {
+			encrypted, err := crypto.Encrypt(value)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
+			}
+			storeValue = encrypted
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO settings (key, value) VALUES (?, ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value
+		`, key, storeValue); err != nil {
+			return fmt.Errorf("failed to save setting %s: %w", key, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
 // AlbumMetadata operations
 
 // AlbumMetadata represents cached metadata for an album from Spotify

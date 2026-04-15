@@ -21,3 +21,6 @@ export {
   getGlowShadow,
   calculateVULevel 
 } from './useDJEffects';
+
+export { useDJShortcuts } from './useDJShortcuts';
+export type { UseDJShortcutsOptions } from './useDJShortcuts';
