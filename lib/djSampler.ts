@@ -28,6 +28,7 @@ class DJSamplerEngine {
   private sources: (AudioBufferSourceNode | null)[] = new Array(8).fill(null);
   private gains: (GainNode | null)[] = new Array(8).fill(null);
   private loadedUrls: (string | null)[] = new Array(8).fill(null);
+  private startedAt: (number | null)[] = new Array(8).fill(null);
 
   // ========================================================================
   // Initialization
@@ -125,12 +126,14 @@ class DJSamplerEngine {
     source.onended = () => {
       if (this.sources[padId] === source) {
         this.sources[padId] = null;
+        this.startedAt[padId] = null;
         store.setSamplerPadPlaying(padId, false);
       }
     };
     
     source.start(0);
     this.sources[padId] = source;
+    this.startedAt[padId] = ctx.currentTime;
     store.setSamplerPadPlaying(padId, true);
   }
 
@@ -150,6 +153,7 @@ class DJSamplerEngine {
       }
       source.disconnect();
       this.sources[padId] = null;
+      this.startedAt[padId] = null;
     }
   }
 
@@ -177,11 +181,27 @@ class DJSamplerEngine {
     return this.buffers[padId]?.duration ?? 0;
   }
 
+  getProgress(padId: number): number {
+    if (padId < 0 || padId >= 8 || !this.audioContext) return 0;
+    const source = this.sources[padId];
+    const buffer = this.buffers[padId];
+    const startedAt = this.startedAt[padId];
+    if (!source || !buffer || startedAt === null || buffer.duration <= 0) return 0;
+
+    const elapsed = Math.max(0, this.audioContext.currentTime - startedAt);
+    const pad = useStore.getState().djSampler[padId];
+    if (pad?.mode === 'loop') {
+      return (elapsed % buffer.duration) / buffer.duration;
+    }
+    return Math.max(0, Math.min(1, elapsed / buffer.duration));
+  }
+
   destroy(): void {
     for (let i = 0; i < 8; i++) {
       this.stopSource(i);
       this.buffers[i] = null;
       this.loadedUrls[i] = null;
+      this.startedAt[i] = null;
     }
     
     if (this.audioContext && this.audioContext.state !== 'closed') {

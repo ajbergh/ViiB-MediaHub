@@ -218,7 +218,7 @@ export const DJStereoVUMeter = memo(function DJStereoVUMeter({
   return (
     <div className="flex flex-col items-center">
       {label && (
-        <span className="text-[7px] text-[#777] font-bold mb-0.5 tracking-wider">{label}</span>
+        <span className="text-[10px] text-[#777] font-bold mb-0.5 tracking-wider">{label}</span>
       )}
       <div className="flex items-end" style={{ gap }}>
         <DJVUMeter

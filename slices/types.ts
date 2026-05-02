@@ -168,6 +168,7 @@ export interface LibrarySlice {
   isScanning: boolean;
   scanProgress: string;
   backendAvailable: boolean;
+  isLibraryInitializing: boolean;
   scanFolders: ScanFolder[];
   
   // Likes state

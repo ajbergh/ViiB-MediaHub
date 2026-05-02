@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react';
+import { Headphones } from 'lucide-react';
 import { useStore } from '../../../store';
 
 interface DJHeadphoneMixProps {
@@ -23,8 +24,10 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
 }) => {
   const mix = useStore(state => state.djMixer.headphoneMix);
   const volume = useStore(state => state.djMixer.headphoneVolume);
+  const masterCueEnabled = useStore(state => state.djMixer.masterCueEnabled);
   const setHeadphoneMix = useStore(state => state.setHeadphoneMix);
   const setHeadphoneVolume = useStore(state => state.setHeadphoneVolume);
+  const toggleMasterCue = useStore(state => state.toggleMasterCue);
   const sliderRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -37,6 +40,10 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
     const clampedVolume = Math.max(0, Math.min(1, newVolume));
     setHeadphoneVolume(clampedVolume);
   }, [setHeadphoneVolume]);
+
+  const handleMasterCueToggle = useCallback(() => {
+    toggleMasterCue();
+  }, [toggleMasterCue]);
 
   // Handle slider drag
   useEffect(() => {
@@ -85,9 +92,28 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
 
   return (
     <div className={'flex flex-col items-center gap-1 ' + className}>
-      {/* Label */}
-      <div className="text-[9px] uppercase text-neutral-400 font-bold tracking-wider">
-        Headphones
+      {/* Label + master cue toggle */}
+      <div className="flex items-center gap-2">
+        <div className="text-[10px] uppercase text-neutral-400 font-bold tracking-wider">
+          Headphones
+        </div>
+        <button
+          type="button"
+          onClick={handleMasterCueToggle}
+          aria-pressed={masterCueEnabled}
+          aria-label={`Master cue ${masterCueEnabled ? 'enabled' : 'disabled'}`}
+          title="Master Cue - route master mix to headphones"
+          className={`
+            h-5 px-1.5 rounded border flex items-center gap-1 text-[9px] font-bold
+            transition-all duration-100
+            ${masterCueEnabled
+              ? 'bg-cyan-600 text-white border-cyan-400 shadow shadow-cyan-500/30'
+              : 'bg-[#222] text-neutral-500 border-[#333] hover:bg-[#2a2a2a] hover:text-cyan-300'}
+          `}
+        >
+          <Headphones size={10} aria-hidden />
+          <span>MST</span>
+        </button>
       </div>
       
       {/* Mix Slider */}
@@ -99,18 +125,9 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
         onDoubleClick={handleDoubleClick}
         title="Headphone Mix - Cue ↔ Master (double-click to center)"
       >
-        {/* Track */}
-        <div className="absolute inset-y-0 left-1 right-1 flex items-center">
-          {/* Left label */}
-          <span className="text-[7px] text-orange-400 font-bold">CUE</span>
-          
-          {/* Center line */}
-          <div className="flex-1 flex justify-center">
-            <div className="w-px h-3 bg-[#444]" />
-          </div>
-          
-          {/* Right label */}
-          <span className="text-[7px] text-cyan-400 font-bold">MST</span>
+        {/* Track — center line only, labels moved outside */}
+        <div className="absolute inset-y-0 left-1 right-1 flex items-center justify-center">
+          <div className="w-px h-3 bg-[#444]" />
         </div>
         
         {/* Thumb */}
@@ -123,14 +140,16 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
         />
       </div>
 
-      {/* Mix Value */}
-      <div className="text-[10px] font-mono text-neutral-300">
-        {getMixLabel()}
+      {/* CUE / value / MST row */}
+      <div className="flex justify-between items-center" style={{ width }}>
+        <span className="text-[9px] text-orange-400 font-bold">CUE</span>
+        <div className="text-[10px] font-mono text-neutral-300">{getMixLabel()}</div>
+        <span className="text-[9px] text-cyan-400 font-bold">MST</span>
       </div>
 
       {/* Volume Slider */}
       <div className="flex items-center gap-1 mt-1">
-        <span className="text-[7px] text-neutral-500">VOL</span>
+        <span className="text-[10px] text-neutral-500">VOL</span>
         <input
           type="range"
           min="0"
@@ -141,7 +160,7 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
           className="w-16 h-1 bg-[#333] rounded-full appearance-none cursor-pointer accent-orange-500"
           style={{ accentColor: '#f97316' }}
         />
-        <span className="text-[8px] font-mono text-neutral-400 w-6 text-right">
+        <span className="text-[10px] font-mono text-neutral-400 w-6 text-right">
           {Math.round(volume * 100)}
         </span>
       </div>

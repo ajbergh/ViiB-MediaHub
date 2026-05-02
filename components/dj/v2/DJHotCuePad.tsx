@@ -92,7 +92,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
   }, []);
 
   return (
-    <div className={singleRow ? 'flex items-center gap-0.5' : 'grid grid-cols-4 gap-0.5'}>
+    <div className={singleRow ? 'flex items-center gap-1' : 'grid grid-cols-4 gap-1'}>
       {slots.map(slot => {
         const hotCue = hotCues.find(hc => hc.slot === slot);
         const isActive = !!hotCue;
@@ -101,7 +101,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
         const color = hotCue?.color || HOT_CUE_COLORS[slot - 1] || '#22c55e';
         const displayNum = slot;
         
-        const buttonSize = singleRow ? 'w-8 h-7 text-[10px]' : compact ? 'w-6 h-6 text-[9px]' : 'w-10 h-9 text-[11px]';
+        const buttonSize = singleRow ? 'w-12 h-11 text-[12px]' : compact ? 'w-8 h-8 text-[10px]' : 'w-14 h-12 text-[13px]';
         
         return (
           <button

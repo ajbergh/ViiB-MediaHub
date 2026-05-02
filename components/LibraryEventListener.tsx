@@ -228,29 +228,28 @@ const LibraryEventListener = () => {
 
   // Track if this is initial connection vs reconnection
   const isReconnectRef = useRef(false);
+  // Count consecutive reconnects to surface persistent failures
+  const reconnectCountRef = useRef(0);
 
   useEffect(() => {
     // Wait for backend to be available before connecting
     if (!backendAvailable) {
-      console.log('📡 LibraryEventListener: Waiting for backend...');
       return;
     }
 
     // Don't reconnect if already connected
     if (eventSourceRef.current && eventSourceRef.current.readyState !== EventSource.CLOSED) {
-      console.log('📡 LibraryEventListener: Already connected, skipping');
       return;
     }
-
-    console.log('📡 Connecting to library events SSE...');
     
     const connect = () => {
       const eventSource = new EventSource('/api/library/events');
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
-        console.log('✅ Library events SSE connected', isReconnectRef.current ? '(reconnect)' : '(initial)');
-        
+        // Reset reconnect counter on successful connection
+        reconnectCountRef.current = 0;
+
         // Always check scan status when SSE connects (even on initial connect)
         // This handles the case where the scan started before SSE connected
         const checkScanStatus = async () => {
@@ -259,11 +258,8 @@ const LibraryEventListener = () => {
             const status = await getScanStatus();
             const { setScanning, setScanProgress, refreshLibrary, isScanning } = storeRef.current;
             
-            console.log('📡 SSE connected - checking scan status:', { scanning: status.scanning, progress: status.progress, uiIsScanning: isScanning });
-            
             if (status.scanning) {
               // Scan is in progress - make sure UI reflects this
-              console.log('🔍 Scan in progress, updating UI state...');
               setScanning(true);
               if (status.progress) {
                 setScanProgress(status.progress);
@@ -271,7 +267,6 @@ const LibraryEventListener = () => {
             } else if (isReconnectRef.current) {
               // Only refresh on reconnect if not initial connection
               // (initial connection already loaded library in initLibrary)
-              console.log('🔍 No scan in progress (reconnect), refreshing library...');
               setScanning(false);
               setScanProgress('');
               refreshLibrary();
@@ -288,19 +283,21 @@ const LibraryEventListener = () => {
 
       eventSource.onmessage = (event) => handleEventRef.current(event);
 
-      eventSource.onerror = (e) => {
+      eventSource.onerror = () => {
         // Only reconnect if the connection is actually closed
         // SSE can fire error events transiently without the connection being lost
         if (eventSource.readyState === EventSource.CLOSED) {
-          console.warn('Library events SSE connection closed, reconnecting in 3s...');
+          reconnectCountRef.current += 1;
+          // Only warn after repeated failures to avoid console spam on normal reconnects
+          if (reconnectCountRef.current >= 3) {
+            console.warn(`Library events SSE: ${reconnectCountRef.current} consecutive reconnects — backend may be unavailable`);
+          }
           eventSource.close();
           eventSourceRef.current = null;
           // Reconnect after 3 seconds
           reconnectTimeoutRef.current = setTimeout(connect, 3000);
-        } else if (eventSource.readyState === EventSource.CONNECTING) {
-          console.log('📡 SSE is reconnecting...');
         }
-        // If OPEN, ignore the error - connection is still valid
+        // If CONNECTING or OPEN, ignore — connection is recovering or still valid
       };
     };
 
@@ -311,30 +308,24 @@ const LibraryEventListener = () => {
     const scanStatusInterval = setInterval(async () => {
       const { isScanning, setScanning, setScanProgress, refreshLibrary } = storeRef.current;
       
-      console.log('⏰ 5-second scan status check, isScanning=', isScanning);
-      
       // Only check if we think a scan is in progress
       if (!isScanning) return;
       
       try {
         const { getScanStatus } = await import('../services/backendService').then(m => m.backendService);
         const status = await getScanStatus();
-        console.log('⏰ 5-second poll result:', status);
         
         if (!status.scanning) {
-          console.log('🔍 Scan status poll: Backend says scan completed, resetting UI');
           setScanning(false);
           setScanProgress('');
           refreshLibrary();
         }
-      } catch (e) {
-        console.error('⏰ 5-second poll error:', e);
-        // Silently ignore - we'll try again
+      } catch {
+        // Silently ignore - we'll try again on the next interval
       }
     }, 5000); // Check every 5 seconds
 
     return () => {
-      console.log('🔌 Closing library events SSE connection');
       clearInterval(scanStatusInterval);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);

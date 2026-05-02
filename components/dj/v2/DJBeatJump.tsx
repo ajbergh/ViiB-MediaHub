@@ -68,7 +68,7 @@ export const DJBeatJump = memo(function DJBeatJump({ deck, compact }: DJBeatJump
             onClick={() => handleJump(-amt)}
             disabled={disabled}
             className={`
-              w-8 h-7 rounded text-[9px] font-bold flex items-center justify-center
+              w-11 h-11 rounded text-[11px] font-bold flex items-center justify-center
               transition-all duration-75 border
               ${disabled
                 ? 'bg-[#1a1a1a] text-neutral-700 border-[#222] cursor-not-allowed'
@@ -86,7 +86,7 @@ export const DJBeatJump = memo(function DJBeatJump({ deck, compact }: DJBeatJump
             onClick={() => handleJump(amt)}
             disabled={disabled}
             className={`
-              w-8 h-7 rounded text-[9px] font-bold flex items-center justify-center
+              w-11 h-11 rounded text-[11px] font-bold flex items-center justify-center
               transition-all duration-75 border
               ${disabled
                 ? 'bg-[#1a1a1a] text-neutral-700 border-[#222] cursor-not-allowed'
@@ -104,7 +104,7 @@ export const DJBeatJump = memo(function DJBeatJump({ deck, compact }: DJBeatJump
 
   return (
     <div className="flex flex-col gap-1 w-full px-2">
-      <span className="text-[9px] font-bold text-[#555] uppercase tracking-wider text-center">BEAT JUMP</span>
+      <span className="text-[10px] font-bold text-[#555] uppercase tracking-wider text-center">BEAT JUMP</span>
       <div className="grid grid-cols-4 gap-1">
         {/* Backward jumps */}
         {[...BEAT_AMOUNTS].reverse().map(amt => (
@@ -113,7 +113,7 @@ export const DJBeatJump = memo(function DJBeatJump({ deck, compact }: DJBeatJump
             onClick={() => handleJump(-amt)}
             disabled={disabled}
             className={`
-              h-7 rounded text-[9px] font-bold flex items-center justify-center
+              h-8 rounded text-[10px] font-bold flex items-center justify-center
               transition-all duration-75 border
               ${disabled
                 ? 'bg-[#1a1a1a] text-neutral-700 border-[#222] cursor-not-allowed'
@@ -133,7 +133,7 @@ export const DJBeatJump = memo(function DJBeatJump({ deck, compact }: DJBeatJump
             onClick={() => handleJump(amt)}
             disabled={disabled}
             className={`
-              h-7 rounded text-[9px] font-bold flex items-center justify-center
+              h-8 rounded text-[10px] font-bold flex items-center justify-center
               transition-all duration-75 border
               ${disabled
                 ? 'bg-[#1a1a1a] text-neutral-700 border-[#222] cursor-not-allowed'

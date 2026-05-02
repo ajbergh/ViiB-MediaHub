@@ -54,30 +54,33 @@ export const DJLoopSection: React.FC<DJLoopSectionProps> = ({ deck }) => {
       : '---';
 
   return (
-    <div className="flex flex-col items-center gap-1 w-full px-2">
-      <div className="flex items-center justify-between w-full gap-1">
+    <div className="flex flex-col items-center gap-1 px-2 flex-shrink-0">
+      <div className="flex items-center gap-1">
         {/* Halve button */}
         <button
           onClick={() => halveLoop(deck)}
           disabled={!track || !loop.enabled}
+          aria-label="Halve loop"
+          title="Halve loop"
           className={`
-            flex-1 h-8 rounded flex items-center justify-center
+            w-11 h-11 rounded flex items-center justify-center flex-shrink-0
             transition-all duration-100
             ${track && loop.enabled
               ? 'bg-[#2a2a2a] hover:bg-[#3a3a3a] text-neutral-400'
               : 'bg-[#222] text-neutral-700 cursor-not-allowed'}
           `}
-          title="Halve loop"
         >
-          <ChevronLeft size={16} />
+          <ChevronLeft size={20} aria-hidden />
         </button>
-        
+
         {/* Loop size display / toggle */}
         <button
           onClick={() => toggleLoop(deck)}
           disabled={!track}
+          aria-pressed={loop.enabled}
+          title="Toggle loop"
           className={`
-            w-14 h-8 rounded text-[12px] font-bold flex-shrink-0
+            w-16 h-11 rounded text-[13px] font-bold flex-shrink-0
             transition-all duration-100
             ${!track
               ? 'bg-[#222] text-neutral-700 cursor-not-allowed'
@@ -88,25 +91,25 @@ export const DJLoopSection: React.FC<DJLoopSectionProps> = ({ deck }) => {
           style={{
             boxShadow: loop.enabled ? '0 0 8px rgba(34, 197, 94, 0.4)' : undefined,
           }}
-          title="Toggle loop"
         >
           {displaySize}
         </button>
-        
+
         {/* Double button */}
         <button
           onClick={() => doubleLoop(deck)}
           disabled={!track || !loop.enabled}
+          aria-label="Double loop"
+          title="Double loop"
           className={`
-            flex-1 h-8 rounded flex items-center justify-center
+            w-11 h-11 rounded flex items-center justify-center flex-shrink-0
             transition-all duration-100
             ${track && loop.enabled
               ? 'bg-[#2a2a2a] hover:bg-[#3a3a3a] text-neutral-400'
               : 'bg-[#222] text-neutral-700 cursor-not-allowed'}
           `}
-          title="Double loop"
         >
-          <ChevronRight size={16} />
+          <ChevronRight size={20} aria-hidden />
         </button>
       </div>
     </div>

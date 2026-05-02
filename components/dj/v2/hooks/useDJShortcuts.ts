@@ -27,6 +27,7 @@ export interface UseDJShortcutsOptions {
   setHotCue: (deck: DeckId, slot: number, position: number, label?: string, color?: string) => void;
   triggerHotCue: (deck: DeckId, slot: number) => void;
   handleSync: (deck: DeckId) => void;
+  nudgePosition: (deck: DeckId, offsetMs: number) => void;
   setShowShortcuts: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -62,6 +63,7 @@ export function useDJShortcuts(options: UseDJShortcutsOptions): void {
         setHotCue,
         triggerHotCue,
         handleSync,
+        nudgePosition,
         setShowShortcuts,
       } = callbacksRef.current;
 
@@ -108,10 +110,16 @@ export function useDJShortcuts(options: UseDJShortcutsOptions): void {
         case 'e':        handleSync('A'); break;
         case '[':        handleSync('B'); break;
         case 'arrowleft':
-          if (e.shiftKey) setCrossfader(Math.max(-1, state.djMixer.crossfader - 0.1));
+          if (e.shiftKey) {
+            e.preventDefault();
+            nudgePosition(activeDeck, e.altKey ? -5 : -20);
+          }
           break;
         case 'arrowright':
-          if (e.shiftKey) setCrossfader(Math.min(1, state.djMixer.crossfader + 0.1));
+          if (e.shiftKey) {
+            e.preventDefault();
+            nudgePosition(activeDeck, e.altKey ? 5 : 20);
+          }
           break;
         case 'f11':
           e.preventDefault();

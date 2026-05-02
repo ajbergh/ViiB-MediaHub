@@ -20,10 +20,12 @@ import React from 'react';
 import { useStore } from '../store';
 import { EQ_FREQUENCIES, EQ_PRESETS } from '../utils';
 import { X, Power, ChevronDown, RotateCcw } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export const EqualizerPanel: React.FC = () => {
   const { isEqOpen, toggleEqPanel, audioSettings, setEqBand, setEqEnabled, setEqPreset } = useStore();
-  
+  const dialogRef = useFocusTrap<HTMLDivElement>(isEqOpen, toggleEqPanel);
+
   if (!isEqOpen) return null;
 
   const handleReset = () => {
@@ -31,13 +33,24 @@ export const EqualizerPanel: React.FC = () => {
   };
 
   return (
-        <div className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none">
-        <div className="w-full max-w-4xl bg-surface-1 border border-surface-border rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
+        <div
+          className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none"
+          onClick={toggleEqPanel}
+        >
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="equalizer-dialog-title"
+          tabIndex={-1}
+          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-4xl bg-surface-1 border border-surface-border rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh] outline-none"
+        >
             
             {/* Header */}
             <div className="h-16 border-b border-surface-3 bg-surface-2 px-6 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-6">
-                    <h2 className="text-lg font-bold text-text-main tracking-wide">Equalizer</h2>
+                    <h2 id="equalizer-dialog-title" className="text-lg font-bold text-text-main tracking-wide">Equalizer</h2>
                     
                     {/* Toggle Switch */}
                     <button 
@@ -61,11 +74,12 @@ export const EqualizerPanel: React.FC = () => {
                     >
                         <RotateCcw size={18} />
                     </button>
-                    <button 
-                        onClick={toggleEqPanel} 
+                    <button
+                        onClick={toggleEqPanel}
+                        aria-label="Close equalizer"
                         className="p-2 text-text-subtle hover:text-text-main transition-colors rounded-full hover:bg-surface-3"
                     >
-                        <X size={20} />
+                        <X size={20} aria-hidden="true" />
                     </button>
                 </div>
             </div>
@@ -147,8 +161,8 @@ export const EqualizerPanel: React.FC = () => {
                                     </div>
                                     
                                     {/* Active Fill Line */}
-                                    <div 
-                                        className={`absolute w-1 rounded-full transition-colors duration-150 pointer-events-none ${audioSettings.eqEnabled ? 'bg-brand/50' : 'bg-surface-border/30'}`}
+                                    <div
+                                        className={`absolute w-1 rounded-full transition-colors duration-150 pointer-events-none ${audioSettings.eqEnabled ? 'bg-brand/50' : 'bg-surface-slider/70'}`}
                                         style={{
                                             height: `${Math.abs(gain) / 12 * 50}%`,
                                             top: gain > 0 ? '50%' : undefined,
@@ -160,9 +174,9 @@ export const EqualizerPanel: React.FC = () => {
                                     {/* Custom Thumb Visual (Positioned by JS) */}
                                     <div 
                                         className={`pointer-events-none absolute w-4 h-4 rounded-full border-2 shadow-lg transition-all duration-75 z-20 ${
-                                            audioSettings.eqEnabled 
-                                                ? 'bg-text-main border-brand group-hover:scale-125' 
-                                                : 'bg-surface-slider border-surface-border'
+                                            audioSettings.eqEnabled
+                                                ? 'bg-text-main border-brand group-hover:scale-125'
+                                                : 'bg-text-secondary border-surface-slider'
                                         }`}
                                         style={{
                                             // Map -12..12 to 100%..0% height

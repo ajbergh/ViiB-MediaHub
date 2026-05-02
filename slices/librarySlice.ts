@@ -46,6 +46,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   isScanning: false,
   scanProgress: '',
   backendAvailable: false,
+  isLibraryInitializing: true,
   scanFolders: [],
   likedSongIds: new Set(),
   likedAlbumKeys: new Set(),
@@ -136,6 +137,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               console.error("Failed to initialize library from backend", e);
               // Reset scanning state on error
               set({ isScanning: false, scanProgress: '' });
+          } finally {
+              set({ isLibraryInitializing: false });
           }
       } else {
           // Fallback: Load from IndexedDB (browser-only mode)
@@ -156,6 +159,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               set({ songs, playlists, smartMixes: mixes });
           } catch (e) {
               console.error("Failed to initialize library from IndexedDB", e);
+          } finally {
+              set({ isLibraryInitializing: false });
           }
       }
   },

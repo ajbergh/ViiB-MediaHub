@@ -126,7 +126,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-neutral-200">🎹 MIDI Controller Mapping</span>
             {initialized && (
-              <span className="text-[9px] bg-green-600/30 text-green-400 px-1.5 py-0.5 rounded">
+              <span className="text-[10px] bg-green-600/30 text-green-400 px-1.5 py-0.5 rounded">
                 {devices.filter(d => d.connected).length} device(s)
               </span>
             )}
@@ -156,7 +156,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
             <>
               {/* Device list */}
               <div className="px-4 py-2 bg-[#161616] border-b border-[#2a2a2a]">
-                <div className="text-[9px] text-neutral-500 uppercase tracking-wider mb-1">Connected Devices</div>
+                <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1">Connected Devices</div>
                 {devices.length === 0 ? (
                   <div className="text-[10px] text-neutral-600">No MIDI devices detected</div>
                 ) : (
@@ -188,7 +188,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
                       Move a control or press a button on your MIDI controller for: <strong>{learningAction}</strong>
                     </div>
                     {lastMessage && (
-                      <div className="text-[9px] text-neutral-500 mt-1">
+                      <div className="text-[10px] text-neutral-500 mt-1">
                         Last: {lastMessage.deviceName} Ch{lastMessage.channel + 1} {lastMessage.type} #{lastMessage.note} vel={lastMessage.velocity}
                       </div>
                     )}
@@ -225,7 +225,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
                 <div className="flex-1 overflow-y-auto">
                   <table className="w-full">
                     <thead className="sticky top-0 bg-[#1a1a1a]">
-                      <tr className="text-[9px] text-neutral-500 uppercase tracking-wider">
+                      <tr className="text-[10px] text-neutral-500 uppercase tracking-wider">
                         <th className="text-left px-3 py-2">Action</th>
                         <th className="text-left px-3 py-2">Mapping</th>
                         <th className="text-center px-3 py-2 w-20">Mode</th>
@@ -249,7 +249,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
                             </td>
                             <td className="px-3 py-1.5 text-center">
                               {mapping && (
-                                <span className="text-[9px] text-neutral-500 bg-neutral-800 px-1 py-0.5 rounded">
+                                <span className="text-[10px] text-neutral-500 bg-neutral-800 px-1 py-0.5 rounded">
                                   {mapping.valueMode}
                                 </span>
                               )}
@@ -259,7 +259,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
                                 <button
                                   onClick={() => handleStartLearn(action)}
                                   disabled={learning}
-                                  className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+                                  className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
                                     learningAction === action
                                       ? 'bg-yellow-600/30 text-yellow-400 animate-pulse'
                                       : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
@@ -270,7 +270,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
                                 {mapping && (
                                   <button
                                     onClick={() => handleRemoveMapping(mapping.id)}
-                                    className="text-[9px] px-1 py-0.5 rounded bg-red-900/20 text-red-400/70 hover:bg-red-900/40 hover:text-red-300"
+                                    className="text-[10px] px-1 py-0.5 rounded bg-red-900/20 text-red-400/70 hover:bg-red-900/40 hover:text-red-300"
                                   >
                                     ×
                                   </button>
@@ -291,12 +291,12 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
         {/* Footer */}
         {initialized && (
           <div className="flex items-center justify-between px-4 py-2 border-t border-[#333]">
-            <span className="text-[9px] text-neutral-600">
+            <span className="text-[10px] text-neutral-600">
               {mappings.length} mapping(s) configured
             </span>
             <button
               onClick={handleClearAll}
-              className="text-[9px] text-red-400/60 hover:text-red-400 transition-colors"
+              className="text-[10px] text-red-400/60 hover:text-red-400 transition-colors"
             >
               Clear All Mappings
             </button>
@@ -309,3 +309,5 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
 DJMidiMapping.displayName = 'DJMidiMapping';
 
 export default DJMidiMapping;
+
+

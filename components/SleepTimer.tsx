@@ -17,6 +17,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Moon, Clock, Music, Timer, Plus, Minus } from 'lucide-react';
 import { useStore } from '../store';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface SleepTimerProps {
     isOpen: boolean;
@@ -232,6 +233,7 @@ export const SleepTimer: React.FC<SleepTimerProps & {
     const [customMinutes, setCustomMinutes] = useState(30);
     const [songCount, setSongCount] = useState(3);
     const [activeTab, setActiveTab] = useState<'time' | 'songs'>('time');
+    const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
 
     if (!isOpen) return null;
 
@@ -241,19 +243,31 @@ export const SleepTimer: React.FC<SleepTimerProps & {
     const presetTimes = [15, 30, 45, 60, 90, 120];
 
     return (
-        <div className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none">
-            <div className="w-full max-w-md bg-surface-1 border border-surface-border rounded-2xl shadow-2xl overflow-hidden">
+        <div
+            className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none"
+            onClick={onClose}
+        >
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="sleep-timer-dialog-title"
+                tabIndex={-1}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-md bg-surface-1 border border-surface-border rounded-2xl shadow-2xl overflow-hidden outline-none"
+            >
                 {/* Header */}
                 <div className="h-14 border-b border-surface-3 bg-surface-2 px-5 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <Moon size={20} className="text-brand" />
-                        <h2 className="text-lg font-bold text-text-main">Sleep Timer</h2>
+                        <Moon size={20} aria-hidden="true" className="text-brand" />
+                        <h2 id="sleep-timer-dialog-title" className="text-lg font-bold text-text-main">Sleep Timer</h2>
                     </div>
-                    <button 
+                    <button
                         onClick={onClose}
+                        aria-label="Close sleep timer"
                         className="p-2 text-text-subtle hover:text-text-main transition-colors rounded-full hover:bg-surface-3"
                     >
-                        <X size={20} />
+                        <X size={20} aria-hidden="true" />
                     </button>
                 </div>
 

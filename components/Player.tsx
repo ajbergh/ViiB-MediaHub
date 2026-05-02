@@ -256,22 +256,25 @@ export const Player: React.FC = () => {
                 )}
             </div>
 
-            <Button 
+            <Button
                 onClick={() => setQueueOpen(!isQueueOpen)}
                 title="Queue"
+                aria-label={`Queue, ${queue.length} ${queue.length === 1 ? 'track' : 'tracks'}`}
+                aria-pressed={isQueueOpen}
+                aria-expanded={isQueueOpen}
                 variant="ghost"
                 className={`relative rounded-full p-2 ${isQueueOpen ? 'text-accent-green bg-surface-2/60' : ''}`}
             >
-                <ListMusic size={20} />
+                <ListMusic size={20} aria-hidden="true" />
                 {queue.length > 0 && (
-                    <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-brand text-surface-0 text-[10px] leading-none font-bold rounded-full flex items-center justify-center shadow-sm border border-surface-0">
+                    <div aria-hidden="true" className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-brand text-surface-0 text-[10px] leading-none font-bold rounded-full flex items-center justify-center shadow-sm border border-surface-0">
                         {queue.length}
                     </div>
                 )}
             </Button>
 
             <div className="flex items-center gap-2 w-32 group">
-                <Volume2 size={20} className="text-text-secondary group-hover:text-text-main" />
+                <Volume2 size={20} aria-hidden="true" className="text-text-secondary group-hover:text-text-main" />
                 <input
                     type="range"
                     min="0"
@@ -279,7 +282,9 @@ export const Player: React.FC = () => {
                     step="0.05"
                     value={volume}
                     onChange={(e) => setVolume(parseFloat(e.target.value))}
-                    className="w-full h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Volume"
+                    aria-valuetext={`${Math.round(volume * 100)} percent`}
+                    className="w-full h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main opacity-60 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                 />
             </div>
         </div>

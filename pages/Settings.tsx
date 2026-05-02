@@ -1538,9 +1538,15 @@ export const Settings: React.FC = () => {
             </div>
         </div>
 
-        <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg mb-4">
+        {/* Danger Zone */}
+        <div className="mt-6 rounded-lg border border-error/30 bg-error/5 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle size={16} className="text-error flex-shrink-0" />
+            <h3 className="text-sm font-bold text-error uppercase tracking-wider">Danger Zone</h3>
+          </div>
+          <div className="flex items-center justify-between">
             <div>
-                <h3 className="text-sm text-text-secondary mb-1">Database & Cache</h3>
+                <h4 className="text-sm text-text-secondary mb-1">Database &amp; Cache</h4>
                 <p className="text-xs text-text-subtle">Clear local database to resolve issues.</p>
             </div>
             <Button
@@ -1551,6 +1557,7 @@ export const Settings: React.FC = () => {
             >
                 Reset Library
             </Button>
+          </div>
         </div>
 
         <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg mb-4">

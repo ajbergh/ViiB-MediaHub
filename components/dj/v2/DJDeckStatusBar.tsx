@@ -82,9 +82,9 @@ export const DJDeckStatusBar: React.FC<DJDeckStatusBarProps> = ({ deck }) => {
             key={toggle.key}
             onClick={toggle.onClick}
             className={`
-              px-1.5 py-0.5 rounded border text-[8px] font-bold uppercase tracking-wider
+              px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider
               transition-all duration-100 flex items-center gap-0.5
-              min-w-[32px] min-h-[22px] justify-center
+              min-w-[32px] min-h-[24px] justify-center
               ${toggle.active
                 ? `${colors.activeBg} ${colors.activeText} ${colors.activeBorder} font-extrabold`
                 : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400 hover:bg-[#2a2a2a]'}

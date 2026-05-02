@@ -202,6 +202,7 @@ func IsValidSettingKey(key string) bool {
 		"lastfm_session_key":       true,
 		"lastfm_last_sync":         true,
 		"enrichment_source":        true,
+		"audio_settings":           true,
 	}
 	return allowedKeys[key]
 }

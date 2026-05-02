@@ -15,7 +15,7 @@ export const Page: React.FC<PageProps> = ({
   return (
     <div
       className={cn(
-        'p-8 h-full',
+        'p-4 sm:p-6 lg:p-8 h-full',
         withPlayerPadding && 'pb-32',
         withFadeIn && 'animate-fade-in',
         className
@@ -67,5 +67,5 @@ export interface ListHeaderProps extends React.HTMLAttributes<HTMLDivElement> {}
  * to keep consistent padding without repeating one-off classes.
  */
 export const ListHeader: React.FC<ListHeaderProps> = ({ className, ...rest }) => {
-  return <div className={cn('p-8 pb-0', className)} {...rest} />;
+  return <div className={cn('p-4 sm:p-6 lg:p-8 pb-0', className)} {...rest} />;
 };

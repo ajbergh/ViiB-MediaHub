@@ -100,14 +100,14 @@ const LikedHeader: React.FC<{ context?: LikedContext }> = ({ context }) => {
             </div>
 
             {/* Table Header */}
-            <div className="grid grid-cols-[50px_4fr_3fr_3fr_60px_40px_50px] gap-4 px-4 py-2 text-text-secondary text-xs uppercase tracking-wider font-medium border-b border-surface-3 mb-2">
+            <div className="grid grid-cols-[44px_1fr_52px_36px] md:grid-cols-[50px_4fr_3fr_3fr_60px_40px_50px] gap-2 md:gap-4 px-4 py-2 text-text-secondary text-xs uppercase tracking-wider font-medium border-b border-surface-3 mb-2">
                 <div className="text-center">#</div>
                 <div>Title</div>
-                <div>Album</div>
-                <div>Artist</div>
+                <div className="hidden md:block">Album</div>
+                <div className="hidden md:block">Artist</div>
                 <div className="text-right pr-2">Duration</div>
                 <div></div>
-                <div></div>
+                <div className="hidden md:block"></div>
             </div>
         </ListHeader>
     );
@@ -202,9 +202,9 @@ export const LikedSongs: React.FC = () => {
                     const displayCover = song.coverUrl || albumCovers[song.album];
 
                     return (
-                        <div className="bg-surface-1 px-8">
+                        <div className="bg-surface-1 px-2 sm:px-4 md:px-8">
                             <div 
-                                className={`grid grid-cols-[50px_4fr_3fr_3fr_60px_40px_50px] gap-4 px-4 py-3 items-center hover:bg-surface-hover group transition-colors cursor-pointer border-b border-transparent hover:border-surface-highlight ${isCurrent ? 'bg-surface-hover' : 'bg-surface-1'}`}
+                                className={`grid grid-cols-[44px_1fr_52px_36px] md:grid-cols-[50px_4fr_3fr_3fr_60px_40px_50px] gap-2 md:gap-4 px-4 py-3 items-center hover:bg-surface-hover group transition-colors cursor-pointer border-b border-transparent hover:border-surface-highlight ${isCurrent ? 'bg-surface-hover' : 'bg-surface-1'}`}
                                 onClick={() => playSong(song, likedSongs)}
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                             >
@@ -222,17 +222,18 @@ export const LikedSongs: React.FC = () => {
                                     </div>
                                     <div className="flex flex-col truncate">
                                         <span className={`font-medium truncate ${isCurrent ? 'text-brand' : 'text-text-main'}`}>{song.title}</span>
+                                        <span className="md:hidden text-xs text-text-subtle truncate mt-0.5">{song.artist}</span>
                                     </div>
                                 </div>
-                                <div className="text-text-secondary text-sm truncate">{song.album}</div>
-                                <div className="text-text-secondary text-sm truncate">{song.artist}</div>
+                                <div className="hidden md:block text-text-secondary text-sm truncate">{song.album}</div>
+                                <div className="hidden md:block text-text-secondary text-sm truncate">{song.artist}</div>
                                 <div className="text-text-secondary text-sm font-mono text-right pr-2">{formatTime(song.duration)}</div>
                                 
                                 <div className="flex justify-center">
                                     <LikeButton songId={song.id} size={18} />
                                 </div>
                                 
-                                <div className="flex justify-center relative">
+                                <div className="hidden md:flex justify-center relative">
                                     <button 
                                         onClick={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                                         className={`text-text-subtle hover:text-text-main transition-opacity opacity-0 group-hover:opacity-100`}

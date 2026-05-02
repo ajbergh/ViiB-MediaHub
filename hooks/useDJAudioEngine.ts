@@ -15,10 +15,31 @@ import { generateClientWaveform } from '../lib/clientWaveform';
 import { detectBPM, normalizeBPM, generateBeatGrid } from '../lib/bpmDetection';
 import { detectKey } from '../lib/keyDetection';
 import { createLogger } from '../services/loggerService';
-import type { DeckId } from '../slices/djMixerSlice';
+import type { BeatFXTarget, DeckId } from '../slices/djMixerSlice';
 import type { Song } from '../types';
 
 const logger = createLogger('DJAudioEngine');
+
+function getBeatFXBpm(state: ReturnType<typeof useStore.getState>, target: BeatFXTarget): number {
+  if (target === 'A') {
+    return state.djDeckA.effectiveBpm || state.djDeckA.originalBpm || 120;
+  }
+  if (target === 'B') {
+    return state.djDeckB.effectiveBpm || state.djDeckB.originalBpm || 120;
+  }
+
+  const activeDeck = state.djActiveDeck === 'A' ? state.djDeckA : state.djDeckB;
+  if (activeDeck.effectiveBpm || activeDeck.originalBpm) {
+    return activeDeck.effectiveBpm || activeDeck.originalBpm || 120;
+  }
+  if (state.djDeckA.isPlaying && (state.djDeckA.effectiveBpm || state.djDeckA.originalBpm)) {
+    return state.djDeckA.effectiveBpm || state.djDeckA.originalBpm || 120;
+  }
+  if (state.djDeckB.isPlaying && (state.djDeckB.effectiveBpm || state.djDeckB.originalBpm)) {
+    return state.djDeckB.effectiveBpm || state.djDeckB.originalBpm || 120;
+  }
+  return 120;
+}
 
 export interface UseDJAudioEngineReturn {
   /** Initialize the audio engine (must be called after user interaction) */
@@ -87,6 +108,10 @@ export interface UseDJAudioEngineReturn {
   setHeadphoneVolume: (volume: number) => void;
   /** Set headphone cue/master mix (0 = cue only, 1 = master only) (Phase 4) */
   setHeadphoneMix: (mix: number) => void;
+  /** Enable/disable master monitoring in headphones (Phase 7) */
+  setMasterCueEnabled: (enabled: boolean) => void;
+  /** Toggle master monitoring in headphones (Phase 7) */
+  toggleMasterCue: () => void;
   /** Nudge deck position for manual beat matching (Phase 4) */
   nudgePosition: (deck: DeckId, offsetMs: number) => void;
   /** Perform beat-phase sync (Phase 4) */
@@ -123,6 +148,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
   const toggleDeckCue = useStore(state => state.toggleDeckCue);
   const setStoreHeadphoneVolume = useStore(state => state.setHeadphoneVolume);
   const setStoreHeadphoneMix = useStore(state => state.setHeadphoneMix);
+  const setStoreMasterCueEnabled = useStore(state => state.setMasterCueEnabled);
   
   // Subscribe only to the specific values needed for sync effects
   // These are the only values that should trigger re-renders
@@ -144,6 +170,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
   const djDeckBCueEnabled = useStore(state => state.djDeckB.cueEnabled);
   const djHeadphoneVolume = useStore(state => state.djMixer.headphoneVolume);
   const djHeadphoneMix = useStore(state => state.djMixer.headphoneMix);
+  const djMasterCueEnabled = useStore(state => state.djMixer.masterCueEnabled);
   const djKeyLockA = useStore(state => state.djMixer.keyLockA);
   const djKeyLockB = useStore(state => state.djMixer.keyLockB);
 
@@ -171,12 +198,25 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       // Apply initial state from store
       engine.setCrossfader(djCrossfader);
       engine.setMasterVolume(djMasterVolume);
+      engine.setHeadphoneVolume(djHeadphoneVolume);
+      engine.setMasterCueEnabled(djMasterCueEnabled);
+      engine.updateHeadphoneMix(djHeadphoneMix);
+      const initialState = useStore.getState();
+      const beatFX = initialState.djMixer.beatFX;
+      engine.setBeatFX(
+        beatFX.target,
+        beatFX.type,
+        beatFX.enabled,
+        beatFX.fraction,
+        beatFX.depth,
+        getBeatFXBpm(initialState, beatFX.target),
+      );
       logger.debug('Initial state applied');
     } catch (error) {
       logger.logError(error, 'Initialization failed');
       throw error;
     }
-  }, [djCrossfader, djMasterVolume, setDeckPlaying]);
+  }, [djCrossfader, djHeadphoneMix, djHeadphoneVolume, djMasterCueEnabled, djMasterVolume, setDeckPlaying]);
 
   // Load track to deck
   const loadTrack = useCallback(async (deck: DeckId, track: Song) => {
@@ -451,7 +491,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
     engine.setCueEnabled('B', djDeckBCueEnabled);
   }, [djDeckACueEnabled, djDeckBCueEnabled]);
 
-  // Sync headphone volume and mix (Phase 4)
+  // Sync headphone volume, mix, and master cue (Phase 4/7)
   useEffect(() => {
     const engine = getDJAudioEngine();
     if (!engine.initialized) return;
@@ -459,14 +499,15 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
     // Guard against NaN/Infinity values from corrupted state
     const volume = typeof djHeadphoneVolume === 'number' && isFinite(djHeadphoneVolume)
       ? djHeadphoneVolume
-      : 1.0; // Default
+        : 1.0; // Default
     const mix = typeof djHeadphoneMix === 'number' && isFinite(djHeadphoneMix)
       ? djHeadphoneMix
       : 0.5; // Default
     
     engine.setHeadphoneVolume(volume);
+    engine.setMasterCueEnabled(djMasterCueEnabled);
     engine.updateHeadphoneMix(mix);
-  }, [djHeadphoneVolume, djHeadphoneMix]);
+  }, [djHeadphoneVolume, djHeadphoneMix, djMasterCueEnabled]);
 
   // Sync key lock state
   useEffect(() => {
@@ -642,12 +683,28 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
     setStoreHeadphoneMix(mix);
   }, [setStoreHeadphoneMix]);
 
+  const setMasterCueEnabled = useCallback((enabled: boolean) => {
+    const engine = getDJAudioEngine();
+    if (!engine) return;
+    engine.setMasterCueEnabled(enabled);
+    setStoreMasterCueEnabled(enabled);
+  }, [setStoreMasterCueEnabled]);
+
+  const toggleMasterCue = useCallback(() => {
+    const engine = getDJAudioEngine();
+    if (!engine) return;
+    const nextEnabled = !useStore.getState().djMixer.masterCueEnabled;
+    engine.setMasterCueEnabled(nextEnabled);
+    setStoreMasterCueEnabled(nextEnabled);
+  }, [setStoreMasterCueEnabled]);
+
   // Beat sync functions (Phase 4)
   const nudgePosition = useCallback((deck: DeckId, offsetMs: number) => {
     const engine = getDJAudioEngine();
     if (!engine) return;
     engine.nudgePosition(deck, offsetMs);
-  }, []);
+    setDeckPosition(deck, engine.getPosition(deck));
+  }, [setDeckPosition]);
 
   const syncBeatPhase = useCallback((targetDeck: DeckId) => {
     const engine = getDJAudioEngine();
@@ -719,6 +776,8 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
     toggleCue,
     setHeadphoneVolume,
     setHeadphoneMix,
+    setMasterCueEnabled,
+    toggleMasterCue,
     nudgePosition,
     syncBeatPhase,
     getVULevels,
@@ -756,6 +815,12 @@ export function useDJAudioEngineSync(): void {
       deckBCue: false as boolean,
       headphoneVolume: 1,
       headphoneMix: 0.5,
+      masterCueEnabled: false,
+      beatFXEnabled: false,
+      beatFXTarget: 'A' as BeatFXTarget,
+      beatFXType: 'delay',
+      beatFXFraction: '1',
+      beatFXDepth: 0.45,
       keyLockA: false as boolean,
       keyLockB: false as boolean,
     };
@@ -799,6 +864,12 @@ export function useDJAudioEngineSync(): void {
         deckBCue: state.djDeckB.cueEnabled,
         headphoneVolume: state.djMixer.headphoneVolume,
         headphoneMix: state.djMixer.headphoneMix,
+        masterCueEnabled: state.djMixer.masterCueEnabled,
+        beatFXEnabled: state.djMixer.beatFX.enabled,
+        beatFXTarget: state.djMixer.beatFX.target,
+        beatFXType: state.djMixer.beatFX.type,
+        beatFXFraction: state.djMixer.beatFX.fraction,
+        beatFXDepth: state.djMixer.beatFX.depth,
         keyLockA: state.djMixer.keyLockA,
         keyLockB: state.djMixer.keyLockB,
       };
@@ -825,8 +896,15 @@ export function useDJAudioEngineSync(): void {
       if (next.deckACue !== prev.deckACue) engine.setCueEnabled('A', next.deckACue);
       if (next.deckBCue !== prev.deckBCue) engine.setCueEnabled('B', next.deckBCue);
 
-      // Headphone volume & mix
-      if (next.headphoneVolume !== prev.headphoneVolume || next.headphoneMix !== prev.headphoneMix) {
+      // Headphone volume, mix, and master cue
+      if (next.masterCueEnabled !== prev.masterCueEnabled) {
+        engine.setMasterCueEnabled(next.masterCueEnabled);
+      }
+      if (
+        next.headphoneVolume !== prev.headphoneVolume ||
+        next.headphoneMix !== prev.headphoneMix ||
+        next.masterCueEnabled !== prev.masterCueEnabled
+      ) {
         const vol = typeof next.headphoneVolume === 'number' && isFinite(next.headphoneVolume) ? next.headphoneVolume : 1.0;
         const mix = typeof next.headphoneMix === 'number' && isFinite(next.headphoneMix) ? next.headphoneMix : 0.5;
         engine.setHeadphoneVolume(vol);
@@ -836,6 +914,23 @@ export function useDJAudioEngineSync(): void {
       // Key lock
       if (next.keyLockA !== prev.keyLockA) engine.setKeyLock('A', next.keyLockA);
       if (next.keyLockB !== prev.keyLockB) engine.setKeyLock('B', next.keyLockB);
+
+      if (
+        next.beatFXEnabled !== prev.beatFXEnabled ||
+        next.beatFXTarget !== prev.beatFXTarget ||
+        next.beatFXType !== prev.beatFXType ||
+        next.beatFXFraction !== prev.beatFXFraction ||
+        next.beatFXDepth !== prev.beatFXDepth
+      ) {
+        engine.setBeatFX(
+          next.beatFXTarget,
+          next.beatFXType,
+          next.beatFXEnabled,
+          next.beatFXFraction,
+          next.beatFXDepth,
+          getBeatFXBpm(state, next.beatFXTarget),
+        );
+      }
 
       prev = next;
     };
@@ -871,6 +966,18 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     engine.setOnTrackEnd((deck) => useStore.getState().setDeckPlaying(deck, false));
     engine.setCrossfader(s.djMixer.crossfader);
     engine.setMasterVolume(s.djMixer.masterVolume);
+    engine.setHeadphoneVolume(s.djMixer.headphoneVolume);
+    engine.setMasterCueEnabled(s.djMixer.masterCueEnabled);
+    engine.updateHeadphoneMix(s.djMixer.headphoneMix);
+    const beatFX = s.djMixer.beatFX;
+    engine.setBeatFX(
+      beatFX.target,
+      beatFX.type,
+      beatFX.enabled,
+      beatFX.fraction,
+      beatFX.depth,
+      getBeatFXBpm(s, beatFX.target),
+    );
   }, []);
 
   const loadTrack = useCallback(async (deck: DeckId, track: Song) => {
@@ -1042,11 +1149,19 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
   const setHeadphoneMix = useCallback((mix: number) => {
     useStore.getState().setHeadphoneMix(mix);
   }, []);
+  const setMasterCueEnabled = useCallback((enabled: boolean) => {
+    useStore.getState().setMasterCueEnabled(enabled);
+  }, []);
+  const toggleMasterCue = useCallback(() => {
+    useStore.getState().toggleMasterCue();
+  }, []);
 
   // ---- Sync / Nudge ----
 
   const nudgePosition = useCallback((deck: DeckId, offsetMs: number) => {
-    getDJAudioEngine()?.nudgePosition(deck, offsetMs);
+    const engine = getDJAudioEngine();
+    engine.nudgePosition(deck, offsetMs);
+    useStore.getState().setDeckPosition(deck, engine.getPosition(deck));
   }, []);
 
   const syncBeatPhase = useCallback((targetDeck: DeckId) => {
@@ -1106,6 +1221,8 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     toggleCue,
     setHeadphoneVolume,
     setHeadphoneMix,
+    setMasterCueEnabled,
+    toggleMasterCue,
     nudgePosition,
     syncBeatPhase,
     getVULevels,

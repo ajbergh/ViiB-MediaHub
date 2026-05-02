@@ -14,6 +14,8 @@ import React, { useCallback, useState, memo } from 'react';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { DJEQKnob } from './DJEQKnob';
+import { DJFXPad } from './DJFXPad';
+import { DJBeatFXPanel } from './DJBeatFXPanel';
 import type { DeckId, EffectType, DJLayoutMode } from '../../../slices/djMixerSlice';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -225,19 +227,23 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
     }
   }, [type, handleDryWetChange]);
 
-  const knobSize = expanded ? 38 : 30;
+  const knobSize = expanded ? 44 : 32;
 
-  // Compact mode: just a toggle tab + optional macro knob
+  // Compact mode: toggle tab + always-rendered macro knob (greyed when off,
+  // so toggling does NOT shift neighbour layout — see review §2.6).
+  // MIX knob uses size=32 — paired inline with the 36-px toggle to keep the
+  // FX strip from ballooning and squeezing the deck height.
   if (compact) {
     return (
-      <div className={`flex items-center gap-1.5 px-1 py-0.5 rounded transition-all duration-150 ${
+      <div className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded transition-all duration-150 ${
         isEnabled ? 'bg-[#1e1e1e]' : 'bg-transparent'
       }`}>
         <button
           onClick={handleToggle}
+          aria-pressed={isEnabled}
           className={`
-            flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider
-            transition-all duration-100 border min-w-[48px] justify-center
+            flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wider
+            transition-all duration-100 border min-w-[64px] justify-center min-h-[36px]
             ${isEnabled
               ? 'text-white border-current/30'
               : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400 hover:border-[#444]'}
@@ -251,13 +257,13 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
           {isEnabled && <span className="w-1.5 h-1.5 rounded-full bg-white/80 flex-shrink-0" />}
           {label}
         </button>
-        {isEnabled && params.hasWet && (
+        {params.hasWet && (
           <DJEQKnob
             label={params.wet.label}
             value={params.wet.value}
             onChange={handleKnobWet}
-            color={enabledColor}
-            size={26}
+            color={isEnabled ? enabledColor : '#444'}
+            size={32}
           />
         )}
       </div>
@@ -273,9 +279,10 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
       {/* Enable/Disable button */}
       <button
         onClick={handleToggle}
+        aria-pressed={isEnabled}
         className={`
-          w-full px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider
-          transition-all duration-100 border flex items-center justify-center gap-1
+          w-full px-2 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider
+          transition-all duration-100 border flex items-center justify-center gap-1 min-h-[36px]
           ${isEnabled
             ? 'text-white border-transparent'
             : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400 hover:border-[#444]'}
@@ -371,14 +378,14 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
         onClick={() => setCollapsed(!collapsed)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-[9px] font-bold text-[#777] uppercase tracking-widest">FX</span>
+          <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">FX</span>
           {activeA > 0 && (
-            <span className="text-[8px] font-bold text-blue-400 bg-blue-500/15 px-1.5 py-0.5 rounded">
+            <span className="text-[10px] font-bold text-blue-400 bg-blue-500/15 px-1.5 py-0.5 rounded">
               A: {activeA}
             </span>
           )}
           {activeB > 0 && (
-            <span className="text-[8px] font-bold text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded">
+            <span className="text-[10px] font-bold text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded">
               B: {activeB}
             </span>
           )}
@@ -390,12 +397,12 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
         )}
       </div>
 
-      {/* FX Strip */}
+      {/* FX Strip — Deck A FX | X-Y FX Pad (centre, fills the dead space) | Deck B FX */}
       {!collapsed && (
         <div className={`flex items-stretch px-2 pb-2 gap-2 ${isExpanded ? 'pt-1' : ''}`}>
           {/* Deck A FX */}
           <div className={`flex-1 flex ${isCompact ? 'items-center' : ''} gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]`}>
-            <div className="text-[8px] font-bold text-blue-400 writing-vertical flex items-center justify-center w-3 mr-0.5"
+            <div className="text-[10px] font-bold text-blue-400 writing-vertical flex items-center justify-center w-3 mr-0.5"
                  style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
               A
             </div>
@@ -413,6 +420,14 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
             ))}
           </div>
 
+          {/* X-Y FX Pad — fills the centre gap that was previously empty.
+              Drag morphs filter cutoff (X) + resonance (Y) for the selected deck(s);
+              releasing the pad smoothly returns to neutral. */}
+          <div className={`flex-shrink-0 flex items-center justify-center bg-[#0e0e0e] rounded-md border border-[#222] px-2 py-1 ${isExpanded ? 'gap-2' : ''}`}>
+            {isExpanded && <DJBeatFXPanel />}
+            <DJFXPad size={isExpanded ? 150 : 120} />
+          </div>
+
           {/* Deck B FX */}
           <div className={`flex-1 flex ${isCompact ? 'items-center' : ''} gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]`}>
             {(Object.keys(FX_CONFIGS) as EffectType[]).map(fxType => (
@@ -427,7 +442,7 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
                 expanded={isExpanded}
               />
             ))}
-            <div className="text-[8px] font-bold text-purple-400 writing-vertical flex items-center justify-center w-3 ml-0.5"
+            <div className="text-[10px] font-bold text-purple-400 writing-vertical flex items-center justify-center w-3 ml-0.5"
                  style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
               B
             </div>

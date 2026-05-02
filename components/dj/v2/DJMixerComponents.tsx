@@ -32,93 +32,26 @@ import type { DeckId, DeckEQ } from '../../../slices/djMixerSlice';
 interface DJChannelStripProps {
   deckId: DeckId;
   getDeckLevels: () => { left: number; right: number };
-  onEQChange: (deck: DeckId, band: keyof DeckEQ, value: number) => void;
   onVolumeChange: (deck: DeckId, value: number) => void;
-  onFilterChange: (deck: DeckId, knobValue: number) => void;
 }
 
 /**
- * Self-subscribing channel strip. Subscribes only to EQ, filter, and volume
- * primitives so it never re-renders due to position or waveform updates.
+ * Self-subscribing channel strip — fader + VU only.
+ * EQ, TRIM, and Filter are now in DJDeckEQStrip (placed beside the jog wheel).
  */
 export const DJChannelStrip = React.memo<DJChannelStripProps>(({
   deckId,
   getDeckLevels,
-  onEQChange,
   onVolumeChange,
-  onFilterChange,
 }) => {
   const isA = deckId === 'A';
   const accentColor = isA ? '#3b82f6' : '#8b5cf6';
-
-  // Granular selectors — only re-render when these specific primitives change
-  const eqHigh      = useStore(s => isA ? s.djDeckA.eq.high      : s.djDeckB.eq.high);
-  const eqMid       = useStore(s => isA ? s.djDeckA.eq.mid       : s.djDeckB.eq.mid);
-  const eqLow       = useStore(s => isA ? s.djDeckA.eq.low       : s.djDeckB.eq.low);
-  const filterValue   = useStore(s => isA ? s.djDeckA.filter.value   : s.djDeckB.filter.value);
-  const filterEnabled = useStore(s => isA ? s.djDeckA.filter.enabled : s.djDeckB.filter.enabled);
-  const volume      = useStore(s => isA ? s.djDeckA.volume       : s.djDeckB.volume);
-  const isPlaying   = useStore(s => isA ? s.djDeckA.isPlaying    : s.djDeckB.isPlaying);
-
-  const filterKnobValue = ((filterValue + 1) / 2) * 36 - 24;
+  const volume    = useStore(s => isA ? s.djDeckA.volume    : s.djDeckB.volume);
+  const isPlaying = useStore(s => isA ? s.djDeckA.isPlaying : s.djDeckB.isPlaying);
 
   return (
     <div className='flex-1 flex flex-col items-center py-1 gap-2 min-w-[90px] min-h-0 border-[#2a2a2a]'>
-      {/* Gain / Trim */}
-      <div className='relative pt-2'>
-        <DJEQKnob
-          label='TRIM'
-          value={0}
-          onChange={(v) => {
-            const normalized = (v + 24) / 36;
-            const trimmedVol = Math.max(0, Math.min(1, normalized * 1.5));
-            onVolumeChange(deckId, trimmedVol);
-          }}
-          color='#aaaaaa'
-          size={38}
-        />
-      </div>
-
-      {/* EQ Section */}
-      <div className='flex flex-col gap-2 p-1.5 bg-[#151515] rounded-md border border-[#222] shadow-inner'>
-        <DJEQKnob
-          label='HIGH'
-          value={eqHigh}
-          onChange={(v) => onEQChange(deckId, 'high', v)}
-          color='#06b6d4'
-          size={38}
-        />
-        <DJEQKnob
-          label='MID'
-          value={eqMid}
-          onChange={(v) => onEQChange(deckId, 'mid', v)}
-          color='#22c55e'
-          size={38}
-        />
-        <DJEQKnob
-          label='LOW'
-          value={eqLow}
-          onChange={(v) => onEQChange(deckId, 'low', v)}
-          color='#f59e0b'
-          size={38}
-        />
-      </div>
-
-      {/* Separator */}
-      <div className='h-px bg-[#333] mx-1' />
-
-      {/* Filter Knob */}
-      <div className='p-1.5 bg-[#151515] rounded-md border border-[#222] shadow-inner'>
-        <DJEQKnob
-          label='FILTER'
-          value={filterKnobValue}
-          onChange={(v) => onFilterChange(deckId, v)}
-          color={filterEnabled ? '#ef4444' : '#666'}
-          size={38}
-        />
-      </div>
-
-      {/* Spacer */}
+      {/* Spacer — pushes fader towards bottom */}
       <div className='flex-1' />
 
       {/* Headphone Cue button */}
@@ -140,7 +73,7 @@ export const DJChannelStrip = React.memo<DJChannelStripProps>(({
           value={volume}
           onChange={(v) => onVolumeChange(deckId, v)}
           label=''
-          height={130}
+          height={160}
           isPlaying={isPlaying}
           accentColor={accentColor}
         />
@@ -149,6 +82,69 @@ export const DJChannelStrip = React.memo<DJChannelStripProps>(({
   );
 });
 DJChannelStrip.displayName = 'DJChannelStrip';
+
+// ---------------------------------------------------------------------------
+// DJDeckEQStrip — compact EQ panel placed beside the jog wheel
+// ---------------------------------------------------------------------------
+
+interface DJDeckEQStripProps {
+  deckId: DeckId;
+  onEQChange: (deck: DeckId, band: keyof DeckEQ, value: number) => void;
+  onVolumeChange: (deck: DeckId, value: number) => void;
+  onFilterChange: (deck: DeckId, knobValue: number) => void;
+}
+
+/**
+ * Compact vertical EQ strip (TRIM + HIGH + MID + LOW + FILTER) at size=28.
+ * Placed in the blank space beside each deck's jog wheel.
+ */
+export const DJDeckEQStrip = React.memo<DJDeckEQStripProps>(({
+  deckId,
+  onEQChange,
+  onVolumeChange,
+  onFilterChange,
+}) => {
+  const isA = deckId === 'A';
+  const accentColor   = isA ? '#3b82f6' : '#8b5cf6';
+  const eqHigh        = useStore(s => isA ? s.djDeckA.eq.high       : s.djDeckB.eq.high);
+  const eqMid         = useStore(s => isA ? s.djDeckA.eq.mid        : s.djDeckB.eq.mid);
+  const eqLow         = useStore(s => isA ? s.djDeckA.eq.low        : s.djDeckB.eq.low);
+  const filterValue   = useStore(s => isA ? s.djDeckA.filter.value  : s.djDeckB.filter.value);
+  const filterEnabled = useStore(s => isA ? s.djDeckA.filter.enabled: s.djDeckB.filter.enabled);
+  const volume        = useStore(s => isA ? s.djDeckA.volume        : s.djDeckB.volume);
+
+  const filterKnobValue = ((filterValue + 1) / 2) * 36 - 24;
+
+  // Compact mode hides each knob's value bar + numeric readout, saving ~22px
+  // per knob (×5) so the column fits in the available deck height even at 1080p.
+  return (
+    <div className='flex flex-col items-center justify-evenly h-full py-2 px-1 gap-0.5'>
+      <DJEQKnob
+        label='TRIM'
+        value={parseFloat(((volume / 1.5) * 36 - 24).toFixed(1))}
+        onChange={(v) => {
+          const normalized = (v + 24) / 36;
+          onVolumeChange(deckId, Math.max(0, Math.min(1, normalized * 1.5)));
+        }}
+        color={accentColor}
+        size={40}
+        compact
+      />
+      <DJEQKnob label='HIGH'   value={eqHigh}          onChange={v => onEQChange(deckId, 'high', v)}   color='#06b6d4' size={40} compact />
+      <DJEQKnob label='MID'    value={eqMid}           onChange={v => onEQChange(deckId, 'mid', v)}    color='#22c55e' size={40} compact />
+      <DJEQKnob label='LOW'    value={eqLow}           onChange={v => onEQChange(deckId, 'low', v)}    color='#f59e0b' size={40} compact />
+      <DJEQKnob
+        label='FILT'
+        value={filterKnobValue}
+        onChange={v => onFilterChange(deckId, v)}
+        color={filterEnabled ? '#ef4444' : '#666'}
+        size={40}
+        compact
+      />
+    </div>
+  );
+});
+DJDeckEQStrip.displayName = 'DJDeckEQStrip';
 
 // ---------------------------------------------------------------------------
 // DJMasterKnob
@@ -164,9 +160,9 @@ export const DJMasterKnob = React.memo<DJMasterKnobProps>(({ onChange }) => {
   return (
     <DJEQKnob
       label='MAIN'
-      value={masterVolume * 36 - 24}
+      value={parseFloat((masterVolume * 36 - 24).toFixed(1))}
       onChange={onChange}
-      size={40}
+      size={48}
       color='#fff'
     />
   );

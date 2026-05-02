@@ -65,8 +65,10 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
       if (parent) {
         const availableWidth = parent.clientWidth - 20; // padding
         const availableHeight = parent.clientHeight - 16;
-        const newSize = Math.min(availableWidth, availableHeight, 560);
-        setComputedSize(Math.max(170, newSize));
+        // Cap raised 300 → 480 so the wheel fills the deck instead of leaving
+        // big empty corners on the jog area at 1080p+.
+        const newSize = Math.min(availableWidth, availableHeight, 480);
+        setComputedSize(Math.max(180, newSize));
       }
     };
     
@@ -519,25 +521,12 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
           fill={accentColor}
           transform={`rotate(0, ${computedSize/2}, ${computedSize/2})`}
         />
-        
-        {/* Deck label */}
-        <text 
-          x={computedSize/2}
-          y={computedSize - 8}
-          fontFamily="system-ui, sans-serif"
-          fontSize={computedSize * 0.055}
-          fontWeight="700"
-          fill="#3a3a3a"
-          textAnchor="middle"
-        >
-          DECK {deck}
-        </text>
       </svg>
       
       {/* Scratch indicator overlay */}
       {isDragging && (
         <div 
-          className="absolute top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-sm text-[9px] font-bold text-white uppercase tracking-wider"
+          className="absolute top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-sm text-[10px] font-bold text-white uppercase tracking-wider"
           style={{ backgroundColor: accentColor, boxShadow: `0 0 10px ${accentColor}` }}
         >
           Scratch
@@ -548,3 +537,4 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
 };
 
 export default React.memo(DJJogWheel);
+

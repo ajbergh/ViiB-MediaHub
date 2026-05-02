@@ -213,8 +213,11 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             }
         }
 
-        const { songs } = get();
-        const newQueue = context ? [...context] : [...songs];
+        // When no explicit context is provided, default the queue to just this
+        // one song instead of the entire library. Callers that want the user's
+        // visible list to become the queue (e.g. Songs page row click) must
+        // pass their filtered list as `context`.
+        const newQueue = context ? [...context] : [playableSong];
 
         // Use ID to match, ensuring we map to the possibly updated playableSong object
         const index = newQueue.findIndex(s => s.id === song.id);

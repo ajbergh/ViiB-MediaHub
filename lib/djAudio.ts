@@ -13,7 +13,7 @@
  */
 
 import { useStore } from '../store';
-import type { DeckId, DeckState } from '../slices/djMixerSlice';
+import type { BeatFXTarget, BeatFXType, BeatFraction, DeckId, DeckState } from '../slices/djMixerSlice';
 import type { Song } from '../types';
 
 // Debug flag - set to false for production to reduce console overhead
@@ -141,6 +141,25 @@ export class DJAudioEngine {
   private masterGain: GainNode | null = null;
   private limiter: DynamicsCompressorNode | null = null;
 
+  // Central Beat FX chain for master-targeted effects (Phase 6)
+  private masterBeatFXInput: GainNode | null = null;
+  private masterBeatFXDryGain: GainNode | null = null;
+  private masterBeatFXOutput: GainNode | null = null;
+  private masterBeatFXDelay: DelayNode | null = null;
+  private masterBeatFXDelayFeedback: GainNode | null = null;
+  private masterBeatFXDelayWetGain: GainNode | null = null;
+  private masterBeatFXFilter: BiquadFilterNode | null = null;
+  private masterBeatFXFilterWetGain: GainNode | null = null;
+  private masterBeatFXFlangerDelay: DelayNode | null = null;
+  private masterBeatFXFlangerLfo: OscillatorNode | null = null;
+  private masterBeatFXFlangerLfoGain: GainNode | null = null;
+  private masterBeatFXFlangerFeedback: GainNode | null = null;
+  private masterBeatFXFlangerWetGain: GainNode | null = null;
+  private masterBeatFXReverb: ConvolverNode | null = null;
+  private masterBeatFXReverbWetGain: GainNode | null = null;
+  private lastBeatFXTarget: BeatFXTarget | null = null;
+  private lastBeatFXType: BeatFXType | null = null;
+
   // Analysers for VU meters
   private analyserA: AnalyserNode | null = null;
   private analyserB: AnalyserNode | null = null;
@@ -154,6 +173,7 @@ export class DJAudioEngine {
   private headphoneMixer: GainNode | null = null;     // Final headphone output
   private cueEnabledA = false;
   private cueEnabledB = false;
+  private masterCueEnabled = false;
   private headphoneMixValue = 0.5;  // 0 = cue only, 1 = master only
 
   // Output device routing (Phase 4)
@@ -218,6 +238,15 @@ export class DJAudioEngine {
       // Resume context if suspended (browser autoplay policy)
       if (this.audioContext.state === 'suspended') {
         await this.audioContext.resume();
+      }
+
+      // Apply saved master device if it was selected before initialization.
+      if (this.mainOutputDeviceId) {
+        try {
+          await this.setMainOutputDevice(this.mainOutputDeviceId);
+        } catch (error) {
+          console.warn('Failed to apply saved main output device:', error);
+        }
       }
 
       // Create audio elements
@@ -355,10 +384,14 @@ export class DJAudioEngine {
     this.analyserMaster = ctx.createAnalyser();
     this.analyserMaster.fftSize = 256;
 
+    this.createMasterBeatFXChain(ctx);
+
     // Connect to master
     this.analyserA.connect(this.masterGain);
     this.analyserB.connect(this.masterGain);
     this.masterGain
+      .connect(this.masterBeatFXInput!);
+    this.masterBeatFXOutput!
       .connect(this.limiter)
       .connect(this.analyserMaster)
       .connect(ctx.destination);
@@ -375,9 +408,9 @@ export class DJAudioEngine {
     this.headphoneCueMix = ctx.createGain();
     this.headphoneCueMix.gain.value = 1.0;
     
-    // Master signal to headphones
+    // Master signal to headphones. Gated by masterCueEnabled.
     this.headphoneMasterMix = ctx.createGain();
-    this.headphoneMasterMix.gain.value = 0.5;  // 50% master by default
+    this.headphoneMasterMix.gain.value = 0;
     
     // Final headphone output
     this.headphoneMixer = ctx.createGain();
@@ -557,6 +590,77 @@ export class DJAudioEngine {
     }
     
     console.log(`🎧 FX chain created for Deck ${deck}`);
+  }
+
+  /**
+   * Create the centralized Beat FX chain for master-targeted effects.
+   * Deck A/B Beat FX can reuse deck FX nodes, but master needs its own
+   * post-mix, pre-limiter processing path.
+   */
+  private createMasterBeatFXChain(ctx: AudioContext): void {
+    this.masterBeatFXInput = ctx.createGain();
+    this.masterBeatFXDryGain = ctx.createGain();
+    this.masterBeatFXOutput = ctx.createGain();
+    this.masterBeatFXDryGain.gain.value = 1;
+
+    this.masterBeatFXInput.connect(this.masterBeatFXDryGain).connect(this.masterBeatFXOutput);
+
+    this.masterBeatFXDelay = ctx.createDelay(2.0);
+    this.masterBeatFXDelay.delayTime.value = 0.5;
+    this.masterBeatFXDelayFeedback = ctx.createGain();
+    this.masterBeatFXDelayFeedback.gain.value = 0;
+    this.masterBeatFXDelayWetGain = ctx.createGain();
+    this.masterBeatFXDelayWetGain.gain.value = 0;
+    this.masterBeatFXInput
+      .connect(this.masterBeatFXDelay)
+      .connect(this.masterBeatFXDelayWetGain)
+      .connect(this.masterBeatFXOutput);
+    this.masterBeatFXDelay
+      .connect(this.masterBeatFXDelayFeedback)
+      .connect(this.masterBeatFXDelay);
+
+    this.masterBeatFXFilter = ctx.createBiquadFilter();
+    this.masterBeatFXFilter.type = 'lowpass';
+    this.masterBeatFXFilter.frequency.value = 20000;
+    this.masterBeatFXFilter.Q.value = 1;
+    this.masterBeatFXFilterWetGain = ctx.createGain();
+    this.masterBeatFXFilterWetGain.gain.value = 0;
+    this.masterBeatFXInput
+      .connect(this.masterBeatFXFilter)
+      .connect(this.masterBeatFXFilterWetGain)
+      .connect(this.masterBeatFXOutput);
+
+    this.masterBeatFXFlangerDelay = ctx.createDelay(0.02);
+    this.masterBeatFXFlangerDelay.delayTime.value = 0.003;
+    this.masterBeatFXFlangerLfo = ctx.createOscillator();
+    this.masterBeatFXFlangerLfo.type = 'sine';
+    this.masterBeatFXFlangerLfo.frequency.value = 0.5;
+    this.masterBeatFXFlangerLfoGain = ctx.createGain();
+    this.masterBeatFXFlangerLfoGain.gain.value = 0;
+    this.masterBeatFXFlangerFeedback = ctx.createGain();
+    this.masterBeatFXFlangerFeedback.gain.value = 0;
+    this.masterBeatFXFlangerWetGain = ctx.createGain();
+    this.masterBeatFXFlangerWetGain.gain.value = 0;
+    this.masterBeatFXFlangerLfo
+      .connect(this.masterBeatFXFlangerLfoGain)
+      .connect(this.masterBeatFXFlangerDelay.delayTime);
+    this.masterBeatFXInput
+      .connect(this.masterBeatFXFlangerDelay)
+      .connect(this.masterBeatFXFlangerWetGain)
+      .connect(this.masterBeatFXOutput);
+    this.masterBeatFXFlangerDelay
+      .connect(this.masterBeatFXFlangerFeedback)
+      .connect(this.masterBeatFXFlangerDelay);
+    this.masterBeatFXFlangerLfo.start();
+
+    this.masterBeatFXReverb = ctx.createConvolver();
+    this.createReverbImpulse(ctx, this.masterBeatFXReverb, 0.5, 0.5);
+    this.masterBeatFXReverbWetGain = ctx.createGain();
+    this.masterBeatFXReverbWetGain.gain.value = 0;
+    this.masterBeatFXInput
+      .connect(this.masterBeatFXReverb)
+      .connect(this.masterBeatFXReverbWetGain)
+      .connect(this.masterBeatFXOutput);
   }
 
   /**
@@ -1156,15 +1260,32 @@ export class DJAudioEngine {
     
     this.headphoneMixValue = safeMix;
     
-    // Constant-power crossfade between cue and master
+    // Constant-power crossfade between cue and master.
+    // The master feed is gated separately so cue/master blend and Master Cue
+    // behave like independent monitoring controls.
     const cueGain = Math.cos(safeMix * Math.PI / 2);  // 1 at mix=0, 0 at mix=1
-    const masterGain = Math.sin(safeMix * Math.PI / 2);  // 0 at mix=0, 1 at mix=1
+    const masterGain = this.masterCueEnabled
+      ? Math.sin(safeMix * Math.PI / 2)  // 0 at mix=0, 1 at mix=1
+      : 0;
     
     const now = this.audioContext.currentTime;
     this.headphoneCueMix.gain.setValueAtTime(cueGain, now);
     this.headphoneMasterMix.gain.setValueAtTime(masterGain, now);
     
-    if (DJ_DEBUG) console.log(`🎧 Headphone mix: ${(safeMix * 100).toFixed(0)}% master`);
+    if (DJ_DEBUG) console.log(`🎧 Headphone mix: ${(safeMix * 100).toFixed(0)}% master, master cue ${this.masterCueEnabled ? 'on' : 'off'}`);
+  }
+
+  /**
+   * Enable/disable master monitoring in the headphone output.
+   * This only gates the headphone master send and never affects live master output.
+   */
+  setMasterCueEnabled(enabled: boolean): void {
+    this.masterCueEnabled = enabled;
+    this.updateHeadphoneMix(this.headphoneMixValue);
+  }
+
+  getMasterCueEnabled(): boolean {
+    return this.masterCueEnabled;
   }
 
   /**
@@ -1565,6 +1686,206 @@ export class DJAudioEngine {
     }
     
     if (DJ_DEBUG) console.log(`🎛️ Reverb FX ${deck}: ${enabled ? 'ON' : 'OFF'}, room=${roomSize}, damp=${damping}, mix=${mix}`);
+  }
+
+  // ============================================================================
+  // Beat FX (Phase 6)
+  // ============================================================================
+
+  private beatFractionToMultiplier(fraction: BeatFraction): number {
+    switch (fraction) {
+      case '1/4':
+        return 0.25;
+      case '1/2':
+        return 0.5;
+      case '2':
+        return 2;
+      case '4':
+        return 4;
+      case '1':
+      default:
+        return 1;
+    }
+  }
+
+  private getBeatFXDelayTime(fraction: BeatFraction, bpm: number): number {
+    const safeBpm = (typeof bpm === 'number' && isFinite(bpm))
+      ? Math.max(40, Math.min(240, bpm))
+      : 120;
+    const beatSeconds = 60 / safeBpm;
+    return Math.max(0.01, Math.min(2, beatSeconds * this.beatFractionToMultiplier(fraction)));
+  }
+
+  private clearPreviousBeatFX(bpm: number): void {
+    if (!this.lastBeatFXTarget || !this.lastBeatFXType) return;
+    this.applyBeatFXToTarget(
+      this.lastBeatFXTarget,
+      this.lastBeatFXType,
+      false,
+      '1',
+      0,
+      bpm,
+    );
+    this.lastBeatFXTarget = null;
+    this.lastBeatFXType = null;
+  }
+
+  setBeatFX(
+    target: BeatFXTarget,
+    type: BeatFXType,
+    enabled: boolean,
+    fraction: BeatFraction,
+    depth: number,
+    bpm: number = 120,
+  ): void {
+    const safeDepth = (typeof depth === 'number' && isFinite(depth))
+      ? Math.max(0, Math.min(1, depth))
+      : 0.45;
+
+    const changedTargetOrType =
+      this.lastBeatFXTarget !== null &&
+      this.lastBeatFXType !== null &&
+      (this.lastBeatFXTarget !== target || this.lastBeatFXType !== type);
+
+    if (!enabled) {
+      if (this.lastBeatFXTarget || this.lastBeatFXType) {
+        this.clearPreviousBeatFX(bpm);
+      } else {
+        this.applyBeatFXToTarget(target, type, false, fraction, safeDepth, bpm);
+      }
+      return;
+    }
+
+    if (changedTargetOrType) {
+      this.clearPreviousBeatFX(bpm);
+    }
+
+    this.applyBeatFXToTarget(target, type, true, fraction, safeDepth, bpm);
+    this.lastBeatFXTarget = target;
+    this.lastBeatFXType = type;
+  }
+
+  private applyBeatFXToTarget(
+    target: BeatFXTarget,
+    type: BeatFXType,
+    enabled: boolean,
+    fraction: BeatFraction,
+    depth: number,
+    bpm: number,
+  ): void {
+    if (target === 'master') {
+      this.applyMasterBeatFX(type, enabled, fraction, depth, bpm);
+      return;
+    }
+
+    this.applyDeckBeatFX(target, type, enabled, fraction, depth, bpm);
+  }
+
+  private applyDeckBeatFX(
+    deck: DeckId,
+    type: BeatFXType,
+    enabled: boolean,
+    fraction: BeatFraction,
+    depth: number,
+    bpm: number,
+  ): void {
+    const delayTime = this.getBeatFXDelayTime(fraction, bpm);
+    const safeDepth = Math.max(0, Math.min(1, depth));
+
+    switch (type) {
+      case 'delay':
+        this.setDelayFX(deck, enabled, delayTime, 0.12 + safeDepth * 0.48, 0.15 + safeDepth * 0.55);
+        break;
+      case 'echo':
+        this.setDelayFX(deck, enabled, delayTime, 0.35 + safeDepth * 0.5, 0.2 + safeDepth * 0.65);
+        break;
+      case 'reverb':
+        this.setReverbFX(deck, enabled, 0.25 + safeDepth * 0.7, 0.35, 0.12 + safeDepth * 0.65);
+        break;
+      case 'filter': {
+        const frequency = enabled ? Math.max(180, 20000 * Math.pow(0.035, safeDepth)) : 20000;
+        this.setFilterFX(deck, enabled, 'lowpass', frequency, 0.7 + safeDepth * 12);
+        break;
+      }
+      case 'flanger': {
+        const rate = Math.max(0.1, Math.min(8, 1 / delayTime));
+        this.setFlangerFX(deck, enabled, rate, 0.2 + safeDepth * 0.8, 0.1 + safeDepth * 0.65);
+        break;
+      }
+    }
+  }
+
+  private resetMasterBeatFX(now: number): void {
+    this.masterBeatFXDryGain?.gain.setValueAtTime(1, now);
+    this.masterBeatFXDelayWetGain?.gain.setValueAtTime(0, now);
+    this.masterBeatFXDelayFeedback?.gain.setValueAtTime(0, now);
+    this.masterBeatFXFilterWetGain?.gain.setValueAtTime(0, now);
+    this.masterBeatFXFlangerWetGain?.gain.setValueAtTime(0, now);
+    this.masterBeatFXFlangerFeedback?.gain.setValueAtTime(0, now);
+    this.masterBeatFXFlangerLfoGain?.gain.setValueAtTime(0, now);
+    this.masterBeatFXReverbWetGain?.gain.setValueAtTime(0, now);
+  }
+
+  private applyMasterBeatFX(
+    type: BeatFXType,
+    enabled: boolean,
+    fraction: BeatFraction,
+    depth: number,
+    bpm: number,
+  ): void {
+    if (
+      !this.audioContext ||
+      !this.masterBeatFXDryGain ||
+      !this.masterBeatFXDelay ||
+      !this.masterBeatFXDelayFeedback ||
+      !this.masterBeatFXDelayWetGain ||
+      !this.masterBeatFXFilter ||
+      !this.masterBeatFXFilterWetGain ||
+      !this.masterBeatFXFlangerDelay ||
+      !this.masterBeatFXFlangerLfo ||
+      !this.masterBeatFXFlangerLfoGain ||
+      !this.masterBeatFXFlangerFeedback ||
+      !this.masterBeatFXFlangerWetGain ||
+      !this.masterBeatFXReverb ||
+      !this.masterBeatFXReverbWetGain
+    ) return;
+
+    const now = this.audioContext.currentTime;
+    this.resetMasterBeatFX(now);
+    if (!enabled) return;
+
+    const safeDepth = Math.max(0, Math.min(1, depth));
+    const delayTime = this.getBeatFXDelayTime(fraction, bpm);
+
+    switch (type) {
+      case 'delay':
+        this.masterBeatFXDelay.delayTime.setValueAtTime(delayTime, now);
+        this.masterBeatFXDelayFeedback.gain.setValueAtTime(0.12 + safeDepth * 0.48, now);
+        this.masterBeatFXDelayWetGain.gain.setValueAtTime(0.15 + safeDepth * 0.55, now);
+        break;
+      case 'echo':
+        this.masterBeatFXDelay.delayTime.setValueAtTime(delayTime, now);
+        this.masterBeatFXDelayFeedback.gain.setValueAtTime(0.35 + safeDepth * 0.5, now);
+        this.masterBeatFXDelayWetGain.gain.setValueAtTime(0.2 + safeDepth * 0.65, now);
+        break;
+      case 'reverb':
+        this.createReverbImpulse(this.audioContext, this.masterBeatFXReverb, 0.25 + safeDepth * 0.7, 0.35);
+        this.masterBeatFXReverbWetGain.gain.setValueAtTime(0.12 + safeDepth * 0.65, now);
+        break;
+      case 'filter':
+        this.masterBeatFXDryGain.gain.setValueAtTime(0, now);
+        this.masterBeatFXFilter.type = 'lowpass';
+        this.masterBeatFXFilter.frequency.setValueAtTime(Math.max(180, 20000 * Math.pow(0.035, safeDepth)), now);
+        this.masterBeatFXFilter.Q.setValueAtTime(0.7 + safeDepth * 12, now);
+        this.masterBeatFXFilterWetGain.gain.setValueAtTime(1, now);
+        break;
+      case 'flanger':
+        this.masterBeatFXFlangerLfo.frequency.setValueAtTime(Math.max(0.1, Math.min(8, 1 / delayTime)), now);
+        this.masterBeatFXFlangerLfoGain.gain.setValueAtTime((0.2 + safeDepth * 0.8) * 0.005, now);
+        this.masterBeatFXFlangerFeedback.gain.setValueAtTime(0.1 + safeDepth * 0.65, now);
+        this.masterBeatFXFlangerWetGain.gain.setValueAtTime(0.45, now);
+        break;
+    }
   }
 
   // ============================================================================

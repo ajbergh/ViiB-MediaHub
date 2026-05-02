@@ -15,6 +15,7 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { TableVirtuoso } from 'react-virtuoso';
 import { useStore } from '../../store';
 import { useDJAudioEngine } from '../../hooks/useDJAudioEngine';
 import type { DeckId } from '../../slices/djMixerSlice';
@@ -134,6 +135,7 @@ export const DJLibraryBrowser: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search library..."
+            aria-label="Search DJ library"
             className="w-full pl-9 pr-4 py-2 bg-surface-2 border border-white/10 rounded-lg
                        text-sm text-neutral-100 placeholder-neutral-500
                        focus:outline-none focus:ring-1 focus:ring-brand"
@@ -144,43 +146,43 @@ export const DJLibraryBrowser: React.FC = () => {
         </div>
       </div>
 
-      {/* Track table */}
-      <div className="flex-1 overflow-auto">
-        <table className="w-full">
-          <thead className="sticky top-0 bg-surface-1">
-            <tr>
-              <th className="w-24 px-3 py-2 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">
-                Load
-              </th>
-              <SortHeader label="Title" sortKeyValue="title" />
-              <SortHeader label="Artist" sortKeyValue="artist" />
-              <SortHeader label="Album" sortKeyValue="album" />
-              <SortHeader label="Genre" sortKeyValue="genre" width="w-24" />
-              <SortHeader label="Time" sortKeyValue="duration" width="w-16" />
-              <SortHeader label="BPM" sortKeyValue="bpm" width="w-16" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {filteredSongs.map(song => {
+      {/* Virtualized track table */}
+      <div className="flex-1 overflow-hidden">
+        {filteredSongs.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-neutral-500">
+            {searchQuery ? 'No tracks match your search' : 'No tracks in library'}
+          </div>
+        ) : (
+          <TableVirtuoso
+            data={filteredSongs}
+            className="h-full"
+            computeItemKey={(_idx, song) => song.id}
+            fixedHeaderContent={() => (
+              <tr className="bg-surface-1">
+                <th className="w-24 px-3 py-2 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider bg-surface-1">
+                  Load
+                </th>
+                <SortHeader label="Title" sortKeyValue="title" />
+                <SortHeader label="Artist" sortKeyValue="artist" />
+                <SortHeader label="Album" sortKeyValue="album" />
+                <SortHeader label="Genre" sortKeyValue="genre" width="w-24" />
+                <SortHeader label="Time" sortKeyValue="duration" width="w-16" />
+                <SortHeader label="BPM" sortKeyValue="bpm" width="w-16" />
+              </tr>
+            )}
+            itemContent={(_idx, song) => {
               const loadedDeck = isLoadedOnDeck(song.id);
-              
               return (
-                <tr 
-                  key={song.id}
-                  className={`
-                    hover:bg-white/5 transition-colors
-                    ${loadedDeck ? 'bg-brand/10' : ''}
-                  `}
-                >
-                  {/* Load buttons */}
-                  <td className="px-3 py-2">
+                <>
+                  <td className={`px-3 py-2 ${loadedDeck ? 'bg-brand/10' : ''}`}>
                     <div className="flex gap-1">
                       <button
                         onClick={() => handleLoadToDeck(song, 'A')}
+                        aria-label={`Load ${song.title} to Deck A`}
                         className={`
                           px-2 py-1 text-xs rounded font-medium transition-colors
-                          ${loadedDeck === 'A' 
-                            ? 'bg-blue-600 text-white' 
+                          ${loadedDeck === 'A'
+                            ? 'bg-blue-600 text-white'
                             : 'bg-surface-2 text-neutral-400 hover:bg-blue-600/50 hover:text-white'}
                         `}
                         title="Load to Deck A"
@@ -189,10 +191,11 @@ export const DJLibraryBrowser: React.FC = () => {
                       </button>
                       <button
                         onClick={() => handleLoadToDeck(song, 'B')}
+                        aria-label={`Load ${song.title} to Deck B`}
                         className={`
                           px-2 py-1 text-xs rounded font-medium transition-colors
-                          ${loadedDeck === 'B' 
-                            ? 'bg-purple-600 text-white' 
+                          ${loadedDeck === 'B'
+                            ? 'bg-purple-600 text-white'
                             : 'bg-surface-2 text-neutral-400 hover:bg-purple-600/50 hover:text-white'}
                         `}
                         title="Load to Deck B"
@@ -201,12 +204,11 @@ export const DJLibraryBrowser: React.FC = () => {
                       </button>
                     </div>
                   </td>
-                  
-                  {/* Title */}
-                  <td className="px-3 py-2">
+
+                  <td className={`px-3 py-2 ${loadedDeck ? 'bg-brand/10' : ''}`}>
                     <div className="flex items-center gap-2">
                       {loadedDeck && (
-                        <span className={`text-xs font-bold ${loadedDeck === 'A' ? 'text-blue-400' : 'text-purple-400'}`}>
+                        <span className={`text-xs font-bold ${loadedDeck === 'A' ? 'text-blue-400' : 'text-purple-400'}`} aria-hidden="true">
                           ▶
                         </span>
                       )}
@@ -215,51 +217,54 @@ export const DJLibraryBrowser: React.FC = () => {
                       </span>
                     </div>
                   </td>
-                  
-                  {/* Artist */}
-                  <td className="px-3 py-2">
+
+                  <td className={`px-3 py-2 ${loadedDeck ? 'bg-brand/10' : ''}`}>
                     <span className="text-sm text-neutral-400 truncate max-w-[150px] block">
                       {song.artist}
                     </span>
                   </td>
-                  
-                  {/* Album */}
-                  <td className="px-3 py-2">
+
+                  <td className={`px-3 py-2 ${loadedDeck ? 'bg-brand/10' : ''}`}>
                     <span className="text-sm text-neutral-500 truncate max-w-[150px] block">
                       {song.album}
                     </span>
                   </td>
-                  
-                  {/* Genre */}
-                  <td className="px-3 py-2">
+
+                  <td className={`px-3 py-2 ${loadedDeck ? 'bg-brand/10' : ''}`}>
                     <span className="text-xs text-neutral-500 truncate block">
                       {song.genre?.[0] || '-'}
                     </span>
                   </td>
-                  
-                  {/* Time */}
-                  <td className="px-3 py-2">
+
+                  <td className={`px-3 py-2 ${loadedDeck ? 'bg-brand/10' : ''}`}>
                     <span className="text-sm font-mono text-neutral-400">
                       {formatDuration(song.duration)}
                     </span>
                   </td>
-                  
-                  {/* BPM */}
-                  <td className="px-3 py-2">
+
+                  <td className={`px-3 py-2 ${loadedDeck ? 'bg-brand/10' : ''}`}>
                     <span className={`text-sm font-mono ${song.bpm ? 'text-brand' : 'text-neutral-600'}`}>
                       {song.bpm || '-'}
                     </span>
                   </td>
-                </tr>
+                </>
               );
-            })}
-          </tbody>
-        </table>
-
-        {filteredSongs.length === 0 && (
-          <div className="flex items-center justify-center h-32 text-neutral-500">
-            {searchQuery ? 'No tracks match your search' : 'No tracks in library'}
-          </div>
+            }}
+            components={{
+              Table: ({ style, ...props }) => (
+                <table {...props} style={{ ...style, width: '100%' }} className="w-full" />
+              ),
+              TableRow: ({ item, ...props }) => {
+                const loadedDeck = item ? isLoadedOnDeck(item.id) : null;
+                return (
+                  <tr
+                    {...props}
+                    className={`hover:bg-white/5 transition-colors ${loadedDeck ? 'bg-brand/5' : ''}`}
+                  />
+                );
+              },
+            }}
+          />
         )}
       </div>
     </div>

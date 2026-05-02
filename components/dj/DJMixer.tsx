@@ -329,8 +329,7 @@ const EQKnob: React.FC<EQKnobProps> = ({ value, onChange }) => {
         onChange={handleChange}
         onDoubleClick={handleDoubleClick}
         className="h-16 w-5 accent-brand appearance-none cursor-pointer writing-mode-vertical
-                   [writing-mode:vertical-lr]
-                   [-webkit-appearance:slider-vertical]"
+                   [writing-mode:vertical-lr]"
         style={{ writingMode: 'vertical-lr' } as any}
       />
       <span className="text-[9px] font-mono text-neutral-400 w-6 text-center">
@@ -366,8 +365,7 @@ const VolumeFader: React.FC<VolumeFaderProps> = ({ deck, volume, isPlaying, onCh
         value={volume}
         onChange={handleChange}
         className="h-16 w-5 accent-brand appearance-none cursor-pointer
-                   [writing-mode:vertical-lr]
-                   [-webkit-appearance:slider-vertical]"
+                   [writing-mode:vertical-lr]"
         style={{ writingMode: 'vertical-lr' } as any}
       />
       <span className="text-[9px] font-mono text-neutral-400">

@@ -44,7 +44,7 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
     return (
         <button
             onClick={handleClick}
-            className={`transition-all hover:scale-110 ${
+            className={`flex items-center justify-center min-h-[32px] min-w-[32px] transition-all hover:scale-110 ${
                 isLiked || showFilled
                     ? 'text-error hover:text-error'
                     : 'text-text-subtle hover:text-error'

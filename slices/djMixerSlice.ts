@@ -52,6 +52,17 @@ export interface Loop {
 
 // Phase 3: Effect types
 export type EffectType = 'filter' | 'delay' | 'reverb' | 'flanger';
+export type BeatFXTarget = 'A' | 'B' | 'master';
+export type BeatFXType = 'delay' | 'echo' | 'reverb' | 'filter' | 'flanger';
+export type BeatFraction = '1/4' | '1/2' | '1' | '2' | '4';
+
+export interface DJBeatFXState {
+  enabled: boolean;
+  target: BeatFXTarget;
+  type: BeatFXType;
+  fraction: BeatFraction;
+  depth: number; // 0..1
+}
 
 export interface FilterFX {
   enabled: boolean;
@@ -135,6 +146,7 @@ export interface SamplerPad {
   id: number;              // 0-7 pad index
   name: string;            // Display name (custom or filename)
   url: string | null;      // Audio URL (blob or file URL)
+  needsRelink?: boolean;   // Metadata restored but the original local audio URL is not durable
   isPlaying: boolean;      // Currently playing
   volume: number;          // 0-1
   mode: 'oneshot' | 'loop' | 'gate'; // oneshot: play once, loop: repeat, gate: play while held
@@ -172,6 +184,10 @@ export interface MixerState {
   // Headphone Cue (Phase 4)
   headphoneVolume: number;  // 0-1
   headphoneMix: number;     // 0 = cue only, 1 = master only, 0.5 = 50/50
+  masterCueEnabled: boolean; // Route master mix to headphone monitoring
+
+  // Beat FX (Phase 6)
+  beatFX: DJBeatFXState;
   
   // Sync Mode (Phase 4)
   syncMode: SyncMode;       // off, bpm only, or beat-phase sync
@@ -278,12 +294,21 @@ export interface DJMixerSlice {
   setReverbFX: (deck: DeckId, params: Partial<ReverbFX>) => void;
   setFlangerFX: (deck: DeckId, params: Partial<FlangerFX>) => void;
   toggleFX: (deck: DeckId, fxType: EffectType) => void;
+
+  // Beat FX (Phase 6)
+  setBeatFXEnabled: (enabled: boolean) => void;
+  setBeatFXTarget: (target: BeatFXTarget) => void;
+  setBeatFXType: (type: BeatFXType) => void;
+  setBeatFXFraction: (fraction: BeatFraction) => void;
+  setBeatFXDepth: (depth: number) => void;
   
   // Headphone Cue (Phase 4)
   setDeckCue: (deck: DeckId, enabled: boolean) => void;
   toggleDeckCue: (deck: DeckId) => void;
   setHeadphoneVolume: (volume: number) => void;
   setHeadphoneMix: (mix: number) => void;
+  setMasterCueEnabled: (enabled: boolean) => void;
+  toggleMasterCue: () => void;
   
   // Beat-Phase Sync (Phase 4)
   setSyncMode: (mode: SyncMode) => void;
@@ -298,6 +323,7 @@ export interface DJMixerSlice {
   
   // Sampler
   loadSamplerPad: (padId: number, name: string, url: string) => void;
+  restoreSamplerPadMetadata: (padId: number, metadata: Pick<SamplerPad, 'name' | 'volume' | 'mode' | 'color'>) => void;
   clearSamplerPad: (padId: number) => void;
   setSamplerPadPlaying: (padId: number, playing: boolean) => void;
   setSamplerPadVolume: (padId: number, volume: number) => void;
@@ -369,6 +395,14 @@ const createDefaultMixerState = (): MixerState => ({
   crossfaderCurve: 'constant-power',
   headphoneVolume: 1.0,  // Phase 4: Headphone cue volume
   headphoneMix: 0.5,     // Phase 4: 0 = cue only, 1 = master only
+  masterCueEnabled: false, // Phase 7: Master cue off until explicitly monitored
+  beatFX: {
+    enabled: false,
+    target: 'A',
+    type: 'delay',
+    fraction: '1',
+    depth: 0.45,
+  },
   syncMode: 'bpm',       // Phase 4: Default to BPM sync
   quantize: true,          // Default quantize on
   keyLockA: true,          // Default key lock ON (preserve pitch)
@@ -856,6 +890,70 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
       },
     }));
   },
+
+  // Beat FX (Phase 6)
+  setBeatFXEnabled: (enabled) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        beatFX: {
+          ...state.djMixer.beatFX,
+          enabled,
+        },
+      },
+    }));
+  },
+
+  setBeatFXTarget: (target) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        beatFX: {
+          ...state.djMixer.beatFX,
+          target,
+        },
+      },
+    }));
+  },
+
+  setBeatFXType: (type) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        beatFX: {
+          ...state.djMixer.beatFX,
+          type,
+        },
+      },
+    }));
+  },
+
+  setBeatFXFraction: (fraction) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        beatFX: {
+          ...state.djMixer.beatFX,
+          fraction,
+        },
+      },
+    }));
+  },
+
+  setBeatFXDepth: (depth) => {
+    const safeDepth = (typeof depth === 'number' && isFinite(depth))
+      ? Math.max(0, Math.min(1, depth))
+      : 0.45;
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        beatFX: {
+          ...state.djMixer.beatFX,
+          depth: safeDepth,
+        },
+      },
+    }));
+  },
   
   // Headphone Cue (Phase 4)
   setDeckCue: (deck, enabled) => {
@@ -900,6 +998,24 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
       djMixer: {
         ...state.djMixer,
         headphoneMix: safeMix,
+      },
+    }));
+  },
+
+  setMasterCueEnabled: (enabled) => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        masterCueEnabled: enabled,
+      },
+    }));
+  },
+
+  toggleMasterCue: () => {
+    set((state) => ({
+      djMixer: {
+        ...state.djMixer,
+        masterCueEnabled: !state.djMixer.masterCueEnabled,
       },
     }));
   },
@@ -1056,7 +1172,23 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
   loadSamplerPad: (padId, name, url) => {
     set((state) => ({
       djSampler: state.djSampler.map(pad =>
-        pad.id === padId ? { ...pad, name, url, isPlaying: false } : pad
+        pad.id === padId ? { ...pad, name, url, needsRelink: false, isPlaying: false } : pad
+      ),
+    }));
+  },
+
+  restoreSamplerPadMetadata: (padId, metadata) => {
+    set((state) => ({
+      djSampler: state.djSampler.map(pad =>
+        pad.id === padId
+          ? {
+              ...pad,
+              ...metadata,
+              url: null,
+              needsRelink: true,
+              isPlaying: false,
+            }
+          : pad
       ),
     }));
   },

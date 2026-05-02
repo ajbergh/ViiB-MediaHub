@@ -628,13 +628,14 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
   return (
     <div ref={containerRef} className="w-full bg-surface-0 relative" style={{ height }} onWheel={handleWheelZoom}>
       {/* Waveform controls overlay (top-right) */}
-      <div className="absolute top-1 right-2 z-30 flex items-center gap-1.5 bg-[#111]/80 rounded px-1.5 py-0.5 backdrop-blur-sm border border-[#333]/50">
+      <div className="absolute top-1 right-2 z-30 flex items-center gap-1 bg-[#111]/80 rounded px-1.5 py-1 backdrop-blur-sm border border-[#333]/50">
         {/* Color mode selector */}
         {(['rgb', '3band', 'single'] as WaveformColorMode[]).map(mode => (
           <button
             key={mode}
             onClick={() => setColorMode(mode)}
-            className={`px-1.5 h-5 flex items-center justify-center text-[9px] font-bold rounded transition-colors ${
+            aria-pressed={colorMode === mode}
+            className={`px-2 min-h-[28px] flex items-center justify-center text-[10px] font-bold rounded transition-colors ${
               colorMode === mode
                 ? 'bg-brand/30 text-brand border border-brand/50'
                 : 'text-neutral-500 hover:text-neutral-300 hover:bg-[#333]'
@@ -644,22 +645,25 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
             {mode === 'rgb' ? 'RGB' : mode === '3band' ? '3B' : 'CLR'}
           </button>
         ))}
-        <div className="w-px h-4 bg-[#444]" />
+        <div className="w-px h-5 bg-[#444]" />
         {/* Zoom controls */}
         <button
           onClick={zoomIn}
-          className="w-5 h-5 flex items-center justify-center text-[11px] text-neutral-400 hover:text-white hover:bg-[#333] rounded transition-colors"
+          className="w-7 h-7 flex items-center justify-center text-[14px] text-neutral-400 hover:text-white hover:bg-[#333] rounded transition-colors"
           title="Zoom in (Ctrl+Scroll up)"
+          aria-label="Zoom in"
         >+</button>
         <button
           onClick={zoomReset}
-          className="px-1 h-5 flex items-center justify-center text-[8px] text-neutral-500 hover:text-white hover:bg-[#333] rounded transition-colors font-mono"
+          className="px-1.5 h-7 min-w-[36px] flex items-center justify-center text-[10px] text-neutral-500 hover:text-white hover:bg-[#333] rounded transition-colors font-mono"
           title="Reset zoom"
+          aria-label="Reset zoom"
         >{visibleSeconds.toFixed(0)}s</button>
         <button
           onClick={zoomOut}
-          className="w-5 h-5 flex items-center justify-center text-[11px] text-neutral-400 hover:text-white hover:bg-[#333] rounded transition-colors"
+          className="w-7 h-7 flex items-center justify-center text-[14px] text-neutral-400 hover:text-white hover:bg-[#333] rounded transition-colors"
           title="Zoom out (Ctrl+Scroll down)"
+          aria-label="Zoom out"
         >−</button>
       </div>
 
@@ -698,3 +702,4 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
 };
 
 export default React.memo(DJDualWaveform);
+

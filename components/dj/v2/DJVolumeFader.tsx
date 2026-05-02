@@ -49,7 +49,7 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
   const updateValueFromPointer = (clientY: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const handleHeight = 20;
+    const handleHeight = 28;
     const trackTop = rect.top + handleHeight / 2;
     const trackHeight = rect.height - handleHeight - 20; // Account for label and value
     const relativeY = clientY - trackTop;
@@ -62,113 +62,132 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
   const trackHeight = height - 32; // Space for label and value
 
   return (
-    <div 
+    <div
       ref={containerRef}
       className="flex flex-col items-center select-none"
       style={{ height }}
     >
       {/* Label */}
       {label && (
-        <span 
-          className={`text-[9px] font-bold mb-1 transition-colors`}
+        <span
+          className={`text-[10px] font-bold mb-1 transition-colors`}
           style={{ color: isPlaying ? accentColor : '#666' }}
         >
           {label}
         </span>
       )}
-      
+
       {/* Fader track container */}
       <div
-        className="relative cursor-pointer touch-none"
-        style={{ width: 36, height: trackHeight }}
+        className="relative cursor-pointer touch-none dj-focus-ring rounded"
+        style={{ width: 48, height: trackHeight }}
+        role="slider"
+        tabIndex={0}
+        aria-label={label || 'Volume'}
+        aria-valuemin={0}
+        aria-valuemax={1}
+        aria-valuenow={Math.round(value * 100) / 100}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
+        onKeyDown={(e) => {
+          const big = e.shiftKey ? 0.1 : 0.02;
+          if (e.key === 'ArrowUp')         { e.preventDefault(); onChange(Math.min(1, value + big)); }
+          else if (e.key === 'ArrowDown')  { e.preventDefault(); onChange(Math.max(0, value - big)); }
+          else if (e.key === 'Home')       { e.preventDefault(); onChange(1); }
+          else if (e.key === 'End')        { e.preventDefault(); onChange(0); }
+        }}
+        onWheel={(e) => {
+          e.preventDefault();
+          const step = e.shiftKey ? 0.01 : 0.04;
+          const next = Math.max(0, Math.min(1, value + (e.deltaY > 0 ? -step : step)));
+          if (next !== value) onChange(next);
+        }}
       >
-        {/* Track background */}
-        <div 
+        {/* Track background — wider for clearer visual + bigger touch zone */}
+        <div
           className="absolute left-1/2 -translate-x-1/2 rounded"
           style={{
-            width: 6,
-            height: trackHeight - 10,
-            top: 5,
+            width: 10,
+            height: trackHeight - 14,
+            top: 7,
             background: 'linear-gradient(to bottom, #0d0d0d, #1a1a1a)',
             boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)',
           }}
         />
-        
+
         {/* Active level fill */}
-        <div 
+        <div
           className="absolute left-1/2 -translate-x-1/2 rounded-b transition-all duration-50"
           style={{
-            width: 4,
-            height: Math.max(0, value * (trackHeight - 10)),
-            bottom: 5,
+            width: 6,
+            height: Math.max(0, value * (trackHeight - 14)),
+            bottom: 7,
             background: `linear-gradient(to top, ${accentColor}60, ${accentColor})`,
             boxShadow: isPlaying ? `0 0 8px ${accentColor}40` : 'none',
           }}
         />
-        
-        {/* VU meter markers */}
+
+        {/* VU meter markers (outside the wider track) */}
         <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-between py-1.5 pr-0.5">
-          {[100, 80, 60, 40, 20, 0].map((pct, i) => (
-            <div 
+          {[100, 80, 60, 40, 20, 0].map((pct) => (
+            <div
               key={pct}
               className="flex items-center gap-0.5"
             >
-              <div 
+              <div
                 className="w-1.5 h-px"
-                style={{ 
-                  backgroundColor: pct >= 80 ? '#ef4444' : pct >= 60 ? '#f59e0b' : '#444' 
+                style={{
+                  backgroundColor: pct >= 80 ? '#ef4444' : pct >= 60 ? '#f59e0b' : '#444'
                 }}
               />
             </div>
           ))}
         </div>
-        
+
         {/* T-shaped fader handle */}
-        <div 
+        <div
           className={`absolute left-1/2 -translate-x-1/2 cursor-grab ${isDragging ? 'cursor-grabbing' : ''}`}
-          style={{ 
-            top: `calc(${handlePercent}% - 10px)`,
+          style={{
+            top: `calc(${handlePercent}% - 14px)`,
             transition: isDragging ? 'none' : 'top 0.05s',
           }}
         >
-          {/* Horizontal bar (T-top) */}
-          <div 
+          {/* Horizontal bar (T-top) — bumped 30×10 → 44×16 */}
+          <div
             className="rounded relative overflow-hidden"
             style={{
-              width: 30,
-              height: 10,
+              width: 44,
+              height: 16,
               background: isDragging
-                ? 'linear-gradient(to bottom, #999, #777)'
-                : 'linear-gradient(to bottom, #888, #666)',
+                ? 'linear-gradient(to bottom, #aaa, #888)'
+                : 'linear-gradient(to bottom, #999, #777)',
               boxShadow: isDragging
-                ? '0 3px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2)'
-                : '0 2px 6px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15)',
+                ? '0 4px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25)'
+                : '0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.18)',
             }}
           >
             {/* Grip texture */}
             <div className="absolute inset-0 flex justify-center items-center gap-0.5">
-              {[...Array(3)].map((_, i) => (
-                <div 
-                  key={i} 
-                  className="w-px h-2"
-                  style={{ backgroundColor: i % 2 === 0 ? '#555' : '#999' }} 
+              {[...Array(5)].map((_, i) => (
+                <div
+                  key={i}
+                  className="w-px h-3"
+                  style={{ backgroundColor: i % 2 === 0 ? '#555' : '#bbb' }}
                 />
               ))}
             </div>
-            
+
             {/* Top highlight */}
             <div className="absolute top-0 left-1 right-1 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
           </div>
-          
+
           {/* Vertical stem (T-stem) */}
-          <div 
+          <div
             className="mx-auto rounded-b"
             style={{
-              width: 10,
+              width: 12,
               height: 14,
               background: 'linear-gradient(to bottom, #666, #444)',
               marginTop: -1,
@@ -176,10 +195,10 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
           />
         </div>
       </div>
-      
+
       {/* Value display */}
-      <span 
-        className="text-[8px] font-mono mt-0.5 transition-colors"
+      <span
+        className="text-[10px] font-mono mt-0.5 transition-colors"
         style={{ color: value > 0.8 ? '#ef4444' : value > 0 ? '#888' : '#444' }}
       >
         {Math.round(value * 100)}

@@ -43,16 +43,28 @@
   --dj-space-lg: 12px;
   --dj-space-xl: 16px;
 
-  /* Layout section sizes (overridden per layout mode) */
-  --dj-waveform-h: 210px;
-  --dj-library-h:  300px;
-  --dj-mixer-w:    300px;
+  /* Layout section sizes (overridden per layout mode).
+     Mixer width and waveform height use clamp() so the panel breathes
+     at 2K/4K instead of hugging 1920×1080. */
+  --dj-waveform-h: clamp(180px, 19vh, 260px);
+  --dj-library-h:  200px;
+  --dj-mixer-w:    clamp(380px, 22vw, 480px);
   --dj-topbar-h:   44px;
   --dj-fx-h:       auto;
 
-  /* Hit target minimums */
-  --dj-target-primary:   48px;
+  /* Hit target minimums (WCAG 2.2 AA) */
+  --dj-target-primary:   44px;
   --dj-target-secondary: 32px;
+
+  /* Control sizing tokens — referenced by V2 components */
+  --dj-knob-sm:    32px;
+  --dj-knob-md:    44px;
+  --dj-knob-lg:    56px;
+  --dj-pad-perf:   44px;
+  --dj-pad-sec:    36px;
+  --dj-fader-w:    44px;
+  --dj-fader-track:10px;
+  --dj-xfader-h:   32px;
 
   /* Transition defaults */
   --dj-transition-fast:   75ms ease-out;
@@ -62,8 +74,8 @@
 
 /* Layout mode overrides */
 [data-dj-mode="perf"] {
-  --dj-waveform-h: 210px;
-  --dj-library-h:  20vh;
+  --dj-waveform-h: clamp(180px, 18vh, 220px);
+  --dj-library-h:  22vh;
   --dj-fx-h:       auto;
 }
 
@@ -76,7 +88,30 @@
 [data-dj-mode="fx"] {
   --dj-waveform-h: 180px;
   --dj-library-h:  12vh;
-  --dj-fx-h:       200px;
+  --dj-fx-h:       clamp(230px, 25vh, 300px);
+}
+
+/* Shared focus ring used across DJ V2 controls */
+.dj-focus-ring {
+  outline: none;
+}
+.dj-focus-ring:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.7);
+  outline-offset: 2px;
+}
+
+/* Disabled state — grayscale instead of grey-on-grey re-coloring */
+[data-dj-mode] [aria-disabled="true"],
+[data-dj-mode] :disabled {
+  filter: grayscale(0.85);
+  opacity: 0.45;
+}
+
+/* Reduced motion — kill the play-button beat-pulse rAF effect */
+@media (prefers-reduced-motion: reduce) {
+  [data-dj-mode] [style*="--glow"] {
+    --glow: 0 !important;
+  }
 }
 
 @layer base {

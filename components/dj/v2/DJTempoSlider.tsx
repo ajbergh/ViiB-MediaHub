@@ -126,6 +126,37 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
     setTempoRange(TEMPO_RANGES[nextIndex]);
   }, [tempoRange]);
 
+  const clampTempoToRange = useCallback((nextValue: number) => {
+    const rangeMin = Math.max(0.5, 1 - maxChange);
+    const rangeMax = Math.min(1.5, 1 + maxChange);
+    return Math.max(rangeMin, Math.min(rangeMax, nextValue));
+  }, [maxChange]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (disabled) return;
+
+    let next: number | null = null;
+    const smallStep = e.shiftKey ? 0.01 : 0.001;
+    const pageStep = e.shiftKey ? 0.05 : 0.01;
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+      next = value + smallStep;
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+      next = value - smallStep;
+    } else if (e.key === 'PageUp') {
+      next = value + pageStep;
+    } else if (e.key === 'PageDown') {
+      next = value - pageStep;
+    } else if (e.key === 'Home' || e.key === 'Enter' || e.key === ' ') {
+      next = 1.0;
+    }
+
+    if (next !== null) {
+      e.preventDefault();
+      onChange(clampTempoToRange(next));
+    }
+  }, [clampTempoToRange, disabled, onChange, value]);
+
   // Global mouse/touch events
   useEffect(() => {
     if (!isDragging) return;
@@ -174,9 +205,17 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-ns-resize'}
         `}
         style={{ width: 24, height: computedHeight }}
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={`Deck ${deck} tempo`}
+        aria-valuemin={Number((1 - maxChange).toFixed(3))}
+        aria-valuemax={Number((1 + maxChange).toFixed(3))}
+        aria-valuenow={Number(value.toFixed(3))}
+        aria-valuetext={`${percentDisplay}, ${bpmDisplay} BPM`}
         onMouseDown={handleMouseDown}
         onTouchStart={handleMouseDown}
         onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
       >
         {/* Track gradient overlay */}
         <div 
@@ -198,10 +237,10 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
         />
         
         {/* Range markers */}
-        <div className="absolute -left-1 top-0 text-[8px] text-neutral-600 font-mono">
+        <div className="absolute -left-1 top-0 text-[10px] text-neutral-600 font-mono">
           +{tempoRange}
         </div>
-        <div className="absolute -left-1 bottom-0 text-[8px] text-neutral-600 font-mono">
+        <div className="absolute -left-1 bottom-0 text-[10px] text-neutral-600 font-mono">
           -{tempoRange}
         </div>
         
@@ -271,8 +310,9 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
           const nextIndex = (currentIndex + 1) % TEMPO_RANGES.length;
           setTempoRange(TEMPO_RANGES[nextIndex]);
         }}
-        className="text-[9px] text-neutral-600 hover:text-neutral-400 transition-colors"
-        title="Click to change tempo range"
+        className="px-2 min-h-[24px] flex items-center justify-center text-[10px] text-neutral-500 hover:text-neutral-300 hover:bg-[#222] rounded transition-colors"
+        title={`Tempo range ±${tempoRange}% — click to cycle`}
+        aria-label={`Tempo range ±${tempoRange}%, click to cycle`}
       >
         ±{tempoRange}%
       </button>

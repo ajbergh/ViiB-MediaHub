@@ -7,7 +7,7 @@
  * @module components/dj/v2/DJTransportButtons
  */
 
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -18,9 +18,9 @@ interface DJTransportButtonsProps {
   compact?: boolean;
 }
 
-export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({ 
+export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   deck,
-  compact = false 
+  compact = false
 }) => {
   // Granular selectors - only subscribe to what we need (NOT full deckState)
   const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
@@ -29,102 +29,89 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   const effectiveBpm = useStore(state => deck === 'A' ? state.djDeckA.effectiveBpm : state.djDeckB.effectiveBpm);
   const otherEffectiveBpm = useStore(state => deck === 'A' ? state.djDeckB.effectiveBpm : state.djDeckA.effectiveBpm);
   const syncMode = useStore(state => state.djMixer.syncMode);
-  
+
   const { togglePlay, returnToCue, setCue, setTempo, syncBeatPhase } = useDJAudioEngineActions();
-  
-  // Button press states
-  const [cuePressed, setCuePressed] = useState(false);
-  const [playPressed, setPlayPressed] = useState(false);
-  
-  // BPM glow via ref + CSS variable (no React state updates at 60fps)
+
+  // Button refs — used for BPM glow via CSS variable (no React state at 60fps)
   const playButtonRef = useRef<HTMLButtonElement>(null);
-  
+
+  // BPM read via ref so the rAF loop doesn't tear down on every tempo nudge.
+  const bpmRef = useRef(effectiveBpm || 0);
+  useEffect(() => { bpmRef.current = effectiveBpm || 0; }, [effectiveBpm]);
+
   useEffect(() => {
-    if (!isPlaying || !(effectiveBpm || 0)) return;
-    const bpm = effectiveBpm || 0;
-    if (bpm <= 0) return;
-    
-    const beatDuration = 60000 / bpm;
+    if (!isPlaying) {
+      if (playButtonRef.current) playButtonRef.current.style.setProperty('--glow', '0');
+      return;
+    }
+
     let animId: number;
-    const lastBeatTime = performance.now();
-    
+    const startTime = performance.now();
+
     const animate = (now: number) => {
-      const elapsed = now - lastBeatTime;
-      const beatProgress = (elapsed % beatDuration) / beatDuration;
-      const glow = beatProgress < 0.1 ? beatProgress * 10 : Math.max(0, 1 - (beatProgress - 0.1) * 1.1);
-      
-      if (playButtonRef.current) {
+      const bpm = bpmRef.current;
+      if (bpm > 0 && playButtonRef.current) {
+        const beatDuration = 60000 / bpm;
+        const elapsed = now - startTime;
+        const beatProgress = (elapsed % beatDuration) / beatDuration;
+        const glow = beatProgress < 0.1 ? beatProgress * 10 : Math.max(0, 1 - (beatProgress - 0.1) * 1.1);
         playButtonRef.current.style.setProperty('--glow', String(glow));
       }
       animId = requestAnimationFrame(animate);
     };
     animId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying, effectiveBpm]);
+  }, [isPlaying]);  // ← only re-arms when play state flips, not every BPM tick
 
   const handlePlayPause = useCallback(async () => {
-    if (track) {
-      setPlayPressed(true);
-      setTimeout(() => setPlayPressed(false), 100);
-      await togglePlay(deck);
-    }
+    if (track) await togglePlay(deck);
   }, [deck, track, togglePlay]);
 
   const handleCue = useCallback(() => {
-    if (track) {
-      setCuePressed(true);
-      setTimeout(() => setCuePressed(false), 100);
-      returnToCue(deck);
-    }
+    if (track) returnToCue(deck);
   }, [deck, track, returnToCue]);
 
   const handleSetCue = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    if (track) {
-      setCue(deck);
-    }
+    if (track) setCue(deck);
   }, [deck, track, setCue]);
 
   const handleSync = useCallback(() => {
     if (syncMode === 'off' || !originalBpm || !otherEffectiveBpm) return;
-    
+
     const targetBpm = otherEffectiveBpm;
     const newTempo = targetBpm / originalBpm;
     const clampedTempo = Math.max(0.5, Math.min(1.5, newTempo));
     setTempo(deck, clampedTempo);
-    
+
     if (syncMode === 'beat-phase') {
       syncBeatPhase(deck);
     }
   }, [deck, originalBpm, otherEffectiveBpm, setTempo, syncMode, syncBeatPhase]);
 
   const accentColor = deck === 'A' ? '#3b82f6' : '#8b5cf6';
-  const cueSize = compact ? 'w-10 h-10' : 'w-12 h-12';
-  const playSize = compact ? 'w-11 h-11' : 'w-14 h-14';
-  const iconSize = compact ? 16 : 20;
+  // Bigger primary transport — Play is the hero, CUE/SYNC scale with it.
+  const cueSize = compact ? 'w-12 h-12' : 'w-16 h-16';
+  const playSize = compact ? 'w-12 h-12' : 'w-20 h-20';
+  const iconSize = compact ? 18 : 28;
 
+  // Press states are pure CSS — :active scales the button, no JS timer.
   return (
     <div className="flex items-center gap-2">
       {/* Cue Button */}
       <button
         onClick={handleCue}
         onContextMenu={handleSetCue}
-        onMouseDown={() => setCuePressed(true)}
-        onMouseUp={() => setCuePressed(false)}
-        onMouseLeave={() => setCuePressed(false)}
         disabled={!track}
+        aria-label={`Cue deck ${deck}`}
+        title="Cue (Right-click to set)"
         className={`
           ${cueSize} rounded-lg flex items-center justify-center
-          transition-all duration-75
-          ${track 
-            ? 'bg-amber-600 hover:bg-amber-500 text-white' 
+          transition-transform duration-75 active:scale-[0.92]
+          ${track
+            ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-[0_2px_8px_rgba(245,158,11,0.3)] active:shadow-[0_1px_4px_rgba(245,158,11,0.6)]'
             : 'bg-[#2a2a2a] text-neutral-600 cursor-not-allowed'}
         `}
-        style={{
-          boxShadow: track ? `0 2px 8px rgba(245, 158, 11, ${cuePressed ? 0.6 : 0.3})` : undefined,
-          transform: cuePressed ? 'scale(0.92)' : 'scale(1)',
-        }}
-        title="Cue (Right-click to set)"
       >
         <SkipBack size={iconSize} />
       </button>
@@ -133,26 +120,23 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
       <button
         ref={playButtonRef}
         onClick={handlePlayPause}
-        onMouseDown={() => setPlayPressed(true)}
-        onMouseUp={() => setPlayPressed(false)}
-        onMouseLeave={() => setPlayPressed(false)}
         disabled={!track}
+        aria-label={isPlaying ? `Pause deck ${deck}` : `Play deck ${deck}`}
         className={`
-          ${compact ? 'w-11 h-11' : 'w-12 h-12'} rounded-full flex items-center justify-center
-          transition-all duration-75
-          ${!track 
+          ${playSize} rounded-full flex items-center justify-center
+          transition-transform duration-75 active:scale-[0.92]
+          ${!track
             ? 'bg-[#2a2a2a] text-neutral-600 cursor-not-allowed'
-            : isPlaying 
-              ? 'text-white' 
+            : isPlaying
+              ? 'text-white'
               : 'bg-green-600 hover:bg-green-500 text-white'}
         `}
         style={{
           ['--glow' as any]: '0',
           backgroundColor: track && isPlaying ? accentColor : undefined,
-          boxShadow: track 
-            ? `0 ${playPressed ? '1' : '3'}px ${8 + 8}px ${isPlaying ? accentColor + (playPressed ? '80' : '60') : 'rgba(34, 197, 94, 0.4)'}` 
+          boxShadow: track
+            ? `0 3px 16px ${isPlaying ? accentColor + '60' : 'rgba(34, 197, 94, 0.4)'}`
             : undefined,
-          transform: playPressed ? 'scale(0.92)' : 'scale(1)',
         }}
       >
         {isPlaying ? <Pause size={iconSize + 2} /> : <Play size={iconSize + 2} className="ml-0.5" />}
@@ -162,8 +146,10 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
       <button
         onClick={handleSync}
         disabled={!track || syncMode === 'off'}
+        aria-label={`Sync deck ${deck} to other deck`}
+        title={syncMode === 'off' ? 'Sync disabled — set sync mode in mixer' : `Sync to other deck (${syncMode})`}
         className={`
-          ${compact ? 'h-8 px-3' : 'h-10 px-5'} rounded-lg text-[11px] font-bold uppercase tracking-wider
+          ${compact ? 'h-12 px-4 text-[12px]' : 'h-16 px-7 text-[14px]'} rounded-lg font-bold uppercase tracking-wider
           transition-all duration-100 border flex items-center gap-1.5
           ${!track || syncMode === 'off'
             ? 'bg-[#2a2a2a] text-neutral-600 border-[#333] cursor-not-allowed'
@@ -171,10 +157,9 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
               ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500'
               : 'bg-[#333] hover:bg-[#444] text-white border-[#555]'}
         `}
-        title={syncMode === 'off' ? 'Sync disabled — set sync mode in mixer' : `Sync to other deck (${syncMode})`}
       >
         SYNC
-        {syncMode !== 'off' && track && <span className='w-1.5 h-1.5 rounded-full bg-current opacity-80' />}
+        {syncMode !== 'off' && track && <span className='w-2 h-2 rounded-full bg-current opacity-80' />}
       </button>
     </div>
   );

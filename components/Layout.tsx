@@ -1,44 +1,50 @@
 /**
  * ViiB MediaHub - Layout Component
- * 
+ *
  * Root layout wrapper providing the application structure:
- * - Sidebar navigation (left)
+ * - Mobile top bar (visible <md) with menu button + current route title
+ * - Sidebar navigation (left, persistent ≥md, off-canvas drawer <md)
  * - Main content area (center, scrollable)
  * - Floating queue panel (right, toggleable)
  * - Player controls (bottom, fixed)
  * - Global context menu layer
  * - Toast notifications
  * - Global keyboard navigation
- * 
- * Handles right-click prevention on the main container to enable
- * custom context menus throughout the application.
- * 
+ *
  * @module Layout
  */
 
-import React from 'react';
+import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Player } from './Player';
 import { Queue } from './Queue';
 import { ContextMenu } from './ContextMenu';
 import { ToastContainer } from './Toast';
+import { MobileTopBar } from './MobileTopBar';
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Enable global keyboard navigation (Space, arrows, Escape, etc.)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
   useKeyboardNavigation();
+
+  // DJ routes manage their own audio engine — suppress the global player bar and mobile top bar
+  const isDJRoute = location.pathname === '/dj';
 
   return (
     <div className="flex flex-col h-screen bg-surface-0 text-text-main" onContextMenu={(e) => e.preventDefault()}>
+      {!isDJRoute && <MobileTopBar onOpenMenu={() => setMobileNavOpen(true)} />}
       <div className="flex flex-1 overflow-hidden relative">
-        <Sidebar />
+        {/* Sidebar (rail on desktop, drawer on mobile) */}
+        <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
         <main className="flex-1 overflow-y-auto bg-surface-0 relative">
           {children}
         </main>
         {/* Floating Queue Panel */}
-        <Queue />
+        {!isDJRoute && <Queue />}
       </div>
-      <Player />
+      {!isDJRoute && <Player />}
       {/* Global Context Menu Layer */}
       <ContextMenu />
       {/* Toast Notifications */}
