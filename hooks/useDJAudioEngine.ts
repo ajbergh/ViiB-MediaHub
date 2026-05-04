@@ -196,12 +196,28 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       });
 
       // Apply initial state from store
+      const initialState = useStore.getState();
       engine.setCrossfader(djCrossfader);
       engine.setMasterVolume(djMasterVolume);
       engine.setHeadphoneVolume(djHeadphoneVolume);
       engine.setMasterCueEnabled(djMasterCueEnabled);
       engine.updateHeadphoneMix(djHeadphoneMix);
-      const initialState = useStore.getState();
+      
+      // Sync initial Deck states
+      engine.setVolume('A', initialState.djDeckA.volume);
+      engine.setEQ('A', 'low', initialState.djDeckA.eq.low);
+      engine.setEQ('A', 'mid', initialState.djDeckA.eq.mid);
+      engine.setEQ('A', 'high', initialState.djDeckA.eq.high);
+      engine.setTempo('A', initialState.djDeckA.tempo);
+      engine.setCueEnabled('A', initialState.djDeckA.cueEnabled);
+      
+      engine.setVolume('B', initialState.djDeckB.volume);
+      engine.setEQ('B', 'low', initialState.djDeckB.eq.low);
+      engine.setEQ('B', 'mid', initialState.djDeckB.eq.mid);
+      engine.setEQ('B', 'high', initialState.djDeckB.eq.high);
+      engine.setTempo('B', initialState.djDeckB.tempo);
+      engine.setCueEnabled('B', initialState.djDeckB.cueEnabled);
+      
       const beatFX = initialState.djMixer.beatFX;
       engine.setBeatFX(
         beatFX.target,
@@ -233,14 +249,22 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       logger.debug(`engine.loadTrack complete, updating store...`);
       loadTrackToDeck(deck, track);
       
+      // Helper to check if the deck is still playing the same track
+      const isTrackStillLoaded = () => {
+        const currentDeckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+        return currentDeckState.track?.id === track.id;
+      };
+      
       // Fetch waveform data from backend, with client-side fallback
       const loadWaveform = async () => {
         try {
           // Try server-side first
           const waveformResponse = await api.getDJWaveform(track.id);
           if (waveformResponse && waveformResponse.peaks) {
-            setDeckWaveform(deck, waveformResponse.peaks);
-            logger.debug(`Waveform loaded from server for Deck ${deck}: ${waveformResponse.peaks.length} peaks`);
+            if (isTrackStillLoaded()) {
+              setDeckWaveform(deck, waveformResponse.peaks);
+              logger.debug(`Waveform loaded from server for Deck ${deck}: ${waveformResponse.peaks.length} peaks`);
+            }
             return;
           }
         } catch (serverErr) {
@@ -251,8 +275,10 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
         try {
           const audioUrl = `/api/audio/${track.id}`;
           const peaks = await generateClientWaveform(audioUrl);
-          setDeckWaveform(deck, peaks);
-          logger.debug(`Waveform generated client-side for Deck ${deck}: ${peaks.length} peaks`);
+          if (isTrackStillLoaded()) {
+            setDeckWaveform(deck, peaks);
+            logger.debug(`Waveform generated client-side for Deck ${deck}: ${peaks.length} peaks`);
+          }
         } catch (clientErr) {
           logger.warn(`Failed to generate waveform for Deck ${deck}`, clientErr);
           // Non-critical error - waveform display will show loading state
@@ -268,6 +294,8 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           const audioUrl = `/api/audio/${track.id}`;
           logger.debug(`Starting BPM detection for Deck ${deck}...`);
           const bpmResult = await detectBPM(audioUrl);
+          
+          if (!isTrackStillLoaded()) return;
           
           // Normalize BPM to reasonable range (avoid half/double time errors)
           const normalizedBpm = normalizeBPM(bpmResult.bpm);
@@ -298,6 +326,8 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           // Analyze first 30 seconds for faster results
           const keyResult = await detectKey(audioUrl, { duration: 30 });
           
+          if (!isTrackStillLoaded()) return;
+          
           // Get current BPM (may be set by BPM detection)
           const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
           const currentBpm = deckState.effectiveBpm || deckState.originalBpm;
@@ -316,6 +346,9 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
         try {
           logger.debug(`Loading hot cues for track ${track.id}...`);
           const response = await api.getDJHotCues(track.id);
+          
+          if (!isTrackStillLoaded()) return;
+          
           if (response && response.hotCues && response.hotCues.length > 0) {
             loadHotCues(deck, response.hotCues.map(hc => ({
               slot: hc.slot,
@@ -331,8 +364,9 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           }
         } catch (hotCueErr) {
           logger.warn(`Failed to load hot cues for Deck ${deck}`, hotCueErr);
-          // Non-critical error - hot cues will be empty
-          loadHotCues(deck, []);
+          if (isTrackStillLoaded()) {
+            loadHotCues(deck, []);
+          }
         }
       };
       
@@ -966,9 +1000,23 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     engine.setOnTrackEnd((deck) => useStore.getState().setDeckPlaying(deck, false));
     engine.setCrossfader(s.djMixer.crossfader);
     engine.setMasterVolume(s.djMixer.masterVolume);
+    engine.setVolume('A', s.djDeckA.volume);
+    engine.setVolume('B', s.djDeckB.volume);
+    engine.setEQ('A', 'low', s.djDeckA.eq.low);
+    engine.setEQ('A', 'mid', s.djDeckA.eq.mid);
+    engine.setEQ('A', 'high', s.djDeckA.eq.high);
+    engine.setEQ('B', 'low', s.djDeckB.eq.low);
+    engine.setEQ('B', 'mid', s.djDeckB.eq.mid);
+    engine.setEQ('B', 'high', s.djDeckB.eq.high);
+    engine.setTempo('A', s.djDeckA.tempo);
+    engine.setTempo('B', s.djDeckB.tempo);
+    engine.setCueEnabled('A', s.djDeckA.cueEnabled);
+    engine.setCueEnabled('B', s.djDeckB.cueEnabled);
     engine.setHeadphoneVolume(s.djMixer.headphoneVolume);
     engine.setMasterCueEnabled(s.djMixer.masterCueEnabled);
     engine.updateHeadphoneMix(s.djMixer.headphoneMix);
+    engine.setKeyLock('A', s.djMixer.keyLockA);
+    engine.setKeyLock('B', s.djMixer.keyLockB);
     const beatFX = s.djMixer.beatFX;
     engine.setBeatFX(
       beatFX.target,
@@ -987,15 +1035,23 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     await engine.loadTrack(deck, track);
     useStore.getState().loadTrackToDeck(deck, track);
 
+    const isTrackStillLoaded = () => {
+      const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+      return ds.track?.id === track.id;
+    };
+
     // Waveform (async, non-blocking)
     (async () => {
       try {
         const resp = await api.getDJWaveform(track.id);
-        if (resp?.peaks) { useStore.getState().setDeckWaveform(deck, resp.peaks); return; }
+        if (resp?.peaks) { 
+          if (isTrackStillLoaded()) useStore.getState().setDeckWaveform(deck, resp.peaks); 
+          return; 
+        }
       } catch { /* server unavailable */ }
       try {
         const peaks = await generateClientWaveform(`/api/audio/${track.id}`);
-        useStore.getState().setDeckWaveform(deck, peaks);
+        if (isTrackStillLoaded()) useStore.getState().setDeckWaveform(deck, peaks);
       } catch { /* non-critical */ }
     })();
 
@@ -1003,6 +1059,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     (async () => {
       try {
         const result = await detectBPM(`/api/audio/${track.id}`);
+        if (!isTrackStillLoaded()) return;
         const bpm = normalizeBPM(result.bpm);
         const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
         const duration = ds.duration || track.duration || 0;
@@ -1015,6 +1072,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     (async () => {
       try {
         const keyResult = await detectKey(`/api/audio/${track.id}`, { duration: 30 });
+        if (!isTrackStillLoaded()) return;
         const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
         useStore.getState().setDeckAnalysis(deck, ds.effectiveBpm || ds.originalBpm, keyResult.key, ds.beatGrid || []);
       } catch { /* non-critical */ }
@@ -1024,11 +1082,14 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     (async () => {
       try {
         const resp = await api.getDJHotCues(track.id);
+        if (!isTrackStillLoaded()) return;
         const cues = resp?.hotCues?.length
           ? resp.hotCues.map((hc: any) => ({ slot: hc.slot, position: hc.position, label: hc.label, color: hc.color }))
           : [];
         useStore.getState().loadHotCues(deck, cues);
-      } catch { useStore.getState().loadHotCues(deck, []); }
+      } catch { 
+        if (isTrackStillLoaded()) useStore.getState().loadHotCues(deck, []); 
+      }
     })();
   }, [initialize]);
 
@@ -1074,22 +1135,32 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
   }, []);
 
   const setVolume = useCallback((deck: DeckId, volume: number) => {
+    const engine = getDJAudioEngine();
+    if (engine.initialized) engine.setVolume(deck, volume);
     useStore.getState().setDeckVolume(deck, volume);
   }, []);
 
   const setCrossfader = useCallback((position: number) => {
+    const engine = getDJAudioEngine();
+    if (engine.initialized) engine.setCrossfader(position);
     useStore.getState().setCrossfader(position);
   }, []);
 
   const setMasterVolume = useCallback((volume: number) => {
+    const engine = getDJAudioEngine();
+    if (engine.initialized) engine.setMasterVolume(volume);
     useStore.getState().setMasterVolume(volume);
   }, []);
 
   const setEQ = useCallback((deck: DeckId, band: 'low' | 'mid' | 'high', gain: number) => {
+    const engine = getDJAudioEngine();
+    if (engine.initialized) engine.setEQ(deck, band, gain);
     useStore.getState().setDeckEQ(deck, band, gain);
   }, []);
 
   const setTempo = useCallback((deck: DeckId, tempo: number) => {
+    const engine = getDJAudioEngine();
+    if (engine.initialized) engine.setTempo(deck, tempo);
     useStore.getState().setDeckTempo(deck, tempo);
   }, []);
 

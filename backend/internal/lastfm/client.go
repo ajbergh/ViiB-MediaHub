@@ -14,9 +14,6 @@
 //	info, err := client.GetTrackInfo(ctx, "Artist", "Track")
 //
 // All API methods respect rate limits and check cache before making requests.
-//
-// Created: 2025-12-31
-// Last Modified: 2025-12-31
 package lastfm
 
 import (

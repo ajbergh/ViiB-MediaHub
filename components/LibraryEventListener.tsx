@@ -3,14 +3,17 @@
  * 
  * Background component maintaining SSE connection for library updates.
  * 
- * Events:
+ * Events received from /api/library/events (SSE):
  * - scan_started: Library scan initiated
- * - scan_progress: Scan progress update
- * - scan_complete: Scan finished with new/removed song counts
+ * - scan_progress: Scan progress update (file counts)
+ * - scan_complete: Scan finished (new/removed song counts)
+ * - library_updated: Generic library change notification
+ * - enrichment_started/progress/complete: LLM metadata enrichment progress
+ * - mood_started/progress/complete: Mood/energy/tempo enrichment progress
  * 
- * Automatically refreshes library state when scan completes,
- * ensuring UI stays synchronized without manual reload.
- * Includes reconnection logic for dropped SSE connections.
+ * Automatically refreshes library state when a scan or enrichment completes,
+ * ensuring the UI stays synchronized without manual reload.
+ * Includes automatic reconnection with exponential backoff for dropped connections.
  * 
  * @module LibraryEventListener
  */

@@ -8,8 +8,9 @@
  * - UISlice: Context menus, dialogs, download count, panel states
  * 
  * Persistence:
- * - Audio settings and Spotify credentials persisted to localStorage
- * - Song library stored in IndexedDB (via libraryService) for large libraries
+ * - Audio settings and UI preferences persisted to localStorage
+ * - Spotify client credentials persisted to localStorage (tokens held in-memory only)
+ * - Song library backed by SQLite (via Go backend); IndexedDB used as fallback in browser-only mode
  * 
  * Selectors:
  * - useAlbums: Derives album list with song counts from songs

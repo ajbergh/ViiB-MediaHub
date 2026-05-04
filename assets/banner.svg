@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-labelledby="title desc">
+  <title id="title">ViiB MediaHub</title>
+  <desc id="desc">ViiB MediaHub README banner with the vector app icon, audio waveform, and local-first desktop music player branding.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#08080c"/>
+      <stop offset="0.48" stop-color="#0b0b0e"/>
+      <stop offset="1" stop-color="#101017"/>
+    </linearGradient>
+
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0" stop-color="#6d4dff"/>
+      <stop offset="0.44" stop-color="#9b5cff"/>
+      <stop offset="0.76" stop-color="#d63ca6"/>
+      <stop offset="1" stop-color="#ff4f87"/>
+    </linearGradient>
+
+    <linearGradient id="brandVertical" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0" stop-color="#ff4f87"/>
+      <stop offset="0.45" stop-color="#9b5cff"/>
+      <stop offset="1" stop-color="#5e49f2"/>
+    </linearGradient>
+
+    <linearGradient id="cool" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0" stop-color="#3ee089"/>
+      <stop offset="1" stop-color="#4ea1ff"/>
+    </linearGradient>
+
+    <linearGradient id="ribbon" x1="0" y1="260" x2="1200" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5e49f2" stop-opacity="0.28"/>
+      <stop offset="0.48" stop-color="#d63ca6" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#3ee089" stop-opacity="0.16"/>
+    </linearGradient>
+
+    <radialGradient id="iconLight" cx="45%" cy="34%" r="72%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.12"/>
+      <stop offset="0.52" stop-color="#9b5cff" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="cardShadow" x="-18%" y="-18%" width="136%" height="150%">
+      <feDropShadow dx="0" dy="22" stdDeviation="20" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+
+    <filter id="markGlow" x="-28%" y="-28%" width="156%" height="156%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0.55 0 0 0 0.38  0 0.35 0 0 0.14  0 0 0.9 0 0.95  0 0 0 0.55 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="lineGlow" x="-8%" y="-60%" width="116%" height="220%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <pattern id="fineGrid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.026" stroke-width="1"/>
+    </pattern>
+
+    <clipPath id="bannerClip">
+      <rect width="1200" height="360" rx="26"/>
+    </clipPath>
+
+    <symbol id="viibMark" viewBox="0 0 1024 1024">
+      <path fill-rule="evenodd" d="M 373.500 183.647 C 358.315 186.090, 342.855 193.342, 332.988 202.650 C 319.195 215.662, 312.721 229.780, 312.652 247 C 312.576 265.821, 320.563 282.097, 335.994 294.565 C 349.985 305.869, 365.172 310.981, 384.803 310.993 C 398.513 311.001, 407.666 309.115, 418.500 304.046 C 459.743 284.753, 470.415 237.413, 440.574 206.133 C 430.860 195.950, 419.711 189.460, 405 185.424 C 399.455 183.902, 379.060 182.752, 373.500 183.647 M 625 184.482 C 591.913 191.857, 569.278 216.830, 569.058 246.201 C 568.938 262.171, 574.449 276.138, 585.485 287.837 C 624.377 329.064, 698.884 313.613, 712.457 261.505 C 714.429 253.932, 714.436 240.096, 712.472 232.552 C 708.126 215.870, 694.366 199.615, 677.785 191.578 C 672.678 189.102, 665.800 186.342, 662.500 185.445 C 654.097 183.158, 633.330 182.625, 625 184.482 M 364.230 349.037 C 332.085 353.075, 308.794 364.865, 284.500 389.395 C 268.843 405.205, 260.383 416.840, 240.435 450 C 217.759 487.694, 209.011 499.990, 194.993 513.869 C 172.442 536.198, 148.984 546.744, 113.572 550.475 C 97.699 552.147, 91.491 554.431, 85.198 560.915 C 78.691 567.620, 76.553 573.063, 76.525 583 C 76.504 590.040, 76.922 592.359, 78.960 596.500 C 82.574 603.844, 88.126 609.327, 95.253 612.588 C 100.930 615.186, 102.458 615.438, 112 615.350 C 150.037 614.996, 192.622 600.979, 223.763 578.561 C 252.154 558.123, 270.257 536.018, 302.022 483 C 308.777 471.725, 316.891 458.675, 320.054 454 C 339.547 425.188, 357.278 413, 379.700 413 C 405.427 413, 425.699 431.097, 446.349 472.500 C 457.104 494.062, 463.979 511.498, 482.033 563 C 507.652 636.084, 526.584 674.135, 551.160 701.934 C 571.131 724.526, 597.290 740.259, 625 746.345 C 639.305 749.486, 667.428 749.402, 682 746.174 C 707.675 740.487, 731.271 727.295, 752.773 706.608 C 765.517 694.347, 775.222 682.648, 793.923 657 C 823.765 616.074, 836.699 603.286, 860.304 591.370 C 876.314 583.288, 891.040 579.293, 914.686 576.619 C 932.770 574.573, 941.086 569.665, 947.072 557.505 C 954.964 541.474, 948.598 522.850, 932.520 514.935 C 924.709 511.090, 918.014 510.390, 903.748 511.927 C 851.254 517.581, 808.095 537.218, 774.344 570.803 C 762.204 582.884, 755.425 591.243, 739.811 613.381 C 715.094 648.426, 702.426 663.334, 689.500 672.586 C 666.908 688.757, 640.119 688.751, 619.092 672.571 C 596.015 654.813, 575.840 618.003, 552.737 551.500 C 529.054 483.326, 512.125 443.420, 496.528 419 C 476.337 387.388, 449.916 364.953, 421.373 355.185 C 405.694 349.819, 380.005 347.055, 364.230 349.037 M 586.090 356.065 C 577.375 357.275, 578 350.946, 578 438.031 C 578 514.841, 578 514.841, 586.118 538.670 C 608.286 603.741, 626.054 637.329, 643.814 647.737 C 649.939 651.326, 658.078 651.171, 665.136 647.329 C 675.375 641.757, 688.552 626.001, 701.842 603.442 C 706 596.384, 706 596.384, 706 480.341 C 706 400.523, 705.666 363.341, 704.930 361.230 C 702.704 354.845, 702.920 354.866, 643.740 355.175 C 614.458 355.327, 588.515 355.728, 586.090 356.065 M 374 447.727 C 370.017 449.239, 363.486 454.729, 358.269 460.949 C 351.504 469.015, 343.952 480.970, 330.643 504.679 C 321 521.857, 321 521.857, 321 670.292 C 321 818.727, 321 818.727, 323.636 821.364 C 326.273 824, 326.273 824, 384.962 824 C 443.651 824, 443.651 824, 446.076 821.420 C 448.500 818.839, 448.500 818.839, 448.762 698.485 C 449.024 578.132, 449.024 578.132, 444.386 563.816 C 429.607 518.202, 415.528 485.042, 403.203 466.817 C 397.771 458.786, 388.596 449.557, 384.491 447.997 C 381.685 446.930, 376.455 446.796, 374 447.727 M 578 791.438 C 578 819.091, 578 819.091, 580.455 821.545 C 582.909 824, 582.909 824, 613.705 824.220 C 630.642 824.340, 657.024 824.407, 672.330 824.367 C 708.738 824.272, 705.397 827.206, 705.801 794.979 C 705.972 781.332, 705.716 771, 705.207 771 C 704.715 771, 701.715 771.894, 698.539 772.987 C 667.663 783.610, 621.075 781.638, 589.119 768.356 C 584.379 766.386, 579.938 764.552, 579.250 764.280 C 578.268 763.892, 578 769.720, 578 791.438"/>
+    </symbol>
+  </defs>
+
+  <g clip-path="url(#bannerClip)">
+    <rect width="1200" height="360" fill="url(#bg)"/>
+    <rect width="1200" height="360" fill="url(#fineGrid)"/>
+
+    <path d="M0 264C118 230 238 228 358 260C493 296 593 311 724 276C858 240 985 246 1200 292V360H0Z" fill="#18181e" opacity="0.66"/>
+    <path d="M0 286C148 252 280 255 424 290C553 322 654 327 783 290C915 252 1042 260 1200 309V360H0Z" fill="url(#ribbon)"/>
+    <path d="M63 112C173 72 306 69 445 97C585 126 714 132 853 101C983 72 1095 77 1212 111" fill="none" stroke="url(#brand)" stroke-width="1.4" opacity="0.34"/>
+    <path d="M-20 148C128 100 297 106 466 145C615 180 755 187 908 145C1040 109 1135 124 1220 158" fill="none" stroke="url(#cool)" stroke-width="1" opacity="0.21"/>
+
+    <rect x="1.5" y="1.5" width="1197" height="357" rx="24.5" fill="none" stroke="#ffffff" stroke-opacity="0.09" stroke-width="3"/>
+    <rect x="0" y="0" width="1200" height="4" fill="url(#brand)" opacity="0.88"/>
+    <rect x="0" y="356" width="1200" height="4" fill="url(#brand)" opacity="0.36"/>
+
+    <g transform="translate(66 55)" filter="url(#cardShadow)">
+      <rect width="238" height="238" rx="46" fill="#050508"/>
+      <rect x="1.5" y="1.5" width="235" height="235" rx="44.5" fill="none" stroke="#ffffff" stroke-opacity="0.11" stroke-width="3"/>
+      <rect x="15" y="15" width="208" height="208" rx="34" fill="#0a0a10"/>
+      <use href="#viibMark" x="17" y="22" width="204" height="204" fill="url(#brand)"/>
+    </g>
+
+    <g font-family="'Segoe UI', Inter, 'SF Pro Display', Arial, sans-serif">
+      <text x="350" y="88" font-size="14" font-weight="750" letter-spacing="3" fill="#9b5cff">LOCAL-FIRST DESKTOP PLAYER</text>
+      <text x="348" y="164" font-size="72" font-weight="850" letter-spacing="0" fill="url(#brand)">ViiB</text>
+      <text x="516" y="164" font-size="52" font-weight="430" letter-spacing="0" fill="#f7f5ff">MediaHub</text>
+      <text x="352" y="207" font-size="22" font-weight="500" letter-spacing="0" fill="#c7c5d4">A fast, private music hub for your local library.</text>
+      <text x="352" y="238" font-size="16" font-weight="500" letter-spacing="0" fill="#868999">AI DJ, visualizers, smart playlists, and native builds.</text>
+    </g>
+
+    <g transform="translate(350 268)" font-family="'Segoe UI', Inter, Arial, sans-serif" font-size="13" font-weight="700">
+      <g>
+        <rect width="116" height="30" rx="8" fill="#121216" stroke="#24242b"/>
+        <path d="M17 10V21M12 16H23" stroke="#3ee089" stroke-width="2.2" stroke-linecap="round"/>
+        <text x="36" y="20" fill="#e7e5f2">Local files</text>
+      </g>
+      <g transform="translate(128 0)">
+        <rect width="91" height="30" rx="8" fill="#121216" stroke="#24242b"/>
+        <path d="M14 20L20 10L26 20" fill="none" stroke="#ff4f87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="38" y="20" fill="#e7e5f2">AI DJ</text>
+      </g>
+      <g transform="translate(231 0)">
+        <rect width="118" height="30" rx="8" fill="#121216" stroke="#24242b"/>
+        <path d="M13 18C21 9 27 23 35 13" fill="none" stroke="#9b5cff" stroke-width="2.2" stroke-linecap="round"/>
+        <text x="47" y="20" fill="#e7e5f2">Visualizers</text>
+      </g>
+      <g transform="translate(361 0)">
+        <rect width="129" height="30" rx="8" fill="#121216" stroke="#24242b"/>
+        <path d="M14 11H26M14 16H29M14 21H23" stroke="#4ea1ff" stroke-width="2" stroke-linecap="round"/>
+        <text x="42" y="20" fill="#e7e5f2">Wails + Go</text>
+      </g>
+    </g>
+
+    <g transform="translate(836 82)">
+      <rect x="0" y="0" width="286" height="142" rx="24" fill="#121216" stroke="#24242b"/>
+      <rect x="24" y="27" width="52" height="52" rx="12" fill="url(#brandVertical)"/>
+      <circle cx="50" cy="53" r="15" fill="#09090d" fill-opacity="0.28" stroke="#ffffff" stroke-opacity="0.22"/>
+      <circle cx="50" cy="53" r="4.5" fill="#ffffff" opacity="0.86"/>
+
+      <g fill="#ffffff">
+        <rect x="96" y="30" width="128" height="9" rx="4.5" opacity="0.78"/>
+        <rect x="96" y="52" width="166" height="7" rx="3.5" opacity="0.18"/>
+        <rect x="96" y="72" width="140" height="7" rx="3.5" opacity="0.12"/>
+      </g>
+
+      <g transform="translate(24 102)" filter="url(#lineGlow)">
+        <path d="M0 13C10 13 10 3 20 3C30 3 30 23 40 23C50 23 50 5 60 5C70 5 70 21 80 21C90 21 90 9 100 9C110 9 110 17 120 17C130 17 130 4 140 4C150 4 150 23 160 23C170 23 170 10 180 10C190 10 190 18 200 18C210 18 210 7 220 7C230 7 230 20 240 20" fill="none" stroke="url(#brand)" stroke-width="3" stroke-linecap="round"/>
+        <path d="M0 16H240" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2" stroke-linecap="round"/>
+      </g>
+    </g>
+
+    <g transform="translate(945 255)" opacity="0.9">
+      <path d="M0 31V11M18 31V3M36 31V18M54 31V0M72 31V15M90 31V6M108 31V22M126 31V8" stroke="url(#cool)" stroke-width="5" stroke-linecap="round"/>
+      <path d="M0 47H126" stroke="#ffffff" stroke-opacity="0.13" stroke-width="2" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>

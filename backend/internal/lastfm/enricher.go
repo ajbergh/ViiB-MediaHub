@@ -13,9 +13,6 @@
 // Enrichment can be triggered via:
 //   - POST /api/lastfm/enrich/songs - Enrich songs lacking Last.FM data
 //   - POST /api/lastfm/enrich/artists - Enrich artists lacking Last.FM data
-//
-// Created: 2025-12-31
-// Last Modified: 2025-12-31
 package lastfm
 
 import (

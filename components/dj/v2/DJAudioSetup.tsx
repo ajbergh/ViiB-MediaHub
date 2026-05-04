@@ -46,8 +46,8 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
   const [labelsUnlocked, setLabelsUnlocked] = useState(false);
 
   const hasMediaDevices = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.enumerateDevices;
-  const canRouteMain = supportsAudioContextSink();
   const canRouteHeadphones = supportsMediaElementSink();
+  const canRouteMain = supportsAudioContextSink() || canRouteHeadphones;
 
   const loadDevices = useCallback(async () => {
     setError(null);
@@ -178,8 +178,8 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
         <div className='flex-1 overflow-y-auto p-4 space-y-4'>
           {(!canRouteMain || !canRouteHeadphones) && (
             <div className='rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200'>
-              {!canRouteMain && <div>Master output routing is not supported by this browser or WebView.</div>}
-              {!canRouteHeadphones && <div>Headphone output routing is not supported by this browser or WebView.</div>}
+              {!canRouteMain && <div>This runtime does not advertise master output routing support; Apply will report the exact engine result.</div>}
+              {!canRouteHeadphones && <div>This runtime does not advertise headphone output routing support; Apply will report the exact engine result.</div>}
             </div>
           )}
 
@@ -225,7 +225,7 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
               <select
                 value={mainDeviceId}
                 onChange={e => setMainDeviceId(e.target.value)}
-                disabled={!canRouteMain}
+                disabled={applying !== null}
                 className='flex-1 bg-[#0f0f0f] border border-[#333] rounded px-3 py-2 text-xs text-neutral-100 disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-cyan-500'
                 aria-label='Master output device'
               >
@@ -235,7 +235,7 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
               </select>
               <button
                 onClick={applyMainOutput}
-                disabled={!canRouteMain || applying !== null}
+                disabled={applying !== null}
                 className={`${buttonBase} bg-cyan-600/20 text-cyan-300 border-cyan-500/30 hover:bg-cyan-600/30 disabled:opacity-50`}
               >
                 {applying === 'main' ? 'Applying' : 'Apply'}
@@ -255,7 +255,7 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
               <select
                 value={headphoneDeviceId}
                 onChange={e => setHeadphoneDeviceId(e.target.value)}
-                disabled={!canRouteHeadphones}
+                disabled={applying !== null}
                 className='flex-1 bg-[#0f0f0f] border border-[#333] rounded px-3 py-2 text-xs text-neutral-100 disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-orange-500'
                 aria-label='Headphone output device'
               >
@@ -265,7 +265,7 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
               </select>
               <button
                 onClick={applyHeadphoneOutput}
-                disabled={!canRouteHeadphones || applying !== null}
+                disabled={applying !== null}
                 className={`${buttonBase} bg-orange-600/20 text-orange-300 border-orange-500/30 hover:bg-orange-600/30 disabled:opacity-50`}
               >
                 {applying === 'headphones' ? 'Applying' : 'Apply'}

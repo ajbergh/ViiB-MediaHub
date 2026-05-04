@@ -1,508 +1,468 @@
-# ViiB MediaHub
+<p align="center">
+  <img src="assets/banner.svg" alt="ViiB MediaHub" width="100%"/>
+</p>
 
-A modern local media player for audio files, built with React 19 + TypeScript frontend and Go 1.22+ backend. Supports two build modes:
+<p align="center">
+  <strong>A modern, local-first media player — React 19 frontend · Go backend · Native desktop via Wails</strong>
+</p>
 
-- **Web Build** - Single Windows executable that opens in your web browser
-- **Wails Build** - Native Windows desktop app with WebView2 window
+<p align="center">
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#build-targets">Build Targets</a> ·
+  <a href="#api-reference">API Reference</a> ·
+  <a href="#technology-stack">Tech Stack</a>
+</p>
+
+---
+
+## Overview
+
+ViiB MediaHub is a self-hosted, offline-first music player that scans your local library and serves a rich web UI. It ships in two flavors:
+
+| Mode | Description | Output |
+|------|-------------|--------|
+| **Wails (native)** | Native desktop window via WebView — no browser needed | `.app`, `.exe`, binary |
+| **Web browser** | Local HTTP server; opens in your default browser | Single executable |
+
+Both modes share the same Go backend (SQLite library, scan engine, Spotify integration) and React frontend.
+
+---
+
+## Platforms
+
+| Platform | Architecture | Wails (native) | Web browser |
+|----------|-------------|:--------------:|:-----------:|
+| Windows | x86-64 (amd64) | ✅ | ✅ |
+| Windows | ARM64 | ✅ | ✅ |
+| macOS | Apple Silicon (arm64) | ✅ | ✅ |
+| macOS | Intel (amd64) | ✅ | ✅ |
+| macOS | Universal (fat binary) | ✅ | — |
+| Linux | x86-64 (amd64) | ✅ | ✅ |
+| Linux | ARM64 | ✅ | ✅ |
 
 ## Features
 
 ### 🎵 Audio Playback
-- **Multi-Format Support** - MP3, FLAC, M4A, AAC, OGG, OPUS, WAV, and WMA
-- **Gapless Playback** - Seamless transitions between tracks
-- **Crossfade** - Smooth audio transitions with configurable duration
-- **Queue Management** - Add, reorder, and manage playback queue with drag-and-drop
+- **Multi-format support** — MP3, FLAC, M4A, AAC, OGG, OPUS, WAV, WMA
+- **Gapless playback** — seamless transitions between tracks
+- **Crossfade** — configurable fade duration
+- **Queue management** — add, reorder, and drag-and-drop queue items
+- **Play Next / Add to Queue** — right-click any song, album, or playlist to insert after the current track or append to the end
 
 ### 🎚️ Audio Enhancement
-- **10-Band Equalizer** - Full parametric EQ (32Hz - 16kHz)
-- **22 EQ Presets** - Rock, Jazz, Classical, Electronic, Vocal Boost, and more
-- **Auto-EQ** - Automatic preset selection based on genre tags
-- **21 Real-time Visualizers** - Next-gen audio-reactive animations (see `VISUALIZATIONS_GUIDE.md`):
-  - **Classic Modes** (6): Waveform, Spectrum, Circular Spectrum, Glow Wave, Aurora, Spectrum Bars
-  - **Next-Gen Modes** (15): Flame Spectrum, Stardust Halo, Aurora Ribbon, Electric Arc, Grass Oscilloscope, Crystal Shards, Watercolor Bloom, Ice Fracture, Firefly Field, Vinyl Spin, Beat Orbs, Tunnel Waveform, Glass Shards, Wind Field
-  - Fully optimized for 60 FPS on mid-range hardware (+25.8% performance)
-  - Cinematic visual effects with parallax depth, particle trails, and physics-based interactions
-  - Cycle through modes with keyboard shortcut or click visualizer in Now Playing view
+- **10-band equalizer** — parametric EQ from 32 Hz to 16 kHz
+- **22 built-in EQ presets** — Rock, Jazz, Classical, Electronic, Vocal Boost, and more
+- **Auto-EQ** — automatic preset selection based on genre tags
+- **21 real-time visualizers** — 60 FPS audio-reactive animations:
+  - *Classic (6):* Waveform, Spectrum, Circular Spectrum, Glow Wave, Aurora, Spectrum Bars
+  - *Next-Gen (15):* Flame Spectrum, Stardust Halo, Aurora Ribbon, Electric Arc, Grass Oscilloscope, Crystal Shards, Watercolor Bloom, Ice Fracture, Firefly Field, Vinyl Spin, Beat Orbs, Tunnel Waveform, Glass Shards, Wind Field, Milkdrop
+  - Cycle modes with a keyboard shortcut or click the visualizer in the Now Playing view
 
-### 🎨 User Experience
-- **Keyboard Navigation** - Full keyboard control for power users:
-  - Space: Play/Pause
-  - Arrow Up/Down: Volume control (±5%)
-  - Shift+Arrow Left/Right: Previous/Next track
-  - M: Toggle mute
-  - Q: Toggle queue panel
-  - E: Toggle equalizer
-  - N: Toggle now playing view
-  - Escape: Close panels and dialogs
-- **Toast Notifications** - Non-intrusive feedback for actions and errors
-- **Loading Skeletons** - Smooth shimmer animations while content loads
-- **Empty States** - Helpful guidance when no content is available
-- **Responsive Design** - Collapsible sidebar and adaptive player controls
-- **Page Transitions** - Smooth fade-in animations between pages
-- **Drag & Drop** - Reorder queue items by dragging
-- **Accessibility** - ARIA labels, focus indicators, screen reader support
+### 🤖 AI DJ & Smart Playlists
+- **Natural-language playlist generation** — describe what you want:
+  - *"Upbeat jazz from the 90s"*, *"Chill instrumental for studying"*, *"More like Radiohead"*
+- **Multi-provider LLM support:**
 
-### ⏱️ Sleep Timer (New)
-- Set a timer to stop playback after a preset or custom time (15-120 minutes), after X songs, or at the end of the current song.
-- Optionally fades volume in the last 30 seconds before pausing to make for a smooth fall-asleep experience.
-- Accessible via the moon icon on the player controls.
+  | Provider | Local | API Key |
+  |----------|:-----:|:-------:|
+  | Ollama | ✅ | — |
+  | Google Gemini | — | ✅ |
+  | OpenAI (GPT-4o) | — | ✅ |
+  | Anthropic (Claude) | — | ✅ |
+  | X.AI (Grok) | — | ✅ |
 
-### ⏮️ Play Next vs Add to Queue (New)
-- Right-click context menus now support "Play Next" which inserts selected songs immediately after the current track, as well as "Add to Queue" which appends to the end.
+- **Four-tier matching** — artist lookup → local genre → mood keywords (85+ terms) → AI fallback
+- **Metadata enrichment** — AI-powered genre, mood, energy, tempo, BPM, and original year detection
 
-### 🕒 Recently Played (New)
-- The Home page shows a Recently Played section with the last 10 tracks and human-friendly relative timestamps (e.g., "2h ago").
-- Useful for quickly returning to what you were listening to.
-
-### 📊 Listening Stats (New)
-- New `Stats` dashboard (accessible from the sidebar) provides listening insights:
-  - Total listening time, total plays
-  - Top artists, albums, genres
-  - Most played song highlight
-  - Library overview (total songs, albums, artists)
-  - Weekly/monthly play counts
-
-### ❤️ Liked Songs & Albums
-- **Like Songs** - Click the heart icon on any song to mark it as a favorite
-- **Like Albums** - Click the heart icon on album pages to like entire albums
-- **Dedicated Pages** - "Liked Songs" and "Liked Albums" pages in the sidebar show all your favorites
-- **Persistence** - Likes are saved to the backend and restored on restart
-- **Sort Options** - Sort liked items by recently liked, name, or artist
-
-### 🤖 AI DJ & Smart Playlists (New)
-- **Natural Language Prompts** - Generate playlists by describing what you want:
-  - "Upbeat jazz from the 90s"
-  - "Chill instrumental music for studying"
-  - "Energetic rock workout mix"
-  - "More like Radiohead"
-- **Multi-Provider Support** - Choose your preferred AI provider:
-  - **Ollama** (local, no API key required) - Default option
-  - **Google Gemini** - Fast, efficient, supports batch processing
-  - **OpenAI** - GPT-4o and GPT-4o-mini
-  - **Anthropic** - Claude models
-  - **X.AI** - Grok models
-- **Four-Tier Matching System**:
-  - Tier 0: Artist-based ("more like [artist]")
-  - Tier 1: Local genre matching (no API needed)
-  - Tier 1.5: Mood/activity keywords (85+ terms recognized locally)
-  - Tier 2: AI fallback for complex prompts
-- **Metadata Enrichment** - AI-powered analysis for your library:
-  - Genre classification
-  - Mood detection (happy, melancholic, energetic, calm)
-  - Energy level (high, medium, low)
-  - Tempo estimation (fast, medium, slow, BPM)
-  - Instrumental detection
-  - Original year detection (finds original release, not remaster)
+### 🎛️ DJ Mode
+- **Two-deck mixing** — dual waveform display with pitch/tempo control
+- **BPM detection** — automatic beat-per-minute analysis
+- **Key detection** — harmonic key analysis for mixing compatibility
+- **Sampler** — trigger short audio samples during a mix
+- **MIDI controller support** — map hardware controllers via Web MIDI API
+- **Cue points** — set and jump to cue markers in tracks
 
 ### 📚 Library Management
-- **Folder Scanning** - Add multiple music folders with incremental scanning
-- **Ultra-Fast Startup** - Near-instant library loading using filesystem journals and directory signatures
-- **Smart Mixes** - Auto-generated playlists based on listening patterns:
-  - Heavy Rotation (most played recently)
-  - Rediscover Favorites (old favorites you haven't heard in a while)
-  - Fresh Finds (recently added)
-  - Genre-based mixes (Chill Acoustic, 90s Alternative, etc.)
-- **Playlists** - Create, edit, and manage custom playlists
-  - Playlists are persisted to the backend when available. When running in browser-only mode, playlists are stored in IndexedDB.
-- **Background Enrichment** - Automatic Spotify metadata enhancement for albums/artists
-
-### ⚡ Ultra-Fast Startup Scan System (New)
-- **Instant Startup** - Sub-second library loading even with 100,000+ songs
-- **Platform-Optimized Detection**:
-  - Windows: USN (Update Sequence Number) journal for kernel-level change tracking
-  - macOS: Optimized mtime scanning with directory-level skipping
-  - Linux: mtime + ctime detection with signature integration
-- **Directory Signatures** - Content-based hashing allows skipping unchanged folders entirely
-- **Background Processing** - Priority-based worker pool for deferred operations
-- **Integrity Verification** - Periodic sampling detects missing, corrupted, or modified files
-- **Adaptive Scheduling** - Automatically adjusts scan frequency based on activity
-
-See `FAST_SCAN_DESIGN.md` for complete architecture documentation.
+- **Multi-folder scanning** — add unlimited music folders
+- **Ultra-fast incremental scan** — sub-second updates using filesystem journals:
+  - Windows: USN (Update Sequence Number) journal
+  - macOS: FSEvents
+  - Linux: mtime + ctime with directory signatures
+- **Automatic deletion detection** — removed files cleaned from the library automatically
+- **Smart Mixes** — auto-generated playlists: Heavy Rotation, Rediscover Favorites, Fresh Finds, genre mixes
+- **Custom playlists** — create, rename, reorder, and manage playlists
+- **Background enrichment** — automatic Spotify metadata fetching for albums and artists
 
 ### 🎧 Spotify Integration
-**Streaming & Direct Downloads** - Stream and download Spotify tracks (Premium required)
-  - **Direct Streaming**: Stream tracks directly from Spotify with configurable quality (High/Medium/Low) and HTTP Range support for seeking.
-  - **Direct Downloads**: Download tracks, albums, and playlists to OGG Vorbis for offline playback.
-  - Configurable concurrent downloads (1-10)
+- **OAuth authentication** — connect your Spotify Premium account
+- **Browse** — view saved albums, playlists, and recently played
+- **Direct streaming** — stream tracks at configurable quality (High / Medium / Low) with HTTP range support for seeking
+- **Downloads** — save tracks/albums/playlists as OGG Vorbis with full metadata
+  - Organized as `{Artist}/{Album}/{TrackNum}-{Artist}-{Title}.ogg`
+  - Configurable concurrency (1–10 workers)
   - Real-time progress via Server-Sent Events
-  - Organized file structure for downloads: `{Artist}/{Album}/{Track}.ogg`
-  - Auto-rescan after downloads complete
+  - Auto-rescan after download completes
 
-### 💾 Data & Settings
-- **SQLite Database** - Persistent storage for library, playlists, and settings
-- **System Tray** - Minimize to tray on Windows
-- **Configurable Data Directory** - Choose where your data is stored
+### 📊 Stats & History
+- **Listening stats dashboard** — total time, total plays, top artists/albums/genres
+- **Recently played** — last 10 tracks with relative timestamps on the Home page
+- **Play history** — every play recorded to SQLite for analytics
 
-Persistence notes:
-- Play counts and timestamps (used for the Stats dashboard) are saved to the backend database when running with the backend server. If running in browser-only mode (no backend), these values are persisted in IndexedDB.
-- Playlists and library changes are synced to the backend when available; otherwise they are stored locally via IndexedDB.
+### ❤️ Liked Songs & Albums
+- Like individual songs or full albums via the heart icon
+- Dedicated "Liked Songs" and "Liked Albums" pages in the sidebar
+- Sortable by recently liked, name, or artist
 
-## Architecture
+### ⏱️ Sleep Timer
+- Stop playback after a preset or custom time (15–120 min), after N songs, or at end of the current track
+- Optional volume fade over the last 30 seconds
 
-```
-ViiB-MediaHub/
-├── components/         # React UI components
-│   ├── context-menus/  # Right-click menu components
-│   ├── now-playing/    # Full-screen player components
-│   ├── Skeleton.tsx    # Loading skeleton components
-│   ├── Toast.tsx       # Toast notification system
-│   └── EmptyState.tsx  # Empty state displays
-├── pages/              # Route page components
-├── services/           # API client, backend service, Spotify service
-├── slices/             # Zustand state slices (player, library, spotify, ui)
-├── hooks/              # Custom React hooks
-│   ├── useAudioPlayer.ts       # Audio playback management
-│   ├── useBackgroundEnrichment.ts  # Metadata enrichment
-│   └── useKeyboardNavigation.ts    # Global keyboard shortcuts
-├── lib/                # Audio engine, smart mix generator, parsers
-├── workers/            # Web workers for background tasks
-├── docs/               # Documentation
-│   └── wails-windows-setup.md  # Wails development guide
-├── scripts/            # Build and dev scripts
-│   ├── build.ps1       # Web build (browser-based)
-│   ├── build-wails.ps1 # Native desktop build (Wails)
-│   ├── dev.ps1         # Web development mode
-│   └── dev-wails.ps1   # Wails development mode
-│
-└── backend/            # Go HTTP server
-    ├── cmd/
-    │   ├── viib/       # Web build entry point (opens in browser)
-    │   │   └── main.go
-    │   └── wails/      # Native desktop entry point (WebView2)
-    │       ├── main.go
-    │       ├── wails.json
-    │       └── frontend/dist/
-    └── internal/
-        ├── api/        # REST API + SSE handlers
-        ├── audio/      # Metadata extraction (taglib + dhowden/tag)
-        ├── db/         # SQLite with WAL mode
-        ├── llm/        # Unified AI provider (Gemini, OpenAI, Anthropic, Ollama, X.AI)
-        ├── gemini/     # Legacy AI implementation (deprecated, use llm/)
-        ├── logger/     # Shared logging facility
-        ├── scanner/    # Library scanning with fast startup
-        │   ├── scanner.go       # Core scanning logic
-        │   ├── fast_scan.go     # Incremental scan with signatures
-        │   ├── background.go    # Priority-based worker pool
-        │   ├── optimization.go  # Performance tuning utilities
-        │   ├── journal_*.go     # Platform-specific change detection
-        │   └── journal.go       # Change detector interface
-        ├── server/     # Chi router + middleware
-        └── spotify/    # librespot session + downloader
-```
+### 🎨 User Experience
+- **Keyboard shortcuts** — full keyboard control (see [Keyboard Shortcuts](#keyboard-shortcuts))
+- **System tray** — minimize to tray; keep running in the background
+- **Toast notifications** — non-intrusive feedback for actions and errors
+- **Loading skeletons** — shimmer animations during content loads
+- **Virtual scrolling** — smooth performance with 100,000+ song libraries
+- **Responsive layout** — collapsible sidebar, adaptive player controls
+- **Dark theme** — purpose-built dark UI with the brand color palette
+
+---
 
 ## Quick Start
 
 ### Prerequisites
 
-- **Node.js** 18+ and npm
-- **Go** 1.22+
-- **GCC** (for SQLite and librespot-go CGO)
-  - Windows: Install via [MSYS2](https://www.msys2.org/) or [TDM-GCC](https://jmeubank.github.io/tdm-gcc/)
-  - Ensure `CGO_ENABLED=1` environment variable is set
+| Requirement | Minimum | Notes |
+|-------------|---------|-------|
+| Node.js | 20 LTS | |
+| Go | 1.22+ | |
+| GCC / Clang | — | Required for CGO (SQLite) |
+| Wails CLI | v2 latest | Wails builds only |
+
+**Install GCC:**
+- **Windows (amd64):** [MSYS2](https://www.msys2.org/) → `pacman -S mingw-w64-x86_64-gcc`
+- **Windows (arm64):** [llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases) or MSYS2 clangarm64
+- **macOS:** `xcode-select --install`
+- **Linux:** `sudo apt install gcc libgtk-3-dev libwebkit2gtk-4.0-dev`
+
+**Install Wails:**
+```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+```
 
 ### Development Mode
 
-Use the dev script for simultaneous frontend and backend:
-
 ```powershell
+# Windows — Wails (recommended, hot reload)
+.\scripts\dev-wails.ps1
+
+# Windows — Browser mode
 .\scripts\dev.ps1
 ```
 
-Or run manually:
-
-```powershell
-# Terminal 1: Start Go backend (port 8080)
-cd backend
-$env:CGO_ENABLED=1
-go run ./cmd/viib -port 8080 -no-browser -no-tray
-
-# Terminal 2: Start Vite dev server (port 3000)
+```bash
+# macOS / Linux — manual
+# Terminal 1:
+cd backend && go run ./cmd/viib -port 8080 -no-browser
+# Terminal 2:
 npm run dev
 ```
 
-The Vite dev server proxies `/api` requests to the backend.
+---
 
-### Quick Tips: Using New Features
-- Sleep Timer: Open the player and click the moon icon. Set a preset or custom duration, or set the timer to "End of current song" or "After X songs". The volume fades over the last 30 seconds before pausing.
-- Play Next vs Add to Queue: Right-click (context menu) on a song/album/playlist or mix to select "Play Next" (insert after current song) or "Add to Queue" (append to end).
-- Recently Played: Access the Home page to view your last 10 played tracks, with a quick click to resume playback.
-- Stats Dashboard: Click "Stats" in the sidebar to view your listening history and insights.
+## Build Targets
 
-### Verification: Persistence Checks
-If you're running with the backend server (default dev mode), the following can be used to validate persistence:
+### Wails (native desktop)
 
-1) Verify play count updates
-  - Play a song until it ends. The frontend will record the play count to the backend.
-  - Verify via API: `curl http://127.0.0.1:8080/api/songs` and inspect the `playCount` and `lastPlayed` fields for the track.
+| Target | Script |
+|--------|--------|
+| Windows x86-64 | `.\scripts\build-wails.ps1` |
+| Windows ARM64 | `.\scripts\build-wails-windows-arm64.ps1` |
+| macOS (arm64 / amd64 / universal) | `./scripts/build-wails-macos.sh [--arch arm64\|amd64\|universal]` |
+| Linux (amd64 / arm64) | `./scripts/build-wails-linux.sh [--arch amd64\|arm64]` |
 
-2) Verify playlist persistence
-  - Create a playlist via the UI or using the `Playlists` page.
-  - Verify via API: `curl http://127.0.0.1:8080/api/playlists` and ensure the new playlist is present.
-
-If you're running in browser-only mode (backend not available), the application persists to IndexedDB. Use developer tools -> Application -> IndexedDB -> `mediahub-db` to inspect `songs` and `playlists` stores.
-
-### Build for Production
-
-```powershell
-.\scripts\build.ps1
+**Common flags:**
+```
+-Debug / --debug              Enable dev tools and verbose logging
+-Clean / --clean              Remove previous build artifacts first
+-SkipFrontend / --skip-frontend   Skip npm build (reuse existing dist/)
 ```
 
-This will:
-1. Build the React frontend with Vite
-2. Embed the frontend into the Go binary
-3. Output `build/ViiB-MediaHub.exe`
-
-### Build Native Desktop App (Wails)
-
-For a native Windows desktop experience with WebView2 instead of opening in the browser:
-
+**Examples:**
 ```powershell
+# Windows x86-64 release
 .\scripts\build-wails.ps1
+
+# macOS Apple Silicon
+./scripts/build-wails-macos.sh --arch arm64
+
+# macOS Universal fat binary
+./scripts/build-wails-macos.sh --arch universal
+
+# Linux arm64 (cross-compile from x86-64 host)
+./scripts/build-wails-linux.sh --arch arm64
 ```
 
-This will:
-1. Build the React frontend with Vite
-2. Build a Wails application with embedded frontend
-3. Output `backend/cmd/wails/build/bin/ViiB-MediaHub.exe`
+### Web browser build
 
-**Wails Build Options:**
-```powershell
-.\scripts\build-wails.ps1 -Debug       # Enable dev tools
-.\scripts\build-wails.ps1 -Clean       # Clean build artifacts first
-.\scripts\build-wails.ps1 -SkipFrontend # Skip frontend rebuild
-```
+| Target | Script |
+|--------|--------|
+| Windows x86-64 | `.\scripts\build.ps1` |
+| Windows ARM64 | `.\scripts\build-web-windows-arm64.ps1` |
+| macOS (arm64 / amd64) | `./scripts/build-web-macos.sh [--arch arm64\|amd64]` |
+| Linux (amd64 / arm64) | `./scripts/build-web-linux.sh [--arch amd64\|arm64]` |
 
-**Wails Development Mode:**
-```powershell
-.\scripts\dev-wails.ps1
-```
+Output is a single self-contained binary. On launch it starts a local HTTP server and opens your default browser.
 
-For detailed Wails setup instructions, see [docs/wails-windows-setup.md](docs/wails-windows-setup.md).
-
-### Run the Executable
+### Run the executable
 
 ```powershell
+# Windows
 .\build\ViiB-MediaHub.exe
+
+# macOS / Linux
+./build/ViiB-MediaHub
 ```
 
-The app will:
-1. Start an HTTP server on an available port
-2. Open your default browser to the app
-3. Store data in `%APPDATA%/ViiB-MediaHub/`
-4. Display a system tray icon
-
-### Command Line Options
-
+**Command-line flags:**
 ```
 -port <n>        Port to run on (0 = auto-select)
 -no-browser      Don't open browser automatically
 -no-tray         Disable system tray icon
 -data <path>     Custom data directory
+-debug           Enable verbose debug logging
 ```
 
-## API Endpoints
+---
 
-### Library
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/songs` | Get all songs |
-| DELETE | `/api/songs` | Clear library |
-| POST | `/api/songs/{id}/play` | Record play count |
-| GET | `/api/playlists` | Get playlists |
-| POST | `/api/playlists` | Create playlist |
-| PUT | `/api/playlists/{id}` | Update playlist |
-| DELETE | `/api/playlists/{id}` | Delete playlist |
-| GET | `/api/folders` | Get scan folders |
-| POST | `/api/folders` | Add scan folder |
-| DELETE | `/api/folders/{id}` | Remove folder |
-| POST | `/api/scan` | Start library scan |
-| GET | `/api/scan/status` | Get scan status |
-| GET | `/api/library/events` | SSE stream for library events |
-
-### Likes
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/songs/{id}/like` | Toggle song like status |
-| GET | `/api/songs/liked` | Get all liked song IDs |
-| POST | `/api/albums/{key}/like` | Toggle album like status |
-| GET | `/api/albums/liked` | Get all liked album keys |
-
-### Media
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/audio/{id}` | Stream audio file |
-| GET | `/api/cover/{id}` | Get album cover |
-| POST | `/api/browse` | Browse filesystem folders |
-
-### Metadata Cache
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/albums/metadata` | Get all cached album metadata |
-| GET | `/api/albums/metadata/unchecked` | Get albums not yet checked on Spotify |
-| POST | `/api/albums/metadata` | Save album metadata |
-| GET | `/api/artists/metadata` | Get all cached artist metadata |
-| POST | `/api/artists/metadata` | Save artist metadata |
-
-### Spotify
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/spotify/credentials` | Save OAuth credentials |
-| GET | `/api/spotify/credentials` | Get OAuth credentials |
-| GET | `/api/spotify/search` | Proxy Spotify search API |
-| GET | `/api/spotify/me` | Get user profile |
-| GET/POST | `/api/spotify/proxy` | Proxy any Spotify API call |
-| POST | `/api/spotify/download/track` | Queue track download |
-| POST | `/api/spotify/download/album` | Queue album download |
-| POST | `/api/spotify/download/playlist` | Queue playlist download |
-| POST | `/api/spotify/download/url` | Download from Spotify URL |
-| GET | `/api/spotify/downloads` | List all downloads |
-| GET | `/api/spotify/downloads/{id}` | Get download status |
-| DELETE | `/api/spotify/downloads/{id}` | Delete download |
-| POST | `/api/spotify/downloads/{id}/retry` | Retry failed download |
-| DELETE | `/api/spotify/downloads/completed` | Clear completed downloads |
-| GET | `/api/spotify/stream/{id}` | Stream audio for Spotify track (GET parameter: `?quality=high|medium|low`) |
-| GET | `/api/spotify/downloads/events` | SSE stream for download progress |
-
-### Settings
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/settings/{key}` | Get setting value |
-| POST | `/api/settings/{key}` | Set setting value |
-
-### AI DJ & Enrichment
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/smart-playlist` | Generate AI-powered playlist from natural language |
-| POST | `/api/enrich/genres` | Enrich genres for songs batch |
-| GET | `/api/enrich/genres/stream` | SSE stream for genre enrichment progress |
-| GET | `/api/enrich/all/stream` | SSE stream for full metadata enrichment (genres, mood, tempo, BPM, year) |
-| GET | `/api/enrich/mood/stream` | SSE stream for mood/energy/tempo enrichment |
-| GET | `/api/enrich/original-years/stream` | SSE stream for original year detection |
-
-## AI DJ Configuration
-
-ViiB MediaHub uses a unified LLM interface supporting multiple AI providers for smart playlists and metadata enrichment.
-
-### Supported Providers
-
-| Provider | API Key Required | Notes |
-|----------|-----------------|-------|
-| Ollama | No | Local-first, requires Ollama server running |
-| Google Gemini | Yes | Fast, supports large batches (200 songs) |
-| OpenAI | Yes | GPT-4o, GPT-4o-mini |
-| Anthropic | Yes | Claude models |
-| X.AI | Yes | Grok models |
-
-### Settings Keys
-
-Configure via Settings page or API:
-
-| Key | Description | Example |
-|-----|-------------|---------|
-| `llm_provider` | Provider name | `gemini`, `openai`, `anthropic`, `ollama`, `xai` |
-| `llm_model` | Model name | `gemini-2.0-flash`, `gpt-4o-mini`, `llama3.2:8b` |
-| `llm_api_key` | Provider API key | (encrypted at rest) |
-| `llm_base_url` | Custom endpoint URL | `http://localhost:11434` (for Ollama) |
-
-### Ollama Setup
-
-For local AI (no API key needed):
-
-1. Install [Ollama](https://ollama.ai)
-2. Pull a model: `ollama pull llama3.2:8b`
-3. In Settings, select "Ollama" as provider
-4. Set Base URL to `http://localhost:11434`
-
-## Spotify Streaming & Downloads
-
-ViiB MediaHub can stream and download tracks directly from Spotify (Premium account required).
-
-### Setup
-
-1. Create a Spotify Developer App at [developer.spotify.com](https://developer.spotify.com/dashboard)
-2. Set the Redirect URI to `http://localhost:3000/callback` (dev) or your app URL
-3. Enter your Client ID and Client Secret in Settings
-4. Navigate to the Spotify page and log in
-
-### Usage
-
-1. **Search** - Search for tracks, albums, artists, or playlists
-2. **Browse** - View your saved albums, playlists, or recently played
-3. **Download / Play** - Click the download button on any item to save it, or click the Play button to stream directly from Spotify
-4. **Monitor** - Track progress on the Downloads page
-5. **Play** - Downloads auto-scan into your library; streaming does not require a download
-
-### Technical Details
-
-- Uses `librespot-go` for direct Spotify streaming
-- OAuth tokens shared between Web API and downloads
-- Configurable concurrent downloads (1-10 workers)
-- Files saved as OGG Vorbis format with full metadata
-- Organized by: `{Artist}/{Album}/{TrackNum}-{Artist}-{Title}.ogg`
-- Real-time progress via Server-Sent Events (SSE)
-- Automatic library rescan after downloads complete
-
-## Technology Stack
-
-### Frontend
-- **React 19** - UI framework with hooks
-- **TypeScript** - Type-safe JavaScript
-- **Vite** - Fast build tooling
-- **Zustand** - Lightweight state management
-- **Tailwind CSS** (via CDN) - Utility-first styling
-- **react-router-dom** - Client-side routing
-- **react-virtuoso** - Virtualized lists for large libraries
-- **Lucide Icons** - Beautiful icon set
-- **Web Audio API** - EQ, visualizer, crossfade
-- **IndexedDB** (via idb) - Browser fallback storage
-
-### Backend
-- **Go 1.22+** - Efficient, compiled backend
-- **Chi Router** - Lightweight HTTP router
-- **SQLite** (via go-sqlite3) - Embedded database with WAL mode
-- **taglib-go** (go.senan.xyz/taglib) - Primary metadata extraction
-- **dhowden/tag** - Fallback metadata extraction
-- **librespot-go** - Spotify streaming client
-- **getlantern/systray** - System tray integration
-
-## Data Storage
-
-All data is stored in `%APPDATA%/ViiB-MediaHub/` by default:
+## Architecture
 
 ```
 ViiB-MediaHub/
-├── library.db          # SQLite database
-├── covers/             # Cached album artwork
-├── spotify_downloads/  # Downloaded Spotify tracks
-├── viib.log           # Application log
-└── crash.log          # Crash recovery log
+├── docs/
+│   ├── banner.svg                     # README banner
+│   └── wails-windows-setup.md        # Wails dev environment guide
+├── scripts/
+│   ├── build.ps1                      # Web build — Windows amd64
+│   ├── build-wails.ps1                # Wails — Windows amd64
+│   ├── build-wails-windows-arm64.ps1  # Wails — Windows arm64
+│   ├── build-wails-macos.sh           # Wails — macOS (amd64/arm64/universal)
+│   ├── build-wails-linux.sh           # Wails — Linux (amd64/arm64)
+│   ├── build-web-macos.sh             # Web — macOS
+│   ├── build-web-linux.sh             # Web — Linux
+│   ├── build-web-windows-arm64.ps1    # Web — Windows arm64
+│   ├── dev.ps1                        # Browser dev mode (Windows)
+│   └── dev-wails.ps1                  # Wails dev mode (Windows)
+├── components/          # React UI components
+│   ├── context-menus/   # Right-click menus
+│   ├── dj/              # DJ mode components
+│   ├── now-playing/     # Full-screen player
+│   ├── Skeleton.tsx     # Loading skeletons
+│   ├── Toast.tsx        # Toast notifications
+│   └── EmptyState.tsx   # Empty state displays
+├── pages/               # Route pages
+├── services/            # API client, backend service, Spotify service
+├── slices/              # Zustand state (player, library, spotify, ui, dj)
+├── hooks/               # Custom React hooks
+├── lib/                 # Audio engine, smart mix, BPM/key detection
+├── workers/             # Web workers for background processing
+└── backend/
+    ├── cmd/
+    │   ├── viib/         # Web browser build entry point
+    │   └── wails/        # Native desktop entry point
+    │       ├── icons_windows.go   # Windows ICO embed (build tag)
+    │       ├── icons_darwin.go    # macOS PNG embed (build tag)
+    │       ├── icons_linux.go     # Linux PNG embed (build tag)
+    │       └── build/
+    │           ├── appicon.png
+    │           ├── windows/icon.ico
+    │           ├── darwin/Info.plist
+    │           └── linux/ViiB-MediaHub.desktop
+    └── internal/
+        ├── api/          # REST API + SSE handlers
+        ├── audio/        # Metadata extraction
+        ├── crypto/       # AES-256-GCM encryption for settings
+        ├── db/           # SQLite schema, queries, WAL mode
+        ├── llm/          # Unified multi-provider AI client
+        ├── logger/       # Shared file-based logging
+        ├── scanner/      # Library scanning + fast startup
+        │   ├── journal_platform_windows.go  # USN journal
+        │   ├── journal_platform_darwin.go   # FSEvents
+        │   └── journal_platform_linux.go    # mtime + ctime
+        ├── server/       # Chi router + middleware
+        ├── spotify/      # librespot session + downloader
+        └── validation/   # Input validation
 ```
+
+---
 
 ## Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
-| Space | Play/Pause current track |
-| Arrow Up | Increase volume 5% |
-| Arrow Down | Decrease volume 5% |
-| Shift + Left | Previous track |
-| Shift + Right | Next track |
-| M | Toggle mute |
-| Q | Toggle queue panel |
-| E | Toggle equalizer panel |
-| N | Toggle now playing view |
-| Escape | Close active panel or dialog |
+| `Space` | Play / Pause |
+| `↑` / `↓` | Volume +5% / −5% |
+| `Shift + ←` | Previous track |
+| `Shift + →` | Next track |
+| `M` | Toggle mute |
+| `Q` | Toggle queue panel |
+| `E` | Toggle equalizer |
+| `N` | Toggle Now Playing view |
+| `Escape` | Close active panel or dialog |
+
+---
+
+## API Reference
+
+### Library
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/songs` | List all songs |
+| `DELETE` | `/api/songs` | Clear library |
+| `POST` | `/api/songs/{id}/play` | Record play |
+| `POST` | `/api/songs/{id}/like` | Toggle like |
+| `GET` | `/api/songs/liked` | Liked song IDs |
+| `GET` | `/api/playlists` | List playlists |
+| `POST` | `/api/playlists` | Create playlist |
+| `PUT` | `/api/playlists/{id}` | Update playlist |
+| `DELETE` | `/api/playlists/{id}` | Delete playlist |
+| `GET` | `/api/folders` | List scan folders |
+| `POST` | `/api/folders` | Add scan folder |
+| `DELETE` | `/api/folders/{id}` | Remove folder |
+| `POST` | `/api/scan` | Start library scan |
+| `GET` | `/api/scan/status` | Scan status |
+| `GET` | `/api/library/events` | SSE stream (scan progress, library updates) |
+
+### Media
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/audio/{id}` | Stream audio (supports HTTP Range) |
+| `GET` | `/api/cover/{id}` | Album cover image |
+| `POST` | `/api/browse` | Browse filesystem folders |
+
+### Albums & Artists
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/albums/{key}/like` | Toggle album like |
+| `GET` | `/api/albums/liked` | Liked album keys |
+| `GET` | `/api/albums/metadata` | All cached album metadata |
+| `GET` | `/api/albums/metadata/unchecked` | Albums not yet enriched |
+| `POST` | `/api/albums/metadata` | Save album metadata |
+| `GET` | `/api/artists/metadata` | All cached artist metadata |
+| `POST` | `/api/artists/metadata` | Save artist metadata |
+
+### Spotify
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET/POST` | `/api/spotify/credentials` | OAuth credentials |
+| `GET` | `/api/spotify/me` | User profile |
+| `GET` | `/api/spotify/search` | Spotify search proxy |
+| `GET/POST` | `/api/spotify/proxy` | Generic Spotify API proxy |
+| `POST` | `/api/spotify/download/track` | Queue track download |
+| `POST` | `/api/spotify/download/album` | Queue album download |
+| `POST` | `/api/spotify/download/playlist` | Queue playlist download |
+| `POST` | `/api/spotify/download/url` | Download from Spotify URL |
+| `GET` | `/api/spotify/downloads` | List downloads |
+| `GET` | `/api/spotify/downloads/{id}` | Download status |
+| `DELETE` | `/api/spotify/downloads/{id}` | Delete download |
+| `POST` | `/api/spotify/downloads/{id}/retry` | Retry failed download |
+| `DELETE` | `/api/spotify/downloads/completed` | Clear completed |
+| `GET` | `/api/spotify/stream/{id}` | Stream Spotify track (`?quality=high\|medium\|low`) |
+| `GET` | `/api/spotify/downloads/events` | SSE download progress |
+
+### AI DJ & Enrichment
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/smart-playlist` | Generate playlist from natural language |
+| `POST` | `/api/enrich/genres` | Batch genre enrichment |
+| `GET` | `/api/enrich/genres/stream` | SSE genre enrichment progress |
+| `GET` | `/api/enrich/all/stream` | SSE full metadata enrichment |
+| `GET` | `/api/enrich/mood/stream` | SSE mood / energy / tempo enrichment |
+| `GET` | `/api/enrich/original-years/stream` | SSE original year detection |
+
+### Settings
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/settings/{key}` | Get setting |
+| `POST` | `/api/settings/{key}` | Set setting |
+
+---
+
+## AI DJ Configuration
+
+### LLM Settings Keys
+
+| Key | Description | Example |
+|-----|-------------|---------|
+| `llm_provider` | Provider name | `gemini`, `openai`, `anthropic`, `ollama`, `xai` |
+| `llm_model` | Model name | `gemini-2.0-flash`, `gpt-4o-mini`, `llama3.2:8b` |
+| `llm_api_key` | API key (AES-256-GCM encrypted at rest) | — |
+| `llm_base_url` | Custom endpoint | `http://localhost:11434` |
+
+### Ollama (local, no API key)
+```bash
+ollama pull llama3.2:8b
+# In Settings: Provider = Ollama, Base URL = http://localhost:11434
+```
+
+---
+
+## Technology Stack
+
+### Frontend
+- **React 19** + **TypeScript** + **Vite 6**
+- **Zustand** — state management with persistent slices
+- **Tailwind CSS** — utility-first dark theme
+- **react-router-dom v7** — client-side routing
+- **react-virtuoso** — virtualized lists for large libraries
+- **Web Audio API** — EQ, visualizer, crossfade, BPM detection
+- **Web MIDI API** — DJ controller support
+- **IndexedDB** (via `idb`) — browser-mode fallback storage
+
+### Backend
+- **Go 1.22+** — compiled, efficient backend
+- **Wails v2** — native WebView window (Windows WebView2 · macOS WebKit · Linux WebKitGTK)
+- **Chi v5** — lightweight HTTP router
+- **SQLite** (via `go-sqlite3`) — embedded database, WAL mode
+- **go.senan.xyz/taglib** — primary audio metadata extraction
+- **dhowden/tag** — fallback metadata extraction
+- **librespot-go** — Spotify streaming client
+- **getlantern/systray** — cross-platform system tray (Windows, macOS, Linux)
+
+---
+
+## Data Storage
+
+Default location: `{OS user config dir}/ViiB-MediaHub/`
+- **Windows:** `%APPDATA%\ViiB-MediaHub\`
+- **macOS:** `~/Library/Application Support/ViiB-MediaHub/`
+- **Linux:** `~/.config/ViiB-MediaHub/`
+
+```
+ViiB-MediaHub/
+├── library.db           # SQLite — songs, playlists, settings
+├── covers/              # Cached album artwork
+├── spotify_downloads/   # Downloaded Spotify tracks
+├── viib.log             # Application log
+└── crash.log            # Crash recovery log
+```
+
+Sensitive settings (API keys, Spotify tokens) are AES-256-GCM encrypted using a machine-derived key before being written to SQLite.
+
+---
 
 ## Browser Support
 
-Works best in Chromium-based browsers (Chrome, Edge, Brave) for full Web Audio API support. Firefox and Safari may have limited visualizer or EQ functionality.
+Best in Chromium-based browsers (Chrome, Edge, Brave) for full Web Audio API support. Firefox and Safari have limited visualizer and EQ functionality in browser mode; Wails builds use the OS-native WebView and are unaffected.
+
+---
 
 ## License
 
@@ -510,8 +470,8 @@ MIT
 
 ## Contributing
 
-Contributions welcome! Please open an issue or PR.
+Contributions are welcome. Please open an issue or pull request.
 
 ---
 
-Built with ❤️ for music lovers who want control over their library.
+<p align="center">Built with ❤️ for music lovers who want full control over their library.</p>

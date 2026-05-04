@@ -1,16 +1,21 @@
 // Package main is the Wails entry point for ViiB MediaHub.
 //
 // ViiB MediaHub is a local media player application with a native desktop UI
-// powered by Wails v2 and WebView2. This executable:
+// powered by Wails v2 (WebView2 on Windows, WebKit on macOS/Linux). This executable:
 //   - Embeds the React frontend (built by Vite) into the binary
 //   - Starts an HTTP server for API endpoints
-//   - Creates a native WebView2 window to display the frontend
-//   - Provides system tray integration (optional)
+//   - Creates a native WebView window to display the frontend
+//   - Provides system tray integration
 //   - Handles graceful shutdown
+//
+// Supported platforms:
+//   - Windows (amd64, arm64) — uses WebView2, ICO tray icon
+//   - macOS (amd64, arm64, universal) — uses WebKit, PNG tray icon
+//   - Linux (amd64, arm64) — uses WebKitGTK, PNG tray icon
 //
 // Command-line flags:
 //
-//	-data <path>   Custom data directory (default: %APPDATA%/ViiB-MediaHub)
+//	-data <path>   Custom data directory (default: OS user config dir / ViiB-MediaHub)
 //	-port <n>      Port for API server (0 = auto-select available port)
 //	-debug         Enable debug mode (dev tools, verbose logging)
 //
@@ -20,7 +25,7 @@
 //   - spotify_downloads/: Downloaded Spotify tracks
 //   - viib.log: Application log file
 //
-// This is the Wails-based build for native Windows desktop experience.
+// This is the Wails-based build for native desktop experience.
 // For the web-embedded build, see cmd/viib/main.go.
 package main
 
@@ -58,11 +63,6 @@ import (
 //
 //go:embed all:frontend/dist
 var frontendFS embed.FS
-
-// trayIconData embeds the system tray icon.
-//
-//go:embed build/windows/icon.ico
-var trayIconData []byte
 
 // Version information (can be set at build time with ldflags)
 var (

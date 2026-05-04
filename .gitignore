@@ -38,3 +38,7 @@ backend/cmd/viib/dist/
 
 # Review / playwright scratch dir (DJ panel review)
 .tmp-review/
+.claude/
+.github/
+.*/*
+/output/*

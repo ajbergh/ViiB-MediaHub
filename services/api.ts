@@ -19,8 +19,8 @@
  * 
  * AI DJ Features:
  * - generateSmartPlaylist: Natural language playlist generation with multi-tier matching
- * - enrichGenresStream: SSE-based genre enrichment using Gemini AI
- * - enrichMoodStream: SSE-based mood/energy/tempo analysis using Gemini AI
+ * - enrichGenresStream: SSE-based genre enrichment using the configured LLM provider
+ * - enrichMoodStream: SSE-based mood/energy/tempo analysis using the configured LLM provider
  * 
  * Last.FM Features (added 2025-12-31):
  * - getLastFMSettings/saveLastFMSettings: API key configuration
@@ -41,8 +41,6 @@
 import { AudioSettings } from '../types';
 
 const API_BASE = '/api';
-
-/**
 
 /**
  * Standard error response from backend

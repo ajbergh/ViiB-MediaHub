@@ -179,8 +179,15 @@ export class DJAudioEngine {
   // Output device routing (Phase 4)
   private mainOutputDeviceId: string = '';       // Empty = default
   private headphoneOutputDeviceId: string = '';  // Empty = default
+  private headphoneOutputActive = false;         // Whether headphone stream is currently playing
+  private mainOutputStreamDestination: MediaStreamAudioDestinationNode | null = null;
+  private mainOutputAudioElement: HTMLAudioElement | null = null;
+  private mainOutputElementRoutingEnabled = false;
+  private masterDirectOutputConnected = false;
   private headphoneStreamDestination: MediaStreamAudioDestinationNode | null = null;
-  private headphoneAudioElement: HTMLAudioElement | null = null;  // For routing to separate device
+  private headphoneContext: AudioContext | null = null;
+  private headphoneStreamSource: MediaStreamAudioSourceNode | null = null;
+  private headphoneAudioElement: HTMLAudioElement | null = null;  // Fallback for routing
 
   // Configuration
   private config: Required<DJAudioEngineConfig>;
@@ -188,22 +195,23 @@ export class DJAudioEngine {
   // Animation frame for position updates
   private animationFrameId: number | null = null;
   private vuAnimationFrameId: number | null = null;
-
-  // Throttling for position updates (reduce state updates to ~15 fps instead of 60)
-  private lastPositionUpdateA = 0;
-  private lastPositionUpdateB = 0;
-  private readonly POSITION_UPDATE_INTERVAL = 66; // ~15 updates/second (ms)
+  
+  private trackLoadGenerationA = 0;
+  private trackLoadGenerationB = 0;
 
   // Callbacks
-  private onPositionUpdate?: (deck: DeckId, position: number) => void;
-  private onVUUpdate?: (levels: VULevels) => void;
-  private onTrackEnd?: (deck: DeckId) => void;
-  private vuLevels: VULevels = {
-    deckA: { left: 0, right: 0 },
-    deckB: { left: 0, right: 0 },
-    master: { left: 0, right: 0 },
-  };
+  private onTrackEnd: ((deck: DeckId) => void) | null = null;
+  private onPositionUpdate: ((deck: DeckId, position: number) => void) | null = null;
+  private onVUUpdate: ((levels: VULevels) => void) | null = null;
+
+  // Position tracking state
+  private readonly POSITION_UPDATE_INTERVAL = 50; // ms between position callbacks
+  private lastPositionUpdateA = 0;
+  private lastPositionUpdateB = 0;
   private positionIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // VU metering state
+  private vuLevels: VULevels = { deckA: { left: 0, right: 0 }, deckB: { left: 0, right: 0 }, master: { left: 0, right: 0 } };
   private vuIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config?: DJAudioEngineConfig) {
@@ -240,15 +248,6 @@ export class DJAudioEngine {
         await this.audioContext.resume();
       }
 
-      // Apply saved master device if it was selected before initialization.
-      if (this.mainOutputDeviceId) {
-        try {
-          await this.setMainOutputDevice(this.mainOutputDeviceId);
-        } catch (error) {
-          console.warn('Failed to apply saved main output device:', error);
-        }
-      }
-
       // Create audio elements
       this.audioElementA = new Audio();
       this.audioElementB = new Audio();
@@ -261,6 +260,16 @@ export class DJAudioEngine {
 
       // Create the audio graph
       this.createAudioGraph();
+
+      // Apply saved master device after the graph exists so media-element
+      // fallback routing can attach to the master analyser if needed.
+      if (this.mainOutputDeviceId) {
+        try {
+          await this.setMainOutputDevice(this.mainOutputDeviceId);
+        } catch (error) {
+          console.warn('Failed to apply saved main output device:', error);
+        }
+      }
 
       // Set up event listeners
       this.setupEventListeners();
@@ -384,17 +393,15 @@ export class DJAudioEngine {
     this.analyserMaster = ctx.createAnalyser();
     this.analyserMaster.fftSize = 256;
 
-    this.createMasterBeatFXChain(ctx);
-
-    // Connect to master
+    // Connect to master. Keep the live master bus direct; master Beat FX is
+    // mapped to both decks until the dedicated post-mix chain is verified.
     this.analyserA.connect(this.masterGain);
     this.analyserB.connect(this.masterGain);
     this.masterGain
-      .connect(this.masterBeatFXInput!);
-    this.masterBeatFXOutput!
       .connect(this.limiter)
       .connect(this.analyserMaster)
       .connect(ctx.destination);
+    this.masterDirectOutputConnected = true;
 
     // ========== Headphone Cue Section (Phase 4) ==========
     // Create cue send gains for each deck (taps signal after EQ, before crossfader)
@@ -437,23 +444,46 @@ export class DJAudioEngine {
     this.headphoneStreamDestination = ctx.createMediaStreamDestination();
     this.headphoneMixer.connect(this.headphoneStreamDestination);
     
-    // Create audio element for headphone output
-    this.headphoneAudioElement = new Audio();
-    this.headphoneAudioElement.srcObject = this.headphoneStreamDestination.stream;
-    this.headphoneAudioElement.volume = 1.0;
-    // Don't play through main output - the stream goes to the specified device
-    // The play() call is needed to start audio flowing
-    this.headphoneAudioElement.play().catch(e => {
-      if (DJ_DEBUG) console.warn('Headphone audio autoplay blocked:', e);
-    });
+    // We use a secondary AudioContext to route the headphone stream.
+    // This bypasses HTMLMediaElement quirks with setSinkId on MediaStreams,
+    // especially when the primary AudioContext is routed to a different device.
+    if (typeof (AudioContext.prototype as AudioContext & { setSinkId?: unknown }).setSinkId === 'function') {
+      this.headphoneContext = new AudioContext({
+        sampleRate: this.config.sampleRate,
+        latencyHint: 'interactive',
+      });
+      // Context will be suspended initially; we resume it in ensureHeadphoneOutputPlaying
+      this.headphoneStreamSource = this.headphoneContext.createMediaStreamSource(this.headphoneStreamDestination.stream);
+      this.headphoneStreamSource.connect(this.headphoneContext.destination);
+    } else {
+      // Fallback to HTMLAudioElement if AudioContext.setSinkId is not available
+      this.headphoneAudioElement = new Audio();
+      this.headphoneAudioElement.style.display = 'none';
+      this.headphoneAudioElement.id = 'dj-headphone-audio';
+      if (!document.getElementById('dj-headphone-audio')) {
+        document.body.appendChild(this.headphoneAudioElement);
+      }
+      this.headphoneAudioElement.srcObject = this.headphoneStreamDestination.stream;
+      this.headphoneAudioElement.volume = 1.0;
+      this.headphoneAudioElement.autoplay = true;
+    }
+    
+    // Start the headphone output stream. With the corrected updateHeadphoneMix logic,
+    // master bleed is prevented by default (masterCueEnabled gates the master send).
+    // Starting the stream unconditionally is safe: cue sends start at gain=0 and the
+    // master send is at 0 unless masterCueEnabled is explicitly turned on.
+    void this.ensureHeadphoneOutputPlaying();
     
     // Apply saved headphone device if set
     if (this.headphoneOutputDeviceId) {
-      this.setHeadphoneOutputDevice(this.headphoneOutputDeviceId);
+      void this.setHeadphoneOutputDevice(this.headphoneOutputDeviceId).catch(error => {
+        console.warn('Failed to apply saved headphone output device:', error);
+      });
     }
     
-    // Set initial mix (0.5 = balanced cue/master)
-    this.updateHeadphoneMix(0.5);
+    // Set initial mix to 0 (cue-only). Cue deck gains start at 0 so headphone
+    // output is silent until the user enables CUE on a deck.
+    this.updateHeadphoneMix(0);
 
     console.log('🎧 Audio graph created');
   }
@@ -731,6 +761,8 @@ export class DJAudioEngine {
       throw new Error('Audio engine not initialized');
     }
 
+    const generation = deck === 'A' ? ++this.trackLoadGenerationA : ++this.trackLoadGenerationB;
+
     // Stop current playback
     audioElement.pause();
     audioElement.currentTime = 0;
@@ -742,31 +774,50 @@ export class DJAudioEngine {
 
     // Load the audio
     await new Promise<void>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
+      let timeoutId: ReturnType<typeof setTimeout>;
+      const cleanup = () => {
+        clearTimeout(timeoutId);
         audioElement.removeEventListener('canplay', onCanPlay);
         audioElement.removeEventListener('error', onError);
-        console.error(`🎧 DJ Audio: Timeout loading track to Deck ${deck}`);
-        reject(new Error(`Timeout loading track: ${track.title}`));
+      };
+
+      const checkGeneration = () => {
+        const currentGen = deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
+        return currentGen === generation;
+      };
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        if (checkGeneration()) {
+          console.error(`🎧 DJ Audio: Timeout loading track to Deck ${deck}`);
+          reject(new Error(`Timeout loading track: ${track.title}`));
+        }
       }, 30000); // 30 second timeout
       
       const onCanPlay = () => {
-        clearTimeout(timeoutId);
-        audioElement.removeEventListener('canplay', onCanPlay);
-        audioElement.removeEventListener('error', onError);
+        if (!checkGeneration()) return;
+        cleanup();
         console.log(`🎧 DJ Audio: Track ready on Deck ${deck}`);
         resolve();
       };
+      
       const onError = (e: Event) => {
-        clearTimeout(timeoutId);
-        audioElement.removeEventListener('canplay', onCanPlay);
-        audioElement.removeEventListener('error', onError);
+        if (!checkGeneration()) return;
+        cleanup();
         const errorMsg = audioElement.error?.message || 'Unknown error';
         console.error(`🎧 DJ Audio: Error loading track to Deck ${deck}: ${errorMsg}`, e);
         reject(new Error(`Failed to load track: ${track.title} - ${errorMsg}`));
       };
+      
       audioElement.addEventListener('canplay', onCanPlay);
       audioElement.addEventListener('error', onError);
-      audioElement.load();
+      
+      // If readyState is already enough, resolve immediately
+      if (audioElement.readyState >= 3) { // HAVE_FUTURE_DATA
+        onCanPlay();
+      } else {
+        audioElement.load();
+      }
     });
 
     console.log(`🎧 Loaded track to Deck ${deck}: ${track.title}`);
@@ -1241,7 +1292,7 @@ export class DJAudioEngine {
     
     // Set cue send gain (1 = enabled, 0 = disabled)
     const now = this.audioContext.currentTime;
-    cueGain.gain.setValueAtTime(enabled ? 1 : 0, now);
+    cueGain.gain.setTargetAtTime(enabled ? 1.0 : 0, now, 0.01);
     
     if (DJ_DEBUG) console.log(`🎧 Deck ${deck} CUE ${enabled ? 'enabled' : 'disabled'}`);
   }
@@ -1249,6 +1300,15 @@ export class DJAudioEngine {
   /**
    * Update headphone mix (cue vs master balance)
    * @param mix - 0 = cue only, 1 = master only
+   *
+   * Design intent:
+   *   - The master signal ONLY enters the headphone path when masterCueEnabled = true.
+   *     This prevents the master from bleeding into the headphone output just because
+   *     the mix knob is at center, which caused both outputs to sound identical.
+   *   - When masterCueEnabled = false, cued decks play at full gain in headphones,
+   *     and the mix knob has no effect (it is only relevant when master monitoring is on).
+   *   - When masterCueEnabled = true, the mix knob provides a constant-power crossfade
+   *     between cue-only (mix=0) and master-only (mix=1).
    */
   updateHeadphoneMix(mix: number): void {
     if (!this.audioContext || !this.headphoneCueMix || !this.headphoneMasterMix) return;
@@ -1256,23 +1316,29 @@ export class DJAudioEngine {
     // Guard against NaN/Infinity - use safe default if invalid
     const safeMix = (typeof mix === 'number' && isFinite(mix))
       ? Math.max(0, Math.min(1, mix))
-      : 0.5;
-    
-    this.headphoneMixValue = safeMix;
-    
-    // Constant-power crossfade between cue and master.
-    // The master feed is gated separately so cue/master blend and Master Cue
-    // behave like independent monitoring controls.
-    const cueGain = Math.cos(safeMix * Math.PI / 2);  // 1 at mix=0, 0 at mix=1
-    const masterGain = this.masterCueEnabled
-      ? Math.sin(safeMix * Math.PI / 2)  // 0 at mix=0, 1 at mix=1
       : 0;
     
-    const now = this.audioContext.currentTime;
-    this.headphoneCueMix.gain.setValueAtTime(cueGain, now);
-    this.headphoneMasterMix.gain.setValueAtTime(masterGain, now);
+    this.headphoneMixValue = safeMix;
+
+    let cueGain: number;
+    let masterGain: number;
+
+    if (this.masterCueEnabled) {
+      // Master monitoring on: mix knob blends between cue (0) and master (1)
+      cueGain = Math.cos(safeMix * Math.PI / 2);   // 1 at mix=0, 0 at mix=1
+      masterGain = Math.sin(safeMix * Math.PI / 2); // 0 at mix=0, 1 at mix=1
+    } else {
+      // Master monitoring off: only cued decks play in headphones at full gain.
+      // Master never bleeds in, regardless of the mix knob position.
+      cueGain = 1.0;
+      masterGain = 0;
+    }
     
-    if (DJ_DEBUG) console.log(`🎧 Headphone mix: ${(safeMix * 100).toFixed(0)}% master, master cue ${this.masterCueEnabled ? 'on' : 'off'}`);
+    const now = this.audioContext.currentTime;
+    this.headphoneCueMix.gain.setTargetAtTime(cueGain, now, 0.01);
+    this.headphoneMasterMix.gain.setTargetAtTime(masterGain, now, 0.01);
+    
+    if (DJ_DEBUG) console.log(`🎧 Headphone mix: cue=${cueGain.toFixed(2)} master=${masterGain.toFixed(2)}, masterCue=${this.masterCueEnabled}`);
   }
 
   /**
@@ -1300,7 +1366,7 @@ export class DJAudioEngine {
       : 1.0;
     
     const now = this.audioContext.currentTime;
-    this.headphoneMixer.gain.setValueAtTime(safeVolume, now);
+    this.headphoneMixer.gain.setTargetAtTime(safeVolume, now, 0.01);
     
     if (DJ_DEBUG) console.log(`🎧 Headphone volume: ${(safeVolume * 100).toFixed(0)}%`);
   }
@@ -1317,8 +1383,164 @@ export class DJAudioEngine {
   // ============================================================================
 
   /**
+   * Returns true when the headphone output is configured to the same physical
+   * device as the master output.  In that case the headphone stream must be
+   * kept silent to avoid doubling the master signal on the same speakers.
+   */
+  private headphoneAndMasterSameDevice(): boolean {
+    const headIsDefault = !this.headphoneOutputDeviceId || this.headphoneOutputDeviceId === 'default';
+    const mainIsDefault = !this.mainOutputDeviceId || this.mainOutputDeviceId === 'default';
+    if (headIsDefault && mainIsDefault) return true;
+    if (this.headphoneOutputDeviceId && this.headphoneOutputDeviceId === this.mainOutputDeviceId) return true;
+    return false;
+  }
+
+  private async ensureHeadphoneOutputPlaying(): Promise<void> {
+    if (this.headphoneContext) {
+      if (this.headphoneContext.state === 'suspended') {
+        try {
+          await this.headphoneContext.resume();
+          this.headphoneOutputActive = true;
+          console.log('🎧 Headphone secondary AudioContext resumed');
+        } catch (error) {
+          console.error('🎧 Headphone secondary AudioContext could not resume:', error);
+        }
+      }
+      return;
+    }
+
+    const audio = this.headphoneAudioElement;
+    if (!audio) return;
+
+    audio.muted = false;
+    audio.volume = 1.0;
+
+    if (!audio.paused) return;
+
+    try {
+      await audio.play();
+      this.headphoneOutputActive = true;
+      console.log('🎧 Headphone audio playback started');
+    } catch (error) {
+      console.error('🎧 Headphone audio playback could not start:', error);
+    }
+  }
+
+  /**
+   * Suspend/stop the headphone output stream without destroying the graph.
+   * Called when the headphone device is reset to default (same as master) to
+   * prevent the signal from doubling on the same physical output.
+   */
+  private async suspendHeadphoneOutput(): Promise<void> {
+    this.headphoneOutputActive = false;
+    if (this.headphoneContext && this.headphoneContext.state === 'running') {
+      try {
+        await this.headphoneContext.suspend();
+        console.log('🎧 Headphone secondary AudioContext suspended (same-device guard)');
+      } catch (error) {
+        console.warn('🎧 Headphone context suspend failed:', error);
+      }
+      return;
+    }
+    const audio = this.headphoneAudioElement;
+    if (audio && !audio.paused) {
+      audio.pause();
+      console.log('🎧 Headphone audio element paused (same-device guard)');
+    }
+  }
+
+  private async ensureMainOutputElementPlaying(): Promise<void> {
+    const audio = this.mainOutputAudioElement;
+    if (!audio) return;
+
+    audio.muted = false;
+    audio.volume = 1.0;
+
+    if (!audio.paused) return;
+
+    try {
+      await audio.play();
+      console.log('🔊 Main routed audio playback started');
+    } catch (error) {
+      console.error('🔊 Main routed audio playback could not start:', error);
+    }
+  }
+
+  private disconnectMasterDirectOutput(): void {
+    if (!this.audioContext || !this.analyserMaster || !this.masterDirectOutputConnected) return;
+
+    try {
+      this.analyserMaster.disconnect(this.audioContext.destination);
+    } catch (error) {
+      if (DJ_DEBUG) console.warn('Master direct output disconnect failed:', error);
+    } finally {
+      this.masterDirectOutputConnected = false;
+    }
+  }
+
+  private connectMasterDirectOutput(): void {
+    if (!this.audioContext || !this.analyserMaster || this.masterDirectOutputConnected) return;
+
+    this.analyserMaster.connect(this.audioContext.destination);
+    this.masterDirectOutputConnected = true;
+  }
+
+  private async enableMainOutputElementRouting(deviceId: string): Promise<void> {
+    if (!this.audioContext || !this.analyserMaster) {
+      console.warn('Audio graph not initialized, main output device will be set on next init');
+      return;
+    }
+
+    if (!this.mainOutputStreamDestination) {
+      this.mainOutputStreamDestination = this.audioContext.createMediaStreamDestination();
+    }
+
+    if (!this.mainOutputAudioElement) {
+      this.mainOutputAudioElement = new Audio();
+      this.mainOutputAudioElement.style.display = 'none';
+      this.mainOutputAudioElement.id = 'dj-main-audio';
+      if (!document.getElementById('dj-main-audio')) {
+        document.body.appendChild(this.mainOutputAudioElement);
+      }
+      this.mainOutputAudioElement.autoplay = true;
+      this.mainOutputAudioElement.volume = 1.0;
+    }
+
+    this.mainOutputAudioElement.srcObject = this.mainOutputStreamDestination.stream;
+
+    const audio = this.mainOutputAudioElement as HTMLAudioElement & { setSinkId?: (deviceId: string) => Promise<void> };
+    if (typeof audio.setSinkId !== 'function') {
+      throw new Error('AudioContext.setSinkId() and HTMLMediaElement.setSinkId() are not supported by this browser or WebView. Master output routing cannot be changed here.');
+    }
+
+    if (!this.mainOutputElementRoutingEnabled) {
+      this.analyserMaster.connect(this.mainOutputStreamDestination);
+      this.mainOutputElementRoutingEnabled = true;
+    }
+
+    await audio.setSinkId(deviceId);
+    await this.ensureMainOutputElementPlaying();
+    this.disconnectMasterDirectOutput();
+  }
+
+  private disableMainOutputElementRouting(): void {
+    if (this.mainOutputElementRoutingEnabled && this.analyserMaster && this.mainOutputStreamDestination) {
+      try {
+        this.analyserMaster.disconnect(this.mainOutputStreamDestination);
+      } catch (error) {
+        if (DJ_DEBUG) console.warn('Main routed output disconnect failed:', error);
+      }
+    }
+
+    this.mainOutputElementRoutingEnabled = false;
+    this.mainOutputAudioElement?.pause();
+    this.connectMasterDirectOutput();
+  }
+
+  /**
    * Set the main/live audio output device
-   * Uses AudioContext.setSinkId() (Chrome 110+, Edge 110+)
+   * Uses AudioContext.setSinkId() when available, otherwise falls back to a
+   * sink-routed media element for non-default devices.
    * @param deviceId - Device ID from navigator.mediaDevices.enumerateDevices(), or empty for default
    */
   async setMainOutputDevice(deviceId: string): Promise<void> {
@@ -1333,14 +1555,28 @@ export class DJAudioEngine {
     const ctx = this.audioContext as AudioContext & { setSinkId?: (deviceId: string) => Promise<void> };
     if (typeof ctx.setSinkId === 'function') {
       try {
+        this.disableMainOutputElementRouting();
         await ctx.setSinkId(deviceId || '');
         console.log(`🔊 Main output device set to: ${deviceId || 'default'}`);
       } catch (error) {
         console.error('Failed to set main output device:', error);
         throw error;
       }
-    } else {
-      console.warn('AudioContext.setSinkId() not supported in this browser');
+      return;
+    }
+
+    if (!deviceId) {
+      this.disableMainOutputElementRouting();
+      console.log('🔊 Main output device set to: default');
+      return;
+    }
+
+    try {
+      await this.enableMainOutputElementRouting(deviceId);
+      console.log(`🔊 Main output device set via media element fallback: ${deviceId}`);
+    } catch (error) {
+      console.error('Failed to set main output device:', error);
+      throw error;
     }
   }
 
@@ -1351,24 +1587,38 @@ export class DJAudioEngine {
    */
   async setHeadphoneOutputDevice(deviceId: string): Promise<void> {
     this.headphoneOutputDeviceId = deviceId;
-    
+
+    // Primary approach: use secondary AudioContext
+    if (this.headphoneContext && typeof (this.headphoneContext as any).setSinkId === 'function') {
+      try {
+        await (this.headphoneContext as any).setSinkId(deviceId || '');
+        await this.ensureHeadphoneOutputPlaying();
+        console.log(`🎧 Headphone output device set (via AudioContext) to: ${deviceId || 'default'}`);
+        return;
+      } catch (error) {
+        console.error('Failed to set headphone output device via AudioContext:', error);
+        throw error;
+      }
+    }
+
     if (!this.headphoneAudioElement) {
       console.warn('Headphone audio element not initialized, device will be set on next init');
       return;
     }
     
-    // Check if setSinkId is supported on HTMLAudioElement
+    // Fallback approach: use HTMLAudioElement
     const audio = this.headphoneAudioElement as HTMLAudioElement & { setSinkId?: (deviceId: string) => Promise<void> };
     if (typeof audio.setSinkId === 'function') {
       try {
         await audio.setSinkId(deviceId || '');
+        await this.ensureHeadphoneOutputPlaying();
         console.log(`🎧 Headphone output device set to: ${deviceId || 'default'}`);
       } catch (error) {
         console.error('Failed to set headphone output device:', error);
         throw error;
       }
     } else {
-      console.warn('HTMLAudioElement.setSinkId() not supported in this browser');
+      throw new Error('HTMLMediaElement.setSinkId() is not supported by this browser or WebView. Headphone output routing cannot be changed here.');
     }
   }
 
@@ -1618,18 +1868,19 @@ export class DJAudioEngine {
     depth: number, 
     feedback: number
   ): void {
+    const flangerDelay = deck === 'A' ? this.flangerDelayA : this.flangerDelayB;
     const flangerLfo = deck === 'A' ? this.flangerLfoA : this.flangerLfoB;
     const flangerLfoGain = deck === 'A' ? this.flangerLfoGainA : this.flangerLfoGainB;
     const flangerFeedback = deck === 'A' ? this.flangerFeedbackA : this.flangerFeedbackB;
     const flangerWetGain = deck === 'A' ? this.flangerWetGainA : this.flangerWetGainB;
     
-    if (!flangerLfo || !flangerLfoGain || !flangerFeedback || !flangerWetGain || !this.audioContext) return;
+    if (!flangerDelay || !flangerLfo || !flangerLfoGain || !flangerFeedback || !flangerWetGain || !this.audioContext) return;
     
     const now = this.audioContext.currentTime;
     
     // Guard against NaN/Infinity
     const safeRate = (typeof rate === 'number' && isFinite(rate))
-      ? Math.max(0.1, Math.min(10, rate))
+      ? Math.max(0.1, Math.min(8, rate))
       : 0.5;
     const safeDepth = (typeof depth === 'number' && isFinite(depth))
       ? Math.max(0, Math.min(1, depth))
@@ -1774,7 +2025,8 @@ export class DJAudioEngine {
     bpm: number,
   ): void {
     if (target === 'master') {
-      this.applyMasterBeatFX(type, enabled, fraction, depth, bpm);
+      this.applyDeckBeatFX('A', type, enabled, fraction, depth, bpm);
+      this.applyDeckBeatFX('B', type, enabled, fraction, depth, bpm);
       return;
     }
 
@@ -2229,6 +2481,16 @@ export class DJAudioEngine {
       this.audioElementB.pause();
       this.audioElementB.src = '';
     }
+
+    // Clean up routed main output audio element
+    if (this.mainOutputAudioElement) {
+      this.mainOutputAudioElement.pause();
+      this.mainOutputAudioElement.srcObject = null;
+      this.mainOutputAudioElement = null;
+    }
+    this.mainOutputStreamDestination = null;
+    this.mainOutputElementRoutingEnabled = false;
+    this.masterDirectOutputConnected = false;
 
     // Clean up headphone audio element
     if (this.headphoneAudioElement) {

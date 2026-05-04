@@ -9,8 +9,10 @@
  * - spotifyTokenExpiry: Token expiration timestamp
  * - spotifyUser: Authenticated user profile
  * 
- * These values are persisted to localStorage via Zustand persist
- * middleware and synced with the Go backend for download functionality.
+ * Credentials (clientId/secret) and preferences are persisted to localStorage.
+ * Access/refresh tokens are held in-memory only (not persisted) to prevent
+ * XSS token theft — re-authentication occurs on app restart.
+ * Credentials are also synced with the Go backend for download functionality.
  * 
  * @module spotifySlice
  */
