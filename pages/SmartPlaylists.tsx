@@ -235,6 +235,7 @@ export const SmartPlaylists: React.FC = () => {
               ? "e.g., 'Late night deep house session' or 'High energy festival peak time'"
               : "e.g., 'Upbeat 80s pop songs for a workout' or 'Chill jazz for studying'"
             }
+            aria-label="AI DJ prompt"
             value={aiDjPrompt}
             onChange={(e) => setAIDJPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
@@ -668,9 +669,39 @@ export const SmartPlaylists: React.FC = () => {
         )}
 
         {aiDjGeneratedSongs.length === 0 && !aiDjIsLoading && (
-          <div className="flex flex-col items-center justify-center h-64 text-text-subtle">
-            {aiDjMode ? <Radio size={48} className="mb-4 opacity-20" /> : <Music size={48} className="mb-4 opacity-20" />}
-            <p>{aiDjMode ? 'Enter a prompt above to start your DJ set.' : 'Enter a prompt above to generate a playlist.'}</p>
+          <div className="flex flex-col items-center pt-8 pb-4">
+            <div className="mb-6 text-center">
+              {aiDjMode ? <Radio size={36} className="mx-auto mb-3 opacity-30" /> : <Music size={36} className="mx-auto mb-3 opacity-30" />}
+              <p className="text-text-subtle">{aiDjMode ? 'Enter a prompt above to start your DJ set.' : 'Enter a prompt above to generate a playlist.'}</p>
+            </div>
+            <div className="w-full max-w-3xl">
+              <p className="text-meta text-text-secondary mb-3">Try a starter prompt:</p>
+              <div className="flex flex-wrap gap-2">
+                {(aiDjMode ? [
+                  'High energy festival peak time',
+                  'Late night deep house session',
+                  'Sunset rooftop lounge',
+                  'Underground techno journey',
+                  'Warm summer pool vibes',
+                ] : [
+                  'Upbeat morning workout',
+                  'Late night chill vibes',
+                  '90s alternative rock',
+                  'Jazz for studying',
+                  'Electronic dance energy',
+                  'Happy Sunday morning',
+                  'Focus and flow',
+                ]).map(prompt => (
+                  <button
+                    key={prompt}
+                    onClick={() => setAIDJPrompt(prompt)}
+                    className="px-3 py-1.5 rounded-full bg-surface-1 hover:bg-surface-2 text-text-secondary hover:text-text-main text-sm border border-surface-3 hover:border-brand/30 transition-all duration-150"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -25,18 +25,28 @@
 import { api, ApiSong, ApiPlaylist, ScanFolder } from './api';
 import { Song, Playlist } from '../types';
 
-// Check if backend is available
+// Check if backend is available (re-checks every 30 seconds if initially unavailable)
 let backendAvailable: boolean | null = null;
+let backendCheckedAt = 0;
+const BACKEND_CHECK_TTL_MS = 30_000;
 
 export async function isBackendAvailable(): Promise<boolean> {
-  if (backendAvailable !== null) return backendAvailable;
+  // Return cached result if available and not stale (or if backend was found available)
+  if (backendAvailable !== null) {
+    // If backend is available, trust the cached result indefinitely
+    if (backendAvailable) return true;
+    // If backend was unavailable, re-check after TTL expires
+    if (Date.now() - backendCheckedAt < BACKEND_CHECK_TTL_MS) return false;
+  }
   
   try {
     await api.healthCheck();
     backendAvailable = true;
+    backendCheckedAt = Date.now();
     console.log('✅ Go backend connected');
   } catch {
     backendAvailable = false;
+    backendCheckedAt = Date.now();
     console.log('ℹ️ Running in browser-only mode');
   }
   

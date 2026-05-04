@@ -35,3 +35,10 @@ backend/cmd/viib/dist/
 .env
 .env.local
 .env.*.local
+
+# Review / playwright scratch dir (DJ panel review)
+.tmp-review/
+.claude/
+.github/
+.*/*
+/output/*

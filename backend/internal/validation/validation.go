@@ -19,6 +19,7 @@
 package validation
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode"
@@ -107,6 +108,16 @@ func SanitizePath(path string) string {
 	// Remove null bytes (path injection)
 	path = strings.ReplaceAll(path, "\x00", "")
 
+	// Normalize the path to resolve any . or .. components
+	path = filepath.Clean(path)
+
+	// Reject paths that still contain .. after cleaning
+	for _, part := range strings.Split(path, string(filepath.Separator)) {
+		if part == ".." {
+			return ""
+		}
+	}
+
 	// Truncate if too long
 	if len(path) > MaxPathLength {
 		path = path[:MaxPathLength]
@@ -168,6 +179,7 @@ func IsValidSettingKey(key string) bool {
 	allowedKeys := map[string]bool{
 		"concurrent_downloads":     true,
 		"spotify_download_path":    true,
+		"spotify_credentials":      true,
 		"gemini_api_key":           true,
 		"theme":                    true,
 		"volume":                   true,
@@ -179,6 +191,18 @@ func IsValidSettingKey(key string) bool {
 		"auto_scan_on_startup":     true,
 		"background_genre_enrich":  true,
 		"background_mood_analysis": true,
+		"llm_provider":             true,
+		"llm_model":                true,
+		"llm_api_key":              true,
+		"llm_base_url":             true,
+		"lastfm_api_key":           true,
+		"lastfm_shared_secret":     true,
+		"lastfm_enabled":           true,
+		"lastfm_username":          true,
+		"lastfm_session_key":       true,
+		"lastfm_last_sync":         true,
+		"enrichment_source":        true,
+		"audio_settings":           true,
 	}
 	return allowedKeys[key]
 }

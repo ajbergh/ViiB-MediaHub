@@ -72,6 +72,9 @@ export const useAudioPlayer = () => {
     
     // Track if we've already fixed duration for current song
     const hasFixedDuration = useRef<string | null>(null);
+
+    // Throttle timeupdate: skip state updates when change is negligible
+    const lastReportedTime = useRef<number>(0);
     
     // Track listening events for AI DJ preference learning
     // Stores the current song being tracked and its cumulative play duration
@@ -90,12 +93,9 @@ export const useAudioPlayer = () => {
     // Track buffering start time for duration calculation
     const bufferStartTime = useRef<number | null>(null);
 
-    const { 
-        currentSong, isPlaying, volume, audioSettings,
-        nextSong, recordPlay, recordListenEvent, preloadNextTrack, setBuffering, setBufferProgress,
-        setStreamError, retryStream, clearStreamError, showToast, retryCount,
-        recordStreamEvent, updateSongDuration
-    } = useStore();
+    // Only destructure reactive state needed for effect dependencies and rendering.
+    // Action functions are accessed via useStore.getState() inside handlers to avoid stale closures (H-6).
+    const { currentSong, isPlaying, volume, audioSettings } = useStore();
 
     // Init Engine & EQ
     useEffect(() => {
@@ -117,12 +117,11 @@ export const useAudioPlayer = () => {
         audioEngine.setVolume(volume);
     }, [volume]);
     
-    // Network recovery detection
+    // Network recovery detection — all state via getState() to avoid stale closures
     useEffect(() => {
         const handleOnline = () => {
-            const { streamError, retryCount } = useStore.getState();
+            const { currentSong, streamError, retryCount, showToast, retryStream } = useStore.getState();
             
-            // If we had a network error and network is back, offer to retry
             if (streamError?.type === 'network' && currentSong?.isStreaming) {
                 console.log('[AudioPlayer] Network recovered, attempting to resume playback');
                 showToast({
@@ -131,7 +130,6 @@ export const useAudioPlayer = () => {
                     duration: 3000
                 });
                 
-                // Auto-retry if we haven't exceeded max attempts
                 if (retryCount < 3) {
                     retryStream();
                 }
@@ -139,6 +137,7 @@ export const useAudioPlayer = () => {
         };
         
         const handleOffline = () => {
+            const { currentSong, showToast } = useStore.getState();
             if (currentSong?.isStreaming) {
                 console.warn('[AudioPlayer] Network went offline');
                 showToast({
@@ -156,24 +155,22 @@ export const useAudioPlayer = () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
         };
-    }, [currentSong?.isStreaming, showToast, retryStream]);
+    }, []);
     
-    // Buffering and error event handlers for streaming tracks
+    // Buffering and error event handlers for streaming tracks — all state via getState()
     useEffect(() => {
         const primary = primaryRef.current;
         const secondary = secondaryRef.current;
         if (!primary || !secondary) return;
         
         const handleWaiting = () => {
-            // Only show buffering for streaming tracks
+            const { currentSong, setBuffering, recordStreamEvent } = useStore.getState();
             if (currentSong?.isStreaming) {
                 console.log('[AudioPlayer] Buffering started...');
                 setBuffering(true);
                 
-                // Track buffer start time for duration calculation
                 bufferStartTime.current = Date.now();
                 
-                // Record buffering event
                 recordStreamEvent({
                     type: 'buffer_start',
                     trackId: currentSong.spotifyId || currentSong.id,
@@ -184,13 +181,12 @@ export const useAudioPlayer = () => {
         };
         
         const handleCanPlay = () => {
+            const { currentSong, setBuffering, clearStreamError, recordStreamEvent } = useStore.getState();
             if (currentSong?.isStreaming) {
                 console.log('[AudioPlayer] Buffering complete, can play');
                 setBuffering(false);
-                // Clear any previous errors on successful playback
                 clearStreamError();
                 
-                // Record buffer end with duration
                 if (bufferStartTime.current) {
                     const bufferDuration = Date.now() - bufferStartTime.current;
                     recordStreamEvent({
@@ -208,18 +204,16 @@ export const useAudioPlayer = () => {
         const handleProgress = (e: Event) => {
             const audio = e.target as HTMLAudioElement;
             if (audio.buffered.length > 0 && audio.duration > 0) {
-                // Get the buffered range that includes current time
                 const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
                 const progress = Math.round((bufferedEnd / audio.duration) * 100);
-                setBufferProgress(progress);
+                useStore.getState().setBufferProgress(progress);
             }
         };
         
-        // Error handler for streaming failures
         const handleError = (e: Event) => {
             const audio = e.target as HTMLAudioElement;
+            const { currentSong, retryCount, setBuffering, setStreamError, showToast, retryStream, nextSong, recordStreamEvent } = useStore.getState();
             
-            // Only handle errors for streaming tracks
             if (!currentSong?.isStreaming) return;
             
             const errorType = getStreamingErrorType(audio.error);
@@ -227,7 +221,6 @@ export const useAudioPlayer = () => {
             
             console.error('[AudioPlayer] Stream error:', errorType, audio.error?.message);
             
-            // Record error event for analytics
             recordStreamEvent({
                 type: 'error',
                 trackId: currentSong.spotifyId || currentSong.id,
@@ -244,7 +237,6 @@ export const useAudioPlayer = () => {
                 timestamp: Date.now()
             });
             
-            // Auto-retry for network errors (up to max attempts)
             if (errorType === 'network' && retryCount < 3) {
                 console.log('[AudioPlayer] Auto-retrying after network error...');
                 showToast({
@@ -271,7 +263,6 @@ export const useAudioPlayer = () => {
                     message: 'This track is not available for streaming.',
                     duration: 4000
                 });
-                // Record skip event
                 recordStreamEvent({
                     type: 'skip',
                     trackId: currentSong.spotifyId || currentSong.id,
@@ -279,13 +270,12 @@ export const useAudioPlayer = () => {
                     errorType: 'unavailable',
                     timestamp: Date.now()
                 });
-                // Skip to next track after a short delay
-                setTimeout(() => nextSong(), 2000);
+                setTimeout(() => useStore.getState().nextSong(), 2000);
             }
         };
         
-        // Stall handler - detect when stream stops unexpectedly
         const handleStalled = () => {
+            const { currentSong, setBuffering } = useStore.getState();
             if (currentSong?.isStreaming) {
                 console.warn('[AudioPlayer] Stream stalled');
                 setBuffering(true);
@@ -322,7 +312,7 @@ export const useAudioPlayer = () => {
             secondary.removeEventListener('error', handleError);
             secondary.removeEventListener('stalled', handleStalled);
         };
-    }, [currentSong, setBuffering, setBufferProgress, setStreamError, clearStreamError, retryStream, showToast, retryCount, nextSong, recordStreamEvent]);
+    }, []);
 
     // Playback Logic (Transition Handling)
     useEffect(() => {
@@ -358,11 +348,11 @@ export const useAudioPlayer = () => {
                 
                 // Only record if we actually played for some time
                 if (finalPlayTime > 0.5) {
-                    recordListenEvent(
+                    useStore.getState().recordListenEvent(
                         listenTrackingRef.current.songId,
                         finalPlayTime,
                         listenTrackingRef.current.songDuration,
-                        'queue' // Default context - could be enhanced to track actual context
+                        'queue'
                     );
                     console.log(`[AudioPlayer] Listen event recorded: ${finalPlayTime.toFixed(1)}s / ${listenTrackingRef.current.songDuration.toFixed(1)}s`);
                 }
@@ -387,6 +377,7 @@ export const useAudioPlayer = () => {
             hasFixedDuration.current = null;
             
             // Reset buffering state for new track
+            const { setBuffering, setBufferProgress, recordStreamEvent } = useStore.getState();
             if (currentSong.isStreaming) {
                 setBuffering(true);
                 setBufferProgress(0);
@@ -441,9 +432,9 @@ export const useAudioPlayer = () => {
             }
         }
 
-    }, [currentSong, isPlaying, audioSettings.crossfadeDuration, setBuffering, setBufferProgress, recordStreamEvent]);
+    }, [currentSong, isPlaying, audioSettings.crossfadeDuration]);
 
-    // Handlers
+    // Handlers — use getState() for fresh state to avoid stale closures
     const handleTimeUpdate = (playerIndex: number) => {
         if (playerIndex !== activePlayerIndex.current) return;
         
@@ -451,9 +442,16 @@ export const useAudioPlayer = () => {
         if (player) {
             const time = player.currentTime;
             const dur = player.duration || 0;
+
+            // Throttle state updates: only update when time changed by >= 0.25s
+            const timeDelta = Math.abs(time - lastReportedTime.current);
+            if (timeDelta >= 0.25 || time === 0) {
+                lastReportedTime.current = time;
+                setCurrentTime(time);
+                setDuration(dur);
+            }
             
-            setCurrentTime(time);
-            setDuration(dur);
+            const { currentSong, updateSongDuration, preloadNextTrack } = useStore.getState();
             
             // Fix duration if it differs significantly from stored metadata
             // Only do this once per song, when we have a valid duration
@@ -481,6 +479,8 @@ export const useAudioPlayer = () => {
     const handleEnded = (playerIndex: number) => {
         if (playerIndex !== activePlayerIndex.current) return;
         
+        const { currentSong, recordPlay, nextSong, recordListenEvent, recordStreamEvent } = useStore.getState();
+        
         if (currentSong) {
             recordPlay(currentSong.id);
             
@@ -499,7 +499,7 @@ export const useAudioPlayer = () => {
                     currentSong.id,
                     finalPlayTime,
                     songDuration,
-                    'queue' // Default context
+                    'queue'
                 );
                 console.log(`[AudioPlayer] Song completed: ${finalPlayTime.toFixed(1)}s / ${songDuration.toFixed(1)}s`);
                 

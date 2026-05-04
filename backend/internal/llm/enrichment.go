@@ -489,11 +489,11 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 		}
 	}
 
-	// Parse BPM (integer)
+	// Parse BPM (integer, valid range 20-300)
 	if bpmIdx < len(parts) {
 		bpmStr := strings.TrimSpace(parts[bpmIdx])
 		if bpmStr != "" && bpmStr != "0" {
-			if bpm, parseErr := strconv.Atoi(bpmStr); parseErr == nil {
+			if bpm, parseErr := strconv.Atoi(bpmStr); parseErr == nil && bpm >= 20 && bpm <= 300 {
 				metadata.BPM = bpm
 				// Infer tempo from BPM if we defaulted earlier
 				if metadata.Tempo == "medium" && bpmIdx == 4 {
@@ -513,11 +513,12 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 		metadata.Instrumental = instrStr == "true" || instrStr == "1" || instrStr == "yes"
 	}
 
-	// Parse original year (integer)
+	// Parse original year (integer, valid range 1900-current+1)
+	currentYear := time.Now().Year()
 	if yearIdx < len(parts) {
 		yearStr := strings.TrimSpace(parts[yearIdx])
 		if yearStr != "" && yearStr != "0" {
-			if year, parseErr := strconv.Atoi(yearStr); parseErr == nil {
+			if year, parseErr := strconv.Atoi(yearStr); parseErr == nil && year >= 1900 && year <= currentYear+1 {
 				metadata.OriginalYear = year
 			}
 		}

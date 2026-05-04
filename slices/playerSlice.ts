@@ -102,6 +102,8 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         eqEnabled: false,
         eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         activePresetId: 'flat',
+        mainOutputDevice: '',        // Empty = default device
+        headphoneOutputDevice: '',   // Empty = default device (same as main)
     },
     isEqOpen: false,
     
@@ -211,8 +213,11 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             }
         }
 
-        const { songs } = get();
-        const newQueue = context ? [...context] : [...songs];
+        // When no explicit context is provided, default the queue to just this
+        // one song instead of the entire library. Callers that want the user's
+        // visible list to become the queue (e.g. Songs page row click) must
+        // pass their filtered list as `context`.
+        const newQueue = context ? [...context] : [playableSong];
 
         // Use ID to match, ensuring we map to the possibly updated playableSong object
         const index = newQueue.findIndex(s => s.id === song.id);
@@ -443,6 +448,20 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             return { audioSettings: newSettings };
         });
     },
+    setMainOutputDevice: (deviceId) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, mainOutputDevice: deviceId };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setHeadphoneOutputDevice: (deviceId) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, headphoneOutputDevice: deviceId };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
     toggleEqPanel: () => set((state) => ({ isEqOpen: !state.isEqOpen })),
     
     // Milkdrop visualization actions
@@ -538,11 +557,16 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
                 
                 preloadAudio.addEventListener('canplaythrough', () => {
                     clearTimeout(timeout);
+                    // Release the Audio element to prevent memory leak
+                    preloadAudio.src = '';
+                    preloadAudio.removeAttribute('src');
                     resolve();
                 }, { once: true });
                 
                 preloadAudio.addEventListener('error', (e) => {
                     clearTimeout(timeout);
+                    preloadAudio.src = '';
+                    preloadAudio.removeAttribute('src');
                     reject(e);
                 }, { once: true });
             });

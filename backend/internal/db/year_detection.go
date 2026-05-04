@@ -118,6 +118,7 @@ func (db *DB) DetectRemasterSongs() (processed, flagged int, err error) {
 		FROM songs 
 		WHERE year IS NOT NULL 
 		AND year_analyzed_at IS NULL
+		LIMIT 10000
 	`)
 	if err != nil {
 		return 0, 0, err

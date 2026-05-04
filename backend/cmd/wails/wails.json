@@ -16,6 +16,6 @@
     "productName": "ViiB MediaHub",
     "productVersion": "1.0.0",
     "copyright": "Copyright © 2025 ViiB",
-    "comments": "Local media player with web UI - Native Windows desktop application"
+    "comments": "Local media player with web UI - Native desktop application (Windows, macOS, Linux)"
   }
 }

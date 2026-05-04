@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -190,7 +191,7 @@ type ScanResult struct {
 // New creates a new Scanner instance
 func New(database *db.DB, dataDir string) *Scanner {
 	coverDir := filepath.Join(dataDir, "covers")
-	os.MkdirAll(coverDir, 0755)
+	os.MkdirAll(coverDir, 0700)
 
 	s := &Scanner{
 		db:              database,
@@ -202,8 +203,12 @@ func New(database *db.DB, dataDir string) *Scanner {
 		enrichmentQueue: make(chan []db.Song, 1000), // Buffer for pending batches
 	}
 
-	// Initialize background scanner with 2 workers
-	s.backgroundScanner = NewBackgroundScanner(s, 2)
+	// Initialize background scanner with workers scaled to CPU count
+	numWorkers := runtime.NumCPU() / 2
+	if numWorkers < 2 {
+		numWorkers = 2
+	}
+	s.backgroundScanner = NewBackgroundScanner(s, numWorkers)
 	s.backgroundScanner.Start()
 
 	// Start background enrichment worker
@@ -1273,42 +1278,6 @@ func (s *Scanner) extractEmbeddedArtwork(filePath string) []byte {
 	return imageData
 }
 
-// CleanOrphanedCovers removes cover files that are no longer referenced by any song
-func (s *Scanner) CleanOrphanedCovers() (int, error) {
-	songs, err := s.db.GetAllSongs()
-	if err != nil {
-		return 0, err
-	}
-
-	// Build set of used cover paths
-	usedCovers := make(map[string]bool)
-	for _, song := range songs {
-		if song.CoverPath != "" {
-			usedCovers[song.CoverPath] = true
-		}
-	}
-
-	// List all cover files
-	entries, err := os.ReadDir(s.coverDir)
-	if err != nil {
-		return 0, err
-	}
-
-	deleted := 0
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		coverPath := filepath.Join(s.coverDir, entry.Name())
-		if !usedCovers[coverPath] {
-			os.Remove(coverPath)
-			deleted++
-		}
-	}
-
-	return deleted, nil
-}
-
 // createAlbumMetadataEntries creates album_metadata entries for albums found during scan
 // This populates the cache with album info and local cover paths for later Spotify enrichment
 func (s *Scanner) createAlbumMetadataEntries(songs []db.Song) {
@@ -1371,54 +1340,6 @@ func (s *Scanner) createAlbumMetadataEntries(songs []db.Song) {
 func (s *Scanner) findLocalCoverForSong(audioFilePath string) string {
 	folderPath := filepath.Dir(audioFilePath)
 	return s.findLocalCover(folderPath)
-}
-
-// queueForEnrichment adds a batch to the enrichment queue with tracking
-// Only queues songs that are missing genre information
-func (s *Scanner) queueForEnrichment(batch []db.Song) {
-	// Filter to only songs that need genre enrichment
-	var songsNeedingGenres []db.Song
-	for _, song := range batch {
-		// Check if song has empty or missing genres
-		if len(song.Genre) == 0 {
-			songsNeedingGenres = append(songsNeedingGenres, song)
-		}
-	}
-
-	// Skip if no songs need enrichment
-	if len(songsNeedingGenres) == 0 {
-		logger.Scanner("No songs in batch need genre enrichment, skipping")
-		return
-	}
-
-	s.enrichmentMutex.Lock()
-
-	// Start new enrichment session if not active
-	if !s.enrichmentActive {
-		s.enrichmentActive = true
-		s.enrichmentTotal = 0
-		s.enrichmentProcessed = 0
-		s.enrichmentBatchNum = 0
-		s.enrichmentTotalBatches = 0
-	}
-
-	s.enrichmentTotal += len(songsNeedingGenres)
-	s.enrichmentTotalBatches++
-	totalSongs := s.enrichmentTotal
-	totalBatches := s.enrichmentTotalBatches
-	s.enrichmentMutex.Unlock()
-
-	select {
-	case s.enrichmentQueue <- songsNeedingGenres:
-		logger.Scanner("Queued %d songs (of %d in batch) for genre enrichment (total needing genres: %d, batches: %d)",
-			len(songsNeedingGenres), len(batch), totalSongs, totalBatches)
-	default:
-		logger.Scanner("Enrichment queue full, skipping batch")
-		s.enrichmentMutex.Lock()
-		s.enrichmentTotal -= len(songsNeedingGenres)
-		s.enrichmentTotalBatches--
-		s.enrichmentMutex.Unlock()
-	}
 }
 
 // processEnrichmentQueue handles background enrichment of songs

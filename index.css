@@ -2,6 +2,118 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════
+   DJ Mode V2 — Design System CSS Variables
+   ═══════════════════════════════════════════════════════ */
+:root {
+  /* Surface palette (dark → light) */
+  --dj-bg:            #0d0d0d;
+  --dj-surface-0:     #121212;
+  --dj-surface-1:     #161616;
+  --dj-surface-2:     #1a1a1a;
+  --dj-surface-3:     #222222;
+  --dj-border:        #2a2a2a;
+  --dj-border-light:  #333333;
+  --dj-border-hover:  #444444;
+
+  /* Text hierarchy */
+  --dj-text-primary:   rgba(255, 255, 255, 0.92);
+  --dj-text-secondary: rgba(255, 255, 255, 0.60);
+  --dj-text-muted:     rgba(255, 255, 255, 0.38);
+  --dj-text-disabled:  rgba(255, 255, 255, 0.22);
+
+  /* Deck identity */
+  --dj-deck-a:       #3b82f6;
+  --dj-deck-a-dim:   rgba(59, 130, 246, 0.20);
+  --dj-deck-a-glow:  rgba(59, 130, 246, 0.40);
+  --dj-deck-b:       #8b5cf6;
+  --dj-deck-b-dim:   rgba(139, 92, 246, 0.20);
+  --dj-deck-b-glow:  rgba(139, 92, 246, 0.40);
+
+  /* Semantic state colors */
+  --dj-active:   #22c55e;
+  --dj-warning:  #f59e0b;
+  --dj-danger:   #ef4444;
+  --dj-info:     #06b6d4;
+
+  /* Spacing base (8px grid) */
+  --dj-space:    8px;
+  --dj-space-xs: 4px;
+  --dj-space-sm: 6px;
+  --dj-space-lg: 12px;
+  --dj-space-xl: 16px;
+
+  /* Layout section sizes (overridden per layout mode).
+     Mixer width and waveform height use clamp() so the panel breathes
+     at 2K/4K instead of hugging 1920×1080. */
+  --dj-waveform-h: clamp(180px, 19vh, 260px);
+  --dj-library-h:  200px;
+  --dj-mixer-w:    clamp(380px, 22vw, 480px);
+  --dj-topbar-h:   44px;
+  --dj-fx-h:       auto;
+
+  /* Hit target minimums (WCAG 2.2 AA) */
+  --dj-target-primary:   44px;
+  --dj-target-secondary: 32px;
+
+  /* Control sizing tokens — referenced by V2 components */
+  --dj-knob-sm:    32px;
+  --dj-knob-md:    44px;
+  --dj-knob-lg:    56px;
+  --dj-pad-perf:   44px;
+  --dj-pad-sec:    36px;
+  --dj-fader-w:    44px;
+  --dj-fader-track:10px;
+  --dj-xfader-h:   32px;
+
+  /* Transition defaults */
+  --dj-transition-fast:   75ms ease-out;
+  --dj-transition-normal: 150ms ease-out;
+  --dj-transition-layout: 300ms ease-out;
+}
+
+/* Layout mode overrides */
+[data-dj-mode="perf"] {
+  --dj-waveform-h: clamp(180px, 18vh, 220px);
+  --dj-library-h:  22vh;
+  --dj-fx-h:       auto;
+}
+
+[data-dj-mode="browse"] {
+  --dj-waveform-h: 170px;
+  --dj-library-h:  45vh;
+  --dj-fx-h:       auto;
+}
+
+[data-dj-mode="fx"] {
+  --dj-waveform-h: 180px;
+  --dj-library-h:  12vh;
+  --dj-fx-h:       clamp(230px, 25vh, 300px);
+}
+
+/* Shared focus ring used across DJ V2 controls */
+.dj-focus-ring {
+  outline: none;
+}
+.dj-focus-ring:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.7);
+  outline-offset: 2px;
+}
+
+/* Disabled state — grayscale instead of grey-on-grey re-coloring */
+[data-dj-mode] [aria-disabled="true"],
+[data-dj-mode] :disabled {
+  filter: grayscale(0.85);
+  opacity: 0.45;
+}
+
+/* Reduced motion — kill the play-button beat-pulse rAF effect */
+@media (prefers-reduced-motion: reduce) {
+  [data-dj-mode] [style*="--glow"] {
+    --glow: 0 !important;
+  }
+}
+
 @layer base {
   body {
     font-family: 'Inter', sans-serif;
@@ -14,6 +126,15 @@
   :focus-visible {
     outline: 2px solid rgba(155, 92, 255, 0.55);
     outline-offset: 2px;
+  }
+
+  /* DJ Mode focus-visible: sharper ring on very dark backgrounds */
+  [data-dj-mode] button:focus-visible,
+  [data-dj-mode] input:focus-visible,
+  [data-dj-mode] [role="slider"]:focus-visible {
+    outline: 2px solid rgba(155, 92, 255, 0.7);
+    outline-offset: 1px;
+    box-shadow: 0 0 0 4px rgba(155, 92, 255, 0.15);
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npx vite *)",
+      "Bash(npm run *)",
+      "Bash(node .tmp-review/dj-review.mjs)",
+      "Bash(node .tmp-review/dj-closeups.mjs)",
+      "Bash(node -e \"const m=require\\('./.tmp-review/regions.json'\\); console.log\\(JSON.stringify\\(m,null,2\\)\\);\")",
+      "Bash(node -e \"const m=require\\('./.tmp-review/measurements.json'\\); const tiny=m.buttons.filter\\(b=>Math.min\\(b.w,b.h\\)<24\\); console.log\\('Remaining tiny:'\\); tiny.forEach\\(b=>console.log\\(' ',b.w+'x'+b.h, '|', \\(b.txt||b.aria||b.title||''\\).slice\\(0,50\\)\\)\\);\")",
+      "Bash(node -e \"const m=require\\('./.tmp-review/measurements.json'\\); const buckets={'<24':0,'24-31':0,'32-43':0,'44-59':0,'60+':0}; m.buttons.forEach\\(b=>{const e=Math.min\\(b.w,b.h\\); if\\(e<24\\)buckets['<24']++; else if\\(e<32\\)buckets['24-31']++; else if\\(e<44\\)buckets['32-43']++; else if\\(e<60\\)buckets['44-59']++; else buckets['60+']++;}\\); console.log\\('Final buckets:',buckets\\);\")",
+      "Bash(node -e \"const m=require\\('./.tmp-review/measurements.json'\\); const tiny=m.buttons.filter\\(b=>Math.min\\(b.w,b.h\\)<24\\); tiny.forEach\\(b=>console.log\\(b.w+'x'+b.h, '|', \\(b.txt||b.aria||b.title||''\\).slice\\(0,60\\)\\)\\);\")",
+      "Bash(node -e \"const m=require\\('./.tmp-review/measurements.json'\\); const tiny=m.buttons.filter\\(b=>Math.min\\(b.w,b.h\\)<24\\); tiny.forEach\\(b=>console.log\\(JSON.stringify\\(b,null,2\\)\\)\\);\")"
+    ]
+  }
+}

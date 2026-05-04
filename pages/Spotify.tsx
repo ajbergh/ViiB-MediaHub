@@ -19,7 +19,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2 } from 'lucide-react';
+import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2, Copy } from 'lucide-react';
 import { formatTime, getOAuthCallbackUrl, isWailsEnvironment } from '../utils';
 import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
@@ -852,8 +852,18 @@ export const Spotify: React.FC = () => {
                                 </li>
                                 <li>Add this Redirect URI in your Spotify Dashboard:</li>
                             </ol>
-                            <div className="mt-2 bg-surface-1 p-3 rounded font-mono text-xs text-text-subtle break-all select-all border border-surface-3">
+                            <div className="mt-2 flex items-center gap-2">
+                              <div className="flex-1 bg-surface-1 p-3 rounded font-mono text-xs text-text-subtle break-all select-all border border-surface-3">
                                 {window.location.origin}/callback
+                              </div>
+                              <button
+                                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/callback`)}
+                                className="flex-shrink-0 p-2 rounded hover:bg-surface-2 text-text-secondary hover:text-text-main transition-colors"
+                                title="Copy redirect URI"
+                                aria-label="Copy redirect URI to clipboard"
+                              >
+                                <Copy size={14} />
+                              </button>
                             </div>
                         </div>
                     </div>

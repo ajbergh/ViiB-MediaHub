@@ -244,6 +244,10 @@ export interface AudioSettings {
   eqEnabled: boolean;
   eqBands: number[]; // 10 bands, -12 to +12 dB
   activePresetId: string;
+  /** DJ Mode: Main/Live output audio device ID (empty = default) */
+  mainOutputDevice: string;
+  /** DJ Mode: Headphone/Cue output audio device ID (empty = default) */
+  headphoneOutputDevice: string;
 }
 
 /**

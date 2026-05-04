@@ -41,6 +41,8 @@ let isProcessingQueue = false;
 // Multiple simultaneous requests should wait for a single token refresh
 let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
+let refreshFailureCount = 0;
+const MAX_REFRESH_FAILURES = 3;
 
 const processQueue = async () => {
     if (isProcessingQueue || requestQueue.length === 0) return;
@@ -300,7 +302,14 @@ export const SpotifyService = {
         // 1. Check User Token
         if (spotifyAccessToken && spotifyRefreshToken) {
             if (Date.now() < spotifyTokenExpiry) {
+                refreshFailureCount = 0; // Reset on valid token
                 return spotifyAccessToken;
+            }
+            
+            // Bail if refresh has failed too many times (likely revoked token)
+            if (refreshFailureCount >= MAX_REFRESH_FAILURES) {
+                store.addLog('error', `Token refresh failed ${MAX_REFRESH_FAILURES} times. Please re-authenticate with Spotify.`);
+                return null;
             }
             
             // Mutex: If already refreshing, wait for that promise
@@ -341,6 +350,7 @@ export const SpotifyService = {
                             data.refresh_token || spotifyRefreshToken,
                             Date.now() + (data.expires_in * 1000)
                         );
+                        refreshFailureCount = 0; // Reset on success
                         return data.access_token;
                     } else {
                         const errorData = await response.json().catch(() => ({}));
@@ -351,6 +361,7 @@ export const SpotifyService = {
                     }
                 } catch (error) {
                     store.addLog('error', 'Error refreshing user token', error);
+                    refreshFailureCount++;
                     if (error instanceof SpotifyRateLimitError || error instanceof SpotifyAuthError) {
                         throw error;
                     }

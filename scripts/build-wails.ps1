@@ -1,7 +1,7 @@
 # Build script for ViiB MediaHub (Wails Windows build)
 # 
 # This script builds the native Windows desktop application using Wails.
-# Output: backend/cmd/wails/build/bin/ViiB-MediaHub.exe
+# Output: build/ViiB-MediaHub.exe
 #
 # Prerequisites:
 #   - Go 1.22+ with CGO_ENABLED=1
@@ -200,11 +200,24 @@ try {
     Pop-Location
 }
 
+# Copy output to /build
+$wailsOutputPath = Join-Path $wailsDir "build\bin\ViiB-MediaHub.exe"
+$finalOutputDir = Join-Path $projectRoot "build"
+$finalOutputPath = Join-Path $finalOutputDir "ViiB-MediaHub.exe"
+
+if (Test-Path $wailsOutputPath) {
+    if (-not (Test-Path $finalOutputDir)) {
+        New-Item -ItemType Directory -Path $finalOutputDir -Force | Out-Null
+    }
+    Copy-Item -Force $wailsOutputPath $finalOutputPath
+    Write-Host "  ✓ Copied to $finalOutputPath" -ForegroundColor Green
+}
+
 # ============================================================================
 # Report Results
 # ============================================================================
 
-$outputPath = Join-Path $wailsDir "build\bin\ViiB-MediaHub.exe"
+$outputPath = Join-Path $projectRoot "build\ViiB-MediaHub.exe"
 
 Write-Host "`n" -NoNewline
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green

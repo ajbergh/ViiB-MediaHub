@@ -38,6 +38,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
+	"github.com/ajbergh/viib-mediahub/internal/validation"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -51,6 +52,7 @@ type API struct {
 	downloadManager *DownloadManager
 	scanner         *scanner.Scanner
 	lastfmClient    *lastfm.Client
+	enrichRunning   int32 // atomic: 1 if enrichment goroutine is active
 }
 
 // New constructs a new API instance using the given database and
@@ -60,7 +62,7 @@ func New(database *db.DB, dataDir string) *API {
 	logger.API("New: Starting with dataDir=%s", dataDir)
 
 	coverDir := filepath.Join(dataDir, "covers")
-	os.MkdirAll(coverDir, 0755)
+	os.MkdirAll(coverDir, 0700)
 
 	// Get download directory from settings, or use default
 	downloadDir := filepath.Join(dataDir, "spotify_downloads")
@@ -68,7 +70,7 @@ func New(database *db.DB, dataDir string) *API {
 		downloadDir = customPath
 		logger.API("Using custom Spotify download path: %s", downloadDir)
 	}
-	os.MkdirAll(downloadDir, 0755)
+	os.MkdirAll(downloadDir, 0700)
 
 	// Create scanner
 	logger.API("Creating scanner...")
@@ -163,6 +165,9 @@ func (a *API) Routes() chi.Router {
 
 	// DJ Mode endpoints
 	r.Get("/dj/personas", a.getDJPersonas)
+	r.Get("/dj/waveform/{id}", a.getDJWaveform) // Get or generate waveform data
+	r.Get("/dj/hotcues/{id}", a.getDJHotCues)   // Get hot cues for a track
+	r.Put("/dj/hotcues/{id}", a.saveDJHotCues)  // Save hot cues for a track
 
 	// File serving
 	r.Get("/audio/*", a.serveAudio)
@@ -237,6 +242,9 @@ func (a *API) Routes() chi.Router {
 	r.Get("/lastfm/track", a.handleGetTrackLastFM)
 	r.Get("/lastfm/similar", a.handleGetSimilarTracks)
 
+	// Frontend Logging (writes to viib.log)
+	r.Post("/log", a.handleFrontendLog)
+
 	// Settings
 	r.Get("/settings/{key}", a.getSetting)
 	r.Post("/settings/{key}", a.setSetting)
@@ -252,15 +260,72 @@ func respondJSON(w http.ResponseWriter, data interface{}) {
 }
 
 func respondError(w http.ResponseWriter, status int, message string) {
+	clientMessage := message
+	// For server errors, log the detail but return a generic message to the client
+	if status >= 500 {
+		logger.API("Internal error (HTTP %d): %s", status, message)
+		clientMessage = "Internal server error"
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
+	json.NewEncoder(w).Encode(map[string]string{"error": clientMessage})
 }
 
 // Handlers
 
 func (a *API) healthCheck(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "ok", "version": "1.0.0"})
+}
+
+// FrontendLogRequest represents a log message from the frontend
+type FrontendLogRequest struct {
+	Level     string `json:"level"`     // "debug", "info", "warn", "error"
+	Message   string `json:"message"`   // Log message
+	Component string `json:"component"` // Component name (e.g., "DJMode", "DJJogWheel")
+	Data      any    `json:"data"`      // Optional additional data
+}
+
+// handleFrontendLog accepts log messages from the frontend and writes them to viib.log
+func (a *API) handleFrontendLog(w http.ResponseWriter, r *http.Request) {
+	var req FrontendLogRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid log request")
+		return
+	}
+
+	// Validate level
+	level := strings.ToLower(req.Level)
+	if level != "debug" && level != "info" && level != "warn" && level != "error" {
+		level = "info"
+	}
+
+	// Format the log message
+	component := req.Component
+	if component == "" {
+		component = "Frontend"
+	}
+
+	// Build full message with optional data
+	fullMessage := fmt.Sprintf("[%s] %s", component, req.Message)
+	if req.Data != nil {
+		if dataBytes, err := json.Marshal(req.Data); err == nil {
+			fullMessage = fmt.Sprintf("%s | Data: %s", fullMessage, string(dataBytes))
+		}
+	}
+
+	// Log using appropriate level
+	switch level {
+	case "debug":
+		logger.Debug("FE: %s", fullMessage)
+	case "info":
+		logger.Log("FE: %s", fullMessage)
+	case "warn":
+		logger.Log("FE WARN: %s", fullMessage)
+	case "error":
+		logger.Log("FE ERROR: %s", fullMessage)
+	}
+
+	respondJSON(w, map[string]string{"status": "logged"})
 }
 
 // getDJPersonas returns all available DJ personas for the DJ mode feature.
@@ -299,7 +364,7 @@ func (a *API) clearSongs(w http.ResponseWriter, r *http.Request) {
 
 	// Clean up cover files
 	os.RemoveAll(a.coverDir)
-	os.MkdirAll(a.coverDir, 0755)
+	os.MkdirAll(a.coverDir, 0700)
 
 	respondJSON(w, map[string]string{"status": "ok"})
 }
@@ -1033,14 +1098,17 @@ func (a *API) serveCover(w http.ResponseWriter, r *http.Request) {
 		// Security check: verify path is within allowed directories
 		// 1. Check if within covers directory (for downloaded Spotify images)
 		// 2. Check if within configured scan folders (for embedded album art)
-		isAllowed := strings.HasPrefix(strings.ToLower(normalizedPath), strings.ToLower(normalizedCoverDir))
+		// NOTE: Append path separator to prevent prefix bypass (e.g., "covers-evil" matching "covers")
+		isAllowed := strings.HasPrefix(strings.ToLower(normalizedPath), strings.ToLower(normalizedCoverDir)+string(filepath.Separator)) ||
+			strings.EqualFold(normalizedPath, normalizedCoverDir)
 
 		if !isAllowed {
 			// Check if path is within any configured scan folder
 			scanFolders, _ := a.db.GetScanFolders()
 			for _, folder := range scanFolders {
 				normalizedFolder := filepath.Clean(folder.Path)
-				if strings.HasPrefix(strings.ToLower(normalizedPath), strings.ToLower(normalizedFolder)) {
+				if strings.HasPrefix(strings.ToLower(normalizedPath), strings.ToLower(normalizedFolder)+string(filepath.Separator)) ||
+					strings.EqualFold(normalizedPath, normalizedFolder) {
 					isAllowed = true
 					break
 				}
@@ -1186,7 +1254,7 @@ func (a *API) uploadSong(w http.ResponseWriter, r *http.Request) {
 
 	// Save to temp location
 	tempDir := filepath.Join(a.dataDir, "uploads")
-	os.MkdirAll(tempDir, 0755)
+	os.MkdirAll(tempDir, 0700)
 
 	tempPath := filepath.Join(tempDir, header.Filename)
 	dst, err := os.Create(tempPath)
@@ -1241,6 +1309,11 @@ func (a *API) getSetting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !validation.IsValidSettingKey(key) {
+		respondError(w, http.StatusBadRequest, "Invalid setting key")
+		return
+	}
+
 	value, err := a.db.GetSetting(key)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to get setting")
@@ -1254,6 +1327,11 @@ func (a *API) setSetting(w http.ResponseWriter, r *http.Request) {
 	key := chi.URLParam(r, "key")
 	if key == "" {
 		respondError(w, http.StatusBadRequest, "Setting key is required")
+		return
+	}
+
+	if !validation.IsValidSettingKey(key) {
+		respondError(w, http.StatusBadRequest, "Invalid setting key")
 		return
 	}
 
@@ -1292,7 +1370,7 @@ func (a *API) setSetting(w http.ResponseWriter, r *http.Request) {
 			downloadDir = filepath.Join(a.dataDir, "spotify_downloads")
 		}
 		// Create the directory if it doesn't exist
-		if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		if err := os.MkdirAll(downloadDir, 0700); err != nil {
 			respondError(w, http.StatusBadRequest, fmt.Sprintf("Failed to create download directory: %v", err))
 			return
 		}
@@ -1650,7 +1728,7 @@ func (a *API) downloadArtistImage(w http.ResponseWriter, r *http.Request) {
 
 	// Create artists image directory
 	artistImagesDir := filepath.Join(a.coverDir, "artists")
-	if err := os.MkdirAll(artistImagesDir, 0755); err != nil {
+	if err := os.MkdirAll(artistImagesDir, 0700); err != nil {
 		logger.API("downloadArtistImage: Failed to create artists directory: %v", err)
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create artists directory: %v", err))
 		return

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -224,7 +225,21 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 
 	// Create download directory if it doesn't exist
 	dLog("Creating target directory: %s", targetDir)
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
+
+	// Security: Verify constructed paths are within the download directory
+	absTargetDir, err := filepath.Abs(targetDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve target directory: %w", err)
+	}
+	absDownloadDir, err := filepath.Abs(d.downloadDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve download directory: %w", err)
+	}
+	if !strings.HasPrefix(absTargetDir, absDownloadDir+string(filepath.Separator)) && absTargetDir != absDownloadDir {
+		return "", fmt.Errorf("target directory %q escapes download directory %q", absTargetDir, absDownloadDir)
+	}
+
+	if err := os.MkdirAll(targetDir, 0700); err != nil {
 		dLog("Failed to create directory: %v", err)
 		return "", fmt.Errorf("failed to create directory: %w", err)
 	}
@@ -563,6 +578,9 @@ func sanitizeFilename(name string) string {
 	sanitized = strings.TrimSpace(sanitized)
 	sanitized = strings.Trim(sanitized, ".")
 
+	// Block path traversal sequences
+	sanitized = strings.ReplaceAll(sanitized, "..", "_")
+
 	// Limit length to 200 characters
 	if len(sanitized) > 200 {
 		sanitized = sanitized[:200]
@@ -594,6 +612,16 @@ func downloadArtworkIfNeeded(imageURL, coverPath string) error {
 	}
 
 	dLog("Downloading artwork to %s", coverPath)
+
+	// Validate artwork URL domain (only allow Spotify CDN)
+	parsedURL, err := url.Parse(imageURL)
+	if err != nil {
+		return fmt.Errorf("invalid artwork URL: %w", err)
+	}
+	host := strings.ToLower(parsedURL.Hostname())
+	if host != "i.scdn.co" && host != "mosaic.scdn.co" && !strings.HasSuffix(host, ".spotifycdn.com") && !strings.HasSuffix(host, ".scdn.co") {
+		return fmt.Errorf("artwork URL domain %q not allowed", host)
+	}
 
 	// Download the image
 	resp, err := http.Get(imageURL)

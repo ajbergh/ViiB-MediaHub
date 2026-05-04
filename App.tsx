@@ -35,6 +35,7 @@ import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
 import { Stats } from './pages/Stats';
 import { SmartMixDetail } from './pages/SmartMixDetail';
+import { DJModeV2 } from './pages/DJModeV2';
 import { useStore } from './store';
 import { api } from './services/api';
 import DownloadManager from './components/DownloadManager';
@@ -42,6 +43,12 @@ import LibraryEventListener from './components/LibraryEventListener';
 import ConfirmDialog from './components/ConfirmDialog';
 import FirstLaunchDialog from './components/FirstLaunchDialog';
 import { useBackgroundEnrichment } from './hooks/useBackgroundEnrichment';
+import { setupGlobalErrorHandlers, createLogger } from './services/loggerService';
+
+// Initialize global error handlers early
+setupGlobalErrorHandlers();
+
+const appLogger = createLogger('App');
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -54,12 +61,12 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    appLogger.logError(error, `ErrorBoundary caught an error in ${errorInfo.componentStack}`);
   }
 
   render() {
     if (this.state.hasError) {
-      return null; // Silently fail for DownloadManager
+      return <div className="p-2 text-xs text-red-400">Component error — try refreshing</div>;
     }
     return this.props.children;
   }
@@ -168,6 +175,8 @@ const App: React.FC = () => {
           <Route path="/downloads" element={<Downloads />} />
           <Route path="/search" element={<Search />} />
           <Route path="/stats" element={<Stats />} />
+          <Route path="/dj" element={<DJModeV2 />} />
+          <Route path="/dj-v2" element={<Navigate to="/dj" replace />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

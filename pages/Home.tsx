@@ -23,10 +23,10 @@
  * @module Home
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore, useAlbums, useArtists } from '../store';
-import { Sparkles, Search, Play, Clock, History } from 'lucide-react';
+import { Sparkles, Search, Play, Clock, History, ChevronLeft, ChevronRight } from 'lucide-react';
 import { generateGradient, coverBackground, formatTime } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { TextInput } from '../components/ui/TextInput';
@@ -40,6 +40,11 @@ export const Home: React.FC = () => {
   const artists = useArtists();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const carouselRef = useRef<HTMLDivElement>(null);
+
+  const scrollCarousel = (dir: 'left' | 'right') => {
+    carouselRef.current?.scrollBy({ left: dir === 'right' ? 280 : -280, behavior: 'smooth' });
+  };
 
   // Get recently played songs (sorted by lastPlayed, descending)
   const recentlyPlayed = useMemo(() => {
@@ -138,16 +143,38 @@ export const Home: React.FC = () => {
             <h2 className="text-section">Smart Mixes</h2>
             </div>
             
-            <div className="flex overflow-x-auto gap-6 pb-4 scrollbar-hide snap-x">
-                {smartMixes.map((mix) => (
-                    <SmartMixCard
-                        key={mix.id}
-                        mix={mix}
-                        onPlay={() => playMix(mix.id)}
-                        onClick={() => navigate(`/smart-mix/${mix.id}`)}
-                        onContextMenu={(e) => openContextMenu(e, ContextMenuType.SMART_MIX, mix)}
-                    />
-                ))}
+            <div className="relative group/carousel">
+              {/* Left fade + chevron */}
+              <div className="absolute left-0 top-0 bottom-4 w-12 bg-gradient-to-r from-surface-0 to-transparent z-10 pointer-events-none rounded-l-lg" />
+              <button
+                onClick={() => scrollCarousel('left')}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center rounded-full bg-surface-1/90 text-text-main opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-surface-2 -translate-x-0 shadow-lg"
+                aria-label="Scroll left"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <div ref={carouselRef} className="flex overflow-x-auto gap-6 pb-4 scrollbar-hide snap-x scroll-smooth">
+                  {smartMixes.map((mix) => (
+                      <SmartMixCard
+                          key={mix.id}
+                          mix={mix}
+                          onPlay={() => playMix(mix.id)}
+                          onClick={() => navigate(`/smart-mix/${mix.id}`)}
+                          onContextMenu={(e) => openContextMenu(e, ContextMenuType.SMART_MIX, mix)}
+                      />
+                  ))}
+              </div>
+
+              {/* Right fade + chevron */}
+              <div className="absolute right-0 top-0 bottom-4 w-16 bg-gradient-to-l from-surface-0 to-transparent z-10 pointer-events-none rounded-r-lg" />
+              <button
+                onClick={() => scrollCarousel('right')}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center rounded-full bg-surface-1/90 text-text-main opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-surface-2 shadow-lg"
+                aria-label="Scroll right"
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
           </section>
       )}

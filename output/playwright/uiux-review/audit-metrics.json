@@ -1,0 +1,6185 @@
+{
+  "collectedAt": "2026-04-30T22:18:13.063Z",
+  "mode": "SPA sidebar navigation",
+  "rows": [
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Home",
+      "path": "/",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-home.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nLet's ViiB\nFEATURED MIX\nHeavy Rotation\n\nYour most played tracks recently.\n\n14 tracks • Ready to play\n\nSmart Mixes\nHeavy Rotation\n\n14 tracks\n\nYour most p",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 27,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "Chill Acoustic Evening4 tracksMellow, acoustic, and low-ener",
+          "cls": "flex-shrink-0 w-80 bg-surface-2 rounded-xl overflow-hidden group curso",
+          "x": 1320,
+          "right": 1640,
+          "w": 320
+        },
+        {
+          "tag": "div",
+          "text": "Chill Acoustic Evening4 tracks",
+          "cls": "h-40 p-6 flex flex-col justify-end relative",
+          "x": 1321,
+          "right": 1639,
+          "w": 318
+        },
+        {
+          "tag": "h3",
+          "text": "Chill Acoustic Evening",
+          "cls": "text-2xl font-bold text-white shadow-black drop-shadow-md",
+          "x": 1345,
+          "right": 1615,
+          "w": 270
+        },
+        {
+          "tag": "p",
+          "text": "4 tracks",
+          "cls": "text-white/80 text-sm font-medium drop-shadow",
+          "x": 1345,
+          "right": 1615,
+          "w": 270
+        },
+        {
+          "tag": "button",
+          "text": "",
+          "cls": "absolute bottom-4 right-4 w-12 h-12 bg-brand text-black rounded-full f",
+          "x": 1575,
+          "right": 1623,
+          "w": 48
+        },
+        {
+          "tag": "svg",
+          "text": "",
+          "cls": "lucide lucide-play fill-current ml-1",
+          "x": 1589,
+          "right": 1613,
+          "w": 24
+        }
+      ],
+      "controlCount": 25,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 200,
+          "h": 23,
+          "x": 756,
+          "y": 149
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "What do you want to feel?",
+          "aria": "",
+          "label": "",
+          "w": 200,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:Let's ViiB",
+        "H2:Heavy Rotation",
+        "H2:Smart Mixes",
+        "H3:Heavy Rotation",
+        "H3:Rediscover Favorites",
+        "H3:Fresh Finds",
+        "H3:Chill Acoustic Evening",
+        "H3:90s Alternative Mix",
+        "H3:High Energy Workout",
+        "H3:2076",
+        "H3:65",
+        "H3:579"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Songs",
+      "path": "/songs",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-songs.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nAll Songs\nRecently Added\n#\nTITLE\nALBUM\nARTIST\nPLAYS\n1\nPiano Sonata No. 7 in C, K.309: 3. Rondeau (Allegretto grazioso)\nMozart: The Piano Sonatas\nWolfgan",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 41,
+      "smallTargetCount": 12,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 240,
+          "h": 23,
+          "x": 1148,
+          "y": 43
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1289,
+          "y": 173
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1289,
+          "y": 238
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1289,
+          "y": 303
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1289,
+          "y": 368
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1289,
+          "y": 433
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Find a sound…",
+          "aria": "",
+          "label": "",
+          "w": 240,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:All Songs"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Albums",
+      "path": "/albums",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-albums.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nAlbums\n\n65 albums\n\nRecently Added\nMozart: The Piano Sonatas\n\nWolfgang Amadeus Mozart\n\nA Charlie Brown Christmas [2012 Remastered & Expanded Edition]\n\nVi",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 54,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Albums"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Artists",
+      "path": "/artists",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-artists.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nArtists\n\n579 artists\n\nThe Smashing Pumpkins\n\nArtist\n\n108 songs • 5 albums\nThe Lonely Island\n\nArtist\n\n86 songs • 4 albums\nMuddy Waters\n\nArtist\n\n71 songs ",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 17,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Artists"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Genres",
+      "path": "/genres",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-genres.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nGenres\n\n54 genres found in your library\n\nAlternative Rock\n\n28 tracks\n\nThe Smashing Pumpkins, Pearl Jam\nGrunge\n\n17 tracks\n\nPearl Jam, The Smashing Pumpk",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 126,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search genres...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 42
+        }
+      ],
+      "headings": [
+        "H1:Genres",
+        "H3:Alternative Rock",
+        "H3:Grunge",
+        "H3:Hip-Hop",
+        "H3:Baroque Pop",
+        "H3:Rock/pop",
+        "H3:Gangsta Rap",
+        "H3:Hard Rock",
+        "H3:Post-grunge",
+        "H3:Psychedelic Pop",
+        "H3:Psychedelic Rock",
+        "H3:Dream Pop"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Playlists",
+      "path": "/playlists",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-playlists.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nPlaylists\nCreate Playlist\nplaylist 1\n\n0 songs\n\nSelect a song to start listening",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Playlists"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Liked Songs",
+      "path": "/liked",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-liked-songs.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n\nPLAYLIST\n\nLiked Songs\n\n4 songs • 22m total\n\n#\nTITLE\nALBUM\nARTIST\nDURATION\n1\nDrown\n(Rotten Apples) The Smashing Pumpkins Greatest Hits\nThe Smashing Pum",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 28,
+      "smallTargetCount": 9,
+      "smallTargetSamples": [
+        {
+          "label": "Shuffle play",
+          "tag": "button",
+          "w": 28,
+          "h": 28,
+          "x": 360,
+          "y": 270
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1297,
+          "y": 408
+        },
+        {
+          "label": "More options",
+          "tag": "button",
+          "w": 20,
+          "h": 20,
+          "x": 1357,
+          "y": 407
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1297,
+          "y": 473
+        },
+        {
+          "label": "More options",
+          "tag": "button",
+          "w": 20,
+          "h": 20,
+          "x": 1357,
+          "y": 472
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1297,
+          "y": 538
+        }
+      ],
+      "unnamedButtonCount": 1,
+      "inputs": [],
+      "headings": [
+        "H1:Liked Songs"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Liked Albums",
+      "path": "/liked-albums",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-liked-albums.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n\nCOLLECTION\n\nLiked Albums\n\nNo liked albums yet\n\nNo liked albums yet\n\nSave albums you revisit so they're one click away.\n\nBrowse Albums\nExplore Artists\n",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 19,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Liked Albums",
+        "H3:No liked albums yet"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "AI DJ",
+      "path": "/smart-playlists",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-ai-dj.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nAI DJ\nPlaylist\nDJ Mode\n\nDescribe the vibe, genre, era, or mood you're looking for, and I'll build a custom playlist from your library.\n\nGenerate\nDiscov",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 27,
+      "smallTargetCount": 4,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 541,
+          "h": 23,
+          "x": 312,
+          "y": 225
+        },
+        {
+          "label": "Off1 hour6 hours24 hours3 days1 week",
+          "tag": "select",
+          "w": 95,
+          "h": 27,
+          "x": 432,
+          "y": 356
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 16,
+          "h": 16,
+          "x": 543,
+          "y": 361
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 16,
+          "h": 16,
+          "x": 700,
+          "y": 361
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "e.g., 'Upbeat 80s pop songs for a workout' or 'Chill jazz for studying'",
+          "aria": "",
+          "label": "",
+          "w": 541,
+          "h": 23
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "Off1 hour6 hours24 hours3 days1 week",
+          "w": 95,
+          "h": 27
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 16,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 16,
+          "h": 16
+        }
+      ],
+      "headings": [
+        "H1:AI DJ"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Spotify",
+      "path": "/spotify",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-spotify.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nConnect to Spotify\n\nLink your Spotify account to search and play music directly from ViiB MediaHub. Requires a Spotify Premium account for full playbac",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 19,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "developer.spotify.com",
+          "tag": "a",
+          "w": 147,
+          "h": 17,
+          "x": 795,
+          "y": 542
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Connect to Spotify"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Downloads",
+      "path": "/downloads",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-downloads.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nNo Downloads Yet\n\nDownload songs, albums, or playlists from Spotify to listen offline. Look for the download button on any track.\n\nDownload from URL\nSe",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:No Downloads Yet"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Search",
+      "path": "/search",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-search.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSearch\nSearch for music\n\nFind your favorite songs, albums, and artists\n\nSelect a song to start listening",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 719,
+          "h": 23,
+          "x": 325,
+          "y": 110
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "What do you want to feel?",
+          "aria": "",
+          "label": "",
+          "w": 719,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:Search",
+        "H2:Search for music"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Stats",
+      "path": "/stats",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-stats.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nListening Stats\n\nYour music journey in numbers\n\nOverview\n2h 43m\n\nTotal Listening Time\n\nAll time\n\n39\n\nTotal Plays\n\n1.2 avg per song\n\n32\n\nSongs Played\n\no",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 17,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Listening Stats",
+        "H2:Overview",
+        "H3:2h 43m",
+        "H3:39",
+        "H3:32",
+        "H3:4",
+        "H3:Your #1 Song",
+        "H2:Top Artists",
+        "H2:Top Albums",
+        "H2:Top Genres",
+        "H2:Your Library",
+        "H3:2076"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "Settings",
+      "path": "/settings",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-settings.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSettings\nLibrary Management\nBackend Connected\nMusic Folders\n\nAdd folders containing your music files. The backend will scan these folders for audio fil",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 63,
+      "smallTargetCount": 18,
+      "smallTargetSamples": [
+        {
+          "label": "Open Panel",
+          "tag": "button",
+          "w": 78,
+          "h": 20,
+          "x": 1093,
+          "y": 704
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 748,
+          "h": 16,
+          "x": 487,
+          "y": 916
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 782,
+          "h": 4,
+          "x": 453,
+          "y": 1088
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 351,
+          "h": 23,
+          "x": 469,
+          "y": 1753
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 351,
+          "h": 23,
+          "x": 868,
+          "y": 1753
+        },
+        {
+          "label": "developer.spotify.com",
+          "tag": "a",
+          "w": 126,
+          "h": 15,
+          "x": 550,
+          "y": 1813
+        }
+      ],
+      "unnamedButtonCount": 2,
+      "inputs": [
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "DisabledWaveformSpectrum BarsFlame Spectrum CrownStardust Pu",
+          "w": 233,
+          "h": 37
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 748,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 782,
+          "h": 4
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "System DefaultDevice ...",
+          "w": 147,
+          "h": 37
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "System DefaultDevice ...",
+          "w": 147,
+          "h": 37
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Enter Client ID",
+          "aria": "",
+          "label": "",
+          "w": 351,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "placeholder": "Enter Client Secret",
+          "aria": "",
+          "label": "",
+          "w": 351,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Default: AppData/ViiB-MediaHub/spotify_downloads",
+          "aria": "",
+          "label": "",
+          "w": 595,
+          "h": 20
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 637,
+          "h": 8
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "High Quality (320kbps)Normal (160kbps)",
+          "w": 782,
+          "h": 48
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "Ollama (Local) (No API Key)Google Gemini OpenAI Anthropic (C",
+          "w": 366,
+          "h": 40
+        },
+        {
+          "tag": "input",
+          "type": "",
+          "placeholder": "e.g., llama3.2:8b, qwen3:4b, mistral:7b",
+          "aria": "",
+          "label": "",
+          "w": 342,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "",
+          "placeholder": "http://localhost:11434",
+          "aria": "",
+          "label": "",
+          "w": 724,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        }
+      ],
+      "headings": [
+        "H1:Settings",
+        "H2:Library Management",
+        "H3:Music Folders",
+        "H2:Personalization",
+        "H3:Show Smart Mixes",
+        "H2:Audio & Playback",
+        "H3:Equalizer",
+        "H3:Visualizer Style",
+        "H3:Album Art Opacity",
+        "H3:Fullscreen Background",
+        "H3:Crossfade",
+        "H3:Gapless Playback"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "DJ Mode",
+      "path": "/dj",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-dj-mode.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n00:00\nNo Track\nDJ MODE\nNo Track\n00:00\nDECK A\nDECK B\n1\n2\n3\n4\n5\n6\n7\n8\n1\n2\n3\n4\n5\n6\n7\n8\nNo Track Loaded\nLoad a track to begin\nA\nBPM\n---\n-50%\n+50%\n+0.0%\nSYN",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 7,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "Mix0.30",
+          "cls": "flex flex-col items-center gap-1",
+          "x": 1400,
+          "right": 1464,
+          "w": 64
+        },
+        {
+          "tag": "input",
+          "text": "",
+          "cls": "w-16 h-1 accent-brand disabled:opacity-30",
+          "x": 1400,
+          "right": 1464,
+          "w": 64
+        },
+        {
+          "tag": "span",
+          "text": "0.30",
+          "cls": "text-[10px] text-neutral-400",
+          "x": 1421,
+          "right": 1443,
+          "w": 21
+        },
+        {
+          "tag": "div",
+          "text": "Fdbk0.30",
+          "cls": "flex flex-col items-center gap-1",
+          "x": 1400,
+          "right": 1464,
+          "w": 64
+        },
+        {
+          "tag": "span",
+          "text": "Fdbk",
+          "cls": "text-[10px] text-neutral-500 uppercase",
+          "x": 1419,
+          "right": 1445,
+          "w": 26
+        },
+        {
+          "tag": "input",
+          "text": "",
+          "cls": "w-16 h-1 accent-brand disabled:opacity-30",
+          "x": 1400,
+          "right": 1464,
+          "w": 64
+        }
+      ],
+      "controlCount": 4275,
+      "smallTargetCount": 4237,
+      "smallTargetSamples": [
+        {
+          "label": "Tempo (double-click to reset)",
+          "tag": "input",
+          "w": 311,
+          "h": 16,
+          "x": 324,
+          "y": 513
+        },
+        {
+          "label": "Sync BPM to other deck",
+          "tag": "button",
+          "w": 77,
+          "h": 24,
+          "x": 598,
+          "y": 537
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 343,
+          "h": 16,
+          "x": 300,
+          "y": 661
+        },
+        {
+          "label": "OFF",
+          "tag": "button",
+          "w": 34,
+          "h": 18,
+          "x": 782,
+          "y": 280
+        },
+        {
+          "label": "BPM",
+          "tag": "button",
+          "w": 36,
+          "h": 18,
+          "x": 819,
+          "y": 280
+        },
+        {
+          "label": "Sync BPM + Beat Phase",
+          "tag": "button",
+          "w": 47,
+          "h": 18,
+          "x": 860,
+          "y": 280
+        }
+      ],
+      "unnamedButtonCount": 2,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "Tempo (double-click to reset)",
+          "w": 311,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 343,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 8
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 6
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 6
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "Tempo (double-click to reset)",
+          "w": 311,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 343,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search library...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 38
+        }
+      ],
+      "headings": [
+        "H3:FX & Loop Controls",
+        "H3:FX - Deck A",
+        "H3:Loop - Deck A",
+        "H3:Loop - Deck B",
+        "H3:FX - Deck B",
+        "H3:Library"
+      ]
+    },
+    {
+      "viewport": "desktop-1440x900",
+      "route": "DJ Mode v2",
+      "path": "/dj-v2",
+      "screenshot": "output/playwright/uiux-review/desktop-1440x900-dj-mode-v2.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSCOPE\nTIMELINE\nFX\nPERF\nBROWSE\nFX\n00:00\nREC\n00:00\n🎹 MIDI\n2D\nRGB\n3B\nCLR\n+\n10s\n−\nFX\nA\nFILTER\nDELAY\nREVERB\nFLANGER\nFILTER\nDELAY\nREVERB\nFLANGER\nB\nDECK A\nNo",
+      "docWidth": 1440,
+      "docHeight": 900,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 6392,
+      "smallTargetCount": 6367,
+      "smallTargetSamples": [
+        {
+          "label": "scope",
+          "tag": "button",
+          "w": 63,
+          "h": 29,
+          "x": 268,
+          "y": 7
+        },
+        {
+          "label": "timeline",
+          "tag": "button",
+          "w": 77,
+          "h": 29,
+          "x": 335,
+          "y": 7
+        },
+        {
+          "label": "fx",
+          "tag": "button",
+          "w": 40,
+          "h": 29,
+          "x": 416,
+          "y": 7
+        },
+        {
+          "label": "Performance layout — full decks",
+          "tag": "button",
+          "w": 44,
+          "h": 22,
+          "x": 480,
+          "y": 11
+        },
+        {
+          "label": "Browse layout — expanded library",
+          "tag": "button",
+          "w": 62,
+          "h": 22,
+          "x": 524,
+          "y": 11
+        },
+        {
+          "label": "FX layout — expanded effects",
+          "tag": "button",
+          "w": 33,
+          "h": 22,
+          "x": 586,
+          "y": 11
+        }
+      ],
+      "unnamedButtonCount": 3,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 48,
+          "h": 3
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 30
+        }
+      ],
+      "headings": []
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Home",
+      "path": "/",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-home.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nLet's ViiB\nFEATURED MIX\nHeavy Rotation\n\nYour most played tracks recently.\n\n14 tracks • Ready to play\n\nSmart Mixes\nHeavy Rotation\n\n14 tracks\n\nYour most p",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 27,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "Chill Acoustic Evening4 tracksMellow, acoustic, and low-ener",
+          "cls": "flex-shrink-0 w-80 bg-surface-2 rounded-xl overflow-hidden group curso",
+          "x": 1320,
+          "right": 1640,
+          "w": 320
+        },
+        {
+          "tag": "div",
+          "text": "Chill Acoustic Evening4 tracks",
+          "cls": "h-40 p-6 flex flex-col justify-end relative",
+          "x": 1321,
+          "right": 1639,
+          "w": 318
+        },
+        {
+          "tag": "h3",
+          "text": "Chill Acoustic Evening",
+          "cls": "text-2xl font-bold text-white shadow-black drop-shadow-md",
+          "x": 1345,
+          "right": 1615,
+          "w": 270
+        },
+        {
+          "tag": "p",
+          "text": "4 tracks",
+          "cls": "text-white/80 text-sm font-medium drop-shadow",
+          "x": 1345,
+          "right": 1615,
+          "w": 270
+        },
+        {
+          "tag": "button",
+          "text": "",
+          "cls": "absolute bottom-4 right-4 w-12 h-12 bg-brand text-black rounded-full f",
+          "x": 1575,
+          "right": 1623,
+          "w": 48
+        },
+        {
+          "tag": "svg",
+          "text": "",
+          "cls": "lucide lucide-play fill-current ml-1",
+          "x": 1589,
+          "right": 1613,
+          "w": 24
+        }
+      ],
+      "controlCount": 25,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 200,
+          "h": 23,
+          "x": 719,
+          "y": 149
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "What do you want to feel?",
+          "aria": "",
+          "label": "",
+          "w": 200,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:Let's ViiB",
+        "H2:Heavy Rotation",
+        "H2:Smart Mixes",
+        "H3:Heavy Rotation",
+        "H3:Rediscover Favorites",
+        "H3:Fresh Finds",
+        "H3:Chill Acoustic Evening",
+        "H3:90s Alternative Mix",
+        "H3:High Energy Workout",
+        "H3:2076",
+        "H3:65",
+        "H3:579"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Songs",
+      "path": "/songs",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-songs.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nAll Songs\nRecently Added\n#\nTITLE\nALBUM\nARTIST\nPLAYS\n1\nPiano Sonata No. 7 in C, K.309: 3. Rondeau (Allegretto grazioso)\nMozart: The Piano Sonatas\nWolfgan",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 37,
+      "smallTargetCount": 10,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 240,
+          "h": 23,
+          "x": 1074,
+          "y": 43
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1215,
+          "y": 173
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1215,
+          "y": 238
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1215,
+          "y": 303
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1215,
+          "y": 368
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1215,
+          "y": 433
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Find a sound…",
+          "aria": "",
+          "label": "",
+          "w": 240,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:All Songs"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Albums",
+      "path": "/albums",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-albums.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nAlbums\n\n65 albums\n\nRecently Added\nMozart: The Piano Sonatas\n\nWolfgang Amadeus Mozart\n\nA Charlie Brown Christmas [2012 Remastered & Expanded Edition]\n\nVi",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 54,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Albums"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Artists",
+      "path": "/artists",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-artists.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nArtists\n\n579 artists\n\nThe Smashing Pumpkins\n\nArtist\n\n108 songs • 5 albums\nThe Lonely Island\n\nArtist\n\n86 songs • 4 albums\nMuddy Waters\n\nArtist\n\n71 songs ",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 17,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Artists"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Genres",
+      "path": "/genres",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-genres.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nGenres\n\n54 genres found in your library\n\nAlternative Rock\n\n28 tracks\n\nThe Smashing Pumpkins, Pearl Jam\nGrunge\n\n17 tracks\n\nPearl Jam, The Smashing Pumpk",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 126,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search genres...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 42
+        }
+      ],
+      "headings": [
+        "H1:Genres",
+        "H3:Alternative Rock",
+        "H3:Grunge",
+        "H3:Hip-Hop",
+        "H3:Baroque Pop",
+        "H3:Rock/pop",
+        "H3:Gangsta Rap",
+        "H3:Hard Rock",
+        "H3:Post-grunge",
+        "H3:Psychedelic Pop",
+        "H3:Psychedelic Rock",
+        "H3:Dream Pop"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Playlists",
+      "path": "/playlists",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-playlists.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nPlaylists\nCreate Playlist\nplaylist 1\n\n0 songs\n\nSelect a song to start listening",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Playlists"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Liked Songs",
+      "path": "/liked",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-liked-songs.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n\nPLAYLIST\n\nLiked Songs\n\n4 songs • 22m total\n\n#\nTITLE\nALBUM\nARTIST\nDURATION\n1\nDrown\n(Rotten Apples) The Smashing Pumpkins Greatest Hits\nThe Smashing Pum",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 28,
+      "smallTargetCount": 9,
+      "smallTargetSamples": [
+        {
+          "label": "Shuffle play",
+          "tag": "button",
+          "w": 28,
+          "h": 28,
+          "x": 360,
+          "y": 270
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1215,
+          "y": 408
+        },
+        {
+          "label": "More options",
+          "tag": "button",
+          "w": 20,
+          "h": 20,
+          "x": 1275,
+          "y": 407
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1215,
+          "y": 473
+        },
+        {
+          "label": "More options",
+          "tag": "button",
+          "w": 20,
+          "h": 20,
+          "x": 1275,
+          "y": 472
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 1215,
+          "y": 538
+        }
+      ],
+      "unnamedButtonCount": 1,
+      "inputs": [],
+      "headings": [
+        "H1:Liked Songs"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Liked Albums",
+      "path": "/liked-albums",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-liked-albums.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n\nCOLLECTION\n\nLiked Albums\n\nNo liked albums yet\n\nNo liked albums yet\n\nSave albums you revisit so they're one click away.\n\nBrowse Albums\nExplore Artists\n",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 19,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Liked Albums",
+        "H3:No liked albums yet"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "AI DJ",
+      "path": "/smart-playlists",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-ai-dj.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nAI DJ\nPlaylist\nDJ Mode\n\nDescribe the vibe, genre, era, or mood you're looking for, and I'll build a custom playlist from your library.\n\nGenerate\nDiscov",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 27,
+      "smallTargetCount": 4,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 541,
+          "h": 23,
+          "x": 312,
+          "y": 225
+        },
+        {
+          "label": "Off1 hour6 hours24 hours3 days1 week",
+          "tag": "select",
+          "w": 95,
+          "h": 27,
+          "x": 432,
+          "y": 356
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 16,
+          "h": 16,
+          "x": 543,
+          "y": 361
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 16,
+          "h": 16,
+          "x": 700,
+          "y": 361
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "e.g., 'Upbeat 80s pop songs for a workout' or 'Chill jazz for studying'",
+          "aria": "",
+          "label": "",
+          "w": 541,
+          "h": 23
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "Off1 hour6 hours24 hours3 days1 week",
+          "w": 95,
+          "h": 27
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 16,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 16,
+          "h": 16
+        }
+      ],
+      "headings": [
+        "H1:AI DJ"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Spotify",
+      "path": "/spotify",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-spotify.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nConnect to Spotify\n\nLink your Spotify account to search and play music directly from ViiB MediaHub. Requires a Spotify Premium account for full playbac",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 19,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "developer.spotify.com",
+          "tag": "a",
+          "w": 147,
+          "h": 17,
+          "x": 758,
+          "y": 480
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Connect to Spotify"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Downloads",
+      "path": "/downloads",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-downloads.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nNo Downloads Yet\n\nDownload songs, albums, or playlists from Spotify to listen offline. Look for the download button on any track.\n\nDownload from URL\nSe",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:No Downloads Yet"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Search",
+      "path": "/search",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-search.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSearch\nSearch for music\n\nFind your favorite songs, albums, and artists\n\nSelect a song to start listening",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 719,
+          "h": 23,
+          "x": 325,
+          "y": 110
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "What do you want to feel?",
+          "aria": "",
+          "label": "",
+          "w": 719,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:Search",
+        "H2:Search for music"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Stats",
+      "path": "/stats",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-stats.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nListening Stats\n\nYour music journey in numbers\n\nOverview\n2h 43m\n\nTotal Listening Time\n\nAll time\n\n39\n\nTotal Plays\n\n1.2 avg per song\n\n32\n\nSongs Played\n\no",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 17,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Listening Stats",
+        "H2:Overview",
+        "H3:2h 43m",
+        "H3:39",
+        "H3:32",
+        "H3:4",
+        "H3:Your #1 Song",
+        "H2:Top Artists",
+        "H2:Top Albums",
+        "H2:Top Genres",
+        "H2:Your Library",
+        "H3:2076"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "Settings",
+      "path": "/settings",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-settings.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSettings\nLibrary Management\nBackend Connected\nMusic Folders\n\nAdd folders containing your music files. The backend will scan these folders for audio fil",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 63,
+      "smallTargetCount": 18,
+      "smallTargetSamples": [
+        {
+          "label": "Open Panel",
+          "tag": "button",
+          "w": 78,
+          "h": 20,
+          "x": 1056,
+          "y": 704
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 748,
+          "h": 16,
+          "x": 450,
+          "y": 916
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 782,
+          "h": 4,
+          "x": 416,
+          "y": 1088
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 351,
+          "h": 23,
+          "x": 432,
+          "y": 1753
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 351,
+          "h": 23,
+          "x": 831,
+          "y": 1753
+        },
+        {
+          "label": "developer.spotify.com",
+          "tag": "a",
+          "w": 126,
+          "h": 15,
+          "x": 513,
+          "y": 1813
+        }
+      ],
+      "unnamedButtonCount": 2,
+      "inputs": [
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "DisabledWaveformSpectrum BarsFlame Spectrum CrownStardust Pu",
+          "w": 233,
+          "h": 37
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 748,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 782,
+          "h": 4
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "System DefaultDevice ...",
+          "w": 147,
+          "h": 37
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "System DefaultDevice ...",
+          "w": 147,
+          "h": 37
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Enter Client ID",
+          "aria": "",
+          "label": "",
+          "w": 351,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "placeholder": "Enter Client Secret",
+          "aria": "",
+          "label": "",
+          "w": 351,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Default: AppData/ViiB-MediaHub/spotify_downloads",
+          "aria": "",
+          "label": "",
+          "w": 595,
+          "h": 20
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 637,
+          "h": 8
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "High Quality (320kbps)Normal (160kbps)",
+          "w": 782,
+          "h": 48
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "Ollama (Local) (No API Key)Google Gemini OpenAI Anthropic (C",
+          "w": 366,
+          "h": 40
+        },
+        {
+          "tag": "input",
+          "type": "",
+          "placeholder": "e.g., llama3.2:8b, qwen3:4b, mistral:7b",
+          "aria": "",
+          "label": "",
+          "w": 342,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "",
+          "placeholder": "http://localhost:11434",
+          "aria": "",
+          "label": "",
+          "w": 724,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        }
+      ],
+      "headings": [
+        "H1:Settings",
+        "H2:Library Management",
+        "H3:Music Folders",
+        "H2:Personalization",
+        "H3:Show Smart Mixes",
+        "H2:Audio & Playback",
+        "H3:Equalizer",
+        "H3:Visualizer Style",
+        "H3:Album Art Opacity",
+        "H3:Fullscreen Background",
+        "H3:Crossfade",
+        "H3:Gapless Playback"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "DJ Mode",
+      "path": "/dj",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-dj-mode.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n00:00\nNo Track\nDJ MODE\nNo Track\n00:00\nDECK A\nDECK B\n1\n2\n3\n4\n5\n6\n7\n8\n1\n2\n3\n4\n5\n6\n7\n8\nNo Track Loaded\nLoad a track to begin\nA\nBPM\n---\n-50%\n+50%\n+0.0%\nSYN",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 8,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "Mix0.30",
+          "cls": "flex flex-col items-center gap-1",
+          "x": 1345,
+          "right": 1409,
+          "w": 64
+        },
+        {
+          "tag": "span",
+          "text": "Mix",
+          "cls": "text-[10px] text-neutral-500 uppercase",
+          "x": 1367,
+          "right": 1386,
+          "w": 19
+        },
+        {
+          "tag": "input",
+          "text": "",
+          "cls": "w-16 h-1 accent-brand disabled:opacity-30",
+          "x": 1345,
+          "right": 1409,
+          "w": 64
+        },
+        {
+          "tag": "span",
+          "text": "0.30",
+          "cls": "text-[10px] text-neutral-400",
+          "x": 1366,
+          "right": 1387,
+          "w": 21
+        },
+        {
+          "tag": "div",
+          "text": "Fdbk0.30",
+          "cls": "flex flex-col items-center gap-1",
+          "x": 1345,
+          "right": 1409,
+          "w": 64
+        },
+        {
+          "tag": "span",
+          "text": "Fdbk",
+          "cls": "text-[10px] text-neutral-500 uppercase",
+          "x": 1363,
+          "right": 1390,
+          "w": 26
+        }
+      ],
+      "controlCount": 4275,
+      "smallTargetCount": 4237,
+      "smallTargetSamples": [
+        {
+          "label": "Tempo (double-click to reset)",
+          "tag": "input",
+          "w": 274,
+          "h": 16,
+          "x": 324,
+          "y": 513
+        },
+        {
+          "label": "Sync BPM to other deck",
+          "tag": "button",
+          "w": 77,
+          "h": 24,
+          "x": 561,
+          "y": 537
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 306,
+          "h": 16,
+          "x": 300,
+          "y": 661
+        },
+        {
+          "label": "OFF",
+          "tag": "button",
+          "w": 34,
+          "h": 18,
+          "x": 745,
+          "y": 280
+        },
+        {
+          "label": "BPM",
+          "tag": "button",
+          "w": 36,
+          "h": 18,
+          "x": 782,
+          "y": 280
+        },
+        {
+          "label": "Sync BPM + Beat Phase",
+          "tag": "button",
+          "w": 47,
+          "h": 18,
+          "x": 823,
+          "y": 280
+        }
+      ],
+      "unnamedButtonCount": 2,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "Tempo (double-click to reset)",
+          "w": 274,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 306,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 8
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 6
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 6
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "Tempo (double-click to reset)",
+          "w": 274,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 306,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search library...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 38
+        }
+      ],
+      "headings": [
+        "H3:FX & Loop Controls",
+        "H3:FX - Deck A",
+        "H3:Loop - Deck A",
+        "H3:Loop - Deck B",
+        "H3:FX - Deck B",
+        "H3:Library"
+      ]
+    },
+    {
+      "viewport": "laptop-1366x768",
+      "route": "DJ Mode v2",
+      "path": "/dj-v2",
+      "screenshot": "output/playwright/uiux-review/laptop-1366x768-dj-mode-v2.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSCOPE\nTIMELINE\nFX\nPERF\nBROWSE\nFX\n00:00\nREC\n00:00\n🎹 MIDI\n2D\nRGB\n3B\nCLR\n+\n10s\n−\nFX\nA\nFILTER\nDELAY\nREVERB\nFLANGER\nFILTER\nDELAY\nREVERB\nFLANGER\nB\nDECK A\nNo",
+      "docWidth": 1366,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 6305,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX00:00REC00:00🎹 MIDI2DRGB3BCLR+10",
+          "cls": "h-full flex flex-col overflow-hidden min-w-[1152px] transition-[grid-t",
+          "x": 256,
+          "right": 1408,
+          "w": 1152
+        },
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX00:00REC00:00🎹 MIDI",
+          "cls": "relative",
+          "x": 256,
+          "right": 1408,
+          "w": 1152
+        },
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX00:00REC00:00",
+          "cls": "h-11 bg-gradient-to-b from-[#1f1f1f] to-[#1a1a1a] border-b border-[#2a",
+          "x": 256,
+          "right": 1408,
+          "w": 1152
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "cls": "flex items-center gap-2 text-neutral-500",
+          "x": 1272,
+          "right": 1396,
+          "w": 124
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "cls": "w-20 h-1.5 bg-[#252525] rounded-full relative",
+          "x": 1294,
+          "right": 1374,
+          "w": 80
+        },
+        {
+          "tag": "svg",
+          "text": "",
+          "cls": "",
+          "x": 1382,
+          "right": 1396,
+          "w": 14
+        }
+      ],
+      "controlCount": 6392,
+      "smallTargetCount": 6367,
+      "smallTargetSamples": [
+        {
+          "label": "scope",
+          "tag": "button",
+          "w": 63,
+          "h": 29,
+          "x": 268,
+          "y": 7
+        },
+        {
+          "label": "timeline",
+          "tag": "button",
+          "w": 77,
+          "h": 29,
+          "x": 335,
+          "y": 7
+        },
+        {
+          "label": "fx",
+          "tag": "button",
+          "w": 40,
+          "h": 29,
+          "x": 416,
+          "y": 7
+        },
+        {
+          "label": "Performance layout — full decks",
+          "tag": "button",
+          "w": 44,
+          "h": 22,
+          "x": 480,
+          "y": 11
+        },
+        {
+          "label": "Browse layout — expanded library",
+          "tag": "button",
+          "w": 62,
+          "h": 22,
+          "x": 524,
+          "y": 11
+        },
+        {
+          "label": "FX layout — expanded effects",
+          "tag": "button",
+          "w": 33,
+          "h": 22,
+          "x": 586,
+          "y": 11
+        }
+      ],
+      "unnamedButtonCount": 3,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 48,
+          "h": 3
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 30
+        }
+      ],
+      "headings": []
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Home",
+      "path": "/",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-home.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nLet's ViiB\nFEATURED MIX\nHeavy Rotation\n\nYour most played tracks recently.\n\n14 tracks • Ready to play\n\nSmart Mixes\nHeavy Rotation\n\n14 tracks\n\nYour most p",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 36,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "Fresh Finds50 tracksRecently added to your library.",
+          "cls": "flex-shrink-0 w-80 bg-surface-2 rounded-xl overflow-hidden group curso",
+          "x": 976,
+          "right": 1296,
+          "w": 320
+        },
+        {
+          "tag": "div",
+          "text": "Fresh Finds50 tracks",
+          "cls": "h-40 p-6 flex flex-col justify-end relative",
+          "x": 977,
+          "right": 1295,
+          "w": 318
+        },
+        {
+          "tag": "h3",
+          "text": "Fresh Finds",
+          "cls": "text-2xl font-bold text-white shadow-black drop-shadow-md",
+          "x": 1001,
+          "right": 1271,
+          "w": 270
+        },
+        {
+          "tag": "p",
+          "text": "50 tracks",
+          "cls": "text-white/80 text-sm font-medium drop-shadow",
+          "x": 1001,
+          "right": 1271,
+          "w": 270
+        },
+        {
+          "tag": "button",
+          "text": "",
+          "cls": "absolute bottom-4 right-4 w-12 h-12 bg-brand text-black rounded-full f",
+          "x": 1231,
+          "right": 1279,
+          "w": 48
+        },
+        {
+          "tag": "svg",
+          "text": "",
+          "cls": "lucide lucide-play fill-current ml-1",
+          "x": 1245,
+          "right": 1269,
+          "w": 24
+        }
+      ],
+      "controlCount": 25,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 200,
+          "h": 23,
+          "x": 548,
+          "y": 149
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "What do you want to feel?",
+          "aria": "",
+          "label": "",
+          "w": 200,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:Let's ViiB",
+        "H2:Heavy Rotation",
+        "H2:Smart Mixes",
+        "H3:Heavy Rotation",
+        "H3:Rediscover Favorites",
+        "H3:Fresh Finds",
+        "H3:Chill Acoustic Evening",
+        "H3:90s Alternative Mix",
+        "H3:High Energy Workout",
+        "H3:2076",
+        "H3:65",
+        "H3:579"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Songs",
+      "path": "/songs",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-songs.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nAll Songs\nRecently Added\n#\nTITLE\nALBUM\nARTIST\nPLAYS\n1\nPiano Sonata No. 7 in C, K.309: 3. Rondeau (Allegretto grazioso)\nMozart: The Piano Sonatas\nWolfgan",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 37,
+      "smallTargetCount": 10,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 240,
+          "h": 23,
+          "x": 732,
+          "y": 43
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 873,
+          "y": 173
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 873,
+          "y": 238
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 873,
+          "y": 303
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 873,
+          "y": 368
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 873,
+          "y": 433
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Find a sound…",
+          "aria": "",
+          "label": "",
+          "w": 240,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:All Songs"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Albums",
+      "path": "/albums",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-albums.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nAlbums\n\n65 albums\n\nRecently Added\nMozart: The Piano Sonatas\n\nWolfgang Amadeus Mozart\n\nA Charlie Brown Christmas [2012 Remastered & Expanded Edition]\n\nVi",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 42,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Albums"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Artists",
+      "path": "/artists",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-artists.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nArtists\n\n579 artists\n\nThe Smashing Pumpkins\n\nArtist\n\n108 songs • 5 albums\nThe Lonely Island\n\nArtist\n\n86 songs • 4 albums\nMuddy Waters\n\nArtist\n\n71 songs ",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 17,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Artists"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Genres",
+      "path": "/genres",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-genres.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nGenres\n\n54 genres found in your library\n\nAlternative Rock\n\n28 tracks\n\nThe Smashing Pumpkins, Pearl Jam\nGrunge\n\n17 tracks\n\nPearl Jam, The Smashing Pumpk",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 126,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search genres...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 42
+        }
+      ],
+      "headings": [
+        "H1:Genres",
+        "H3:Alternative Rock",
+        "H3:Grunge",
+        "H3:Hip-Hop",
+        "H3:Baroque Pop",
+        "H3:Rock/pop",
+        "H3:Gangsta Rap",
+        "H3:Hard Rock",
+        "H3:Post-grunge",
+        "H3:Psychedelic Pop",
+        "H3:Psychedelic Rock",
+        "H3:Dream Pop"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Playlists",
+      "path": "/playlists",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-playlists.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nPlaylists\nCreate Playlist\nplaylist 1\n\n0 songs\n\nSelect a song to start listening",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Playlists"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Liked Songs",
+      "path": "/liked",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-liked-songs.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n\nPLAYLIST\n\nLiked Songs\n\n4 songs • 22m total\n\n#\nTITLE\nALBUM\nARTIST\nDURATION\n1\nDrown\n(Rotten Apples) The Smashing Pumpkins Greatest Hits\nThe Smashing Pum",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 28,
+      "smallTargetCount": 9,
+      "smallTargetSamples": [
+        {
+          "label": "Shuffle play",
+          "tag": "button",
+          "w": 28,
+          "h": 28,
+          "x": 360,
+          "y": 270
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 873,
+          "y": 408
+        },
+        {
+          "label": "More options",
+          "tag": "button",
+          "w": 20,
+          "h": 20,
+          "x": 933,
+          "y": 407
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 873,
+          "y": 473
+        },
+        {
+          "label": "More options",
+          "tag": "button",
+          "w": 20,
+          "h": 20,
+          "x": 933,
+          "y": 472
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 873,
+          "y": 538
+        }
+      ],
+      "unnamedButtonCount": 1,
+      "inputs": [],
+      "headings": [
+        "H1:Liked Songs"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Liked Albums",
+      "path": "/liked-albums",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-liked-albums.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n\nCOLLECTION\n\nLiked Albums\n\nNo liked albums yet\n\nNo liked albums yet\n\nSave albums you revisit so they're one click away.\n\nBrowse Albums\nExplore Artists\n",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 19,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Liked Albums",
+        "H3:No liked albums yet"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "AI DJ",
+      "path": "/smart-playlists",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-ai-dj.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nAI DJ\nPlaylist\nDJ Mode\n\nDescribe the vibe, genre, era, or mood you're looking for, and I'll build a custom playlist from your library.\n\nGenerate\nDiscov",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 27,
+      "smallTargetCount": 4,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 477,
+          "h": 23,
+          "x": 312,
+          "y": 225
+        },
+        {
+          "label": "Off1 hour6 hours24 hours3 days1 week",
+          "tag": "select",
+          "w": 95,
+          "h": 27,
+          "x": 432,
+          "y": 356
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 16,
+          "h": 16,
+          "x": 543,
+          "y": 361
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 16,
+          "h": 16,
+          "x": 700,
+          "y": 361
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "e.g., 'Upbeat 80s pop songs for a workout' or 'Chill jazz for studying'",
+          "aria": "",
+          "label": "",
+          "w": 477,
+          "h": 23
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "Off1 hour6 hours24 hours3 days1 week",
+          "w": 95,
+          "h": 27
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 16,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 16,
+          "h": 16
+        }
+      ],
+      "headings": [
+        "H1:AI DJ"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Spotify",
+      "path": "/spotify",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-spotify.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nConnect to Spotify\n\nLink your Spotify account to search and play music directly from ViiB MediaHub. Requires a Spotify Premium account for full playbac",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 19,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "developer.spotify.com",
+          "tag": "a",
+          "w": 147,
+          "h": 17,
+          "x": 587,
+          "y": 480
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Connect to Spotify"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Downloads",
+      "path": "/downloads",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-downloads.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nNo Downloads Yet\n\nDownload songs, albums, or playlists from Spotify to listen offline. Look for the download button on any track.\n\nDownload from URL\nSe",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:No Downloads Yet"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Search",
+      "path": "/search",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-search.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSearch\nSearch for music\n\nFind your favorite songs, albums, and artists\n\nSelect a song to start listening",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 655,
+          "h": 23,
+          "x": 325,
+          "y": 110
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "What do you want to feel?",
+          "aria": "",
+          "label": "",
+          "w": 655,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:Search",
+        "H2:Search for music"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Stats",
+      "path": "/stats",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-stats.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nListening Stats\n\nYour music journey in numbers\n\nOverview\n2h 43m\n\nTotal Listening Time\n\nAll time\n\n39\n\nTotal Plays\n\n1.2 avg per song\n\n32\n\nSongs Played\n\no",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 17,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Listening Stats",
+        "H2:Overview",
+        "H3:2h 43m",
+        "H3:39",
+        "H3:32",
+        "H3:4",
+        "H3:Your #1 Song",
+        "H2:Top Artists",
+        "H2:Top Albums",
+        "H2:Top Genres",
+        "H2:Your Library",
+        "H3:2076"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "Settings",
+      "path": "/settings",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-settings.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSettings\nLibrary Management\nBackend Connected\nMusic Folders\n\nAdd folders containing your music files. The backend will scan these folders for audio fil",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 63,
+      "smallTargetCount": 18,
+      "smallTargetSamples": [
+        {
+          "label": "Open Panel",
+          "tag": "button",
+          "w": 78,
+          "h": 20,
+          "x": 817,
+          "y": 704
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 612,
+          "h": 16,
+          "x": 347,
+          "y": 916
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 646,
+          "h": 4,
+          "x": 313,
+          "y": 1088
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 283,
+          "h": 23,
+          "x": 329,
+          "y": 1773
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 283,
+          "h": 23,
+          "x": 660,
+          "y": 1773
+        },
+        {
+          "label": "developer.spotify.com",
+          "tag": "a",
+          "w": 126,
+          "h": 15,
+          "x": 410,
+          "y": 1833
+        }
+      ],
+      "unnamedButtonCount": 2,
+      "inputs": [
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "DisabledWaveformSpectrum BarsFlame Spectrum CrownStardust Pu",
+          "w": 233,
+          "h": 37
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 612,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 646,
+          "h": 4
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "System DefaultDevice ...",
+          "w": 147,
+          "h": 37
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "System DefaultDevice ...",
+          "w": 147,
+          "h": 37
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Enter Client ID",
+          "aria": "",
+          "label": "",
+          "w": 283,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "placeholder": "Enter Client Secret",
+          "aria": "",
+          "label": "",
+          "w": 283,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Default: AppData/ViiB-MediaHub/spotify_downloads",
+          "aria": "",
+          "label": "",
+          "w": 459,
+          "h": 20
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 501,
+          "h": 8
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "High Quality (320kbps)Normal (160kbps)",
+          "w": 646,
+          "h": 48
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "Ollama (Local) (No API Key)Google Gemini OpenAI Anthropic (C",
+          "w": 298,
+          "h": 40
+        },
+        {
+          "tag": "input",
+          "type": "",
+          "placeholder": "e.g., llama3.2:8b, qwen3:4b, mistral:7b",
+          "aria": "",
+          "label": "",
+          "w": 274,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "",
+          "placeholder": "http://localhost:11434",
+          "aria": "",
+          "label": "",
+          "w": 588,
+          "h": 23
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        }
+      ],
+      "headings": [
+        "H1:Settings",
+        "H2:Library Management",
+        "H3:Music Folders",
+        "H2:Personalization",
+        "H3:Show Smart Mixes",
+        "H2:Audio & Playback",
+        "H3:Equalizer",
+        "H3:Visualizer Style",
+        "H3:Album Art Opacity",
+        "H3:Fullscreen Background",
+        "H3:Crossfade",
+        "H3:Gapless Playback"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "DJ Mode",
+      "path": "/dj",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-dj-mode.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n00:00\nNo Track\nDJ MODE\nNo Track\n00:00\nDECK A\nDECK B\n1\n2\n3\n4\n5\n6\n7\n8\n1\n2\n3\n4\n5\n6\n7\n8\nNo Track Loaded\nLoad a track to begin\nA\nBPM\n---\n-50%\n+50%\n+0.0%\nSYN",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 12506,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "No Track LoadedLoad a track to beginBBPM----50%+50%+0.0%SYNC",
+          "cls": "h-full p-4 flex flex-col ",
+          "x": 811,
+          "right": 1076,
+          "w": 265
+        },
+        {
+          "tag": "div",
+          "text": "No Track LoadedLoad a track to begin",
+          "cls": "flex items-center gap-4 mb-4",
+          "x": 827,
+          "right": 1060,
+          "w": 233
+        },
+        {
+          "tag": "div",
+          "text": "No Track LoadedLoad a track to begin",
+          "cls": "flex-1 min-w-0",
+          "x": 923,
+          "right": 1060,
+          "w": 137
+        },
+        {
+          "tag": "div",
+          "text": "No Track Loaded",
+          "cls": "text-sm font-medium text-neutral-100 truncate",
+          "x": 923,
+          "right": 1060,
+          "w": 137
+        },
+        {
+          "tag": "div",
+          "text": "Load a track to begin",
+          "cls": "text-xs text-neutral-400 truncate",
+          "x": 923,
+          "right": 1060,
+          "w": 137
+        },
+        {
+          "tag": "div",
+          "text": "B",
+          "cls": "text-center mb-4",
+          "x": 827,
+          "right": 1060,
+          "w": 233
+        }
+      ],
+      "controlCount": 4275,
+      "smallTargetCount": 4237,
+      "smallTargetSamples": [
+        {
+          "label": "Tempo (double-click to reset)",
+          "tag": "input",
+          "w": 129,
+          "h": 16,
+          "x": 324,
+          "y": 513
+        },
+        {
+          "label": "Sync BPM to other deck",
+          "tag": "button",
+          "w": 77,
+          "h": 24,
+          "x": 416,
+          "y": 537
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 161,
+          "h": 16,
+          "x": 300,
+          "y": 661
+        },
+        {
+          "label": "OFF",
+          "tag": "button",
+          "w": 34,
+          "h": 18,
+          "x": 600,
+          "y": 280
+        },
+        {
+          "label": "BPM",
+          "tag": "button",
+          "w": 36,
+          "h": 18,
+          "x": 637,
+          "y": 280
+        },
+        {
+          "label": "Sync BPM + Beat Phase",
+          "tag": "button",
+          "w": 47,
+          "h": 18,
+          "x": 678,
+          "y": 280
+        }
+      ],
+      "unnamedButtonCount": 2,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "Tempo (double-click to reset)",
+          "w": 129,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 161,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 8
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 6
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 6
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "Tempo (double-click to reset)",
+          "w": 129,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 161,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search library...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 38
+        }
+      ],
+      "headings": [
+        "H3:FX & Loop Controls",
+        "H3:FX - Deck A",
+        "H3:Loop - Deck A",
+        "H3:Loop - Deck B",
+        "H3:FX - Deck B",
+        "H3:Library"
+      ]
+    },
+    {
+      "viewport": "tablet-1024x768",
+      "route": "DJ Mode v2",
+      "path": "/dj-v2",
+      "screenshot": "output/playwright/uiux-review/tablet-1024x768-dj-mode-v2.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSCOPE\nTIMELINE\nFX\nPERF\nBROWSE\nFX\n00:00\nREC\n00:00\n🎹 MIDI\n2D\nRGB\n3B\nCLR\n+\n10s\n−\nFX\nA\nFILTER\nDELAY\nREVERB\nFLANGER\nFILTER\nDELAY\nREVERB\nFLANGER\nB\nDECK A\nNo",
+      "docWidth": 1024,
+      "docHeight": 768,
+      "horizontalOverflow": false,
+      "overflowCount": 23009,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX00:00REC00:00🎹 MIDI2DRGB3BCLR+10",
+          "cls": "h-full flex flex-col overflow-hidden min-w-[1152px] transition-[grid-t",
+          "x": 256,
+          "right": 1408,
+          "w": 1152
+        },
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX00:00REC00:00🎹 MIDI",
+          "cls": "relative",
+          "x": 256,
+          "right": 1408,
+          "w": 1152
+        },
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX00:00REC00:00",
+          "cls": "h-11 bg-gradient-to-b from-[#1f1f1f] to-[#1a1a1a] border-b border-[#2a",
+          "x": 256,
+          "right": 1408,
+          "w": 1152
+        },
+        {
+          "tag": "div",
+          "text": "00:00REC00:00",
+          "cls": "flex items-center gap-6",
+          "x": 836,
+          "right": 1058,
+          "w": 223
+        },
+        {
+          "tag": "div",
+          "text": "00:00",
+          "cls": "flex items-center gap-2",
+          "x": 1004,
+          "right": 1058,
+          "w": 55
+        },
+        {
+          "tag": "span",
+          "text": "00:00",
+          "cls": "font-mono text-sm tabular-nums px-2 py-0.5 rounded text-[#777]",
+          "x": 1004,
+          "right": 1058,
+          "w": 55
+        }
+      ],
+      "controlCount": 6392,
+      "smallTargetCount": 6367,
+      "smallTargetSamples": [
+        {
+          "label": "scope",
+          "tag": "button",
+          "w": 63,
+          "h": 29,
+          "x": 268,
+          "y": 7
+        },
+        {
+          "label": "timeline",
+          "tag": "button",
+          "w": 77,
+          "h": 29,
+          "x": 335,
+          "y": 7
+        },
+        {
+          "label": "fx",
+          "tag": "button",
+          "w": 40,
+          "h": 29,
+          "x": 416,
+          "y": 7
+        },
+        {
+          "label": "Performance layout — full decks",
+          "tag": "button",
+          "w": 44,
+          "h": 22,
+          "x": 480,
+          "y": 11
+        },
+        {
+          "label": "Browse layout — expanded library",
+          "tag": "button",
+          "w": 62,
+          "h": 22,
+          "x": 524,
+          "y": 11
+        },
+        {
+          "label": "FX layout — expanded effects",
+          "tag": "button",
+          "w": 33,
+          "h": 22,
+          "x": 586,
+          "y": 11
+        }
+      ],
+      "unnamedButtonCount": 3,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 48,
+          "h": 3
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 30
+        }
+      ],
+      "headings": []
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Home",
+      "path": "/",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-home.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nLet's ViiB\nFEATURED MIX\nHeavy Rotation\n\nYour most played tracks recently.\n\n14 tracks • Ready to play\n\nSmart Mixes\nHeavy Rotation\n\n14 tracks\n\nYour most p",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 106,
+      "overflowSamples": [
+        {
+          "tag": "span",
+          "text": "Featured Mix",
+          "cls": "text-meta font-semibold uppercase tracking-wide text-text-secondary",
+          "x": 332,
+          "right": 402,
+          "w": 70
+        },
+        {
+          "tag": "div",
+          "text": "Heavy Rotation14 tracksYour most played tracks recently.",
+          "cls": "flex-shrink-0 w-80 bg-surface-2 rounded-xl overflow-hidden group curso",
+          "x": 288,
+          "right": 608,
+          "w": 320
+        },
+        {
+          "tag": "div",
+          "text": "Heavy Rotation14 tracks",
+          "cls": "h-40 p-6 flex flex-col justify-end relative",
+          "x": 289,
+          "right": 607,
+          "w": 318
+        },
+        {
+          "tag": "h3",
+          "text": "Heavy Rotation",
+          "cls": "text-2xl font-bold text-white shadow-black drop-shadow-md",
+          "x": 313,
+          "right": 583,
+          "w": 270
+        },
+        {
+          "tag": "p",
+          "text": "14 tracks",
+          "cls": "text-white/80 text-sm font-medium drop-shadow",
+          "x": 313,
+          "right": 583,
+          "w": 270
+        },
+        {
+          "tag": "button",
+          "text": "",
+          "cls": "absolute bottom-4 right-4 w-12 h-12 bg-brand text-black rounded-full f",
+          "x": 543,
+          "right": 591,
+          "w": 48
+        }
+      ],
+      "controlCount": 25,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 20,
+          "h": 23,
+          "x": 318,
+          "y": 194
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "What do you want to feel?",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:Let's ViiB",
+        "H2:Smart Mixes",
+        "H3:Heavy Rotation",
+        "H3:Rediscover Favorites",
+        "H3:Fresh Finds",
+        "H3:Chill Acoustic Evening",
+        "H3:90s Alternative Mix",
+        "H3:High Energy Workout",
+        "H3:2076",
+        "H3:65",
+        "H3:579",
+        "H2:Recently Played"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Songs",
+      "path": "/songs",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-songs.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nAll Songs\n#\nTITLE\nALBUM\nARTIST\nPLAYS\n1\nPiano Sonata No. 7 in C, K.309: 3. Rondeau (Allegretto grazioso)\nMozart: The Piano Sonatas\nWolfgang Amadeus Mozar",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 125,
+      "overflowSamples": [
+        {
+          "tag": "h1",
+          "text": "All Songs",
+          "cls": "text-display",
+          "x": 288,
+          "right": 398,
+          "w": 110
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "cls": "flex-1 md:w-72",
+          "x": 364,
+          "right": 414,
+          "w": 50
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "cls": "flex items-center gap-2 rounded-lg bg-surface-1 ring-1 ring-surface-3/",
+          "x": 364,
+          "right": 414,
+          "w": 50
+        },
+        {
+          "tag": "input",
+          "text": "",
+          "cls": "w-full bg-transparent outline-none placeholder:text-text-subtle/90 tex",
+          "x": 391,
+          "right": 402,
+          "w": 11
+        },
+        {
+          "tag": "div",
+          "text": "Title",
+          "cls": "",
+          "x": 370,
+          "right": 406,
+          "w": 36
+        },
+        {
+          "tag": "div",
+          "text": "Album",
+          "cls": "",
+          "x": 422,
+          "right": 468,
+          "w": 46
+        }
+      ],
+      "controlCount": 35,
+      "smallTargetCount": 9,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 11,
+          "h": 23,
+          "x": 391,
+          "y": 146
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 581,
+          "y": 273
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 581,
+          "y": 338
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 581,
+          "y": 403
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 581,
+          "y": 468
+        },
+        {
+          "label": "Like song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 581,
+          "y": 533
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Find a sound…",
+          "aria": "",
+          "label": "",
+          "w": 11,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:All Songs"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Albums",
+      "path": "/albums",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-albums.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nAlbums\n\n65 albums\n\nRecently Added\nMozart: The Piano Sonatas\n\nWolfgang Amadeus Mozart\n\nA Charlie Brown Christmas [2012 Remastered & Expanded Edition]\n\nVi",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 4,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "Recently Added",
+          "cls": "relative",
+          "x": 288,
+          "right": 414,
+          "w": 126
+        },
+        {
+          "tag": "button",
+          "text": "Recently Added",
+          "cls": "inline-flex items-center justify-center gap-2 select-none rounded-lg p",
+          "x": 288,
+          "right": 414,
+          "w": 126
+        },
+        {
+          "tag": "svg",
+          "text": "",
+          "cls": "lucide lucide-chevron-down text-text-secondary transition-transform",
+          "x": 392,
+          "right": 402,
+          "w": 11
+        },
+        {
+          "tag": "path",
+          "text": "",
+          "cls": "",
+          "x": 394,
+          "right": 399,
+          "w": 5
+        }
+      ],
+      "controlCount": 34,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Albums"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Artists",
+      "path": "/artists",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-artists.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nScanning...\nUpdating media library\nArtists\n\n579 artists\n\nThe Smashing Pumpkins\n\nArtist\n\n108 songs • 5 albums\nThe Lonely Island\n\nArtist\n\n86 songs • 4 albums\nMuddy Waters\n\nArtist\n\n71 songs ",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 2,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "",
+          "cls": "w-40 h-40 rounded-full mb-4 shadow-lg flex items-center justify-center",
+          "x": 275,
+          "right": 435,
+          "w": 160
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "cls": "w-40 h-40 rounded-full mb-4 shadow-lg flex items-center justify-center",
+          "x": 275,
+          "right": 435,
+          "w": 160
+        }
+      ],
+      "controlCount": 17,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Artists"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Genres",
+      "path": "/genres",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-genres.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nGenres\n\n54 genres found in your library\n\nAlternative Rock\n\n28 tracks\n\nThe Smashing Pumpkins, Pearl Jam\nGrunge\n\n17 tracks\n\nPearl Jam, The Smashing Pumpk",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 3,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "Genres54 genres found in your library",
+          "cls": "",
+          "x": 288,
+          "right": 413,
+          "w": 125
+        },
+        {
+          "tag": "h1",
+          "text": "Genres",
+          "cls": "text-display text-text-main mb-2",
+          "x": 288,
+          "right": 413,
+          "w": 125
+        },
+        {
+          "tag": "p",
+          "text": "54 genres found in your library",
+          "cls": "text-text-secondary",
+          "x": 288,
+          "right": 413,
+          "w": 125
+        }
+      ],
+      "controlCount": 126,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search genres...",
+          "aria": "",
+          "label": "",
+          "w": 70,
+          "h": 42
+        }
+      ],
+      "headings": [
+        "H1:Genres",
+        "H3:Alternative Rock",
+        "H3:Grunge",
+        "H3:Hip-Hop",
+        "H3:Baroque Pop",
+        "H3:Rock/pop",
+        "H3:Gangsta Rap",
+        "H3:Hard Rock",
+        "H3:Post-grunge",
+        "H3:Psychedelic Pop",
+        "H3:Psychedelic Rock",
+        "H3:Dream Pop"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Playlists",
+      "path": "/playlists",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-playlists.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nPlaylists\nCreate Playlist\nplaylist 1\n\n0 songs\n\nSelect a song to start listening",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Playlists"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Liked Songs",
+      "path": "/liked",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-liked-songs.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n\nPLAYLIST\n\nLiked Songs\n\n4 songs • 22m total\n\n#\nTITLE\nALBUM\nARTIST\nDURATION\n1\nDrown\n(Rotten Apples) The Smashing Pumpkins Greatest Hits\nThe Smashing Pum",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 62,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "PlaylistLiked Songs4 songs • 22m total",
+          "cls": "flex-1",
+          "x": 392,
+          "right": 503,
+          "w": 111
+        },
+        {
+          "tag": "p",
+          "text": "Playlist",
+          "cls": "text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibo",
+          "x": 392,
+          "right": 503,
+          "w": 111
+        },
+        {
+          "tag": "h1",
+          "text": "Liked Songs",
+          "cls": "text-display font-bold text-text-main mb-4",
+          "x": 392,
+          "right": 503,
+          "w": 111
+        },
+        {
+          "tag": "p",
+          "text": "4 songs • 22m total",
+          "cls": "text-text-secondary text-sm",
+          "x": 392,
+          "right": 503,
+          "w": 111
+        },
+        {
+          "tag": "div",
+          "text": "Title",
+          "cls": "",
+          "x": 370,
+          "right": 406,
+          "w": 36
+        },
+        {
+          "tag": "div",
+          "text": "Album",
+          "cls": "",
+          "x": 422,
+          "right": 468,
+          "w": 46
+        }
+      ],
+      "controlCount": 28,
+      "smallTargetCount": 9,
+      "smallTargetSamples": [
+        {
+          "label": "Shuffle play",
+          "tag": "button",
+          "w": 28,
+          "h": 28,
+          "x": 336,
+          "y": 270
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 505,
+          "y": 408
+        },
+        {
+          "label": "More options",
+          "tag": "button",
+          "w": 20,
+          "h": 20,
+          "x": 565,
+          "y": 407
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 505,
+          "y": 473
+        },
+        {
+          "label": "More options",
+          "tag": "button",
+          "w": 20,
+          "h": 20,
+          "x": 565,
+          "y": 472
+        },
+        {
+          "label": "Unlike song",
+          "tag": "button",
+          "w": 18,
+          "h": 18,
+          "x": 505,
+          "y": 538
+        }
+      ],
+      "unnamedButtonCount": 1,
+      "inputs": [],
+      "headings": [
+        "H1:Liked Songs"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Liked Albums",
+      "path": "/liked-albums",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-liked-albums.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n\nCOLLECTION\n\nLiked Albums\n\nNo liked albums yet\n\nNo liked albums yet\n\nSave albums you revisit so they're one click away.\n\nBrowse Albums\nExplore Artists\n",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 9,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "CollectionLiked AlbumsNo liked albums yet",
+          "cls": "flex-1",
+          "x": 392,
+          "right": 527,
+          "w": 135
+        },
+        {
+          "tag": "p",
+          "text": "Collection",
+          "cls": "text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibo",
+          "x": 392,
+          "right": 527,
+          "w": 135
+        },
+        {
+          "tag": "h1",
+          "text": "Liked Albums",
+          "cls": "text-display font-bold text-text-main mb-4",
+          "x": 392,
+          "right": 527,
+          "w": 135
+        },
+        {
+          "tag": "p",
+          "text": "No liked albums yet",
+          "cls": "text-text-secondary text-sm",
+          "x": 392,
+          "right": 527,
+          "w": 135
+        },
+        {
+          "tag": "div",
+          "text": "No liked albums yetSave albums you revisit so they're one cl",
+          "cls": "flex flex-col items-center justify-center py-20 px-4 text-center anima",
+          "x": 182,
+          "right": 456,
+          "w": 273
+        },
+        {
+          "tag": "h3",
+          "text": "No liked albums yet",
+          "cls": "text-xl font-bold text-text-main mb-2",
+          "x": 224,
+          "right": 414,
+          "w": 191
+        }
+      ],
+      "controlCount": 19,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Liked Albums",
+        "H3:No liked albums yet"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "AI DJ",
+      "path": "/smart-playlists",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-ai-dj.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nAI DJ\nPlaylist\nDJ Mode\n\nDescribe the vibe, genre, era, or mood you're looking for, and I'll build a custom playlist from your library.\n\nGenerate\nDiscov",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 15,
+      "overflowSamples": [
+        {
+          "tag": "button",
+          "text": "Playlist",
+          "cls": "inline-flex items-center justify-center rounded-full px-3 py-1.5 text-",
+          "x": 288,
+          "right": 395,
+          "w": 107
+        },
+        {
+          "tag": "button",
+          "text": "DJ Mode",
+          "cls": "inline-flex items-center justify-center rounded-full px-3 py-1.5 text-",
+          "x": 403,
+          "right": 500,
+          "w": 97
+        },
+        {
+          "tag": "svg",
+          "text": "",
+          "cls": "lucide lucide-radio mr-2",
+          "x": 419,
+          "right": 430,
+          "w": 11
+        },
+        {
+          "tag": "path",
+          "text": "",
+          "cls": "",
+          "x": 427,
+          "right": 428,
+          "w": 1
+        },
+        {
+          "tag": "path",
+          "text": "",
+          "cls": "",
+          "x": 428,
+          "right": 430,
+          "w": 1
+        },
+        {
+          "tag": "path",
+          "text": "",
+          "cls": "",
+          "x": 420,
+          "right": 421,
+          "w": 1
+        }
+      ],
+      "controlCount": 26,
+      "smallTargetCount": 3,
+      "smallTargetSamples": [
+        {
+          "label": "Off1 hour6 hours24 hours3 days1 week",
+          "tag": "select",
+          "w": 95,
+          "h": 27,
+          "x": 346,
+          "y": 725
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 13,
+          "h": 16,
+          "x": 288,
+          "y": 815
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 13,
+          "h": 16,
+          "x": 288,
+          "y": 890
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "Off1 hour6 hours24 hours3 days1 week",
+          "w": 95,
+          "h": 27
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 16
+        }
+      ],
+      "headings": [
+        "H1:AI DJ"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Spotify",
+      "path": "/spotify",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-spotify.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nConnect to Spotify\n\nLink your Spotify account to search and play music directly from ViiB MediaHub. Requires a Spotify Premium account for full playbac",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 5,
+      "overflowSamples": [
+        {
+          "tag": "h1",
+          "text": "Connect to Spotify",
+          "cls": "text-display mb-4",
+          "x": 245,
+          "right": 393,
+          "w": 147
+        },
+        {
+          "tag": "button",
+          "text": "Connect Spotify",
+          "cls": "bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-",
+          "x": 240,
+          "right": 398,
+          "w": 158
+        },
+        {
+          "tag": "a",
+          "text": "developer.spotify.com",
+          "cls": "text-brand hover:underline",
+          "x": 317,
+          "right": 464,
+          "w": 147
+        },
+        {
+          "tag": "span",
+          "text": "Client ID",
+          "cls": "text-white font-mono bg-surface-3 px-1 rounded mx-1",
+          "x": 317,
+          "right": 401,
+          "w": 84
+        },
+        {
+          "tag": "span",
+          "text": "Client Secret",
+          "cls": "text-white font-mono bg-surface-3 px-1 rounded mx-1",
+          "x": 317,
+          "right": 419,
+          "w": 102
+        }
+      ],
+      "controlCount": 19,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "developer.spotify.com",
+          "tag": "a",
+          "w": 147,
+          "h": 17,
+          "x": 317,
+          "y": 975
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Connect to Spotify"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Downloads",
+      "path": "/downloads",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-downloads.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nNo Downloads Yet\n\nDownload songs, albums, or playlists from Spotify to listen offline. Look for the download button on any track.\n\nDownload from URL\nSe",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 1,
+      "overflowSamples": [
+        {
+          "tag": "button",
+          "text": "Download from URL",
+          "cls": "px-6 py-3 bg-brand hover:bg-brand/90 text-white font-semibold rounded-",
+          "x": 242,
+          "right": 396,
+          "w": 154
+        }
+      ],
+      "controlCount": 18,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:No Downloads Yet"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Search",
+      "path": "/search",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-search.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSearch\nSearch for music\n\nFind your favorite songs, albums, and artists\n\nSelect a song to start listening",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 0,
+      "overflowSamples": [],
+      "controlCount": 18,
+      "smallTargetCount": 1,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 27,
+          "h": 23,
+          "x": 319,
+          "y": 110
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "What do you want to feel?",
+          "aria": "",
+          "label": "",
+          "w": 27,
+          "h": 23
+        }
+      ],
+      "headings": [
+        "H1:Search",
+        "H2:Search for music"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Stats",
+      "path": "/stats",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-stats.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nListening Stats\n\nYour music journey in numbers\n\nOverview\n2h 43m\n\nTotal Listening Time\n\nAll time\n\n39\n\nTotal Plays\n\n1.2 avg per song\n\n32\n\nSongs Played\n\no",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 94,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "",
+          "cls": "w-24 h-24 rounded-lg bg-surface-3 flex-shrink-0 overflow-hidden shadow",
+          "x": 313,
+          "right": 409,
+          "w": 96
+        },
+        {
+          "tag": "img",
+          "text": "",
+          "cls": "w-full h-full object-cover",
+          "x": 313,
+          "right": 409,
+          "w": 96
+        },
+        {
+          "tag": "span",
+          "text": "5 plays",
+          "cls": "flex items-center gap-1 text-brand font-bold",
+          "x": 433,
+          "right": 495,
+          "w": 62
+        },
+        {
+          "tag": "svg",
+          "text": "",
+          "cls": "lucide lucide-play fill-current",
+          "x": 433,
+          "right": 446,
+          "w": 13
+        },
+        {
+          "tag": "path",
+          "text": "",
+          "cls": "",
+          "x": 436,
+          "right": 444,
+          "w": 9
+        },
+        {
+          "tag": "span",
+          "text": "~20m listened",
+          "cls": "text-text-subtle",
+          "x": 511,
+          "right": 570,
+          "w": 59
+        }
+      ],
+      "controlCount": 17,
+      "smallTargetCount": 0,
+      "smallTargetSamples": [],
+      "unnamedButtonCount": 0,
+      "inputs": [],
+      "headings": [
+        "H1:Listening Stats",
+        "H2:Overview",
+        "H3:Your #1 Song",
+        "H2:Top Artists",
+        "H2:Top Albums",
+        "H2:Top Genres",
+        "H2:Your Library"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "Settings",
+      "path": "/settings",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-settings.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSettings\nLibrary Management\nBackend Connected\nMusic Folders\n\nAdd folders containing your music files. The backend will scan these folders for audio fil",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 125,
+      "overflowSamples": [
+        {
+          "tag": "h2",
+          "text": "Library Management",
+          "cls": "text-card font-semibold text-text-main",
+          "x": 325,
+          "right": 439,
+          "w": 114
+        },
+        {
+          "tag": "span",
+          "text": "Backend Connected",
+          "cls": "flex items-center gap-1 text-xs bg-success/20 text-success px-2 py-1 r",
+          "x": 451,
+          "right": 546,
+          "w": 94
+        },
+        {
+          "tag": "svg",
+          "text": "",
+          "cls": "lucide lucide-server",
+          "x": 459,
+          "right": 466,
+          "w": 7
+        },
+        {
+          "tag": "rect",
+          "text": "",
+          "cls": "",
+          "x": 460,
+          "right": 466,
+          "w": 6
+        },
+        {
+          "tag": "rect",
+          "text": "",
+          "cls": "",
+          "x": 460,
+          "right": 466,
+          "w": 6
+        },
+        {
+          "tag": "button",
+          "text": "Add Folder",
+          "cls": "inline-flex items-center justify-center gap-2 select-none rounded-lg p",
+          "x": 313,
+          "right": 402,
+          "w": 89
+        }
+      ],
+      "controlCount": 55,
+      "smallTargetCount": 10,
+      "smallTargetSamples": [
+        {
+          "label": "",
+          "tag": "input",
+          "w": 12,
+          "h": 4,
+          "x": 313,
+          "y": 2294
+        },
+        {
+          "label": "developer.spotify.com",
+          "tag": "a",
+          "w": 126,
+          "h": 15,
+          "x": 313,
+          "y": 4844
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 129,
+          "h": 8,
+          "x": 313,
+          "y": 5672
+        },
+        {
+          "label": "Ollama (Local) (No API Key)Google Gemini OpenAI Anthropic (Claude) X.A",
+          "tag": "select",
+          "w": 26,
+          "h": 40,
+          "x": 330,
+          "y": 9026
+        },
+        {
+          "label": "ollama.ai",
+          "tag": "a",
+          "w": 50,
+          "h": 15,
+          "x": 330,
+          "y": 9767
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 13,
+          "h": 13,
+          "x": 343,
+          "y": 11392
+        }
+      ],
+      "unnamedButtonCount": 0,
+      "inputs": [
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "DisabledWaveformSpectrum BarsFlame Spectrum CrownStardust Pu",
+          "w": 233,
+          "h": 37
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 12,
+          "h": 4
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "System DefaultDevice ...",
+          "w": 147,
+          "h": 37
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "System DefaultDevice ...",
+          "w": 147,
+          "h": 37
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 129,
+          "h": 8
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "High Quality (320kbps)Normal (160kbps)",
+          "w": 34,
+          "h": 48
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "placeholder": "",
+          "aria": "",
+          "label": "Ollama (Local) (No API Key)Google Gemini OpenAI Anthropic (C",
+          "w": 26,
+          "h": 40
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "radio",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 13,
+          "h": 13
+        }
+      ],
+      "headings": [
+        "H1:Settings",
+        "H2:Library Management",
+        "H3:Music Folders",
+        "H2:Personalization",
+        "H3:Show Smart Mixes",
+        "H2:Audio & Playback",
+        "H3:Equalizer",
+        "H3:Visualizer Style",
+        "H3:Album Art Opacity",
+        "H3:Fullscreen Background",
+        "H3:Crossfade",
+        "H3:Gapless Playback"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "DJ Mode",
+      "path": "/dj",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-dj-mode.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\n00:00\nNo Track\nDJ MODE\nNo Track\n00:00\nDECK A\nDECK B\n1\n2\n3\n4\n5\n6\n7\n8\n1\n2\n3\n4\n5\n6\n7\n8\nNo Track Loaded\nLoad a track to begin\nA\nBPM\n---\n-50%\n+50%\n+0.0%\nSYN",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 29272,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "DJ Mode",
+          "cls": "flex items-center gap-3",
+          "x": 375,
+          "right": 433,
+          "w": 58
+        },
+        {
+          "tag": "span",
+          "text": "DJ Mode",
+          "cls": "text-xs uppercase tracking-wider text-neutral-500",
+          "x": 375,
+          "right": 415,
+          "w": 41
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "cls": "w-2 h-2 rounded-full bg-brand",
+          "x": 427,
+          "right": 433,
+          "w": 6
+        },
+        {
+          "tag": "div",
+          "text": "No Track00:00",
+          "cls": "flex items-center gap-4",
+          "x": 433,
+          "right": 535,
+          "w": 103
+        },
+        {
+          "tag": "div",
+          "text": "No Track",
+          "cls": "text-sm text-neutral-400",
+          "x": 433,
+          "right": 470,
+          "w": 37
+        },
+        {
+          "tag": "div",
+          "text": "00:00",
+          "cls": "text-lg font-mono text-neutral-400",
+          "x": 486,
+          "right": 535,
+          "w": 49
+        }
+      ],
+      "controlCount": 4275,
+      "smallTargetCount": 4237,
+      "smallTargetSamples": [
+        {
+          "label": "Tempo (double-click to reset)",
+          "tag": "input",
+          "w": 129,
+          "h": 16,
+          "x": 324,
+          "y": 513
+        },
+        {
+          "label": "Sync BPM to other deck",
+          "tag": "button",
+          "w": 77,
+          "h": 24,
+          "x": 416,
+          "y": 537
+        },
+        {
+          "label": "",
+          "tag": "input",
+          "w": 161,
+          "h": 16,
+          "x": 300,
+          "y": 661
+        },
+        {
+          "label": "OFF",
+          "tag": "button",
+          "w": 34,
+          "h": 18,
+          "x": 600,
+          "y": 280
+        },
+        {
+          "label": "BPM",
+          "tag": "button",
+          "w": 36,
+          "h": 18,
+          "x": 637,
+          "y": 280
+        },
+        {
+          "label": "Sync BPM + Beat Phase",
+          "tag": "button",
+          "w": 47,
+          "h": 18,
+          "x": 678,
+          "y": 280
+        }
+      ],
+      "unnamedButtonCount": 2,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "Tempo (double-click to reset)",
+          "w": 129,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 161,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 20,
+          "h": 64
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 8
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 6
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 256,
+          "h": 6
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "Tempo (double-click to reset)",
+          "w": 129,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 161,
+          "h": 16
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 64,
+          "h": 4
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search library...",
+          "aria": "",
+          "label": "",
+          "w": 54,
+          "h": 38
+        }
+      ],
+      "headings": [
+        "H3:FX & Loop Controls",
+        "H3:FX - Deck A",
+        "H3:Loop - Deck A",
+        "H3:Loop - Deck B",
+        "H3:FX - Deck B",
+        "H3:Library"
+      ]
+    },
+    {
+      "viewport": "mobile-390x844",
+      "route": "DJ Mode v2",
+      "path": "/dj-v2",
+      "screenshot": "output/playwright/uiux-review/mobile-390x844-dj-mode-v2.png",
+      "text": "Home\nDJ Mode\nDJ Mode v2\nSongs\nAlbums\nArtists\nGenres\nPlaylists\nLiked Songs\nLiked Albums\nAI DJ\nSpotify\nDownloads\nSearch\nStats\nSettings\nYour Library\nLocal Media Collection\nSCOPE\nTIMELINE\nFX\nPERF\nBROWSE\nFX\n00:00\nREC\n00:00\n🎹 MIDI\n2D\nRGB\n3B\nCLR\n+\n10s\n−\nFX\nA\nFILTER\nDELAY\nREVERB\nFLANGER\nFILTER\nDELAY\nREVERB\nFLANGER\nB\nDECK A\nNo",
+      "docWidth": 390,
+      "docHeight": 844,
+      "horizontalOverflow": false,
+      "overflowCount": 40126,
+      "overflowSamples": [
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX00:00REC00:00🎹 MIDI2DRGB3BCLR+10",
+          "cls": "h-full flex flex-col overflow-hidden min-w-[1152px] transition-[grid-t",
+          "x": 256,
+          "right": 1408,
+          "w": 1152
+        },
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX00:00REC00:00🎹 MIDI",
+          "cls": "relative",
+          "x": 256,
+          "right": 1408,
+          "w": 1152
+        },
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX00:00REC00:00",
+          "cls": "h-11 bg-gradient-to-b from-[#1f1f1f] to-[#1a1a1a] border-b border-[#2a",
+          "x": 256,
+          "right": 1408,
+          "w": 1152
+        },
+        {
+          "tag": "div",
+          "text": "scopetimelinefxPERFBROWSEFX",
+          "cls": "flex items-center gap-1",
+          "x": 268,
+          "right": 622,
+          "w": 354
+        },
+        {
+          "tag": "button",
+          "text": "timeline",
+          "cls": "\n              px-3 py-1.5 rounded text-[10px] font-bold uppercase tra",
+          "x": 335,
+          "right": 412,
+          "w": 77
+        },
+        {
+          "tag": "button",
+          "text": "fx",
+          "cls": "\n              px-3 py-1.5 rounded text-[10px] font-bold uppercase tra",
+          "x": 416,
+          "right": 456,
+          "w": 40
+        }
+      ],
+      "controlCount": 6392,
+      "smallTargetCount": 6367,
+      "smallTargetSamples": [
+        {
+          "label": "scope",
+          "tag": "button",
+          "w": 63,
+          "h": 29,
+          "x": 268,
+          "y": 7
+        },
+        {
+          "label": "timeline",
+          "tag": "button",
+          "w": 77,
+          "h": 29,
+          "x": 335,
+          "y": 7
+        },
+        {
+          "label": "fx",
+          "tag": "button",
+          "w": 40,
+          "h": 29,
+          "x": 416,
+          "y": 7
+        },
+        {
+          "label": "Performance layout — full decks",
+          "tag": "button",
+          "w": 44,
+          "h": 22,
+          "x": 480,
+          "y": 11
+        },
+        {
+          "label": "Browse layout — expanded library",
+          "tag": "button",
+          "w": 62,
+          "h": 22,
+          "x": 524,
+          "y": 11
+        },
+        {
+          "label": "FX layout — expanded effects",
+          "tag": "button",
+          "w": 33,
+          "h": 22,
+          "x": 586,
+          "y": 11
+        }
+      ],
+      "unnamedButtonCount": 3,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "range",
+          "placeholder": "",
+          "aria": "",
+          "label": "",
+          "w": 48,
+          "h": 3
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "placeholder": "Search...",
+          "aria": "",
+          "label": "",
+          "w": 448,
+          "h": 30
+        }
+      ],
+      "headings": []
+    }
+  ],
+  "consoleEntries": [
+    {
+      "type": "warning",
+      "text": "DownloadManager SSE connection error, will rely on polling",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "Library events SSE connection closed, reconnecting in 3s...",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "The keyword 'slider-vertical' specified to an 'appearance' property is not standardized. It will be removed in the future. Use <input type=range style=\"writing-mode: vertical-lr; d",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to load audio settings from backend: Error: Invalid setting key\n    at handleResponse (http://localhost:4000/services/api.ts:5:11)\n    at async Object.getSetting (http://loc",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "Could not get audio permission, device list may be limited",
+      "url": "http://localhost:4000/settings"
+    },
+    {
+      "type": "warning",
+      "text": "Could not get audio permission, device list may be limited",
+      "url": "http://localhost:4000/settings"
+    },
+    {
+      "type": "warning",
+      "text": "Library events SSE connection closed, reconnecting in 3s...",
+      "url": "http://localhost:4000/dj-v2"
+    },
+    {
+      "type": "warning",
+      "text": "DownloadManager SSE connection error, will rely on polling",
+      "url": "http://localhost:4000/dj-v2"
+    },
+    {
+      "type": "warning",
+      "text": "[Logger] Failed to send log to backend: TypeError: Failed to fetch\n    at flushLogs (http://localhost:4000/services/loggerService.ts:12:13)",
+      "url": "http://localhost:4000/dj-v2"
+    },
+    {
+      "type": "warning",
+      "text": "The keyword 'slider-vertical' specified to an 'appearance' property is not standardized. It will be removed in the future. Use <input type=range style=\"writing-mode: vertical-lr; d",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to load audio settings from backend: Error: Invalid setting key\n    at handleResponse (http://localhost:4000/services/api.ts:5:11)\n    at async Object.getSetting (http://loc",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "Could not get audio permission, device list may be limited",
+      "url": "http://localhost:4000/settings"
+    },
+    {
+      "type": "warning",
+      "text": "Could not get audio permission, device list may be limited",
+      "url": "http://localhost:4000/settings"
+    },
+    {
+      "type": "warning",
+      "text": "DownloadManager SSE connection error, will rely on polling",
+      "url": "http://localhost:4000/dj-v2"
+    },
+    {
+      "type": "warning",
+      "text": "Library events SSE connection closed, reconnecting in 3s...",
+      "url": "http://localhost:4000/dj-v2"
+    },
+    {
+      "type": "warning",
+      "text": "[Logger] Failed to send log to backend: TypeError: Failed to fetch\n    at flushLogs (http://localhost:4000/services/loggerService.ts:12:13)",
+      "url": "http://localhost:4000/dj-v2"
+    },
+    {
+      "type": "warning",
+      "text": "The keyword 'slider-vertical' specified to an 'appearance' property is not standardized. It will be removed in the future. Use <input type=range style=\"writing-mode: vertical-lr; d",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to load audio settings from backend: Error: Invalid setting key\n    at handleResponse (http://localhost:4000/services/api.ts:5:11)\n    at async Object.getSetting (http://loc",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "Could not get audio permission, device list may be limited",
+      "url": "http://localhost:4000/settings"
+    },
+    {
+      "type": "warning",
+      "text": "Could not get audio permission, device list may be limited",
+      "url": "http://localhost:4000/settings"
+    },
+    {
+      "type": "warning",
+      "text": "DownloadManager SSE connection error, will rely on polling",
+      "url": "http://localhost:4000/dj-v2"
+    },
+    {
+      "type": "warning",
+      "text": "[Logger] Failed to send log to backend: TypeError: Failed to fetch\n    at flushLogs (http://localhost:4000/services/loggerService.ts:12:13)",
+      "url": "http://localhost:4000/dj-v2"
+    },
+    {
+      "type": "warning",
+      "text": "Library events SSE connection closed, reconnecting in 3s...",
+      "url": "http://localhost:4000/dj-v2"
+    },
+    {
+      "type": "warning",
+      "text": "The keyword 'slider-vertical' specified to an 'appearance' property is not standardized. It will be removed in the future. Use <input type=range style=\"writing-mode: vertical-lr; d",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to load audio settings from backend: Error: Invalid setting key\n    at handleResponse (http://localhost:4000/services/api.ts:5:11)\n    at async Object.getSetting (http://loc",
+      "url": "http://localhost:4000/"
+    },
+    {
+      "type": "warning",
+      "text": "Could not get audio permission, device list may be limited",
+      "url": "http://localhost:4000/settings"
+    },
+    {
+      "type": "warning",
+      "text": "Could not get audio permission, device list may be limited",
+      "url": "http://localhost:4000/settings"
+    }
+  ]
+}

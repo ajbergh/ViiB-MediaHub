@@ -1,11 +1,11 @@
-// Package main is the entry point for ViiB MediaHub.
+// Package main is the entry point for ViiB MediaHub (web browser build).
 //
 // ViiB MediaHub is a local media player application with a web-based UI.
 // This executable:
 //   - Embeds the React frontend (built by Vite) into the binary
 //   - Starts an HTTP server to serve both API and frontend
 //   - Opens the default browser to the application
-//   - Provides system tray integration for Windows
+//   - Provides system tray integration (Windows, macOS, Linux)
 //   - Handles graceful shutdown on SIGINT/SIGTERM
 //
 // Command-line flags:
@@ -13,14 +13,21 @@
 //	-port <n>      Port to run server on (0 = auto-select available port)
 //	-no-browser    Don't open browser automatically
 //	-no-tray       Disable system tray icon (useful for debugging)
-//	-data <path>   Custom data directory (default: %APPDATA%/ViiB-MediaHub)
+//	-data <path>   Custom data directory (default: OS user config dir / ViiB-MediaHub)
 //	-debug         Enable verbose debug logging
+//
+// Default data directory per platform:
+//   - Windows: %APPDATA%\ViiB-MediaHub
+//   - macOS: ~/Library/Application Support/ViiB-MediaHub
+//   - Linux: ~/.config/ViiB-MediaHub
 //
 // Data storage:
 //   - library.db: SQLite database for songs, playlists, settings
 //   - covers/: Cached album artwork
 //   - spotify_downloads/: Downloaded Spotify tracks
 //   - viib.log: Application log file
+//
+// For the Wails native desktop build, see cmd/wails/main.go.
 package main
 
 import (
@@ -68,7 +75,7 @@ func init() {
 	}
 	dataDir := filepath.Join(configDir, "ViiB-MediaHub")
 	crashLogPath = filepath.Join(dataDir, "crash.log")
-	os.MkdirAll(dataDir, 0755)
+	os.MkdirAll(dataDir, 0700)
 
 	// Write immediately to crash log
 	f, err := os.OpenFile(crashLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
@@ -137,7 +144,7 @@ func main() {
 
 	logCrash(fmt.Sprintf("CHECKPOINT: Data dir = %s", *dataDir))
 
-	if err := os.MkdirAll(*dataDir, 0755); err != nil {
+	if err := os.MkdirAll(*dataDir, 0700); err != nil {
 		logCrash(fmt.Sprintf("ERROR: Failed to create data directory: %v", err))
 		log.Fatal("Failed to create data directory:", err)
 	}

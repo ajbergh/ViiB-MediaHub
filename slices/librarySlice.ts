@@ -33,6 +33,8 @@ import { backendService } from '../services/backendService';
 import api, { ApiAlbumMetadata, ApiArtistMetadata } from '../services/api';
 import { Playlist, Song, AlbumMetadata, ArtistMetadata } from '../types';
 
+let isPollingActive = false;
+
 export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = (set, get) => ({
   songs: [],
   playlists: [],
@@ -44,6 +46,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   isScanning: false,
   scanProgress: '',
   backendAvailable: false,
+  isLibraryInitializing: true,
   scanFolders: [],
   likedSongIds: new Set(),
   likedAlbumKeys: new Set(),
@@ -134,6 +137,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               console.error("Failed to initialize library from backend", e);
               // Reset scanning state on error
               set({ isScanning: false, scanProgress: '' });
+          } finally {
+              set({ isLibraryInitializing: false });
           }
       } else {
           // Fallback: Load from IndexedDB (browser-only mode)
@@ -154,6 +159,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               set({ songs, playlists, smartMixes: mixes });
           } catch (e) {
               console.error("Failed to initialize library from IndexedDB", e);
+          } finally {
+              set({ isLibraryInitializing: false });
           }
       }
   },
@@ -189,12 +196,25 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
     // Note: When using backend, songs come from scanning, no need to save here
 
     set((state) => {
-      const updatedSongs = [...state.songs, ...newSongs].sort((a, b) => {
-          if (a.album !== b.album) return a.album.localeCompare(b.album);
-          if (a.discNumber !== b.discNumber) return (a.discNumber || 0) - (b.discNumber || 0);
-          if (a.trackNumber !== b.trackNumber) return (a.trackNumber || 0) - (b.trackNumber || 0);
-          return a.title.localeCompare(b.title);
-      });
+      // Use a Map for O(1) deduplication by song id
+      const songMap = new Map(state.songs.map(s => [s.id, s]));
+      let hasNew = false;
+      for (const song of newSongs) {
+        if (!songMap.has(song.id)) {
+          songMap.set(song.id, song);
+          hasNew = true;
+        }
+      }
+      
+      // Only re-sort if new songs were actually added
+      const updatedSongs = hasNew
+        ? Array.from(songMap.values()).sort((a, b) => {
+            if (a.album !== b.album) return a.album.localeCompare(b.album);
+            if (a.discNumber !== b.discNumber) return (a.discNumber || 0) - (b.discNumber || 0);
+            if (a.trackNumber !== b.trackNumber) return (a.trackNumber || 0) - (b.trackNumber || 0);
+            return a.title.localeCompare(b.title);
+          })
+        : state.songs;
       
       const shouldInitQueue = state.queue.length === 0;
       const mixes = generateSmartMixes(updatedSongs);
@@ -305,12 +325,13 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           } else {
               await libraryService.deletePlaylist(playlistId);
           }
+          // Only update state after successful deletion
+          set((state) => ({
+            playlists: state.playlists.filter(p => p.id !== playlistId)
+          }));
       } catch (e) {
           console.error('Failed to delete playlist:', e);
       }
-      set((state) => ({
-        playlists: state.playlists.filter(p => p.id !== playlistId)
-      }));
   },
 
   refreshSmartMixes: () => set((state) => ({
@@ -714,6 +735,13 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   pollScanStatus: async () => {
       const { backendAvailable } = get();
       if (!backendAvailable) return;
+
+      // Prevent multiple concurrent polling chains
+      if (isPollingActive) {
+          console.log('🔄 Poll already active, skipping duplicate');
+          return;
+      }
+      isPollingActive = true;
       
       console.log('🔄 Starting scan status polling...');
 
@@ -750,6 +778,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 
                   // Scan complete - reload library
                   console.log('✅ Scan complete detected via polling, resetting UI...');
+                  isPollingActive = false;
                   set({ isScanning: false, scanProgress: '' });
                   
                   // Refresh songs from backend
@@ -764,6 +793,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               }
           } catch (e) {
               console.error("Error polling scan status", e);
+              isPollingActive = false;
               set({ isScanning: false, scanProgress: '' });
           }
       };

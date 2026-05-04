@@ -113,6 +113,7 @@ type Streamer struct {
 	sessionManager *SessionManager          // Session for Spotify authentication
 	activeStreams  map[string]*ActiveStream // Track active streams by request ID
 	mu             sync.RWMutex             // Protects activeStreams
+	maxConcurrent  int                      // Maximum concurrent streams allowed
 }
 
 // NewStreamer creates a new Spotify streamer.
@@ -129,6 +130,7 @@ func NewStreamer(sessionManager *SessionManager) *Streamer {
 	return &Streamer{
 		sessionManager: sessionManager,
 		activeStreams:  make(map[string]*ActiveStream),
+		maxConcurrent:  5,
 	}
 }
 
@@ -177,6 +179,15 @@ func (s *Streamer) StreamTrack(ctx context.Context, spotifyID string, requestID 
 // which supports seeking.
 func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string, requestID string, quality string) (*ActiveStream, error) {
 	stLog("Starting stream for track: %s (request: %s, quality: %s)", spotifyID, requestID, quality)
+
+	// Enforce concurrent stream limit
+	s.mu.RLock()
+	activeCount := len(s.activeStreams)
+	s.mu.RUnlock()
+	if activeCount >= s.maxConcurrent {
+		stLog("Too many concurrent streams (%d/%d), rejecting request: %s", activeCount, s.maxConcurrent, requestID)
+		return nil, fmt.Errorf("too many concurrent streams (max %d)", s.maxConcurrent)
+	}
 
 	// Get authenticated session
 	sess, err := s.sessionManager.GetSession()

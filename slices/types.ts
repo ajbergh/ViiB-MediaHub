@@ -70,6 +70,8 @@ export interface PlayerSlice {
   setCrossfade: (seconds: number) => void;
   setGapless: (enabled: boolean) => void;
   setNormalization: (enabled: boolean) => void;
+  setMainOutputDevice: (deviceId: string) => void;
+  setHeadphoneOutputDevice: (deviceId: string) => void;
   toggleEqPanel: () => void;
   loadAudioSettings: () => Promise<void>; // Load audio settings from backend on startup
   
@@ -166,6 +168,7 @@ export interface LibrarySlice {
   isScanning: boolean;
   scanProgress: string;
   backendAvailable: boolean;
+  isLibraryInitializing: boolean;
   scanFolders: ScanFolder[];
   
   // Likes state
@@ -382,4 +385,8 @@ export interface AIDJSlice {
   clearAIDJ: () => void;
 }
 
-export type AppState = PlayerSlice & LibrarySlice & SpotifySlice & UISlice & AIDJSlice;
+// DJ Mixer types are defined in djMixerSlice.ts to avoid circular dependencies
+// Import them when needed: import { DJMixerSlice } from './djMixerSlice';
+import type { DJMixerSlice } from './djMixerSlice';
+
+export type AppState = PlayerSlice & LibrarySlice & SpotifySlice & UISlice & AIDJSlice & DJMixerSlice;

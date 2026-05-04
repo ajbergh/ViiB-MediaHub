@@ -1,24 +1,33 @@
+/**
+ * ViiB MediaHub - Background Metadata Enrichment Hook
+ *
+ * Silently enriches albums with Spotify metadata in the background,
+ * running only when both the backend and a Spotify session are available.
+ *
+ * Features:
+ * - Processes one album every 5 seconds (Spotify API rate-limit friendly)
+ * - Also re-checks albums whose cached data has expired (> 30 days old, not found)
+ * - Backs off to 30 s on error and retries after 60 s when no albums remain
+ * - No-ops when backend is unavailable or Spotify is not authenticated
+ *
+ * Requirements:
+ * - Backend must be reachable (`backendAvailable === true`)
+ * - Spotify OAuth token must be present (`spotifyAccessToken` is set)
+ *
+ * @module hooks/useBackgroundEnrichment
+ */
+
 import { useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import api from '../services/api';
 
 /**
- * Background metadata enrichment hook.
- * 
- * Slowly processes albums that haven't been checked on Spotify yet,
- * enriching metadata in the background without impacting user experience.
- * 
- * Features:
- * - Processes one album every 5 seconds to respect rate limits
- * - Pauses when user is actively navigating or interacting
- * - Resumes automatically after idle period
- * - Also re-checks expired albums (checked > 30 days ago, not found)
+ * @internal Hook implementation — see module-level JSDoc above.
  */
 export function useBackgroundEnrichment() {
     const { fetchAlbumMetadata, backendAvailable, spotifyAccessToken } = useStore();
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const processingRef = useRef(false);
-    const idleTimeRef = useRef(0);
     
     useEffect(() => {
         // Only run if backend is available and Spotify is connected
@@ -61,29 +70,16 @@ export function useBackgroundEnrichment() {
             }
         };
         
-        // Track user activity to pause enrichment during interaction
-        const handleActivity = () => {
-            idleTimeRef.current = 0;
-        };
-        
         // Start enrichment after 10 seconds of startup
         const startupTimer = setTimeout(() => {
             processNextAlbum();
         }, 10000);
-        
-        // Add activity listeners
-        window.addEventListener('mousemove', handleActivity);
-        window.addEventListener('keydown', handleActivity);
-        window.addEventListener('click', handleActivity);
         
         return () => {
             clearTimeout(startupTimer);
             if (timerRef.current) {
                 clearTimeout(timerRef.current);
             }
-            window.removeEventListener('mousemove', handleActivity);
-            window.removeEventListener('keydown', handleActivity);
-            window.removeEventListener('click', handleActivity);
         };
     }, [backendAvailable, spotifyAccessToken, fetchAlbumMetadata]);
 }

@@ -28,9 +28,13 @@
 package db
 
 import (
+	"bytes"
+	"compress/gzip"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -586,6 +590,52 @@ func (d *DB) migrateColumns() error {
 		if _, err := d.conn.Exec(m); err != nil {
 			if !strings.Contains(err.Error(), "duplicate column") {
 				// Ignore duplicate column errors
+			}
+		}
+	}
+
+	// Migration: Create DJ waveform cache table
+	djWaveformTable := `
+	CREATE TABLE IF NOT EXISTS dj_waveform_cache (
+		song_id TEXT PRIMARY KEY,
+		duration REAL NOT NULL,
+		sample_rate INTEGER NOT NULL,
+		resolution INTEGER NOT NULL,
+		peaks_data BLOB NOT NULL,
+		peak_count INTEGER NOT NULL,
+		created_at INTEGER NOT NULL,
+		FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+	);
+	`
+	if _, err := d.conn.Exec(djWaveformTable); err != nil {
+		if !strings.Contains(err.Error(), "already exists") {
+			// Log but don't fail
+		}
+	}
+
+	// Migration: Create DJ hot cues table
+	djHotCuesTable := `
+	CREATE TABLE IF NOT EXISTS dj_hot_cues (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		song_id TEXT NOT NULL,
+		slot INTEGER NOT NULL,
+		position REAL NOT NULL,
+		label TEXT,
+		color TEXT DEFAULT '#FF5500',
+		created_at INTEGER NOT NULL,
+		FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE,
+		UNIQUE(song_id, slot)
+	);
+	CREATE INDEX IF NOT EXISTS idx_dj_hot_cues_song ON dj_hot_cues(song_id);
+	`
+	for _, stmt := range strings.Split(djHotCuesTable, ";") {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if _, err := d.conn.Exec(stmt); err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				// Log but don't fail
 			}
 		}
 	}
@@ -2400,6 +2450,34 @@ func (d *DB) SetSetting(key, value string) error {
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value
 	`, key, storeValue)
 	return err
+}
+
+// SetSettingsBatch atomically saves multiple settings in a single transaction.
+func (d *DB) SetSettingsBatch(settings map[string]string) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	for key, value := range settings {
+		storeValue := value
+		if crypto.IsSensitiveKey(key) && value != "" {
+			encrypted, err := crypto.Encrypt(value)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
+			}
+			storeValue = encrypted
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO settings (key, value) VALUES (?, ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value
+		`, key, storeValue); err != nil {
+			return fmt.Errorf("failed to save setting %s: %w", key, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // AlbumMetadata operations
@@ -4245,4 +4323,191 @@ func (d *DB) FindSongByArtistAndTitle(artist, title string) (*Song, error) {
 	}
 
 	return &s, nil
+}
+
+// ============================================================================
+// DJ Waveform Cache
+// ============================================================================
+
+// DJWaveform represents cached waveform data for DJ mode.
+type DJWaveform struct {
+	Duration   float64   // Track duration in seconds
+	SampleRate int       // Source sample rate
+	Resolution int       // Samples per peak
+	Peaks      []float64 // Normalized peak values (0-1)
+}
+
+// GetDJWaveform retrieves cached waveform data for a track.
+func (d *DB) GetDJWaveform(songID string) (*DJWaveform, error) {
+	var duration float64
+	var sampleRate, resolution, peakCount int
+	var peaksData []byte
+
+	err := d.conn.QueryRow(`
+		SELECT duration, sample_rate, resolution, peaks_data, peak_count
+		FROM dj_waveform_cache
+		WHERE song_id = ?
+	`, songID).Scan(&duration, &sampleRate, &resolution, &peaksData, &peakCount)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Decompress peaks
+	peaks, err := decompressWaveformPeaks(peaksData, peakCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decompress waveform: %w", err)
+	}
+
+	return &DJWaveform{
+		Duration:   duration,
+		SampleRate: sampleRate,
+		Resolution: resolution,
+		Peaks:      peaks,
+	}, nil
+}
+
+// SaveDJWaveform stores waveform data for a track.
+func (d *DB) SaveDJWaveform(songID string, waveform *DJWaveform) error {
+	// Compress peaks for storage
+	peaksData, err := compressWaveformPeaks(waveform.Peaks)
+	if err != nil {
+		return fmt.Errorf("failed to compress waveform: %w", err)
+	}
+
+	_, err = d.conn.Exec(`
+		INSERT OR REPLACE INTO dj_waveform_cache 
+		(song_id, duration, sample_rate, resolution, peaks_data, peak_count, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, songID, waveform.Duration, waveform.SampleRate, waveform.Resolution,
+		peaksData, len(waveform.Peaks), time.Now().Unix())
+
+	return err
+}
+
+// DeleteDJWaveform removes cached waveform data for a track.
+func (d *DB) DeleteDJWaveform(songID string) error {
+	_, err := d.conn.Exec("DELETE FROM dj_waveform_cache WHERE song_id = ?", songID)
+	return err
+}
+
+// compressWaveformPeaks compresses float peaks to bytes using gzip.
+func compressWaveformPeaks(peaks []float64) ([]byte, error) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+
+	for _, p := range peaks {
+		// Store as float32 to save space
+		if err := binary.Write(gz, binary.LittleEndian, float32(p)); err != nil {
+			gz.Close()
+			return nil, err
+		}
+	}
+
+	if err := gz.Close(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// decompressWaveformPeaks decompresses peaks from stored bytes.
+func decompressWaveformPeaks(data []byte, peakCount int) ([]float64, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer gz.Close()
+
+	peaks := make([]float64, 0, peakCount)
+	for {
+		var p float32
+		if err := binary.Read(gz, binary.LittleEndian, &p); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		peaks = append(peaks, float64(p))
+	}
+
+	return peaks, nil
+}
+
+// ============================================================================
+// DJ Hot Cues
+// ============================================================================
+
+// DJHotCue represents a hot cue point.
+type DJHotCue struct {
+	Slot     int
+	Position float64
+	Label    string
+	Color    string
+}
+
+// GetDJHotCues retrieves hot cues for a track.
+func (d *DB) GetDJHotCues(songID string) ([]DJHotCue, error) {
+	rows, err := d.conn.Query(`
+		SELECT slot, position, label, color
+		FROM dj_hot_cues
+		WHERE song_id = ?
+		ORDER BY slot
+	`, songID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hotCues []DJHotCue
+	for rows.Next() {
+		var hc DJHotCue
+		var label sql.NullString
+		if err := rows.Scan(&hc.Slot, &hc.Position, &label, &hc.Color); err != nil {
+			return nil, err
+		}
+		if label.Valid {
+			hc.Label = label.String
+		}
+		hotCues = append(hotCues, hc)
+	}
+
+	return hotCues, rows.Err()
+}
+
+// SaveDJHotCues saves hot cues for a track, replacing any existing.
+func (d *DB) SaveDJHotCues(songID string, hotCues []DJHotCue) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Delete existing hot cues
+	_, err = tx.Exec("DELETE FROM dj_hot_cues WHERE song_id = ?", songID)
+	if err != nil {
+		return err
+	}
+
+	// Insert new hot cues
+	for _, hc := range hotCues {
+		_, err = tx.Exec(`
+			INSERT INTO dj_hot_cues (song_id, slot, position, label, color, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, songID, hc.Slot, hc.Position, hc.Label, hc.Color, time.Now().Unix())
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// DeleteDJHotCue deletes a specific hot cue.
+func (d *DB) DeleteDJHotCue(songID string, slot int) error {
+	_, err := d.conn.Exec("DELETE FROM dj_hot_cues WHERE song_id = ? AND slot = ?", songID, slot)
+	return err
 }

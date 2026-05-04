@@ -12,6 +12,7 @@ require (
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-chi/cors v1.2.1
 	github.com/google/uuid v1.6.0
+	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/twoscott/gobble-fm v1.0.8

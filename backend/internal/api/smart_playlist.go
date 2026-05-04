@@ -11,10 +11,11 @@
 //
 //  3. Tier 1.5 - Mood/Activity Keyword Matching: Intercepts 85+ common mood/vibe
 //     keywords (chill, workout, focus, party, etc.) and queries by mood/energy/tempo
-//     directly, bypassing Gemini API entirely. Added 2025-01-13.
+//     directly, bypassing the LLM API entirely.
 //
-//  4. Tier 2 - Gemini AI Fallback: For complex prompts, uses Google's Gemini AI
-//     to parse intent and smart-score indexed genres.
+//  4. Tier 2 - LLM Fallback: For complex prompts, uses the configured LLM provider
+//     (Ollama, Gemini, OpenAI, Anthropic, or X.AI) to parse intent and smart-score
+//     indexed genres. Provider is selected from user settings.
 //
 // The AI DJ always uses multi-genre blending to create cross-genre playlists based
 // on the user's input query. The backend intelligently selects the best matching

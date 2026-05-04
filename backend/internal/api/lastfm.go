@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/lastfm"
@@ -99,46 +100,37 @@ func (a *API) handleSaveLastFMSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save settings (use encrypted storage for secrets)
-	if settings.APIKey != "" && !isKeyMasked(settings.APIKey) {
-		if err := a.db.SetSetting("lastfm_api_key", settings.APIKey); err != nil {
-			respondError(w, http.StatusInternalServerError, "Failed to save API key")
-			return
-		}
-	}
-
-	if settings.SharedSecret != "" {
-		if err := a.db.SetSetting("lastfm_shared_secret", settings.SharedSecret); err != nil {
-			respondError(w, http.StatusInternalServerError, "Failed to save shared secret")
-			return
-		}
-	}
-
-	if err := a.db.SetSetting("lastfm_enabled", strconv.FormatBool(settings.Enabled)); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to save enabled setting")
-		return
-	}
-
-	if settings.Username != "" {
-		if err := a.db.SetSetting("lastfm_username", settings.Username); err != nil {
-			respondError(w, http.StatusInternalServerError, "Failed to save username")
-			return
-		}
-	}
-
-	// Save enrichment source preference
+	// Validate enrichment source before saving anything
 	if settings.EnrichmentSource != "" {
-		// Validate enrichment source value
 		switch settings.EnrichmentSource {
 		case EnrichmentSourceAI, EnrichmentSourceLastFM, EnrichmentSourceHybrid:
-			if err := a.db.SetSetting("enrichment_source", string(settings.EnrichmentSource)); err != nil {
-				respondError(w, http.StatusInternalServerError, "Failed to save enrichment source")
-				return
-			}
+			// valid
 		default:
 			respondError(w, http.StatusBadRequest, "Invalid enrichment source. Must be 'ai', 'lastfm', or 'hybrid'")
 			return
 		}
+	}
+
+	// Build settings map for atomic batch save
+	batch := map[string]string{
+		"lastfm_enabled": strconv.FormatBool(settings.Enabled),
+	}
+	if settings.APIKey != "" && !isKeyMasked(settings.APIKey) {
+		batch["lastfm_api_key"] = settings.APIKey
+	}
+	if settings.SharedSecret != "" {
+		batch["lastfm_shared_secret"] = settings.SharedSecret
+	}
+	if settings.Username != "" {
+		batch["lastfm_username"] = settings.Username
+	}
+	if settings.EnrichmentSource != "" {
+		batch["enrichment_source"] = string(settings.EnrichmentSource)
+	}
+
+	if err := a.db.SetSettingsBatch(batch); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to save settings")
+		return
 	}
 
 	// Reinitialize the Last.FM client if enabled
@@ -292,8 +284,18 @@ func (a *API) handleLastFMEnrichSongs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Prevent concurrent enrichment runs
+	if !atomic.CompareAndSwapInt32(&a.enrichRunning, 0, 1) {
+		respondJSON(w, map[string]interface{}{
+			"message":  "Enrichment already in progress",
+			"inFlight": true,
+		})
+		return
+	}
+
 	// Start enrichment in background
 	go func() {
+		defer atomic.StoreInt32(&a.enrichRunning, 0)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 

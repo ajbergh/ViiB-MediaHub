@@ -209,6 +209,7 @@ export const Search: React.FC = () => {
                     leftIcon={<SearchIcon size={18} className="text-text-secondary" aria-hidden="true" />}
                     type="text"
                     placeholder="What do you want to feel?"
+                    aria-label="Search"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     autoFocus
