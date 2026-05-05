@@ -19,11 +19,14 @@ import { ListMusic, Plus } from 'lucide-react';
 import { ContextMenuType } from '../types';
 import { EmptyPlaylists } from '../components/EmptyState';
 import { Page, PageHeader } from '../components/ui/Page';
+import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
 export const Playlists: React.FC = () => {
   const { playlists, createPlaylist, openContextMenu } = useStore();
   const [showInput, setShowInput] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('playlists-card-cols') ?? 5));
+  const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('playlists-card-cols', String(v)); };
 
   const handleCreate = () => {
     if (newPlaylistName.trim()) {
@@ -38,12 +41,15 @@ export const Playlists: React.FC = () => {
       <PageHeader
         heading="Playlists"
         actions={
+          <div className="flex items-center gap-3">
           <button
             onClick={() => setShowInput(true)}
             className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main px-4 py-2 rounded-full font-medium transition-colors text-sm"
           >
             <Plus size={16} /> Create Playlist
           </button>
+          <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
+          </div>
         }
       />
 
@@ -66,7 +72,10 @@ export const Playlists: React.FC = () => {
       {playlists.length === 0 ? (
         <EmptyPlaylists onCreate={() => setShowInput(true)} />
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+        <div
+          className="grid gap-6"
+          style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}
+        >
             {playlists.map((pl) => (
                 <div 
                     key={pl.id} 

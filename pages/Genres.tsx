@@ -4,6 +4,7 @@ import { useStore } from '../store';
 import { Music, Search, ChevronRight, Play, Shuffle, Loader2 } from 'lucide-react';
 import { Song } from '../types';
 import { api, GenreStat } from '../services/api';
+import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
 /**
  * Genres Page Component
@@ -33,6 +34,8 @@ export const Genres: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [genres, setGenres] = useState<GenreStat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('genres-card-cols') ?? 4));
+  const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('genres-card-cols', String(v)); };
 
   useEffect(() => {
     const fetchGenres = async () => {
@@ -110,6 +113,7 @@ export const Genres: React.FC = () => {
               {genres.length} genres found in your library
             </p>
           </div>
+          <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
         </div>
 
         {/* Search */}
@@ -127,7 +131,10 @@ export const Genres: React.FC = () => {
 
       {/* Genre Grid */}
       <div className="flex-1 overflow-y-auto p-8 pt-0">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div
+          className="grid gap-4"
+          style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}
+        >
           {filteredGenres.map((genre) => (
             <div
               key={genre.name}

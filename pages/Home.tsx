@@ -33,6 +33,7 @@ import { TextInput } from '../components/ui/TextInput';
 import { Page } from '../components/ui/Page';
 import { Card } from '../components/ui/Card';
 import { SmartMixCard } from '../components/SmartMixCard';
+import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
 export const Home: React.FC = () => {
   const { songs, smartMixes, refreshSmartMixes, playSong, openContextMenu, showSmartMixes } = useStore();
@@ -41,6 +42,8 @@ export const Home: React.FC = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const carouselRef = useRef<HTMLDivElement>(null);
+  const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('home-card-cols') ?? 5));
+  const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('home-card-cols', String(v)); };
 
   const scrollCarousel = (dir: 'left' | 'right') => {
     carouselRef.current?.scrollBy({ left: dir === 'right' ? 280 : -280, behavior: 'smooth' });
@@ -289,13 +292,19 @@ export const Home: React.FC = () => {
 
       {/* Recently Added Albums */}
       <section>
-        <h2 className="text-section font-semibold mb-6">Recently Added Albums</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-section font-semibold">Recently Added Albums</h2>
+          <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
+        </div>
         {albums.length === 0 ? (
            <div className="bg-surface-2 rounded-xl p-8 text-center border border-dashed border-surface-border">
                 <p className="text-text-secondary">No albums found. Import some music in Settings to get started!</p>
            </div>
         ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+            <div
+              className="grid gap-6"
+              style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}
+            >
             {albums.slice(0, 5).map((album, idx) => (
                 <div 
                     key={idx} 

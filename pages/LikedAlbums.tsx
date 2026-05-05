@@ -32,6 +32,7 @@ import { AlbumLikeButton } from '../components/AlbumLikeButton';
 import { Page } from '../components/ui/Page';
 import { EmptyState } from '../components/EmptyState';
 import { EMPTY_STATE } from '../lib/emptyStateCopy';
+import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
 type LikedAlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc';
 
@@ -44,12 +45,18 @@ const sortLabels: Record<LikedAlbumSortOption, string> = {
 };
 
 // Define Grid Components outside to prevent re-renders
+// gridTemplateColumns driven by --card-cols CSS variable on the parent wrapper.
 const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
     <div
         ref={ref}
         {...props}
-        style={style}
-        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 pb-32"
+        style={{
+          ...style,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(var(--card-cols, 4), minmax(0, 1fr))',
+          gap: '1.5rem',
+          paddingBottom: '8rem',
+        }}
     >
         {children}
     </div>
@@ -68,6 +75,8 @@ export const LikedAlbums: React.FC = () => {
     const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
     const [sortBy, setSortBy] = useState<LikedAlbumSortOption>('recent');
     const [showSortMenu, setShowSortMenu] = useState(false);
+    const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('liked-albums-card-cols') ?? 4));
+    const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('liked-albums-card-cols', String(v)); };
 
     useEffect(() => {
         setScrollParent(document.querySelector('main'));
@@ -163,7 +172,8 @@ export const LikedAlbums: React.FC = () => {
             </div>
 
             {/* Sort Dropdown */}
-            <div className="flex justify-end mb-6">
+            <div className="flex items-center justify-end gap-3 mb-6">
+                <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
                 <div className="relative">
                     <button
                         type="button"
@@ -204,6 +214,7 @@ export const LikedAlbums: React.FC = () => {
             </div>
 
             {/* Album Grid */}
+            <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
             <VirtuosoGrid
                 useWindowScroll={false}
                 customScrollParent={scrollParent}
@@ -261,6 +272,7 @@ export const LikedAlbums: React.FC = () => {
                     );
                 }}
             />
+            </div>
         </Page>
     );
 };

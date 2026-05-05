@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ViiB MediaHub - Spotify Page
  * 
  * Spotify integration hub for browsing, streaming, and downloading from Spotify catalog.
@@ -30,6 +30,7 @@ import { spotifyTrackToSong, spotifyTracksToSongs, spotifyAlbumToSongs } from '.
 import { ContextMenuType } from '../types';
 import { Button } from '../components/ui/Button';
 import { TextInput } from '../components/ui/TextInput';
+import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
 export const Spotify: React.FC = () => {
     const navigate = useNavigate();
@@ -79,6 +80,8 @@ export const Spotify: React.FC = () => {
     const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
 
     // Download State - track which items are currently being queued
+    const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('spotify-card-cols') ?? 5));
+    const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('spotify-card-cols', String(v)); };
     const [downloadingTracks, setDownloadingTracks] = useState<Set<string>>(new Set());
     const [downloadingAlbums, setDownloadingAlbums] = useState<Set<string>>(new Set());
     const [downloadingPlaylists, setDownloadingPlaylists] = useState<Set<string>>(new Set());
@@ -923,7 +926,8 @@ export const Spotify: React.FC = () => {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-8 border-b border-surface-border">
+            <div className="flex items-center gap-2 mb-8 border-b border-surface-border">
+                <div className="flex gap-2 flex-1">
                 <Button
                     variant="ghost"
                     onClick={() => setActiveTab('search')}
@@ -971,6 +975,8 @@ export const Spotify: React.FC = () => {
                 >
                     Saved Playlists
                 </Button>
+                </div>
+                <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
             </div>
 
             {/* Search Section */}
@@ -1033,7 +1039,7 @@ export const Spotify: React.FC = () => {
                             {/* Albums - only show when albums tab selected */}
                             {searchResultTab === 'albums' && spotifyResults.albums?.items && Array.isArray(spotifyResults.albums.items) && spotifyResults.albums.items.length > 0 && (
                                 <section>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
                                         {spotifyResults.albums.items.filter((a: any) => a).map((album: any) => (
                                             <div
                                                 key={album.id}
@@ -1102,7 +1108,7 @@ export const Spotify: React.FC = () => {
                             {/* Artists - only show when artists tab selected */}
                             {searchResultTab === 'artists' && spotifyResults.artists?.items && Array.isArray(spotifyResults.artists.items) && spotifyResults.artists.items.length > 0 && (
                                 <section>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
                                         {spotifyResults.artists.items.filter((a: any) => a).map((artist: any) => (
                                             <div key={artist.id} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group">
                                                 <div className="aspect-square mb-4 relative shadow-lg rounded-full overflow-hidden">
@@ -1153,7 +1159,7 @@ export const Spotify: React.FC = () => {
                             {/* Playlists - only show when playlists tab selected */}
                             {searchResultTab === 'playlists' && spotifyResults.playlists?.items && Array.isArray(spotifyResults.playlists.items) && spotifyResults.playlists.items.length > 0 && (
                                 <section>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
                                         {spotifyResults.playlists.items.filter((p: any) => p).map((playlist: any) => (
                                             <div
                                                 key={playlist.id}
@@ -1467,7 +1473,7 @@ export const Spotify: React.FC = () => {
                             <Loader2 className="animate-spin text-brand" size={48} />
                         </div>
                     ) : savedAlbums?.items && savedAlbums.items.length > 0 ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
                             {savedAlbums.items.map((item: any) => (
                                 <div
                                     key={item.album.id}
@@ -1517,7 +1523,7 @@ export const Spotify: React.FC = () => {
                             <Loader2 className="animate-spin text-brand" size={48} />
                         </div>
                     ) : savedPlaylists?.items && savedPlaylists.items.length > 0 ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
                             {savedPlaylists.items.map((playlist: any) => (
                                 <div
                                     key={playlist.id}

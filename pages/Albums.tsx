@@ -26,6 +26,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Menu, MenuItem } from '../components/ui/Menu';
 import { Page, PageHeader } from '../components/ui/Page';
+import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
 type AlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc' | 'songs-desc' | 'songs-asc';
 
@@ -40,12 +41,18 @@ const sortLabels: Record<AlbumSortOption, string> = {
 };
 
 // Define Grid Components outside to prevent re-renders
+// gridTemplateColumns is driven by the --card-cols CSS variable set on the parent wrapper.
 const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
   <div
     ref={ref}
     {...props}
-    style={style}
-    className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 pb-32"
+    style={{
+      ...style,
+      display: 'grid',
+      gridTemplateColumns: 'repeat(var(--card-cols, 4), minmax(0, 1fr))',
+      gap: '1.5rem',
+      paddingBottom: '8rem',
+    }}
   >
     {children}
   </div>
@@ -64,6 +71,8 @@ export const Albums: React.FC = () => {
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
   const [sortBy, setSortBy] = useState<AlbumSortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('albums-card-cols') ?? 4));
+  const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('albums-card-cols', String(v)); };
 
   useEffect(() => {
     setScrollParent(document.querySelector('main'));
@@ -116,6 +125,8 @@ export const Albums: React.FC = () => {
           heading="Albums"
           subtitle={`${albums.length} albums`}
           actions={
+            <div className="flex items-center gap-3">
+              <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
             <div className="relative">
           <Button
             variant="secondary"
@@ -155,12 +166,14 @@ export const Albums: React.FC = () => {
                     </>
                 )}
             </div>
+            </div>
                 }
               />
 
         {sortedAlbums.length === 0 ? (
             <EmptyAlbums />
         ) : (
+            <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
             <VirtuosoGrid
                 useWindowScroll={false}
                 customScrollParent={scrollParent}
@@ -217,6 +230,7 @@ export const Albums: React.FC = () => {
                     );
                 }}
             />
+            </div>
         )}
     </Page>
   );

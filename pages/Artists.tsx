@@ -21,14 +21,21 @@ import { ContextMenuType } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { EmptyArtists } from '../components/EmptyState';
 import { Page, PageHeader } from '../components/ui/Page';
+import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
 // Define Grid Components
+// gridTemplateColumns driven by --card-cols CSS variable on the parent wrapper.
 const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
   <div
     ref={ref}
     {...props}
-    style={style}
-    className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 pb-32"
+    style={{
+      ...style,
+      display: 'grid',
+      gridTemplateColumns: 'repeat(var(--card-cols, 5), minmax(0, 1fr))',
+      gap: '1.5rem',
+      paddingBottom: '8rem',
+    }}
   >
     {children}
   </div>
@@ -47,6 +54,8 @@ export const Artists: React.FC = () => {
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
   const fetchedArtistsRef = useRef<Set<string>>(new Set());
   const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('artists-card-cols') ?? 5));
+  const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('artists-card-cols', String(v)); };
 
   // Debug: Log artistMetadata on first render and when it changes
   useEffect(() => {
@@ -108,11 +117,14 @@ export const Artists: React.FC = () => {
 
   return (
     <Page withPlayerPadding={false}>
-        <PageHeader heading="Artists" subtitle={`${artists.length} artists`} />
+        <PageHeader heading="Artists" subtitle={`${artists.length} artists`}
+          actions={<CardSizeSlider value={cardCols} onChange={handleCardColsChange} />}
+        />
 
         {artists.length === 0 ? (
             <EmptyArtists />
         ) : (
+             <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
              <VirtuosoGrid
                 useWindowScroll={false}
                 customScrollParent={scrollParent}
@@ -160,6 +172,7 @@ export const Artists: React.FC = () => {
                     );
                 }}
              />
+             </div>
         )}
     </Page>
   );
