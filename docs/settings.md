@@ -12,6 +12,7 @@ The Settings page provides full configuration for all aspects of ViiB MediaHub.
 |---|---|
 | [Backend Status](#backend-status) | View connection to the Go backend |
 | [Library](#library) | Scan folders, trigger scans, reset library |
+| [Personalization](#personalization) | Home layout and Smart Mix visibility |
 | [Audio](#audio) | Crossfade, gapless, normalization, EQ, visualizer |
 | [Audio Output Devices](#audio-output-devices) | Main and headphone output routing |
 | [Spotify](#spotify) | OAuth credentials, download location, concurrency |
@@ -43,6 +44,19 @@ Triggers an immediate incremental scan of all configured folders. Progress is st
 ### Reset Library
 
 **Destructive action.** Removes all songs, albums, and play history from the database, then re-scans. Use this to recover from a corrupted library state or if you have renamed all your files.
+
+---
+
+## Personalization
+
+Controls how the [Home](home.md) page is presented.
+
+| Setting | Description |
+|---|---|
+| Home Layout | Choose **Music Shelves**, **Cover Wall**, or **Compact Dashboard** |
+| Show Smart Mixes | Show or hide auto-generated Smart Mix sections on Home |
+
+Home layout choices persist across reloads.
 
 ---
 

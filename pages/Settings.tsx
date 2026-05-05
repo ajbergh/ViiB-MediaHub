@@ -37,12 +37,34 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker } from 'lucide-react';
 import { useStore } from '../store';
-import { VisualizerMode, Song } from '../types';
+import { HomeLayoutVariant, VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
 import { api } from '../services/api';
 import { Button } from '../components/ui/Button';
 import { Page } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
+
+const HOME_LAYOUT_OPTIONS: Array<{
+  value: HomeLayoutVariant;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'shelves',
+    label: 'Music Shelves',
+    description: 'Spotlight feature with album, artist, and mix shelves.',
+  },
+  {
+    value: 'coverWall',
+    label: 'Cover Wall',
+    description: 'Large album-art collage hero with shelves below.',
+  },
+  {
+    value: 'dashboard',
+    label: 'Compact Dashboard',
+    description: 'Dense personalized rows for faster browsing.',
+  },
+];
 
 /**
  * AudioOutputSettings - DJ Mode audio output device configuration
@@ -241,6 +263,7 @@ export const Settings: React.FC = () => {
       // Milkdrop settings
       milkdropSettings, setMilkdropSettings, milkdropPresetKeys,
       showSmartMixes, setShowSmartMixes,
+      homeLayoutVariant, setHomeLayoutVariant,
       spotifyClientId, spotifyClientSecret, setSpotifyCredentials,
       streamingEnabled, streamingQuality, setStreamingEnabled, setStreamingQuality,
       preferLocalPlayback, setPreferLocalPlayback,
@@ -946,7 +969,40 @@ export const Settings: React.FC = () => {
             <h2 className="text-lg font-bold text-text-main">Personalization</h2>
         </div>
         
-        <div className="flex items-center justify-between">
+        <div className="space-y-6">
+          <div>
+            <div className="mb-3">
+                <h3 className="font-medium text-text-main">Home Layout</h3>
+                <p className="text-sm text-text-subtle">Choose the Home screen experience.</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3" role="radiogroup" aria-label="Home layout">
+              {HOME_LAYOUT_OPTIONS.map((option) => {
+                const selected = homeLayoutVariant === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setHomeLayoutVariant(option.value)}
+                    className={`text-left rounded-lg border p-4 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2 ${
+                      selected
+                        ? 'border-brand bg-brand/10 ring-1 ring-brand/50'
+                        : 'border-surface-border bg-surface-1 hover:border-white/20 hover:bg-surface-hover'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-text-main">{option.label}</span>
+                      {selected && <span className="text-xs font-semibold uppercase tracking-wide text-brand">Selected</span>}
+                    </div>
+                    <p className="mt-2 text-sm text-text-subtle">{option.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-surface-hover pt-6">
             <div>
                 <h3 className="font-medium text-text-main">Show Smart Mixes</h3>
                 <p className="text-sm text-text-subtle">Display auto-generated mixes on the Home screen</p>
@@ -957,6 +1013,7 @@ export const Settings: React.FC = () => {
             >
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${showSmartMixes ? 'right-1' : 'left-1'}`}></div>
             </div>
+          </div>
         </div>
       </section>
 

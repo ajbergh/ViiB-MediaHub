@@ -167,6 +167,8 @@ export enum ContextMenuType {
   QUEUE_ITEM = 'QUEUE_ITEM'
 }
 
+export type HomeLayoutVariant = 'shelves' | 'coverWall' | 'dashboard';
+
 // --- Audio Enhancement Types ---
 
 /**
