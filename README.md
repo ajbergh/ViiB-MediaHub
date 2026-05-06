@@ -14,6 +14,9 @@
   <a href="#technology-stack">Tech Stack</a>
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/home.png" alt="ViiB MediaHub Home" width="75%"/>
+</p>
 ---
 
 ## Overview

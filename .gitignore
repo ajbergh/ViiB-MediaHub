@@ -42,3 +42,4 @@ backend/cmd/viib/dist/
 .github/
 .*/*
 /output/*
+/docs_internal/*

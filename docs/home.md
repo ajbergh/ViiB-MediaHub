@@ -6,61 +6,63 @@ The Home page is the landing screen that appears when ViiB MediaHub starts. It g
 
 ---
 
-## Layout
+## Layout Options
 
-```
-┌────────────────────────────────────────────────────────────┐
-│  Search bar                                                │
-├──────────────────────────┬─────────────────────────────────┤
-│  Featured Mix (hero card)│  Smart Mixes carousel ──────► │
-├──────────────────────────┴─────────────────────────────────┤
-│  Stats: Total Songs · Albums · Artists                     │
-├────────────────────────────────────────────────────────────┤
-│  Recently Played (last 20 tracks with relative timestamps) │
-├────────────────────────────────────────────────────────────┤
-│  Recently Added (newest library additions)                 │
-├────────────────────────────────────────────────────────────┤
-│  Top Artists (most listened)                               │
-└────────────────────────────────────────────────────────────┘
-```
+The Home page has three selectable layouts. Change the active layout in [Settings](settings.md) → **Personalization**.
+
+| Layout | Best for | What appears first |
+|---|---|---|
+| **Music Shelves** | Balanced browsing | Search, spotlight, quick tiles, albums, artists |
+| **Cover Wall** | Artwork-forward browsing | Album-art mosaic hero with search and shelves below |
+| **Compact Dashboard** | Dense library navigation | Search, jump-back-in tiles, top albums, top artists |
 
 ---
 
 ## Sections
 
 ### Search Bar
-- Pressing **Enter** while the search bar is focused navigates to the [Search](search.md) page with your query pre-filled.
-- The search bar is a quick entry point — full search is on the dedicated Search page.
+- Available in every Home layout.
+- Pressing **Enter** while focused navigates to the [Search](search.md) page with your query pre-filled.
+- The arrow button opens the Search page for mouse/touch users.
+- The full [Search](search.md) page supports result tabs and filtering.
 
-### Featured Mix
-- Displays the first available Smart Mix as a large hero card with a gradient background derived from the mix's metadata.
-- Clicking the card plays the Smart Mix immediately or navigates to its detail view.
-- Hidden when no Smart Mixes have been generated.
+### Spotlight
+- Appears in the **Music Shelves** layout.
+- Features a recent album, top artist, or Smart Mix depending on available library data.
+- The card opens detail view; the Play button starts playback without navigating.
 
-### Smart Mixes Carousel
+### Cover Wall
+- Appears in the **Cover Wall** layout.
+- Uses real album artwork when available, with gradient fallbacks for missing covers.
+- Falls back to the standard spotlight treatment if the library does not have enough album artwork.
+
+### Jump Back In
+- Appears most prominently in the **Compact Dashboard** layout.
+- Shows quick tiles from recent playback or recent albums.
+
+### Smart Mixes
 - Horizontally scrollable row of all available Smart Mixes.
-- Left/right arrows appear on hover to scroll the carousel.
 - Each card shows the mix name, track count, and a color gradient.
-- Clicking a card plays it or opens [Smart Mix Detail](smart-playlists.md).
-- The carousel is hidden when `showSmartMixes` is disabled in settings.
+- Clicking a card opens [Smart Mix Detail](smart-playlists.md); the Play button starts playback.
+- Hidden when `showSmartMixes` is disabled in Settings.
 
-### Stats Cards
+### Library Snapshot
 - **Total Songs** — total tracks in the library.
 - **Albums** — total distinct albums.
 - **Artists** — total distinct artists.
-- Each card is clickable and navigates to the corresponding library section.
+- Each compact card is clickable and navigates to the corresponding library section.
 
 ### Recently Played
-- Last 20 tracks played, sorted by most recent first.
+- Recent tracks played, sorted by most recent first.
 - Each row shows album art, title, artist, and a relative timestamp (e.g., "2h ago", "Yesterday").
 - Click a row to play the track.
 
-### Recently Added
-- Newest tracks added to the library (sorted by file addition date).
+### Recently Added Albums
+- Newest albums added to the library.
 - Useful for seeing what a recent scan picked up.
 
 ### Top Artists
-- Artists ranked by total play count.
+- Artists ranked by library depth or listening activity, depending on the active layout.
 - Click an artist to open their [Artist Detail](artists.md) page.
 
 ---

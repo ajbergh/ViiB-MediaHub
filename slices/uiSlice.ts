@@ -7,6 +7,7 @@
  * - isQueueOpen: Queue panel visibility
  * - isNowPlayingOpen: Full-screen now playing view
  * - showSmartMixes: Smart mix section visibility on home
+ * - homeLayoutVariant: Selected Home screen redesign layout
  * - hasCompletedSetup: First-launch wizard completion flag
  * - isPartyMode: Fullscreen immersive mode with minimal UI
  * - logs: Application log entries for debugging
@@ -34,6 +35,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   isQueueOpen: false,
   isNowPlayingOpen: false,
   showSmartMixes: true,
+  homeLayoutVariant: 'shelves',
   hasCompletedSetup: false,
   isPartyMode: false,
   logs: [],
@@ -54,6 +56,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   setQueueOpen: (isOpen) => set({ isQueueOpen: isOpen }),
   setNowPlayingOpen: (isOpen) => set({ isNowPlayingOpen: isOpen }),
   setShowSmartMixes: (show) => set({ showSmartMixes: show }),
+  setHomeLayoutVariant: (variant) => set({ homeLayoutVariant: variant }),
   setHasCompletedSetup: (completed) => set({ hasCompletedSetup: completed }),
   
   setPartyMode: (enabled) => {

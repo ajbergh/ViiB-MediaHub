@@ -22,7 +22,7 @@
  */
 
 import React from 'react';
-import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType, MilkdropSettings } from '../types';
+import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType, MilkdropSettings, HomeLayoutVariant } from '../types';
 import { SmartPlaylistFilter, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
 
 export interface PlayerSlice {
@@ -287,6 +287,7 @@ export interface UISlice {
   isQueueOpen: boolean;
   isNowPlayingOpen: boolean;
   showSmartMixes: boolean;
+  homeLayoutVariant: HomeLayoutVariant;
   hasCompletedSetup: boolean;
   isPartyMode: boolean; // Fullscreen immersive mode with minimal UI
   contextMenu: {
@@ -307,6 +308,7 @@ export interface UISlice {
   setQueueOpen: (isOpen: boolean) => void;
   setNowPlayingOpen: (isOpen: boolean) => void;
   setShowSmartMixes: (show: boolean) => void;
+  setHomeLayoutVariant: (variant: HomeLayoutVariant) => void;
   setHasCompletedSetup: (completed: boolean) => void;
   setPartyMode: (enabled: boolean) => void;
   togglePartyMode: () => void;

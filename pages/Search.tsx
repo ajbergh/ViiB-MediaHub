@@ -206,6 +206,7 @@ export const Search: React.FC = () => {
             
             <div className="w-full max-w-3xl mb-6 flex-shrink-0">
                 <TextInput
+                    className="w-full"
                     leftIcon={<SearchIcon size={18} className="text-text-secondary" aria-hidden="true" />}
                     type="text"
                     placeholder="What do you want to feel?"
