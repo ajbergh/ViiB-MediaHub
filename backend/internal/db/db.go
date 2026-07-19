@@ -737,7 +737,6 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 		var playCount, lastPlayed, skipCount, bpm, instrumental, moodAnalyzedAt sql.NullInt64
 		var liked, likedAt, lastFMListeners, lastFMPlaycount, lastFMEnrichedAt sql.NullInt64
 		var replayGainDB, replayPeak sql.NullFloat64
-		var replayGainDB, replayPeak sql.NullFloat64
 		if err := rows.Scan(
 			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist, &trackNum, &discNum,
 			&genreJSON, &year, &originalYear, &yearUncertain, &yearAnalyzedAt,
@@ -859,8 +858,6 @@ func (d *DB) SaveSong(s *Song) error {
 			duration = excluded.duration,
 			replay_gain_db = excluded.replay_gain_db,
 			replay_peak = excluded.replay_peak,
-			replay_gain_db = excluded.replay_gain_db,
-			replay_peak = excluded.replay_peak,
 			cover_path = excluded.cover_path,
 			file_path = excluded.file_path,
 			play_count = excluded.play_count,
@@ -906,8 +903,6 @@ func (d *DB) SaveSongs(songs []Song) error {
 			END,
 			year = excluded.year,
 			duration = excluded.duration,
-			replay_gain_db = excluded.replay_gain_db,
-			replay_peak = excluded.replay_peak,
 			replay_gain_db = excluded.replay_gain_db,
 			replay_peak = excluded.replay_peak,
 			cover_path = excluded.cover_path,
