@@ -6,10 +6,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,15 +48,21 @@ jobs:
           cd backend
           go test ./...
           go vet ./...
-      - name: Package changed source files
-        shell: bash
+      - name: Commit validated source set
         run: |
-          mkdir -p final-cleanup-artifact
-          git diff --name-status > final-cleanup-artifact/status.txt
-          git diff --binary > final-cleanup-artifact/final-cleanup.patch
-          git diff --name-only --diff-filter=ACMRT -z | tar --null -T - -czf final-cleanup-artifact/files.tar.gz
-      - uses: actions/upload-artifact@v4
-        with:
-          name: viib-final-cleanup
-          path: final-cleanup-artifact
-          retention-days: 7
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/cmd/viib/main.go \
+            backend/cmd/wails/main.go \
+            backend/internal/api/api.go \
+            backend/internal/api/download_manager.go \
+            backend/internal/mediafetch/mediafetch.go \
+            backend/internal/scanner/lifecycle.go \
+            backend/internal/scanner/scanner.go \
+            backend/internal/server/server.go \
+            services/backendService.ts \
+            store.ts \
+            types.ts
+          git commit -m "Complete lifecycle identity and SSRF remediation"
+          git push origin HEAD:agent/full-remediation
