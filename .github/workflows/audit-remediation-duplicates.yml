@@ -28,7 +28,7 @@ jobs:
           import subprocess
 
           changed = subprocess.check_output(
-              ['git', 'diff', '--name-only', 'main...HEAD'], text=True
+              ['git', 'diff', '--name-only', 'origin/main...HEAD'], text=True
           ).splitlines()
           extensions = {'.go', '.ts', '.tsx', '.js', '.mjs', '.yml', '.yaml'}
           report = []
