@@ -385,7 +385,7 @@ export const useAudioPlayer = () => {
                 songDuration: currentSong.duration || 0,
                 accumulatedPlayTime: 0,
                 lastMediaTime: 0,
-                context: currentSong.playbackContext || 'queue',
+                context: listenTrackingRef.current.context,
                 isTracking: true
             };
             
