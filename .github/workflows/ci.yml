@@ -6,80 +6,14 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-remediation:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out current branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
-          fetch-depth: 0
-          persist-credentials: true
-          show-progress: false
-      - name: Configure Python
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Apply deterministic remediation
-        id: remediation
-        continue-on-error: true
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        shell: bash
-        run: |
-          python scripts/fix_full_reliability_validation.py
-          if [[ -f docs/FULL_RELIABILITY_REMEDIATION_STATUS.md ]]; then
-            echo "Remediation implementation is already present; skipping generation."
-            exit 0
-          fi
-          rm -f docs/REMEDIATION_RUN_ERROR.txt
-          python scripts/repair_full_reliability_remediation.py
-          python scripts/apply_full_reliability_remediation.py > /tmp/remediation.log 2>&1
-      - name: Persist remediation diagnostics
-        if: ${{ steps.remediation.outcome == 'failure' }}
-        shell: bash
-        run: |
-          cp /tmp/remediation.log /tmp/remediation-preserved.txt
-          git reset --hard HEAD
-          git clean -fd
-          mkdir -p docs
-          cp /tmp/remediation-preserved.txt docs/REMEDIATION_RUN_ERROR.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/REMEDIATION_RUN_ERROR.txt
-          git commit -m "Record remediation runner failure [skip agent]"
-          git push origin HEAD:${{ github.head_ref }}
-      - name: Fail unsuccessful remediation
-        if: ${{ steps.remediation.outcome == 'failure' }}
-        run: exit 1
-      - name: Format Go sources
-        if: ${{ steps.remediation.outcome == 'success' && github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        working-directory: backend
-        run: gofmt -w internal/api internal/db internal/scanner
-      - name: Commit implementation to PR branch
-        if: ${{ steps.remediation.outcome == 'success' && github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No remediation changes to commit"
-          else
-            git commit -m "Fix reliability remediation validation [skip agent]"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
-
   frontend:
-    needs: [apply-remediation]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
           show-progress: false
       - uses: actions/setup-node@v4
         with:
@@ -104,7 +38,6 @@ jobs:
       - run: npm audit --audit-level=high
 
   backend:
-    needs: [apply-remediation]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -112,7 +45,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
           show-progress: false
       - uses: actions/setup-go@v5
         with:
@@ -164,7 +96,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
           show-progress: false
       - uses: actions/setup-node@v4
         with:
