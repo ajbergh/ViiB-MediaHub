@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   remediate:
@@ -20,6 +20,11 @@ jobs:
           ref: agent/full-remediation
           fetch-depth: 0
 
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Apply source migration
         shell: bash
         run: |
@@ -28,30 +33,38 @@ jobs:
           sed -i 's/required: bool = True/required: bool = False/g' scripts/apply_full_remediation.py
           sed -i 's/if count > 1:/if False and count > 1:/' scripts/apply_full_remediation.py
           python3 scripts/apply_full_remediation.py
+          python3 scripts/remediation_postprocess.py
           git checkout -- scripts/apply_full_remediation.py
 
-      - name: Best-effort formatting and lockfile refresh
-        shell: bash
+      - name: Format and refresh lockfile
         run: |
-          : > format-output.txt
-          while IFS= read -r -d '' file; do
-            gofmt -w "$file" 2>>format-output.txt || echo "gofmt failed: $file" >>format-output.txt
-          done < <(find backend -name '*.go' -print0)
-          npm install --package-lock-only --ignore-scripts >>format-output.txt 2>&1 || echo "lockfile refresh failed" >>format-output.txt
+          find backend -name '*.go' -print0 | xargs -0 gofmt -w
+          npm install --package-lock-only --ignore-scripts
+          rm -f remediation-output.txt format-output.txt
 
-      - name: Package changed files
-        shell: bash
+      - name: Commit implementation
         run: |
-          mkdir -p remediation-artifact
-          git add -A
-          git diff --cached --name-status > remediation-artifact/status.txt
-          git diff --cached --binary > remediation-artifact/remediation.patch
-          git diff --cached --name-only --diff-filter=ACMRT -z | tar --null -T - -czf remediation-artifact/files.tar.gz
-          cp format-output.txt remediation-artifact/format-output.txt
+          git add -A -- . ':(exclude).github/workflows/**'
+          if ! git diff --cached --quiet; then
+            git commit -m "Implement full engineering remediation"
+            git push origin HEAD:agent/full-remediation
+          fi
 
-      - name: Upload remediation bundle
-        uses: actions/upload-artifact@v4
+      - uses: actions/setup-node@v4
         with:
-          name: viib-full-remediation-bundle
-          path: remediation-artifact
-          retention-days: 7
+          node-version: '20'
+          cache: npm
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.2'
+          cache-dependency-path: backend/go.sum
+
+      - name: Validate frontend
+        run: |
+          npm ci
+          npm run check
+
+      - name: Validate backend
+        working-directory: backend
+        run: go test ./...
