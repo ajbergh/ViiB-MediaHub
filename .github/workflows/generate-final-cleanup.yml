@@ -1,0 +1,61 @@
+name: Generate Final Cleanup
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/full-remediation
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.2'
+          cache-dependency-path: backend/go.sum
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libayatana-appindicator3-dev
+      - name: Generate and format cleanup
+        run: |
+          python3 scripts/final_remediation_cleanup.py
+          find backend -name '*.go' -print0 | xargs -0 gofmt -w
+      - name: Prepare embedded test fixtures
+        working-directory: backend
+        run: |
+          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build
+          printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
+          cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
+      - name: Validate generated cleanup
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          cd backend
+          go test ./...
+          go vet ./...
+      - name: Package changed source files
+        shell: bash
+        run: |
+          mkdir -p final-cleanup-artifact
+          git diff --name-status > final-cleanup-artifact/status.txt
+          git diff --binary > final-cleanup-artifact/final-cleanup.patch
+          git diff --name-only --diff-filter=ACMRT -z | tar --null -T - -czf final-cleanup-artifact/files.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: viib-final-cleanup
+          path: final-cleanup-artifact
+          retention-days: 7
