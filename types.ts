@@ -45,6 +45,8 @@ export interface Song {
   yearUncertain?: boolean; // True if year may be remaster date
   yearAnalyzedAt?: number; // timestamp of year analysis
   duration: number; // in seconds
+  replayGainDb?: number;
+  replayPeak?: number;
   url: string; // Ephemeral Blob URL or streaming URL
   fileHandle?: FileSystemFileHandle; // Persisted handle
   coverUrl?: string;

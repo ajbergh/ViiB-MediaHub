@@ -33,6 +33,7 @@ import { SpotifyPlaylistDetail } from './pages/SpotifyPlaylistDetail';
 import { Downloads } from './pages/Downloads';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
+import { Duplicates } from './pages/Duplicates';
 import { Stats } from './pages/Stats';
 import { SmartMixDetail } from './pages/SmartMixDetail';
 import { DJModeV2 } from './pages/DJModeV2';
@@ -175,6 +176,7 @@ const App: React.FC = () => {
           <Route path="/downloads" element={<Downloads />} />
           <Route path="/search" element={<Search />} />
           <Route path="/stats" element={<Stats />} />
+          <Route path="/duplicates" element={<Duplicates />} />
           <Route path="/dj" element={<DJModeV2 />} />
           <Route path="/dj-v2" element={<Navigate to="/dj" replace />} />
           <Route path="/settings" element={<Settings />} />

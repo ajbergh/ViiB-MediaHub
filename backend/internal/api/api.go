@@ -127,6 +127,9 @@ func (a *API) Routes() chi.Router {
 	r.Post("/smart-playlist", a.handleGenerateSmartPlaylist)
 	r.Delete("/songs", a.clearSongs)
 	r.Post("/library/enrich-genres", a.enrichGenres)
+	r.Get("/library/duplicates", a.getDuplicateGroups)
+	r.Get("/library/duplicates/ignored", a.getIgnoredSongs)
+	r.Post("/library/duplicates/ignore", a.setDuplicateIgnored)
 	r.Get("/library/enrich-genres/stream", a.enrichGenresStream)       // SSE streaming enrichment
 	r.Get("/library/enrich-all/stream", a.enrichAllMetadataStream)     // SSE unified enrichment (genres+mood+years)
 	r.Post("/library/enrich-mood", a.enrichMood)                       // Mood/energy enrichment
@@ -150,6 +153,8 @@ func (a *API) Routes() chi.Router {
 
 	// Playlist endpoints
 	r.Get("/playlists", a.getPlaylists)
+	r.Post("/playlists/import/m3u", a.importPlaylistM3U)
+	r.Get("/playlists/{id}/export.m3u", a.exportPlaylistM3U)
 	r.Post("/playlists", a.createPlaylist)
 	r.Put("/playlists/{id}", a.updatePlaylist)
 	r.Delete("/playlists/{id}", a.deletePlaylist)

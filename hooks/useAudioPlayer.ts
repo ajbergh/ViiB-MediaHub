@@ -26,7 +26,7 @@ import { useStore } from '../store';
 import { audioEngine } from '../lib/audio';
 import { StreamingErrorType } from '../slices/types';
 import { PlaybackContext } from '../types';
-import { isActivePlaybackEvent, normalizeCrossfadeDuration } from '../lib/playbackLifecycle';
+import { calculateReplayGain, isActivePlaybackEvent, normalizeCrossfadeDuration } from '../lib/playbackLifecycle';
 
 // Pre-buffer threshold: start preloading next track when X seconds remain
 const PRELOAD_THRESHOLD_SECONDS = 15;
@@ -119,6 +119,13 @@ export const useAudioPlayer = () => {
     useEffect(() => {
         audioEngine.setVolume(volume);
     }, [volume]);
+
+    useEffect(() => {
+        const gain = audioSettings.normalization
+            ? calculateReplayGain(currentSong?.replayGainDb, currentSong?.replayPeak)
+            : 1;
+        audioEngine.setNormalizationGain(gain);
+    }, [audioSettings.normalization, currentSong?.id, currentSong?.replayGainDb, currentSong?.replayPeak]);
 
     useEffect(() => {
         const applySink = async (element: HTMLAudioElement | null) => {

@@ -31,3 +31,14 @@ export class ManagedObjectUrlRegistry {
     this.urls.clear();
   }
 }
+
+
+export const calculateReplayGain = (gainDb?: number, peak?: number): number => {
+  if (!Number.isFinite(gainDb)) return 1;
+  const clampedDb = Math.max(-24, Math.min(12, gainDb ?? 0));
+  let linear = Math.pow(10, clampedDb / 20);
+  if (Number.isFinite(peak) && (peak ?? 0) > 0 && linear * (peak ?? 0) > 1) {
+    linear = 1 / (peak ?? 1);
+  }
+  return Math.max(0.05, Math.min(4, linear));
+};

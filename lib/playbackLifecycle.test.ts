@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ManagedObjectUrlRegistry, normalizeCrossfadeDuration } from './playbackLifecycle';
+import { calculateReplayGain, ManagedObjectUrlRegistry, normalizeCrossfadeDuration } from './playbackLifecycle';
 
 describe('normalizeCrossfadeDuration', () => {
   it('preserves an explicit zero', () => {
@@ -20,5 +20,18 @@ describe('ManagedObjectUrlRegistry', () => {
     registry.release(url);
     expect(create).toHaveBeenCalledOnce();
     expect(revoke).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('calculateReplayGain', () => {
+  it('converts dB to linear gain', () => {
+    expect(calculateReplayGain(-6)).toBeCloseTo(0.501, 2);
+  });
+  it('limits gain to prevent clipping when peak metadata is present', () => {
+    expect(calculateReplayGain(6, 0.8)).toBeCloseTo(1.25, 4);
+  });
+  it('returns unity without metadata', () => {
+    expect(calculateReplayGain()).toBe(1);
   });
 });

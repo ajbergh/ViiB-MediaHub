@@ -69,6 +69,8 @@ export function apiSongToSong(apiSong: ApiSong): Song {
     yearUncertain: apiSong.yearUncertain,
     yearAnalyzedAt: apiSong.yearAnalyzedAt,
     duration: apiSong.duration,
+    replayGainDb: apiSong.replayGainDb,
+    replayPeak: apiSong.replayPeak,
     url: apiSong.filePath, // API URL like /api/audio/{id}
     coverUrl: apiSong.coverPath, // API URL like /api/cover/{id}
     addedAt: apiSong.addedAt,

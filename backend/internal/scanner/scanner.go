@@ -672,6 +672,12 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 	result := &ScanResult{}
 	var songs []db.Song
 	var scannedPaths []string
+	ignoredPathSet := make(map[string]struct{})
+	if ignoredPaths, err := s.db.GetIgnoredFilePaths(); err == nil {
+		for _, ignoredPath := range ignoredPaths {
+			ignoredPathSet[filepath.Clean(ignoredPath)] = struct{}{}
+		}
+	}
 	fileCount := 0
 	const batchSize = 50
 
@@ -695,6 +701,9 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 
 		ext := strings.ToLower(filepath.Ext(path))
 		if !supportedExtensions[ext] {
+			return nil
+		}
+		if _, ignored := ignoredPathSet[filepath.Clean(path)]; ignored {
 			return nil
 		}
 
@@ -731,20 +740,22 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 		song.CoverPath = coverPath
 
 		dbSong := db.Song{
-			ID:          song.ID,
-			Title:       song.Title,
-			Artist:      song.Artist,
-			Album:       song.Album,
-			AlbumArtist: song.AlbumArtist,
-			TrackNumber: song.TrackNumber,
-			DiscNumber:  song.DiscNumber,
-			Genre:       song.Genre,
-			Year:        song.Year,
-			Duration:    song.Duration,
-			FilePath:    path,
-			CoverPath:   song.CoverPath,
-			AddedAt:     time.Now().UnixMilli(),
-			FileHash:    song.FileHash,
+			ID:           song.ID,
+			Title:        song.Title,
+			Artist:       song.Artist,
+			Album:        song.Album,
+			AlbumArtist:  song.AlbumArtist,
+			TrackNumber:  song.TrackNumber,
+			DiscNumber:   song.DiscNumber,
+			Genre:        song.Genre,
+			Year:         song.Year,
+			Duration:     song.Duration,
+			ReplayGainDB: song.ReplayGainDB,
+			ReplayPeak:   song.ReplayPeak,
+			FilePath:     path,
+			CoverPath:    song.CoverPath,
+			AddedAt:      time.Now().UnixMilli(),
+			FileHash:     song.FileHash,
 		}
 
 		songs = append(songs, dbSong)
@@ -1033,20 +1044,22 @@ func (s *Scanner) enrichWithLLM() {
 
 // SongMetadata holds extracted metadata from an audio file
 type SongMetadata struct {
-	ID          string
-	Title       string
-	Artist      string
-	Album       string
-	AlbumArtist string
-	TrackNumber int
-	DiscNumber  int
-	Genre       []string
-	Year        int
-	Duration    float64
-	FilePath    string
-	CoverPath   string
-	CoverData   []byte
-	FileHash    string
+	ID           string
+	Title        string
+	Artist       string
+	Album        string
+	AlbumArtist  string
+	TrackNumber  int
+	DiscNumber   int
+	Genre        []string
+	Year         int
+	Duration     float64
+	ReplayGainDB float64
+	ReplayPeak   float64
+	FilePath     string
+	CoverPath    string
+	CoverData    []byte
+	FileHash     string
 }
 
 // extractMetadata extracts metadata from an audio file using taglib
@@ -1108,6 +1121,22 @@ func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
 			return ""
 		}
 
+		getTagFold := func(keys ...string) string {
+			for actualKey, values := range tags {
+				for _, key := range keys {
+					if strings.EqualFold(actualKey, key) && len(values) > 0 {
+						return values[0]
+					}
+				}
+			}
+			return ""
+		}
+		parseReplayValue := func(value string) float64 {
+			value = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(value, " dB"), "dB"))
+			parsed, _ := strconv.ParseFloat(value, 64)
+			return parsed
+		}
+
 		// Get basic metadata
 		song := &SongMetadata{
 			ID:       id,
@@ -1117,6 +1146,16 @@ func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
 			Album:    getTag(taglib.Album),
 			Duration: float64(props.Length) / float64(time.Second),
 			FilePath: filePath,
+		}
+
+		if value := getTagFold("REPLAYGAIN_TRACK_GAIN"); value != "" {
+			song.ReplayGainDB = parseReplayValue(value)
+		} else if value := getTagFold("R128_TRACK_GAIN"); value != "" {
+			// Opus R128 gain is stored in Q7.8 dB units.
+			song.ReplayGainDB = parseReplayValue(value) / 256
+		}
+		if value := getTagFold("REPLAYGAIN_TRACK_PEAK"); value != "" {
+			song.ReplayPeak = parseReplayValue(value)
 		}
 
 		// Year

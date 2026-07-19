@@ -25,6 +25,7 @@ import { EQ_FREQUENCIES } from "../utils";
 class AudioEngine {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private normalizationGain: GainNode | null = null;
   private analyser: AnalyserNode | null = null;
   private eqNodes: BiquadFilterNode[] = [];
   
@@ -41,6 +42,8 @@ class AudioEngine {
 
     this.masterGain = this.context.createGain();
     this.masterGain.gain.value = 1;
+    this.normalizationGain = this.context.createGain();
+    this.normalizationGain.gain.value = 1;
 
     this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = 2048;
@@ -71,8 +74,9 @@ class AudioEngine {
         // Fallback if no EQ (shouldn't happen given constant)
     }
 
-    // 3. Link Analyser to Master
-    this.analyser.connect(this.masterGain);
+    // 3. Link Analyser through track normalization to Master
+    this.analyser.connect(this.normalizationGain);
+    this.normalizationGain.connect(this.masterGain);
 
     // 4. Link Master to Dest
     this.masterGain.connect(this.context.destination);
@@ -107,6 +111,13 @@ class AudioEngine {
             this.masterGain.gain.value = vol;
           }
       }
+  }
+
+  setNormalizationGain(linearGain: number) {
+    if (!this.normalizationGain || !this.context) return;
+    const safeGain = Number.isFinite(linearGain) ? Math.max(0.05, Math.min(4, linearGain)) : 1;
+    this.normalizationGain.gain.cancelScheduledValues(this.context.currentTime);
+    this.normalizationGain.gain.setTargetAtTime(safeGain, this.context.currentTime, 0.05);
   }
 
   setEqBands(gains: number[]) {
