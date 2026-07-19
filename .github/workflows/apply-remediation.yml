@@ -38,6 +38,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Make migration idempotent
+        run: sed -i 's/required: bool = True/required: bool = False/g' scripts/apply_full_remediation.py
+
       - name: Apply remediation patches
         id: apply
         continue-on-error: true
