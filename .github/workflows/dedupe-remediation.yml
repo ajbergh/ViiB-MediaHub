@@ -1,0 +1,46 @@
+name: Dedupe Remediation Guards
+
+on:
+  push:
+    branches: [agent/full-remediation]
+    paths:
+      - .github/workflows/dedupe-remediation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dedupe:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/full-remediation
+          fetch-depth: 0
+      - name: Remove duplicated guards
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('backend/internal/api/api.go')
+          text = path.read_text()
+          duration = '''\tif body.PlayDuration < 0 || body.SongDuration <= 0 || body.PlayDuration > 7*24*60*60 || body.SongDuration > 7*24*60*60 {\n\t\trespondError(w, http.StatusBadRequest, "Invalid listening durations")\n\t\treturn\n\t}\n\n'''
+          sensitive = '''\tif validation.IsSensitiveSettingKey(key) {\n\t\trespondJSON(w, map[string]string{"key": key, "value": "", "configured": "true"})\n\t\treturn\n\t}\n\n'''
+          if text.count(duration) != 2:
+              raise SystemExit(f'expected 2 duration guards, found {text.count(duration)}')
+          if text.count(sensitive) != 2:
+              raise SystemExit(f'expected 2 sensitive guards, found {text.count(sensitive)}')
+          text = text.replace(duration + duration, duration, 1)
+          text = text.replace(sensitive + sensitive, sensitive, 1)
+          path.write_text(text)
+          PY
+          gofmt -w backend/internal/api/api.go
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/internal/api/api.go
+          git commit -m "Remove duplicate remediation guards"
+          git push origin HEAD:agent/full-remediation
