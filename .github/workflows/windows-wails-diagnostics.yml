@@ -1,0 +1,56 @@
+name: Windows Wails Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/full-remediation
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.12'
+          cache-dependency-path: backend/go.sum
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+      - run: echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
+      - run: npm ci
+      - run: npm run build
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - shell: pwsh
+        run: |
+          $dest = "backend\cmd\wails\frontend\dist"
+          if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+          New-Item -ItemType Directory -Path "backend\cmd\wails\frontend" -Force | Out-Null
+          Copy-Item -Recurse "dist" $dest
+      - name: Capture Wails build
+        working-directory: backend/cmd/wails
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & wails build -platform windows/amd64 -ldflags "-s -w" *>&1 | Tee-Object -FilePath wails-build.log
+          $code = $LASTEXITCODE
+          Set-Content -Path wails-build.exitcode -Value $code
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-wails-diagnostics
+          path: |
+            backend/cmd/wails/wails-build.log
+            backend/cmd/wails/wails-build.exitcode
+          retention-days: 7
