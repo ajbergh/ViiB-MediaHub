@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,10 +19,7 @@ var (
 	spotifyTokenEndpoint  = "https://accounts.spotify.com/api/token"
 )
 
-func loadValidSpotifyCredentials(ctx context.Context, database *db.DB) (SpotifyCredentials, error) {
-	spotifyTokenRefreshMu.Lock()
-	defer spotifyTokenRefreshMu.Unlock()
-
+func readSpotifyCredentials(database *db.DB) (SpotifyCredentials, error) {
 	raw, err := database.GetSetting("spotify_credentials")
 	if err != nil || raw == "" {
 		return SpotifyCredentials{}, fmt.Errorf("spotify credentials not configured")
@@ -33,8 +31,18 @@ func loadValidSpotifyCredentials(ctx context.Context, database *db.DB) (SpotifyC
 	if credentials.AccessToken == "" {
 		return SpotifyCredentials{}, fmt.Errorf("spotify access token missing")
 	}
+	return credentials, nil
+}
 
-	if credentials.Expiry == 0 || time.Now().Add(5*time.Minute).Before(time.UnixMilli(credentials.Expiry)) {
+func refreshSpotifyCredentials(ctx context.Context, database *db.DB, force bool) (SpotifyCredentials, error) {
+	spotifyTokenRefreshMu.Lock()
+	defer spotifyTokenRefreshMu.Unlock()
+
+	credentials, err := readSpotifyCredentials(database)
+	if err != nil {
+		return SpotifyCredentials{}, err
+	}
+	if !force && (credentials.Expiry == 0 || time.Now().Add(5*time.Minute).Before(time.UnixMilli(credentials.Expiry))) {
 		return credentials, nil
 	}
 	if credentials.RefreshToken == "" || credentials.ClientId == "" {
@@ -87,10 +95,51 @@ func loadValidSpotifyCredentials(ctx context.Context, database *db.DB) (SpotifyC
 	return credentials, nil
 }
 
+func loadValidSpotifyCredentials(ctx context.Context, database *db.DB) (SpotifyCredentials, error) {
+	return refreshSpotifyCredentials(ctx, database, false)
+}
+
 func (a *API) validSpotifyAccessToken(ctx context.Context) (string, error) {
 	credentials, err := loadValidSpotifyCredentials(ctx, a.db)
 	if err != nil {
 		return "", err
 	}
 	return credentials.AccessToken, nil
+}
+
+// doSpotifyRequest performs an authenticated request and retries exactly once
+// after a 401 with a forced PKCE refresh. Body bytes are replayable, which keeps
+// POST/PUT proxy requests safe to retry without reusing a consumed stream.
+func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body []byte, contentType string) (*http.Response, error) {
+	credentials, err := loadValidSpotifyCredentials(ctx, a.db)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	for attempt := 0; attempt < 2; attempt++ {
+		request, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Authorization", "Bearer "+credentials.AccessToken)
+		if contentType != "" {
+			request.Header.Set("Content-Type", contentType)
+		}
+
+		response, err := client.Do(request)
+		if err != nil {
+			return nil, err
+		}
+		if response.StatusCode != http.StatusUnauthorized || attempt == 1 {
+			return response, nil
+		}
+		response.Body.Close()
+
+		credentials, err = refreshSpotifyCredentials(ctx, a.db, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("spotify request retry exhausted")
 }
