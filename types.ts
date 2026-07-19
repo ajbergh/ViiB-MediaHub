@@ -67,6 +67,14 @@ export interface Song {
   instrumental?: boolean; // true if song has no vocals
   moodAnalyzedAt?: number; // timestamp of mood analysis
 
+  // Last.fm enrichment
+  lastfmListeners?: number;
+  lastfmPlaycount?: number;
+  lastfmTags?: string;
+  lastfmUrl?: string;
+  lastfmMbid?: string;
+  lastfmEnrichedAt?: number;
+
   // User preferences
   liked?: boolean; // true if user has liked this song
   likedAt?: number; // timestamp when song was liked

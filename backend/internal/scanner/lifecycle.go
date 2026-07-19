@@ -1,8 +1,14 @@
 package scanner
 
-// Close stops scanner background services.
+// Close stops scanner background services and waits for enrichment work to exit.
 func (s *Scanner) Close() {
-	if s.backgroundScanner != nil {
-		s.backgroundScanner.Stop()
-	}
+	s.closeOnce.Do(func() {
+		if s.cancel != nil {
+			s.cancel()
+		}
+		if s.backgroundScanner != nil {
+			s.backgroundScanner.Stop()
+		}
+		s.enrichmentWg.Wait()
+	})
 }

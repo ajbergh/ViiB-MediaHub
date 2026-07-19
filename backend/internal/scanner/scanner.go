@@ -173,6 +173,10 @@ type Scanner struct {
 	enrichmentBatchNum     int
 	enrichmentTotalBatches int
 	enrichmentActive       bool
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	enrichmentWg           sync.WaitGroup
+	closeOnce              sync.Once
 
 	// Background scanner for incremental updates
 	backgroundScanner *BackgroundScanner
@@ -192,6 +196,7 @@ type ScanResult struct {
 func New(database *db.DB, dataDir string) *Scanner {
 	coverDir := filepath.Join(dataDir, "covers")
 	os.MkdirAll(coverDir, 0700)
+	ctx, cancel := context.WithCancel(context.Background())
 
 	s := &Scanner{
 		db:              database,
@@ -201,6 +206,8 @@ func New(database *db.DB, dataDir string) *Scanner {
 		rescanThreshold: 5, // Default: rescan after 5 downloads
 		subscribers:     make(map[chan LibraryEvent]struct{}),
 		enrichmentQueue: make(chan []db.Song, 1000), // Buffer for pending batches
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 
 	// Initialize background scanner with workers scaled to CPU count
@@ -212,7 +219,11 @@ func New(database *db.DB, dataDir string) *Scanner {
 	s.backgroundScanner.Start()
 
 	// Start background enrichment worker
-	go s.processEnrichmentQueue()
+	s.enrichmentWg.Add(1)
+	go func() {
+		defer s.enrichmentWg.Done()
+		s.processEnrichmentQueue()
+	}()
 
 	return s
 }
@@ -684,7 +695,11 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 		}
 
 		// Get or create album cover
-		coverPath := s.getAlbumCover(song.Artist, song.Album, filepath.Dir(path), path)
+		coverArtist := song.AlbumArtist
+		if coverArtist == "" {
+			coverArtist = song.Artist
+		}
+		coverPath := s.getAlbumCover(coverArtist, song.Album, filepath.Dir(path), path)
 		song.CoverPath = coverPath
 
 		dbSong := db.Song{
@@ -1285,8 +1300,12 @@ func (s *Scanner) createAlbumMetadataEntries(songs []db.Song) {
 	processedAlbums := make(map[string]bool)
 
 	for _, song := range songs {
-		// Create album key in the same format as frontend: "album::artist"
-		albumKey := fmt.Sprintf("%s::%s", song.Album, song.Artist)
+		// Create album key in the same format as frontend: "album::albumArtist".
+		albumArtist := song.AlbumArtist
+		if albumArtist == "" {
+			albumArtist = song.Artist
+		}
+		albumKey := fmt.Sprintf("%s::%s", song.Album, albumArtist)
 
 		// Skip if already processed in this batch
 		if processedAlbums[albumKey] {
@@ -1321,7 +1340,7 @@ func (s *Scanner) createAlbumMetadataEntries(songs []db.Song) {
 		metadata := &db.AlbumMetadata{
 			AlbumKey:       albumKey,
 			AlbumName:      song.Album,
-			ArtistName:     song.Artist,
+			ArtistName:     albumArtist,
 			LocalCoverPath: localCoverPath,
 			SpotifyChecked: false, // Not yet checked Spotify
 			SpotifyFound:   false,
@@ -1342,18 +1361,22 @@ func (s *Scanner) findLocalCoverForSong(audioFilePath string) string {
 	return s.findLocalCover(folderPath)
 }
 
-// processEnrichmentQueue handles background enrichment of songs
+// processEnrichmentQueue handles background enrichment of songs.
 func (s *Scanner) processEnrichmentQueue() {
 	logger.ScannerDebug("Enrichment worker started")
+	for {
+		var batch []db.Song
+		select {
+		case <-s.ctx.Done():
+			return
+		case batch = <-s.enrichmentQueue:
+		}
 
-	for batch := range s.enrichmentQueue {
-		// Get configured LLM provider (checks unified settings, falls back to legacy gemini_api_key)
 		provider, err := llm.GetConfiguredProvider(s.db)
 		if err != nil {
 			continue
 		}
 
-		// Update batch counter and get current state
 		s.enrichmentMutex.Lock()
 		s.enrichmentBatchNum++
 		currentBatch := s.enrichmentBatchNum
@@ -1362,47 +1385,36 @@ func (s *Scanner) processEnrichmentQueue() {
 		isFirstBatch := currentBatch == 1
 		s.enrichmentMutex.Unlock()
 
-		// Emit enrichment_started on first batch
 		if isFirstBatch {
 			logger.Scanner("Starting enrichment of %d songs needing genres across %d batches using %s", totalSongs, totalBatches, provider.GetProviderName())
 			s.emitEvent(LibraryEvent{
 				Type:    "enrichment_started",
 				Message: fmt.Sprintf("Enriching %d songs", totalSongs),
-				Data: map[string]interface{}{
-					"totalSongs":   totalSongs,
-					"totalBatches": totalBatches,
-				},
+				Data:    map[string]interface{}{"totalSongs": totalSongs, "totalBatches": totalBatches},
 			})
 		}
 
-		// Retry loop for rate limits
-		maxRetries := 3
-		for i := 0; i < maxRetries; i++ {
-			enrichedGenres, err := provider.EnrichGenres(context.Background(), batch)
-			if err == nil {
-				// Success - update DB
+		for attempt := 0; attempt < 3; attempt++ {
+			enrichedGenres, enrichErr := provider.EnrichGenres(s.ctx, batch)
+			if enrichErr == nil {
 				count := 0
 				for songID, genres := range enrichedGenres {
 					if err := s.db.UpdateSongGenres(songID, genres); err == nil {
 						count++
 					}
 				}
-
 				if count > 0 {
-					logger.Scanner("Background enrichment: Updated %d songs", count)
-
-					// Update progress tracking
 					s.enrichmentMutex.Lock()
 					s.enrichmentProcessed += count
 					processedNow := s.enrichmentProcessed
+					isComplete := s.enrichmentBatchNum >= s.enrichmentTotalBatches
+					if isComplete {
+						s.enrichmentActive = false
+					}
 					s.enrichmentMutex.Unlock()
-
-					// Update genre stats after enriching songs
 					if err := s.db.UpdateGenreStats(); err != nil {
 						logger.Scanner("Failed to update genre stats after enrichment: %v", err)
 					}
-
-					// Emit progress event
 					s.emitEvent(LibraryEvent{
 						Type:    "enrichment_progress",
 						Message: fmt.Sprintf("Enriched batch %d/%d (%d songs)", currentBatch, totalBatches, count),
@@ -1413,45 +1425,39 @@ func (s *Scanner) processEnrichmentQueue() {
 							"totalBatches":   totalBatches,
 						},
 					})
-
-					// Check if this was the last batch
-					s.enrichmentMutex.Lock()
-					isComplete := s.enrichmentBatchNum >= s.enrichmentTotalBatches
-					if isComplete {
-						s.enrichmentActive = false
-					}
-					s.enrichmentMutex.Unlock()
-
 					if isComplete {
 						s.emitEvent(LibraryEvent{
 							Type:    "enrichment_complete",
 							Message: fmt.Sprintf("Genre enrichment complete: %d songs", processedNow),
-							Data: map[string]interface{}{
-								"processedSongs": processedNow,
-								"totalSongs":     totalSongs,
-							},
+							Data:    map[string]interface{}{"processedSongs": processedNow, "totalSongs": totalSongs},
 						})
 					}
 				}
-				break // Done with this batch
+				break
 			}
 
-			// Check if it's a rate limit error (429)
-			if strings.Contains(err.Error(), "429") || strings.Contains(strings.ToLower(err.Error()), "quota") {
-				logger.Scanner("LLM rate limit hit, waiting 30s (attempt %d/%d)...", i+1, maxRetries)
-				time.Sleep(30 * time.Second)
+			if s.ctx.Err() != nil {
+				provider.Close()
+				return
+			}
+			if strings.Contains(enrichErr.Error(), "429") || strings.Contains(strings.ToLower(enrichErr.Error()), "quota") {
+				logger.Scanner("LLM rate limit hit, waiting 30s (attempt %d/3)...", attempt+1)
+				select {
+				case <-s.ctx.Done():
+					provider.Close()
+					return
+				case <-time.After(30 * time.Second):
+				}
 				continue
 			}
-
-			// Other error
-			logger.Scanner("LLM enrichment failed: %v", err)
+			logger.Scanner("LLM enrichment failed: %v", enrichErr)
 			break
 		}
-
-		// Close provider after use
 		provider.Close()
-
-		// Small delay between batches to be nice to the API
-		time.Sleep(2 * time.Second)
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
 	}
 }

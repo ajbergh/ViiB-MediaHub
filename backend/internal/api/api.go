@@ -1318,7 +1318,12 @@ func (a *API) getSetting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if validation.IsSensitiveSettingKey(key) {
-		respondJSON(w, map[string]string{"key": key, "value": "", "configured": "true"})
+		value, err := a.db.GetSetting(key)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to get setting")
+			return
+		}
+		respondJSON(w, map[string]interface{}{"key": key, "value": "", "configured": value != ""})
 		return
 	}
 

@@ -104,31 +104,29 @@ export const useAlbums = () => {
   const songs = useStore((state) => state.songs);
   return useMemo(() => {
     const albumsMap = new Map<string, Album>();
-    
-    songs.forEach(song => {
-      const key = song.album;
-      if (!albumsMap.has(key)) {
-        albumsMap.set(key, {
-          name: song.album,
-          artist: song.albumArtist || song.artist,
-          songCount: 0,
-          coverUrl: song.coverUrl,
-          addedAt: song.addedAt || 0
-        });
+
+    songs.forEach((song) => {
+      const artist = song.albumArtist || song.artist || 'Unknown Artist';
+      const key = `${song.album}::${artist}`;
+      const existing = albumsMap.get(key);
+      if (existing) {
+        existing.songCount += 1;
+        existing.addedAt = Math.max(existing.addedAt || 0, song.addedAt || 0);
+        if (!existing.coverUrl && song.coverUrl) existing.coverUrl = song.coverUrl;
+        return;
       }
-      const album = albumsMap.get(key)!;
-      album.songCount++;
-      if (!album.coverUrl && song.coverUrl) {
-          album.coverUrl = song.coverUrl;
-      }
-      // Track the most recent addedAt for this album
-      if (song.addedAt && song.addedAt > (album.addedAt || 0)) {
-        album.addedAt = song.addedAt;
-      }
+      albumsMap.set(key, {
+        name: song.album || 'Unknown Album',
+        artist,
+        songCount: 1,
+        coverUrl: song.coverUrl,
+        addedAt: song.addedAt || 0,
+      });
     });
-    
-    // Sort by most recently added first
-    return Array.from(albumsMap.values()).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+
+    return Array.from(albumsMap.values()).sort(
+      (a, b) => (b.addedAt || 0) - (a.addedAt || 0) || a.name.localeCompare(b.name) || a.artist.localeCompare(b.artist),
+    );
   }, [songs]);
 };
 

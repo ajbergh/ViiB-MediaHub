@@ -209,8 +209,6 @@ func (dm *DownloadManager) Start() {
 
 	go dm.broadcastProgress()
 
-	go dm.broadcastProgress()
-
 	// Start worker goroutines
 	workerCount := int(atomic.LoadInt32(&dm.maxConcurrent))
 	for i := 0; i < workerCount; i++ {

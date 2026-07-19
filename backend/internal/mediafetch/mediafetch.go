@@ -28,6 +28,32 @@ func isPublicIP(ip net.IP) bool {
 	return true
 }
 
+func safeDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, fmt.Errorf("invalid remote address: %w", err)
+	}
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil || len(ips) == 0 {
+		return nil, errors.New("remote host could not be resolved")
+	}
+	for _, ip := range ips {
+		if !isPublicIP(ip) {
+			return nil, errors.New("private, loopback, or link-local remote hosts are blocked")
+		}
+	}
+	dialer := &net.Dialer{Timeout: 8 * time.Second, KeepAlive: 20 * time.Second}
+	var lastErr error
+	for _, ip := range ips {
+		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if dialErr == nil {
+			return conn, nil
+		}
+		lastErr = dialErr
+	}
+	return nil, fmt.Errorf("failed to connect to remote host: %w", lastErr)
+}
+
 func validateURL(ctx context.Context, raw string) (*url.URL, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil {
@@ -63,8 +89,8 @@ func FetchImage(ctx context.Context, raw string, maxBytes int64) ([]byte, string
 	}
 
 	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 20 * time.Second}).DialContext,
+		Proxy:                 nil,
+		DialContext:           safeDialContext,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 		TLSHandshakeTimeout:   8 * time.Second,
 		ResponseHeaderTimeout: 10 * time.Second,
