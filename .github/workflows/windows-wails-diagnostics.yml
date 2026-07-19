@@ -44,8 +44,15 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           & wails build -platform windows/amd64 -ldflags "-s -w" *>&1 | Tee-Object -FilePath wails-build.log
-          $code = $LASTEXITCODE
-          Set-Content -Path wails-build.exitcode -Value $code
+          Set-Content -Path wails-build.exitcode -Value $LASTEXITCODE
+          exit 0
+      - name: Capture Windows binary vulnerability scan
+        working-directory: backend/cmd/wails
+        shell: pwsh
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          & govulncheck -mode binary build/bin/ViiB-MediaHub.exe *>&1 | Tee-Object -FilePath govulncheck-windows.log
+          Set-Content -Path govulncheck-windows.exitcode -Value $LASTEXITCODE
           exit 0
       - uses: actions/upload-artifact@v4
         with:
@@ -53,4 +60,6 @@ jobs:
           path: |
             backend/cmd/wails/wails-build.log
             backend/cmd/wails/wails-build.exitcode
+            backend/cmd/wails/govulncheck-windows.log
+            backend/cmd/wails/govulncheck-windows.exitcode
           retention-days: 7
