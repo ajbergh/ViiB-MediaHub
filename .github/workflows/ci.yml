@@ -24,11 +24,13 @@ jobs:
           python-version: '3.12'
       - name: Apply final review corrections
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        run: python scripts/apply_final_review_fixes.py
+        run: |
+          python scripts/apply_final_review_fixes.py
+          python scripts/apply_capability_completion.py
       - name: Format Go sources
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
         working-directory: backend
-        run: gofmt -w internal/db internal/scanner
+        run: gofmt -w internal/api internal/db internal/scanner
       - name: Commit final review corrections
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
         shell: bash
@@ -39,7 +41,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No final review changes to commit"
           else
-            git commit -m "Address final reliability review [skip agent]"
+            git commit -m "Complete reliability and library capability phases [skip agent]"
             git push origin HEAD:${{ github.head_ref }}
           fi
 
