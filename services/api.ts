@@ -82,8 +82,6 @@ export interface ApiSong {
   duration: number;
   replayGainDb?: number;
   replayPeak?: number;
-  replayGainDb?: number;
-  replayPeak?: number;
   filePath: string; // This will be the API URL like /api/audio/{id}
   coverPath?: string; // This will be /api/cover/{id}
   addedAt: number;
