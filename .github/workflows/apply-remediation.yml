@@ -12,6 +12,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: viib-full-remediation
+  cancel-in-progress: false
+
 jobs:
   apply:
     if: github.actor != 'github-actions[bot]'
