@@ -28,7 +28,7 @@ jobs:
       - name: Apply source migration
         shell: bash
         run: |
-          rm -f remediation-output.txt format-output.txt
+          rm -f remediation-output.txt format-output.txt commit-output.txt
           python3 scripts/remediation_preflight.py
           sed -i 's/required: bool = True/required: bool = False/g' scripts/apply_full_remediation.py
           sed -i 's/if count > 1:/if False and count > 1:/' scripts/apply_full_remediation.py
@@ -43,28 +43,52 @@ jobs:
           rm -f remediation-output.txt format-output.txt
 
       - name: Commit implementation
+        id: commit
+        continue-on-error: true
+        shell: bash
         run: |
-          git add -A -- . ':(exclude).github/workflows/**'
-          if ! git diff --cached --quiet; then
-            git commit -m "Implement full engineering remediation"
-            git push origin HEAD:agent/full-remediation
-          fi
+          set -o pipefail
+          {
+            git status --short
+            git add -A -- . ':(exclude).github/workflows/**'
+            git status --short
+            if ! git diff --cached --quiet; then
+              git commit -m "Implement full engineering remediation"
+              git push origin HEAD:agent/full-remediation
+            fi
+          } 2>&1 | tee commit-output.txt
+
+      - name: Upload commit diagnostics
+        if: steps.commit.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: viib-remediation-commit-diagnostics
+          path: commit-output.txt
+          retention-days: 7
+
+      - name: Fail unsuccessful commit
+        if: steps.commit.outcome == 'failure'
+        run: exit 1
 
       - uses: actions/setup-node@v4
+        if: steps.commit.outcome == 'success'
         with:
           node-version: '20'
           cache: npm
 
       - uses: actions/setup-go@v5
+        if: steps.commit.outcome == 'success'
         with:
           go-version: '1.25.2'
           cache-dependency-path: backend/go.sum
 
       - name: Validate frontend
+        if: steps.commit.outcome == 'success'
         run: |
           npm ci
           npm run check
 
       - name: Validate backend
+        if: steps.commit.outcome == 'success'
         working-directory: backend
         run: go test ./...
