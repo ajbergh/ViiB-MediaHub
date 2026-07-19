@@ -6,52 +6,14 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  finalize-review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
-          fetch-depth: 0
-          persist-credentials: true
-          show-progress: false
-      - uses: actions/setup-python@v5
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        with:
-          python-version: '3.12'
-      - name: Apply final review corrections
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        run: |
-          python scripts/apply_final_review_fixes.py
-          python scripts/apply_capability_completion.py
-      - name: Format Go sources
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        working-directory: backend
-        run: gofmt -w internal/api internal/db internal/scanner
-      - name: Commit final review corrections
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No final review changes to commit"
-          else
-            git commit -m "Complete reliability and library capability phases [skip agent]"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
-
   frontend:
-    needs: [finalize-review]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
           show-progress: false
       - uses: actions/setup-node@v4
         with:
@@ -76,7 +38,6 @@ jobs:
       - run: npm audit --audit-level=high
 
   backend:
-    needs: [finalize-review]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -84,7 +45,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
           show-progress: false
       - uses: actions/setup-go@v5
         with:
@@ -136,7 +96,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
           show-progress: false
       - uses: actions/setup-node@v4
         with:
