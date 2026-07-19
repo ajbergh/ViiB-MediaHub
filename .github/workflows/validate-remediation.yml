@@ -19,7 +19,7 @@ jobs:
           ref: agent/full-remediation
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
       - name: Validate frontend
         id: validate
@@ -39,9 +39,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-remediation-diagnostics
-          path: |
-            frontend-validation.txt
-            npm-audit.json
+          path: frontend-validation.txt
+          retention-days: 7
+      - name: Upload dependency audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dependency-audit
+          path: npm-audit.json
           retention-days: 7
       - name: Fail frontend validation
         if: steps.validate.outcome == 'failure'
@@ -59,20 +63,12 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Prepare embed fixtures
         working-directory: backend
-        run: |
-          mkdir -p cmd/viib/dist cmd/wails/frontend/dist
-          printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
-          cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
-      - name: Capture dependency diagnostics
         shell: bash
         run: |
-          {
-            echo '== amp.SDK v0.705.1 tag =='
-            git ls-remote --tags https://github.com/art-media-platform/amp.SDK.git 'refs/tags/v0.705.1*' || true
-            echo '== Go proxy lookup =='
-            cd backend
-            GOPROXY=https://proxy.golang.org go list -m -json github.com/art-media-platform/amp.SDK@v0.705.1 || true
-          } > backend-dependency-diagnostics.txt 2>&1
+          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build
+          printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
+          cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
       - name: Validate backend
         id: validate
         continue-on-error: true
@@ -89,9 +85,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-remediation-diagnostics
-          path: |
-            backend-validation.txt
-            backend-dependency-diagnostics.txt
+          path: backend-validation.txt
           retention-days: 7
       - name: Fail backend validation
         if: steps.validate.outcome == 'failure'
