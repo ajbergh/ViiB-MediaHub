@@ -32,6 +32,10 @@ jobs:
         with:
           go-version: '1.25.2'
           cache-dependency-path: backend/go.sum
+      - name: Install native tray dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libayatana-appindicator3-dev
       - name: Prepare embedded build fixtures
         shell: bash
         run: |
