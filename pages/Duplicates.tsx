@@ -10,9 +10,11 @@ export const Duplicates: React.FC = () => {
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [ignored, setIgnored] = useState<DuplicateGroup['songs']>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [duplicateGroups, ignoredSongs] = await Promise.all([
         api.getDuplicateGroups(),
@@ -20,6 +22,8 @@ export const Duplicates: React.FC = () => {
       ]);
       setGroups(duplicateGroups);
       setIgnored(ignoredSongs);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load duplicate information');
     } finally {
       setLoading(false);
     }
@@ -36,11 +40,15 @@ export const Duplicates: React.FC = () => {
     <Page>
       <PageHeader
         heading="Duplicate Manager"
-        subheading="Hide redundant library copies without deleting the source files or losing metadata."
         actions={<Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>}
       />
+      <p className="mb-6 text-sm text-text-secondary">
+        Hide redundant library copies without deleting source files or losing their persisted metadata.
+      </p>
 
-      {loading ? (
+      {error ? (
+        <div className="rounded-xl border border-error/30 bg-error/10 p-4 text-sm text-error">{error}</div>
+      ) : loading ? (
         <div className="text-text-secondary">Scanning duplicate fingerprints…</div>
       ) : groups.length === 0 ? (
         <div className="rounded-xl border border-surface-border bg-surface-2 p-8 text-center">
@@ -59,7 +67,7 @@ export const Duplicates: React.FC = () => {
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium text-text-main">{song.title}</div>
                       <div className="truncate text-sm text-text-secondary">{song.artist} · {song.album}</div>
-                      <div className="truncate text-xs text-text-subtle">{song.id}</div>
+                      <div className="truncate text-xs text-text-subtle" title={song.filePath}>{song.filePath}</div>
                     </div>
                     {index === 0 ? (
                       <span className="rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold text-brand">Suggested keep</span>
