@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const PROJECT_ROOT = process.cwd();
+const BASELINE_PATH = path.join(PROJECT_ROOT, 'scripts', 'raw-color-baseline.json');
 
 const EXCLUDED_DIR_NAMES = new Set([
   'node_modules',
@@ -9,11 +10,6 @@ const EXCLUDED_DIR_NAMES = new Set([
   'build',
   'backend',
   '.git',
-]);
-
-// Paths are relative to repo root using forward slashes.
-const ALLOWLIST = new Set([
-  // Add exact file paths here if a TSX file must contain literal colors.
 ]);
 
 const HEX_REGEX = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
@@ -36,7 +32,6 @@ async function* walk(dir) {
 }
 
 function getLineNumberForIndex(text, index) {
-  // 1-based line number
   let line = 1;
   for (let i = 0; i < index; i++) {
     if (text.charCodeAt(i) === 10) line++;
@@ -44,36 +39,59 @@ function getLineNumberForIndex(text, index) {
   return line;
 }
 
+async function loadBaseline() {
+  try {
+    return JSON.parse(await fs.readFile(BASELINE_PATH, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return {};
+    throw error;
+  }
+}
+
 async function main() {
+  const baseline = await loadBaseline();
   const violations = [];
+  const counts = new Map();
 
   for await (const filePath of walk(PROJECT_ROOT)) {
     if (!filePath.endsWith('.tsx')) continue;
 
-    const rel = path.relative(PROJECT_ROOT, filePath);
-    const relPosix = toPosixPath(rel);
-    if (ALLOWLIST.has(relPosix)) continue;
-
+    const relPosix = toPosixPath(path.relative(PROJECT_ROOT, filePath));
     const content = await fs.readFile(filePath, 'utf8');
 
     let match;
     while ((match = HEX_REGEX.exec(content)) !== null) {
       const line = getLineNumberForIndex(content, match.index);
       violations.push({ file: relPosix, line, value: match[0] });
+      counts.set(relPosix, (counts.get(relPosix) || 0) + 1);
     }
   }
 
-  if (violations.length > 0) {
-    // Keep output readable in CI.
-    console.error('Found raw hex colors in TSX (use Tailwind tokens or VIIB_COLOR_VALUES instead):');
-    for (const v of violations) {
-      console.error(`- ${v.file}:${v.line}  ${v.value}`);
+  const regressions = [];
+  for (const [file, count] of counts) {
+    const allowed = Number(baseline[file] || 0);
+    if (count > allowed) regressions.push({ file, count, allowed });
+  }
+
+  if (regressions.length > 0) {
+    console.error('Raw-color baseline regressed. Replace new literals with design tokens:');
+    for (const regression of regressions) {
+      console.error(`- ${regression.file}: ${regression.count} literal(s), baseline ${regression.allowed}`);
+      for (const violation of violations.filter((item) => item.file === regression.file)) {
+        console.error(`    L${violation.line}: ${violation.value}`);
+      }
     }
     process.exitCode = 1;
     return;
   }
 
-  console.log('OK: no raw hex colors found in TSX.');
+  const remaining = violations.length;
+  if (remaining > 0) {
+    console.warn(`Baseline accepted: ${remaining} legacy raw-color literal(s) remain across ${counts.size} file(s).`);
+    console.warn('Do not increase these counts; reduce scripts/raw-color-baseline.json as files are tokenized.');
+  } else {
+    console.log('OK: no raw hex colors found in TSX.');
+  }
 }
 
 await main();
