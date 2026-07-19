@@ -40,55 +40,32 @@ jobs:
         run: |
           find backend -name '*.go' -print0 | xargs -0 gofmt -w
           npm install --package-lock-only --ignore-scripts
-          rm -f remediation-output.txt format-output.txt
+          rm -f remediation-output.txt format-output.txt commit-output.txt
 
       - name: Commit implementation
-        id: commit
-        continue-on-error: true
-        shell: bash
         run: |
-          set -o pipefail
-          {
-            git status --short
-            git add -A -- . ':(exclude).github/workflows/**'
-            git status --short
-            if ! git diff --cached --quiet; then
-              git commit -m "Implement full engineering remediation"
-              git push origin HEAD:agent/full-remediation
-            fi
-          } 2>&1 | tee commit-output.txt
-
-      - name: Upload commit diagnostics
-        if: steps.commit.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: viib-remediation-commit-diagnostics
-          path: commit-output.txt
-          retention-days: 7
-
-      - name: Fail unsuccessful commit
-        if: steps.commit.outcome == 'failure'
-        run: exit 1
+          git checkout -- .github/workflows/build-windows.yml .github/workflows/ci.yml
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Implement full engineering remediation"
+            git push origin HEAD:agent/full-remediation
+          fi
 
       - uses: actions/setup-node@v4
-        if: steps.commit.outcome == 'success'
         with:
           node-version: '20'
           cache: npm
 
       - uses: actions/setup-go@v5
-        if: steps.commit.outcome == 'success'
         with:
           go-version: '1.25.2'
           cache-dependency-path: backend/go.sum
 
       - name: Validate frontend
-        if: steps.commit.outcome == 'success'
         run: |
           npm ci
           npm run check
 
       - name: Validate backend
-        if: steps.commit.outcome == 'success'
         working-directory: backend
         run: go test ./...
