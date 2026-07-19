@@ -1,0 +1,48 @@
+name: Staticcheck Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staticcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/full-remediation
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.2'
+          cache-dependency-path: backend/go.sum
+      - name: Install native tray dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libayatana-appindicator3-dev
+      - name: Prepare embedded fixtures
+        working-directory: backend
+        run: |
+          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build
+          printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
+          cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
+      - name: Run staticcheck
+        id: staticcheck
+        continue-on-error: true
+        working-directory: backend
+        shell: bash
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./... > ../staticcheck-output.txt 2>&1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: viib-staticcheck-diagnostics
+          path: staticcheck-output.txt
+          retention-days: 7
+      - name: Fail when staticcheck reports findings
+        if: steps.staticcheck.outcome == 'failure'
+        run: exit 1
