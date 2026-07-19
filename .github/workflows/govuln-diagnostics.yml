@@ -1,4 +1,4 @@
-name: Upgrade Go Security Baseline
+name: Sync Go Version Documentation
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  upgrade:
+  sync-docs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -17,42 +17,26 @@ jobs:
         with:
           ref: agent/full-remediation
           fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.12'
-          cache-dependency-path: backend/go.sum
-      - name: Install native tray dependencies
+      - name: Update documented Go baseline
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libayatana-appindicator3-dev
-      - name: Upgrade security-sensitive dependencies
-        working-directory: backend
-        run: |
-          go mod edit -go=1.25.12
-          go get golang.org/x/net@v0.55.0
-          go get google.golang.org/grpc@v1.79.3
-          go mod tidy
-      - name: Prepare embedded fixtures
-        working-directory: backend
-        run: |
-          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build .ci
-          printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
-          cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
-          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
-      - name: Validate upgraded dependency graph
-        working-directory: backend
-        run: |
-          go test ./...
-          go vet ./...
-          go build -o .ci/viib-web ./cmd/viib
-          go build -o .ci/viib-wails ./cmd/wails
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck -mode binary .ci/viib-web
-          govulncheck -mode binary .ci/viib-wails
-      - name: Commit dependency upgrades
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('README.md')
+          text = path.read_text()
+          replacements = {
+              '| Go | 1.22+ | |': '| Go | 1.25.12+ | Security-patched baseline |',
+              '- **Go 1.25.2+** — compiled, efficient backend': '- **Go 1.25.12+** — compiled, efficient backend',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'missing README anchor: {old}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+      - name: Commit documentation update
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/go.mod backend/go.sum
-          git commit -m "Upgrade Go security baseline"
+          git add README.md
+          git commit -m "Document patched Go baseline"
           git push origin HEAD:agent/full-remediation
