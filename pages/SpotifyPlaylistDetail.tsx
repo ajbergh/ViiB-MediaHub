@@ -272,7 +272,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
               <p className="text-sm font-bold uppercase tracking-wider text-text-secondary mb-2">Playlist</p>
               <h1 className="text-display font-bold mb-4 leading-tight">{playlist.name}</h1>
               {playlist.description && (
-                <p className="text-text-secondary mb-4" dangerouslySetInnerHTML={{ __html: playlist.description }} />
+                <p className="text-text-secondary mb-4">{playlist.description.replace(/<[^>]*>?/gm, '')}</p>
               )}
               <div className="flex items-center gap-2 text-text-secondary">
                 <span className="font-bold text-text-main">

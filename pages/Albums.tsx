@@ -191,14 +191,14 @@ export const Albums: React.FC = () => {
                       <Card 
                         interactive
                         className="p-4 h-full flex flex-col cursor-pointer"
-                        onClick={() => navigate(`/album/${encodeURIComponent(album.name)}`)}
+                        onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
-                            navigate(`/album/${encodeURIComponent(album.name)}`);
+                            navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`);
                           }
                         }}
                       >

@@ -220,7 +220,7 @@ const AlbumFooter: React.FC<{ context?: any }> = ({ context }) => {
 }
 
 export const AlbumDetail: React.FC = () => {
-    const { albumName } = useParams<{ albumName: string }>();
+    const { albumName, artistName } = useParams<{ albumName: string; artistName?: string }>();
     const navigate = useNavigate();
     const { songs, playSong, currentSong, isPlaying, openContextMenu, fetchAlbumMetadata, albumMetadata, clearAlbumMetadata } = useStore();
     const albumCovers = useAlbumCovers();
@@ -241,16 +241,23 @@ export const AlbumDetail: React.FC = () => {
         }
     }, [albumName]);
 
-    // Filter and Sort songs for this album
+    const decodedArtistName = useMemo(() => {
+        try { return decodeURIComponent(artistName || ''); } catch { return artistName || ''; }
+    }, [artistName]);
+
+    // Filter and sort by both album and album artist to avoid same-title collisions.
     const albumSongs = useMemo(() => {
-        return songs.filter(s => s.album === decodedAlbumName)
+        return songs.filter(s => {
+                const songArtist = s.albumArtist || s.artist;
+                return s.album === decodedAlbumName && (!decodedArtistName || songArtist === decodedArtistName);
+            })
             .sort((a, b) => {
                 if ((a.discNumber || 1) !== (b.discNumber || 1)) {
                     return (a.discNumber || 1) - (b.discNumber || 1);
                 }
                 return (a.trackNumber || 0) - (b.trackNumber || 0);
             });
-    }, [songs, decodedAlbumName]);
+    }, [songs, decodedAlbumName, decodedArtistName]);
 
     const firstSong = albumSongs[0];
     const artist = firstSong ? (firstSong.albumArtist || firstSong.artist) : '';
@@ -288,7 +295,7 @@ export const AlbumDetail: React.FC = () => {
         }
     };
     
-    const coverUrl = metadata?.coverUrl || firstSong?.coverUrl || albumCovers[decodedAlbumName];
+    const coverUrl = metadata?.coverUrl || firstSong?.coverUrl || albumCovers[metadataKey] || albumCovers[decodedAlbumName];
     
     const totalDuration = albumSongs.reduce((acc, s) => acc + s.duration, 0);
     const durationHours = Math.floor(totalDuration / 3600);

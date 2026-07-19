@@ -9,7 +9,7 @@
  * 
  * Persistence:
  * - Audio settings and UI preferences persisted to localStorage
- * - Spotify client credentials persisted to localStorage (tokens held in-memory only)
+ * - Spotify client ID and non-sensitive preferences persisted to localStorage; secrets and tokens remain memory-only
  * - Song library backed by SQLite (via Go backend); IndexedDB used as fallback in browser-only mode
  * 
  * Selectors:
@@ -203,12 +203,14 @@ export const useArtists = () => {
 export const useAlbumCovers = () => {
   const songs = useStore((state) => state.songs);
   return useMemo(() => {
-    const covers = new Map<string, string>();
-    songs.forEach(song => {
-      if (song.coverUrl && !covers.has(song.album)) {
-        covers.set(song.album, song.coverUrl);
-      }
+    const covers: Record<string, string> = {};
+    songs.forEach((song) => {
+      if (!song.coverUrl) return;
+      const artist = song.albumArtist || song.artist || 'Unknown Artist';
+      const composite = `${song.album}::${artist}`;
+      if (!covers[composite]) covers[composite] = song.coverUrl;
+      if (!covers[song.album]) covers[song.album] = song.coverUrl;
     });
-    return Object.fromEntries(covers);
+    return covers;
   }, [songs]);
 };

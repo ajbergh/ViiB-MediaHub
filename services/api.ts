@@ -86,6 +86,19 @@ export interface ApiSong {
   playCount?: number;
   lastPlayed?: number;
   skipCount?: number;
+  fileHash?: string;
+  mood?: string;
+  energy?: string;
+  tempo?: string;
+  bpm?: number;
+  instrumental?: boolean;
+  moodAnalyzedAt?: number;
+  lastfmListeners?: number;
+  lastfmPlaycount?: number;
+  lastfmTags?: string;
+  lastfmUrl?: string;
+  lastfmMbid?: string;
+  lastfmEnrichedAt?: number;
   // User preferences
   liked?: boolean;
   likedAt?: number;

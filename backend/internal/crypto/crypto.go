@@ -55,6 +55,8 @@ const (
 var sensitiveKeys = map[string]bool{
 	"spotify_credentials":  true,
 	"gemini_api_key":       true,
+	"llm_api_key":          true,
+	"lastfm_api_key":       true,
 	"lastfm_shared_secret": true,
 	"lastfm_session_key":   true,
 }

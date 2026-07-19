@@ -173,13 +173,25 @@ func ValidateIntRange(value, min, max int) int {
 	return value
 }
 
+// IsSensitiveSettingKey reports whether a setting is write-only through the API.
+// Sensitive values may be configured, but are never returned to the renderer.
+func IsSensitiveSettingKey(key string) bool {
+	sensitive := map[string]bool{
+		"gemini_api_key":       true,
+		"llm_api_key":          true,
+		"lastfm_api_key":       true,
+		"lastfm_shared_secret": true,
+		"lastfm_session_key":   true,
+	}
+	return sensitive[key]
+}
+
 // IsValidSettingKey checks if a setting key is in the allowed list.
 // This prevents arbitrary setting access via the API.
 func IsValidSettingKey(key string) bool {
 	allowedKeys := map[string]bool{
 		"concurrent_downloads":     true,
 		"spotify_download_path":    true,
-		"spotify_credentials":      true,
 		"gemini_api_key":           true,
 		"theme":                    true,
 		"volume":                   true,

@@ -660,7 +660,7 @@ func (d *DB) migrateColumns() error {
 //   - spotify_credentials: OAuth tokens and client secrets
 //   - gemini_api_key: Google Gemini AI API key
 func (d *DB) migrateUnencryptedSettings() error {
-	sensitiveKeys := []string{"spotify_credentials", "gemini_api_key"}
+	sensitiveKeys := []string{"spotify_credentials", "gemini_api_key", "llm_api_key", "lastfm_api_key", "lastfm_shared_secret", "lastfm_session_key"}
 
 	for _, key := range sensitiveKeys {
 		// Read raw value directly (bypass GetSetting which would try to decrypt)
@@ -699,41 +699,35 @@ func (d *DB) migrateUnencryptedSettings() error {
 func (d *DB) GetAllSongs() ([]Song, error) {
 	rows, err := d.conn.Query(`
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
-		       genre, year, duration, file_path, cover_path, added_at,
-		       play_count, last_played, skip_count, file_hash,
-		       mood, energy, tempo, bpm, instrumental, mood_analyzed_at,
-		       liked, liked_at
+		       genre, year, original_year, year_uncertain, year_analyzed_at,
+		       duration, file_path, cover_path, added_at, play_count, last_played,
+		       skip_count, file_hash, mood, energy, tempo, bpm, instrumental,
+		       mood_analyzed_at, liked, liked_at, lastfm_listeners, lastfm_playcount,
+		       lastfm_tags, lastfm_url, lastfm_mbid, lastfm_enriched_at
 		FROM songs
-		ORDER BY album, disc_number, track_number, title
-	`)
+		ORDER BY album, album_artist, disc_number, track_number, title`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
 	var songs []Song
 	for rows.Next() {
 		var s Song
-		var genreJSON sql.NullString
-		var albumArtist, coverPath, fileHash sql.NullString
-		var trackNum, discNum, year, playCount, skipCount sql.NullInt64
-		var lastPlayed sql.NullInt64
-		var mood, energy, tempo sql.NullString
-		var bpm, instrumental, moodAnalyzedAt sql.NullInt64
-		var liked, likedAt sql.NullInt64
-
-		err := rows.Scan(
-			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
-			&trackNum, &discNum, &genreJSON, &year,
-			&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
-			&playCount, &lastPlayed, &skipCount, &fileHash,
-			&mood, &energy, &tempo, &bpm, &instrumental, &moodAnalyzedAt,
-			&liked, &likedAt,
-		)
-		if err != nil {
+		var genreJSON, albumArtist, coverPath, fileHash, mood, energy, tempo sql.NullString
+		var lastFMTags, lastFMURL, lastFMMBID sql.NullString
+		var trackNum, discNum, year, originalYear, yearUncertain, yearAnalyzedAt sql.NullInt64
+		var playCount, lastPlayed, skipCount, bpm, instrumental, moodAnalyzedAt sql.NullInt64
+		var liked, likedAt, lastFMListeners, lastFMPlaycount, lastFMEnrichedAt sql.NullInt64
+		if err := rows.Scan(
+			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist, &trackNum, &discNum,
+			&genreJSON, &year, &originalYear, &yearUncertain, &yearAnalyzedAt,
+			&s.Duration, &s.FilePath, &coverPath, &s.AddedAt, &playCount, &lastPlayed,
+			&skipCount, &fileHash, &mood, &energy, &tempo, &bpm, &instrumental,
+			&moodAnalyzedAt, &liked, &likedAt, &lastFMListeners, &lastFMPlaycount,
+			&lastFMTags, &lastFMURL, &lastFMMBID, &lastFMEnrichedAt,
+		); err != nil {
 			return nil, err
 		}
-
 		if albumArtist.Valid {
 			s.AlbumArtist = albumArtist.String
 		}
@@ -744,10 +738,17 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 			s.DiscNumber = int(discNum.Int64)
 		}
 		if genreJSON.Valid && genreJSON.String != "" {
-			json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+			_ = json.Unmarshal([]byte(genreJSON.String), &s.Genre)
 		}
 		if year.Valid {
 			s.Year = int(year.Int64)
+		}
+		if originalYear.Valid {
+			s.OriginalYear = int(originalYear.Int64)
+		}
+		s.YearUncertain = yearUncertain.Valid && yearUncertain.Int64 == 1
+		if yearAnalyzedAt.Valid {
+			s.YearAnalyzedAt = yearAnalyzedAt.Int64
 		}
 		if coverPath.Valid {
 			s.CoverPath = coverPath.String
@@ -776,22 +777,34 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 		if bpm.Valid {
 			s.BPM = int(bpm.Int64)
 		}
-		if instrumental.Valid {
-			s.Instrumental = instrumental.Int64 == 1
-		}
+		s.Instrumental = instrumental.Valid && instrumental.Int64 == 1
 		if moodAnalyzedAt.Valid {
 			s.MoodAnalyzedAt = moodAnalyzedAt.Int64
 		}
-		if liked.Valid {
-			s.Liked = liked.Int64 == 1
-		}
+		s.Liked = liked.Valid && liked.Int64 == 1
 		if likedAt.Valid {
 			s.LikedAt = likedAt.Int64
 		}
-
+		if lastFMListeners.Valid {
+			s.LastFMListeners = int(lastFMListeners.Int64)
+		}
+		if lastFMPlaycount.Valid {
+			s.LastFMPlaycount = int(lastFMPlaycount.Int64)
+		}
+		if lastFMTags.Valid {
+			s.LastFMTags = lastFMTags.String
+		}
+		if lastFMURL.Valid {
+			s.LastFMURL = lastFMURL.String
+		}
+		if lastFMMBID.Valid {
+			s.LastFMMBID = lastFMMBID.String
+		}
+		if lastFMEnrichedAt.Valid {
+			s.LastFMEnrichedAt = lastFMEnrichedAt.Int64
+		}
 		songs = append(songs, s)
 	}
-
 	return songs, rows.Err()
 }
 

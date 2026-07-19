@@ -173,7 +173,7 @@ export const useHomeContent = (): HomeContent => {
   };
 
   const navigateToAlbum = (album: Album) => {
-    navigate(`/album/${encodeURIComponent(album.name)}`);
+    navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`);
   };
 
   const navigateToArtist = (artist: Artist) => {

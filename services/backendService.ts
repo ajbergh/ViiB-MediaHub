@@ -75,6 +75,15 @@ export function apiSongToSong(apiSong: ApiSong): Song {
     playCount: apiSong.playCount,
     lastPlayed: apiSong.lastPlayed,
     skipCount: apiSong.skipCount,
+    fileHash: apiSong.fileHash,
+    mood: apiSong.mood,
+    energy: apiSong.energy,
+    tempo: apiSong.tempo,
+    bpm: apiSong.bpm,
+    instrumental: apiSong.instrumental,
+    moodAnalyzedAt: apiSong.moodAnalyzedAt,
+    liked: apiSong.liked,
+    likedAt: apiSong.likedAt,
   };
 }
 

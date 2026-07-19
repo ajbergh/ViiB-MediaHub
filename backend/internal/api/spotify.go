@@ -9,7 +9,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
@@ -117,6 +119,7 @@ func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	creds.ClientSecret = ""
 	respondJSON(w, creds)
 }
 
@@ -132,67 +135,42 @@ func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 // GET /api/spotify/search?q=query&type=track,album&limit=20
 // Response: Spotify API search response (proxied)
 func (a *API) spotifySearch(w http.ResponseWriter, r *http.Request) {
-	// Get stored credentials for authorization
 	val, err := a.db.GetSetting("spotify_credentials")
 	if err != nil || val == "" {
 		respondError(w, http.StatusUnauthorized, "Spotify credentials not configured")
 		return
 	}
-
 	var creds SpotifyCredentials
 	if err := json.Unmarshal([]byte(val), &creds); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to parse credentials")
 		return
 	}
-
-	// Get query parameters
-	query := r.URL.Query().Get("q")
-	types := r.URL.Query().Get("type")
-	limit := r.URL.Query().Get("limit")
-	offset := r.URL.Query().Get("offset")
-
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
 		respondError(w, http.StatusBadRequest, "Missing query parameter")
 		return
 	}
-
-	// Build Spotify API URL
-	spotifyURL := "https://api.spotify.com/v1/search?q=" + query
-	if types != "" {
-		spotifyURL += "&type=" + types
+	params := url.Values{"q": {query}}
+	for _, key := range []string{"type", "limit", "offset", "market"} {
+		if value := r.URL.Query().Get(key); value != "" {
+			params.Set(key, value)
+		}
 	}
-	if limit != "" {
-		spotifyURL += "&limit=" + limit
-	}
-	if offset != "" {
-		spotifyURL += "&offset=" + offset
-	}
-
-	// Make request to Spotify API
-	req, err := http.NewRequest("GET", spotifyURL, nil)
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, "https://api.spotify.com/v1/search?"+params.Encode(), nil)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create request")
 		return
 	}
-
-	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	request.Header.Set("Authorization", "Bearer "+creds.AccessToken)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to fetch from Spotify")
+		respondError(w, http.StatusBadGateway, "Failed to fetch from Spotify")
 		return
 	}
 	defer resp.Body.Close()
-
-	// Forward the response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
-	json.NewDecoder(resp.Body).Decode(&json.RawMessage{})
-	// Better: copy the body directly
-	var result json.RawMessage
-	json.NewDecoder(resp.Body).Decode(&result)
-	json.NewEncoder(w).Encode(result)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 // spotifySearchPlaylists provides a fallback playlist search using web scraping.
@@ -393,7 +371,7 @@ func (a *API) spotifyGetUserProfile(w http.ResponseWriter, r *http.Request) {
 
 	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to fetch from Spotify")
@@ -429,7 +407,11 @@ func (a *API) spotifyProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build full URL
+	path = strings.TrimLeft(path, "/")
+	if strings.Contains(path, "..") || strings.Contains(path, "\\") || strings.Contains(path, "://") {
+		respondError(w, http.StatusBadRequest, "Invalid Spotify API path")
+		return
+	}
 	spotifyURL := "https://api.spotify.com/v1/" + path
 
 	// Copy query parameters except 'path'
@@ -448,7 +430,7 @@ func (a *API) spotifyProxy(w http.ResponseWriter, r *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to fetch from Spotify")
@@ -752,7 +734,7 @@ func (a *API) downloadTrackByID(w http.ResponseWriter, accessToken, spotifyID st
 	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/tracks/%s", spotifyID), nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to fetch track metadata")
@@ -828,7 +810,7 @@ func (a *API) downloadAlbumByID(w http.ResponseWriter, accessToken, spotifyID st
 	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/albums/%s", spotifyID), nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to fetch album metadata")
@@ -928,7 +910,7 @@ func (a *API) downloadPlaylistByID(w http.ResponseWriter, accessToken, spotifyID
 	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/playlists/%s", spotifyID), nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to fetch playlist metadata")
@@ -1049,7 +1031,7 @@ func (a *API) downloadPlaylistByScraping(w http.ResponseWriter, accessToken, spo
 
 	// Queue each track - we need to fetch individual track metadata via API
 	queuedCount := 0
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 
 	for i, trackID := range scraped.Tracks {
 		// Fetch track metadata from Spotify API
@@ -1269,35 +1251,29 @@ func (a *API) clearCompletedDownloads(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) downloadProgressSSE(w http.ResponseWriter, r *http.Request) {
-	log.Printf("downloadProgressSSE: Connection started")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		log.Printf("downloadProgressSSE: Streaming not supported")
 		respondError(w, http.StatusInternalServerError, "Streaming not supported")
 		return
 	}
-
-	log.Printf("downloadProgressSSE: Getting progress channel")
-	progressChan := a.downloadManager.GetProgressChan()
-	if progressChan == nil {
-		log.Printf("downloadProgressSSE: Progress channel is nil!")
-		respondError(w, http.StatusInternalServerError, "Progress channel not available")
-		return
-	}
-
-	log.Printf("downloadProgressSSE: Entering event loop")
+	progressChan := a.downloadManager.SubscribeProgress()
+	defer a.downloadManager.UnsubscribeProgress(progressChan)
+	keepalive := time.NewTicker(20 * time.Second)
+	defer keepalive.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
-			log.Printf("downloadProgressSSE: Client disconnected")
 			return
-		case progress := <-progressChan:
-			log.Printf("downloadProgressSSE: Sending progress update for %s", progress.DownloadID)
+		case <-keepalive.C:
+			fmt.Fprint(w, ": keepalive\n\n")
+			flusher.Flush()
+		case progress, ok := <-progressChan:
+			if !ok {
+				return
+			}
 			data, _ := json.Marshal(progress)
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
@@ -1325,7 +1301,7 @@ func (a *API) fetchSpotifyTrack(trackID string) (map[string]interface{}, error) 
 
 	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1378,7 +1354,7 @@ func (a *API) fetchAlbumTracks(albumID string) ([]AlbumTrackInfo, string, error)
 
 	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", err
@@ -1481,7 +1457,7 @@ func (a *API) fetchPlaylistTracks(playlistID string, playlistName *string) ([]Pl
 
 	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", "", err
@@ -1567,7 +1543,7 @@ func (a *API) fetchPlaylistTracksByScraping(playlistID string, accessToken strin
 	log.Printf("Scraped playlist '%s' with %d tracks", scraped.Name, len(scraped.Tracks))
 
 	// Fetch individual track metadata via API
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	var tracks []PlaylistTrackInfo
 
 	for _, trackID := range scraped.Tracks {

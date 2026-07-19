@@ -268,7 +268,7 @@ export const ArtistDetail: React.FC = () => {
                             <div 
                                 key={album.name}
                                 className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer border border-transparent hover:border-surface-border flex flex-col"
-                                onClick={() => navigate(`/album/${encodeURIComponent(album.name)}`)}
+                                onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
                             >
                                 <div 

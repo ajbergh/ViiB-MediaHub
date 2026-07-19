@@ -212,6 +212,7 @@ export const SpotifyService = {
         const codeVerifier = generateRandomString(64);
         const hashed = await sha256(codeVerifier);
         const codeChallenge = base64encode(hashed);
+        const state = generateRandomString(32);
 
         const scopes = [
             'streaming',
@@ -229,7 +230,8 @@ export const SpotifyService = {
             scope: scopes,
             redirect_uri: redirectUri,
             code_challenge_method: 'S256',
-            code_challenge: codeChallenge
+            code_challenge: codeChallenge,
+            state
         });
 
         const url = `${AUTH_URL}?${params.toString()}`;
@@ -241,11 +243,12 @@ export const SpotifyService = {
         
         return {
             url,
-            codeVerifier
+            codeVerifier,
+            state
         };
     },
 
-    async exchangeCode(clientId: string, clientSecret: string, code: string, redirectUri: string, codeVerifier: string) {
+    async exchangeCode(clientId: string, _clientSecret: string, code: string, redirectUri: string, codeVerifier: string) {
         const bodyParams: any = {
             grant_type: 'authorization_code',
             code,
@@ -258,10 +261,6 @@ export const SpotifyService = {
             'Content-Type': 'application/x-www-form-urlencoded'
         };
 
-        if (clientSecret) {
-             const credentials = btoa(`${clientId}:${clientSecret}`);
-             headers['Authorization'] = `Basic ${credentials}`;
-        }
 
         try {
             const response = await fetch(TOKEN_URL, {
@@ -295,7 +294,7 @@ export const SpotifyService = {
             setSpotifyTokens
         } = store;
 
-        if (!spotifyClientId || !spotifyClientSecret) {
+        if (!spotifyClientId) {
             return null;
         }
 
@@ -322,16 +321,15 @@ export const SpotifyService = {
             refreshPromise = (async () => {
                 try {
                     store.addLog('info', 'Refreshing Spotify User Token...');
-                    const credentials = btoa(`${spotifyClientId}:${spotifyClientSecret}`);
                     const response = await fetch(TOKEN_URL, {
                         method: 'POST',
                         headers: {
-                            'Authorization': `Basic ${credentials}`,
                             'Content-Type': 'application/x-www-form-urlencoded'
                         },
                         body: new URLSearchParams({
                             grant_type: 'refresh_token',
-                            refresh_token: spotifyRefreshToken
+                            refresh_token: spotifyRefreshToken,
+                            client_id: spotifyClientId
                         })
                     });
                     
@@ -380,40 +378,7 @@ export const SpotifyService = {
             }
         }
 
-        // 2. Fallback: Client Credentials Flow
-        try {
-            const credentials = btoa(`${spotifyClientId}:${spotifyClientSecret}`);
-            const response = await fetch(TOKEN_URL, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Basic ${credentials}`,
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: 'grant_type=client_credentials'
-            });
-
-            if (response.status === 429) {
-                const retryAfter = response.headers.get('Retry-After');
-                throw new SpotifyRateLimitError(
-                    'Rate limited on client credentials',
-                    retryAfter ? parseInt(retryAfter) : 60
-                );
-            }
-
-            if (response.ok) {
-                const data = await response.json();
-                return data.access_token;
-            } else {
-                throw new SpotifyAuthError('Client credentials authentication failed', response.status);
-            }
-        } catch (error) {
-            if (error instanceof SpotifyRateLimitError || error instanceof SpotifyAuthError) {
-                store.addLog('error', 'Spotify Auth Failed', error);
-            } else {
-                store.addLog('error', 'Client Credentials Auth Failed', error);
-            }
-        }
-        
+        // Public PKCE clients do not use a client-credentials fallback.
         return null;
     },
 

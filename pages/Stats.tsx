@@ -397,7 +397,7 @@ export const Stats: React.FC = () => {
                                         plays={album.plays}
                                         imageUrl={album.coverUrl}
                                         fallbackGradient={coverBackground(undefined, album.name)}
-                                        onClick={() => navigate(`/album/${encodeURIComponent(album.name)}`)}
+                                        onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
                                     />
                                 ))}
                             </div>

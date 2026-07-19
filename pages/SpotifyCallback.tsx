@@ -81,6 +81,8 @@ export const SpotifyCallback: React.FC = () => {
 
     useEffect(() => {
         const code = searchParams.get('code');
+        const returnedState = searchParams.get('state');
+        const expectedState = localStorage.getItem('spotify_oauth_state');
         const error = searchParams.get('error');
 
         if (error) {
@@ -92,6 +94,12 @@ export const SpotifyCallback: React.FC = () => {
         if (!code) {
             setStatus('error');
             setErrorMsg('No authorization code returned');
+            return;
+        }
+
+        if (!returnedState || !expectedState || returnedState !== expectedState) {
+            setStatus('error');
+            setErrorMsg('OAuth state validation failed. Please try connecting again.');
             return;
         }
 
@@ -116,8 +124,8 @@ export const SpotifyCallback: React.FC = () => {
                     }
                 }
                 
-                if (!clientId || !clientSecret) {
-                    throw new Error("Missing Spotify credentials. Please configure them in Settings.");
+                if (!clientId) {
+                    throw new Error("Missing Spotify Client ID. Please configure it in Settings.");
                 }
 
                 // Get the redirect URI that was used to initiate the auth flow
@@ -130,7 +138,6 @@ export const SpotifyCallback: React.FC = () => {
                     console.log('[SpotifyCallback] Missing auth data in localStorage, fetching from backend...');
                     try {
                         const creds = await api.getSpotifyCredentials();
-                        console.log('[SpotifyCallback] Backend credentials response:', JSON.stringify(creds));
                         
                         if (creds && creds.codeVerifier) {
                             codeVerifier = creds.codeVerifier;
@@ -156,11 +163,12 @@ export const SpotifyCallback: React.FC = () => {
                 }
 
                 // Exchange Code
-                const data = await SpotifyService.exchangeCode(clientId, clientSecret, code, redirectUri, codeVerifier);
+                const data = await SpotifyService.exchangeCode(clientId, '', code, redirectUri, codeVerifier);
                 
                 // Clear stored auth data
                 localStorage.removeItem('spotify_code_verifier');
                 localStorage.removeItem('spotify_redirect_uri');
+                localStorage.removeItem('spotify_oauth_state');
 
                 const expiry = Date.now() + (data.expires_in * 1000);
                 
