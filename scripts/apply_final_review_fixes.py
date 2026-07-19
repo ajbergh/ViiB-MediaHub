@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply final code-review corrections before PR handoff."""
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -125,8 +126,296 @@ func TestProposedSongIDKeepsLiveDuplicatesDistinct(t *testing.T) {
     return text
 
 
+def fix_audio_player_hook(text: str) -> str:
+    if "import { PlaybackContext } from '../types';" not in text:
+        text = text.replace(
+            "import { StreamingErrorType } from '../slices/types';\n",
+            "import { StreamingErrorType } from '../slices/types';\nimport { PlaybackContext } from '../types';\n",
+        )
+
+    text = text.replace(
+        '''        accumulatedPlayTime: number;
+        lastPlayStartTime: number | null;
+        lastMediaTime: number;
+        isTracking: boolean;
+''',
+        '''        accumulatedPlayTime: number;
+        lastMediaTime: number;
+        context: PlaybackContext;
+        isTracking: boolean;
+''',
+    )
+
+    text = re.sub(
+        r'''\s+let finalPlayTime = listenTrackingRef\.current\.accumulatedPlayTime;\n\s+if \(listenTrackingRef\.current\.lastPlayStartTime !== null\) \{\n\s+finalPlayTime \+= \(Date\.now\(\) - listenTrackingRef\.current\.lastPlayStartTime\) / 1000;\n\s+\}''',
+        '\n                const finalPlayTime = listenTrackingRef.current.accumulatedPlayTime;',
+        text,
+    )
+    text = text.replace("currentSong.playbackContext || 'queue'", "listenTrackingRef.current.context")
+    text = text.replace(
+        '''                accumulatedPlayTime: 0,
+                lastPlayStartTime: isPlaying ? Date.now() : null,
+                lastMediaTime: 0,
+                isTracking: true
+''',
+        '''                accumulatedPlayTime: 0,
+                lastMediaTime: 0,
+                context: currentSong.playbackContext || 'queue',
+                isTracking: true
+''',
+    )
+    text = re.sub(
+        r'''\s+// Resume listen tracking\n\s+if \(listenTrackingRef\.current && listenTrackingRef\.current\.songId === currentSong\.id\) \{\n\s+listenTrackingRef\.current\.lastPlayStartTime = Date\.now\(\);\n\s+\}''',
+        '',
+        text,
+    )
+    text = re.sub(
+        r'''\s+// Pause listen tracking - accumulate time played so far\n\s+if \(listenTrackingRef\.current\) listenTrackingRef\.current\.lastPlayStartTime = null;''',
+        '',
+        text,
+    )
+
+    text = text.replace(
+        '''            if (!element || !audioSettings.mainOutputDevice) return;
+            const sinkCapable = element as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+            if (typeof sinkCapable.setSinkId !== 'function') return;
+            try {
+                await sinkCapable.setSinkId(audioSettings.mainOutputDevice);
+''',
+        '''            if (!element) return;
+            const sinkCapable = element as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+            if (typeof sinkCapable.setSinkId !== 'function') return;
+            try {
+                await sinkCapable.setSinkId(audioSettings.mainOutputDevice || '');
+''',
+    )
+
+    text = text.replace(
+        '''            nextPlayer.src = currentSong.url;
+            nextPlayer.load();
+''',
+        '''            if (nextPlayer.getAttribute('src') !== currentSong.url) {
+                nextPlayer.src = currentSong.url;
+                nextPlayer.load();
+            }
+''',
+    )
+
+    preload_marker = '''            // Trigger pre-buffering of next track when approaching end of current track
+            if (dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
+'''
+    if "Gapless preload uses the inactive player" not in text and preload_marker in text:
+        preload = '''            // Gapless preload uses the inactive player that will perform the handoff,
+            // rather than a disposable Audio element whose buffer cannot be reused.
+            const state = useStore.getState();
+            if (state.audioSettings.gapless && dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
+                const nextTrack = state.queue[state.currentSongIndex + 1];
+                const inactivePlayer = activePlayerIndex.current === 0 ? secondaryRef.current : primaryRef.current;
+                if (nextTrack?.url && inactivePlayer && inactivePlayer.getAttribute('src') !== nextTrack.url) {
+                    inactivePlayer.preload = 'auto';
+                    inactivePlayer.src = nextTrack.url;
+                    inactivePlayer.load();
+                }
+            }
+
+'''
+        text = text.replace(preload_marker, preload + preload_marker, 1)
+    return text
+
+
+def fix_player_slice(text: str) -> str:
+    old = '''        const previousUrl = get().currentSong?.url;
+        if (previousUrl && previousUrl !== playableSong.url) managedObjectUrls.release(previousUrl);
+'''
+    new = '''        const previousUrl = get().currentSong?.url;
+        if (previousUrl && previousUrl !== playableSong.url) {
+            const settings = get().audioSettings;
+            const fadeSeconds = settings.gapless ? 0 : Math.max(0, settings.crossfadeDuration || 0);
+            // Keep the outgoing Blob alive until the audio engine has paused the old element.
+            setTimeout(() => managedObjectUrls.release(previousUrl), fadeSeconds * 1000 + 1000);
+        }
+'''
+    return text.replace(old, new, 1)
+
+
+def fix_spotify_service(text: str) -> str:
+    old = '''                    if (response.ok) {
+                        const data = await response.json();
+                        setSpotifyTokens(
+                            data.access_token,
+                            data.refresh_token || spotifyRefreshToken,
+                            Date.now() + (data.expires_in * 1000)
+                        );
+                        refreshFailureCount = 0; // Reset on success
+                        return data.access_token;
+'''
+    new = '''                    if (response.ok) {
+                        const data = await response.json();
+                        const nextRefreshToken = data.refresh_token || spotifyRefreshToken;
+                        const nextExpiry = Date.now() + (data.expires_in * 1000);
+                        setSpotifyTokens(data.access_token, nextRefreshToken, nextExpiry);
+                        try {
+                            const { api } = await import('./api');
+                            await api.saveSpotifyCredentials({
+                                clientId: spotifyClientId,
+                                clientSecret: '',
+                                accessToken: data.access_token,
+                                refreshToken: nextRefreshToken,
+                                expiry: nextExpiry,
+                            });
+                        } catch (syncError) {
+                            store.addLog('warn', 'Spotify token refreshed locally but backend synchronization failed', syncError);
+                        }
+                        refreshFailureCount = 0; // Reset on success
+                        return data.access_token;
+'''
+    return text.replace(old, new, 1)
+
+
+def fix_spotify_handlers(text: str) -> str:
+    search_old = '''\trequest, err := http.NewRequestWithContext(r.Context(), http.MethodGet, "https://api.spotify.com/v1/search?"+params.Encode(), nil)
+\tif err != nil {
+\t\trespondError(w, http.StatusInternalServerError, "Failed to create request")
+\t\treturn
+\t}
+\trequest.Header.Set("Authorization", "Bearer "+accessToken)
+\tresp, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+'''
+    search_new = '''\tresp, err := a.doSpotifyRequest(r.Context(), http.MethodGet, "https://api.spotify.com/v1/search?"+params.Encode(), nil, "")
+'''
+    if search_old in text:
+        text = text.replace(search_old, search_new, 1)
+
+    profile_old = '''\treq, err := http.NewRequestWithContext(r.Context(), "GET", "https://api.spotify.com/v1/me", nil)
+\tif err != nil {
+\t\trespondError(w, http.StatusInternalServerError, "Failed to create request")
+\t\treturn
+\t}
+
+\treq.Header.Set("Authorization", "Bearer "+accessToken)
+
+\tclient := &http.Client{Timeout: 30 * time.Second}
+\tresp, err := client.Do(req)
+'''
+    profile_new = '''\tresp, err := a.doSpotifyRequest(r.Context(), http.MethodGet, "https://api.spotify.com/v1/me", nil, "")
+'''
+    if profile_old in text:
+        text = text.replace(profile_old, profile_new, 1)
+
+    proxy_old = '''\treq, err := http.NewRequest(r.Method, spotifyURL, r.Body)
+\tif err != nil {
+\t\trespondError(w, http.StatusInternalServerError, "Failed to create request")
+\t\treturn
+\t}
+
+\treq.Header.Set("Authorization", "Bearer "+accessToken)
+\treq.Header.Set("Content-Type", "application/json")
+
+\tclient := &http.Client{Timeout: 30 * time.Second}
+\tresp, err := client.Do(req)
+'''
+    proxy_new = '''\trequestBody, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+\tif err != nil {
+\t\trespondError(w, http.StatusBadRequest, "Failed to read request body")
+\t\treturn
+\t}
+\tresp, err := a.doSpotifyRequest(r.Context(), r.Method, spotifyURL, requestBody, "application/json")
+'''
+    if proxy_old in text:
+        text = text.replace(proxy_old, proxy_new, 1)
+
+    # Access token variables are no longer needed after routing through the retry helper.
+    text = text.replace('''\taccessToken, err := a.validSpotifyAccessToken(r.Context())
+\tif err != nil {
+\t\trespondError(w, http.StatusUnauthorized, err.Error())
+\t\treturn
+\t}
+\tquery :=''', '\tquery :=', 1)
+    text = text.replace('''\taccessToken, err := a.validSpotifyAccessToken(r.Context())
+\tif err != nil {
+\t\trespondError(w, http.StatusUnauthorized, err.Error())
+\t\treturn
+\t}
+\tresp, err := a.doSpotifyRequest''', '\tresp, err := a.doSpotifyRequest', 1)
+    text = text.replace('''\taccessToken, err := a.validSpotifyAccessToken(r.Context())
+\tif err != nil {
+\t\trespondError(w, http.StatusUnauthorized, err.Error())
+\t\treturn
+\t}
+
+\t// Get the path after /api/spotify/proxy/''', '\t// Get the path after /api/spotify/proxy/', 1)
+    return text
+
+
+def fix_spotify_tests(text: str) -> str:
+    if "TestSpotifyRequestRetriesOnceAfterUnauthorized" in text:
+        return text
+    addition = r'''
+
+func TestSpotifyRequestRetriesOnceAfterUnauthorized(t *testing.T) {
+    var resourceCalls int
+    resource := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        resourceCalls++
+        if r.Header.Get("Authorization") == "Bearer old-access-token" {
+            w.WriteHeader(http.StatusUnauthorized)
+            return
+        }
+        if r.Header.Get("Authorization") != "Bearer refreshed-access-token" {
+            t.Fatalf("unexpected authorization header %q", r.Header.Get("Authorization"))
+        }
+        w.WriteHeader(http.StatusOK)
+    }))
+    defer resource.Close()
+
+    tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        _ = json.NewEncoder(w).Encode(map[string]any{
+            "access_token": "refreshed-access-token",
+            "expires_in":   3600,
+        })
+    }))
+    defer tokenServer.Close()
+
+    previousEndpoint := spotifyTokenEndpoint
+    spotifyTokenEndpoint = tokenServer.URL
+    defer func() { spotifyTokenEndpoint = previousEndpoint }()
+
+    database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer database.Close()
+    credentials := SpotifyCredentials{
+        ClientId:     "client-id",
+        AccessToken:  "old-access-token",
+        RefreshToken: "refresh-token",
+        Expiry:       time.Now().Add(time.Hour).UnixMilli(),
+    }
+    raw, _ := json.Marshal(credentials)
+    if err := database.SetSetting("spotify_credentials", string(raw)); err != nil {
+        t.Fatal(err)
+    }
+
+    api := &API{db: database}
+    response, err := api.doSpotifyRequest(context.Background(), http.MethodGet, resource.URL, nil, "")
+    if err != nil {
+        t.Fatal(err)
+    }
+    response.Body.Close()
+    if response.StatusCode != http.StatusOK || resourceCalls != 2 {
+        t.Fatalf("expected one retry and 200, got calls=%d status=%d", resourceCalls, response.StatusCode)
+    }
+}
+'''
+    return text + addition
+
+
 rewrite("backend/internal/scanner/scanner.go", fix_scanner)
 rewrite("backend/internal/scanner/identity.go", fix_scanner_identity)
 rewrite("backend/internal/db/identity.go", fix_db_identity)
 rewrite("backend/internal/scanner/identity_test.go", fix_scanner_tests)
+rewrite("hooks/useAudioPlayer.ts", fix_audio_player_hook)
+rewrite("slices/playerSlice.ts", fix_player_slice)
+rewrite("services/spotifyService.ts", fix_spotify_service)
+rewrite("backend/internal/api/spotify.go", fix_spotify_handlers)
+rewrite("backend/internal/api/spotify_token_test.go", fix_spotify_tests)
 print("Final review fixes applied")
