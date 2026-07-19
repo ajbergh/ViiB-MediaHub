@@ -1,4 +1,4 @@
-name: Govulncheck Diagnostics
+name: Upgrade Go Security Baseline
 
 on:
   pull_request:
@@ -6,23 +6,32 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  govuln:
+  upgrade:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/full-remediation
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.2'
+          go-version: '1.25.12'
           cache-dependency-path: backend/go.sum
       - name: Install native tray dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libayatana-appindicator3-dev
+      - name: Upgrade security-sensitive dependencies
+        working-directory: backend
+        run: |
+          go mod edit -go=1.25.12
+          go get golang.org/x/net@v0.55.0
+          go get google.golang.org/grpc@v1.79.3
+          go mod tidy
       - name: Prepare embedded fixtures
         working-directory: backend
         run: |
@@ -30,39 +39,20 @@ jobs:
           printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
           cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
           printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
-      - name: Build scan targets
+      - name: Validate upgraded dependency graph
         working-directory: backend
         run: |
+          go test ./...
+          go vet ./...
           go build -o .ci/viib-web ./cmd/viib
           go build -o .ci/viib-wails ./cmd/wails
-      - name: Capture binary govulncheck output
-        working-directory: backend
-        shell: bash
-        run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          set +e
-          {
-            echo '=== cmd/viib ==='
-            govulncheck -mode binary .ci/viib-web
-            web_status=$?
-            echo
-            echo '=== cmd/wails ==='
-            govulncheck -mode binary .ci/viib-wails
-            wails_status=$?
-            echo
-            echo "web_exit=$web_status"
-            echo "wails_exit=$wails_status"
-          } > govulncheck.txt 2>&1
-          if [ "$web_status" -ne 0 ] || [ "$wails_status" -ne 0 ]; then
-            echo 1 > govulncheck.exitcode
-          else
-            echo 0 > govulncheck.exitcode
-          fi
-          exit 0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: viib-govuln-diagnostics
-          path: |
-            backend/govulncheck.txt
-            backend/govulncheck.exitcode
-          retention-days: 7
+          govulncheck -mode binary .ci/viib-web
+          govulncheck -mode binary .ci/viib-wails
+      - name: Commit dependency upgrades
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/go.mod backend/go.sum
+          git commit -m "Upgrade Go security baseline"
+          git push origin HEAD:agent/full-remediation
