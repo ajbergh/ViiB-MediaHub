@@ -30,6 +30,8 @@ jobs:
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
         shell: bash
         run: |
+          rm -f docs/REMEDIATION_RUN_ERROR.txt
+          python scripts/repair_full_reliability_remediation.py
           python scripts/apply_full_reliability_remediation.py > /tmp/remediation.log 2>&1
       - name: Persist remediation diagnostics
         if: ${{ steps.remediation.outcome == 'failure' }}
