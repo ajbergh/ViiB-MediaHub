@@ -22,7 +22,7 @@
  */
 
 import React from 'react';
-import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType, MilkdropSettings, HomeLayoutVariant } from '../types';
+import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType, MilkdropSettings, HomeLayoutVariant, PlaybackContext } from '../types';
 import { SmartPlaylistFilter, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
 
 export interface PlayerSlice {
@@ -47,7 +47,7 @@ export interface PlayerSlice {
   streamError: StreamingError | null;
   retryCount: number;
   
-  playSong: (song: Song, context?: Song[], playbackContext?: import('../types').PlaybackContext) => Promise<void>;
+  playSong: (song: Song, context?: Song[], playbackContext?: PlaybackContext) => Promise<void>;
   togglePlay: () => void;
   nextSong: () => void;
   prevSong: () => void;
@@ -122,12 +122,6 @@ export interface StreamingStats {
 }
 
 export type StreamingEventType = 'start' | 'complete' | 'error' | 'buffer_start' | 'buffer_end' | 'retry' | 'skip';
-
-/**
- * Playback context for AI DJ preference learning.
- * Tracks where the user initiated playback from.
- */
-export type PlaybackContext = 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search' | 'artist' | 'liked' | 'smart_mix';
 
 export interface StreamingEvent {
   type: StreamingEventType;

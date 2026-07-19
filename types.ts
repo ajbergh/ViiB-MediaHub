@@ -28,7 +28,7 @@
  * @module types
  */
 
-export type PlaybackContext = 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search' | 'spotify';
+export type PlaybackContext = 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search' | 'spotify' | 'artist' | 'liked' | 'smart_mix';
 
 export interface Song {
   playbackContext?: PlaybackContext;

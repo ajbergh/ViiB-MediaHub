@@ -6,8 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -324,63 +322,6 @@ func (dm *DownloadManager) ensureSession() error {
 
 	dmLog("Session ready!")
 	return nil
-}
-
-// refreshAccessToken refreshes an expired OAuth access token using the refresh token.
-// This implements the Spotify OAuth token refresh flow.
-//
-// Parameters:
-//   - clientId: Spotify OAuth client ID
-//   - clientSecret: Spotify OAuth client secret
-//   - refreshToken: Refresh token from previous authorization
-//
-// Returns:
-//   - newAccessToken: Fresh access token
-//   - newExpiry: New expiry timestamp in milliseconds
-//   - error: If refresh fails
-func (dm *DownloadManager) refreshAccessToken(clientId, clientSecret, refreshToken string) (string, int64, error) {
-	dmLog("Refreshing Spotify access token...")
-
-	// Make token refresh request to Spotify
-	client := &http.Client{Timeout: 10 * time.Second}
-
-	data := fmt.Sprintf("grant_type=refresh_token&refresh_token=%s&client_id=%s&client_secret=%s",
-		refreshToken, clientId, clientSecret)
-
-	req, err := http.NewRequest("POST", "https://accounts.spotify.com/api/token",
-		strings.NewReader(data))
-	if err != nil {
-		return "", 0, fmt.Errorf("failed to create refresh request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", 0, fmt.Errorf("token refresh request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", 0, fmt.Errorf("token refresh failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var tokenResp struct {
-		AccessToken string `json:"access_token"`
-		TokenType   string `json:"token_type"`
-		ExpiresIn   int    `json:"expires_in"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return "", 0, fmt.Errorf("failed to parse token response: %w", err)
-	}
-
-	// Calculate new expiry timestamp (in milliseconds, with small buffer)
-	newExpiry := time.Now().Add(time.Duration(tokenResp.ExpiresIn-60) * time.Second).UnixMilli()
-
-	dmLog("Token refresh successful, expires in %d seconds", tokenResp.ExpiresIn)
-	return tokenResp.AccessToken, newExpiry, nil
 }
 
 // setAuthRequired updates the authRequired flag and sends an SSE notification.
