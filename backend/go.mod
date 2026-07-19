@@ -18,7 +18,7 @@ require (
 	github.com/twoscott/gobble-fm v1.0.8
 	github.com/wailsapp/wails/v2 v2.11.0
 	go.senan.xyz/taglib v0.11.1
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/sys v0.45.0
 	golang.org/x/time v0.14.0
 )
