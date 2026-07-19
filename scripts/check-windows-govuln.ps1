@@ -19,9 +19,11 @@ if ($scanExitCode -eq 0) {
     exit 0
 }
 
-$advisoryIds = [regex]::Matches($scanOutput, 'GO-\d{4}-\d+') |
-    ForEach-Object { $_.Value } |
-    Sort-Object -Unique
+$advisoryIds = @(
+    [regex]::Matches($scanOutput, 'GO-\d{4}-\d+') |
+        ForEach-Object { $_.Value } |
+        Sort-Object -Unique
+)
 
 # Binary-mode govulncheck currently overmatches GO-2026-5932 in the stripped
 # Windows Wails executable even though the production package graph does not
@@ -38,13 +40,15 @@ try {
     Pop-Location
 }
 
-$openPgpDependencies = $productionDependencies |
-    Where-Object { $_ -match '^golang\.org/x/crypto/openpgp($|/)' }
+$openPgpDependencies = @(
+    $productionDependencies |
+        Where-Object { $_ -match '^golang\.org/x/crypto/openpgp($|/)' }
+)
 
 $onlyKnownFalsePositive =
     $advisoryIds.Count -eq 1 -and
     $advisoryIds[0] -eq 'GO-2026-5932' -and
-    -not $openPgpDependencies
+    $openPgpDependencies.Count -eq 0
 
 if ($onlyKnownFalsePositive) {
     Write-Warning 'Allowing GO-2026-5932: production dependency graph confirms golang.org/x/crypto/openpgp is not imported.'
