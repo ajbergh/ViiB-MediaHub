@@ -416,6 +416,7 @@ export const Spotify: React.FC = () => {
         // Store verifier for the callback
         localStorage.setItem('spotify_code_verifier', codeVerifier);
         localStorage.setItem('spotify_oauth_state', state);
+        localStorage.setItem('spotify_oauth_state', state);
         // Also store the redirect URI for the callback to use
         localStorage.setItem('spotify_redirect_uri', redirectUri);
 

@@ -103,6 +103,12 @@ export const SpotifyCallback: React.FC = () => {
             return;
         }
 
+        if (!returnedState || !expectedState || returnedState !== expectedState) {
+            setStatus('error');
+            setErrorMsg('OAuth state validation failed. Please try connecting again.');
+            return;
+        }
+
         const processAuth = async () => {
             try {
                 // Get credentials - try Zustand first, fall back to backend API
@@ -168,6 +174,7 @@ export const SpotifyCallback: React.FC = () => {
                 // Clear stored auth data
                 localStorage.removeItem('spotify_code_verifier');
                 localStorage.removeItem('spotify_redirect_uri');
+                localStorage.removeItem('spotify_oauth_state');
                 localStorage.removeItem('spotify_oauth_state');
 
                 const expiry = Date.now() + (data.expires_in * 1000);

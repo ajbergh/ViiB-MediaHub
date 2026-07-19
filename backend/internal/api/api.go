@@ -420,6 +420,11 @@ func (a *API) recordListeningEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if body.PlayDuration < 0 || body.SongDuration <= 0 || body.PlayDuration > 7*24*60*60 || body.SongDuration > 7*24*60*60 {
+		respondError(w, http.StatusBadRequest, "Invalid listening durations")
+		return
+	}
+
 	// Determine event type based on play duration
 	var eventType string
 	completionRatio := body.PlayDuration / body.SongDuration
@@ -1314,6 +1319,11 @@ func (a *API) getSetting(w http.ResponseWriter, r *http.Request) {
 
 	if !validation.IsValidSettingKey(key) {
 		respondError(w, http.StatusBadRequest, "Invalid setting key")
+		return
+	}
+
+	if validation.IsSensitiveSettingKey(key) {
+		respondJSON(w, map[string]string{"key": key, "value": "", "configured": "true"})
 		return
 	}
 

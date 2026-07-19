@@ -120,6 +120,7 @@ func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 
 	creds.ClientSecret = ""
+	creds.ClientSecret = ""
 	respondJSON(w, creds)
 }
 
