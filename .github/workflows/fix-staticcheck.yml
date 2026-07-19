@@ -38,14 +38,12 @@ jobs:
                   raise SystemExit(f'anchor missing in {path_name}: {old[:100]!r}')
               path.write_text(text.replace(old, new, 1))
 
-          # Retain the dormant upload handler explicitly; it is not currently routed.
           replace_once(
               'backend/internal/api/api.go',
               '// File upload for importing\nfunc (a *API) uploadSong',
               '// File upload for importing\n//lint:ignore U1000 Retained for the planned local-file import endpoint.\nfunc (a *API) uploadSong',
           )
 
-          # Remove unused waveform compression helpers and their imports.
           path = Path('backend/internal/api/dj_waveform.go')
           text = path.read_text()
           for imported in ['\t"bytes"\n', '\t"compress/gzip"\n', '\t"encoding/binary"\n', '\t"io"\n']:
@@ -53,10 +51,8 @@ jobs:
           marker = '\n// compressWaveform compresses peak data using gzip for storage.\n'
           if marker not in text:
               raise SystemExit('waveform helper marker missing')
-          text = text[:text.index(marker)] + '\n'
-          path.write_text(text)
+          path.write_text(text[:text.index(marker)] + '\n')
 
-          # Break out of the retry loop when cancellation occurs.
           replace_once(
               'backend/internal/api/download_manager.go',
               '\tfor attempt := 1; attempt <= maxRetries; attempt++ {\n',
@@ -68,7 +64,6 @@ jobs:
               '\t\tcase <-ctx.Done():\n\t\t\tlastErr = ctx.Err()\n\t\t\tbreak retryLoop\n',
           )
 
-          # Global math/rand is automatically seeded in supported Go releases.
           path = Path('backend/internal/api/smart_playlist.go')
           text = path.read_text()
           text = text.replace('\t"time"\n', '', 1)
@@ -87,31 +82,29 @@ jobs:
               '// getArtistAffinityBonus returns a score bonus for songs by frequently played artists.\n//lint:ignore U1000 Retained for the next recommendation-scoring iteration.\nfunc (a *API) getArtistAffinityBonus',
               1,
           )
-          text = text.replace(
-              '''\tgenreCounts := make(map[string]int)
+          old_counts = '''\tgenreCounts := make(map[string]int)
           \tif genreStats != nil {
           \t\tfor _, stat := range genreStats {
           \t\t\tgenreCounts[stat.Name] = stat.Count
           \t\t}
           \t}
-          ''',
-              '''\tgenreCounts := make(map[string]int)
+          '''
+          new_counts = '''\tgenreCounts := make(map[string]int)
           \tfor _, stat := range genreStats {
           \t\tgenreCounts[stat.Name] = stat.Count
           \t}
-          ''',
-              2,
-          )
+          '''
+          if text.count(old_counts) != 2:
+              raise SystemExit(f'expected two genre count blocks, found {text.count(old_counts)}')
+          text = text.replace(old_counts, new_counts)
           path.write_text(text)
 
-          # Retain the unused Spotify metadata helper for a planned proxy endpoint.
           replace_once(
               'backend/internal/api/spotify.go',
               '// Helper functions to fetch Spotify metadata\n\nfunc (a *API) fetchSpotifyTrack',
               '// Helper functions to fetch Spotify metadata\n\n//lint:ignore U1000 Retained for the planned backend metadata proxy.\nfunc (a *API) fetchSpotifyTrack',
           )
 
-          # Simplify exact-genre query construction.
           path = Path('backend/internal/db/genres.go')
           text = path.read_text()
           start = text.index('\t// Match the genre name within the JSON array')
@@ -124,30 +117,25 @@ jobs:
           \t\t\t  ORDER BY RANDOM() LIMIT 50`
           \targs := []interface{}{buildGenreLikePattern(genreName)}
           '''
-          text = text[:start] + query_block + text[end:]
-          path.write_text(text)
+          path.write_text(text[:start] + query_block + text[end:])
 
-          # Retain legacy JSON repair for fallback provider compatibility.
           replace_once(
               'backend/internal/gemini/gemini.go',
               '// cleanAndRepairJSON attempts to fix common JSON errors from LLM responses\nfunc cleanAndRepairJSON',
               '// cleanAndRepairJSON attempts to fix common JSON errors from LLM responses\n//lint:ignore U1000 Retained for compatibility with legacy Gemini response handling.\nfunc cleanAndRepairJSON',
           )
 
-          # Cache is already concurrency-safe internally; remove unused outer mutex.
           path = Path('backend/internal/lastfm/client.go')
           text = path.read_text()
           text = text.replace('\t"sync"\n', '', 1)
           text = text.replace('\tcache   *Cache\n\tcacheMu sync.RWMutex\n', '\tcache *Cache\n', 1)
           path.write_text(text)
 
-          # Remove the unused private metrics collector while retaining exported scan history.
           path = Path('backend/internal/scanner/optimization.go')
           text = path.read_text()
           start = text.index('// metricsCollector provides thread-safe collection')
           end = text.index('// scanHistory stores recent scan metrics', start)
-          text = text[:start] + text[end:]
-          path.write_text(text)
+          path.write_text(text[:start] + text[end:])
           PY
           find backend -name '*.go' -print0 | xargs -0 gofmt -w
       - name: Prepare embedded fixtures
@@ -158,13 +146,30 @@ jobs:
           cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
           printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
       - name: Validate fixes
+        id: validate
+        continue-on-error: true
         working-directory: backend
+        shell: bash
         run: |
-          go test ./...
-          go vet ./...
-          go install honnef.co/go/tools/cmd/staticcheck@latest
-          staticcheck ./...
+          set -o pipefail
+          {
+            go test ./...
+            go vet ./...
+            go install honnef.co/go/tools/cmd/staticcheck@latest
+            staticcheck ./...
+          } 2>&1 | tee ../staticcheck-repair-validation.txt
+      - name: Upload repair diagnostics
+        if: steps.validate.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: viib-staticcheck-repair-diagnostics
+          path: staticcheck-repair-validation.txt
+          retention-days: 7
+      - name: Fail unsuccessful validation
+        if: steps.validate.outcome == 'failure'
+        run: exit 1
       - name: Commit fixes
+        if: steps.validate.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
