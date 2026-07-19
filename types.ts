@@ -47,6 +47,8 @@ export interface Song {
   duration: number; // in seconds
   replayGainDb?: number;
   replayPeak?: number;
+  replayGainDb?: number;
+  replayPeak?: number;
   url: string; // Ephemeral Blob URL or streaming URL
   fileHandle?: FileSystemFileHandle; // Persisted handle
   coverUrl?: string;
