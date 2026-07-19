@@ -7,6 +7,12 @@ on:
     paths:
       - scripts/apply_full_remediation.py
       - .github/workflows/apply-remediation.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/apply_full_remediation.py
+      - .github/workflows/apply-remediation.yml
   workflow_dispatch:
 
 permissions:
