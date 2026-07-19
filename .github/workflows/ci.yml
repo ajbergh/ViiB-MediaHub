@@ -25,7 +25,13 @@ jobs:
           python-version: '3.12'
       - name: Apply deterministic remediation
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
-        run: python scripts/apply_full_reliability_remediation.py
+        shell: bash
+        run: |
+          set +e
+          python scripts/apply_full_reliability_remediation.py > /tmp/remediation.log 2>&1
+          status=$?
+          tail -n 80 /tmp/remediation.log
+          exit $status
       - name: Format generated Go sources
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
         working-directory: backend
