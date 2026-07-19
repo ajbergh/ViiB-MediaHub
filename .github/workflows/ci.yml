@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.2'
+          go-version: '1.25.12'
           cache-dependency-path: backend/go.sum
       - name: Install native tray dependencies
         run: |
@@ -39,7 +39,7 @@ jobs:
       - name: Prepare embedded build fixtures
         shell: bash
         run: |
-          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build
+          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build .ci
           printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
           cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
           printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
@@ -48,8 +48,15 @@ jobs:
       - run: go vet ./...
       - run: go install honnef.co/go/tools/cmd/staticcheck@latest
       - run: staticcheck ./...
+      - name: Build vulnerability scan targets
+        run: |
+          go build -o .ci/viib-web ./cmd/viib
+          go build -o .ci/viib-wails ./cmd/wails
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - run: govulncheck ./...
+      - name: Scan application binaries for reachable vulnerabilities
+        run: |
+          govulncheck -mode binary .ci/viib-web
+          govulncheck -mode binary .ci/viib-wails
 
   windows-build:
     runs-on: windows-latest
@@ -62,7 +69,7 @@ jobs:
           cache: npm
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.2'
+          go-version: '1.25.12'
           cache-dependency-path: backend/go.sum
       - uses: msys2/setup-msys2@v2
         with:
@@ -81,3 +88,7 @@ jobs:
           Copy-Item -Recurse "dist" $dest
       - working-directory: backend/cmd/wails
         run: wails build -platform windows/amd64 -ldflags "-s -w"
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Scan packaged Windows binary
+        working-directory: backend/cmd/wails
+        run: govulncheck -mode binary build/bin/ViiB-MediaHub.exe
