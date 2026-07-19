@@ -86,8 +86,25 @@ jobs:
           if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
           New-Item -ItemType Directory -Path "backend\cmd\wails\frontend" -Force | Out-Null
           Copy-Item -Recurse "dist" $dest
-      - working-directory: backend/cmd/wails
-        run: wails build -platform windows/amd64 -ldflags "-s -w"
+      - name: Build Wails application
+        id: wails_build
+        continue-on-error: true
+        working-directory: backend/cmd/wails
+        shell: pwsh
+        run: |
+          & wails build -platform windows/amd64 -ldflags "-s -w" *>&1 | Tee-Object -FilePath wails-build.log
+          exit $LASTEXITCODE
+      - name: Upload Wails build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-wails-build-log
+          path: backend/cmd/wails/wails-build.log
+          retention-days: 7
+      - name: Fail unsuccessful Wails build
+        if: steps.wails_build.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Scan packaged Windows binary
         working-directory: backend/cmd/wails
