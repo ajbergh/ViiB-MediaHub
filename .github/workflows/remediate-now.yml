@@ -30,14 +30,14 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          rm -f remediation-output.txt
+          rm -f remediation-output.txt format-output.txt
           python3 scripts/remediation_preflight.py
           sed -i 's/required: bool = True/required: bool = False/g' scripts/apply_full_remediation.py
           sed -i 's/if count > 1:/if False and count > 1:/' scripts/apply_full_remediation.py
           set -o pipefail
           python3 scripts/apply_full_remediation.py 2>&1 | tee remediation-output.txt
 
-      - name: Save failure diagnostics
+      - name: Save migration failure diagnostics
         if: steps.migration.outcome == 'failure'
         run: |
           git add -f remediation-output.txt
@@ -50,41 +50,71 @@ jobs:
         if: steps.migration.outcome == 'failure'
         run: exit 1
 
-      - name: Format and refresh lockfile
+      - name: Persist migrated implementation
         if: steps.migration.outcome == 'success'
         run: |
-          find backend -name '*.go' -print0 | xargs -0 gofmt -w
-          npm install --package-lock-only --ignore-scripts
+          git checkout -- scripts/apply_full_remediation.py
           rm -f remediation-output.txt
-
-      - name: Commit implementation
-        if: steps.migration.outcome == 'success'
-        run: |
           git add -A
           if ! git diff --cached --quiet; then
-            git commit -m "Implement full engineering remediation"
+            git commit -m "Apply full remediation source migration"
+            git push origin HEAD:agent/full-remediation
+          fi
+
+      - name: Format and refresh lockfile
+        id: format
+        if: steps.migration.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            find backend -name '*.go' -print0 | xargs -0 gofmt -w
+            npm install --package-lock-only --ignore-scripts
+          } 2>&1 | tee format-output.txt
+
+      - name: Save format failure diagnostics
+        if: steps.format.outcome == 'failure'
+        run: |
+          git add -f format-output.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Record remediation format failure diagnostics"
+            git push origin HEAD:agent/full-remediation
+          fi
+
+      - name: Fail unsuccessful format
+        if: steps.format.outcome == 'failure'
+        run: exit 1
+
+      - name: Commit formatted implementation
+        if: steps.format.outcome == 'success'
+        run: |
+          rm -f format-output.txt
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Format remediation and refresh lockfile"
             git push origin HEAD:agent/full-remediation
           fi
 
       - uses: actions/setup-node@v4
-        if: steps.migration.outcome == 'success'
+        if: steps.format.outcome == 'success'
         with:
           node-version: '20'
           cache: npm
 
       - uses: actions/setup-go@v5
-        if: steps.migration.outcome == 'success'
+        if: steps.format.outcome == 'success'
         with:
           go-version: '1.25.2'
           cache-dependency-path: backend/go.sum
 
       - name: Validate frontend
-        if: steps.migration.outcome == 'success'
+        if: steps.format.outcome == 'success'
         run: |
           npm ci
           npm run check
 
       - name: Validate backend
-        if: steps.migration.outcome == 'success'
+        if: steps.format.outcome == 'success'
         working-directory: backend
         run: go test ./...
