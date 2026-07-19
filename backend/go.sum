@@ -6,8 +6,8 @@ cloud.google.com/go/compute/metadata v0.9.0 h1:pDUj4QMoPejqq20dK0Pg2N4yG9zIkYGdB
 cloud.google.com/go/compute/metadata v0.9.0/go.mod h1:E0bWwX5wTnLPedCKqk3pJmVgCBSM6qQI1yTBdEb3C10=
 github.com/agentplexus/omnillm v0.9.0 h1:frL5nEcATlcUOJYqBYSqZB1Ba/pRWIzda7ID1mRkthM=
 github.com/agentplexus/omnillm v0.9.0/go.mod h1:2ZmGwLt2SdmYtwT9+kPt0vlLHyQFy7NtMjXMZQbkLhI=
-github.com/art-media-platform/amp.SDK v0.705.1 h1:8tCIlFK8VCAw01f4RvbQY5TVOoZcJPuqUF4SqaafNOY=
-github.com/art-media-platform/amp.SDK v0.705.1/go.mod h1:ib2kMa+rGUuMcuPtJPQpyffcdi1JSaPJB9JI9TkR+8w=
+github.com/art-media-platform/amp.SDK v0.0.0-20251013183549-11f305a1073c h1:1lZadJjhrohkBBCDkuTd00CPNQVQU0gq5SN/mxupMyE=
+github.com/art-media-platform/amp.SDK v0.0.0-20251013183549-11f305a1073c/go.mod h1:ib2kMa+rGUuMcuPtJPQpyffcdi1JSaPJB9JI9TkR+8w=
 github.com/art-media-platform/librespot-go v0.0.0-20251013184957-0b9301b09744 h1:yqoSUUazVA2uy7NlsmvW8UEjR+VxiMbDjGqfkLIsM5A=
 github.com/art-media-platform/librespot-go v0.0.0-20251013184957-0b9301b09744/go.mod h1:7yvYXSxG2Y+879hvAowJNgsJHFXDx3Hk17I2tUURNS4=
 github.com/bep/debounce v1.2.1 h1:v67fRdBA9UQu2NhLFXrSg0Brw7CexQekrBwDMM8bzeY=
