@@ -18,26 +18,42 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
           fetch-depth: 0
           persist-credentials: true
+          show-progress: false
       - name: Configure Python
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Apply deterministic remediation
+        id: remediation
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
         shell: bash
         run: |
-          set +e
           python scripts/apply_full_reliability_remediation.py > /tmp/remediation.log 2>&1
-          status=$?
-          tail -n 80 /tmp/remediation.log
-          exit $status
+      - name: Persist remediation diagnostics
+        if: ${{ steps.remediation.outcome == 'failure' }}
+        shell: bash
+        run: |
+          cp /tmp/remediation.log /tmp/remediation-preserved.log
+          git reset --hard HEAD
+          git clean -fd
+          mkdir -p docs
+          cp /tmp/remediation-preserved.log docs/REMEDIATION_RUN_ERROR.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/REMEDIATION_RUN_ERROR.log
+          git commit -m "Record remediation runner failure [skip agent]"
+          git push origin HEAD:${{ github.head_ref }}
+      - name: Fail unsuccessful remediation
+        if: ${{ steps.remediation.outcome == 'failure' }}
+        run: exit 1
       - name: Format generated Go sources
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
+        if: ${{ steps.remediation.outcome == 'success' && github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
         working-directory: backend
         run: gofmt -w internal/api internal/db internal/scanner
       - name: Commit implementation to PR branch
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
+        if: ${{ steps.remediation.outcome == 'success' && github.event_name == 'pull_request' && github.head_ref == 'agent/full-reliability-remediation' }}
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
