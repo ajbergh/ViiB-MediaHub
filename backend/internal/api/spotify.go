@@ -137,14 +137,9 @@ func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 // GET /api/spotify/search?q=query&type=track,album&limit=20
 // Response: Spotify API search response (proxied)
 func (a *API) spotifySearch(w http.ResponseWriter, r *http.Request) {
-	val, err := a.db.GetSetting("spotify_credentials")
-	if err != nil || val == "" {
-		respondError(w, http.StatusUnauthorized, "Spotify credentials not configured")
-		return
-	}
-	var creds SpotifyCredentials
-	if err := json.Unmarshal([]byte(val), &creds); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to parse credentials")
+	accessToken, err := a.validSpotifyAccessToken(r.Context())
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -163,7 +158,7 @@ func (a *API) spotifySearch(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "Failed to create request")
 		return
 	}
-	request.Header.Set("Authorization", "Bearer "+creds.AccessToken)
+	request.Header.Set("Authorization", "Bearer "+accessToken)
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
 	if err != nil {
 		respondError(w, http.StatusBadGateway, "Failed to fetch from Spotify")
@@ -353,25 +348,18 @@ func (a *API) spotifyGetPlaylistByScraping(w http.ResponseWriter, r *http.Reques
 // GET /api/spotify/me
 // Response: Spotify user profile JSON (proxied from /v1/me)
 func (a *API) spotifyGetUserProfile(w http.ResponseWriter, r *http.Request) {
-	val, err := a.db.GetSetting("spotify_credentials")
-	if err != nil || val == "" {
-		respondError(w, http.StatusUnauthorized, "Spotify credentials not configured")
+	accessToken, err := a.validSpotifyAccessToken(r.Context())
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
-
-	var creds SpotifyCredentials
-	if err := json.Unmarshal([]byte(val), &creds); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to parse credentials")
-		return
-	}
-
-	req, err := http.NewRequest("GET", "https://api.spotify.com/v1/me", nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", "https://api.spotify.com/v1/me", nil)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create request")
 		return
 	}
 
-	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -390,15 +378,9 @@ func (a *API) spotifyGetUserProfile(w http.ResponseWriter, r *http.Request) {
 
 // Generic proxy endpoint for Spotify API
 func (a *API) spotifyProxy(w http.ResponseWriter, r *http.Request) {
-	val, err := a.db.GetSetting("spotify_credentials")
-	if err != nil || val == "" {
-		respondError(w, http.StatusUnauthorized, "Spotify credentials not configured")
-		return
-	}
-
-	var creds SpotifyCredentials
-	if err := json.Unmarshal([]byte(val), &creds); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to parse credentials")
+	accessToken, err := a.validSpotifyAccessToken(r.Context())
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
@@ -429,7 +411,7 @@ func (a *API) spotifyProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 30 * time.Second}

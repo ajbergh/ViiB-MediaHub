@@ -751,10 +751,11 @@ regex_once(
 \treq, err := http.NewRequestWithContext(r.Context(), "GET", "https://api.spotify.com/v1/me", nil)''',
     flags=re.S,
 )
-replace_once(
+regex_once(
     "backend/internal/api/spotify.go",
-    'req.Header.Set("Authorization", "Bearer "+creds.AccessToken)',
-    'req.Header.Set("Authorization", "Bearer "+accessToken)',
+    r'(func \(a \*API\) spotifyGetUserProfile.*?req\.Header\.Set\("Authorization", "Bearer "\+)creds\.AccessToken(\))',
+    r'\1accessToken\2',
+    flags=re.S,
 )
 regex_once(
     "backend/internal/api/spotify.go",
@@ -769,10 +770,11 @@ regex_once(
 \t// Get the path after /api/spotify/proxy/''',
     flags=re.S,
 )
-replace_once(
+regex_once(
     "backend/internal/api/spotify.go",
-    'req.Header.Set("Authorization", "Bearer "+creds.AccessToken)',
-    'req.Header.Set("Authorization", "Bearer "+accessToken)',
+    r'(func \(a \*API\) spotifyProxy.*?req\.Header\.Set\("Authorization", "Bearer "\+)creds\.AccessToken(\))',
+    r'\1accessToken\2',
+    flags=re.S,
 )
 
 # Download/stream session uses PKCE refresh and the same credential source.

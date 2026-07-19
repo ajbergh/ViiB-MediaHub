@@ -419,6 +419,13 @@ func (a *API) recordListeningEvent(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "Invalid listening durations")
 		return
 	}
+	if body.PlayDuration > body.SongDuration {
+		body.PlayDuration = body.SongDuration
+	}
+	validContexts := map[string]bool{"ai_dj": true, "album": true, "playlist": true, "queue": true, "search": true, "spotify": true}
+	if !validContexts[body.Context] {
+		body.Context = "queue"
+	}
 
 	// Determine event type based on play duration
 	var eventType string

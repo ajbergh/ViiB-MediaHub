@@ -832,6 +832,7 @@ func (d *DB) SaveSong(s *Song) error {
 			year = excluded.year,
 			duration = excluded.duration,
 			cover_path = excluded.cover_path,
+			file_path = excluded.file_path,
 			play_count = excluded.play_count,
 			last_played = excluded.last_played,
 			skip_count = excluded.skip_count,
@@ -860,7 +861,8 @@ func (d *DB) SaveSongs(songs []Song) error {
 			genre, year, duration, file_path, cover_path, added_at,
 			play_count, last_played, skip_count, file_hash
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(file_path) DO UPDATE SET
+		ON CONFLICT DO UPDATE SET
+			file_path = excluded.file_path,
 			title = excluded.title,
 			artist = excluded.artist,
 			album = excluded.album,
@@ -874,7 +876,8 @@ func (d *DB) SaveSongs(songs []Song) error {
 			END,
 			year = excluded.year,
 			duration = excluded.duration,
-			cover_path = excluded.cover_path
+			cover_path = excluded.cover_path,
+			file_hash = excluded.file_hash
 	`)
 	if err != nil {
 		return err

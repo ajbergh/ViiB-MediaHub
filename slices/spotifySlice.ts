@@ -33,7 +33,7 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
   spotifySearchResults: null,
   spotifyActiveTab: 'search',
   
-  setSpotifyCredentials: (id, secret) => set({ spotifyClientId: id, spotifyClientSecret: secret }),
+  setSpotifyCredentials: (id, _secret) => set({ spotifyClientId: id, spotifyClientSecret: '' }),
   setSpotifyTokens: (accessToken, refreshToken, expiry) => set({ 
       spotifyAccessToken: accessToken, 
       spotifyRefreshToken: refreshToken, 

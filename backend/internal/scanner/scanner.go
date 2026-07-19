@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -331,13 +332,11 @@ func (s *Scanner) NotifyDownloadComplete() bool {
 
 // performQuickScan runs a quick scan with proper event handling for download completion
 func (s *Scanner) performQuickScan() {
-	if s.IsScanning() {
+	if !s.TryBeginScan() {
 		logger.Scanner("Quick scan skipped - scan already in progress")
 		return
 	}
-
-	s.SetScanning(true)
-	defer s.SetScanning(false)
+	defer s.EndScan()
 
 	s.emitEvent(LibraryEvent{
 		Type:    "scan_started",
@@ -403,12 +402,14 @@ func (s *Scanner) performQuickScan() {
 func isSubPath(parent, child string) bool {
 	parent = filepath.Clean(parent)
 	child = filepath.Clean(child)
-
-	// Normalize to lowercase for case-insensitive comparison on Windows
-	parent = strings.ToLower(parent)
-	child = strings.ToLower(child)
-
-	return strings.HasPrefix(child, parent)
+	rel, err := filepath.Rel(parent, child)
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // IsScanning returns whether a scan is currently in progress
@@ -423,6 +424,22 @@ func (s *Scanner) SetScanning(scanning bool) {
 	s.scanMutex.Lock()
 	s.scanning = scanning
 	s.scanMutex.Unlock()
+}
+
+// TryBeginScan atomically acquires scan ownership.
+func (s *Scanner) TryBeginScan() bool {
+	s.scanMutex.Lock()
+	defer s.scanMutex.Unlock()
+	if s.scanning {
+		return false
+	}
+	s.scanning = true
+	return true
+}
+
+// EndScan releases scan ownership.
+func (s *Scanner) EndScan() {
+	s.SetScanning(false)
 }
 
 // GetProgress returns the current scan progress message
@@ -496,11 +513,10 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		existingPaths = []string{}
 	}
 
-	// Build a set of paths that should exist (within configured folders)
-	validFolderPaths := make(map[string]bool)
-	for _, folder := range folders {
-		validFolderPaths[strings.ToLower(filepath.Clean(folder.Path))] = true
-	}
+	// A root is eligible for destructive reconciliation only after a complete,
+	// error-free traversal. Temporary NAS, USB, permission, or mount failures
+	// must never delete valid library records.
+	deletionSafeFolderPaths := make(map[string]bool)
 
 	// Track which existing paths are still valid (file exists and is within a scan folder)
 	foundPaths := make(map[string]bool)
@@ -531,6 +547,11 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		result.NewSongs += folderResult.NewSongs
 		result.UpdatedSongs += folderResult.UpdatedSongs
 		result.Errors += folderResult.Errors
+		if folderResult.Errors == 0 {
+			deletionSafeFolderPaths[filepath.Clean(folder.Path)] = true
+		} else {
+			logger.Scanner("Skipping destructive reconciliation for %s because traversal reported %d errors", folder.Path, folderResult.Errors)
+		}
 
 		// Update folder stats
 		s.db.UpdateScanFolder(folder.ID, time.Now().UnixMilli(), folderResult.TotalFiles)
@@ -546,7 +567,7 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 			// (don't remove songs from folders that were removed from config)
 			pathLower := strings.ToLower(filepath.Clean(existingPath))
 			isInScanFolder := false
-			for folderPath := range validFolderPaths {
+			for folderPath := range deletionSafeFolderPaths {
 				if strings.HasPrefix(pathLower, folderPath) {
 					isInScanFolder = true
 					break
@@ -657,9 +678,10 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 
 	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			// Log directory access errors but continue
+			// Continue discovery, but mark this root unsafe for deletion reconciliation.
 			logger.Scanner("Error accessing %s: %v", path, err)
-			return nil // Skip errors and continue walking
+			result.Errors++
+			return nil
 		}
 
 		if info.IsDir() {
@@ -693,6 +715,13 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 			result.Errors++
 			return nil
 		}
+		resolvedID, err := s.db.ResolveSongIdentity(path, song.FileHash, song.ID)
+		if err != nil {
+			logger.Scanner("Failed to resolve stable identity for %s: %v", path, err)
+			result.Errors++
+			return nil
+		}
+		song.ID = resolvedID
 
 		// Get or create album cover
 		coverArtist := song.AlbumArtist
@@ -716,7 +745,7 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 			FilePath:    path,
 			CoverPath:   song.CoverPath,
 			AddedAt:     time.Now().UnixMilli(),
-			FileHash:    song.ID, // Use the file hash we generated
+			FileHash:    song.FileHash,
 		}
 
 		songs = append(songs, dbSong)
@@ -724,11 +753,13 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 		// Save batch if we reached the limit
 		if len(songs) >= batchSize {
 			logger.Scanner("Saving batch of %d songs...", len(songs))
-			if err := s.db.SaveSongs(songs); err != nil {
+			upsert, err := s.db.SaveSongsWithResult(songs)
+			if err != nil {
 				logger.Scanner("ERROR saving batch to database: %v", err)
 				// Continue scanning even if save fails
 			} else {
-				result.NewSongs += len(songs)
+				result.NewSongs += upsert.Inserted
+				result.UpdatedSongs += upsert.Updated
 				s.createAlbumMetadataEntries(songs)
 
 				// Note: Genre enrichment is handled after scan completes in ScanAll
@@ -736,9 +767,10 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 
 				// Emit update event for real-time UI updates
 				s.emitEvent(LibraryEvent{
-					Type:     "library_updated",
-					Message:  fmt.Sprintf("Added %d songs", len(songs)),
-					NewSongs: len(songs),
+					Type:         "library_updated",
+					Message:      fmt.Sprintf("Added %d songs", len(songs)),
+					NewSongs:     upsert.Inserted,
+					UpdatedSongs: upsert.Updated,
 				})
 
 				// Update genre stats periodically during scan
@@ -759,11 +791,13 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 	// Save any remaining songs
 	if len(songs) > 0 {
 		logger.Scanner("Saving final batch of %d songs...", len(songs))
-		if err := s.db.SaveSongs(songs); err != nil {
+		upsert, err := s.db.SaveSongsWithResult(songs)
+		if err != nil {
 			logger.Scanner("ERROR saving final batch to database: %v", err)
 			return nil, nil, fmt.Errorf("failed to save songs batch: %w", err)
 		}
-		result.NewSongs += len(songs)
+		result.NewSongs += upsert.Inserted
+		result.UpdatedSongs += upsert.Updated
 		s.createAlbumMetadataEntries(songs)
 
 		// Note: Genre enrichment is handled after scan completes in ScanAll
@@ -771,9 +805,10 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 
 		// Emit final update
 		s.emitEvent(LibraryEvent{
-			Type:     "library_updated",
-			Message:  fmt.Sprintf("Added %d songs", len(songs)),
-			NewSongs: len(songs),
+			Type:         "library_updated",
+			Message:      fmt.Sprintf("Added %d songs", len(songs)),
+			NewSongs:     upsert.Inserted,
+			UpdatedSongs: upsert.Updated,
 		})
 	}
 
@@ -1011,6 +1046,7 @@ type SongMetadata struct {
 	FilePath    string
 	CoverPath   string
 	CoverData   []byte
+	FileHash    string
 }
 
 // extractMetadata extracts metadata from an audio file using taglib
@@ -1032,9 +1068,12 @@ func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
 			return
 		}
 
-		// Generate ID from file path and size
-		hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", filePath, info.Size())))
-		id := hex.EncodeToString(hash[:8])
+		fingerprint, err := computeMediaFingerprint(filePath, info)
+		if err != nil {
+			resultChan <- metadataResult{nil, fmt.Errorf("failed to fingerprint file: %w", err)}
+			return
+		}
+		id := proposedSongID(fingerprint)
 
 		// Try to read tags with taglib
 		tags, err := taglib.ReadTags(filePath)
@@ -1049,6 +1088,7 @@ func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
 				Artist:   "Unknown Artist",
 				Album:    "Unknown Album",
 				FilePath: filePath,
+				FileHash: fingerprint,
 			}, nil}
 			return
 		}
@@ -1071,6 +1111,7 @@ func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
 		// Get basic metadata
 		song := &SongMetadata{
 			ID:       id,
+			FileHash: fingerprint,
 			Title:    getTag(taglib.Title),
 			Artist:   getTag(taglib.Artist),
 			Album:    getTag(taglib.Album),
@@ -1222,9 +1263,7 @@ func (s *Scanner) getAlbumCover(artist, album, folderPath, audioFilePath string)
 func (s *Scanner) saveCoverWithContentHash(srcPath string, data []byte) string {
 	var coverData []byte
 	var err error
-
 	if srcPath != "" {
-		// Read from file
 		coverData, err = os.ReadFile(srcPath)
 		if err != nil {
 			logger.Scanner("Failed to read cover file %s: %v", srcPath, err)
@@ -1236,23 +1275,31 @@ func (s *Scanner) saveCoverWithContentHash(srcPath string, data []byte) string {
 		return ""
 	}
 
-	// Hash the content
-	contentHash := sha256.Sum256(coverData)
-	coverFileName := hex.EncodeToString(contentHash[:8]) + ".jpg"
-	coverPath := filepath.Join(s.coverDir, coverFileName)
-
-	// Check if cover with this content already exists
-	if _, err := os.Stat(coverPath); err == nil {
-		// Already exists, just return the path
-		return coverPath
-	}
-
-	// Write the cover file
-	if err := os.WriteFile(coverPath, coverData, 0644); err != nil {
-		logger.Scanner("Failed to write cover file %s: %v", coverPath, err)
+	contentType := http.DetectContentType(coverData)
+	extension := ""
+	switch contentType {
+	case "image/jpeg":
+		extension = ".jpg"
+	case "image/png":
+		extension = ".png"
+	case "image/gif":
+		extension = ".gif"
+	case "image/webp":
+		extension = ".webp"
+	default:
+		logger.Scanner("Unsupported cover content type %s", contentType)
 		return ""
 	}
 
+	contentHash := sha256.Sum256(coverData)
+	coverPath := filepath.Join(s.coverDir, hex.EncodeToString(contentHash[:8])+extension)
+	if _, err := os.Stat(coverPath); err == nil {
+		return coverPath
+	}
+	if err := os.WriteFile(coverPath, coverData, 0o600); err != nil {
+		logger.Scanner("Failed to write cover file %s: %v", coverPath, err)
+		return ""
+	}
 	return coverPath
 }
 

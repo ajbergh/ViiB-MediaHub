@@ -47,7 +47,7 @@ export interface PlayerSlice {
   streamError: StreamingError | null;
   retryCount: number;
   
-  playSong: (song: Song, context?: Song[]) => Promise<void>;
+  playSong: (song: Song, context?: Song[], playbackContext?: import('../types').PlaybackContext) => Promise<void>;
   togglePlay: () => void;
   nextSong: () => void;
   prevSong: () => void;

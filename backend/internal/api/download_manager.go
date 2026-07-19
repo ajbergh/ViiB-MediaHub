@@ -304,75 +304,10 @@ func (dm *DownloadManager) GetDownloadDir() string {
 func (dm *DownloadManager) ensureSession() error {
 	dmLog("Ensuring Spotify session is ready...")
 
-	// Get Spotify credentials from database
-	val, err := dm.db.GetSetting("spotify_credentials")
+	creds, err := loadValidSpotifyCredentials(dm.ctx, dm.db)
 	if err != nil {
-		dmLog("Error getting spotify_credentials from database: %v", err)
-		return fmt.Errorf("spotify credentials not configured: %w", err)
-	}
-	if val == "" {
-		dmLog("spotify_credentials is empty in database")
-		return fmt.Errorf("spotify credentials not configured")
-	}
-	dmLog("Got credentials from database (length: %d)", len(val))
-
-	var creds struct {
-		ClientId     string `json:"clientId"`
-		ClientSecret string `json:"clientSecret"`
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken"`
-		Expiry       int64  `json:"expiry"`
-	}
-	if err := json.Unmarshal([]byte(val), &creds); err != nil {
-		dmLog("Failed to parse credentials JSON: %v", err)
-		return fmt.Errorf("failed to parse credentials: %w", err)
-	}
-
-	if creds.AccessToken == "" {
-		dmLog("Access token is empty in parsed credentials")
-		dm.setAuthRequired(true, "Access token missing - please reconnect to Spotify")
-		return fmt.Errorf("access token not found in credentials")
-	}
-
-	// Check if token is expired or about to expire (within 5 minutes)
-	if creds.Expiry > 0 {
-		expiryTime := time.Unix(creds.Expiry/1000, 0) // Expiry is in milliseconds
-		expiryBuffer := 5 * time.Minute
-		dmLog("Token expiry: %s (now: %s)", expiryTime.Format(time.RFC3339), time.Now().Format(time.RFC3339))
-
-		if time.Now().Add(expiryBuffer).After(expiryTime) {
-			dmLog("Access token expired or expiring soon, attempting refresh...")
-
-			// Attempt token refresh if we have refresh token and client credentials
-			if creds.RefreshToken != "" && creds.ClientId != "" && creds.ClientSecret != "" {
-				newToken, newExpiry, err := dm.refreshAccessToken(creds.ClientId, creds.ClientSecret, creds.RefreshToken)
-				if err != nil {
-					dmLog("Failed to refresh token: %v", err)
-					// Check if refresh token was revoked - this requires re-authentication
-					if strings.Contains(err.Error(), "invalid_grant") || strings.Contains(err.Error(), "revoked") {
-						dm.setAuthRequired(true, "Spotify session expired - please reconnect to Spotify")
-						return fmt.Errorf("spotify re-authentication required: %w", err)
-					}
-					// Other refresh failures - try with old token but it will likely fail
-				} else {
-					dmLog("Token refreshed successfully, new expiry: %s", time.Unix(newExpiry/1000, 0).Format(time.RFC3339))
-					creds.AccessToken = newToken
-					creds.Expiry = newExpiry
-					// Clear authRequired since we have fresh credentials
-					dm.setAuthRequired(false, "")
-
-					// Save the refreshed credentials back to database
-					updatedCreds, _ := json.Marshal(creds)
-					if err := dm.db.SetSetting("spotify_credentials", string(updatedCreds)); err != nil {
-						dmLog("Warning: Failed to save refreshed credentials: %v", err)
-					}
-				}
-			} else {
-				dmLog("Cannot refresh: missing refresh token or client credentials")
-				dm.setAuthRequired(true, "Cannot refresh Spotify token - please reconnect to Spotify")
-				return fmt.Errorf("spotify re-authentication required: missing credentials for refresh")
-			}
-		}
+		dm.setAuthRequired(true, "Spotify session expired - please reconnect to Spotify")
+		return err
 	}
 
 	dmLog("Access token present (length: %d), updating session manager...", len(creds.AccessToken))

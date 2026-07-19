@@ -289,7 +289,7 @@ export const SpotifyService = {
     async getAccessToken(): Promise<string | null> {
         const store = useStore.getState();
         const { 
-            spotifyClientId, spotifyClientSecret, 
+            spotifyClientId,
             spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiry,
             setSpotifyTokens
         } = store;

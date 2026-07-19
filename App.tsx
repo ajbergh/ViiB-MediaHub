@@ -105,7 +105,7 @@ const App: React.FC = () => {
 
               // If we have scan folders or songs or Spotify credentials, mark setup as complete
               const hasExistingData = folders.length > 0 || songs.length > 0 || 
-                                     (creds && creds.clientId && creds.clientSecret);
+                                     Boolean(creds && creds.clientId);
               
               if (hasExistingData) {
                   console.log("Existing configuration detected, skipping first launch dialog");
@@ -131,7 +131,7 @@ const App: React.FC = () => {
               try {
                   const creds = await api.getSpotifyCredentials();
                   if (creds && creds.accessToken) {
-                      setSpotifyCredentials(creds.clientId, creds.clientSecret);
+                      setSpotifyCredentials(creds.clientId, '');
                       setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry);
                       console.log("Synced Spotify credentials from backend");
                   }

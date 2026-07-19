@@ -25,6 +25,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { useStore } from '../store';
 import { audioEngine } from '../lib/audio';
 import { StreamingErrorType } from '../slices/types';
+import { isActivePlaybackEvent, normalizeCrossfadeDuration } from '../lib/playbackLifecycle';
 
 // Pre-buffer threshold: start preloading next track when X seconds remain
 const PRELOAD_THRESHOLD_SECONDS = 15;
@@ -83,6 +84,7 @@ export const useAudioPlayer = () => {
         songDuration: number;
         accumulatedPlayTime: number;
         lastPlayStartTime: number | null;
+        lastMediaTime: number;
         isTracking: boolean;
     } | null>(null);
     
@@ -116,6 +118,21 @@ export const useAudioPlayer = () => {
     useEffect(() => {
         audioEngine.setVolume(volume);
     }, [volume]);
+
+    useEffect(() => {
+        const applySink = async (element: HTMLAudioElement | null) => {
+            if (!element || !audioSettings.mainOutputDevice) return;
+            const sinkCapable = element as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+            if (typeof sinkCapable.setSinkId !== 'function') return;
+            try {
+                await sinkCapable.setSinkId(audioSettings.mainOutputDevice);
+            } catch (error) {
+                console.warn('[AudioPlayer] Failed to route output device', error);
+            }
+        };
+        void applySink(primaryRef.current);
+        void applySink(secondaryRef.current);
+    }, [audioSettings.mainOutputDevice]);
     
     // Network recovery detection — all state via getState() to avoid stale closures
     useEffect(() => {
@@ -163,7 +180,9 @@ export const useAudioPlayer = () => {
         const secondary = secondaryRef.current;
         if (!primary || !secondary) return;
         
-        const handleWaiting = () => {
+        const activeElement = () => activePlayerIndex.current === 0 ? primaryRef.current : secondaryRef.current;
+        const handleWaiting = (event: Event) => {
+            if (!isActivePlaybackEvent(event.currentTarget, activeElement())) return;
             const { currentSong, setBuffering, recordStreamEvent } = useStore.getState();
             if (currentSong?.isStreaming) {
                 console.log('[AudioPlayer] Buffering started...');
@@ -180,7 +199,8 @@ export const useAudioPlayer = () => {
             }
         };
         
-        const handleCanPlay = () => {
+        const handleCanPlay = (event: Event) => {
+            if (!isActivePlaybackEvent(event.currentTarget, activeElement())) return;
             const { currentSong, setBuffering, clearStreamError, recordStreamEvent } = useStore.getState();
             if (currentSong?.isStreaming) {
                 console.log('[AudioPlayer] Buffering complete, can play');
@@ -202,6 +222,7 @@ export const useAudioPlayer = () => {
         };
         
         const handleProgress = (e: Event) => {
+            if (!isActivePlaybackEvent(e.currentTarget, activeElement())) return;
             const audio = e.target as HTMLAudioElement;
             if (audio.buffered.length > 0 && audio.duration > 0) {
                 const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
@@ -211,6 +232,7 @@ export const useAudioPlayer = () => {
         };
         
         const handleError = (e: Event) => {
+            if (!isActivePlaybackEvent(e.currentTarget, activeElement())) return;
             const audio = e.target as HTMLAudioElement;
             const { currentSong, retryCount, setBuffering, setStreamError, showToast, retryStream, nextSong, recordStreamEvent } = useStore.getState();
             
@@ -274,7 +296,8 @@ export const useAudioPlayer = () => {
             }
         };
         
-        const handleStalled = () => {
+        const handleStalled = (event: Event) => {
+            if (!isActivePlaybackEvent(event.currentTarget, activeElement())) return;
             const { currentSong, setBuffering } = useStore.getState();
             if (currentSong?.isStreaming) {
                 console.warn('[AudioPlayer] Stream stalled');
@@ -352,7 +375,7 @@ export const useAudioPlayer = () => {
                         listenTrackingRef.current.songId,
                         finalPlayTime,
                         listenTrackingRef.current.songDuration,
-                        'queue'
+                        currentSong.playbackContext || 'queue'
                     );
                     console.log(`[AudioPlayer] Listen event recorded: ${finalPlayTime.toFixed(1)}s / ${listenTrackingRef.current.songDuration.toFixed(1)}s`);
                 }
@@ -364,6 +387,7 @@ export const useAudioPlayer = () => {
                 songDuration: currentSong.duration || 0,
                 accumulatedPlayTime: 0,
                 lastPlayStartTime: isPlaying ? Date.now() : null,
+                lastMediaTime: 0,
                 isTracking: true
             };
             
@@ -398,7 +422,7 @@ export const useAudioPlayer = () => {
             nextPlayer.load();
 
             if (isPlaying) {
-                 const fadeDuration = audioSettings.crossfadeDuration || 0.2; 
+                 const fadeDuration = normalizeCrossfadeDuration(audioSettings.crossfadeDuration, audioSettings.gapless);
                  audioEngine.transition(currentPlayer, nextPlayer, fadeDuration);
             } else {
                  // Not playing, just switch context silently
@@ -424,15 +448,11 @@ export const useAudioPlayer = () => {
                  currentPlayer.pause();
                  
                  // Pause listen tracking - accumulate time played so far
-                 if (listenTrackingRef.current && listenTrackingRef.current.lastPlayStartTime !== null) {
-                     listenTrackingRef.current.accumulatedPlayTime += 
-                         (Date.now() - listenTrackingRef.current.lastPlayStartTime) / 1000;
-                     listenTrackingRef.current.lastPlayStartTime = null;
-                 }
+                  if (listenTrackingRef.current) listenTrackingRef.current.lastPlayStartTime = null;
             }
         }
 
-    }, [currentSong, isPlaying, audioSettings.crossfadeDuration]);
+    }, [currentSong, isPlaying, audioSettings.crossfadeDuration, audioSettings.gapless]);
 
     // Handlers — use getState() for fresh state to avoid stale closures
     const handleTimeUpdate = (playerIndex: number) => {
@@ -442,6 +462,13 @@ export const useAudioPlayer = () => {
         if (player) {
             const time = player.currentTime;
             const dur = player.duration || 0;
+
+            const tracking = listenTrackingRef.current;
+            if (tracking && tracking.songId === useStore.getState().currentSong?.id) {
+                const delta = time - tracking.lastMediaTime;
+                if (delta > 0 && delta < 5) tracking.accumulatedPlayTime += delta;
+                tracking.lastMediaTime = time;
+            }
 
             // Throttle state updates: only update when time changed by >= 0.25s
             const timeDelta = Math.abs(time - lastReportedTime.current);
@@ -499,7 +526,7 @@ export const useAudioPlayer = () => {
                     currentSong.id,
                     finalPlayTime,
                     songDuration,
-                    'queue'
+                    currentSong.playbackContext || 'queue'
                 );
                 console.log(`[AudioPlayer] Song completed: ${finalPlayTime.toFixed(1)}s / ${songDuration.toFixed(1)}s`);
                 
@@ -525,6 +552,7 @@ export const useAudioPlayer = () => {
         const player = activePlayerIndex.current === 0 ? primaryRef.current : secondaryRef.current;
         if (player) {
             player.currentTime = time;
+            if (listenTrackingRef.current) listenTrackingRef.current.lastMediaTime = time;
             setCurrentTime(time);
         }
     }, []);
