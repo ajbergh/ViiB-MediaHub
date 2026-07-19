@@ -46,7 +46,7 @@ jobs:
 
           path = Path('backend/internal/api/dj_waveform.go')
           text = path.read_text()
-          for imported in ['\t"bytes"\n', '\t"compress/gzip"\n', '\t"encoding/binary"\n', '\t"io"\n']:
+          for imported in ['\t"bytes"\n', '\t"compress/gzip"\n']:
               text = text.replace(imported, '', 1)
           marker = '\n// compressWaveform compresses peak data using gzip for storage.\n'
           if marker not in text:
@@ -66,7 +66,6 @@ jobs:
 
           path = Path('backend/internal/api/smart_playlist.go')
           text = path.read_text()
-          text = text.replace('\t"time"\n', '', 1)
           init_block = '''// init seeds the random number generator for true shuffle randomness.
           // This ensures each request produces different playlist ordering.
           func init() {
