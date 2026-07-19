@@ -1,4 +1,5 @@
 name: Apply full reliability remediation
+# A second branch push intentionally triggers this workflow after its initial creation.
 
 on:
   push:
