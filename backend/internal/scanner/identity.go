@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 const fingerprintSampleSize int64 = 64 * 1024
@@ -44,9 +45,10 @@ func computeMediaFingerprint(path string, info os.FileInfo) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func proposedSongID(fingerprint string) string {
-	if len(fingerprint) >= 16 {
-		return fingerprint[:16]
-	}
-	return fingerprint
+// proposedSongID is path-specific so identical files in two live locations
+// remain distinct library entries. Move reconciliation reuses the previous ID
+// only when the previous path is confirmed absent.
+func proposedSongID(fingerprint, filePath string) string {
+	hash := sha256.Sum256([]byte(fingerprint + "\x00" + filepath.Clean(filePath)))
+	return hex.EncodeToString(hash[:8])
 }

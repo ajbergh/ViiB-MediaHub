@@ -36,3 +36,15 @@ func TestMediaFingerprintSurvivesMove(t *testing.T) {
 		t.Fatalf("fingerprint changed after move: %s != %s", before, after)
 	}
 }
+
+func TestProposedSongIDKeepsLiveDuplicatesDistinct(t *testing.T) {
+	fingerprint := "0123456789abcdef0123456789abcdef"
+	first := proposedSongID(fingerprint, filepath.Join("library-a", "song.flac"))
+	second := proposedSongID(fingerprint, filepath.Join("library-b", "song.flac"))
+	if first == second {
+		t.Fatal("identical content at two paths must not collapse to one song ID")
+	}
+	if first != proposedSongID(fingerprint, filepath.Join("library-a", "song.flac")) {
+		t.Fatal("proposed ID must be deterministic")
+	}
+}

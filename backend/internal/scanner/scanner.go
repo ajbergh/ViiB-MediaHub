@@ -565,10 +565,9 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		if !foundPaths[existingPath] {
 			// Also verify the file is within one of our configured scan folders
 			// (don't remove songs from folders that were removed from config)
-			pathLower := strings.ToLower(filepath.Clean(existingPath))
 			isInScanFolder := false
 			for folderPath := range deletionSafeFolderPaths {
-				if strings.HasPrefix(pathLower, folderPath) {
+				if isSubPath(folderPath, existingPath) {
 					isInScanFolder = true
 					break
 				}
@@ -756,7 +755,8 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 			upsert, err := s.db.SaveSongsWithResult(songs)
 			if err != nil {
 				logger.Scanner("ERROR saving batch to database: %v", err)
-				// Continue scanning even if save fails
+				result.Errors++
+				// Continue discovery, but make the root ineligible for deletion reconciliation.
 			} else {
 				result.NewSongs += upsert.Inserted
 				result.UpdatedSongs += upsert.Updated
@@ -768,7 +768,7 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 				// Emit update event for real-time UI updates
 				s.emitEvent(LibraryEvent{
 					Type:         "library_updated",
-					Message:      fmt.Sprintf("Added %d songs", len(songs)),
+					Message:      fmt.Sprintf("Library updated: %d added, %d updated", upsert.Inserted, upsert.Updated),
 					NewSongs:     upsert.Inserted,
 					UpdatedSongs: upsert.Updated,
 				})
@@ -806,7 +806,7 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 		// Emit final update
 		s.emitEvent(LibraryEvent{
 			Type:         "library_updated",
-			Message:      fmt.Sprintf("Added %d songs", len(songs)),
+			Message:      fmt.Sprintf("Library updated: %d added, %d updated", upsert.Inserted, upsert.Updated),
 			NewSongs:     upsert.Inserted,
 			UpdatedSongs: upsert.Updated,
 		})
@@ -1073,7 +1073,7 @@ func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
 			resultChan <- metadataResult{nil, fmt.Errorf("failed to fingerprint file: %w", err)}
 			return
 		}
-		id := proposedSongID(fingerprint)
+		id := proposedSongID(fingerprint, filePath)
 
 		// Try to read tags with taglib
 		tags, err := taglib.ReadTags(filePath)
