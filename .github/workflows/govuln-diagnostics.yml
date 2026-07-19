@@ -1,0 +1,45 @@
+name: Govulncheck Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/full-remediation
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.2'
+          cache-dependency-path: backend/go.sum
+      - name: Prepare embedded fixtures
+        working-directory: backend
+        run: |
+          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build
+          printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
+          cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
+      - name: Capture govulncheck output
+        working-directory: backend
+        shell: bash
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          set +e
+          govulncheck -show verbose ./... > govulncheck.txt 2>&1
+          status=$?
+          echo "$status" > govulncheck.exitcode
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: viib-govuln-diagnostics
+          path: |
+            backend/govulncheck.txt
+            backend/govulncheck.exitcode
+          retention-days: 7
