@@ -19,22 +19,45 @@ jobs:
         with:
           go-version: '1.25.2'
           cache-dependency-path: backend/go.sum
+      - name: Install native tray dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libayatana-appindicator3-dev
       - name: Prepare embedded fixtures
         working-directory: backend
         run: |
-          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build
+          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build .ci
           printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
           cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
           printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
-      - name: Capture govulncheck output
+      - name: Build scan targets
+        working-directory: backend
+        run: |
+          go build -o .ci/viib-web ./cmd/viib
+          go build -o .ci/viib-wails ./cmd/wails
+      - name: Capture binary govulncheck output
         working-directory: backend
         shell: bash
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           set +e
-          govulncheck -show verbose ./... > govulncheck.txt 2>&1
-          status=$?
-          echo "$status" > govulncheck.exitcode
+          {
+            echo '=== cmd/viib ==='
+            govulncheck -mode binary .ci/viib-web
+            web_status=$?
+            echo
+            echo '=== cmd/wails ==='
+            govulncheck -mode binary .ci/viib-wails
+            wails_status=$?
+            echo
+            echo "web_exit=$web_status"
+            echo "wails_exit=$wails_status"
+          } > govulncheck.txt 2>&1
+          if [ "$web_status" -ne 0 ] || [ "$wails_status" -ne 0 ]; then
+            echo 1 > govulncheck.exitcode
+          else
+            echo 0 > govulncheck.exitcode
+          fi
           exit 0
       - uses: actions/upload-artifact@v4
         with:
