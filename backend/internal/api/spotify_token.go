@@ -99,14 +99,6 @@ func loadValidSpotifyCredentials(ctx context.Context, database *db.DB) (SpotifyC
 	return refreshSpotifyCredentials(ctx, database, false)
 }
 
-func (a *API) validSpotifyAccessToken(ctx context.Context) (string, error) {
-	credentials, err := loadValidSpotifyCredentials(ctx, a.db)
-	if err != nil {
-		return "", err
-	}
-	return credentials.AccessToken, nil
-}
-
 // doSpotifyRequest performs an authenticated request and retries exactly once
 // after a 401 with a forced PKCE refresh. Body bytes are replayable, which keeps
 // POST/PUT proxy requests safe to retry without reusing a consumed stream.
