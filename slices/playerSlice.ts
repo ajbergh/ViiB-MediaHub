@@ -224,7 +224,12 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         }
         playableSong.playbackContext = requestedContext;
         const previousUrl = get().currentSong?.url;
-        if (previousUrl && previousUrl !== playableSong.url) managedObjectUrls.release(previousUrl);
+        if (previousUrl && previousUrl !== playableSong.url) {
+            const settings = get().audioSettings;
+            const fadeSeconds = settings.gapless ? 0 : Math.max(0, settings.crossfadeDuration || 0);
+            // Keep the outgoing Blob alive until the audio engine has paused the old element.
+            setTimeout(() => managedObjectUrls.release(previousUrl), fadeSeconds * 1000 + 1000);
+        }
 
         // When no explicit context is provided, default the queue to just this
         // one song instead of the entire library. Callers that want the user's

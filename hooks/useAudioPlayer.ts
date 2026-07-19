@@ -25,6 +25,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { useStore } from '../store';
 import { audioEngine } from '../lib/audio';
 import { StreamingErrorType } from '../slices/types';
+import { PlaybackContext } from '../types';
 import { isActivePlaybackEvent, normalizeCrossfadeDuration } from '../lib/playbackLifecycle';
 
 // Pre-buffer threshold: start preloading next track when X seconds remain
@@ -83,8 +84,8 @@ export const useAudioPlayer = () => {
         songId: string;
         songDuration: number;
         accumulatedPlayTime: number;
-        lastPlayStartTime: number | null;
         lastMediaTime: number;
+        context: PlaybackContext;
         isTracking: boolean;
     } | null>(null);
     
@@ -121,11 +122,11 @@ export const useAudioPlayer = () => {
 
     useEffect(() => {
         const applySink = async (element: HTMLAudioElement | null) => {
-            if (!element || !audioSettings.mainOutputDevice) return;
+            if (!element) return;
             const sinkCapable = element as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
             if (typeof sinkCapable.setSinkId !== 'function') return;
             try {
-                await sinkCapable.setSinkId(audioSettings.mainOutputDevice);
+                await sinkCapable.setSinkId(audioSettings.mainOutputDevice || '');
             } catch (error) {
                 console.warn('[AudioPlayer] Failed to route output device', error);
             }
@@ -364,10 +365,7 @@ export const useAudioPlayer = () => {
             // Record listen event for the PREVIOUS song before switching
             if (listenTrackingRef.current && listenTrackingRef.current.isTracking) {
                 // Calculate final play duration
-                let finalPlayTime = listenTrackingRef.current.accumulatedPlayTime;
-                if (listenTrackingRef.current.lastPlayStartTime !== null) {
-                    finalPlayTime += (Date.now() - listenTrackingRef.current.lastPlayStartTime) / 1000;
-                }
+                const finalPlayTime = listenTrackingRef.current.accumulatedPlayTime;
                 
                 // Only record if we actually played for some time
                 if (finalPlayTime > 0.5) {
@@ -375,7 +373,7 @@ export const useAudioPlayer = () => {
                         listenTrackingRef.current.songId,
                         finalPlayTime,
                         listenTrackingRef.current.songDuration,
-                        currentSong.playbackContext || 'queue'
+                        listenTrackingRef.current.context
                     );
                     console.log(`[AudioPlayer] Listen event recorded: ${finalPlayTime.toFixed(1)}s / ${listenTrackingRef.current.songDuration.toFixed(1)}s`);
                 }
@@ -386,8 +384,8 @@ export const useAudioPlayer = () => {
                 songId: currentSong.id,
                 songDuration: currentSong.duration || 0,
                 accumulatedPlayTime: 0,
-                lastPlayStartTime: isPlaying ? Date.now() : null,
                 lastMediaTime: 0,
+                context: currentSong.playbackContext || 'queue',
                 isTracking: true
             };
             
@@ -418,8 +416,10 @@ export const useAudioPlayer = () => {
                 setBufferProgress(100);
             }
             
-            nextPlayer.src = currentSong.url;
-            nextPlayer.load();
+            if (nextPlayer.getAttribute('src') !== currentSong.url) {
+                nextPlayer.src = currentSong.url;
+                nextPlayer.load();
+            }
 
             if (isPlaying) {
                  const fadeDuration = normalizeCrossfadeDuration(audioSettings.crossfadeDuration, audioSettings.gapless);
@@ -438,17 +438,9 @@ export const useAudioPlayer = () => {
                  // If paused, resume. 
                  if (currentPlayer.paused) {
                     audioEngine.transition(null, currentPlayer, 0.3);
-                    
-                    // Resume listen tracking
-                    if (listenTrackingRef.current && listenTrackingRef.current.songId === currentSong.id) {
-                        listenTrackingRef.current.lastPlayStartTime = Date.now();
-                    }
                  }
             } else {
                  currentPlayer.pause();
-                 
-                 // Pause listen tracking - accumulate time played so far
-                  if (listenTrackingRef.current) listenTrackingRef.current.lastPlayStartTime = null;
             }
         }
 
@@ -491,6 +483,19 @@ export const useAudioPlayer = () => {
                 }
             }
             
+            // Gapless preload uses the inactive player that will perform the handoff,
+            // rather than a disposable Audio element whose buffer cannot be reused.
+            const state = useStore.getState();
+            if (state.audioSettings.gapless && dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
+                const nextTrack = state.queue[state.currentSongIndex + 1];
+                const inactivePlayer = activePlayerIndex.current === 0 ? secondaryRef.current : primaryRef.current;
+                if (nextTrack?.url && inactivePlayer && inactivePlayer.getAttribute('src') !== nextTrack.url) {
+                    inactivePlayer.preload = 'auto';
+                    inactivePlayer.src = nextTrack.url;
+                    inactivePlayer.load();
+                }
+            }
+
             // Trigger pre-buffering of next track when approaching end of current track
             if (dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
                 // Only trigger once per song
@@ -514,10 +519,7 @@ export const useAudioPlayer = () => {
             // Record listen event as play_complete (full song played)
             // Calculate the total play time including any accumulated from pause/resume
             if (listenTrackingRef.current && listenTrackingRef.current.songId === currentSong.id) {
-                let finalPlayTime = listenTrackingRef.current.accumulatedPlayTime;
-                if (listenTrackingRef.current.lastPlayStartTime !== null) {
-                    finalPlayTime += (Date.now() - listenTrackingRef.current.lastPlayStartTime) / 1000;
-                }
+                const finalPlayTime = listenTrackingRef.current.accumulatedPlayTime;
                 
                 // Use actual song duration if available, otherwise use tracked duration
                 const songDuration = currentSong.duration || listenTrackingRef.current.songDuration;
@@ -526,7 +528,7 @@ export const useAudioPlayer = () => {
                     currentSong.id,
                     finalPlayTime,
                     songDuration,
-                    currentSong.playbackContext || 'queue'
+                    listenTrackingRef.current.context
                 );
                 console.log(`[AudioPlayer] Song completed: ${finalPlayTime.toFixed(1)}s / ${songDuration.toFixed(1)}s`);
                 
