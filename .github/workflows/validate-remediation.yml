@@ -1,0 +1,77 @@
+name: Validate Remediation
+
+on:
+  push:
+    branches: [agent/full-remediation]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/full-remediation
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Validate frontend
+        id: validate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            npm ci
+            npm run typecheck
+            npm test
+            npm run build
+          } 2>&1 | tee frontend-validation.txt
+      - name: Upload frontend diagnostics
+        if: steps.validate.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-remediation-diagnostics
+          path: frontend-validation.txt
+          retention-days: 7
+      - name: Fail frontend validation
+        if: steps.validate.outcome == 'failure'
+        run: exit 1
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/full-remediation
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.2'
+          cache-dependency-path: backend/go.sum
+      - name: Validate backend
+        id: validate
+        continue-on-error: true
+        working-directory: backend
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            go test ./...
+            go vet ./...
+          } 2>&1 | tee ../backend-validation.txt
+      - name: Upload backend diagnostics
+        if: steps.validate.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-remediation-diagnostics
+          path: backend-validation.txt
+          retention-days: 7
+      - name: Fail backend validation
+        if: steps.validate.outcome == 'failure'
+        run: exit 1
