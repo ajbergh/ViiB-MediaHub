@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm audit --audit-level=high
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.2'
+          cache-dependency-path: backend/go.sum
+      - run: go test ./...
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - run: staticcheck ./...
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...
+
+  windows-build:
+    runs-on: windows-latest
+    needs: [frontend, backend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.2'
+          cache-dependency-path: backend/go.sum
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+      - run: echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
+      - run: npm ci
+      - run: npm run build
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - shell: pwsh
+        run: |
+          $dest = "backend\cmd\wails\frontend\dist"
+          if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+          New-Item -ItemType Directory -Path "backend\cmd\wails\frontend" -Force | Out-Null
+          Copy-Item -Recurse "dist" $dest
+      - working-directory: backend/cmd/wails
+        run: wails build -platform windows/amd64 -ldflags "-s -w"
