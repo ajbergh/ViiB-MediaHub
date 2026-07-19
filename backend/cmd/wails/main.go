@@ -211,6 +211,7 @@ func main() {
 
 	// Create API handler
 	apiHandler := api.New(database, *dataDir)
+	defer apiHandler.Close()
 	logger.Main("API handler created")
 
 	// Get embedded frontend filesystem

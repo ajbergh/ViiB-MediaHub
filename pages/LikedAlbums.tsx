@@ -231,7 +231,7 @@ export const LikedAlbums: React.FC = () => {
                     return (
                                                 <div 
                             className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer border border-transparent hover:border-surface-border h-full flex flex-col relative"
-                            onClick={() => navigate(`/album/${encodeURIComponent(album.name)}`)}
+                            onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
                             onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
                                                         role="button"
                                                         tabIndex={0}
@@ -239,7 +239,7 @@ export const LikedAlbums: React.FC = () => {
                                                         onKeyDown={(e) => {
                                                             if (e.key === 'Enter' || e.key === ' ') {
                                                                 e.preventDefault();
-                                                                navigate(`/album/${encodeURIComponent(album.name)}`);
+                                                                navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`);
                                                             }
                                                         }}
                         >

@@ -176,6 +176,7 @@ func main() {
 	logCrash("CHECKPOINT: Before API handler creation")
 	logger.Main("Creating API handler...")
 	apiHandler := api.New(database, *dataDir)
+	defer apiHandler.Close()
 	logCrash("CHECKPOINT: API handler created")
 	logger.Main("API handler created")
 

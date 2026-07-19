@@ -9,8 +9,6 @@
 package api
 
 import (
-	"bytes"
-	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -263,47 +261,4 @@ func generateMP3Waveform(filePath string) (*db.DJWaveform, error) {
 		Resolution: resolution,
 		Peaks:      peaks,
 	}, nil
-}
-
-// compressWaveform compresses peak data using gzip for storage.
-func compressWaveform(peaks []float64) ([]byte, error) {
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-
-	for _, p := range peaks {
-		// Store as float32 to save space
-		if err := binary.Write(gz, binary.LittleEndian, float32(p)); err != nil {
-			gz.Close()
-			return nil, err
-		}
-	}
-
-	if err := gz.Close(); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
-}
-
-// decompressWaveform decompresses peak data from storage.
-func decompressWaveform(data []byte, peakCount int) ([]float64, error) {
-	gz, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	defer gz.Close()
-
-	peaks := make([]float64, 0, peakCount)
-	for {
-		var p float32
-		if err := binary.Read(gz, binary.LittleEndian, &p); err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-		peaks = append(peaks, float64(p))
-	}
-
-	return peaks, nil
 }

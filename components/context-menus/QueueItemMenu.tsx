@@ -31,7 +31,7 @@ export const QueueItemMenu: React.FC<{ song: Song; index: number; onClose: () =>
             <div className="border-t border-surface-border my-1"></div>
             
             <MenuItem icon={Disc} label="Go to Album" onClick={() => {
-                navigate(`/album/${encodeURIComponent(song.album)}`);
+                navigate(`/album/${encodeURIComponent(song.album)}/${encodeURIComponent(song.albumArtist || song.artist)}`);
                 onClose();
             }} />
         </>

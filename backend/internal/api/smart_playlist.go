@@ -55,12 +55,6 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
 
-// init seeds the random number generator for true shuffle randomness.
-// This ensures each request produces different playlist ordering.
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 // LocalPlaylistFilter represents the filter criteria used to generate a playlist.
 // It contains all the parameters extracted from the user's prompt or determined
 // through local/AI matching, including genres, year range, mood, and blending info.
@@ -525,6 +519,8 @@ func (a *API) tryArtistBasedMatch(prompt string) (string, []any, bool) {
 }
 
 // getArtistAffinityBonus returns a score bonus for songs by frequently played artists.
+//
+//lint:ignore U1000 Retained for the next recommendation-scoring iteration.
 func (a *API) getArtistAffinityBonus(artistName string, artistStats map[string]int) int {
 	if artistStats == nil {
 		return 0
@@ -862,10 +858,8 @@ func (a *API) tryMatchIndexedGenre(filter *llm.PlaylistFilter, originalPrompt st
 
 	// Build a map of genre name to song count
 	genreCounts := make(map[string]int)
-	if genreStats != nil {
-		for _, stat := range genreStats {
-			genreCounts[stat.Name] = stat.Count
-		}
+	for _, stat := range genreStats {
+		genreCounts[stat.Name] = stat.Count
 	}
 
 	type scoredGenre struct {
@@ -967,10 +961,8 @@ func (a *API) tryMatchMultipleGenres(filter *llm.PlaylistFilter, originalPrompt 
 
 	// Build a map of genre name to song count
 	genreCounts := make(map[string]int)
-	if genreStats != nil {
-		for _, stat := range genreStats {
-			genreCounts[stat.Name] = stat.Count
-		}
+	for _, stat := range genreStats {
+		genreCounts[stat.Name] = stat.Count
 	}
 
 	type scoredGenre struct {

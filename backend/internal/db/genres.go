@@ -311,28 +311,13 @@ func (d *DB) GetGenreNames() ([]string, error) {
 // Uses JSON matching to find songs where the genre array contains the exact genre name.
 // Returns up to 50 random songs matching the genre.
 func (d *DB) GetSongsByExactGenre(genreName string) ([]Song, error) {
-	// Match the genre name within the JSON array - handles exact matches like ["90s Alternative", "Rock"]
-	// We use LIKE with proper JSON escaping for reliability
-	// NOTE: Using raw string literal (backticks), so single backslash for ESCAPE character
-	query := `SELECT id, title, artist, album, genre, year, duration, file_path, cover_path, added_at, play_count, last_played 
-			  FROM songs 
-			  WHERE genre LIKE ? ESCAPE '\' OR genre LIKE ? ESCAPE '\' OR genre LIKE ? ESCAPE '\'
+	// Match the quoted genre name within the stored JSON array. The pattern
+	// builder escapes SQL LIKE wildcards before binding the argument.
+	query := `SELECT id, title, artist, album, genre, year, duration, file_path, cover_path, added_at, play_count, last_played
+			  FROM songs
+			  WHERE genre LIKE ? ESCAPE '\'
 			  ORDER BY RANDOM() LIMIT 50`
-
-	// Match three patterns:
-	// 1. '["GenreName"' - genre is first in array
-	// 2. ', "GenreName"' - genre is in middle of array
-	// 3. '"GenreName"]' - genre is last in array (and might be only element)
-	args := []interface{}{
-		buildGenreLikePattern(genreName), // General match within JSON (with escaping)
-	}
-	// Actually, simpler approach: just use a single LIKE that matches the quoted genre name
-	// Use ESCAPE clause to handle any wildcards (%, _) in genre names safely
-	query = `SELECT id, title, artist, album, genre, year, duration, file_path, cover_path, added_at, play_count, last_played 
-			 FROM songs 
-			 WHERE genre LIKE ? ESCAPE '\'
-			 ORDER BY RANDOM() LIMIT 50`
-	args = []interface{}{buildGenreLikePattern(genreName)}
+	args := []interface{}{buildGenreLikePattern(genreName)}
 
 	rows, err := d.conn.Query(query, args...)
 	if err != nil {

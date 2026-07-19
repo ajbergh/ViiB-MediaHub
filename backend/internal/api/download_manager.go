@@ -61,26 +61,28 @@ const StallTimeout = 60 * time.Second
 //   - Stall detection: downloads without progress for 60s are auto-restarted
 //   - Auth failure detection: notifies frontend when re-authentication is needed
 type DownloadManager struct {
-	db               *db.DB                        // Database for persistent queue
-	downloadDir      string                        // Root directory for downloaded files
-	sessionManager   *spotify.SessionManager       // Manages librespot session lifecycle
-	downloader       *spotify.Downloader           // Handles actual track downloads
-	scanner          *scanner.Scanner              // Scanner for auto-rescan on download complete
-	isRunning        bool                          // Whether the background processor is active
-	activeDownloads  map[string]context.CancelFunc // Map of download ID -> cancel function
-	downloadProgress map[string]downloadTracker    // Tracks last progress update time for stall detection
-	activeCount      int32                         // Atomic counter for active downloads
-	maxConcurrent    int32                         // Maximum concurrent downloads (configurable)
-	authRequired     bool                          // Whether Spotify re-authentication is needed
-	authRequiredMu   sync.RWMutex                  // Protects authRequired
-	mu               sync.RWMutex                  // Protects activeDownloads and isRunning
-	ctx              context.Context               // Context for graceful shutdown
-	cancel           context.CancelFunc            // Cancel function for context
-	progressChan     chan DownloadProgress         // Channel for SSE progress updates
-	workChan         chan *db.SpotifyDownload      // Channel for dispatching work to workers
-	workerWg         sync.WaitGroup                // Wait group for worker goroutines
-	lastDownloadTime time.Time                     // For rate limiting between downloads
-	rateLimitMu      sync.Mutex                    // Protects lastDownloadTime
+	db                  *db.DB                        // Database for persistent queue
+	downloadDir         string                        // Root directory for downloaded files
+	sessionManager      *spotify.SessionManager       // Manages librespot session lifecycle
+	downloader          *spotify.Downloader           // Handles actual track downloads
+	scanner             *scanner.Scanner              // Scanner for auto-rescan on download complete
+	isRunning           bool                          // Whether the background processor is active
+	activeDownloads     map[string]context.CancelFunc // Map of download ID -> cancel function
+	downloadProgress    map[string]downloadTracker    // Tracks last progress update time for stall detection
+	activeCount         int32                         // Atomic counter for active downloads
+	maxConcurrent       int32                         // Maximum concurrent downloads (configurable)
+	authRequired        bool                          // Whether Spotify re-authentication is needed
+	authRequiredMu      sync.RWMutex                  // Protects authRequired
+	mu                  sync.RWMutex                  // Protects activeDownloads and isRunning
+	ctx                 context.Context               // Context for graceful shutdown
+	cancel              context.CancelFunc            // Cancel function for context
+	progressChan        chan DownloadProgress         // Internal progress event bus
+	progressSubscribers map[chan DownloadProgress]struct{}
+	progressSubsMu      sync.RWMutex
+	workChan            chan *db.SpotifyDownload // Channel for dispatching work to workers
+	workerWg            sync.WaitGroup           // Wait group for worker goroutines
+	lastDownloadTime    time.Time                // For rate limiting between downloads
+	rateLimitMu         sync.Mutex               // Protects lastDownloadTime
 }
 
 // downloadTracker tracks the progress of an active download for stall detection
@@ -157,19 +159,20 @@ func NewDownloadManager(database *db.DB, downloadDir string) *DownloadManager {
 	dmLog("Max concurrent downloads: %d", maxConcurrent)
 
 	dm := &DownloadManager{
-		db:               database,
-		downloadDir:      downloadDir,
-		sessionManager:   sessionManager,
-		downloader:       downloader,
-		isRunning:        false,
-		activeDownloads:  make(map[string]context.CancelFunc),
-		downloadProgress: make(map[string]downloadTracker),
-		activeCount:      0,
-		maxConcurrent:    maxConcurrent,
-		ctx:              ctx,
-		cancel:           cancel,
-		progressChan:     make(chan DownloadProgress, 100),
-		workChan:         make(chan *db.SpotifyDownload, 50), // Buffer for queued work
+		db:                  database,
+		downloadDir:         downloadDir,
+		sessionManager:      sessionManager,
+		downloader:          downloader,
+		isRunning:           false,
+		activeDownloads:     make(map[string]context.CancelFunc),
+		downloadProgress:    make(map[string]downloadTracker),
+		activeCount:         0,
+		maxConcurrent:       maxConcurrent,
+		ctx:                 ctx,
+		cancel:              cancel,
+		progressChan:        make(chan DownloadProgress, 100),
+		progressSubscribers: make(map[chan DownloadProgress]struct{}),
+		workChan:            make(chan *db.SpotifyDownload, 50), // Buffer for queued work
 	}
 
 	return dm
@@ -203,6 +206,8 @@ func (dm *DownloadManager) Start() {
 	} else if count > 0 {
 		dmLog("Reset %d stuck downloads to queued status", count)
 	}
+
+	go dm.broadcastProgress()
 
 	// Start worker goroutines
 	workerCount := int(atomic.LoadInt32(&dm.maxConcurrent))
@@ -642,7 +647,6 @@ func (dm *DownloadManager) ForceRestartDownload(id string) error {
 		cancelFunc()
 		delete(dm.activeDownloads, id)
 		delete(dm.downloadProgress, id)
-		atomic.AddInt32(&dm.activeCount, -1)
 	}
 	dm.mu.Unlock()
 
@@ -673,9 +677,42 @@ func (dm *DownloadManager) ClearCompletedDownloads() (int64, error) {
 	return count, nil
 }
 
-// GetProgressChan returns the progress channel for real-time updates
-func (dm *DownloadManager) GetProgressChan() <-chan DownloadProgress {
-	return dm.progressChan
+// SubscribeProgress registers an independent progress stream for one client.
+func (dm *DownloadManager) SubscribeProgress() chan DownloadProgress {
+	ch := make(chan DownloadProgress, 64)
+	dm.progressSubsMu.Lock()
+	dm.progressSubscribers[ch] = struct{}{}
+	dm.progressSubsMu.Unlock()
+	return ch
+}
+
+// UnsubscribeProgress removes and closes a client progress stream.
+func (dm *DownloadManager) UnsubscribeProgress(ch chan DownloadProgress) {
+	dm.progressSubsMu.Lock()
+	if _, ok := dm.progressSubscribers[ch]; ok {
+		delete(dm.progressSubscribers, ch)
+		close(ch)
+	}
+	dm.progressSubsMu.Unlock()
+}
+
+func (dm *DownloadManager) broadcastProgress() {
+	for {
+		select {
+		case <-dm.ctx.Done():
+			return
+		case progress := <-dm.progressChan:
+			dm.progressSubsMu.RLock()
+			for subscriber := range dm.progressSubscribers {
+				select {
+				case subscriber <- progress:
+				default:
+					dmLogDebug("Dropping progress event for slow subscriber")
+				}
+			}
+			dm.progressSubsMu.RUnlock()
+		}
+	}
 }
 
 // processQueue continuously dispatches queued downloads to worker goroutines.
@@ -988,6 +1025,7 @@ func (dm *DownloadManager) processDownload(workerID int, download *db.SpotifyDow
 	// Download with retry logic for transient errors
 	const maxRetries = 3
 	var lastErr error
+retryLoop:
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		lastErr = dm.downloadTrack(ctx, download)
 		if lastErr == nil {
@@ -1026,7 +1064,7 @@ func (dm *DownloadManager) processDownload(workerID int, download *db.SpotifyDow
 		select {
 		case <-ctx.Done():
 			lastErr = ctx.Err()
-			break
+			break retryLoop
 		case <-time.After(backoff):
 			// Continue to next attempt
 		}

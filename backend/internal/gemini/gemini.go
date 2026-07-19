@@ -236,6 +236,8 @@ func (c *Client) doWithRetry(fn func() error) error {
 }
 
 // cleanAndRepairJSON attempts to fix common JSON errors from LLM responses
+//
+//lint:ignore U1000 Retained for compatibility with legacy Gemini response handling.
 func cleanAndRepairJSON(input string) string {
 	// 1. Extract JSON object (remove markdown and extra text)
 	start := strings.Index(input, "{")

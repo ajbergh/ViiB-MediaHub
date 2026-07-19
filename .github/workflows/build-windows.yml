@@ -14,13 +14,13 @@ on:
 
 env:
   CGO_ENABLED: 1
-  GO_VERSION: '1.22'
-  NODE_VERSION: '20'
+  GO_VERSION: '1.25.12'
+  NODE_VERSION: '24'
 
 jobs:
   build-windows:
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,7 +51,7 @@ jobs:
         run: gcc --version
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 
       - name: Verify Wails installation
         run: wails version
@@ -59,28 +59,32 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Design system checks
-        run: |
-          npm run check:palette
-          npm run check:raw-colors
-          npm run typecheck
+      - name: Frontend quality gates
+        run: npm run check
 
       - name: Build frontend
         run: npm run build
 
-      - name: Prepare Wails frontend directory
+      - name: Prepare embedded frontend directories
+        shell: pwsh
         run: |
-          $dest = "backend\cmd\wails\frontend\dist"
-          if (Test-Path $dest) { 
-            Remove-Item -Recurse -Force $dest 
-          }
+          $wailsDest = "backend\cmd\wails\frontend\dist"
+          $webDest = "backend\cmd\viib\dist"
+          if (Test-Path $wailsDest) { Remove-Item -Recurse -Force $wailsDest }
+          if (Test-Path $webDest) { Remove-Item -Recurse -Force $webDest }
           New-Item -ItemType Directory -Path "backend\cmd\wails\frontend" -Force | Out-Null
-          Copy-Item -Recurse "dist" $dest
-          Write-Host "Frontend copied to $dest"
+          New-Item -ItemType Directory -Path "backend\cmd\viib" -Force | Out-Null
+          Copy-Item -Recurse "dist" $wailsDest
+          Copy-Item -Recurse "dist" $webDest
+          Write-Host "Frontend copied to Wails and browser embed directories"
 
       - name: Download Go dependencies
         working-directory: backend
         run: go mod download
+
+      - name: Run Go tests
+        working-directory: backend
+        run: go test ./...
 
       - name: Build Wails application
         working-directory: backend/cmd/wails
@@ -102,6 +106,13 @@ jobs:
           $size = (Get-Item $exePath).Length / 1MB
           Write-Host "✅ Build successful: $exePath ($([math]::Round($size, 2)) MB)"
 
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Scan release binary for reachable vulnerabilities
+        shell: pwsh
+        run: ./scripts/check-windows-govuln.ps1 -BinaryPath 'backend/cmd/wails/build/bin/ViiB-MediaHub.exe'
+
       - name: Sign executable
         if: env.WIN_CERT_PFX != ''
         env:
@@ -110,32 +121,23 @@ jobs:
         run: |
           $certPath = "code-signing-cert.pfx"
           [Convert]::FromBase64String($env:WIN_CERT_PFX) | Set-Content $certPath -AsByteStream
-          
-          # Find signtool
-          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" | 
-            Where-Object { $_.FullName -like "*x64*" } | 
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" |
+            Where-Object { $_.FullName -like "*x64*" } |
             Select-Object -First 1
-          
           if (-not $signtool) {
             Write-Warning "signtool.exe not found, skipping code signing"
             exit 0
           }
-          
           & $signtool.FullName sign /f $certPath /p $env:WIN_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "backend\cmd\wails\build\bin\ViiB-MediaHub.exe"
-          
           Remove-Item $certPath -Force
           Write-Host "✅ Executable signed successfully"
 
       - name: Run smoke test
         run: |
           $exePath = "backend\cmd\wails\build\bin\ViiB-MediaHub.exe"
-          
           Write-Host "Starting smoke test..."
           $process = Start-Process -FilePath $exePath -PassThru
-          
-          # Wait for app to start
           Start-Sleep -Seconds 5
-          
           try {
             if ($process.HasExited) {
               Write-Error "Process exited unexpectedly with code: $($process.ExitCode)"
@@ -160,9 +162,7 @@ jobs:
         run: |
           $version = "${{ steps.version.outputs.VERSION }}"
           $archiveName = "ViiB-MediaHub-$version-windows-x64.zip"
-          
           Compress-Archive -Path "backend\cmd\wails\build\bin\ViiB-MediaHub.exe" -DestinationPath $archiveName
-          
           $size = (Get-Item $archiveName).Length / 1MB
           Write-Host "✅ Created: $archiveName ($([math]::Round($size, 2)) MB)"
 
@@ -175,7 +175,7 @@ jobs:
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: ViiB-MediaHub-*.zip
           draft: true

@@ -9,7 +9,7 @@
  * - spotifyTokenExpiry: Token expiration timestamp
  * - spotifyUser: Authenticated user profile
  * 
- * Credentials (clientId/secret) and preferences are persisted to localStorage.
+ * Only the client ID and non-sensitive preferences are persisted to localStorage.
  * Access/refresh tokens are held in-memory only (not persisted) to prevent
  * XSS token theft — re-authentication occurs on app restart.
  * Credentials are also synced with the Go backend for download functionality.

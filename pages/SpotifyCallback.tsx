@@ -75,12 +75,14 @@ const detectCrossOriginContext = (): boolean => {
 export const SpotifyCallback: React.FC = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const { spotifyClientId, spotifyClientSecret, setSpotifyTokens, setSpotifyUser, addLog } = useStore();
+    const { spotifyClientId, setSpotifyTokens, setSpotifyUser, addLog } = useStore();
     const [status, setStatus] = useState<'processing' | 'error' | 'success'>('processing');
     const [errorMsg, setErrorMsg] = useState('');
 
     useEffect(() => {
         const code = searchParams.get('code');
+        const returnedState = searchParams.get('state');
+        const storedState = localStorage.getItem('spotify_oauth_state');
         const error = searchParams.get('error');
 
         if (error) {
@@ -97,70 +99,45 @@ export const SpotifyCallback: React.FC = () => {
 
         const processAuth = async () => {
             try {
-                // Get credentials - try Zustand first, fall back to backend API
-                // This is needed because in cross-origin popup (Wails), Zustand is empty
+                // Load the one-time OAuth context from this origin first, then
+                // fall back to the encrypted backend envelope for Wails callbacks.
                 let clientId = spotifyClientId;
-                let clientSecret = spotifyClientSecret;
-                
-                if (!clientId || !clientSecret) {
-                    console.log('[SpotifyCallback] No credentials in Zustand, fetching from backend...');
-                    try {
-                        const creds = await api.getSpotifyCredentials();
-                        if (creds && creds.clientId && creds.clientSecret) {
-                            clientId = creds.clientId;
-                            clientSecret = creds.clientSecret;
-                            console.log('[SpotifyCallback] Got credentials from backend');
-                        }
-                    } catch (e) {
-                        console.error('[SpotifyCallback] Failed to fetch credentials from backend:', e);
-                    }
-                }
-                
-                if (!clientId || !clientSecret) {
-                    throw new Error("Missing Spotify credentials. Please configure them in Settings.");
-                }
-
-                // Get the redirect URI that was used to initiate the auth flow
+                let expectedState = storedState;
                 let redirectUri = localStorage.getItem('spotify_redirect_uri');
                 let codeVerifier = localStorage.getItem('spotify_code_verifier');
-                
-                // If missing from localStorage (common in Wails cross-origin popup), try fetching from backend
-                // In Wails, the popup runs on 127.0.0.1 while the app runs on wails.localhost, so localStorage is not shared
-                if ((!codeVerifier || !redirectUri) && (isWailsEnvironment() || window.location.hostname === '127.0.0.1')) {
-                    console.log('[SpotifyCallback] Missing auth data in localStorage, fetching from backend...');
+
+                if (!clientId || !expectedState || !redirectUri || !codeVerifier) {
                     try {
                         const creds = await api.getSpotifyCredentials();
-                        console.log('[SpotifyCallback] Backend credentials response:', JSON.stringify(creds));
-                        
-                        if (creds && creds.codeVerifier) {
-                            codeVerifier = creds.codeVerifier;
-                            console.log('[SpotifyCallback] Got code verifier from backend');
-                        }
-                        
-                        // If redirectUri is still missing, we can try to reconstruct it or use the default
-                        if (!redirectUri) {
-                            redirectUri = `${window.location.origin}/callback`;
-                            console.log('[SpotifyCallback] Using default redirect URI:', redirectUri);
-                        }
+                        if (!clientId && creds?.clientId) clientId = creds.clientId;
+                        if (!expectedState && creds?.oauthState) expectedState = creds.oauthState;
+                        if (!redirectUri && creds?.redirectUri) redirectUri = creds.redirectUri;
+                        if (!codeVerifier && creds?.codeVerifier) codeVerifier = creds.codeVerifier;
                     } catch (e) {
-                        console.error('[SpotifyCallback] Failed to fetch auth data from backend:', e);
+                        console.error('[SpotifyCallback] Failed to load backend OAuth context:', e);
                     }
                 }
 
+                if (!returnedState || !expectedState || returnedState !== expectedState) {
+                    throw new Error('OAuth state validation failed. Please try connecting again.');
+                }
+                if (!clientId) {
+                    throw new Error('Missing Spotify Client ID. Please configure it in Settings.');
+                }
                 if (!redirectUri) {
                     redirectUri = `${window.location.origin}/callback`;
                 }
-
                 if (!codeVerifier) {
-                    throw new Error("Missing code verifier. Please try logging in again.");
+                    throw new Error('Missing code verifier. Please try logging in again.');
                 }
 
                 // Exchange Code
-                const data = await SpotifyService.exchangeCode(clientId, clientSecret, code, redirectUri, codeVerifier);
+                const data = await SpotifyService.exchangeCode(clientId, '', code, redirectUri, codeVerifier);
                 
                 // Clear stored auth data
                 localStorage.removeItem('spotify_code_verifier');
                 localStorage.removeItem('spotify_redirect_uri');
+                localStorage.removeItem('spotify_oauth_state');
 
                 const expiry = Date.now() + (data.expires_in * 1000);
                 
@@ -181,12 +158,15 @@ export const SpotifyCallback: React.FC = () => {
                 // Always sync to backend - this is the primary communication mechanism for cross-origin
                 try {
                     await api.saveSpotifyCredentials({
-                        clientId: clientId,
-                        clientSecret: clientSecret,
-                        accessToken: data.access_token,
-                        refreshToken: data.refresh_token,
-                        expiry: expiry
-                    });
+                            clientId,
+                            clientSecret: '',
+                            accessToken: data.access_token,
+                            refreshToken: data.refresh_token,
+                            expiry,
+                            codeVerifier: '',
+                            oauthState: '',
+                            redirectUri: ''
+                        });
                     console.log('[SpotifyCallback] Credentials synced to backend');
                     
                     // Clear auth required flag since we just re-authenticated
@@ -256,7 +236,7 @@ export const SpotifyCallback: React.FC = () => {
         };
 
         processAuth();
-    }, [searchParams, spotifyClientId, spotifyClientSecret, setSpotifyTokens, setSpotifyUser, addLog, navigate]);
+    }, [searchParams, spotifyClientId, setSpotifyTokens, setSpotifyUser, addLog, navigate]);
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-surface-0 text-text-main p-8">

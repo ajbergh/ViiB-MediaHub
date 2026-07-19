@@ -9,7 +9,7 @@
  * 
  * Persistence:
  * - Audio settings and UI preferences persisted to localStorage
- * - Spotify client credentials persisted to localStorage (tokens held in-memory only)
+ * - Spotify client ID and non-sensitive preferences persisted to localStorage; secrets and tokens remain memory-only
  * - Song library backed by SQLite (via Go backend); IndexedDB used as fallback in browser-only mode
  * 
  * Selectors:
@@ -104,31 +104,29 @@ export const useAlbums = () => {
   const songs = useStore((state) => state.songs);
   return useMemo(() => {
     const albumsMap = new Map<string, Album>();
-    
-    songs.forEach(song => {
-      const key = song.album;
-      if (!albumsMap.has(key)) {
-        albumsMap.set(key, {
-          name: song.album,
-          artist: song.albumArtist || song.artist,
-          songCount: 0,
-          coverUrl: song.coverUrl,
-          addedAt: song.addedAt || 0
-        });
+
+    songs.forEach((song) => {
+      const artist = song.albumArtist || song.artist || 'Unknown Artist';
+      const key = `${song.album}::${artist}`;
+      const existing = albumsMap.get(key);
+      if (existing) {
+        existing.songCount += 1;
+        existing.addedAt = Math.max(existing.addedAt || 0, song.addedAt || 0);
+        if (!existing.coverUrl && song.coverUrl) existing.coverUrl = song.coverUrl;
+        return;
       }
-      const album = albumsMap.get(key)!;
-      album.songCount++;
-      if (!album.coverUrl && song.coverUrl) {
-          album.coverUrl = song.coverUrl;
-      }
-      // Track the most recent addedAt for this album
-      if (song.addedAt && song.addedAt > (album.addedAt || 0)) {
-        album.addedAt = song.addedAt;
-      }
+      albumsMap.set(key, {
+        name: song.album || 'Unknown Album',
+        artist,
+        songCount: 1,
+        coverUrl: song.coverUrl,
+        addedAt: song.addedAt || 0,
+      });
     });
-    
-    // Sort by most recently added first
-    return Array.from(albumsMap.values()).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+
+    return Array.from(albumsMap.values()).sort(
+      (a, b) => (b.addedAt || 0) - (a.addedAt || 0) || a.name.localeCompare(b.name) || a.artist.localeCompare(b.artist),
+    );
   }, [songs]);
 };
 
@@ -203,12 +201,14 @@ export const useArtists = () => {
 export const useAlbumCovers = () => {
   const songs = useStore((state) => state.songs);
   return useMemo(() => {
-    const covers = new Map<string, string>();
-    songs.forEach(song => {
-      if (song.coverUrl && !covers.has(song.album)) {
-        covers.set(song.album, song.coverUrl);
-      }
+    const covers: Record<string, string> = {};
+    songs.forEach((song) => {
+      if (!song.coverUrl) return;
+      const artist = song.albumArtist || song.artist || 'Unknown Artist';
+      const composite = `${song.album}::${artist}`;
+      if (!covers[composite]) covers[composite] = song.coverUrl;
+      if (!covers[song.album]) covers[song.album] = song.coverUrl;
     });
-    return Object.fromEntries(covers);
+    return covers;
   }, [songs]);
 };

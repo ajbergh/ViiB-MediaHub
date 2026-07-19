@@ -373,8 +373,8 @@ export const Spotify: React.FC = () => {
     }, [isWaitingForAuth, setSpotifyTokens, setSpotifyUser, addLog, showToast]);
 
     const handleLogin = async () => {
-        if (!spotifyClientId || !spotifyClientSecret) {
-            alert("Please configure your Client ID and Client Secret in Settings first.");
+        if (!spotifyClientId) {
+            alert("Please configure your Spotify Client ID in Settings first.");
             return;
         }
 
@@ -390,7 +390,7 @@ export const Spotify: React.FC = () => {
 
         addLog('info', 'Initiating Spotify Login', { redirectUri, clientId: spotifyClientId });
 
-        const { url, codeVerifier } = await SpotifyService.generateAuthUrl(spotifyClientId, redirectUri);
+        const { url, codeVerifier, state } = await SpotifyService.generateAuthUrl(spotifyClientId, redirectUri);
 
         // For Wails builds, save credentials to backend BEFORE opening popup
         // This allows the cross-origin popup to fetch them
@@ -398,13 +398,14 @@ export const Spotify: React.FC = () => {
             try {
                 const preSaveData = {
                     clientId: spotifyClientId,
-                    clientSecret: spotifyClientSecret,
+                    clientSecret: '',
                     accessToken: '',
                     refreshToken: '',
                     expiry: 0,
-                    codeVerifier: codeVerifier // Save verifier for cross-origin callback
+                    codeVerifier,
+                    oauthState: state,
+                    redirectUri
                 };
-                console.log('[Spotify] Pre-saving credentials to backend:', JSON.stringify(preSaveData));
                 await api.saveSpotifyCredentials(preSaveData);
                 console.log('[Spotify] Pre-saved credentials and verifier to backend for popup');
             } catch (e) {
@@ -416,6 +417,7 @@ export const Spotify: React.FC = () => {
 
         // Store verifier for the callback
         localStorage.setItem('spotify_code_verifier', codeVerifier);
+        localStorage.setItem('spotify_oauth_state', state);
         // Also store the redirect URI for the callback to use
         localStorage.setItem('spotify_redirect_uri', redirectUri);
 

@@ -37,8 +37,10 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/lastfm"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/mediafetch"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/validation"
+	"github.com/ajbergh/viib-mediahub/internal/version"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -245,10 +247,6 @@ func (a *API) Routes() chi.Router {
 	// Frontend Logging (writes to viib.log)
 	r.Post("/log", a.handleFrontendLog)
 
-	// Settings
-	r.Get("/settings/{key}", a.getSetting)
-	r.Post("/settings/{key}", a.setSetting)
-
 	return r
 }
 
@@ -274,7 +272,7 @@ func respondError(w http.ResponseWriter, status int, message string) {
 // Handlers
 
 func (a *API) healthCheck(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, map[string]string{"status": "ok", "version": "1.0.0"})
+	respondJSON(w, map[string]string{"status": "ok", "version": version.Current})
 }
 
 // FrontendLogRequest represents a log message from the frontend
@@ -316,13 +314,13 @@ func (a *API) handleFrontendLog(w http.ResponseWriter, r *http.Request) {
 	// Log using appropriate level
 	switch level {
 	case "debug":
-		logger.Debug("FE: %s", fullMessage)
+		logger.Debug("FE", "%s", fullMessage)
 	case "info":
-		logger.Log("FE: %s", fullMessage)
+		logger.Log("FE", "%s", fullMessage)
 	case "warn":
-		logger.Log("FE WARN: %s", fullMessage)
+		logger.Log("FE WARN", "%s", fullMessage)
 	case "error":
-		logger.Log("FE ERROR: %s", fullMessage)
+		logger.Log("FE ERROR", "%s", fullMessage)
 	}
 
 	respondJSON(w, map[string]string{"status": "logged"})
@@ -414,6 +412,11 @@ func (a *API) recordListeningEvent(w http.ResponseWriter, r *http.Request) {
 	song, err := a.db.GetSongByID(id)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "Song not found")
+		return
+	}
+
+	if body.PlayDuration < 0 || body.SongDuration <= 0 || body.PlayDuration > 7*24*60*60 || body.SongDuration > 7*24*60*60 {
+		respondError(w, http.StatusBadRequest, "Invalid listening durations")
 		return
 	}
 
@@ -1242,6 +1245,8 @@ func (a *API) browseFolder(w http.ResponseWriter, r *http.Request) {
 }
 
 // File upload for importing
+//
+//lint:ignore U1000 Retained for the planned local-file import endpoint.
 func (a *API) uploadSong(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(100 << 20) // 100MB max
 
@@ -1311,6 +1316,16 @@ func (a *API) getSetting(w http.ResponseWriter, r *http.Request) {
 
 	if !validation.IsValidSettingKey(key) {
 		respondError(w, http.StatusBadRequest, "Invalid setting key")
+		return
+	}
+
+	if validation.IsSensitiveSettingKey(key) {
+		value, err := a.db.GetSetting(key)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to get setting")
+			return
+		}
+		respondJSON(w, map[string]interface{}{"key": key, "value": "", "configured": value != ""})
 		return
 	}
 
@@ -1452,83 +1467,50 @@ func (a *API) downloadAlbumCover(w http.ResponseWriter, r *http.Request) {
 		AlbumKey string `json:"albumKey"`
 		ImageURL string `json:"imageUrl"`
 	}
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-
-	if req.AlbumKey == "" || req.ImageURL == "" {
-		respondError(w, http.StatusBadRequest, "albumKey and imageUrl are required")
-		return
-	}
-
-	// Parse album key to get album name and artist
 	parts := strings.Split(req.AlbumKey, "::")
-	if len(parts) != 2 {
-		respondError(w, http.StatusBadRequest, "Invalid album key format (expected album::artist)")
+	if len(parts) != 2 || req.ImageURL == "" {
+		respondError(w, http.StatusBadRequest, "albumKey must be album::artist and imageUrl is required")
 		return
 	}
-	albumName := parts[0]
-	// artistName := parts[1]
-
-	// Find a song from this album to get the folder path
+	albumName, artistName := parts[0], parts[1]
 	songs, err := a.db.GetAllSongs()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to get songs")
 		return
 	}
-
 	var albumFolder string
 	for _, song := range songs {
-		if song.Album == albumName {
+		songArtist := song.AlbumArtist
+		if songArtist == "" {
+			songArtist = song.Artist
+		}
+		if song.Album == albumName && songArtist == artistName {
 			albumFolder = filepath.Dir(song.FilePath)
 			break
 		}
 	}
-
 	if albumFolder == "" {
-		respondError(w, http.StatusNotFound, "No songs found for this album")
+		respondError(w, http.StatusNotFound, "No songs found for this album and artist")
 		return
 	}
-
-	// Download the image
-	resp, err := http.Get(req.ImageURL)
+	data, _, err := mediafetch.FetchImage(r.Context(), req.ImageURL, mediafetch.DefaultMaxBytes)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download image: %v", err))
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("Failed to download artwork: %v", err))
 		return
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download image: HTTP %d", resp.StatusCode))
-		return
-	}
-
-	// Save as cover.jpg
 	coverPath := filepath.Join(albumFolder, "cover.jpg")
-	file, err := os.Create(coverPath)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create cover file: %v", err))
+	if err := os.WriteFile(coverPath, data, 0600); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to save cover")
 		return
 	}
-	defer file.Close()
-
-	_, err = io.Copy(file, resp.Body)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to write cover file: %v", err))
-		return
-	}
-
-	// Update the database with the local cover path
 	if err := a.db.UpdateAlbumLocalCover(req.AlbumKey, coverPath); err != nil {
 		logger.API("Warning: Failed to update album local cover in database: %v", err)
 	}
-
-	respondJSON(w, map[string]interface{}{
-		"status":    "ok",
-		"coverPath": coverPath,
-	})
+	respondJSON(w, map[string]interface{}{"status": "ok", "coverPath": coverPath})
 }
 
 // resetAlbumMetadata resets the spotify_checked flag for an album to force re-fetch
@@ -1711,77 +1693,30 @@ func (a *API) downloadArtistImage(w http.ResponseWriter, r *http.Request) {
 		ArtistName string `json:"artistName"`
 		ImageURL   string `json:"imageUrl"`
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		logger.API("downloadArtistImage: Invalid request body: %v", err)
-		respondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	if req.ArtistName == "" || req.ImageURL == "" {
-		logger.API("downloadArtistImage: Missing required fields - artistName=%q, imageUrl=%q", req.ArtistName, req.ImageURL)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ArtistName == "" || req.ImageURL == "" {
 		respondError(w, http.StatusBadRequest, "artistName and imageUrl are required")
 		return
 	}
-
-	logger.API("downloadArtistImage: Downloading image for artist %q from %s", req.ArtistName, req.ImageURL)
-
-	// Create artists image directory
+	data, _, err := mediafetch.FetchImage(r.Context(), req.ImageURL, mediafetch.DefaultMaxBytes)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("Failed to download artwork: %v", err))
+		return
+	}
 	artistImagesDir := filepath.Join(a.coverDir, "artists")
 	if err := os.MkdirAll(artistImagesDir, 0700); err != nil {
-		logger.API("downloadArtistImage: Failed to create artists directory: %v", err)
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create artists directory: %v", err))
+		respondError(w, http.StatusInternalServerError, "Failed to create artist image directory")
 		return
 	}
-
-	// Generate filename from artist name (sanitize for filesystem)
-	safeArtistName := strings.ReplaceAll(req.ArtistName, "/", "_")
-	safeArtistName = strings.ReplaceAll(safeArtistName, "\\", "_")
-	safeArtistName = strings.ReplaceAll(safeArtistName, ":", "_")
+	safeArtistName := strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(req.ArtistName)
 	imagePath := filepath.Join(artistImagesDir, safeArtistName+".jpg")
-
-	// Download the image
-	resp, err := http.Get(req.ImageURL)
-	if err != nil {
-		logger.API("downloadArtistImage: Failed to download image for %q: %v", req.ArtistName, err)
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download image: %v", err))
+	if err := os.WriteFile(imagePath, data, 0600); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to save artist image")
 		return
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.API("downloadArtistImage: HTTP error downloading image for %q: status %d", req.ArtistName, resp.StatusCode)
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download image: HTTP %d", resp.StatusCode))
-		return
-	}
-
-	// Save the image
-	file, err := os.Create(imagePath)
-	if err != nil {
-		logger.API("downloadArtistImage: Failed to create image file for %q at %s: %v", req.ArtistName, imagePath, err)
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create image file: %v", err))
-		return
-	}
-	defer file.Close()
-
-	bytesWritten, err := io.Copy(file, resp.Body)
-	if err != nil {
-		logger.API("downloadArtistImage: Failed to write image file for %q: %v", req.ArtistName, err)
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to write image file: %v", err))
-		return
-	}
-
-	logger.API("downloadArtistImage: Successfully saved %d bytes for artist %q to %s", bytesWritten, req.ArtistName, imagePath)
-
-	// Update the database with the local image path
 	if err := a.db.UpdateArtistLocalImage(req.ArtistName, imagePath); err != nil {
-		logger.API("downloadArtistImage: Failed to update artist local image in database for %q: %v", req.ArtistName, err)
+		logger.API("Failed to update artist image for %q: %v", req.ArtistName, err)
 	}
-
-	respondJSON(w, map[string]interface{}{
-		"status":    "ok",
-		"imagePath": imagePath,
-	})
+	respondJSON(w, map[string]interface{}{"status": "ok", "imagePath": imagePath})
 }
 
 type enrichGenresRequest struct {

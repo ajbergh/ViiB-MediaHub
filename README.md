@@ -139,7 +139,7 @@ Both modes share the same Go backend (SQLite library, scan engine, Spotify integ
 | Requirement | Minimum | Notes |
 |-------------|---------|-------|
 | Node.js | 20 LTS | |
-| Go | 1.22+ | |
+| Go | 1.25.12+ | Security-patched baseline |
 | GCC / Clang | — | Required for CGO (SQLite) |
 | Wails CLI | v2 latest | Wails builds only |
 
@@ -430,7 +430,7 @@ ollama pull llama3.2:8b
 - **IndexedDB** (via `idb`) — browser-mode fallback storage
 
 ### Backend
-- **Go 1.22+** — compiled, efficient backend
+- **Go 1.25.12+** — compiled, efficient backend
 - **Wails v2** — native WebView window (Windows WebView2 · macOS WebKit · Linux WebKitGTK)
 - **Chi v5** — lightweight HTTP router
 - **SQLite** (via `go-sqlite3`) — embedded database, WAL mode

@@ -158,7 +158,7 @@ const App: React.FC = () => {
           <Route path="/" element={<Home />} />
           <Route path="/songs" element={<Songs />} />
           <Route path="/albums" element={<Albums />} />
-          <Route path="/album/:albumName" element={<AlbumDetail />} />
+          <Route path="/album/:albumName/:artistName?" element={<AlbumDetail />} />
           <Route path="/artists" element={<Artists />} />
           <Route path="/artist/:artistName" element={<ArtistDetail />} />
           <Route path="/genres" element={<Genres />} />

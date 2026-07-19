@@ -86,6 +86,19 @@ export interface ApiSong {
   playCount?: number;
   lastPlayed?: number;
   skipCount?: number;
+  fileHash?: string;
+  mood?: string;
+  energy?: string;
+  tempo?: string;
+  bpm?: number;
+  instrumental?: boolean;
+  moodAnalyzedAt?: number;
+  lastfmListeners?: number;
+  lastfmPlaycount?: number;
+  lastfmTags?: string;
+  lastfmUrl?: string;
+  lastfmMbid?: string;
+  lastfmEnrichedAt?: number;
   // User preferences
   liked?: boolean;
   likedAt?: number;
@@ -418,7 +431,7 @@ export const api = {
    * @param creds - OAuth credentials from Spotify authorization flow
    * @returns Promise resolving to success response
    */
-  async saveSpotifyCredentials(creds: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string }) {
+  async saveSpotifyCredentials(creds: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; redirectUri?: string }) {
     const response = await fetch(`${API_BASE}/spotify/credentials`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -435,7 +448,7 @@ export const api = {
    */
   async getSpotifyCredentials() {
     const response = await fetch(`${API_BASE}/spotify/credentials`);
-    return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string }>(response);
+    return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; redirectUri?: string }>(response);
   },
 
   /**

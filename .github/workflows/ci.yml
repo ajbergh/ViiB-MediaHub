@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm audit --audit-level=high
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.12'
+          cache-dependency-path: backend/go.sum
+      - name: Install native tray dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libayatana-appindicator3-dev
+      - name: Prepare embedded build fixtures
+        shell: bash
+        run: |
+          mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build .ci
+          printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
+          cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
+      - run: go test ./...
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - run: staticcheck ./...
+      - name: Build vulnerability scan targets
+        run: |
+          go build -o .ci/viib-web ./cmd/viib
+          go build -o .ci/viib-wails ./cmd/wails
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Scan application binaries for reachable vulnerabilities
+        run: |
+          govulncheck -mode binary .ci/viib-web
+          govulncheck -mode binary .ci/viib-wails
+
+  windows-build:
+    runs-on: windows-latest
+    needs: [frontend, backend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.12'
+          cache-dependency-path: backend/go.sum
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+      - run: echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
+      - run: npm ci
+      - run: npm run build
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - shell: pwsh
+        run: |
+          $dest = "backend\cmd\wails\frontend\dist"
+          if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+          New-Item -ItemType Directory -Path "backend\cmd\wails\frontend" -Force | Out-Null
+          Copy-Item -Recurse "dist" $dest
+      - name: Build Wails application
+        id: wails_build
+        continue-on-error: true
+        working-directory: backend/cmd/wails
+        shell: pwsh
+        run: |
+          & wails build -platform windows/amd64 -ldflags "-s -w" *>&1 | Tee-Object -FilePath wails-build.log
+          exit $LASTEXITCODE
+      - name: Upload Wails build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-wails-build-log
+          path: backend/cmd/wails/wails-build.log
+          retention-days: 7
+      - name: Fail unsuccessful Wails build
+        if: steps.wails_build.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Scan packaged Windows binary
+        shell: pwsh
+        run: ./scripts/check-windows-govuln.ps1 -BinaryPath 'backend/cmd/wails/build/bin/ViiB-MediaHub.exe'
