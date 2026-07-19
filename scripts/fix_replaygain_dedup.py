@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def replace(path: str, old: str, new: str) -> None:
+    target = ROOT / path
+    text = target.read_text(encoding="utf-8")
+    if old in text:
+        target.write_text(text.replace(old, new), encoding="utf-8")
+
+
+duplicate_fields = "  replayGainDb?: number;\n  replayPeak?: number;\n  replayGainDb?: number;\n  replayPeak?: number;\n"
+replace("types.ts", duplicate_fields, "  replayGainDb?: number;\n  replayPeak?: number;\n")
+replace("services/api.ts", duplicate_fields, "  replayGainDb?: number;\n  replayPeak?: number;\n")
+
+duplicate_mapping = "    replayGainDb: apiSong.replayGainDb,\n    replayPeak: apiSong.replayPeak,\n    replayGainDb: apiSong.replayGainDb,\n    replayPeak: apiSong.replayPeak,\n"
+replace("services/backendService.ts", duplicate_mapping, "    replayGainDb: apiSong.replayGainDb,\n    replayPeak: apiSong.replayPeak,\n")
+print("ReplayGain duplicate fields removed")
