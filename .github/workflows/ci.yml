@@ -35,14 +35,14 @@ jobs:
         if: ${{ steps.remediation.outcome == 'failure' }}
         shell: bash
         run: |
-          cp /tmp/remediation.log /tmp/remediation-preserved.log
+          cp /tmp/remediation.log /tmp/remediation-preserved.txt
           git reset --hard HEAD
           git clean -fd
           mkdir -p docs
-          cp /tmp/remediation-preserved.log docs/REMEDIATION_RUN_ERROR.log
+          cp /tmp/remediation-preserved.txt docs/REMEDIATION_RUN_ERROR.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/REMEDIATION_RUN_ERROR.log
+          git add docs/REMEDIATION_RUN_ERROR.txt
           git commit -m "Record remediation runner failure [skip agent]"
           git push origin HEAD:${{ github.head_ref }}
       - name: Fail unsuccessful remediation
