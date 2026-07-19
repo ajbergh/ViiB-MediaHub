@@ -19,7 +19,6 @@ package lastfm
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/twoscott/gobble-fm/api"
@@ -46,8 +45,7 @@ type Client struct {
 	limiter *rate.Limiter
 
 	// Cache for API responses
-	cache   *Cache
-	cacheMu sync.RWMutex
+	cache *Cache
 
 	// Mapper for tags to mood/energy/tempo
 	tagMapper *TagMapper

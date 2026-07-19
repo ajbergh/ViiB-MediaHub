@@ -1025,6 +1025,7 @@ func (dm *DownloadManager) processDownload(workerID int, download *db.SpotifyDow
 	// Download with retry logic for transient errors
 	const maxRetries = 3
 	var lastErr error
+retryLoop:
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		lastErr = dm.downloadTrack(ctx, download)
 		if lastErr == nil {
@@ -1063,7 +1064,7 @@ func (dm *DownloadManager) processDownload(workerID int, download *db.SpotifyDow
 		select {
 		case <-ctx.Done():
 			lastErr = ctx.Err()
-			break
+			break retryLoop
 		case <-time.After(backoff):
 			// Continue to next attempt
 		}

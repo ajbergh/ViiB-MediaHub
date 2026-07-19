@@ -1245,6 +1245,8 @@ func (a *API) browseFolder(w http.ResponseWriter, r *http.Request) {
 }
 
 // File upload for importing
+//
+//lint:ignore U1000 Retained for the planned local-file import endpoint.
 func (a *API) uploadSong(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(100 << 20) // 100MB max
 

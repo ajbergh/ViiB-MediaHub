@@ -1285,6 +1285,7 @@ func (a *API) downloadProgressSSE(w http.ResponseWriter, r *http.Request) {
 
 // Helper functions to fetch Spotify metadata
 
+//lint:ignore U1000 Retained for the planned backend metadata proxy.
 func (a *API) fetchSpotifyTrack(trackID string) (map[string]interface{}, error) {
 	val, err := a.db.GetSetting("spotify_credentials")
 	if err != nil || val == "" {
