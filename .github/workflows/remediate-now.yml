@@ -30,6 +30,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          python3 scripts/remediation_preflight.py
           sed -i 's/required: bool = True/required: bool = False/g' scripts/apply_full_remediation.py
           set -o pipefail
           python3 scripts/apply_full_remediation.py 2>&1 | tee remediation-output.txt
