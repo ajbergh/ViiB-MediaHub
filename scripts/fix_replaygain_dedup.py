@@ -17,4 +17,16 @@ replace("services/api.ts", duplicate_fields, "  replayGainDb?: number;\n  replay
 
 duplicate_mapping = "    replayGainDb: apiSong.replayGainDb,\n    replayPeak: apiSong.replayPeak,\n    replayGainDb: apiSong.replayGainDb,\n    replayPeak: apiSong.replayPeak,\n"
 replace("services/backendService.ts", duplicate_mapping, "    replayGainDb: apiSong.replayGainDb,\n    replayPeak: apiSong.replayPeak,\n")
-print("ReplayGain duplicate fields removed")
+
+replace(
+    "backend/internal/db/db.go",
+    "\t\tvar replayGainDB, replayPeak sql.NullFloat64\n\t\tvar replayGainDB, replayPeak sql.NullFloat64\n",
+    "\t\tvar replayGainDB, replayPeak sql.NullFloat64\n",
+)
+replace(
+    "backend/internal/db/db.go",
+    "\t\t\treplay_gain_db = excluded.replay_gain_db,\n\t\t\treplay_peak = excluded.replay_peak,\n\t\t\treplay_gain_db = excluded.replay_gain_db,\n\t\t\treplay_peak = excluded.replay_peak,\n",
+    "\t\t\treplay_gain_db = excluded.replay_gain_db,\n\t\t\treplay_peak = excluded.replay_peak,\n",
+)
+
+print("ReplayGain duplicate fields and SQL clauses removed")
