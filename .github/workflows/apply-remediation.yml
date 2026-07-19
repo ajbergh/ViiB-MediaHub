@@ -1,0 +1,48 @@
+name: Apply Full Remediation
+
+on:
+  push:
+    branches:
+      - agent/full-remediation
+    paths:
+      - scripts/apply_full_remediation.py
+      - .github/workflows/apply-remediation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout remediation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/full-remediation
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply remediation patches
+        run: python3 scripts/apply_full_remediation.py
+
+      - name: Format Go sources
+        run: find backend -name '*.go' -print0 | xargs -0 gofmt -w
+
+      - name: Refresh frontend lockfile
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Commit remediation
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No remediation changes to commit"
+            exit 0
+          fi
+          git commit -m "Implement full engineering remediation [skip remediation]"
+          git push origin HEAD:agent/full-remediation
