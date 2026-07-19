@@ -110,8 +110,8 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Scan release binary for reachable vulnerabilities
-        working-directory: backend/cmd/wails
-        run: govulncheck -mode binary build/bin/ViiB-MediaHub.exe
+        shell: pwsh
+        run: ./scripts/check-windows-govuln.ps1 -BinaryPath 'backend/cmd/wails/build/bin/ViiB-MediaHub.exe'
 
       - name: Sign executable
         if: env.WIN_CERT_PFX != ''
