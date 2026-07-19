@@ -402,7 +402,9 @@ export const Spotify: React.FC = () => {
                     accessToken: '',
                     refreshToken: '',
                     expiry: 0,
-                    codeVerifier: codeVerifier // Save verifier for cross-origin callback
+                    codeVerifier,
+                    oauthState: state,
+                    redirectUri
                 };
                 await api.saveSpotifyCredentials(preSaveData);
                 console.log('[Spotify] Pre-saved credentials and verifier to backend for popup');
@@ -415,7 +417,6 @@ export const Spotify: React.FC = () => {
 
         // Store verifier for the callback
         localStorage.setItem('spotify_code_verifier', codeVerifier);
-        localStorage.setItem('spotify_oauth_state', state);
         localStorage.setItem('spotify_oauth_state', state);
         // Also store the redirect URI for the callback to use
         localStorage.setItem('spotify_redirect_uri', redirectUri);
