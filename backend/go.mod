@@ -1,6 +1,6 @@
 module github.com/ajbergh/viib-mediahub
 
-go 1.25.2
+go 1.25.12
 
 require (
 	github.com/agentplexus/omnillm v0.9.0
@@ -18,8 +18,8 @@ require (
 	github.com/twoscott/gobble-fm v1.0.8
 	github.com/wailsapp/wails/v2 v2.11.0
 	go.senan.xyz/taglib v0.11.1
-	golang.org/x/crypto v0.46.0
-	golang.org/x/sys v0.39.0
+	golang.org/x/crypto v0.51.0
+	golang.org/x/sys v0.45.0
 	golang.org/x/time v0.14.0
 )
 
@@ -81,11 +81,11 @@ require (
 	go.opentelemetry.io/otel v1.39.0 // indirect
 	go.opentelemetry.io/otel/metric v1.39.0 // indirect
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/genai v1.40.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
-	google.golang.org/grpc v1.78.0 // indirect
+	google.golang.org/grpc v1.79.3 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
