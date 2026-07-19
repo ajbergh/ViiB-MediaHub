@@ -25,7 +25,7 @@ jobs:
           mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build
           printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
           cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
-          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
       - name: Capture govulncheck output
         working-directory: backend
         shell: bash
