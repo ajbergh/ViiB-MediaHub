@@ -88,3 +88,7 @@ require (
 	google.golang.org/grpc v1.78.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+// v0.705.1 was removed from the upstream Git tag namespace after librespot-go
+// published against it. Pin the corresponding immutable source revision.
+replace github.com/art-media-platform/amp.SDK => github.com/art-media-platform/amp.SDK v0.0.0-20251013183549-11f305a1073c
