@@ -289,7 +289,7 @@ export const SpotifyService = {
     async getAccessToken(): Promise<string | null> {
         const store = useStore.getState();
         const { 
-            spotifyClientId, spotifyClientSecret, 
+            spotifyClientId,
             spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiry,
             setSpotifyTokens
         } = store;
@@ -343,11 +343,21 @@ export const SpotifyService = {
                     
                     if (response.ok) {
                         const data = await response.json();
-                        setSpotifyTokens(
-                            data.access_token,
-                            data.refresh_token || spotifyRefreshToken,
-                            Date.now() + (data.expires_in * 1000)
-                        );
+                        const nextRefreshToken = data.refresh_token || spotifyRefreshToken;
+                        const nextExpiry = Date.now() + (data.expires_in * 1000);
+                        setSpotifyTokens(data.access_token, nextRefreshToken, nextExpiry);
+                        try {
+                            const { api } = await import('./api');
+                            await api.saveSpotifyCredentials({
+                                clientId: spotifyClientId,
+                                clientSecret: '',
+                                accessToken: data.access_token,
+                                refreshToken: nextRefreshToken,
+                                expiry: nextExpiry,
+                            });
+                        } catch (syncError) {
+                            store.addLog('warn', 'Spotify token refreshed locally but backend synchronization failed', syncError);
+                        }
                         refreshFailureCount = 0; // Reset on success
                         return data.access_token;
                     } else {

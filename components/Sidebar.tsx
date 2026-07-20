@@ -14,7 +14,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   Home, Music, Disc, Mic2, ListMusic, Tags,
   Download, Search, Settings, Library, Sparkles, Loader2,
-  ChevronLeft, ChevronRight, BarChart3, Heart, Disc3, X
+  ChevronLeft, ChevronRight, BarChart3, Heart, Disc3, Copy, X
 } from 'lucide-react';
 import { useStore } from '../store';
 import { useIsMobile } from '../hooks/useMediaQuery';
@@ -183,6 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
         <div className="space-y-1">
           <SidebarItem to="/search" icon={Search} label="Search" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
           <SidebarItem to="/stats" icon={BarChart3} label="Stats" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
+          <SidebarItem to="/duplicates" icon={Copy} label="Duplicates" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
           <SidebarItem to="/settings" icon={Settings} label="Settings" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
         </div>
       </nav>

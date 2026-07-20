@@ -28,7 +28,10 @@
  * @module types
  */
 
+export type PlaybackContext = 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search' | 'spotify' | 'artist' | 'liked' | 'smart_mix';
+
 export interface Song {
+  playbackContext?: PlaybackContext;
   id: string;
   title: string;
   artist: string;
@@ -42,6 +45,8 @@ export interface Song {
   yearUncertain?: boolean; // True if year may be remaster date
   yearAnalyzedAt?: number; // timestamp of year analysis
   duration: number; // in seconds
+  replayGainDb?: number;
+  replayPeak?: number;
   url: string; // Ephemeral Blob URL or streaming URL
   fileHandle?: FileSystemFileHandle; // Persisted handle
   coverUrl?: string;

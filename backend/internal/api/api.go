@@ -127,6 +127,9 @@ func (a *API) Routes() chi.Router {
 	r.Post("/smart-playlist", a.handleGenerateSmartPlaylist)
 	r.Delete("/songs", a.clearSongs)
 	r.Post("/library/enrich-genres", a.enrichGenres)
+	r.Get("/library/duplicates", a.getDuplicateGroups)
+	r.Get("/library/duplicates/ignored", a.getIgnoredSongs)
+	r.Post("/library/duplicates/ignore", a.setDuplicateIgnored)
 	r.Get("/library/enrich-genres/stream", a.enrichGenresStream)       // SSE streaming enrichment
 	r.Get("/library/enrich-all/stream", a.enrichAllMetadataStream)     // SSE unified enrichment (genres+mood+years)
 	r.Post("/library/enrich-mood", a.enrichMood)                       // Mood/energy enrichment
@@ -150,6 +153,8 @@ func (a *API) Routes() chi.Router {
 
 	// Playlist endpoints
 	r.Get("/playlists", a.getPlaylists)
+	r.Post("/playlists/import/m3u", a.importPlaylistM3U)
+	r.Get("/playlists/{id}/export.m3u", a.exportPlaylistM3U)
 	r.Post("/playlists", a.createPlaylist)
 	r.Put("/playlists/{id}", a.updatePlaylist)
 	r.Delete("/playlists/{id}", a.deletePlaylist)
@@ -418,6 +423,13 @@ func (a *API) recordListeningEvent(w http.ResponseWriter, r *http.Request) {
 	if body.PlayDuration < 0 || body.SongDuration <= 0 || body.PlayDuration > 7*24*60*60 || body.SongDuration > 7*24*60*60 {
 		respondError(w, http.StatusBadRequest, "Invalid listening durations")
 		return
+	}
+	if body.PlayDuration > body.SongDuration {
+		body.PlayDuration = body.SongDuration
+	}
+	validContexts := map[string]bool{"ai_dj": true, "album": true, "playlist": true, "queue": true, "search": true, "spotify": true}
+	if !validContexts[body.Context] {
+		body.Context = "queue"
 	}
 
 	// Determine event type based on play duration

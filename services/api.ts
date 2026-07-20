@@ -80,6 +80,8 @@ export interface ApiSong {
   yearUncertain?: boolean; // True if year may be remaster date
   yearAnalyzedAt?: number; // timestamp of year analysis
   duration: number;
+  replayGainDb?: number;
+  replayPeak?: number;
   filePath: string; // This will be the API URL like /api/audio/{id}
   coverPath?: string; // This will be /api/cover/{id}
   addedAt: number;
@@ -102,6 +104,21 @@ export interface ApiSong {
   // User preferences
   liked?: boolean;
   likedAt?: number;
+}
+
+export interface DuplicateSong extends ApiSong {
+  sourcePath?: string;
+}
+
+export interface DuplicateGroup {
+  fileHash: string;
+  songs: DuplicateSong[];
+}
+
+export interface M3UImportResult {
+  playlist: ApiPlaylist;
+  matched: number;
+  unmatched: string[];
 }
 
 export interface ApiPlaylist {
@@ -369,6 +386,44 @@ export const api = {
   async removeFolder(id: string): Promise<void> {
     const response = await fetch(`${API_BASE}/folders/${id}`, { method: 'DELETE' });
     await handleResponse(response);
+  },
+
+  // Library integrity
+  async getDuplicateGroups(): Promise<DuplicateGroup[]> {
+    const response = await fetch(`${API_BASE}/library/duplicates`);
+    return handleResponse(response);
+  },
+
+  async getIgnoredSongs(): Promise<DuplicateSong[]> {
+    const response = await fetch(`${API_BASE}/library/duplicates/ignored`);
+    return handleResponse(response);
+  },
+
+  async setDuplicateIgnored(songId: string, ignored: boolean): Promise<void> {
+    const response = await fetch(`${API_BASE}/library/duplicates/ignore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ songId, ignored }),
+    });
+    await handleResponse(response);
+  },
+
+  async importPlaylistM3U(name: string, content: string): Promise<M3UImportResult> {
+    const response = await fetch(`${API_BASE}/playlists/import/m3u`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, content }),
+    });
+    return handleResponse(response);
+  },
+
+  async exportPlaylistM3U(id: string): Promise<Blob> {
+    const response = await fetch(`${API_BASE}/playlists/${encodeURIComponent(id)}/export.m3u`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    return response.blob();
   },
 
   // Scanning

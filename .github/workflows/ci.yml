@@ -13,12 +13,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          show-progress: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - run: npm run check
+      - name: Run frontend checks
+        id: frontend_checks
+        continue-on-error: true
+        shell: bash
+        run: npm run check > frontend-validation.txt 2>&1
+      - name: Upload frontend validation log
+        if: ${{ steps.frontend_checks.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-validation-log
+          path: frontend-validation.txt
+          retention-days: 7
+      - name: Fail unsuccessful frontend checks
+        if: ${{ steps.frontend_checks.outcome == 'failure' }}
+        run: exit 1
       - run: npm audit --audit-level=high
 
   backend:
@@ -28,6 +44,8 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          show-progress: false
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.12'
@@ -43,26 +61,42 @@ jobs:
           printf '<!doctype html><title>test fixture</title>' > cmd/viib/dist/index.html
           cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
           printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
-      - run: go test ./...
-      - run: go test -race ./...
-      - run: go vet ./...
-      - run: go install honnef.co/go/tools/cmd/staticcheck@latest
-      - run: staticcheck ./...
-      - name: Build vulnerability scan targets
+      - name: Run backend validation
+        id: backend_checks
+        continue-on-error: true
+        shell: bash
         run: |
-          go build -o .ci/viib-web ./cmd/viib
-          go build -o .ci/viib-wails ./cmd/wails
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - name: Scan application binaries for reachable vulnerabilities
-        run: |
-          govulncheck -mode binary .ci/viib-web
-          govulncheck -mode binary .ci/viib-wails
+          set -o pipefail
+          {
+            go test ./...
+            go test -race ./...
+            go vet ./...
+            go install honnef.co/go/tools/cmd/staticcheck@latest
+            staticcheck ./...
+            go build -o .ci/viib-web ./cmd/viib
+            go build -o .ci/viib-wails ./cmd/wails
+            go install golang.org/x/vuln/cmd/govulncheck@latest
+            govulncheck -mode binary .ci/viib-web
+            govulncheck -mode binary .ci/viib-wails
+          } > ../backend-validation.txt 2>&1
+      - name: Upload backend validation log
+        if: ${{ steps.backend_checks.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-validation-log
+          path: backend-validation.txt
+          retention-days: 7
+      - name: Fail unsuccessful backend checks
+        if: ${{ steps.backend_checks.outcome == 'failure' }}
+        run: exit 1
 
   windows-build:
     runs-on: windows-latest
     needs: [frontend, backend]
     steps:
       - uses: actions/checkout@v4
+        with:
+          show-progress: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'

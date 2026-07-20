@@ -44,7 +44,12 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'mediahub-storage',
-      version: 1, // Increment when storage schema changes
+      version: 2, // Removes legacy renderer secrets and persists Spotify playback preferences
+      migrate: (persistedState: any) => {
+        const migrated = { ...(persistedState || {}) };
+        delete migrated.spotifyClientSecret;
+        return migrated;
+      },
       // We do NOT persist 'songs' here anymore because they are in IndexedDB
       partialize: (state) => ({ 
           audioSettings: state.audioSettings,
@@ -52,11 +57,13 @@ export const useStore = create<AppState>()(
           homeLayoutVariant: state.homeLayoutVariant,
           hasCompletedSetup: state.hasCompletedSetup,
           spotifyClientId: state.spotifyClientId,
-          spotifyClientSecret: state.spotifyClientSecret,
           // NOTE: spotifyAccessToken, spotifyRefreshToken, and spotifyTokenExpiry
           // are intentionally NOT persisted to localStorage to avoid XSS token theft.
           // Tokens are held in-memory only; re-auth occurs on app restart.
           spotifyUser: state.spotifyUser,
+          streamingEnabled: state.streamingEnabled,
+          streamingQuality: state.streamingQuality,
+          preferLocalPlayback: state.preferLocalPlayback,
           // AI DJ state
           aiDjPrompt: state.aiDjPrompt,
           aiDjGeneratedSongs: state.aiDjGeneratedSongs,

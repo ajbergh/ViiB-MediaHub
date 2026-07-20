@@ -93,6 +93,8 @@ type Song struct {
 	YearUncertain  bool     `json:"yearUncertain,omitempty"`  // True if year may be remaster date
 	YearAnalyzedAt int64    `json:"yearAnalyzedAt,omitempty"` // Timestamp of year analysis
 	Duration       float64  `json:"duration"`
+	ReplayGainDB   float64  `json:"replayGainDb,omitempty"`
+	ReplayPeak     float64  `json:"replayPeak,omitempty"`
 	FilePath       string   `json:"filePath"`
 	CoverPath      string   `json:"coverPath,omitempty"`
 	AddedAt        int64    `json:"addedAt"`
@@ -510,6 +512,21 @@ func (d *DB) migrateColumns() error {
 		// Ignore if index already exists
 	}
 
+	// Migration: Add ReplayGain metadata used by the normalization audio stage.
+	replayGainMigrations := []string{
+		`ALTER TABLE songs ADD COLUMN replay_gain_db REAL`,
+		`ALTER TABLE songs ADD COLUMN replay_peak REAL`,
+		`ALTER TABLE songs ADD COLUMN ignored INTEGER DEFAULT 0`,
+	}
+	for _, m := range replayGainMigrations {
+		if _, err := d.conn.Exec(m); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
+	}
+	if _, err := d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_songs_ignored ON songs(ignored)`); err != nil {
+		return err
+	}
+
 	// Migration: Add Last.FM enrichment columns to songs table
 	// These columns store metadata from Last.FM API for AI DJ and playlist generation.
 	lastfmSongMigrations := []string{
@@ -700,11 +717,12 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 	rows, err := d.conn.Query(`
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
 		       genre, year, original_year, year_uncertain, year_analyzed_at,
-		       duration, file_path, cover_path, added_at, play_count, last_played,
+		       duration, replay_gain_db, replay_peak, file_path, cover_path, added_at, play_count, last_played,
 		       skip_count, file_hash, mood, energy, tempo, bpm, instrumental,
 		       mood_analyzed_at, liked, liked_at, lastfm_listeners, lastfm_playcount,
 		       lastfm_tags, lastfm_url, lastfm_mbid, lastfm_enriched_at
 		FROM songs
+		WHERE COALESCE(ignored, 0) = 0
 		ORDER BY album, album_artist, disc_number, track_number, title`)
 	if err != nil {
 		return nil, err
@@ -718,10 +736,11 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 		var trackNum, discNum, year, originalYear, yearUncertain, yearAnalyzedAt sql.NullInt64
 		var playCount, lastPlayed, skipCount, bpm, instrumental, moodAnalyzedAt sql.NullInt64
 		var liked, likedAt, lastFMListeners, lastFMPlaycount, lastFMEnrichedAt sql.NullInt64
+		var replayGainDB, replayPeak sql.NullFloat64
 		if err := rows.Scan(
 			&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist, &trackNum, &discNum,
 			&genreJSON, &year, &originalYear, &yearUncertain, &yearAnalyzedAt,
-			&s.Duration, &s.FilePath, &coverPath, &s.AddedAt, &playCount, &lastPlayed,
+			&s.Duration, &replayGainDB, &replayPeak, &s.FilePath, &coverPath, &s.AddedAt, &playCount, &lastPlayed,
 			&skipCount, &fileHash, &mood, &energy, &tempo, &bpm, &instrumental,
 			&moodAnalyzedAt, &liked, &likedAt, &lastFMListeners, &lastFMPlaycount,
 			&lastFMTags, &lastFMURL, &lastFMMBID, &lastFMEnrichedAt,
@@ -749,6 +768,12 @@ func (d *DB) GetAllSongs() ([]Song, error) {
 		s.YearUncertain = yearUncertain.Valid && yearUncertain.Int64 == 1
 		if yearAnalyzedAt.Valid {
 			s.YearAnalyzedAt = yearAnalyzedAt.Int64
+		}
+		if replayGainDB.Valid {
+			s.ReplayGainDB = replayGainDB.Float64
+		}
+		if replayPeak.Valid {
+			s.ReplayPeak = replayPeak.Float64
 		}
 		if coverPath.Valid {
 			s.CoverPath = coverPath.String
@@ -818,9 +843,9 @@ func (d *DB) SaveSong(s *Song) error {
 	_, err := d.conn.Exec(`
 		INSERT INTO songs (
 			id, title, artist, album, album_artist, track_number, disc_number,
-			genre, year, duration, file_path, cover_path, added_at,
+			genre, year, duration, replay_gain_db, replay_peak, file_path, cover_path, added_at,
 			play_count, last_played, skip_count, file_hash
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title,
 			artist = excluded.artist,
@@ -831,14 +856,17 @@ func (d *DB) SaveSong(s *Song) error {
 			genre = excluded.genre,
 			year = excluded.year,
 			duration = excluded.duration,
+			replay_gain_db = excluded.replay_gain_db,
+			replay_peak = excluded.replay_peak,
 			cover_path = excluded.cover_path,
+			file_path = excluded.file_path,
 			play_count = excluded.play_count,
 			last_played = excluded.last_played,
 			skip_count = excluded.skip_count,
 			file_hash = excluded.file_hash
 	`,
 		s.ID, s.Title, s.Artist, s.Album, s.AlbumArtist, s.TrackNumber, s.DiscNumber,
-		string(genreJSON), s.Year, s.Duration, s.FilePath, s.CoverPath, s.AddedAt,
+		string(genreJSON), s.Year, s.Duration, s.ReplayGainDB, s.ReplayPeak, s.FilePath, s.CoverPath, s.AddedAt,
 		s.PlayCount, s.LastPlayed, s.SkipCount, s.FileHash,
 	)
 	return err
@@ -857,10 +885,11 @@ func (d *DB) SaveSongs(songs []Song) error {
 	stmt, err := tx.Prepare(`
 		INSERT INTO songs (
 			id, title, artist, album, album_artist, track_number, disc_number,
-			genre, year, duration, file_path, cover_path, added_at,
+			genre, year, duration, replay_gain_db, replay_peak, file_path, cover_path, added_at,
 			play_count, last_played, skip_count, file_hash
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(file_path) DO UPDATE SET
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT DO UPDATE SET
+			file_path = excluded.file_path,
 			title = excluded.title,
 			artist = excluded.artist,
 			album = excluded.album,
@@ -874,7 +903,10 @@ func (d *DB) SaveSongs(songs []Song) error {
 			END,
 			year = excluded.year,
 			duration = excluded.duration,
-			cover_path = excluded.cover_path
+			replay_gain_db = excluded.replay_gain_db,
+			replay_peak = excluded.replay_peak,
+			cover_path = excluded.cover_path,
+			file_hash = excluded.file_hash
 	`)
 	if err != nil {
 		return err
@@ -887,7 +919,7 @@ func (d *DB) SaveSongs(songs []Song) error {
 		genreJSON, _ := json.Marshal(normalizedGenres)
 		_, err = stmt.Exec(
 			s.ID, s.Title, s.Artist, s.Album, s.AlbumArtist, s.TrackNumber, s.DiscNumber,
-			string(genreJSON), s.Year, s.Duration, s.FilePath, s.CoverPath, s.AddedAt,
+			string(genreJSON), s.Year, s.Duration, s.ReplayGainDB, s.ReplayPeak, s.FilePath, s.CoverPath, s.AddedAt,
 			s.PlayCount, s.LastPlayed, s.SkipCount, s.FileHash,
 		)
 		if err != nil {

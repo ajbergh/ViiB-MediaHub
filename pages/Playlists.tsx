@@ -13,19 +13,40 @@
  * @module Playlists
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useStore } from '../store';
-import { ListMusic, Plus } from 'lucide-react';
+import { Download, FileUp, ListMusic, Plus } from 'lucide-react';
 import { ContextMenuType } from '../types';
 import { EmptyPlaylists } from '../components/EmptyState';
 import { Page, PageHeader } from '../components/ui/Page';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { api } from '../services/api';
 
 export const Playlists: React.FC = () => {
-  const { playlists, createPlaylist, openContextMenu } = useStore();
+  const { playlists, createPlaylist, openContextMenu, refreshLibrary } = useStore();
   const [showInput, setShowInput] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('playlists-card-cols') ?? 5));
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImport = async (file?: File) => {
+    if (!file) return;
+    const content = await file.text();
+    const name = file.name.replace(/\.(m3u8?|txt)$/i, '') || 'Imported Playlist';
+    await api.importPlaylistM3U(name, content);
+    await refreshLibrary();
+    if (importInputRef.current) importInputRef.current.value = '';
+  };
+
+  const handleExport = async (id: string, name: string) => {
+    const blob = await api.exportPlaylistM3U(id);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${name.replace(/[^a-z0-9_-]+/gi, '-')}.m3u8`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('playlists-card-cols', String(v)); };
 
   const handleCreate = () => {
@@ -42,6 +63,19 @@ export const Playlists: React.FC = () => {
         heading="Playlists"
         actions={
           <div className="flex items-center gap-3">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".m3u,.m3u8,audio/x-mpegurl"
+            className="hidden"
+            onChange={(event) => void handleImport(event.target.files?.[0])}
+          />
+          <button
+            onClick={() => importInputRef.current?.click()}
+            className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main px-4 py-2 rounded-full font-medium transition-colors text-sm"
+          >
+            <FileUp size={16} /> Import M3U
+          </button>
           <button
             onClick={() => setShowInput(true)}
             className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main px-4 py-2 rounded-full font-medium transition-colors text-sm"
@@ -87,6 +121,13 @@ export const Playlists: React.FC = () => {
                     </div>
                     <h4 className="font-bold truncate text-text-main mb-1">{pl.name}</h4>
                     <p className="text-sm text-text-secondary">{pl.songIds.length} songs</p>
+                    <button
+                      type="button"
+                      className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-text-secondary hover:text-brand"
+                      onClick={(event) => { event.stopPropagation(); void handleExport(pl.id, pl.name); }}
+                    >
+                      <Download size={14} /> Export M3U
+                    </button>
                 </div>
             ))}
         </div>

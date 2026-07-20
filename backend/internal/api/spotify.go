@@ -137,16 +137,6 @@ func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 // GET /api/spotify/search?q=query&type=track,album&limit=20
 // Response: Spotify API search response (proxied)
 func (a *API) spotifySearch(w http.ResponseWriter, r *http.Request) {
-	val, err := a.db.GetSetting("spotify_credentials")
-	if err != nil || val == "" {
-		respondError(w, http.StatusUnauthorized, "Spotify credentials not configured")
-		return
-	}
-	var creds SpotifyCredentials
-	if err := json.Unmarshal([]byte(val), &creds); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to parse credentials")
-		return
-	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
 		respondError(w, http.StatusBadRequest, "Missing query parameter")
@@ -158,13 +148,7 @@ func (a *API) spotifySearch(w http.ResponseWriter, r *http.Request) {
 			params.Set(key, value)
 		}
 	}
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, "https://api.spotify.com/v1/search?"+params.Encode(), nil)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to create request")
-		return
-	}
-	request.Header.Set("Authorization", "Bearer "+creds.AccessToken)
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	resp, err := a.doSpotifyRequest(r.Context(), http.MethodGet, "https://api.spotify.com/v1/search?"+params.Encode(), nil, "")
 	if err != nil {
 		respondError(w, http.StatusBadGateway, "Failed to fetch from Spotify")
 		return
@@ -353,28 +337,7 @@ func (a *API) spotifyGetPlaylistByScraping(w http.ResponseWriter, r *http.Reques
 // GET /api/spotify/me
 // Response: Spotify user profile JSON (proxied from /v1/me)
 func (a *API) spotifyGetUserProfile(w http.ResponseWriter, r *http.Request) {
-	val, err := a.db.GetSetting("spotify_credentials")
-	if err != nil || val == "" {
-		respondError(w, http.StatusUnauthorized, "Spotify credentials not configured")
-		return
-	}
-
-	var creds SpotifyCredentials
-	if err := json.Unmarshal([]byte(val), &creds); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to parse credentials")
-		return
-	}
-
-	req, err := http.NewRequest("GET", "https://api.spotify.com/v1/me", nil)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to create request")
-		return
-	}
-
-	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := a.doSpotifyRequest(r.Context(), http.MethodGet, "https://api.spotify.com/v1/me", nil, "")
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to fetch from Spotify")
 		return
@@ -390,18 +353,6 @@ func (a *API) spotifyGetUserProfile(w http.ResponseWriter, r *http.Request) {
 
 // Generic proxy endpoint for Spotify API
 func (a *API) spotifyProxy(w http.ResponseWriter, r *http.Request) {
-	val, err := a.db.GetSetting("spotify_credentials")
-	if err != nil || val == "" {
-		respondError(w, http.StatusUnauthorized, "Spotify credentials not configured")
-		return
-	}
-
-	var creds SpotifyCredentials
-	if err := json.Unmarshal([]byte(val), &creds); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to parse credentials")
-		return
-	}
-
 	// Get the path after /api/spotify/proxy/
 	path := r.URL.Query().Get("path")
 	if path == "" {
@@ -423,17 +374,12 @@ func (a *API) spotifyProxy(w http.ResponseWriter, r *http.Request) {
 		spotifyURL += "?" + params.Encode()
 	}
 
-	req, err := http.NewRequest(r.Method, spotifyURL, r.Body)
+	requestBody, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to create request")
+		respondError(w, http.StatusBadRequest, "Failed to read request body")
 		return
 	}
-
-	req.Header.Set("Authorization", "Bearer "+creds.AccessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := a.doSpotifyRequest(r.Context(), r.Method, spotifyURL, requestBody, "application/json")
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to fetch from Spotify")
 		return

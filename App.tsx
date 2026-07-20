@@ -33,6 +33,7 @@ import { SpotifyPlaylistDetail } from './pages/SpotifyPlaylistDetail';
 import { Downloads } from './pages/Downloads';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
+import { Duplicates } from './pages/Duplicates';
 import { Stats } from './pages/Stats';
 import { SmartMixDetail } from './pages/SmartMixDetail';
 import { DJModeV2 } from './pages/DJModeV2';
@@ -45,7 +46,6 @@ import FirstLaunchDialog from './components/FirstLaunchDialog';
 import { useBackgroundEnrichment } from './hooks/useBackgroundEnrichment';
 import { setupGlobalErrorHandlers, createLogger } from './services/loggerService';
 
-// Initialize global error handlers early
 setupGlobalErrorHandlers();
 
 const appLogger = createLogger('App');
@@ -66,7 +66,21 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 
   render() {
     if (this.state.hasError) {
-      return <div className="p-2 text-xs text-red-400">Component error — try refreshing</div>;
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-surface-0 p-8">
+          <div className="max-w-lg rounded-xl border border-error/30 bg-surface-2 p-8 text-center">
+            <h1 className="text-xl font-semibold text-error">ViiB MediaHub encountered an interface error</h1>
+            <p className="mt-3 text-sm text-text-secondary">Your library data remains stored locally. Refresh the application to recover the interface.</p>
+            <button
+              type="button"
+              className="mt-5 rounded-full bg-brand px-5 py-2 font-semibold text-surface-0 hover:bg-brand-hover"
+              onClick={() => window.location.reload()}
+            >
+              Refresh application
+            </button>
+          </div>
+        </div>
+      );
     }
     return this.props.children;
   }
@@ -81,127 +95,106 @@ const App: React.FC = () => {
   const setHasCompletedSetup = useStore(state => state.setHasCompletedSetup);
   const backendAvailable = useStore(state => state.backendAvailable);
 
-  // Background metadata enrichment for unchecked albums
   useBackgroundEnrichment();
 
   useEffect(() => {
     initLibrary();
   }, [initLibrary]);
 
-  // Check for existing configuration and auto-complete setup if data exists
   useEffect(() => {
-      const checkExistingConfig = async () => {
-          if (!backendAvailable || hasCompletedSetup) {
-              return;
-          }
+    const checkExistingConfig = async () => {
+      if (!backendAvailable || hasCompletedSetup) return;
 
-          try {
-              // Check if database has existing configuration data
-              const [folders, creds, songs] = await Promise.all([
-                  api.getFolders().catch(() => []),
-                  api.getSpotifyCredentials().catch(() => null),
-                  api.getSongs().catch(() => [])
-              ]);
+      try {
+        const [folders, creds, songs] = await Promise.all([
+          api.getFolders().catch(() => []),
+          api.getSpotifyCredentials().catch(() => null),
+          api.getSongs().catch(() => []),
+        ]);
+        const hasExistingData = folders.length > 0 || songs.length > 0 || Boolean(creds?.clientId);
+        if (hasExistingData) {
+          setHasCompletedSetup(true);
+        }
+      } catch (error) {
+        appLogger.warn('Failed to check existing configuration', error);
+      }
+    };
 
-              // If we have scan folders or songs or Spotify credentials, mark setup as complete
-              const hasExistingData = folders.length > 0 || songs.length > 0 || 
-                                     (creds && creds.clientId && creds.clientSecret);
-              
-              if (hasExistingData) {
-                  console.log("Existing configuration detected, skipping first launch dialog");
-                  setHasCompletedSetup(true);
-              }
-          } catch (e) {
-              console.error("Failed to check existing configuration", e);
-          }
-      };
-
-      checkExistingConfig();
+    void checkExistingConfig();
   }, [backendAvailable, hasCompletedSetup, setHasCompletedSetup]);
 
-  // Sync Spotify credentials from backend on startup
   useEffect(() => {
-      const syncSpotify = async () => {
-          // Only fetch if we don't have tokens (or maybe always to ensure sync?)
-          // If we have tokens in localStorage (via persist), we might be fine.
-          // But if backend has newer tokens (refreshed by background task?), we should take them.
-          // For now, let's just fetch if missing or expired?
-          // Simple check: if no access token, try to get from backend.
-          if (!spotifyAccessToken) {
-              try {
-                  const creds = await api.getSpotifyCredentials();
-                  if (creds && creds.accessToken) {
-                      setSpotifyCredentials(creds.clientId, creds.clientSecret);
-                      setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry);
-                      console.log("Synced Spotify credentials from backend");
-                  }
-              } catch (e) {
-                  // Ignore error, maybe not set up yet
-              }
-          }
-      };
-      syncSpotify();
+    const syncSpotify = async () => {
+      if (spotifyAccessToken) return;
+      try {
+        const creds = await api.getSpotifyCredentials();
+        if (creds?.accessToken) {
+          setSpotifyCredentials(creds.clientId, '');
+          setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry);
+        }
+      } catch {
+        // Spotify is optional and may not be configured yet.
+      }
+    };
+
+    void syncSpotify();
   }, [spotifyAccessToken, setSpotifyCredentials, setSpotifyTokens]);
 
-  // Load audio settings from backend on startup
   const loadAudioSettings = useStore(state => state.loadAudioSettings);
   useEffect(() => {
-      if (backendAvailable) {
-          loadAudioSettings();
-      }
+    if (backendAvailable) void loadAudioSettings();
   }, [backendAvailable, loadAudioSettings]);
 
   return (
-    <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/songs" element={<Songs />} />
-          <Route path="/albums" element={<Albums />} />
-          <Route path="/album/:albumName/:artistName?" element={<AlbumDetail />} />
-          <Route path="/artists" element={<Artists />} />
-          <Route path="/artist/:artistName" element={<ArtistDetail />} />
-          <Route path="/genres" element={<Genres />} />
-          <Route path="/genres/:genreId" element={<GenreDetail />} />
-          <Route path="/smart-playlists" element={<SmartPlaylists />} />
-          <Route path="/playlists" element={<Playlists />} />
-          <Route path="/liked" element={<LikedSongs />} />
-          <Route path="/liked-albums" element={<LikedAlbums />} />
-          <Route path="/smart-mix/:mixId" element={<SmartMixDetail />} />
-          <Route path="/spotify" element={<Spotify />} />
-          <Route path="/spotify/album/:id" element={<SpotifyAlbumDetail />} />
-          <Route path="/spotify/playlist/:id" element={<SpotifyPlaylistDetail />} />
-          <Route path="/callback" element={<SpotifyCallback />} />
-          <Route path="/downloads" element={<Downloads />} />
-          <Route path="/search" element={<Search />} />
-          <Route path="/stats" element={<Stats />} />
-          <Route path="/dj" element={<DJModeV2 />} />
-          <Route path="/dj-v2" element={<Navigate to="/dj" replace />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        <ErrorBoundary>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/songs" element={<Songs />} />
+            <Route path="/albums" element={<Albums />} />
+            <Route path="/album/:albumName/:artistName?" element={<AlbumDetail />} />
+            <Route path="/artists" element={<Artists />} />
+            <Route path="/artist/:artistName" element={<ArtistDetail />} />
+            <Route path="/genres" element={<Genres />} />
+            <Route path="/genres/:genreId" element={<GenreDetail />} />
+            <Route path="/smart-playlists" element={<SmartPlaylists />} />
+            <Route path="/playlists" element={<Playlists />} />
+            <Route path="/liked" element={<LikedSongs />} />
+            <Route path="/liked-albums" element={<LikedAlbums />} />
+            <Route path="/smart-mix/:mixId" element={<SmartMixDetail />} />
+            <Route path="/spotify" element={<Spotify />} />
+            <Route path="/spotify/album/:id" element={<SpotifyAlbumDetail />} />
+            <Route path="/spotify/playlist/:id" element={<SpotifyPlaylistDetail />} />
+            <Route path="/callback" element={<SpotifyCallback />} />
+            <Route path="/downloads" element={<Downloads />} />
+            <Route path="/search" element={<Search />} />
+            <Route path="/stats" element={<Stats />} />
+            <Route path="/duplicates" element={<Duplicates />} />
+            <Route path="/dj" element={<DJModeV2 />} />
+            <Route path="/dj-v2" element={<Navigate to="/dj" replace />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
           <DownloadManager />
-        </ErrorBoundary>
-        <LibraryEventListener />
-      </Layout>
-      {/* Global Confirm Dialog */}
-      <ConfirmDialog
-        isOpen={!!confirmDialog}
-        title={confirmDialog?.title || ''}
-        message={confirmDialog?.message || ''}
-        confirmLabel={confirmDialog?.confirmLabel}
-        cancelLabel={confirmDialog?.cancelLabel}
-        variant={confirmDialog?.variant}
-        onConfirm={() => confirmDialog?.onConfirm()}
-        onCancel={closeConfirmDialog}
-      />
-      {/* First Launch Setup Dialog */}
-      <FirstLaunchDialog
-        isOpen={backendAvailable && !hasCompletedSetup}
-        onComplete={() => setHasCompletedSetup(true)}
-      />
-    </BrowserRouter>
+          <LibraryEventListener />
+        </Layout>
+        <ConfirmDialog
+          isOpen={!!confirmDialog}
+          title={confirmDialog?.title || ''}
+          message={confirmDialog?.message || ''}
+          confirmLabel={confirmDialog?.confirmLabel}
+          cancelLabel={confirmDialog?.cancelLabel}
+          variant={confirmDialog?.variant}
+          onConfirm={() => confirmDialog?.onConfirm()}
+          onCancel={closeConfirmDialog}
+        />
+        <FirstLaunchDialog
+          isOpen={backendAvailable && !hasCompletedSetup}
+          onComplete={() => setHasCompletedSetup(true)}
+        />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 };
 

@@ -27,6 +27,7 @@ import { EQ_PRESETS } from '../utils';
 import { libraryService } from '../services/libraryService';
 import { api } from '../services/api';
 import { AudioSettings, MilkdropSettings } from '../types';
+import { ManagedObjectUrlRegistry } from '../lib/playbackLifecycle';
 
 // Maximum retry attempts for streaming errors
 const MAX_RETRY_ATTEMPTS = 3;
@@ -35,6 +36,9 @@ const BASE_RETRY_DELAY = 1000;
 
 // Debounce timeout for saving settings (prevent rapid saves)
 let saveSettingsTimeout: ReturnType<typeof setTimeout> | null = null;
+
+let latestPlaybackRequestId = 0;
+const managedObjectUrls = new ManagedObjectUrlRegistry();
 
 /**
  * Saves audio settings to the backend database with debouncing.
@@ -123,7 +127,8 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     // Streaming analytics
     streamingStats: { ...initialStreamingStats },
 
-    playSong: async (song, context) => {
+    playSong: async (song, context, requestedContext = song.playbackContext || 'queue') => {
+        const playbackRequestId = ++latestPlaybackRequestId;
         // 1. Resolve URL if missing (e.g. after page reload)
         let playableSong = { ...song };
 
@@ -147,7 +152,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
                         const permitted = await libraryService.verifyPermission(downloadedSong.fileHandle);
                         if (permitted) {
                             const file = await downloadedSong.fileHandle.getFile();
-                            playableSong.url = URL.createObjectURL(file);
+                            playableSong.url = managedObjectUrls.create(file);
                         } else {
                             console.warn('[Player] Permission denied for downloaded file, falling back to streaming');
                             // Check if streaming is enabled before falling back
@@ -202,7 +207,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
                 const permitted = await libraryService.verifyPermission(playableSong.fileHandle);
                 if (permitted) {
                     const file = await playableSong.fileHandle.getFile();
-                    playableSong.url = URL.createObjectURL(file);
+                    playableSong.url = managedObjectUrls.create(file);
                     // We don't save this ephemeral URL to DB, just to state
                 } else {
                     console.warn("Permission denied for file handle");
@@ -211,6 +216,19 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             } catch (e) {
                 console.error("Failed to resolve file handle for playback", e);
             }
+        }
+
+        if (playbackRequestId !== latestPlaybackRequestId) {
+            managedObjectUrls.release(playableSong.url);
+            return;
+        }
+        playableSong.playbackContext = requestedContext;
+        const previousUrl = get().currentSong?.url;
+        if (previousUrl && previousUrl !== playableSong.url) {
+            const settings = get().audioSettings;
+            const fadeSeconds = settings.gapless ? 0 : Math.max(0, settings.crossfadeDuration || 0);
+            // Keep the outgoing Blob alive until the audio engine has paused the old element.
+            setTimeout(() => managedObjectUrls.release(previousUrl), fadeSeconds * 1000 + 1000);
         }
 
         // When no explicit context is provided, default the queue to just this
@@ -630,7 +648,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         
         // Retry playback
         try {
-            await playSong(currentSong, queue);
+            await playSong(currentSong, queue, currentSong.playbackContext || 'queue');
             console.log('[Player] Stream retry successful');
             set({ retryCount: 0 });
         } catch (error) {
