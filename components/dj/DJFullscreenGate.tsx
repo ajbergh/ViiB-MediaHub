@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { Maximize2, ArrowLeft, Monitor } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface DJFullscreenGateProps {
   children: React.ReactNode;

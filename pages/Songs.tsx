@@ -23,7 +23,7 @@ import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
 import { EmptyLibrary } from '../components/EmptyState';
 import { SkeletonTrackList } from '../components/Skeleton';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { LikeButton } from '../components/LikeButton';
 import { TextInput } from '../components/ui/TextInput';
 import { Button } from '../components/ui/Button';

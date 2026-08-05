@@ -20,7 +20,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Download, Loader2, CheckCircle, XCircle, Clock, Trash2, Music, RefreshCw, RotateCcw, Link2, AlertTriangle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import api, { ApiSpotifyDownload } from '../services/api';
 import ConfirmDialog from '../components/ConfirmDialog';
 import DirectDownloadDialog from '../components/DirectDownloadDialog';

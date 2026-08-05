@@ -18,7 +18,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search as SearchIcon, MoreHorizontal, Play, Shuffle, ListPlus, Music } from 'lucide-react';
 import { useStore, useAlbumCovers } from '../store';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { generateGradient, formatTime } from '../utils';
 import { ContextMenuType } from '../types';
 import { EmptySearchResults } from '../components/EmptyState';

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Monitor, ArrowLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export interface DJUnsupportedWidthProps {
   minWidth: number;

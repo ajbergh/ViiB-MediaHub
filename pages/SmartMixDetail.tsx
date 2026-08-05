@@ -16,7 +16,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { useStore, useAlbumCovers } from '../store';
 import { Play, Clock, ArrowLeft, MoreHorizontal, Sparkles, Shuffle, Save } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';

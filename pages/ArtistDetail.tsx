@@ -17,7 +17,7 @@
  */
 
 import React, { useMemo, useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { useStore, useAlbums } from '../store';
 import { Play, ArrowLeft, User, MoreHorizontal, ExternalLink, Shuffle, Disc } from 'lucide-react';
 import { generateGradient, coverBackground } from '../utils';

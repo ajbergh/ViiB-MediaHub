@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowRight, Search } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { TextInput } from '../ui/TextInput';
 import { cn } from '../ui/cn';
 

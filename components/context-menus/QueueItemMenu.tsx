@@ -2,7 +2,7 @@ import React from 'react';
 import { Play, ArrowUp, Trash2, Disc } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Song } from '../../types';
 
 export const QueueItemMenu: React.FC<{ song: Song; index: number; onClose: () => void }> = ({ song, index, onClose }) => {
