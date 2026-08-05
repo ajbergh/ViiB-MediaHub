@@ -15,11 +15,15 @@ import (
 func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	r := chi.NewRouter()
 
+	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if requestID := middleware.GetReqID(req.Context()); requestID != "" {
+				w.Header().Set("X-Request-ID", requestID)
+			}
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Referrer-Policy", "no-referrer")
 			w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
@@ -39,7 +43,7 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 
 	r.Use(middleware.Throttle(100))
 
-	// Mount narrower v2 subresources before the v2 compatibility root.
+	r.Mount("/api/v2/jobs", apiHandler.V2JobRoutes())
 	r.Mount("/api/v2/performance", apiHandler.V2PerformanceRoutes())
 	r.Mount("/api/v2", apiHandler.V2Routes())
 	r.Mount("/api", apiHandler.Routes())
