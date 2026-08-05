@@ -40,7 +40,6 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/crypto"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // escapeLikePattern escapes SQL LIKE wildcards (%, _) in a string.
@@ -175,7 +174,8 @@ type FileMetadataCache struct {
 // New opens the SQLite database located at dbPath and returns a configured
 // DB instance ready for queries and updates.
 func New(dbPath string) (*DB, error) {
-	conn, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on&_journal_mode=WAL")
+	registerSQLiteRuntimeDriver()
+	conn, err := sql.Open(sqliteRuntimeDriverName, sqliteRuntimeDSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
