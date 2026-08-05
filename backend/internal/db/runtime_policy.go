@@ -1,12 +1,55 @@
 package db
 
 import (
+	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/mattn/go-sqlite3"
 )
 
-var runtimePolicy sync.Map
+const sqliteRuntimeDriverName = "viib_sqlite3"
+
+var (
+	runtimePolicy    sync.Map
+	sqliteDriverOnce sync.Once
+)
+
+var connectionPragmas = []string{
+	`PRAGMA busy_timeout = 5000`,
+	`PRAGMA journal_mode = WAL`,
+	`PRAGMA synchronous = NORMAL`,
+	`PRAGMA wal_autocheckpoint = 1000`,
+	`PRAGMA temp_store = MEMORY`,
+	`PRAGMA foreign_keys = ON`,
+}
+
+func registerSQLiteRuntimeDriver() {
+	sqliteDriverOnce.Do(func() {
+		sql.Register(sqliteRuntimeDriverName, &sqlite3.SQLiteDriver{
+			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+				executor, ok := any(conn).(interface {
+					Exec(string, []driver.Value) (driver.Result, error)
+				})
+				if !ok {
+					return fmt.Errorf("SQLite connection does not support runtime PRAGMAs")
+				}
+				for _, pragma := range connectionPragmas {
+					if _, err := executor.Exec(pragma, nil); err != nil {
+						return fmt.Errorf("apply SQLite connection policy %q: %w", pragma, err)
+					}
+				}
+				return nil
+			},
+		})
+	})
+}
+
+func sqliteRuntimeDSN(dbPath string) string {
+	return dbPath + "?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
+}
 
 // ConfigureRuntime applies an explicit SQLite policy instead of relying on
 // database/sql defaults. WAL still permits readers during writes, while a small
@@ -22,20 +65,6 @@ func (d *DB) ConfigureRuntime() error {
 	d.conn.SetConnMaxIdleTime(5 * time.Minute)
 	d.conn.SetConnMaxLifetime(0)
 
-	pragmas := []string{
-		`PRAGMA busy_timeout = 5000`,
-		`PRAGMA journal_mode = WAL`,
-		`PRAGMA synchronous = NORMAL`,
-		`PRAGMA wal_autocheckpoint = 1000`,
-		`PRAGMA temp_store = MEMORY`,
-		`PRAGMA foreign_keys = ON`,
-	}
-	for _, pragma := range pragmas {
-		if _, err := d.conn.Exec(pragma); err != nil {
-			runtimePolicy.Delete(d)
-			return fmt.Errorf("apply SQLite runtime policy %q: %w", pragma, err)
-		}
-	}
 	return nil
 }
 
@@ -49,9 +78,9 @@ func (d *DB) CheckpointWAL() error {
 // SQLiteRuntimeStats is intentionally small and safe to surface in local-only
 // diagnostics.
 type SQLiteRuntimeStats struct {
-	OpenConnections int `json:"openConnections"`
-	InUse           int `json:"inUse"`
-	Idle            int `json:"idle"`
+	OpenConnections int   `json:"openConnections"`
+	InUse           int   `json:"inUse"`
+	Idle            int   `json:"idle"`
 	WaitCount       int64 `json:"waitCount"`
 	WaitDurationMS  int64 `json:"waitDurationMs"`
 }
@@ -60,9 +89,9 @@ func (d *DB) RuntimeStats() SQLiteRuntimeStats {
 	stats := d.conn.Stats()
 	return SQLiteRuntimeStats{
 		OpenConnections: stats.OpenConnections,
-		InUse: stats.InUse,
-		Idle: stats.Idle,
-		WaitCount: stats.WaitCount,
-		WaitDurationMS: stats.WaitDuration.Milliseconds(),
+		InUse:           stats.InUse,
+		Idle:            stats.Idle,
+		WaitCount:       stats.WaitCount,
+		WaitDurationMS:  stats.WaitDuration.Milliseconds(),
 	}
 }
