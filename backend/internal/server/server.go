@@ -12,8 +12,6 @@ import (
 	"github.com/go-chi/cors"
 )
 
-// New constructs the local HTTP application. Versioned API routes are mounted
-// before the compatibility router so /api/v2 is never consumed by /api.
 func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	r := chi.NewRouter()
 
@@ -41,16 +39,15 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 
 	r.Use(middleware.Throttle(100))
 
-	// Additive scalable API followed by the legacy compatibility surface.
+	// Mount narrower v2 subresources before the v2 compatibility root.
+	r.Mount("/api/v2/performance", apiHandler.V2PerformanceRoutes())
 	r.Mount("/api/v2", apiHandler.V2Routes())
 	r.Mount("/api", apiHandler.Routes())
 
 	fileServer := http.FileServer(http.FS(frontendFS))
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
-		if path == "" {
-			path = "index.html"
-		}
+		if path == "" { path = "index.html" }
 		if f, err := frontendFS.Open(path); err == nil {
 			f.Close()
 			fileServer.ServeHTTP(w, r)
