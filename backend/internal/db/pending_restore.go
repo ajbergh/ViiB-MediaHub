@@ -8,9 +8,8 @@ import (
 	"time"
 )
 
-// ApplyPendingRestore atomically applies a previously validated staged database
-// before any SQLite connection is opened. The current database is retained as a
-// timestamped rollback copy.
+// ApplyPendingRestore applies a validated staged database while the main
+// application is stopped. The current database is retained as a rollback copy.
 func ApplyPendingRestore(dataDir string) (bool, string, error) {
 	pendingDir := filepath.Join(dataDir, "restore-pending")
 	pendingDB := filepath.Join(pendingDir, "library.db")
@@ -30,7 +29,14 @@ func ApplyPendingRestore(dataDir string) (bool, string, error) {
 	if err := copyRestoreFile(pendingDB, temporary); err != nil { return false, rollbackPath, err }
 	_ = os.Remove(currentDB + "-wal")
 	_ = os.Remove(currentDB + "-shm")
+	// Windows cannot rename over an existing destination. The rollback copy is
+	// durable before this removal, so activation remains recoverable.
+	if err := os.Remove(currentDB); err != nil && !os.IsNotExist(err) {
+		_ = os.Remove(temporary)
+		return false, rollbackPath, fmt.Errorf("remove current database before restore: %w", err)
+	}
 	if err := os.Rename(temporary, currentDB); err != nil {
+		if rollbackPath != "" { _ = copyRestoreFile(rollbackPath, currentDB) }
 		_ = os.Remove(temporary)
 		return false, rollbackPath, fmt.Errorf("activate restored database: %w", err)
 	}
