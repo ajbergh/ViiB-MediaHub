@@ -15,7 +15,7 @@
  */
 
 import React, { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { Sidebar } from './Sidebar';
 import { Player } from './Player';
 import { Queue } from './Queue';

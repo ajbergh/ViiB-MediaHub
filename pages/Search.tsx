@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ListPlus, Music, Play, Search as SearchIcon } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { useStore } from '../store';
 import { Song } from '../types';
 import { libraryV2, ClientLibrarySearchResult } from '../services/libraryV2';
