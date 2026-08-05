@@ -12,8 +12,8 @@ import (
 const incrementalBatchSize = 50
 
 type preparedIncrementalSong struct {
-	song          db.Song
-	logicalUpdate bool
+	song           db.Song
+	reusedIdentity bool
 }
 
 // ProcessChanges applies coalesced create, modify, and delete events. Every
@@ -138,8 +138,8 @@ func (s *Scanner) prepareIncrementalSong(change FileChange) (preparedIncremental
 	coverPath := s.getAlbumCover(coverArtist, metadata.Album, filepath.Dir(filePath), filePath)
 
 	return preparedIncrementalSong{
-		song: persistedSongFromMetadata(metadata, filePath, coverPath, resolvedID, time.Now().UnixMilli()),
-		logicalUpdate: change.ChangeType == ChangeTypeModified || resolvedID != metadata.ID,
+		song:           persistedSongFromMetadata(metadata, filePath, coverPath, resolvedID, time.Now().UnixMilli()),
+		reusedIdentity: resolvedID != metadata.ID,
 	}, nil
 }
 
@@ -176,11 +176,11 @@ func (s *Scanner) saveIncrementalBatch(
 	result *ScanResult,
 ) error {
 	songs := make([]db.Song, 0, len(prepared))
-	logicalMoves := 0
+	reusedIdentities := 0
 	for _, item := range prepared {
 		songs = append(songs, item.song)
-		if item.logicalUpdate {
-			logicalMoves++
+		if item.reusedIdentity {
+			reusedIdentities++
 		}
 	}
 
@@ -190,13 +190,15 @@ func (s *Scanner) saveIncrementalBatch(
 	}
 
 	// SaveSongsWithResult classifies by current path. A move has a new path but a
-	// reused logical ID, so report it as an update rather than a new library item.
-	moveAdjust := logicalMoves
+	// reused logical ID, so report only those reused identities as updates.
+	moveAdjust := reusedIdentities
 	if moveAdjust > upsert.Inserted {
 		moveAdjust = upsert.Inserted
 	}
-	result.NewSongs += upsert.Inserted - moveAdjust
-	result.UpdatedSongs += upsert.Updated + moveAdjust
+	added := upsert.Inserted - moveAdjust
+	updated := upsert.Updated + moveAdjust
+	result.NewSongs += added
+	result.UpdatedSongs += updated
 
 	s.createAlbumMetadataEntries(songs)
 	if err := s.UpdateFileMetadataCache(processedPaths); err != nil {
@@ -205,9 +207,9 @@ func (s *Scanner) saveIncrementalBatch(
 
 	s.emitEvent(LibraryEvent{
 		Type:         "library_updated",
-		Message:      fmt.Sprintf("Library updated: %d added, %d updated", upsert.Inserted-moveAdjust, upsert.Updated+moveAdjust),
-		NewSongs:     upsert.Inserted - moveAdjust,
-		UpdatedSongs: upsert.Updated + moveAdjust,
+		Message:      fmt.Sprintf("Library updated: %d added, %d updated", added, updated),
+		NewSongs:     added,
+		UpdatedSongs: updated,
 	})
 	return nil
 }
