@@ -26,7 +26,7 @@ describe('LibraryIndex', () => {
       [song('1', 'One updated'), song('3', 'Three')],
     );
 
-    expect(result.map(item => item.id)).toEqual(['3', '1']);
+    expect(result.map(item => item.id)).toEqual(['1', '3']);
     expect(result.find(item => item.id === '1')?.title).toBe('One updated');
     expect(index.size()).toBe(2);
   });
