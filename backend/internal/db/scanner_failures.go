@@ -1,6 +1,9 @@
 package db
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 // ScannerFailure records repeated media parsing failures without blocking the
 // rest of a library scan.
@@ -56,10 +59,8 @@ func (d *DB) ScannerFailureRetryAllowed(filePath string) (bool, error) {
 	if err := d.EnsureScannerFailureSchema(); err != nil { return false, err }
 	var retryAfter int64
 	err := d.conn.QueryRow(`SELECT retry_after FROM scanner_failures WHERE file_path = ?`, filePath).Scan(&retryAfter)
-	if err != nil {
-		if err.Error() == "sql: no rows in result set" { return true, nil }
-		return false, err
-	}
+	if err == sql.ErrNoRows { return true, nil }
+	if err != nil { return false, err }
 	return time.Now().UnixMilli() >= retryAfter, nil
 }
 
