@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { EmptyLibrary } from '../components/EmptyState';
 import { HomeSearchBar } from '../components/home/HomeSearchBar';
 import { HomeCoverWallLayout } from '../components/home/layouts/HomeCoverWallLayout';
