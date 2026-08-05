@@ -8,7 +8,7 @@ import React, { useState } from 'react';
 import { Play, SkipForward, ListPlus, ListMusic, ArrowRight, Disc, Mic2, FolderOpen, Download, CheckCircle } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem, PlaylistsSubmenu } from './MenuShared';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Song } from '../../types';
 import { api } from '../../services/api';
 

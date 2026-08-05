@@ -23,7 +23,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
 import { Loader2, XCircle, CheckCircle } from 'lucide-react';
