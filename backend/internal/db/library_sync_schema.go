@@ -61,6 +61,10 @@ type LibrarySearchResult struct {
 // EnsureLibrarySyncSchema installs additive revision, replay-log, and search
 // structures. Triggers cover every mutation path into the songs table.
 func (d *DB) EnsureLibrarySyncSchema() error {
+	if err := d.ConfigureRuntime(); err != nil {
+		return err
+	}
+
 	schema := `
 	CREATE TABLE IF NOT EXISTS library_state (
 		id INTEGER PRIMARY KEY CHECK (id = 1),
