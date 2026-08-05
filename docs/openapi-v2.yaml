@@ -1,0 +1,273 @@
+openapi: 3.1.0
+info:
+  title: ViiB MediaHub Local API
+  version: 2.0.0
+  description: Versioned local-only API for scalable library synchronization, search, diagnostics, and durable jobs.
+servers:
+  - url: /api/v2
+paths:
+  /library/snapshot:
+    get:
+      operationId: getLibrarySnapshot
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 2000, default: 500 } }
+      responses:
+        '200':
+          description: Cursor-based library page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LibrarySnapshotPage' }
+  /library/changes:
+    get:
+      operationId: getLibraryChanges
+      parameters:
+        - { name: since, in: query, required: true, schema: { type: integer, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 2000, default: 500 } }
+      responses:
+        '200':
+          description: Ordered durable changes after the supplied revision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LibraryChangePage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /library/revision:
+    get:
+      operationId: getLibraryRevision
+      responses:
+        '200':
+          description: Current library revision
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision]
+                properties:
+                  revision: { type: integer, minimum: 0 }
+  /library/events:
+    get:
+      operationId: streamLibraryRevisions
+      parameters:
+        - { name: since, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: Last-Event-ID, in: header, schema: { type: string } }
+      responses:
+        '200':
+          description: Server-sent library_revision events with heartbeats
+          content:
+            text/event-stream: { schema: { type: string } }
+  /search:
+    get:
+      operationId: searchLibrary
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, maxLength: 250 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Categorized local library search result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LibrarySearchResult' }
+  /jobs/:
+    get:
+      operationId: listJobs
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        '200':
+          description: Operation jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobs]
+                properties:
+                  jobs: { type: array, items: { $ref: '#/components/schemas/Job' } }
+    post:
+      operationId: createJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, enum: [full_scan, quick_scan, refresh_genre_stats] }
+                parameters: { type: object, additionalProperties: true }
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /jobs/events:
+    get:
+      operationId: streamJobs
+      responses:
+        '200':
+          description: Server-sent job snapshots
+          content:
+            text/event-stream: { schema: { type: string } }
+  /jobs/{id}:
+    get:
+      operationId: getJob
+      parameters:
+        - { $ref: '#/components/parameters/JobID' }
+      responses:
+        '200':
+          description: Operation job
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /jobs/{id}/cancel:
+    post:
+      operationId: cancelJob
+      parameters:
+        - { $ref: '#/components/parameters/JobID' }
+      responses:
+        '202':
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /jobs/{id}/retry:
+    post:
+      operationId: retryJob
+      parameters:
+        - { $ref: '#/components/parameters/JobID' }
+      responses:
+        '202':
+          description: Retry job accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /performance/:
+    get:
+      operationId: getPerformanceDiagnostics
+      responses:
+        '200':
+          description: Local scanner, database, and synchronization metrics
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+components:
+  parameters:
+    JobID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Conflict:
+      description: Resource state conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  schemas:
+    Song:
+      type: object
+      required: [id, title, artist, album, duration, filePath, addedAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        album: { type: string }
+        albumArtist: { type: string }
+        trackNumber: { type: integer }
+        discNumber: { type: integer }
+        genre: { type: array, items: { type: string } }
+        year: { type: integer }
+        originalYear: { type: integer }
+        duration: { type: number }
+        replayGainDb: { type: number }
+        replayPeak: { type: number }
+        filePath: { type: string }
+        coverPath: { type: string }
+        addedAt: { type: integer }
+        playCount: { type: integer }
+        lastPlayed: { type: integer }
+        fileHash: { type: string }
+        liked: { type: boolean }
+        likedAt: { type: integer }
+      additionalProperties: true
+    LibrarySnapshotPage:
+      type: object
+      required: [revision, songs, hasMore]
+      properties:
+        revision: { type: integer }
+        songs: { type: array, items: { $ref: '#/components/schemas/Song' } }
+        nextCursor: { type: string }
+        hasMore: { type: boolean }
+    LibraryChange:
+      type: object
+      required: [revision, songId, operation, changedAt]
+      properties:
+        revision: { type: integer }
+        songId: { type: string }
+        operation: { type: string, enum: [upsert, delete] }
+        changedAt: { type: integer }
+    LibraryChangePage:
+      type: object
+      required: [fromRevision, toRevision, changes, songs, hasMore]
+      properties:
+        fromRevision: { type: integer }
+        toRevision: { type: integer }
+        changes: { type: array, items: { $ref: '#/components/schemas/LibraryChange' } }
+        songs: { type: array, items: { $ref: '#/components/schemas/Song' } }
+        hasMore: { type: boolean }
+    LibrarySearchResult:
+      type: object
+      required: [query, tracks, albums, artists, playlists]
+      properties:
+        query: { type: string }
+        tracks: { type: array, items: { $ref: '#/components/schemas/Song' } }
+        albums: { type: array, items: { type: object, additionalProperties: true } }
+        artists: { type: array, items: { type: object, additionalProperties: true } }
+        playlists: { type: array, items: { type: object, additionalProperties: true } }
+    Job:
+      type: object
+      required: [id, type, status, progressCurrent, progressTotal, attempts, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        status: { type: string, enum: [queued, running, succeeded, failed, canceling, canceled, interrupted] }
+        progressCurrent: { type: integer }
+        progressTotal: { type: integer }
+        message: { type: string }
+        parameters: { type: object, additionalProperties: true }
+        result: { type: object, additionalProperties: true }
+        errorCode: { type: string }
+        errorMessage: { type: string }
+        attempts: { type: integer }
+        createdAt: { type: integer }
+        startedAt: { type: integer }
+        completedAt: { type: integer }
+        updatedAt: { type: integer }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            retryable: { type: boolean }
+            requestId: { type: string }
+            details: { type: object, additionalProperties: true }
