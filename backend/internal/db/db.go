@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/crypto"
@@ -74,7 +75,9 @@ func buildGenreLikePattern(genreName string) string {
 // songs, playlists, scan folders, Spotify downloads, and AI DJ features
 // including play history tracking and mood analysis.
 type DB struct {
-	conn *sql.DB
+	conn               *sql.DB
+	librarySyncOnce    sync.Once
+	librarySyncInitErr error
 }
 
 // Song represents a persisted audio track with metadata and file locations
