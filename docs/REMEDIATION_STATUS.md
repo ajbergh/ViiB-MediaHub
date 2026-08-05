@@ -28,7 +28,7 @@ Branch: `agent/full-remediation`
 - [x] Frontend unit test runner added
 - [x] Go tests, race detector, vet, staticcheck and govulncheck added
 - [x] Windows Wails build gate added
-- [x] Existing release workflow aligned to Go 1.25.2 and tests
+- [x] Existing release workflow aligned to the Go 1.25.12 baseline and tests
 
 ## Phase 3 — Architecture and product hardening
 - [x] Remote-media security moved into a dedicated package

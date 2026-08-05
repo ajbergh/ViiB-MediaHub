@@ -1,3 +1,4 @@
+// continuous_watcher.go provides polling fallback monitoring for configured folders.
 package scanner
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
 
+// ContinuousWatchStatus describes the current polling watcher and its latest check.
 type ContinuousWatchStatus struct {
 	Running      bool  `json:"running"`
 	IntervalMS   int64 `json:"intervalMs"`
@@ -26,6 +28,8 @@ type continuousWatcher struct {
 
 var continuousWatchers sync.Map // map[*Scanner]*continuousWatcher
 
+// StartContinuousWatcher starts one polling watcher per Scanner. It clamps a
+// direct caller's interval to the supported 2-second to 1-hour range.
 func (s *Scanner) StartContinuousWatcher(interval time.Duration) (ContinuousWatchStatus, error) {
 	if interval < 2*time.Second { interval = 2 * time.Second }
 	if interval > time.Hour { interval = time.Hour }
@@ -85,6 +89,7 @@ func (s *Scanner) runContinuousWatcher(watcher *continuousWatcher, interval time
 	}
 }
 
+// StopContinuousWatcher waits for the watcher goroutine to stop and returns its final status.
 func (s *Scanner) StopContinuousWatcher() ContinuousWatchStatus {
 	value, ok := continuousWatchers.LoadAndDelete(s)
 	if !ok { return ContinuousWatchStatus{} }
@@ -95,6 +100,7 @@ func (s *Scanner) StopContinuousWatcher() ContinuousWatchStatus {
 	return status
 }
 
+// ContinuousWatcherStatus returns an empty status when no watcher is running.
 func (s *Scanner) ContinuousWatcherStatus() ContinuousWatchStatus {
 	value, ok := continuousWatchers.Load(s)
 	if !ok { return ContinuousWatchStatus{} }
@@ -103,6 +109,7 @@ func (s *Scanner) ContinuousWatcherStatus() ContinuousWatchStatus {
 	return watcher.status
 }
 
+// ParseWatchInterval validates the API interval range without silently clamping it.
 func ParseWatchInterval(milliseconds int64) (time.Duration, error) {
 	if milliseconds < 2000 || milliseconds > int64(time.Hour/time.Millisecond) {
 		return 0, fmt.Errorf("intervalMs must be between 2000 and %d", int64(time.Hour/time.Millisecond))

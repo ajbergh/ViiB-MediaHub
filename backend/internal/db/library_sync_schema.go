@@ -1,3 +1,4 @@
+// library_sync_schema.go defines the revision log and search-index schema.
 package db
 
 import "fmt"
@@ -9,18 +10,21 @@ const (
 	maxChangeLimit       = 2000
 )
 
+// LibraryChange records one durable song upsert or deletion at a revision.
 type LibraryChange struct {
 	Revision  int64  `json:"revision"`
 	SongID    string `json:"songId"`
 	Operation string `json:"operation"`
 	ChangedAt int64  `json:"changedAt"`
 }
+// LibrarySnapshotPage is one ID-cursor page plus the revision it observed.
 type LibrarySnapshotPage struct {
 	Revision   int64  `json:"revision"`
 	Songs      []Song `json:"songs"`
 	NextCursor string `json:"nextCursor,omitempty"`
 	HasMore    bool   `json:"hasMore"`
 }
+// LibraryChangePage contains ordered revisions and payloads for upserts only.
 type LibraryChangePage struct {
 	FromRevision int64           `json:"fromRevision"`
 	ToRevision   int64           `json:"toRevision"`
@@ -39,6 +43,7 @@ type LibrarySearchArtist struct {
 	SongCount  int    `json:"songCount"`
 	AlbumCount int    `json:"albumCount"`
 }
+// LibrarySearchPlaylist is the lightweight playlist result returned by search.
 type LibrarySearchPlaylist struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -52,6 +57,9 @@ type LibrarySearchResult struct {
 	Playlists []LibrarySearchPlaylist `json:"playlists"`
 }
 
+// EnsureLibrarySyncSchema installs the revision and search schema once per DB
+// handle. Its initial backfill is insert-only, so routine requests never
+// rewrite the complete search index.
 func (d *DB) EnsureLibrarySyncSchema() error {
 	d.librarySyncOnce.Do(func() {
 		if err := d.ConfigureRuntime(); err != nil {

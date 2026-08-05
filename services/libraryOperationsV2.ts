@@ -1,3 +1,7 @@
+/**
+ * Client for local database maintenance. Backup, diagnostics, repair, and
+ * restore preview/staging use longer timeouts; activation remains offline.
+ */
 import { requestJSON } from './httpClient';
 
 const BASE = '/api/v2/operations';

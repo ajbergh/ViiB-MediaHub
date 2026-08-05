@@ -1,3 +1,5 @@
+// library_diagnostics.go implements read-only health checks and safe repairs
+// for the local library database.
 package db
 
 import (
@@ -6,6 +8,7 @@ import (
 	"time"
 )
 
+// MissingMedia identifies a visible song whose local path cannot be used.
 type MissingMedia struct {
 	SongID   string `json:"songId"`
 	Title    string `json:"title"`
@@ -13,12 +16,15 @@ type MissingMedia struct {
 	Reason   string `json:"reason"`
 }
 
+// BrokenPlaylistReference identifies a playlist entry whose song no longer exists.
 type BrokenPlaylistReference struct {
 	PlaylistID   string `json:"playlistId"`
 	PlaylistName string `json:"playlistName"`
 	SongID       string `json:"songId"`
 }
 
+// LibraryDiagnostics is a point-in-time health report. Missing-media checks
+// inspect local paths but do not modify either the database or source files.
 type LibraryDiagnostics struct {
 	CheckedAt                int64                     `json:"checkedAt"`
 	Integrity                string                    `json:"integrity"`
@@ -31,6 +37,8 @@ type LibraryDiagnostics struct {
 	ScannerFailures          []ScannerFailure          `json:"scannerFailures"`
 }
 
+// RunLibraryDiagnostics checks database integrity, index state, missing media,
+// broken playlist references, revision state, and scanner quarantine entries.
 func (d *DB) RunLibraryDiagnostics() (LibraryDiagnostics, error) {
 	result := LibraryDiagnostics{
 		CheckedAt: time.Now().UnixMilli(), MissingMedia: []MissingMedia{},
@@ -94,6 +102,9 @@ func (d *DB) RunLibraryDiagnostics() (LibraryDiagnostics, error) {
 	return result, nil
 }
 
+// RepairLibraryIndexes rebuilds search state and removes broken playlist IDs.
+// When removeMissing is true it also removes confirmed missing-media records;
+// it never deletes media files from disk.
 func (d *DB) RepairLibraryIndexes(removeMissing bool) (map[string]int, error) {
 	result := map[string]int{"removedMissing": 0, "removedPlaylistReferences": 0, "rebuiltSearchRows": 0}
 	if removeMissing {

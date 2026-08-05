@@ -1,3 +1,4 @@
+// song_metadata_operations.go updates library database metadata without writing source tags.
 package db
 
 import (
@@ -7,6 +8,7 @@ import (
 	"strings"
 )
 
+// SongMetadataPatch contains the database-backed metadata fields that may be edited.
 type SongMetadataPatch struct {
 	Title       *string   `json:"title,omitempty"`
 	Artist      *string   `json:"artist,omitempty"`
@@ -18,6 +20,8 @@ type SongMetadataPatch struct {
 	Year        *int      `json:"year,omitempty"`
 }
 
+// UpdateSongMetadata validates and persists a partial database metadata patch.
+// It does not mutate the underlying media file.
 func (d *DB) UpdateSongMetadata(id string, patch SongMetadataPatch) (Song, error) {
 	sets := make([]string, 0)
 	args := make([]any, 0)

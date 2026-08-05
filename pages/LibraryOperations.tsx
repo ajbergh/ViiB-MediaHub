@@ -1,3 +1,9 @@
+/**
+ * LibraryOperations is the local maintenance UI for diagnostics, database
+ * repair, validated backup/restore staging, and continuous monitoring.
+ * Restore activation stays outside the running app and is performed by
+ * viib-restore after ViiB has exited.
+ */
 import React, { useCallback, useEffect, useState } from 'react';
 import { Activity, Archive, CheckCircle2, Database, Eye, Play, RefreshCw, ShieldCheck, Square, Wrench } from 'lucide-react';
 import { Page, PageHeader } from '../components/ui/Page';
@@ -40,6 +46,8 @@ export const LibraryOperations: React.FC = () => {
 
   useEffect(() => { void load(); }, [load]);
 
+  // run serializes user-triggered maintenance actions so an expensive repair,
+  // backup, or watcher transition cannot overlap another operation in this UI.
   const run = async (label: string, operation: () => Promise<void>) => {
     setBusy(label); setError(''); setMessage('');
     try { await operation(); }

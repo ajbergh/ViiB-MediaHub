@@ -1,3 +1,7 @@
+/**
+ * Shared v2 HTTP transport. It carries caller cancellation through to fetch,
+ * applies a default timeout, and retries only safe read methods once.
+ */
 export interface APIErrorPayload {
   code: string;
   message: string;
@@ -54,6 +58,10 @@ async function parseError(response: Response): Promise<APIError> {
   });
 }
 
+/**
+ * requestJSON decodes successful JSON responses and converts structured v2
+ * errors into APIError. Mutating requests are never retried automatically.
+ */
 export async function requestJSON<T>(url: string, options: RequestOptions = {}): Promise<T> {
   const method = (options.method || 'GET').toUpperCase();
   const retryAllowed = options.retry !== false && ['GET', 'HEAD', 'OPTIONS'].includes(method);

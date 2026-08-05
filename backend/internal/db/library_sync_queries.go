@@ -1,3 +1,4 @@
+// library_sync_queries.go reads paged snapshots and replayable revision deltas.
 package db
 
 import (
@@ -7,6 +8,7 @@ import (
 	"time"
 )
 
+// LibraryRevision returns the latest monotonic song-change revision.
 func (d *DB) LibraryRevision() (int64, error) {
 	var revision int64
 	if err := d.conn.QueryRow(`SELECT revision FROM library_state WHERE id = 1`).Scan(&revision); err != nil {
@@ -21,6 +23,8 @@ func clampPageLimit(limit, fallback, maximum int) int {
 	return limit
 }
 
+// ListSongsPage returns a consistent ID-cursor page and the revision observed
+// within its read transaction.
 func (d *DB) ListSongsPage(afterID string, limit int) (LibrarySnapshotPage, error) {
 	limit = clampPageLimit(limit, defaultSnapshotLimit, maxSnapshotLimit)
 	tx, err := d.conn.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
@@ -48,6 +52,8 @@ func (d *DB) ListSongsPage(afterID string, limit int) (LibrarySnapshotPage, erro
 	return page, nil
 }
 
+// GetLibraryChanges returns ordered changes after since plus current songs for
+// upserts. Delete changes have no song payload by design.
 func (d *DB) GetLibraryChanges(since int64, limit int) (LibraryChangePage, error) {
 	limit = clampPageLimit(limit, defaultChangeLimit, maxChangeLimit)
 	rows, err := d.conn.Query(`
@@ -89,6 +95,7 @@ func (d *DB) GetLibraryChanges(since int64, limit int) (LibraryChangePage, error
 	return page, nil
 }
 
+// GetSongsByIDs returns visible songs for the supplied logical IDs.
 func (d *DB) GetSongsByIDs(ids []string) ([]Song, error) {
 	if len(ids) == 0 { return []Song{}, nil }
 	placeholders := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
@@ -100,6 +107,7 @@ func (d *DB) GetSongsByIDs(ids []string) ([]Song, error) {
 	return scanLibrarySongRows(rows)
 }
 
+// PruneLibraryChanges retains the newest revisions and removes older replay entries.
 func (d *DB) PruneLibraryChanges(retain int64) error {
 	if retain <= 0 { retain = 100000 }
 	revision, err := d.LibraryRevision()

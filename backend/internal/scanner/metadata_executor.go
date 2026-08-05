@@ -1,3 +1,4 @@
+// metadata_executor.go bounds concurrent native metadata extraction globally.
 package scanner
 
 import (
@@ -75,6 +76,7 @@ func (s *Scanner) extractMetadataBounded(filePath string) (*SongMetadata, error)
 	return metadata, nil
 }
 
+// MetadataExecutorStats reports the configured concurrency and current/peak use.
 func MetadataExecutorStats() (limit int, active int64, peak int64) {
 	metadataLimitOnce.Do(initializeMetadataSlots)
 	return cap(metadataSlots), atomic.LoadInt64(&metadataActive), atomic.LoadInt64(&metadataPeak)

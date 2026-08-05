@@ -1,3 +1,8 @@
+/**
+ * Search presents categorized local-library results. Backend mode uses the
+ * indexed v2 API; browser-only mode and request failures use the loaded-song
+ * fallback so navigation remains available offline.
+ */
 import React, { useEffect, useMemo, useState } from 'react';
 import { ListPlus, Music, Play, Search as SearchIcon } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
@@ -19,6 +24,8 @@ const emptyResults = (query = ''): ClientLibrarySearchResult => ({
   playlists: [],
 });
 
+// localSearch is a bounded fallback for browser-only mode. It intentionally
+// searches only renderer-resident data and is not the large-library path.
 function localSearch(query: string, songs: Song[], playlists: ReturnType<typeof useStore.getState>['playlists']): ClientLibrarySearchResult {
   const normalized = query.trim().toLocaleLowerCase();
   if (!normalized) return emptyResults(query);

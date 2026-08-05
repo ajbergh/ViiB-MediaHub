@@ -1,3 +1,5 @@
+// backup_primitives.go contains the SQLite-copy and integrity primitives used
+// by local backup creation and offline restore validation.
 package db
 
 import (
@@ -8,6 +10,7 @@ import (
 	"strings"
 )
 
+// DatabasePath returns SQLite's configured path for the main database.
 func (d *DB) DatabasePath() (string, error) {
 	rows, err := d.conn.Query(`PRAGMA database_list`)
 	if err != nil { return "", err }
@@ -33,6 +36,7 @@ func (d *DB) CreateConsistentCopy(destination string) error {
 	return err
 }
 
+// ValidateSQLiteCopy opens a database copy read-only and requires integrity_check to return ok.
 func ValidateSQLiteCopy(path string) error {
 	conn, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(path)+"?mode=ro&_foreign_keys=on")
 	if err != nil { return err }

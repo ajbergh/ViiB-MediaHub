@@ -4,7 +4,7 @@ Program start: 2026-08-05
 
 ## Delivery model
 
-The remediation is delivered as stacked pull requests and merged in order.
+The remediation was delivered as stacked pull requests and squash-merged in order on 2026-08-05. This document records the completed delivery plan; see [the status](PERFORMANCE_API_REMEDIATION_STATUS.md) for the resulting `main` commits and remaining release work.
 
 1. `agent/phase-0-ingest-identity-correctness`
    - Unify identity resolution and stable fingerprint persistence across full, quick, background, and download-triggered ingest.
@@ -28,6 +28,6 @@ The remediation is delivered as stacked pull requests and merged in order.
 
 Each phase must pass frontend checks and build, Go tests and race detection, vet, static analysis, application builds, dependency and binary vulnerability policy, database migration tests, and phase-specific regression tests.
 
-## Merge strategy
+## Historical merge strategy
 
-Squash merge in numerical order. After each merge, retarget the next stacked pull request to `main`. New APIs remain additive until the frontend no longer depends on the legacy full-library snapshot endpoint.
+Squash merge in numerical order. After each merge, retarget the next stacked pull request to `main`. New APIs remain additive while the legacy full-library snapshot endpoint remains available for compatibility.

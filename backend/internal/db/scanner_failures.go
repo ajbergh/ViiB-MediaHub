@@ -1,3 +1,4 @@
+// scanner_failures.go persists bounded retry state for troublesome media files.
 package db
 
 import (
@@ -33,6 +34,8 @@ func (d *DB) EnsureScannerFailureSchema() error {
 	return err
 }
 
+// RecordScannerFailure increments the failure count and delays the next retry
+// with a capped quadratic backoff.
 func (d *DB) RecordScannerFailure(filePath, kind, message string) error {
 	if err := d.EnsureScannerFailureSchema(); err != nil { return err }
 	now := time.Now().UnixMilli()
@@ -55,6 +58,7 @@ func (d *DB) ClearScannerFailure(filePath string) error {
 	return err
 }
 
+// ScannerFailureRetryAllowed reports whether a quarantined path may be parsed again.
 func (d *DB) ScannerFailureRetryAllowed(filePath string) (bool, error) {
 	if err := d.EnsureScannerFailureSchema(); err != nil { return false, err }
 	var retryAfter int64

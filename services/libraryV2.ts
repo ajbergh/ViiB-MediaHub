@@ -1,3 +1,8 @@
+/**
+ * Client for revisioned library synchronization and indexed local search.
+ * Snapshot and change reads keep caller cancellation and a 15-second timeout;
+ * callers apply returned deltas through the renderer-side LibraryIndex.
+ */
 import { ApiSong } from './api';
 import { apiSongToSong } from './backendService';
 import { Playlist, Song } from '../types';
@@ -20,4 +25,6 @@ export const libraryV2 = {
   async search(query: string, limit = 50, signal?: AbortSignal): Promise<ClientLibrarySearchResult> { const params = new URLSearchParams({ q: query, limit: String(limit) }); const result = await getJSON<LibrarySearchResult>(`${API_V2_BASE}/search?${params.toString()}`, signal); return { ...result, tracks: result.tracks.map(apiSongToSong) }; },
   eventURL(since: number): string { return `${API_V2_BASE}/library/events?since=${Math.max(0, since)}`; },
 };
+// searchResultPlaylistToPlaylist creates a navigation/playback-safe playlist
+// shell. Search results expose the count, not the full song-ID membership.
 export function searchResultPlaylistToPlaylist(result: LibrarySearchPlaylist): Playlist { return { id: result.id, name: result.name, songIds: [], createdAt: 0 }; }

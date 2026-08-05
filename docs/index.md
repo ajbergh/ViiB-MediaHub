@@ -1,6 +1,6 @@
 # ViiB MediaHub — Documentation
 
-ViiB MediaHub is a local music player for Windows, macOS, and Linux. It combines a React frontend with a Go backend into a single native desktop executable powered by Wails v2 + WebView2.
+ViiB MediaHub is a local music player for Windows, macOS, and Linux. It combines a React frontend with a Go backend into a single native desktop executable powered by Wails v2 (WebView2 on Windows, WebKit on macOS and Linux).
 
 ---
 
@@ -22,6 +22,7 @@ ViiB MediaHub is a local music player for Windows, macOS, and Linux. It combines
 | [Downloads](downloads.md) | Spotify download queue and status |
 | [Stats](stats.md) | Listening history, top artists, heatmap |
 | [Settings](settings.md) | Library, audio, Spotify, AI, and system settings |
+| [Library Operations](library-operations.md) | Diagnostics, repair, backup, staged restore, and continuous monitoring |
 | [Player](player.md) | Playback controls, queue, EQ, visualizer, and Now Playing |
 | [Keyboard Shortcuts](keyboard-shortcuts.md) | Full keyboard shortcut reference |
 
@@ -47,6 +48,7 @@ ViiB MediaHub is a local music player for Windows, macOS, and Linux. It combines
 │  Downloads                                               │
 │  Stats                                                   │
 │  Settings                                                │
+│  Library Health shortcut                                 │
 ├──────────────────────────────────────────────────────────┤
 │  Player bar (persistent, bottom)                         │
 │  Album art · Track info · Controls · Volume · Queue · EQ │
@@ -58,10 +60,12 @@ ViiB MediaHub is a local music player for Windows, macOS, and Linux. It combines
 ## Architecture Summary
 
 - **Frontend**: React 19 + TypeScript + Vite, Zustand state, Tailwind CSS
-- **Backend**: Go 1.22+, chi HTTP router, SQLite (WAL mode), Wails v2
+- **Backend**: Go 1.25.12+, chi HTTP router, SQLite (WAL mode), Wails v2
 - **Data**: SQLite primary store; IndexedDB fallback for browser-only mode; `localStorage` for UI settings
-- **Real-time**: SSE (`/api/events`) for scan progress and library updates
+- **Real-time**: legacy SSE (`/api/events`) for scan progress plus revision and job SSE streams under `/api/v2`
+- **Library scale**: cursor-based snapshots, revisioned deltas, indexed backend search, and bounded scanner/SQLite work
+- **Recovery**: local diagnostics, validated SQLite backups, and staged offline restore through Library Operations
 - **Audio**: HTML5 `<audio>` with Web Audio API for EQ and visualization
 - **Platform**: Single native executable. Windows via WebView2; macOS via WKWebView; Linux via WebKitGTK
 
-See [wails-windows-setup.md](wails-windows-setup.md) for development environment setup.
+See the [development and build guide](../README.md#quick-start) for environment setup and platform build commands.

@@ -1,3 +1,4 @@
+// library_search.go performs prefix search against the persisted SQLite index.
 package db
 
 import "strings"
@@ -6,6 +7,8 @@ func searchPrefixBounds(query string) (string, string) {
 	return query, query + string(rune(0x10ffff))
 }
 
+// SearchLibrary performs case-insensitive prefix matching. Range predicates
+// deliberately avoid leading wildcards so SQLite can use the search indexes.
 func (d *DB) SearchLibrary(query string, limit int) (LibrarySearchResult, error) {
 	query = strings.TrimSpace(strings.ToLower(query))
 	limit = clampPageLimit(limit, 50, 200)

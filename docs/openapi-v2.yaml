@@ -2,7 +2,12 @@ openapi: 3.1.0
 info:
   title: ViiB MediaHub Local API
   version: 2.0.0
-  description: Versioned local-only API for scalable library synchronization, search, diagnostics, and durable jobs.
+  description: >-
+    Local-only API for revisioned library synchronization, indexed search,
+    performance diagnostics, durable jobs, and library maintenance. Every
+    response includes `X-Request-ID`. Jobs and Library Operations return the
+    documented machine-readable error envelope; legacy library and performance
+    handlers retain their existing response shape for compatibility.
 servers:
   - url: /api/v2
 paths:
@@ -55,6 +60,20 @@ paths:
           description: Server-sent library_revision events with heartbeats
           content:
             text/event-stream: { schema: { type: string } }
+  /library/stats:
+    get:
+      operationId: getLibrarySyncStats
+      responses:
+        '200':
+          description: Current revision and retained change-log count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision, retainedChanges]
+                properties:
+                  revision: { type: integer, minimum: 0 }
+                  retainedChanges: { type: integer, minimum: 0 }
   /search:
     get:
       operationId: searchLibrary
@@ -155,6 +174,214 @@ paths:
           content:
             application/json:
               schema: { type: object, additionalProperties: true }
+  /performance/scanner-failures:
+    get:
+      operationId: listScannerFailures
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 250 } }
+      responses:
+        '200':
+          description: Files temporarily quarantined after metadata extraction failures
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [failures]
+                properties:
+                  failures:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScannerFailure' }
+    delete:
+      operationId: clearScannerFailure
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Quarantine entry removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, example: cleared }
+  /operations/diagnostics:
+    get:
+      operationId: getLibraryDiagnostics
+      responses:
+        '200':
+          description: Read-only local library diagnostics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LibraryDiagnostics' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /operations/repair:
+    post:
+      operationId: repairLibrary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [removeMissing]
+              properties:
+                removeMissing:
+                  type: boolean
+                  description: Also remove database records for diagnostics-confirmed missing media; never deletes files.
+      responses:
+        '200':
+          description: Search-index and playlist-reference repair results
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /operations/songs/{id}/metadata:
+    patch:
+      operationId: updateDatabaseSongMetadata
+      parameters:
+        - { $ref: '#/components/parameters/SongID' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                artist: { type: string }
+                album: { type: string }
+                albumArtist: { type: string }
+                trackNumber: { type: integer, minimum: 0 }
+                discNumber: { type: integer, minimum: 0 }
+                genre: { type: array, items: { type: string } }
+                year: { type: integer, minimum: 0, maximum: 3000 }
+                writeBack:
+                  type: boolean
+                  description: Must be false or omitted. Source-file tag write-back is not available in this build.
+      responses:
+        '200':
+          description: Updated database metadata; source media is unchanged
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Song' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+  /operations/backups:
+    get:
+      operationId: listBackups
+      responses:
+        '200':
+          description: Available local backup archives
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [backups]
+                properties:
+                  backups:
+                    type: array
+                    items: { $ref: '#/components/schemas/BackupInfo' }
+    post:
+      operationId: createBackup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, description: Optional ZIP filename. Unsafe characters are normalized. }
+      responses:
+        '201':
+          description: Validated SQLite backup archive created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BackupInfo' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /operations/restore/preview:
+    post:
+      operationId: previewRestore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestoreRequest' }
+      responses:
+        '200':
+          description: Archive checksum and SQLite integrity are valid; no data changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid, manifest, restartRequired]
+                properties:
+                  valid: { type: boolean, example: true }
+                  restartRequired: { type: boolean, example: true }
+                  manifest: { $ref: '#/components/schemas/BackupManifest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /operations/restore/stage:
+    post:
+      operationId: stageRestore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestoreRequest' }
+      responses:
+        '202':
+          description: Validated database staged for offline activation by viib-restore
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [staged, restartRequired, path]
+                properties:
+                  staged: { type: boolean, example: true }
+                  restartRequired: { type: boolean, example: true }
+                  path: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /operations/watcher:
+    get:
+      operationId: getContinuousWatcherStatus
+      responses:
+        '200':
+          description: Continuous-monitoring state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WatcherStatus' }
+  /operations/watcher/start:
+    post:
+      operationId: startContinuousWatcher
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [intervalMs]
+              properties:
+                intervalMs: { type: integer, minimum: 2000, maximum: 3600000 }
+      responses:
+        '200':
+          description: Continuous watcher started, or its existing status when already running
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WatcherStatus' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /operations/watcher/stop:
+    post:
+      operationId: stopContinuousWatcher
+      responses:
+        '200':
+          description: Continuous watcher stopped
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WatcherStatus' }
 components:
   parameters:
     JobID:
@@ -162,6 +389,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    SongID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
   responses:
     BadRequest:
       description: Invalid request
@@ -175,6 +407,16 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     Conflict:
       description: Resource state conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InternalError:
+      description: Local operation failed and may be retried when `error.retryable` is true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotImplemented:
+      description: Requested capability is deliberately unavailable in this build
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -271,3 +513,76 @@ components:
             retryable: { type: boolean }
             requestId: { type: string }
             details: { type: object, additionalProperties: true }
+    BackupInfo:
+      type: object
+      required: [name, size, createdAt]
+      properties:
+        name: { type: string }
+        size: { type: integer, minimum: 0 }
+        createdAt: { type: integer, description: Unix milliseconds }
+    BackupManifest:
+      type: object
+      required: [format, version, createdAt, databaseFile, databaseSha256]
+      properties:
+        format: { type: string, enum: [viib-mediahub-backup] }
+        version: { type: integer, enum: [1] }
+        createdAt: { type: integer, description: Unix milliseconds }
+        databaseFile: { type: string, enum: [library.db] }
+        databaseSha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        appVersion: { type: string }
+    RestoreRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Name of an existing ZIP backup archive; directory components are rejected.
+    WatcherStatus:
+      type: object
+      required: [running, intervalMs, lastChanges, checks]
+      properties:
+        running: { type: boolean }
+        intervalMs: { type: integer, minimum: 0 }
+        lastCheckAt: { type: integer, description: Unix milliseconds }
+        lastChanges: { type: integer, minimum: 0 }
+        lastError: { type: string }
+        checks: { type: integer, minimum: 0 }
+    ScannerFailure:
+      type: object
+      required: [filePath, failureKind, message, attempts, firstSeenAt, lastSeenAt, retryAfter]
+      properties:
+        filePath: { type: string }
+        failureKind: { type: string }
+        message: { type: string }
+        attempts: { type: integer, minimum: 1 }
+        firstSeenAt: { type: integer, description: Unix milliseconds }
+        lastSeenAt: { type: integer, description: Unix milliseconds }
+        retryAfter: { type: integer, description: Unix milliseconds }
+    MissingMedia:
+      type: object
+      required: [songId, title, filePath, reason]
+      properties:
+        songId: { type: string }
+        title: { type: string }
+        filePath: { type: string }
+        reason: { type: string }
+    BrokenPlaylistReference:
+      type: object
+      required: [playlistId, playlistName, songId]
+      properties:
+        playlistId: { type: string }
+        playlistName: { type: string }
+        songId: { type: string }
+    LibraryDiagnostics:
+      type: object
+      required: [checkedAt, integrity, songCount, searchIndexCount, revision, retainedChanges, missingMedia, brokenPlaylistReferences, scannerFailures]
+      properties:
+        checkedAt: { type: integer, description: Unix milliseconds }
+        integrity: { type: string, example: ok }
+        songCount: { type: integer, minimum: 0 }
+        searchIndexCount: { type: integer, minimum: 0 }
+        revision: { type: integer, minimum: 0 }
+        retainedChanges: { type: integer, minimum: 0 }
+        missingMedia: { type: array, items: { $ref: '#/components/schemas/MissingMedia' } }
+        brokenPlaylistReferences: { type: array, items: { $ref: '#/components/schemas/BrokenPlaylistReference' } }
+        scannerFailures: { type: array, items: { $ref: '#/components/schemas/ScannerFailure' } }

@@ -1,3 +1,4 @@
+// v2_library_operations.go exposes local database maintenance and recovery routes.
 package api
 
 import (
@@ -43,6 +44,9 @@ type metadataRequest struct {
 	WriteBack bool `json:"writeBack"`
 }
 
+// V2LibraryOperationRoutes returns diagnostics, repair, metadata, backup,
+// restore-staging, and continuous-monitoring routes. Restore activation is
+// intentionally handled offline by viib-restore.
 func (a *API) V2LibraryOperationRoutes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/diagnostics", a.libraryDiagnosticsV2)

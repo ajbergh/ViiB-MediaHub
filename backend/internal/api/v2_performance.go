@@ -1,3 +1,4 @@
+// v2_performance.go exposes local-only scanner and SQLite diagnostics.
 package api
 
 import (
@@ -7,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// V2PerformanceRoutes returns performance metrics and scanner-quarantine routes.
 func (a *API) V2PerformanceRoutes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/", a.getPerformanceDiagnosticsV2)

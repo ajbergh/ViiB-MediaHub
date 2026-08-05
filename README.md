@@ -10,6 +10,7 @@
   <a href="#quick-start">Quick Start</a> ·
   <a href="#features">Features</a> ·
   <a href="#build-targets">Build Targets</a> ·
+  <a href="docs/index.md">Documentation</a> ·
   <a href="#api-reference">API Reference</a> ·
   <a href="#technology-stack">Tech Stack</a>
 </p>
@@ -93,6 +94,9 @@ Both modes share the same Go backend (SQLite library, scan engine, Spotify integ
   - macOS: FSEvents
   - Linux: mtime + ctime with directory signatures
 - **Automatic deletion detection** — removed files cleaned from the library automatically
+- **Revisioned synchronization** — cursor-based snapshots and replayable deltas avoid repeated full-library refreshes
+- **Indexed local search** — server-side prefix search across tracks, albums, artists, genres, paths, and playlists
+- **Library Operations** — diagnostics, safe repair, validated backup, staged offline restore, and continuous monitoring
 - **Smart Mixes** — auto-generated playlists: Heavy Rotation, Rediscover Favorites, Fresh Finds, genre mixes
 - **Custom playlists** — create, rename, reorder, and manage playlists
 - **Background enrichment** — automatic Spotify metadata fetching for albums and artists
@@ -244,8 +248,9 @@ Output is a single self-contained binary. On launch it starts a local HTTP serve
 ```
 ViiB-MediaHub/
 ├── docs/
-│   ├── banner.svg                     # README banner
-│   └── wails-windows-setup.md        # Wails dev environment guide
+│   ├── index.md                      # User documentation index
+│   ├── library-operations.md         # Diagnostics, backup, restore, monitoring
+│   └── openapi-v2.yaml               # Versioned local API contract
 ├── scripts/
 │   ├── build.ps1                      # Web build — Windows amd64
 │   ├── build-wails.ps1                # Wails — Windows amd64
@@ -337,6 +342,20 @@ ViiB-MediaHub/
 | `POST` | `/api/scan` | Start library scan |
 | `GET` | `/api/scan/status` | Scan status |
 | `GET` | `/api/library/events` | SSE stream (scan progress, library updates) |
+
+### Scalable local API (`/api/v2`)
+
+The additive v2 surface provides revisioned synchronization, indexed search, local diagnostics, durable jobs, and recovery operations. Responses include `X-Request-ID`; jobs and Library Operations use structured error envelopes. The complete machine-readable contract is [docs/openapi-v2.yaml](docs/openapi-v2.yaml).
+
+| Area | Endpoints | Description |
+|------|-----------|-------------|
+| Library sync | `/library/snapshot`, `/library/changes`, `/library/revision`, `/library/events`, `/library/stats` | Cursor pages, replayable revisions, and SSE revision notifications |
+| Search | `/search` | Indexed prefix search of the local library |
+| Performance | `/performance/`, `/performance/scanner-failures` | Local SQLite/scanner diagnostics and quarantine visibility |
+| Jobs | `/jobs/`, `/jobs/events`, `/jobs/{id}`, `/jobs/{id}/cancel`, `/jobs/{id}/retry` | Persistent scan and aggregate-refresh jobs with progress and cancellation |
+| Operations | `/operations/diagnostics`, `/operations/repair`, `/operations/backups`, `/operations/restore/*`, `/operations/watcher*` | Diagnostics, safe database repair, validated backups, staged offline restore, and continuous monitoring |
+
+Source-file tag write-back is intentionally unavailable. Metadata editing changes the ViiB database only; restore activation is performed offline with `viib-restore` after the application exits.
 
 ### Media
 

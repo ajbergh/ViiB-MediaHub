@@ -1,3 +1,4 @@
+// runtime_policy.go configures the SQLite settings shared by every pool connection.
 package db
 
 import (
@@ -85,6 +86,7 @@ type SQLiteRuntimeStats struct {
 	WaitDurationMS  int64 `json:"waitDurationMs"`
 }
 
+// RuntimeStats returns pool contention data that is safe to expose in local diagnostics.
 func (d *DB) RuntimeStats() SQLiteRuntimeStats {
 	stats := d.conn.Stats()
 	return SQLiteRuntimeStats{

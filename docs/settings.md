@@ -18,6 +18,7 @@ The Settings page provides full configuration for all aspects of ViiB MediaHub.
 | [Spotify](#spotify) | OAuth credentials, download location, concurrency |
 | [Library Intelligence](#library-intelligence) | AI provider, Last.FM, genre/mood enrichment |
 | [Activity Log](#activity-log) | In-app debug log viewer |
+| [Library Operations](library-operations.md) | Diagnostics, repair, backup, restore staging, and continuous monitoring |
 
 ---
 
@@ -36,6 +37,8 @@ Lists all music directories ViiB MediaHub monitors. Each folder has:
 - **Remove** button — stop watching this folder
 
 To add a folder click **Add Folder** and use the folder browser dialog.
+
+For database diagnostics, repair, validated backups, offline restore staging, and configurable continuous monitoring, use the **Library Health** shortcut rather than resetting the library. See [Library Operations](library-operations.md).
 
 ### Scan Now
 

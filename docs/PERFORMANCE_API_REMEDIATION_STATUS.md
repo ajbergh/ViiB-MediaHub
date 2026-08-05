@@ -4,15 +4,15 @@ Updated: 2026-08-05
 
 ## Pull request sequence
 
-| Order | Pull request | Branch | Scope |
+| Order | Pull request | Squash commit on `main` | Scope |
 |---:|---|---|---|
-| 1 | #9 | `agent/phase-0-ingest-identity-correctness` | Stable incremental identity, fingerprint persistence, event coalescing, ingest regression tests |
-| 2 | #10 | `agent/phase-1-library-revisions-search` | Revisioned snapshots/deltas, replay-aware SSE, incremental renderer synchronization, indexed server search |
-| 3 | #11 | `agent/phase-2-scanner-db-performance` | SQLite policy, bounded metadata processing, quarantine, scanner task coalescing, performance diagnostics |
-| 4 | #12 | `agent/phase-3-api-jobs-contract` | Request IDs, structured v2 errors, OpenAPI, durable jobs, cancellable frontend transport |
-| 5 | #13 | `agent/phase-4-library-operations` | Diagnostics/repair, validated backup, staged offline restore, metadata editing, continuous monitoring, operations UI |
+| 1 | #9 | `0f69ccd` | Stable incremental identity, fingerprint persistence, event coalescing, ingest regression tests |
+| 2 | #10 | `1b65b8a` | Revisioned snapshots/deltas, replay-aware SSE, incremental renderer synchronization, indexed server search |
+| 3 | #11 | `cb8a1bf` | SQLite policy, bounded metadata processing, quarantine, scanner task coalescing, performance diagnostics |
+| 4 | #12 | `f10b9b5` | Request IDs, structured v2 errors, OpenAPI, durable jobs, cancellable frontend transport |
+| 5 | #13 | `c6bf184` | Diagnostics/repair, validated backup, staged offline restore, metadata editing, continuous monitoring, operations UI |
 
-Merge by squash in the order above. After each merge, retarget the next pull request to `main` and update its branch from the newly merged base.
+All five pull requests were squash-merged in the order above. The final remediation tree is `c6bf184` on `main`.
 
 ## Delivered outcomes
 
@@ -56,12 +56,14 @@ Merge by squash in the order above. After each merge, retarget the next pull req
 - Native OS credential-store migration and complete removal of Spotify tokens from renderer memory remain separate platform-security work. Existing encrypted SQLite secret handling remains in place; these PRs do not falsely claim completion of native credential integration.
 - A physical Windows release-candidate test remains required after all phases merge, covering a real library, long playback, output switching, continuous monitoring, backup, staged restore, and Spotify reconnection.
 
-## Validation gates
+## Validation record
 
-Each phase is expected to pass:
+The completed remediation was validated locally with:
 
 - TypeScript, Vitest, design-token checks, and production frontend build.
 - `npm audit --audit-level=high` against the refreshed dependency baseline.
-- Go tests, race detection, vet, staticcheck, application builds, and binary vulnerability scans.
-- Windows Wails packaging and packaged-executable vulnerability policy.
+- Go tests and race detection against the CGO SQLite driver.
+- The final tree matches the previously built and locally vulnerability-scanned Phase 4 tree.
 - Phase-specific database, scanner, synchronization, job, backup, repair, and restore tests.
+
+Hosted CI remains useful as a release signal, but the stacked merges were performed after the local gates above at the operator's direction.

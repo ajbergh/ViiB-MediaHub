@@ -1,3 +1,4 @@
+// jobs_schema.go defines durable operation-job state and restart recovery.
 package db
 
 import (
@@ -16,6 +17,7 @@ const (
 	JobStatusInterrupted = "interrupted"
 )
 
+// Job is the persisted state of a scan or aggregate-refresh operation.
 type Job struct {
 	ID              string          `json:"id"`
 	Type            string          `json:"type"`

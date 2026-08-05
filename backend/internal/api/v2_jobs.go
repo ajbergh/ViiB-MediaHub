@@ -1,3 +1,4 @@
+// v2_jobs.go exposes persistent scan and aggregate-refresh jobs plus SSE.
 package api
 
 import (
@@ -20,6 +21,7 @@ type createJobRequest struct {
 	Parameters json.RawMessage `json:"parameters,omitempty"`
 }
 
+// V2JobRoutes returns routes for creating, observing, canceling, and retrying jobs.
 func (a *API) V2JobRoutes() chi.Router {
 	r := chi.NewRouter()
 	if err := a.db.EnsureJobSchema(); err != nil {
@@ -114,6 +116,8 @@ func (a *API) retryJobV2(w http.ResponseWriter, r *http.Request) {
 	respondV2JSON(w, http.StatusAccepted, created)
 }
 
+// runJob claims a queued job and performs the requested operation. Cancellation
+// is cooperative for running work and terminal immediately for queued work.
 func (a *API) runJob(id string) {
 	job, err := a.db.GetJob(id)
 	if err != nil { return }

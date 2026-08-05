@@ -1,3 +1,6 @@
+// v2_response.go defines the structured error envelope used by jobs and
+// Library Operations handlers. The library sync handlers retain legacy JSON
+// responses until their compatibility migration is complete.
 package api
 
 import (

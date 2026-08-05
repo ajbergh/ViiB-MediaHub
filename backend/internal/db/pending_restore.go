@@ -1,3 +1,4 @@
+// pending_restore.go activates a previously validated database only while ViiB is offline.
 package db
 
 import (

@@ -1,3 +1,7 @@
+/**
+ * Client for persisted library operation jobs. Job mutations disable automatic
+ * retries because creating a retry always means creating a distinct job.
+ */
 import { requestJSON } from './httpClient';
 
 const JOBS_BASE = '/api/v2/jobs';
@@ -52,6 +56,8 @@ export const jobsV2 = {
     return requestJSON(`${JOBS_BASE}/${encodeURIComponent(id)}/retry`, { method: 'POST', signal, retry: false });
   },
 
+  // subscribe returns the EventSource cleanup function. It delivers changed
+  // job snapshots only; heartbeats are consumed by EventSource internally.
   subscribe(onJobs: (jobs: OperationJob[]) => void): () => void {
     const source = new EventSource(`${JOBS_BASE}/events`);
     source.addEventListener('jobs', event => {

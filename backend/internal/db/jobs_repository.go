@@ -1,3 +1,4 @@
+// jobs_repository.go provides atomic persistence transitions for operation jobs.
 package db
 
 import (
@@ -6,6 +7,7 @@ import (
 	"time"
 )
 
+// CreateJob persists a new job in its supplied state, defaulting to queued.
 func (d *DB) CreateJob(job Job) error {
 	if err := d.EnsureJobSchema(); err != nil {
 		return err
@@ -35,6 +37,7 @@ func nullableJSON(value json.RawMessage) any {
 	return string(value)
 }
 
+// StartJob atomically claims a queued, failed, or interrupted job for execution.
 func (d *DB) StartJob(id, message string) error {
 	now := time.Now().UnixMilli()
 	result, err := d.conn.Exec(`
@@ -58,6 +61,7 @@ func (d *DB) StartJob(id, message string) error {
 	return nil
 }
 
+// UpdateJobProgress records progress only while a job is running.
 func (d *DB) UpdateJobProgress(id string, current, total int64, message string) error {
 	_, err := d.conn.Exec(`
 		UPDATE operation_jobs SET progress_current = ?, progress_total = ?,
@@ -66,6 +70,7 @@ func (d *DB) UpdateJobProgress(id string, current, total int64, message string) 
 	return err
 }
 
+// CompleteJob records a successful terminal result for a job.
 func (d *DB) CompleteJob(id string, result any, message string) error {
 	payload, err := json.Marshal(result)
 	if err != nil {
@@ -79,6 +84,7 @@ func (d *DB) CompleteJob(id string, result any, message string) error {
 	return err
 }
 
+// FailJob records a failed terminal state and its stable error code.
 func (d *DB) FailJob(id, code, message string) error {
 	now := time.Now().UnixMilli()
 	_, err := d.conn.Exec(`
@@ -88,6 +94,8 @@ func (d *DB) FailJob(id, code, message string) error {
 	return err
 }
 
+// RequestJobCancellation immediately cancels queued jobs and marks running jobs
+// canceling so their worker can complete cooperative cancellation.
 func (d *DB) RequestJobCancellation(id string) (bool, error) {
 	now := time.Now().UnixMilli()
 	// A queued job has no work to interrupt, so make cancellation terminal
@@ -116,6 +124,7 @@ func (d *DB) RequestJobCancellation(id string) (bool, error) {
 	return rows > 0, err
 }
 
+// CancelJob records a canceled terminal state after cooperative worker cleanup.
 func (d *DB) CancelJob(id, message string) error {
 	now := time.Now().UnixMilli()
 	_, err := d.conn.Exec(`
@@ -124,6 +133,7 @@ func (d *DB) CancelJob(id, message string) error {
 	return err
 }
 
+// GetJob returns the persisted job identified by id.
 func (d *DB) GetJob(id string) (Job, error) {
 	if err := d.EnsureJobSchema(); err != nil {
 		return Job{}, err
@@ -173,6 +183,7 @@ func scanJob(row jobScanner) (Job, error) {
 	return job, nil
 }
 
+// ListJobs returns the most recently created jobs, optionally filtered by state.
 func (d *DB) ListJobs(limit int, status string) ([]Job, error) {
 	if err := d.EnsureJobSchema(); err != nil {
 		return nil, err
