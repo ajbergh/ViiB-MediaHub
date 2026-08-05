@@ -107,12 +107,8 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 		}
 	}
 
-	// Coalesce the expensive aggregate refresh to one call per ProcessChanges
-	// invocation rather than launching a goroutine for every 50-song batch.
 	if result.NewSongs > 0 || result.UpdatedSongs > 0 || result.RemovedSongs > 0 {
-		if err := s.db.UpdateGenreStats(); err != nil {
-			logger.Scanner("Failed to update genre stats after incremental scan: %v", err)
-		}
+		s.scheduleAggregateRefresh()
 	}
 
 	result.Duration = time.Since(startTime)
@@ -121,7 +117,7 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 
 func (s *Scanner) prepareIncrementalSong(change FileChange) (preparedIncrementalSong, error) {
 	filePath := filepath.Clean(change.Path)
-	metadata, err := s.extractMetadata(filePath)
+	metadata, err := s.extractMetadataBounded(filePath)
 	if err != nil {
 		return preparedIncrementalSong{}, err
 	}
@@ -189,8 +185,6 @@ func (s *Scanner) saveIncrementalBatch(
 		return fmt.Errorf("save incremental song batch: %w", err)
 	}
 
-	// SaveSongsWithResult classifies by current path. A move has a new path but a
-	// reused logical ID, so report only those reused identities as updates.
 	moveAdjust := reusedIdentities
 	if moveAdjust > upsert.Inserted {
 		moveAdjust = upsert.Inserted
