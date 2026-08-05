@@ -1,39 +1,26 @@
-/**
- * ViiB MediaHub - Library Event Listener Component
- * 
- * Background component maintaining SSE connection for library updates.
- * 
- * Events received from /api/library/events (SSE):
- * - scan_started: Library scan initiated
- * - scan_progress: Scan progress update (file counts)
- * - scan_complete: Scan finished (new/removed song counts)
- * - library_updated: Generic library change notification
- * - enrichment_started/progress/complete: LLM metadata enrichment progress
- * - mood_started/progress/complete: Mood/energy/tempo enrichment progress
- * 
- * Automatically refreshes library state when a scan or enrichment completes,
- * ensuring the UI stays synchronized without manual reload.
- * Includes automatic reconnection with exponential backoff for dropped connections.
- * 
- * @module LibraryEventListener
- */
-
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStore } from '../store';
+import { generateSmartMixes } from '../lib/smartMix';
+import { libraryIndex } from '../lib/libraryIndex';
+import { libraryV2 } from '../services/libraryV2';
 
-/**
- * LibraryEventListener - Listens for library events via SSE and refreshes the library
- * 
- * This component connects to the backend's /api/library/events SSE endpoint
- * and listens for events like scan_complete. When a scan completes, it
- * automatically refreshes the library data so the UI updates without manual reload.
- */
-interface LibraryEvent {
-  type: 'scan_started' | 'scan_complete' | 'scan_progress' | 'enrichment_started' | 'enrichment_progress' | 'enrichment_complete' | 'mood_started' | 'mood_progress' | 'mood_complete' | 'library_updated';
+const REVISION_STORAGE_KEY = 'viib-library-revision';
+
+type LegacyLibraryEventType =
+  | 'scan_started'
+  | 'scan_complete'
+  | 'scan_progress'
+  | 'library_updated'
+  | 'enrichment_started'
+  | 'enrichment_progress'
+  | 'enrichment_complete'
+  | 'mood_started'
+  | 'mood_progress'
+  | 'mood_complete';
+
+interface LegacyLibraryEvent {
+  type: LegacyLibraryEventType;
   message: string;
-  newSongs?: number;
-  removedSongs?: number;
-  totalSongs?: number;
   data?: {
     totalSongs?: number;
     processedSongs?: number;
@@ -43,305 +30,209 @@ interface LibraryEvent {
   };
 }
 
+interface RevisionEvent {
+  revision: number;
+}
+
+function readStoredRevision(): number {
+  const value = Number(window.localStorage.getItem(REVISION_STORAGE_KEY) || '0');
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function storeRevision(revision: number): void {
+  window.localStorage.setItem(REVISION_STORAGE_KEY, String(Math.max(0, revision)));
+}
+
+/**
+ * Maintains the legacy progress stream and the revisioned data stream.
+ * Library mutations are applied by song ID; legacy library_updated events no
+ * longer trigger repeated full-catalog downloads.
+ */
 const LibraryEventListener = () => {
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const refreshDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const lastRefreshTimeRef = useRef<number>(0);
   const backendAvailable = useStore(state => state.backendAvailable);
-  
-  // Use refs for callbacks to prevent SSE reconnection on store updates
   const storeRef = useRef(useStore.getState());
+  const currentRevisionRef = useRef(0);
+  const syncPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const deltaAvailableRef = useRef(false);
+
+  useEffect(() => useStore.subscribe(state => { storeRef.current = state; }), []);
+
   useEffect(() => {
-    // Subscribe to store changes but keep ref updated
-    return useStore.subscribe(state => {
-      storeRef.current = state;
-    });
-  }, []);
+    if (!backendAvailable) return;
 
-  const handleEvent = useCallback((event: MessageEvent) => {
-    try {
-      const libraryEvent: LibraryEvent = JSON.parse(event.data);
-      console.log('📥 Library event received:', libraryEvent);
+    let disposed = false;
+    let legacySource: EventSource | null = null;
+    let revisionSource: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let revisionReconnects = 0;
+    const abortController = new AbortController();
 
-      const { setScanning, setScanProgress, refreshLibrary, setEnrichmentStatus } = storeRef.current;
+    const replaceLibrary = (songs: ReturnType<typeof libraryIndex.toArray>) => {
+      const smartMixes = generateSmartMixes(songs);
+      useStore.setState({ songs, smartMixes });
+    };
 
-      switch (libraryEvent.type) {
-        case 'scan_started':
-          setScanning(true);
-          setScanProgress(libraryEvent.message);
-          break;
+    const initializeSnapshot = async () => {
+      const snapshot = await libraryV2.getSnapshot(abortController.signal);
+      if (disposed) return;
+      const songs = libraryIndex.initialize(snapshot.songs);
+      replaceLibrary(songs);
+      currentRevisionRef.current = snapshot.revision;
+      storeRevision(snapshot.revision);
+      deltaAvailableRef.current = true;
+    };
 
-        case 'scan_complete':
-          setScanning(false);
-          setScanProgress('');
-          // Cancel any pending debounced refresh
-          if (refreshDebounceRef.current) {
-            clearTimeout(refreshDebounceRef.current);
-            refreshDebounceRef.current = null;
-          }
-          // Always refresh the library when scan completes - immediate, not debounced
-          const added = libraryEvent.newSongs || 0;
-          const removed = libraryEvent.removedSongs || 0;
-          console.log(`🎵 Scan complete (${added} new, ${removed} removed), refreshing library...`);
-          refreshLibrary();
-          break;
-
-        case 'scan_progress':
-          setScanProgress(libraryEvent.message);
-          break;
-
-        case 'library_updated':
-          console.log(`📚 Library updated: ${libraryEvent.message}`);
-          // Use throttle + debounce: refresh at most every 2s during scan, plus final debounced refresh
-          const now = Date.now();
-          const timeSinceLastRefresh = now - lastRefreshTimeRef.current;
-          
-          // Clear any pending debounced refresh
-          if (refreshDebounceRef.current) {
-            clearTimeout(refreshDebounceRef.current);
-          }
-          
-          // Throttle: if more than 2s since last refresh, refresh immediately
-          if (timeSinceLastRefresh >= 2000) {
-            console.log(`📚 Throttled refresh triggered (${timeSinceLastRefresh}ms since last)`);
-            lastRefreshTimeRef.current = now;
-            refreshLibrary();
-          }
-          
-          // Debounce: schedule a refresh for 500ms after last event (for final update)
-          refreshDebounceRef.current = setTimeout(() => {
-            console.log(`📚 Debounced refresh triggered`);
-            lastRefreshTimeRef.current = Date.now();
-            refreshLibrary();
-            refreshDebounceRef.current = null;
-          }, 500);
-          
-          // Dispatch window event for components that need to know (e.g., Genres page)
-          window.dispatchEvent(new CustomEvent('library_updated', { detail: libraryEvent }));
-          break;
-
-        case 'enrichment_started':
-          console.log(`✨ Enrichment started: ${libraryEvent.message}`, libraryEvent.data);
-          setEnrichmentStatus({
-            isEnriching: true,
-            totalSongs: libraryEvent.data?.totalSongs || 0,
-            processedSongs: 0,
-            currentBatch: 0,
-            totalBatches: libraryEvent.data?.totalBatches || 0,
-            message: libraryEvent.message,
-          });
-          console.log(`✨ Called setEnrichmentStatus with isEnriching: true`);
-          break;
-
-        case 'enrichment_progress':
-          console.log(`✨ Enrichment progress: ${libraryEvent.message}`);
-          setEnrichmentStatus({
-            isEnriching: true,
-            totalSongs: libraryEvent.data?.totalSongs || 0,
-            processedSongs: libraryEvent.data?.processedSongs || 0,
-            currentBatch: libraryEvent.data?.currentBatch || 0,
-            totalBatches: libraryEvent.data?.totalBatches || 0,
-            message: libraryEvent.message,
-          });
-          break;
-
-        case 'enrichment_complete':
-          console.log(`✨ Enrichment complete: ${libraryEvent.message}`);
-          setEnrichmentStatus({
-            isEnriching: false,
-            processedSongs: libraryEvent.data?.enrichedSongs || 0,
-            message: libraryEvent.message,
-          });
-          refreshLibrary();
-          // Dispatch window event for components that need to refresh (e.g., Genres page)
-          // Genre enrichment updates genre_stats table, so UI should refresh
-          window.dispatchEvent(new CustomEvent('enrichment_complete', { detail: libraryEvent }));
-          
-          // Clear enrichment status after a delay
-          setTimeout(() => {
-            setEnrichmentStatus({
-              isEnriching: false,
-              totalSongs: 0,
-              processedSongs: 0,
-              currentBatch: 0,
-              totalBatches: 0,
-              message: '',
-            });
-          }, 5000);
-          break;
-
-        // Mood analysis events - use same enrichmentStatus for sidebar display
-        case 'mood_started':
-          console.log(`🎭 Mood analysis started: ${libraryEvent.message}`, libraryEvent.data);
-          setEnrichmentStatus({
-            isEnriching: true,
-            totalSongs: libraryEvent.data?.totalSongs || 0,
-            processedSongs: 0,
-            currentBatch: 0,
-            totalBatches: libraryEvent.data?.totalBatches || 0,
-            message: libraryEvent.message,
-          });
-          break;
-
-        case 'mood_progress':
-          console.log(`🎭 Mood analysis progress: ${libraryEvent.message}`);
-          setEnrichmentStatus({
-            isEnriching: true,
-            totalSongs: libraryEvent.data?.totalSongs || 0,
-            processedSongs: libraryEvent.data?.processedSongs || 0,
-            currentBatch: libraryEvent.data?.currentBatch || 0,
-            totalBatches: libraryEvent.data?.totalBatches || 0,
-            message: libraryEvent.message,
-          });
-          break;
-
-        case 'mood_complete':
-          console.log(`🎭 Mood analysis complete: ${libraryEvent.message}`);
-          setEnrichmentStatus({
-            isEnriching: false,
-            processedSongs: libraryEvent.data?.processedSongs || 0,
-            message: libraryEvent.message,
-          });
-          refreshLibrary();
-          // Dispatch window event for components that need to know
-          window.dispatchEvent(new CustomEvent('mood_complete', { detail: libraryEvent }));
-          
-          // Clear enrichment status after a delay
-          setTimeout(() => {
-            setEnrichmentStatus({
-              isEnriching: false,
-              totalSongs: 0,
-              processedSongs: 0,
-              currentBatch: 0,
-              totalBatches: 0,
-              message: '',
-            });
-          }, 5000);
-          break;
+    const applyChanges = async () => {
+      const delta = await libraryV2.getChanges(currentRevisionRef.current, abortController.signal);
+      if (disposed) return;
+      if (delta.changes.length > 0) {
+        const songs = libraryIndex.apply(delta.changes, delta.songs);
+        replaceLibrary(songs);
       }
-    } catch (error) {
-      console.error('Failed to parse library event:', error);
-    }
-  }, []);
+      currentRevisionRef.current = delta.revision;
+      storeRevision(delta.revision);
+      deltaAvailableRef.current = true;
+    };
 
-  // Store handleEvent in a ref for stability
-  const handleEventRef = useRef(handleEvent);
-  handleEventRef.current = handleEvent;
-
-  // Track if this is initial connection vs reconnection
-  const isReconnectRef = useRef(false);
-  // Count consecutive reconnects to surface persistent failures
-  const reconnectCountRef = useRef(0);
-
-  useEffect(() => {
-    // Wait for backend to be available before connecting
-    if (!backendAvailable) {
-      return;
-    }
-
-    // Don't reconnect if already connected
-    if (eventSourceRef.current && eventSourceRef.current.readyState !== EventSource.CLOSED) {
-      return;
-    }
-    
-    const connect = () => {
-      const eventSource = new EventSource('/api/library/events');
-      eventSourceRef.current = eventSource;
-
-      eventSource.onopen = () => {
-        // Reset reconnect counter on successful connection
-        reconnectCountRef.current = 0;
-
-        // Always check scan status when SSE connects (even on initial connect)
-        // This handles the case where the scan started before SSE connected
-        const checkScanStatus = async () => {
-          try {
-            const { getScanStatus } = await import('../services/backendService').then(m => m.backendService);
-            const status = await getScanStatus();
-            const { setScanning, setScanProgress, refreshLibrary, isScanning } = storeRef.current;
-            
-            if (status.scanning) {
-              // Scan is in progress - make sure UI reflects this
-              setScanning(true);
-              if (status.progress) {
-                setScanProgress(status.progress);
-              }
-            } else if (isReconnectRef.current) {
-              // Only refresh on reconnect if not initial connection
-              // (initial connection already loaded library in initLibrary)
-              setScanning(false);
-              setScanProgress('');
-              refreshLibrary();
-            }
-          } catch (e) {
-            console.warn('Could not check scan status after SSE connect:', e);
+    const enqueueSync = () => {
+      syncPromiseRef.current = syncPromiseRef.current
+        .then(applyChanges)
+        .catch(error => {
+          if (!disposed && !abortController.signal.aborted) {
+            deltaAvailableRef.current = false;
+            console.warn('Revisioned library synchronization failed:', error);
           }
-        };
-        checkScanStatus();
-        
-        // Mark that next connect will be a reconnect
-        isReconnectRef.current = true;
-      };
+        });
+    };
 
-      eventSource.onmessage = (event) => handleEventRef.current(event);
-
-      eventSource.onerror = () => {
-        // Only reconnect if the connection is actually closed
-        // SSE can fire error events transiently without the connection being lost
-        if (eventSource.readyState === EventSource.CLOSED) {
-          reconnectCountRef.current += 1;
-          // Only warn after repeated failures to avoid console spam on normal reconnects
-          if (reconnectCountRef.current >= 3) {
-            console.warn(`Library events SSE: ${reconnectCountRef.current} consecutive reconnects — backend may be unavailable`);
-          }
-          eventSource.close();
-          eventSourceRef.current = null;
-          // Reconnect after 3 seconds
-          reconnectTimeoutRef.current = setTimeout(connect, 3000);
+    const handleLegacyEvent = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data) as LegacyLibraryEvent;
+        const { setScanning, setScanProgress, setEnrichmentStatus, refreshLibrary } = storeRef.current;
+        switch (payload.type) {
+          case 'scan_started':
+            setScanning(true);
+            setScanProgress(payload.message);
+            break;
+          case 'scan_progress':
+            setScanProgress(payload.message);
+            break;
+          case 'scan_complete':
+            setScanning(false);
+            setScanProgress('');
+            if (deltaAvailableRef.current) enqueueSync();
+            else refreshLibrary();
+            break;
+          case 'library_updated':
+            // The revision stream carries the durable mutation. Do not reload
+            // all songs for every scanner batch.
+            break;
+          case 'enrichment_started':
+          case 'mood_started':
+            setEnrichmentStatus({
+              isEnriching: true,
+              totalSongs: payload.data?.totalSongs || 0,
+              processedSongs: 0,
+              currentBatch: 0,
+              totalBatches: payload.data?.totalBatches || 0,
+              message: payload.message,
+            });
+            break;
+          case 'enrichment_progress':
+          case 'mood_progress':
+            setEnrichmentStatus({
+              isEnriching: true,
+              totalSongs: payload.data?.totalSongs || 0,
+              processedSongs: payload.data?.processedSongs || 0,
+              currentBatch: payload.data?.currentBatch || 0,
+              totalBatches: payload.data?.totalBatches || 0,
+              message: payload.message,
+            });
+            break;
+          case 'enrichment_complete':
+          case 'mood_complete':
+            setEnrichmentStatus({
+              isEnriching: false,
+              processedSongs: payload.data?.enrichedSongs || payload.data?.processedSongs || 0,
+              message: payload.message,
+            });
+            if (deltaAvailableRef.current) enqueueSync();
+            else refreshLibrary();
+            window.dispatchEvent(new CustomEvent(payload.type, { detail: payload }));
+            break;
         }
-        // If CONNECTING or OPEN, ignore — connection is recovering or still valid
+      } catch (error) {
+        console.warn('Failed to parse library progress event:', error);
+      }
+    };
+
+    const connectLegacy = () => {
+      if (disposed) return;
+      legacySource?.close();
+      legacySource = new EventSource('/api/library/events');
+      legacySource.onmessage = handleLegacyEvent;
+      legacySource.onerror = () => {
+        if (legacySource?.readyState === EventSource.CLOSED && !disposed) {
+          reconnectTimer = setTimeout(connectLegacy, 3000);
+        }
       };
     };
 
-    connect();
-
-    // Safety fallback: Check scan status periodically to handle missed events
-    // This catches cases where scan_complete was missed due to SSE disconnect
-    const scanStatusInterval = setInterval(async () => {
-      const { isScanning, setScanning, setScanProgress, refreshLibrary } = storeRef.current;
-      
-      // Only check if we think a scan is in progress
-      if (!isScanning) return;
-      
-      try {
-        const { getScanStatus } = await import('../services/backendService').then(m => m.backendService);
-        const status = await getScanStatus();
-        
-        if (!status.scanning) {
-          setScanning(false);
-          setScanProgress('');
-          refreshLibrary();
+    const connectRevisionStream = () => {
+      if (disposed) return;
+      revisionSource?.close();
+      revisionSource = new EventSource(libraryV2.eventURL(currentRevisionRef.current));
+      revisionSource.addEventListener('library_revision', event => {
+        try {
+          const payload = JSON.parse((event as MessageEvent).data) as RevisionEvent;
+          if (payload.revision > currentRevisionRef.current) enqueueSync();
+        } catch (error) {
+          console.warn('Failed to parse library revision event:', error);
         }
-      } catch {
-        // Silently ignore - we'll try again on the next interval
+      });
+      revisionSource.onopen = () => {
+        revisionReconnects = 0;
+        deltaAvailableRef.current = true;
+      };
+      revisionSource.onerror = () => {
+        if (revisionSource?.readyState !== EventSource.CLOSED || disposed) return;
+        deltaAvailableRef.current = false;
+        revisionSource.close();
+        revisionReconnects += 1;
+        const delay = Math.min(30_000, 1000 * 2 ** Math.min(revisionReconnects, 5));
+        reconnectTimer = setTimeout(connectRevisionStream, delay);
+      };
+    };
+
+    const start = async () => {
+      currentRevisionRef.current = readStoredRevision();
+      try {
+        // A paginated snapshot establishes a consistent local index. Subsequent
+        // updates use only the durable change log.
+        await initializeSnapshot();
+      } catch (error) {
+        if (!abortController.signal.aborted) {
+          console.warn('Versioned library snapshot unavailable; retaining legacy library state:', error);
+          libraryIndex.initialize(storeRef.current.songs);
+          deltaAvailableRef.current = false;
+        }
       }
-    }, 5000); // Check every 5 seconds
+      if (disposed) return;
+      connectLegacy();
+      connectRevisionStream();
+    };
+
+    void start();
 
     return () => {
-      clearInterval(scanStatusInterval);
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      disposed = true;
+      abortController.abort();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      legacySource?.close();
+      revisionSource?.close();
     };
-  }, [backendAvailable]); // handleEvent is stable via useCallback with empty deps
+  }, [backendAvailable]);
 
-  // This component doesn't render anything
   return null;
 };
 
