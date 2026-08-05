@@ -27,7 +27,7 @@ import { Heart, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { coverBackground } from '../utils';
 import { ContextMenuType, Album } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { AlbumLikeButton } from '../components/AlbumLikeButton';
 import { Page } from '../components/ui/Page';
 import { EmptyState } from '../components/EmptyState';

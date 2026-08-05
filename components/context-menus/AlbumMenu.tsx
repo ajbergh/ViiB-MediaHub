@@ -8,7 +8,7 @@ import React from 'react';
 import { Play, SkipForward, ListPlus, Mic2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Album } from '../../types';
 
 /**

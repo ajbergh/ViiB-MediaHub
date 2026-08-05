@@ -2,7 +2,7 @@
  * ViiB MediaHub - Layout Component
  */
 import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router';
 import { ShieldCheck } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Player } from './Player';

@@ -16,7 +16,7 @@
 import React, { useEffect, useState, forwardRef, useMemo } from 'react';
 import { useAlbums, useStore } from '../store';
 import { generateGradient, coverBackground } from '../utils';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { ContextMenuType, Album } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { ChevronDown, ArrowUpDown } from 'lucide-react';

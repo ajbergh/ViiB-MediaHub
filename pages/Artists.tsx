@@ -14,7 +14,7 @@
  */
 
 import React, { useEffect, useState, forwardRef, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useArtists, useStore } from '../store';
 import { generateGradient, cssUrl } from '../utils';
 import { ContextMenuType } from '../types';

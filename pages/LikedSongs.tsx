@@ -21,7 +21,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useStore, useAlbumCovers } from '../store';
 import { Play, Heart, MoreHorizontal, Shuffle } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
