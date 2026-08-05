@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useStore } from '../store';
 import { Music, Search, ChevronRight, Play, Shuffle, Loader2 } from 'lucide-react';
 import { Song } from '../types';

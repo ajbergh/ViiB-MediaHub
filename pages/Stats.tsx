@@ -28,7 +28,7 @@ import { EMPTY_STATE } from '../lib/emptyStateCopy';
 
 import React, { useMemo } from 'react';
 import { useStore, useAlbums, useArtists } from '../store';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { 
     BarChart3, Clock, Music, Disc, Mic2, Headphones, 
     TrendingUp, Calendar, Play, Star, Award, Zap

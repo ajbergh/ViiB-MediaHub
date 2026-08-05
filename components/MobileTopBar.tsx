@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { Menu } from 'lucide-react';
 import SmallLogo from './icons/Icon_1_clear-high-res.png';
 
