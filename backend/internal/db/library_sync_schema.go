@@ -99,7 +99,7 @@ func (d *DB) ensureLibrarySyncSchema() error {
 		UPDATE library_state SET revision = revision + 1 WHERE id = 1;
 		INSERT INTO library_changes(revision, song_id, operation, changed_at)
 			SELECT revision, NEW.id, 'upsert', CAST(strftime('%s','now') AS INTEGER) * 1000 FROM library_state WHERE id = 1;
-		INSERT OR IGNORE INTO song_search(song_id, title, artist, album, album_artist, genre, file_path)
+		INSERT INTO song_search(song_id, title, artist, album, album_artist, genre, file_path)
 		VALUES(NEW.id, lower(COALESCE(NEW.title, '')), lower(COALESCE(NEW.artist, '')), lower(COALESCE(NEW.album, '')), lower(COALESCE(NEW.album_artist, '')), lower(COALESCE(NEW.genre, '')), lower(COALESCE(NEW.file_path, '')))
 		ON CONFLICT(song_id) DO UPDATE SET title = excluded.title, artist = excluded.artist, album = excluded.album, album_artist = excluded.album_artist, genre = excluded.genre, file_path = excluded.file_path;
 	END;
@@ -123,7 +123,7 @@ func (d *DB) ensureLibrarySyncSchema() error {
 	}
 
 	_, err := d.conn.Exec(`
-		INSERT INTO song_search(song_id, title, artist, album, album_artist, genre, file_path)
+		INSERT OR IGNORE INTO song_search(song_id, title, artist, album, album_artist, genre, file_path)
 		SELECT id, lower(COALESCE(title, '')), lower(COALESCE(artist, '')),
 		       lower(COALESCE(album, '')), lower(COALESCE(album_artist, '')),
 		       lower(COALESCE(genre, '')), lower(COALESCE(file_path, ''))
