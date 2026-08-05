@@ -10,7 +10,6 @@
  * 
  * @module App
  */
-
 import React, { useEffect, Component, ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { Layout } from './components/Layout';
@@ -37,6 +36,7 @@ import { Duplicates } from './pages/Duplicates';
 import { Stats } from './pages/Stats';
 import { SmartMixDetail } from './pages/SmartMixDetail';
 import { DJModeV2 } from './pages/DJModeV2';
+import { LibraryOperations } from './pages/LibraryOperations';
 import { useStore } from './store';
 import { api } from './services/api';
 import DownloadManager from './components/DownloadManager';
@@ -47,23 +47,12 @@ import { useBackgroundEnrichment } from './hooks/useBackgroundEnrichment';
 import { setupGlobalErrorHandlers, createLogger } from './services/loggerService';
 
 setupGlobalErrorHandlers();
-
 const appLogger = createLogger('App');
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    appLogger.logError(error, `ErrorBoundary caught an error in ${errorInfo.componentStack}`);
-  }
-
+  constructor(props: { children: ReactNode }) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) { appLogger.logError(error, `ErrorBoundary caught an error in ${errorInfo.componentStack}`); }
   render() {
     if (this.state.hasError) {
       return (
@@ -71,13 +60,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
           <div className="max-w-lg rounded-xl border border-error/30 bg-surface-2 p-8 text-center">
             <h1 className="text-xl font-semibold text-error">ViiB MediaHub encountered an interface error</h1>
             <p className="mt-3 text-sm text-text-secondary">Your library data remains stored locally. Refresh the application to recover the interface.</p>
-            <button
-              type="button"
-              className="mt-5 rounded-full bg-brand px-5 py-2 font-semibold text-surface-0 hover:bg-brand-hover"
-              onClick={() => window.location.reload()}
-            >
-              Refresh application
-            </button>
+            <button type="button" className="mt-5 rounded-full bg-brand px-5 py-2 font-semibold text-surface-0 hover:bg-brand-hover" onClick={() => window.location.reload()}>Refresh application</button>
           </div>
         </div>
       );
@@ -96,30 +79,20 @@ const App: React.FC = () => {
   const backendAvailable = useStore(state => state.backendAvailable);
 
   useBackgroundEnrichment();
-
-  useEffect(() => {
-    initLibrary();
-  }, [initLibrary]);
+  useEffect(() => { initLibrary(); }, [initLibrary]);
 
   useEffect(() => {
     const checkExistingConfig = async () => {
       if (!backendAvailable || hasCompletedSetup) return;
-
       try {
         const [folders, creds, songs] = await Promise.all([
           api.getFolders().catch(() => []),
           api.getSpotifyCredentials().catch(() => null),
           api.getSongs().catch(() => []),
         ]);
-        const hasExistingData = folders.length > 0 || songs.length > 0 || Boolean(creds?.clientId);
-        if (hasExistingData) {
-          setHasCompletedSetup(true);
-        }
-      } catch (error) {
-        appLogger.warn('Failed to check existing configuration', error);
-      }
+        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.clientId)) setHasCompletedSetup(true);
+      } catch (error) { appLogger.warn('Failed to check existing configuration', error); }
     };
-
     void checkExistingConfig();
   }, [backendAvailable, hasCompletedSetup, setHasCompletedSetup]);
 
@@ -132,18 +105,13 @@ const App: React.FC = () => {
           setSpotifyCredentials(creds.clientId, '');
           setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry);
         }
-      } catch {
-        // Spotify is optional and may not be configured yet.
-      }
+      } catch { /* Spotify is optional. */ }
     };
-
     void syncSpotify();
   }, [spotifyAccessToken, setSpotifyCredentials, setSpotifyTokens]);
 
   const loadAudioSettings = useStore(state => state.loadAudioSettings);
-  useEffect(() => {
-    if (backendAvailable) void loadAudioSettings();
-  }, [backendAvailable, loadAudioSettings]);
+  useEffect(() => { if (backendAvailable) void loadAudioSettings(); }, [backendAvailable, loadAudioSettings]);
 
   return (
     <ErrorBoundary>
@@ -171,6 +139,7 @@ const App: React.FC = () => {
             <Route path="/search" element={<Search />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/duplicates" element={<Duplicates />} />
+            <Route path="/library-operations" element={<LibraryOperations />} />
             <Route path="/dj" element={<DJModeV2 />} />
             <Route path="/dj-v2" element={<Navigate to="/dj" replace />} />
             <Route path="/settings" element={<Settings />} />
@@ -189,10 +158,7 @@ const App: React.FC = () => {
           onConfirm={() => confirmDialog?.onConfirm()}
           onCancel={closeConfirmDialog}
         />
-        <FirstLaunchDialog
-          isOpen={backendAvailable && !hasCompletedSetup}
-          onComplete={() => setHasCompletedSetup(true)}
-        />
+        <FirstLaunchDialog isOpen={backendAvailable && !hasCompletedSetup} onComplete={() => setHasCompletedSetup(true)} />
       </BrowserRouter>
     </ErrorBoundary>
   );
