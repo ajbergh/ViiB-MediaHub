@@ -3,18 +3,21 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"sync"
 	"time"
 )
 
 const (
-	JobStatusQueued     = "queued"
-	JobStatusRunning    = "running"
-	JobStatusSucceeded  = "succeeded"
-	JobStatusFailed     = "failed"
-	JobStatusCanceling  = "canceling"
-	JobStatusCanceled   = "canceled"
+	JobStatusQueued      = "queued"
+	JobStatusRunning     = "running"
+	JobStatusSucceeded   = "succeeded"
+	JobStatusFailed      = "failed"
+	JobStatusCanceling   = "canceling"
+	JobStatusCanceled    = "canceled"
 	JobStatusInterrupted = "interrupted"
 )
+
+var jobSchemas sync.Map // map[*DB]error
 
 type Job struct {
 	ID              string          `json:"id"`
@@ -34,7 +37,11 @@ type Job struct {
 	UpdatedAt       int64           `json:"updatedAt"`
 }
 
+// EnsureJobSchema runs schema installation and restart recovery exactly once
+// for each database handle. Repeated reads must never mark an active job as
+// interrupted.
 func (d *DB) EnsureJobSchema() error {
+	if value, ok := jobSchemas.Load(d); ok { return value.(error) }
 	_, err := d.conn.Exec(`
 		CREATE TABLE IF NOT EXISTS operation_jobs (
 			id TEXT PRIMARY KEY,
@@ -56,18 +63,17 @@ func (d *DB) EnsureJobSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_operation_jobs_status ON operation_jobs(status, updated_at);
 		CREATE INDEX IF NOT EXISTS idx_operation_jobs_type ON operation_jobs(type, created_at);
 	`)
-	if err != nil { return err }
-
-	// A process restart cannot continue an in-memory worker. Preserve the job and
-	// mark it explicitly rather than leaving it permanently "running".
-	now := time.Now().UnixMilli()
-	_, err = d.conn.Exec(`
-		UPDATE operation_jobs
-		SET status = ?, error_code = 'process_restarted',
-		    error_message = 'The application restarted while the job was active',
-		    completed_at = ?, updated_at = ?
-		WHERE status IN (?, ?, ?)
-	`, JobStatusInterrupted, now, now, JobStatusQueued, JobStatusRunning, JobStatusCanceling)
+	if err == nil {
+		now := time.Now().UnixMilli()
+		_, err = d.conn.Exec(`
+			UPDATE operation_jobs
+			SET status = ?, error_code = 'process_restarted',
+			    error_message = 'The application restarted while the job was active',
+			    completed_at = ?, updated_at = ?
+			WHERE status IN (?, ?, ?)
+		`, JobStatusInterrupted, now, now, JobStatusQueued, JobStatusRunning, JobStatusCanceling)
+	}
+	jobSchemas.Store(d, err)
 	return err
 }
 
