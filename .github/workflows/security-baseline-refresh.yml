@@ -26,34 +26,63 @@ jobs:
         with:
           go-version: '1.25.12'
           cache-dependency-path: backend/go.sum
-      - name: Refresh frontend security baseline
+      - name: Refresh and validate phase 0 security baseline
+        shell: bash
         run: |
-          npm install --save-exact react-router-dom@7.11.0
+          set -euo pipefail
+          npm install --save-exact react-router-dom@7.18.2
           npm install --save-dev --save-exact postcss@8.5.25
           npm audit --audit-level=high
-      - name: Refresh backend security baseline
-        working-directory: backend
-        run: |
+          npm run check
+
+          pushd backend
           go get google.golang.org/grpc@v1.82.1
           go get go.opentelemetry.io/otel@v1.41.0 go.opentelemetry.io/otel/metric@v1.41.0 go.opentelemetry.io/otel/trace@v1.41.0
           go mod tidy
           go test ./...
-          go install golang.org/x/vuln/cmd/govulncheck@latest
           mkdir -p cmd/viib/dist cmd/wails/frontend/dist cmd/wails/build .ci
           printf '<!doctype html><title>fixture</title>' > cmd/viib/dist/index.html
           cp cmd/viib/dist/index.html cmd/wails/frontend/dist/index.html
           printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > cmd/wails/build/appicon.png
           go build -o .ci/viib-web ./cmd/viib
           go build -o .ci/viib-wails ./cmd/wails
+          go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck -mode binary .ci/viib-web
           govulncheck -mode binary .ci/viib-wails
-      - name: Commit refreshed locks
+          popd
+      - name: Commit phase 0 dependency locks
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add package.json package-lock.json backend/go.mod backend/go.sum
-          if git diff --cached --quiet; then
-            exit 0
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update dependency security baseline [skip security refresh]'
+            git push origin HEAD:agent/phase-0-ingest-identity-correctness
           fi
-          git commit -m 'Update dependency security baseline [skip security refresh]'
-          git push origin HEAD:agent/phase-0-ingest-identity-correctness
+      - name: Propagate dependency locks to stacked branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          for branch in \
+            agent/phase-1-library-revisions-search \
+            agent/phase-2-scanner-db-performance \
+            agent/phase-3-api-jobs-contract \
+            agent/phase-4-library-operations
+          do
+            git fetch origin "$branch"
+            git checkout -B "$branch" "origin/$branch"
+            npm install --save-exact react-router-dom@7.18.2
+            npm install --save-dev --save-exact postcss@8.5.25
+            pushd backend
+            go get google.golang.org/grpc@v1.82.1
+            go get go.opentelemetry.io/otel@v1.41.0 go.opentelemetry.io/otel/metric@v1.41.0 go.opentelemetry.io/otel/trace@v1.41.0
+            go mod tidy
+            popd
+            git add package.json package-lock.json backend/go.mod backend/go.sum
+            if ! git diff --cached --quiet; then
+              git commit -m 'Update dependency security baseline'
+              git push origin HEAD:"$branch"
+            fi
+          done
