@@ -643,6 +643,12 @@ export const api = {
     return handleResponse<ApiSpotifyDownload[]>(response);
   },
 
+  /** Returns the exact queued + downloading count used by the navigation badge. */
+  async getActiveDownloadCount(): Promise<{ count: number }> {
+    const response = await fetch(`${API_BASE}/spotify/downloads/active-count`);
+    return handleResponse<{ count: number }>(response);
+  },
+
   /**
    * Gets the current status of a specific download.
    * 

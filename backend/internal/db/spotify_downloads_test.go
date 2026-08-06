@@ -60,3 +60,35 @@ func TestSpotifyDownloadBatchDeduplicatesActiveEntries(t *testing.T) {
 		t.Fatalf("queued rows = %d, want 1", len(queued))
 	}
 }
+
+func TestCountActiveDownloadsIncludesQueuedAndDownloading(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "downloads.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer database.Close()
+
+	statuses := []string{"queued", "downloading", "completed", "failed"}
+	for i, status := range statuses {
+		download := &SpotifyDownload{
+			ID:         status,
+			SpotifyID:  "spotify-" + status,
+			SpotifyURI: "spotify:track:" + status,
+			Type:       "track",
+			Title:      status,
+			Status:     status,
+			AddedAt:    int64(i + 1),
+		}
+		if err := database.AddDownload(download); err != nil {
+			t.Fatalf("add %s download: %v", status, err)
+		}
+	}
+
+	count, err := database.CountActiveDownloads()
+	if err != nil {
+		t.Fatalf("count active downloads: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("active downloads = %d, want 2", count)
+	}
+}

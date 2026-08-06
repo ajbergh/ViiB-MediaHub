@@ -16,8 +16,8 @@
  * @module DownloadManager
  */
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import api, { ApiSpotifyDownload } from '../services/api';
+import React, { useEffect, useRef, useCallback } from 'react';
+import api from '../services/api';
 import { useStore } from '../store';
 
 interface DownloadProgress {
@@ -28,59 +28,56 @@ interface DownloadProgress {
 }
 
 const DownloadManager = () => {
-  const [downloads, setDownloads] = useState<ApiSpotifyDownload[]>([]);
-  const [hasError, setHasError] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const { setDownloadCount } = useStore();
+  const refreshTimeoutRef = useRef<number | null>(null);
+  const requestSequenceRef = useRef(0);
+  const setDownloadCount = useStore(state => state.setDownloadCount);
 
-  // Update global download count whenever downloads change
-  useEffect(() => {
-    const activeCount = downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
-    setDownloadCount(activeCount);
-  }, [downloads, setDownloadCount]);
-
-  // Fetch downloads function - memoized for reuse
-  const fetchDownloads = useCallback(async () => {
+  // Fetch the exact active count rather than deriving it from the paginated
+  // download-history response, which can omit active rows in a large history.
+  const fetchActiveDownloadCount = useCallback(async () => {
+    const requestSequence = ++requestSequenceRef.current;
     try {
-      const data = await api.getDownloads();
-      setDownloads(data || []);
-      setHasError(false);
+      const { count } = await api.getActiveDownloadCount();
+      if (requestSequence === requestSequenceRef.current) {
+        setDownloadCount(count);
+      }
     } catch (error) {
-      console.error('Failed to fetch downloads:', error);
-      setHasError(true);
+      console.error('Failed to fetch active download count:', error);
     }
-  }, []);
+  }, [setDownloadCount]);
 
-  // Fetch initial downloads
+  const scheduleCountRefresh = useCallback(() => {
+    if (refreshTimeoutRef.current !== null) return;
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      refreshTimeoutRef.current = null;
+      void fetchActiveDownloadCount();
+    }, 100);
+  }, [fetchActiveDownloadCount]);
+
+  // Reconcile at startup and periodically so reconnects or dropped SSE events
+  // cannot leave the navigation badge stale.
   useEffect(() => {
-    fetchDownloads();
-  }, [fetchDownloads]);
+    void fetchActiveDownloadCount();
+    const interval = window.setInterval(fetchActiveDownloadCount, 15_000);
+    return () => window.clearInterval(interval);
+  }, [fetchActiveDownloadCount]);
 
   // Connect to SSE for real-time updates
   useEffect(() => {
-    if (hasError) return;
-
     const eventSource = new EventSource('/api/spotify/downloads/events');
     eventSourceRef.current = eventSource;
+
+    eventSource.onopen = () => {
+      void fetchActiveDownloadCount();
+    };
 
     eventSource.onmessage = (event) => {
       try {
         const progress: DownloadProgress = JSON.parse(event.data);
-        
-        setDownloads(prev => {
-          const existing = prev.find(d => d.id === progress.downloadId);
-          if (existing) {
-            return prev.map(d => 
-              d.id === progress.downloadId 
-                ? { ...d, progress: progress.progress, status: progress.status as any, errorMessage: progress.error }
-                : d
-            );
-          } else {
-            // New download detected, fetch all
-            fetchDownloads();
-            return prev;
-          }
-        });
+        if (progress.status !== 'downloading') {
+          scheduleCountRefresh();
+        }
       } catch (error) {
         console.error('Failed to parse SSE message:', error);
       }
@@ -88,13 +85,18 @@ const DownloadManager = () => {
 
     eventSource.onerror = () => {
       console.warn('DownloadManager SSE connection error; EventSource will reconnect');
-      window.setTimeout(fetchDownloads, 2000);
+      scheduleCountRefresh();
     };
 
     return () => {
       eventSource.close();
+      eventSourceRef.current = null;
+      if (refreshTimeoutRef.current !== null) {
+        window.clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
     };
-  }, [hasError, fetchDownloads]);
+  }, [fetchActiveDownloadCount, scheduleCountRefresh]);
 
   // This component doesn't render anything - it just manages the download count
   return null;

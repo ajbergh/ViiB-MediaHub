@@ -1151,6 +1151,16 @@ func (a *API) getDownloadStatus(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, download)
 }
 
+func (a *API) getActiveDownloadCount(w http.ResponseWriter, _ *http.Request) {
+	count, err := a.downloadManager.GetActiveQueueCount()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to count active downloads: %v", err))
+		return
+	}
+
+	respondJSON(w, map[string]int{"count": count})
+}
+
 func (a *API) deleteDownload(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {

@@ -3,6 +3,7 @@
 package spotify
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -29,7 +30,7 @@ func sLog(format string, v ...interface{}) {
 //   - Integration with amp.SDK task context for proper resource management
 //   - Session state tracking to prevent duplicate initializations
 //   - Session refresh when token changes
-//   - Session reset for recovery from corrupted state (e.g., "invalid key size" errors)
+//   - Coalesced session reset for recovery from Spotify audio-key rejections
 //
 // Usage:
 //
@@ -48,6 +49,8 @@ type SessionManager struct {
 	initTime      int64          // Unix timestamp when session was initialized
 	mu            sync.RWMutex   // Protects session state
 	useMu         sync.RWMutex   // Prevents closing a session while callers are using it
+	audioKeyGate  chan struct{}  // Serializes Spotify audio-key requests across downloads and streams
+	generation    uint64         // Changes after each successful session initialization
 }
 
 // NewSessionManager creates a new Spotify session manager.
@@ -62,8 +65,9 @@ type SessionManager struct {
 //   - Uninitialized SessionManager ready for Initialize() call
 func NewSessionManager(accessToken, cacheDir string) *SessionManager {
 	return &SessionManager{
-		accessToken: accessToken,
-		cacheDir:    cacheDir,
+		accessToken:  accessToken,
+		cacheDir:     cacheDir,
+		audioKeyGate: make(chan struct{}, 1),
 	}
 }
 
@@ -211,6 +215,7 @@ func (sm *SessionManager) Initialize() (err error) {
 	initialized = true
 	sm.lastTokenUsed = sm.accessToken
 	sm.initTime = time.Now().Unix()
+	sm.generation++
 	sLog("Session initialized and logged in successfully!")
 	return nil
 }
@@ -255,6 +260,28 @@ func (sm *SessionManager) AcquireSession() (respot.Session, func(), error) {
 	return session, release, nil
 }
 
+// acquireAudioKeyRequest serializes the short PinTrack operation that requests
+// an audio decryption key from Spotify. Audio transfer remains concurrent after
+// the key has been acquired. This also prevents playback and download requests
+// from hitting the shared librespot session's key channel at the same time.
+func (sm *SessionManager) acquireAudioKeyRequest(ctx context.Context) (func(), error) {
+	select {
+	case sm.audioKeyGate <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-sm.audioKeyGate }) }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// Generation identifies the currently initialized session. Callers can use it
+// to avoid resetting a replacement session after a concurrent recovery.
+func (sm *SessionManager) Generation() uint64 {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.generation
+}
+
 // IsInitialized returns whether the session is currently initialized.
 func (sm *SessionManager) IsInitialized() bool {
 	sm.mu.RLock()
@@ -270,10 +297,8 @@ func (sm *SessionManager) GetInitTime() int64 {
 	return sm.initTime
 }
 
-// ResetSession forces the session to be closed and cleared, allowing
-// a fresh re-initialization on the next GetSession/Initialize call.
-// This is useful when encountering persistent errors like "invalid key size"
-// that indicate the session state has become corrupted.
+// ResetSession forces the session to be closed and cleared, allowing a fresh
+// re-initialization on the next GetSession/Initialize call.
 //
 // Unlike Close(), this method is designed to be called when you want to
 // force a complete session refresh while keeping the manager alive.
@@ -282,6 +307,28 @@ func (sm *SessionManager) ResetSession() {
 	defer sm.useMu.Unlock()
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	sm.resetSessionLocked()
+}
+
+// ResetSessionIfGeneration resets the session only if it is still the session
+// observed by the caller. This coalesces recovery when several downloads see
+// the same Spotify audio-key failure at roughly the same time.
+func (sm *SessionManager) ResetSessionIfGeneration(generation uint64) bool {
+	sm.useMu.Lock()
+	defer sm.useMu.Unlock()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if !sm.initialized || sm.generation != generation {
+		return false
+	}
+	sm.resetSessionLocked()
+	return true
+}
+
+// resetSessionLocked clears the active session. The caller must hold both
+// useMu for writing and mu for writing.
+func (sm *SessionManager) resetSessionLocked() {
 
 	sLog("Resetting Spotify session...")
 

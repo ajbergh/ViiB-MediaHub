@@ -2342,6 +2342,18 @@ func (d *DB) GetAllDownloads(limit, offset int) ([]SpotifyDownload, error) {
 	return downloads, rows.Err()
 }
 
+// CountActiveDownloads returns the exact number of queued and in-progress
+// downloads without applying the history-list pagination limit.
+func (d *DB) CountActiveDownloads() (int, error) {
+	var count int
+	err := d.conn.QueryRow(`
+		SELECT COUNT(*)
+		FROM spotify_downloads
+		WHERE status IN ('queued', 'downloading')
+	`).Scan(&count)
+	return count, err
+}
+
 // GetQueuedDownloads returns queued Spotify downloads ordered by added time.
 func (d *DB) GetQueuedDownloads(limit int) ([]SpotifyDownload, error) {
 	if limit <= 0 {

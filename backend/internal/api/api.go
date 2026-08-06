@@ -204,6 +204,7 @@ func (a *API) Routes() chi.Router {
 	r.Post("/spotify/download/playlist", a.downloadPlaylist)
 	r.Post("/spotify/download/url", a.downloadFromURL)
 	r.Get("/spotify/downloads", a.getDownloads)
+	r.Get("/spotify/downloads/active-count", a.getActiveDownloadCount)
 	r.Get("/spotify/downloads/{id}", a.getDownloadStatus)
 	r.Delete("/spotify/downloads/{id}", a.deleteDownload)
 	r.Post("/spotify/downloads/{id}/retry", a.retryDownload)

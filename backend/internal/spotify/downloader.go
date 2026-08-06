@@ -190,6 +190,23 @@ func isValidDownloadedFile(filePath string) bool {
 // during a track download so callers may report progress.
 type ProgressCallback func(bytesRead int64, totalBytes int64)
 
+// DownloadPhase identifies work that may legitimately have very different
+// inactivity windows. In particular, session and asset setup can serialize
+// across concurrent workers before the first audio byte is available.
+type DownloadPhase string
+
+const (
+	DownloadPhaseSession    DownloadPhase = "session setup"
+	DownloadPhasePreparing  DownloadPhase = "stream preparation"
+	DownloadPhaseStreaming  DownloadPhase = "audio transfer"
+	DownloadPhaseFinalizing DownloadPhase = "file finalization"
+	DownloadPhaseRetryWait  DownloadPhase = "retry wait"
+)
+
+// ActivityCallback reports phase changes and successful setup/finalization
+// steps that do not produce byte-progress callbacks.
+type ActivityCallback func(phase DownloadPhase)
+
 // DownloadTrack downloads a single Spotify track and saves as OGG Vorbis.
 //
 // File Organization (per DOWNLOAD_RULES.md):
@@ -232,7 +249,17 @@ type ProgressCallback func(bytesRead int64, totalBytes int64)
 // DownloadTrack downloads a single Spotify track to an OGG file using the
 // provided metadata to organize file location. The function returns the
 // full path to the saved file or an error if the download failed.
-func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist string, title string, album string, metadata *DownloadMetadata, progressCallback ProgressCallback) (string, error) {
+func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist string, title string, album string, metadata *DownloadMetadata, progressCallback ProgressCallback, activityCallback ActivityCallback) (string, error) {
+	reportActivity := func(phase DownloadPhase) {
+		if activityCallback != nil {
+			activityCallback(phase)
+		}
+	}
+	reportActivity(DownloadPhasePreparing)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
 	// Determine directory and filename based on metadata
 	var targetDir, fileName string
 
@@ -319,18 +346,27 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 		} else {
 			dLog("Artwork downloaded or already exists: %s", coverPath)
 		}
+		reportActivity(DownloadPhasePreparing)
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 	}
 
 	dLog("Getting session for download...")
+	reportActivity(DownloadPhasePreparing)
 	sess, releaseSession, err := d.sessionManager.AcquireSession()
 	if err != nil {
 		return "", fmt.Errorf("failed to get session: %w", err)
 	}
 	defer releaseSession()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 
 	// Pin the track without attaching it to the long-lived session task. Each
 	// asset gets a child task that is closed at the end of this function.
 	dLog("Pinning track on Spotify with 320 kbps quality...")
+	reportActivity(DownloadPhasePreparing)
 	pinOpts := respot.PinOpts{
 		StartInternally: false,
 		Format: asset.AssetFormat{
@@ -342,10 +378,20 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 			},
 		},
 	}
-	assetMedia, err := sess.PinTrack(spotifyID, pinOpts)
+	releaseAudioKeyRequest, err := d.sessionManager.acquireAudioKeyRequest(ctx)
 	if err != nil {
+		return "", fmt.Errorf("wait to request Spotify audio key: %w", err)
+	}
+	assetMedia, err := sess.PinTrack(spotifyID, pinOpts)
+	releaseAudioKeyRequest()
+	if err != nil {
+		err = normalizeAudioKeyError(err)
 		dLog("Failed to pin track: %v", err)
 		return "", fmt.Errorf("failed to pin track: %w", err)
+	}
+	reportActivity(DownloadPhasePreparing)
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 	dLog("Track pinned successfully (requested 320 kbps)")
 	assetCtx, err := sess.Context().Context.StartChild(task.Task{Info: task.Info{Label: "spotify-download-" + spotifyID}})
@@ -355,6 +401,10 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 	defer assetCtx.Close()
 	if err := assetMedia.OnStart(assetCtx); err != nil {
 		return "", fmt.Errorf("start asset: %w", err)
+	}
+	reportActivity(DownloadPhasePreparing)
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 
 	// Log the asset label for debugging
@@ -369,6 +419,10 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 		return "", fmt.Errorf("failed to create asset reader: %w", err)
 	}
 	defer assetReader.Close()
+	reportActivity(DownloadPhasePreparing)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	dLog("Asset reader created successfully")
 
 	// A unique temp path prevents unrelated requests and stale temp files from
@@ -391,6 +445,7 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 	bufWriter := bufio.NewWriterSize(outFile, 256*1024) // 256KB write buffer
 
 	dLog("Starting download stream...")
+	reportActivity(DownloadPhaseStreaming)
 	var bytesRead int64
 	buf := make([]byte, 64*1024) // 64KB read buffer for better throughput
 	readerDone := make(chan struct{})
@@ -421,6 +476,7 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 		}
 		if readErr == io.EOF {
 			dLog("Download complete, received EOF. Total bytes: %d", bytesRead)
+			reportActivity(DownloadPhaseFinalizing)
 			break
 		}
 		if readErr != nil {
@@ -433,11 +489,18 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 			return "", fmt.Errorf("failed to read from asset: %w", readErr)
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 
 	// Flush the buffered writer before closing
 	if err := bufWriter.Flush(); err != nil {
 		dLog("Failed to flush buffer: %v", err)
 		return "", fmt.Errorf("failed to flush buffer: %w", err)
+	}
+	reportActivity(DownloadPhaseFinalizing)
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 
 	// Close the file before renaming
@@ -449,6 +512,10 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 	// Tags and integrity are part of the successful download transaction.
 	if err := d.writeOggMetadata(tempPath, artist, title, album, metadata); err != nil {
 		return "", fmt.Errorf("write downloaded file metadata: %w", err)
+	}
+	reportActivity(DownloadPhaseFinalizing)
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 	if !isValidDownloadedFile(tempPath) {
 		return "", fmt.Errorf("downloaded file failed Ogg integrity validation")

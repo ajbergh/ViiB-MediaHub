@@ -13,7 +13,7 @@
  * @module Artists
  */
 
-import React, { useEffect, useState, forwardRef, useRef, useCallback } from 'react';
+import React, { useEffect, useState, forwardRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { useArtists, useStore } from '../store';
 import { generateGradient, cssUrl } from '../utils';
@@ -50,10 +50,8 @@ const ItemContainer = forwardRef<HTMLDivElement, any>(({ children, ...props }, r
 export const Artists: React.FC = () => {
   const navigate = useNavigate();
   const artists = useArtists();
-  const { openContextMenu, fetchArtistMetadata, artistMetadata } = useStore();
+  const { openContextMenu, artistMetadata } = useStore();
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
-  const fetchedArtistsRef = useRef<Set<string>>(new Set());
-  const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('artists-card-cols') ?? 5));
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('artists-card-cols', String(v)); };
 
@@ -71,45 +69,6 @@ export const Artists: React.FC = () => {
   useEffect(() => {
     setScrollParent(document.querySelector('main'));
   }, []);
-
-  // Background fetching for ALL artists (slowly, with rate limiting)
-  useEffect(() => {
-      // Clear any pending timer
-      if (batchTimerRef.current) {
-          clearTimeout(batchTimerRef.current);
-      }
-
-      // Get artists that haven't been fetched yet
-      const artistsToFetch = artists.filter(a => 
-          !fetchedArtistsRef.current.has(a.name) && 
-          !artistMetadata[a.name]
-      );
-
-      if (artistsToFetch.length === 0) return;
-
-      let currentIndex = 0;
-
-      const fetchNext = () => {
-          if (currentIndex >= artistsToFetch.length) return;
-
-          const artist = artistsToFetch[currentIndex];
-          fetchedArtistsRef.current.add(artist.name);
-          fetchArtistMetadata(artist.name);
-          currentIndex++;
-
-          // Slower rate: 500ms between each fetch to be gentle on Spotify API
-          batchTimerRef.current = setTimeout(fetchNext, 500);
-      };
-
-      // Start fetching after 2 seconds to let UI settle
-      batchTimerRef.current = setTimeout(fetchNext, 2000);
-
-      return () => {
-          if (batchTimerRef.current) {
-              clearTimeout(batchTimerRef.current);
-          }
-      };
-  }, [artists.length, artistMetadata]); 
 
   const handleArtistClick = useCallback((artistName: string) => {
       navigate(`/artist/${encodeURIComponent(artistName)}`);

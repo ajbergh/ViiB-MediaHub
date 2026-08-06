@@ -242,8 +242,14 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 		},
 	}
 
-	assetMedia, err := sess.PinTrack(spotifyID, pinOpts)
+	releaseAudioKeyRequest, err := s.sessionManager.acquireAudioKeyRequest(ctx)
 	if err != nil {
+		return nil, fmt.Errorf("wait to request Spotify audio key: %w", err)
+	}
+	assetMedia, err := sess.PinTrack(spotifyID, pinOpts)
+	releaseAudioKeyRequest()
+	if err != nil {
+		err = normalizeAudioKeyError(err)
 		stLog("Failed to pin track: %v", err)
 		return nil, fmt.Errorf("failed to pin track: %w", err)
 	}

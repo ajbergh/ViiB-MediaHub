@@ -40,6 +40,7 @@ export const Downloads: React.FC = () => {
   const [showDirectDownload, setShowDirectDownload] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const queueRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const showToast = useStore(state => state.showToast);
   const navigate = useNavigate();
 
@@ -54,6 +55,14 @@ export const Downloads: React.FC = () => {
       setHasError(true);
     }
   }, []);
+
+  const scheduleDownloadsRefresh = useCallback(() => {
+    if (queueRefreshTimeoutRef.current) return;
+    queueRefreshTimeoutRef.current = setTimeout(() => {
+      queueRefreshTimeoutRef.current = null;
+      void fetchDownloads();
+    }, 100);
+  }, [fetchDownloads]);
 
   // Fetch initial downloads
   useEffect(() => {
@@ -98,6 +107,11 @@ export const Downloads: React.FC = () => {
         eventSource.onmessage = (event) => {
           try {
             const progress: { downloadId: string; progress: number; status: string; error?: string } = JSON.parse(event.data);
+
+            if (progress.status === 'queue_changed') {
+              scheduleDownloadsRefresh();
+              return;
+            }
             
             // Handle auth_required event - Spotify session expired
             if (progress.status === 'auth_required') {
@@ -152,8 +166,12 @@ export const Downloads: React.FC = () => {
       if (eventSource) {
         eventSource.close();
       }
+      if (queueRefreshTimeoutRef.current) {
+        clearTimeout(queueRefreshTimeoutRef.current);
+        queueRefreshTimeoutRef.current = null;
+      }
     };
-  }, [isLoading, hasError, fetchDownloads, showToast]);
+  }, [isLoading, hasError, fetchDownloads, scheduleDownloadsRefresh, showToast]);
 
   const handleDelete = async (id: string) => {
     try {

@@ -38,9 +38,19 @@ func dmLogDebug(format string, v ...interface{}) {
 	logger.DownloadManagerDebug(format, v...)
 }
 
-// StallTimeout is the duration after which a download is considered stalled
-// if no progress has been made.
-const StallTimeout = 60 * time.Second
+const (
+	// StreamStallTimeout only measures a complete absence of audio bytes. Slow
+	// but active transfers refresh the watchdog on every successful read.
+	StreamStallTimeout = 2 * time.Minute
+	// SetupStallTimeout allows concurrent workers to wait for serialized Spotify
+	// login and asset setup without being mistaken for stalled transfers.
+	SetupStallTimeout = 3 * time.Minute
+	// FinalizationStallTimeout covers buffered writes, tagging, validation, and rename.
+	FinalizationStallTimeout = 2 * time.Minute
+	// MaxAutomaticStallRestarts recovers a transient stuck stream once without
+	// allowing a permanently broken track to loop forever.
+	MaxAutomaticStallRestarts = 1
+)
 
 // DownloadManager manages the Spotify download queue and processing.
 // It maintains a persistent queue in SQLite and processes downloads concurrently.
@@ -57,8 +67,8 @@ const StallTimeout = 60 * time.Second
 // Reliability Features:
 //   - Rate limiting (1s delay between downloads) to prevent Spotify throttling
 //   - Retry logic with exponential backoff (3 attempts) for transient errors
-//   - Session reset on persistent "invalid key size" errors
-//   - Stall detection: downloads without progress for 60s are auto-restarted
+//   - Serialized audio-key requests and coalesced session recovery
+//   - Phase-aware stall detection with one automatic recovery attempt
 //   - Auth failure detection: notifies frontend when re-authentication is needed
 type DownloadManager struct {
 	db                  *db.DB                        // Database for persistent queue
@@ -69,6 +79,7 @@ type DownloadManager struct {
 	isRunning           bool                          // Whether the background processor is active
 	activeDownloads     map[string]context.CancelFunc // Map of download ID -> cancel function
 	restartRequests     map[string]bool               // Active downloads to requeue after their worker exits
+	stallRestarts       map[string]int                // Automatic stall recoveries attempted per download
 	downloadProgress    map[string]downloadTracker    // Tracks last progress update time for stall detection
 	activeCount         int32                         // Atomic counter for active downloads
 	maxConcurrent       int32                         // Maximum concurrent downloads (configurable)
@@ -88,9 +99,10 @@ type DownloadManager struct {
 
 // downloadTracker tracks the progress of an active download for stall detection
 type downloadTracker struct {
-	lastProgress   int       // Last reported progress percentage
-	lastUpdateTime time.Time // When progress was last updated
-	title          string    // Track title for logging
+	lastProgress   int                   // Last reported progress percentage
+	lastUpdateTime time.Time             // Last successful activity in the current phase
+	phase          spotify.DownloadPhase // Current phase for phase-specific timeouts
+	title          string                // Track title for logging
 }
 
 type downloadJob struct {
@@ -108,9 +120,10 @@ type downloadJob struct {
 //   - "completed": Download finished successfully
 //   - "failed": Download failed (see Error field)
 //   - "auth_required": Spotify authentication required (token expired/revoked)
+//   - "queue_changed": Queue membership changed and clients should refresh
 type DownloadProgress struct {
 	DownloadID string `json:"downloadId"`      // Unique download identifier
-	Status     string `json:"status"`          // "queued", "downloading", "completed", "failed", "auth_required"
+	Status     string `json:"status"`          // Download status or "queue_changed"
 	Progress   int    `json:"progress"`        // 0-100 percentage
 	Error      string `json:"error,omitempty"` // Error message if status is "failed"
 }
@@ -182,6 +195,7 @@ func NewDownloadManager(database *db.DB, downloadDir string) *DownloadManager {
 		isRunning:           false,
 		activeDownloads:     make(map[string]context.CancelFunc),
 		restartRequests:     make(map[string]bool),
+		stallRestarts:       make(map[string]int),
 		downloadProgress:    make(map[string]downloadTracker),
 		activeCount:         0,
 		maxConcurrent:       maxConcurrent,
@@ -461,6 +475,7 @@ func (dm *DownloadManager) Stop() {
 	dm.activeDownloads = make(map[string]context.CancelFunc)
 	dm.downloadProgress = make(map[string]downloadTracker)
 	dm.restartRequests = make(map[string]bool)
+	dm.stallRestarts = make(map[string]int)
 	atomic.StoreInt32(&dm.activeCount, 0)
 	dm.isRunning = false
 	dm.mu.Unlock()
@@ -533,6 +548,7 @@ func (dm *DownloadManager) QueueDownloads(requests []QueueDownloadRequest) ([]st
 	if err != nil {
 		return nil, err
 	}
+	dm.progressChan <- DownloadProgress{Status: "queue_changed"}
 	dmLog("Queued or reused %d Spotify tracks", len(queuedIDs))
 	return queuedIDs, nil
 }
@@ -547,6 +563,11 @@ func (dm *DownloadManager) GetAllDownloads(limit, offset int) ([]db.SpotifyDownl
 	return dm.db.GetAllDownloads(limit, offset)
 }
 
+// GetActiveQueueCount returns the exact queued plus in-progress count for UI.
+func (dm *DownloadManager) GetActiveQueueCount() (int, error) {
+	return dm.db.CountActiveDownloads()
+}
+
 // DeleteDownload removes a download from the queue
 func (dm *DownloadManager) DeleteDownload(id string) error {
 	// Check if it's an active download
@@ -557,9 +578,14 @@ func (dm *DownloadManager) DeleteDownload(id string) error {
 		dmLog("Cancelled active download: %s", id)
 	}
 	delete(dm.restartRequests, id)
+	delete(dm.stallRestarts, id)
 	dm.mu.Unlock()
 
-	return dm.db.DeleteDownload(id)
+	if err := dm.db.DeleteDownload(id); err != nil {
+		return err
+	}
+	dm.progressChan <- DownloadProgress{Status: "queue_changed"}
+	return nil
 }
 
 // RetryDownload resets a failed download back to queued status for retry
@@ -568,6 +594,9 @@ func (dm *DownloadManager) RetryDownload(id string) error {
 		return fmt.Errorf("failed to reset download for retry: %w", err)
 	}
 	dmLog("Reset download for retry: %s", id)
+	dm.mu.Lock()
+	delete(dm.stallRestarts, id)
+	dm.mu.Unlock()
 
 	dm.progressChan <- DownloadProgress{
 		DownloadID: id,
@@ -589,6 +618,7 @@ func (dm *DownloadManager) ForceRestartDownload(id string) error {
 
 	// Cancel the download if it's active
 	dm.mu.Lock()
+	delete(dm.stallRestarts, id)
 	active := false
 	if cancelFunc, exists := dm.activeDownloads[id]; exists {
 		active = true
@@ -676,7 +706,7 @@ func (dm *DownloadManager) broadcastProgress() {
 //   - 5-second startup delay to allow application (systray, etc.) to fully initialize
 //   - 1-second interval for responsive queue processing
 //   - Dispatches up to maxConcurrent downloads in parallel
-//   - Stall detection: checks for downloads without progress for 60 seconds
+//   - Stall detection: uses phase-specific inactivity windows
 //   - Graceful shutdown via context cancellation
 func (dm *DownloadManager) processQueue() {
 	dmLog("Queue processor starting...")
@@ -723,8 +753,33 @@ func (dm *DownloadManager) processQueue() {
 	}
 }
 
-// checkForStalledDownloads detects downloads that haven't made progress
-// within the StallTimeout and automatically restarts them.
+func downloadStallTimeout(phase spotify.DownloadPhase) time.Duration {
+	switch phase {
+	case spotify.DownloadPhaseStreaming:
+		return StreamStallTimeout
+	case spotify.DownloadPhaseFinalizing:
+		return FinalizationStallTimeout
+	default:
+		return SetupStallTimeout
+	}
+}
+
+func isDownloadStalled(tracker downloadTracker, now time.Time) bool {
+	return now.Sub(tracker.lastUpdateTime) > downloadStallTimeout(tracker.phase)
+}
+
+func (dm *DownloadManager) recordDownloadActivity(id string, phase spotify.DownloadPhase) {
+	dm.mu.Lock()
+	if tracker, exists := dm.downloadProgress[id]; exists {
+		tracker.phase = phase
+		tracker.lastUpdateTime = time.Now()
+		dm.downloadProgress[id] = tracker
+	}
+	dm.mu.Unlock()
+}
+
+// checkForStalledDownloads detects downloads with no successful activity in
+// the timeout appropriate for their current phase.
 func (dm *DownloadManager) checkForStalledDownloads() {
 	dm.mu.Lock()
 	activeCount := atomic.LoadInt32(&dm.activeCount)
@@ -735,31 +790,48 @@ func (dm *DownloadManager) checkForStalledDownloads() {
 		activeCount, activeMapLen, progressMapLen)
 
 	now := time.Now()
-	var stalled []string
+	type stalledDownload struct {
+		id          string
+		phase       spotify.DownloadPhase
+		inactiveFor time.Duration
+	}
+	var stalled []stalledDownload
 	for id, tracker := range dm.downloadProgress {
-		if now.Sub(tracker.lastUpdateTime) > StallTimeout {
-			dmLog("Download stalled (no progress for %v): %s - %s",
-				now.Sub(tracker.lastUpdateTime).Round(time.Second), tracker.title, id)
-
-			// Cancel the stalled download
+		if isDownloadStalled(tracker, now) {
+			inactiveFor := now.Sub(tracker.lastUpdateTime)
+			restartAttempt := dm.stallRestarts[id] + 1
 			if cancelFunc, exists := dm.activeDownloads[id]; exists {
+				if restartAttempt <= MaxAutomaticStallRestarts {
+					dm.stallRestarts[id] = restartAttempt
+					dm.restartRequests[id] = true
+					dmLog("Download stalled during %s (no activity for %v); automatically restarting %s - %s",
+						tracker.phase, inactiveFor.Round(time.Second), tracker.title, id)
+					cancelFunc()
+					delete(dm.downloadProgress, id)
+					continue
+				}
+				dmLog("Download stalled again during %s (no activity for %v): %s - %s",
+					tracker.phase, inactiveFor.Round(time.Second), tracker.title, id)
 				cancelFunc()
 			}
 			delete(dm.downloadProgress, id)
-			stalled = append(stalled, id)
+			delete(dm.stallRestarts, id)
+			stalled = append(stalled, stalledDownload{id: id, phase: tracker.phase, inactiveFor: inactiveFor})
 		}
 	}
 	dm.mu.Unlock()
 
-	for _, id := range stalled {
-		if changed, err := dm.db.MarkDownloadFailed(id, "Download stalled - no progress for 60 seconds"); err != nil {
-			dmLog("Failed to mark stalled download %s: %v", id, err)
+	for _, stalledDownload := range stalled {
+		message := fmt.Sprintf("Download stalled during %s - no activity for %s",
+			stalledDownload.phase, stalledDownload.inactiveFor.Round(time.Second))
+		if changed, err := dm.db.MarkDownloadFailed(stalledDownload.id, message); err != nil {
+			dmLog("Failed to mark stalled download %s: %v", stalledDownload.id, err)
 		} else if changed {
 			dm.progressChan <- DownloadProgress{
-				DownloadID: id,
+				DownloadID: stalledDownload.id,
 				Status:     "failed",
 				Progress:   0,
-				Error:      "Download stalled - no progress for 60 seconds. Click retry to restart.",
+				Error:      message + ". Click retry to restart.",
 			}
 		}
 	}
@@ -912,6 +984,9 @@ func (dm *DownloadManager) processDownload(workerID int, job downloadJob) {
 		delete(dm.restartRequests, download.ID)
 		delete(dm.activeDownloads, download.ID)
 		delete(dm.downloadProgress, download.ID)
+		if !restart {
+			delete(dm.stallRestarts, download.ID)
+		}
 		dm.mu.Unlock()
 		newCount := atomic.AddInt32(&dm.activeCount, -1)
 		dmLogDebug("Worker %d: finished processing %s, activeCount now %d", workerID, download.ID, newCount)
@@ -943,6 +1018,7 @@ func (dm *DownloadManager) processDownload(workerID int, job downloadJob) {
 	dm.downloadProgress[download.ID] = downloadTracker{
 		lastProgress:   0,
 		lastUpdateTime: time.Now(),
+		phase:          spotify.DownloadPhaseSession,
 		title:          download.Title,
 	}
 	dm.mu.Unlock()
@@ -979,8 +1055,12 @@ func (dm *DownloadManager) processDownload(workerID int, job downloadJob) {
 	dmLog("Worker %d: starting download: %s - %s (SpotifyID: %s)", workerID, download.Title, download.Type, download.SpotifyID)
 
 	// Ensure session is initialized with current access token
+	dm.recordDownloadActivity(download.ID, spotify.DownloadPhaseSession)
 	if err := dm.ensureSessionWithRetry(job.ctx); err != nil {
 		dmLog("Worker %d: failed to initialize Spotify session: %v", workerID, err)
+		if job.ctx.Err() != nil {
+			return
+		}
 		if dm.IsAuthRequired() {
 			_, _ = dm.db.RequeueDownloading(download.ID)
 			return
@@ -996,14 +1076,23 @@ func (dm *DownloadManager) processDownload(workerID int, job downloadJob) {
 		}
 		return
 	}
+	select {
+	case <-job.ctx.Done():
+		return
+	default:
+	}
+	dm.recordDownloadActivity(download.ID, spotify.DownloadPhasePreparing)
 
 	ctx := job.ctx
 
 	// Download with retry logic for transient errors
 	const maxRetries = 3
 	var lastErr error
+	audioKeySessionResetAttempted := false
 retryLoop:
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		dm.recordDownloadActivity(download.ID, spotify.DownloadPhasePreparing)
+		sessionGeneration := dm.sessionManager.Generation()
 		lastErr = dm.downloadTrack(ctx, download)
 		if lastErr == nil {
 			// Success - exit retry loop
@@ -1020,29 +1109,47 @@ retryLoop:
 		dmLog("Worker %d: download failed for '%s' (attempt %d/%d): %v - retrying...",
 			workerID, download.Title, attempt, maxRetries, lastErr)
 
-		// Reset session on persistent failures (after 2nd attempt)
-		if attempt >= 2 {
-			dmLog("Worker %d: resetting Spotify session after repeated failures", workerID)
-			dm.sessionManager.ResetSession()
-			// Re-initialize session
+		audioKeyRejected := spotify.IsAudioKeyRejected(lastErr)
+		resetForAudioKey := audioKeyRejected && !audioKeySessionResetAttempted
+		resetForRepeatedFailure := !audioKeyRejected && attempt >= 2
+		if resetForAudioKey || resetForRepeatedFailure {
+			if resetForAudioKey {
+				audioKeySessionResetAttempted = true
+			}
+			dm.recordDownloadActivity(download.ID, spotify.DownloadPhaseSession)
+			if dm.sessionManager.ResetSessionIfGeneration(sessionGeneration) {
+				dmLog("Worker %d: refreshed Spotify session after %s", workerID, downloadRetryReason(audioKeyRejected))
+			} else {
+				dmLog("Worker %d: Spotify session was already refreshed by another worker", workerID)
+			}
 			if err := dm.ensureSessionWithRetry(ctx); err != nil {
 				dmLog("Worker %d: failed to re-initialize session: %v", workerID, err)
 			}
 		}
 
-		// Exponential backoff: 2s, 4s, 8s
+		// Audio-key rejections receive a longer cooldown to avoid immediately
+		// repeating a Spotify-side rejection. Other transient failures retain
+		// the normal exponential backoff.
 		backoff := time.Duration(1<<uint(attempt)) * time.Second
+		if audioKeyRejected {
+			backoff = time.Duration(attempt) * 5 * time.Second
+		}
 		dmLog("Worker %d: waiting %v before retry", workerID, backoff)
+		dm.recordDownloadActivity(download.ID, spotify.DownloadPhaseRetryWait)
 		select {
 		case <-ctx.Done():
 			lastErr = ctx.Err()
 			break retryLoop
 		case <-time.After(backoff):
 			// Continue to next attempt
+			dm.recordDownloadActivity(download.ID, spotify.DownloadPhasePreparing)
 		}
 	}
 
 	if lastErr != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		dmLog("Worker %d: download failed for '%s' after %d attempts: %v", workerID, download.Title, maxRetries, lastErr)
 		changed, _ := dm.db.MarkDownloadFailed(download.ID, lastErr.Error())
 		if changed {
@@ -1056,13 +1163,23 @@ retryLoop:
 	}
 }
 
+func downloadRetryReason(audioKeyRejected bool) string {
+	if audioKeyRejected {
+		return "an audio-key rejection"
+	}
+	return "repeated transient failures"
+}
+
 func isRetriableDownloadError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false
 	}
+	if spotify.IsAudioKeyRejected(err) {
+		return true
+	}
 	message := strings.ToLower(err.Error())
 	for _, marker := range []string{
-		"invalid key size", "session", "crypto", "unexpected eof", "timeout",
+		"session", "unexpected eof", "timeout",
 		"timed out", "connection reset", "connection refused", "broken pipe",
 		"temporarily unavailable", "temporary failure", "network is unreachable",
 		"no such host", "server closed", "stream error",
@@ -1103,11 +1220,13 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 			progress = 99 // Don't go to 100 until file is complete
 		}
 
-		// Update stall detection tracker on ANY progress (even if we don't send SSE update)
+		// Update stall detection tracker on ANY bytes read, even if the UI
+		// percentage has not crossed its throttling threshold.
 		dm.mu.Lock()
 		if tracker, exists := dm.downloadProgress[download.ID]; exists {
 			tracker.lastProgress = progress
 			tracker.lastUpdateTime = time.Now()
+			tracker.phase = spotify.DownloadPhaseStreaming
 			dm.downloadProgress[download.ID] = tracker
 		}
 		dm.mu.Unlock()
@@ -1149,6 +1268,9 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 		download.Album,
 		metadata,
 		progressCallback,
+		func(phase spotify.DownloadPhase) {
+			dm.recordDownloadActivity(download.ID, phase)
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to download track: %w", err)
