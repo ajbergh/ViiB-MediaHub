@@ -35,7 +35,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker } from 'lucide-react';
+import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker, Copy } from 'lucide-react';
 import { useStore } from '../store';
 import { HomeLayoutVariant, VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
@@ -43,6 +43,7 @@ import { api } from '../services/api';
 import { Button } from '../components/ui/Button';
 import { Page } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
+import { SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
 
 const HOME_LAYOUT_OPTIONS: Array<{
   value: HomeLayoutVariant;
@@ -1311,8 +1312,24 @@ export const Settings: React.FC = () => {
         
         <div className="space-y-4">
             <p className="text-sm text-text-secondary">
-                To fetch high-quality album covers and artist images, MediaHub requires Spotify Developer credentials.
+                Create your own Spotify Developer app, add the callback below in its settings, then paste its credentials here.
             </p>
+            <div className="bg-surface-1 border border-surface-border rounded-lg p-4 text-sm text-text-secondary space-y-2">
+                <p><span className="font-bold text-text-main">1.</span> Create an app in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">Spotify Developer Dashboard</a>.</p>
+                <p><span className="font-bold text-text-main">2.</span> Add this exact Redirect URI in the app's settings:</p>
+                <div className="flex items-center gap-2">
+                    <code className="flex-1 bg-surface-2 px-3 py-2 rounded text-xs text-text-main break-all select-all">{SPOTIFY_DESKTOP_CALLBACK_URL}</code>
+                    <button
+                        onClick={() => navigator.clipboard.writeText(SPOTIFY_DESKTOP_CALLBACK_URL)}
+                        className="p-2 rounded hover:bg-surface-2 text-text-secondary hover:text-text-main transition-colors"
+                        title="Copy Spotify redirect URI"
+                        aria-label="Copy Spotify redirect URI"
+                    >
+                        <Copy size={14} />
+                    </button>
+                </div>
+                <p><span className="font-bold text-text-main">3.</span> Copy the Client ID and Client Secret from that Spotify app into the fields below.</p>
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -1338,9 +1355,7 @@ export const Settings: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between mt-2">
-                <p className="text-xs text-text-subtle">
-                    Create an app at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">developer.spotify.com</a> to get these keys.
-                </p>
+                <p className="text-xs text-text-subtle">Save both values, then return to the Spotify page and select Connect Spotify.</p>
                 <div className="flex items-center gap-3">
                     {saveSuccess && (
                         <span className="text-success text-sm font-bold animate-in fade-in slide-in-from-right-4">

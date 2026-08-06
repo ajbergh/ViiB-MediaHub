@@ -95,6 +95,8 @@ Device routing uses the Web Audio API's `setSinkId`. Devices are listed after th
 | Download Location | Folder where downloaded OGG files are saved |
 | Concurrent Downloads | How many simultaneous downloads are allowed (1–10, default 3) |
 
+When creating the Spotify Developer app, add this exact Redirect URI: `http://127.0.0.1:34115/callback`. `wails.localhost` is not a valid Spotify callback for the desktop application.
+
 > Refer to [Spotify Integration](spotify.md) for how to create a Developer app.
 
 ---

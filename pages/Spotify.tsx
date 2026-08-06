@@ -20,7 +20,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2, Copy } from 'lucide-react';
-import { formatTime, getOAuthCallbackUrl, isWailsEnvironment } from '../utils';
+import { formatTime, getOAuthCallbackUrl, isWailsEnvironment, SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
 import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
@@ -34,6 +34,9 @@ import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
 export const Spotify: React.FC = () => {
     const navigate = useNavigate();
+    const registrationRedirectUri = isWailsEnvironment()
+        ? SPOTIFY_DESKTOP_CALLBACK_URL
+        : `${window.location.origin}/callback`;
     const {
         spotifyClientId, spotifyClientSecret, spotifyUser,
         spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiry,
@@ -846,23 +849,24 @@ export const Spotify: React.FC = () => {
                             Configuration Required
                         </h4>
                         <div className="text-sm text-text-secondary space-y-3">
-                            <p>To enable integration:</p>
+                            <p>Connect your own Spotify Developer app before signing in:</p>
                             <ol className="list-decimal list-inside space-y-2 ml-1">
-                                <li>Create a Spotify App at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">developer.spotify.com</a></li>
+                                <li>Create an app in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">Spotify Developer Dashboard</a>.</li>
+                                <li>In that app's settings, add the Redirect URI below and save it. It must match exactly.</li>
                                 <li>
-                                    Go to <span className="text-white font-bold">Settings</span> in this app and enter both your
+                                    Copy the app's
                                     <span className="text-white font-mono bg-surface-3 px-1 rounded mx-1">Client ID</span>
                                     and
-                                    <span className="text-white font-mono bg-surface-3 px-1 rounded mx-1">Client Secret</span>.
+                                    <span className="text-white font-mono bg-surface-3 px-1 rounded mx-1">Client Secret</span>
+                                    into <span className="text-white font-bold">Settings → Spotify</span> in ViiB MediaHub.
                                 </li>
-                                <li>Add this Redirect URI in your Spotify Dashboard:</li>
                             </ol>
                             <div className="mt-2 flex items-center gap-2">
                               <div className="flex-1 bg-surface-1 p-3 rounded font-mono text-xs text-text-subtle break-all select-all border border-surface-3">
-                                {window.location.origin}/callback
+                                {registrationRedirectUri}
                               </div>
                               <button
-                                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/callback`)}
+                                onClick={() => navigator.clipboard.writeText(registrationRedirectUri)}
                                 className="flex-shrink-0 p-2 rounded hover:bg-surface-2 text-text-secondary hover:text-text-main transition-colors"
                                 title="Copy redirect URI"
                                 aria-label="Copy redirect URI to clipboard"

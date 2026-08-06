@@ -14,7 +14,9 @@ Before you can use Spotify features, you must register a Spotify Developer app a
 |---|---|
 | Client ID | [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
 | Client Secret | Same dashboard |
-| Redirect URI | Set to `http://localhost:34115/spotify/callback` in the dashboard |
+| Redirect URI | Set to `http://127.0.0.1:34115/callback` in the dashboard |
+
+The URI must match exactly. Do **not** register `http://wails.localhost/callback`: that is ViiB's internal desktop-WebView origin, not the local server that receives Spotify's OAuth callback.
 
 ---
 

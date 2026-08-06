@@ -39,6 +39,7 @@ import { useStore } from '../store';
 import { api } from '../services/api';
 import { Button } from './ui/Button';
 import { TextInput } from './ui/TextInput';
+import { SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
 
 interface FirstLaunchDialogProps {
   isOpen: boolean;
@@ -666,6 +667,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
               <span>Download music directly from Spotify (requires Premium)</span>
             </li>
           </ul>
+        </div>
+
+        <div className="bg-surface-2 border border-surface-border rounded-lg p-4 mb-6 text-sm text-text-secondary space-y-2">
+          <p className="font-bold text-white">Before entering your credentials</p>
+          <p>1. Create an app in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">Spotify Developer Dashboard</a>.</p>
+          <p>2. In the app's settings, add this exact Redirect URI:</p>
+          <code className="block bg-surface-1 px-3 py-2 rounded text-xs text-text-main break-all select-all">{SPOTIFY_DESKTOP_CALLBACK_URL}</code>
+          <p>3. Copy its Client ID and Client Secret into the fields below.</p>
         </div>
 
         <div className="space-y-4 mb-4">

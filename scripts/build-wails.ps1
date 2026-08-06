@@ -58,6 +58,17 @@ if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
 $goVersion = (go version)
 Write-Host "  ✓ $goVersion" -ForegroundColor Green
 
+# Make binaries installed with `go install` available even when the Go bin
+# directory has not been added to the user's persistent PATH.
+$goBin = (go env GOBIN).Trim()
+if ([string]::IsNullOrWhiteSpace($goBin)) {
+    $goPath = ((go env GOPATH).Trim() -split [IO.Path]::PathSeparator)[0]
+    $goBin = Join-Path $goPath "bin"
+}
+if ((Test-Path $goBin) -and (($env:Path -split ';') -notcontains $goBin)) {
+    $env:Path = "$goBin;$env:Path"
+}
+
 # Check Wails
 if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {
     Write-Error "❌ Wails not found. Install with: go install github.com/wailsapp/wails/v2/cmd/wails@latest"
@@ -67,6 +78,16 @@ $wailsVersion = (wails version 2>&1 | Select-String -Pattern "v\d+\.\d+\.\d+").M
 Write-Host "  ✓ Wails $wailsVersion" -ForegroundColor Green
 
 # Check GCC (for CGO/SQLite)
+# MSYS2's MinGW toolchain is the supported Windows CGO compiler. Make a
+# standard installation discoverable without requiring a machine-wide PATH edit.
+if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
+    foreach ($mingwBin in @('C:\msys64\mingw64\bin', 'C:\msys64\ucrt64\bin')) {
+        if ((Test-Path (Join-Path $mingwBin 'gcc.exe')) -and (($env:Path -split ';') -notcontains $mingwBin)) {
+            $env:Path = "$mingwBin;$env:Path"
+            break
+        }
+    }
+}
 if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
     Write-Host "  ⚠ gcc not found. CGO build may fail." -ForegroundColor Yellow
     Write-Host "    Install MSYS2 and run: pacman -S mingw-w64-x86_64-gcc" -ForegroundColor Yellow

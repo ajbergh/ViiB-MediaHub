@@ -1,5 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import { calculateReplayGain, ManagedObjectUrlRegistry, normalizeCrossfadeDuration } from './playbackLifecycle';
+import {
+  calculateReplayGain,
+  ManagedObjectUrlRegistry,
+  normalizeCrossfadeDuration,
+  resolvePlaybackContext,
+} from './playbackLifecycle';
+
+describe('resolvePlaybackContext', () => {
+  it('uses the new song context when tracking starts', () => {
+    expect(resolvePlaybackContext('album', 'playlist')).toBe('album');
+  });
+
+  it('falls back safely when prior listen tracking was cleared', () => {
+    expect(resolvePlaybackContext(undefined, null)).toBe('queue');
+  });
+});
 
 describe('normalizeCrossfadeDuration', () => {
   it('preserves an explicit zero', () => {

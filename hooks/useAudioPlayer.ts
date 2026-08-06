@@ -26,7 +26,12 @@ import { useStore } from '../store';
 import { audioEngine } from '../lib/audio';
 import { StreamingErrorType } from '../slices/types';
 import { PlaybackContext } from '../types';
-import { calculateReplayGain, isActivePlaybackEvent, normalizeCrossfadeDuration } from '../lib/playbackLifecycle';
+import {
+    calculateReplayGain,
+    isActivePlaybackEvent,
+    normalizeCrossfadeDuration,
+    resolvePlaybackContext,
+} from '../lib/playbackLifecycle';
 
 // Pre-buffer threshold: start preloading next track when X seconds remain
 const PRELOAD_THRESHOLD_SECONDS = 15;
@@ -387,12 +392,16 @@ export const useAudioPlayer = () => {
             }
             
             // Start tracking the NEW song
+            const playbackContext = resolvePlaybackContext(
+                currentSong.playbackContext,
+                listenTrackingRef.current?.context,
+            );
             listenTrackingRef.current = {
                 songId: currentSong.id,
                 songDuration: currentSong.duration || 0,
                 accumulatedPlayTime: 0,
                 lastMediaTime: 0,
-                context: listenTrackingRef.current.context,
+                context: playbackContext,
                 isTracking: true
             };
             

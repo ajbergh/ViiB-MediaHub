@@ -166,7 +166,10 @@ func createAPIProxyHandler(serverURL string) http.Handler {
 func main() {
 	// Parse command-line flags
 	dataDir := flag.String("data", "", "Data directory (default: user config dir)")
-	port := flag.Int("port", 0, "Port for API server (0 = auto-select)")
+	// Spotify requires an OAuth redirect URI that exactly matches a URI registered
+	// in the user's Developer Dashboard. Keep the desktop API server on a stable
+	// loopback port so its /callback route can be registered once.
+	port := flag.Int("port", 34115, "Port for API server (required for Spotify OAuth callback)")
 	debug := flag.Bool("debug", false, "Enable debug mode")
 	flag.Parse()
 

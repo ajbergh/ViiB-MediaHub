@@ -1,3 +1,10 @@
+import type { PlaybackContext } from '../types';
+
+export const resolvePlaybackContext = (
+  songContext?: PlaybackContext,
+  previousContext?: PlaybackContext | null,
+): PlaybackContext => songContext ?? previousContext ?? 'queue';
+
 export const normalizeCrossfadeDuration = (
   requested: number | undefined,
   gapless: boolean,
