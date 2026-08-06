@@ -14,9 +14,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/art-media-platform/amp.SDK/stdlib/task"
 	"github.com/art-media-platform/librespot-go/Spotify"
 	"github.com/art-media-platform/librespot-go/librespot/asset"
 	"github.com/art-media-platform/librespot-go/librespot/respot"
@@ -81,7 +83,46 @@ func NewDownloader(sessionManager *SessionManager, downloadDir string) *Download
 
 // MinValidFileSize is the minimum size for a valid downloaded track file.
 // Files smaller than this are considered incomplete/corrupt and will be re-downloaded.
-const MinValidFileSize = 1 * 1024 * 1024 // 1 MB
+const MinValidFileSize = 4 * 1024 // Ogg headers plus a small amount of audio
+
+type destinationLock struct {
+	semaphore chan struct{}
+	refs      int
+}
+
+var destinationLocks = struct {
+	sync.Mutex
+	items map[string]*destinationLock
+}{items: make(map[string]*destinationLock)}
+
+func lockDestination(ctx context.Context, path string) (func(), error) {
+	destinationLocks.Lock()
+	lock := destinationLocks.items[path]
+	if lock == nil {
+		lock = &destinationLock{semaphore: make(chan struct{}, 1)}
+		destinationLocks.items[path] = lock
+	}
+	lock.refs++
+	destinationLocks.Unlock()
+	releaseReference := func() {
+		destinationLocks.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(destinationLocks.items, path)
+		}
+		destinationLocks.Unlock()
+	}
+	select {
+	case lock.semaphore <- struct{}{}:
+		return func() {
+			<-lock.semaphore
+			releaseReference()
+		}, nil
+	case <-ctx.Done():
+		releaseReference()
+		return nil, ctx.Err()
+	}
+}
 
 // isValidDownloadedFile checks if an existing file is a valid complete download.
 // Returns true if the file:
@@ -101,6 +142,10 @@ func isValidDownloadedFile(filePath string) bool {
 	// Check minimum file size
 	if fileInfo.Size() < MinValidFileSize {
 		dLog("File too small (%d bytes), needs re-download: %s", fileInfo.Size(), filePath)
+		return false
+	}
+	if !isOggFile(filePath) {
+		dLog("File is not an Ogg container: %s", filePath)
 		return false
 	}
 
@@ -188,13 +233,6 @@ type ProgressCallback func(bytesRead int64, totalBytes int64)
 // provided metadata to organize file location. The function returns the
 // full path to the saved file or an error if the download failed.
 func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist string, title string, album string, metadata *DownloadMetadata, progressCallback ProgressCallback) (string, error) {
-	dLog("Getting session for download...")
-	sess, err := d.sessionManager.GetSession()
-	if err != nil {
-		dLog("Failed to get session: %v", err)
-		return "", fmt.Errorf("failed to get session: %w", err)
-	}
-
 	// Determine directory and filename based on metadata
 	var targetDir, fileName string
 
@@ -211,11 +249,18 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 		// Album download: {AlbumArtist}/{Album}/{TrackNumber}-{AlbumArtist}-{Title}.ogg
 		targetDir = filepath.Join(d.downloadDir, sanitizeFilename(metadata.AlbumArtist), sanitizeFilename(album))
 		// Zero-pad track number to 2 digits (e.g., 01, 02, 10)
-		fileName = fmt.Sprintf("%02d-%s-%s.ogg",
-			metadata.TrackNumber,
-			sanitizeFilename(metadata.AlbumArtist),
-			sanitizeFilename(title))
+		trackPrefix := fmt.Sprintf("%02d", metadata.TrackNumber)
+		if metadata.DiscNumber > 1 {
+			trackPrefix = fmt.Sprintf("D%02d-%02d", metadata.DiscNumber, metadata.TrackNumber)
+		}
+		fileName = fmt.Sprintf("%s-%s-%s.ogg", trackPrefix,
+			sanitizeFilename(metadata.AlbumArtist), sanitizeFilename(title))
 		dLog("Album download: %s -> %s/%s", title, targetDir, fileName)
+	} else if album != "" {
+		// Single-track downloads still include the album directory so distinct
+		// releases with the same artist/title do not alias one another.
+		targetDir = filepath.Join(d.downloadDir, sanitizeFilename(artist), sanitizeFilename(album))
+		fileName = fmt.Sprintf("%s - %s.ogg", sanitizeFilename(artist), sanitizeFilename(title))
 	} else {
 		// Fallback: {Artist}/{Artist - Title}.ogg
 		targetDir = filepath.Join(d.downloadDir, sanitizeFilename(artist))
@@ -246,23 +291,48 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 
 	fullPath := filepath.Join(targetDir, fileName)
 	dLog("Target file path: %s", fullPath)
+	unlock, err := lockDestination(ctx, fullPath)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+
+	// Avoid all Spotify and artwork network work when a complete local file is
+	// already present. The destination lock also serializes duplicate requests.
+	if isValidDownloadedFile(fullPath) {
+		dLog("Valid existing file found, skipping download: %s", fullPath)
+		return fullPath, nil
+	}
+	if _, err := os.Stat(fullPath); err == nil {
+		if err := os.Remove(fullPath); err != nil {
+			return "", fmt.Errorf("remove invalid existing file: %w", err)
+		}
+	}
 
 	dLog("Downloading track: %s - %s (ID: %s)", artist, title, spotifyID)
 
 	// Download album/playlist artwork if available and not already downloaded
 	if metadata != nil && metadata.ImageURL != "" {
 		coverPath := filepath.Join(targetDir, "cover.jpg")
-		if err := downloadArtworkIfNeeded(metadata.ImageURL, coverPath); err != nil {
+		if err := downloadArtworkIfNeeded(ctx, metadata.ImageURL, coverPath); err != nil {
 			dLog("Warning: Failed to download artwork: %v", err)
 		} else {
 			dLog("Artwork downloaded or already exists: %s", coverPath)
 		}
 	}
 
-	// Pin the track (prepare for download) with 320 kbps quality preference
+	dLog("Getting session for download...")
+	sess, releaseSession, err := d.sessionManager.AcquireSession()
+	if err != nil {
+		return "", fmt.Errorf("failed to get session: %w", err)
+	}
+	defer releaseSession()
+
+	// Pin the track without attaching it to the long-lived session task. Each
+	// asset gets a child task that is closed at the end of this function.
 	dLog("Pinning track on Spotify with 320 kbps quality...")
 	pinOpts := respot.PinOpts{
-		StartInternally: true,
+		StartInternally: false,
 		Format: asset.AssetFormat{
 			// Request highest quality OGG Vorbis (320 kbps) first, then fall back to lower qualities
 			AudioFormats: []Spotify.AudioFile_Format{
@@ -278,26 +348,18 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 		return "", fmt.Errorf("failed to pin track: %w", err)
 	}
 	dLog("Track pinned successfully (requested 320 kbps)")
+	assetCtx, err := sess.Context().Context.StartChild(task.Task{Info: task.Info{Label: "spotify-download-" + spotifyID}})
+	if err != nil {
+		return "", fmt.Errorf("create asset context: %w", err)
+	}
+	defer assetCtx.Close()
+	if err := assetMedia.OnStart(assetCtx); err != nil {
+		return "", fmt.Errorf("start asset: %w", err)
+	}
 
 	// Log the asset label for debugging
 	origName := assetMedia.Label()
 	dLog("Asset label: %s", origName)
-
-	// Check if file already exists and is valid (proper size and metadata)
-	if isValidDownloadedFile(fullPath) {
-		dLog("Valid existing file found, skipping download: %s", fullPath)
-		return fullPath, nil
-	}
-
-	// Remove incomplete/corrupt file if it exists
-	if _, err := os.Stat(fullPath); err == nil {
-		dLog("Removing incomplete/corrupt file for re-download: %s", fullPath)
-		os.Remove(fullPath)
-	}
-
-	// Create temporary file
-	tempPath := fullPath + ".vctemp"
-	dLog("Creating temp file: %s", tempPath)
 
 	// Create asset reader
 	dLog("Creating asset reader...")
@@ -306,154 +368,99 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 		dLog("Failed to create asset reader: %v", err)
 		return "", fmt.Errorf("failed to create asset reader: %w", err)
 	}
+	defer assetReader.Close()
 	dLog("Asset reader created successfully")
 
-	// Create output file with buffered writer for better I/O performance
-	outFile, err := os.Create(tempPath)
+	// A unique temp path prevents unrelated requests and stale temp files from
+	// sharing the same inode.
+	outFile, err := os.CreateTemp(targetDir, "."+fileName+".*.vctemp")
 	if err != nil {
 		dLog("Failed to create output file: %v", err)
 		return "", fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	tempPath := outFile.Name()
+	committed := false
+	defer func() {
+		_ = outFile.Close()
+		if !committed {
+			_ = os.Remove(tempPath)
+		}
+	}()
 
 	// Use buffered writer for better I/O performance on high-bandwidth connections
 	bufWriter := bufio.NewWriterSize(outFile, 256*1024) // 256KB write buffer
 
-	// Download with progress tracking using context-aware reading
-	// The key issue is that assetReader.Read() blocks indefinitely, ignoring context.
-	// We use a channel-based approach to make the read interruptible.
 	dLog("Starting download stream...")
 	var bytesRead int64
 	buf := make([]byte, 64*1024) // 64KB read buffer for better throughput
-
-	// readResult carries the result of a single Read operation
-	type readResult struct {
-		n   int
-		err error
-	}
-	resultChan := make(chan readResult, 1)
-
-	// Start a monitoring goroutine that will try to close the reader on context cancellation
-	// This is necessary because Read() blocks and doesn't check context
-	readerClosed := make(chan struct{})
+	readerDone := make(chan struct{})
 	go func() {
 		select {
 		case <-ctx.Done():
-			dLog("Context cancelled, attempting to interrupt download...")
-			// Try to close the asset reader to unblock the Read call
-			// Note: This may not be supported by all reader implementations
-			if closer, ok := assetReader.(io.Closer); ok {
-				closer.Close()
-			}
-		case <-readerClosed:
-			// Normal completion, nothing to do
+			dLog("Context cancelled, stopping asset download")
+			_ = assetReader.Close()
+			_ = assetCtx.Close()
+		case <-readerDone:
 		}
 	}()
+	defer close(readerDone)
 
 	for {
-		// Check context first
-		select {
-		case <-ctx.Done():
-			dLog("Download cancelled by context")
-			close(readerClosed)
-			outFile.Close()
-			os.Remove(tempPath)
-			return "", ctx.Err()
-		default:
-		}
-
-		// Start a read operation in a goroutine so we can timeout on it
-		go func() {
-			n, err := assetReader.Read(buf)
-			resultChan <- readResult{n, err}
-		}()
-
-		// Wait for read result with timeout, checking context periodically
-		var result readResult
-		readComplete := false
-		for !readComplete {
-			select {
-			case <-ctx.Done():
-				dLog("Download cancelled by context during read")
-				close(readerClosed)
-				outFile.Close()
-				os.Remove(tempPath)
-				return "", ctx.Err()
-			case result = <-resultChan:
-				readComplete = true
-			case <-time.After(5 * time.Second):
-				// Check context every 5 seconds while waiting for read
-				// This provides responsive cancellation even if Read blocks
-				dLog("Still waiting for read... (bytesRead=%d)", bytesRead)
-			}
-		}
-
-		if result.n > 0 {
-			if _, writeErr := bufWriter.Write(buf[:result.n]); writeErr != nil {
+		n, readErr := assetReader.Read(buf)
+		if n > 0 {
+			if _, writeErr := bufWriter.Write(buf[:n]); writeErr != nil {
 				dLog("Failed to write to file: %v", writeErr)
-				close(readerClosed)
-				os.Remove(tempPath)
 				return "", fmt.Errorf("failed to write to file: %w", writeErr)
 			}
-			bytesRead += int64(result.n)
+			bytesRead += int64(n)
 
 			// Report progress (we don't know total size, so pass -1)
 			if progressCallback != nil {
 				progressCallback(bytesRead, -1)
 			}
 		}
-		if result.err == io.EOF {
+		if readErr == io.EOF {
 			dLog("Download complete, received EOF. Total bytes: %d", bytesRead)
 			break
 		}
-		if result.err != nil {
+		if readErr != nil {
 			// Check if this was caused by context cancellation
 			if ctx.Err() != nil {
-				dLog("Read error due to context cancellation: %v", result.err)
-				close(readerClosed)
-				outFile.Close()
-				os.Remove(tempPath)
+				dLog("Read error due to context cancellation: %v", readErr)
 				return "", ctx.Err()
 			}
-			dLog("Failed to read from asset: %v", result.err)
-			close(readerClosed)
-			os.Remove(tempPath)
-			return "", fmt.Errorf("failed to read from asset: %w", result.err)
+			dLog("Failed to read from asset: %v", readErr)
+			return "", fmt.Errorf("failed to read from asset: %w", readErr)
 		}
 	}
-
-	close(readerClosed)
 
 	// Flush the buffered writer before closing
 	if err := bufWriter.Flush(); err != nil {
 		dLog("Failed to flush buffer: %v", err)
-		os.Remove(tempPath)
 		return "", fmt.Errorf("failed to flush buffer: %w", err)
 	}
 
 	// Close the file before renaming
 	if err := outFile.Close(); err != nil {
 		dLog("Failed to close file: %v", err)
-		os.Remove(tempPath)
 		return "", fmt.Errorf("failed to close file: %w", err)
+	}
+
+	// Tags and integrity are part of the successful download transaction.
+	if err := d.writeOggMetadata(tempPath, artist, title, album, metadata); err != nil {
+		return "", fmt.Errorf("write downloaded file metadata: %w", err)
+	}
+	if !isValidDownloadedFile(tempPath) {
+		return "", fmt.Errorf("downloaded file failed Ogg integrity validation")
 	}
 
 	// Rename temporary file to final name
 	dLog("Renaming temp file to final: %s", fullPath)
 	if err := os.Rename(tempPath, fullPath); err != nil {
 		dLog("Failed to rename file: %v", err)
-		os.Remove(tempPath)
 		return "", fmt.Errorf("failed to rename file: %w", err)
 	}
-
-	// Write Vorbis metadata tags to the OGG file
-	dLog("Writing metadata tags to file...")
-	if err := d.writeOggMetadata(fullPath, artist, title, album, metadata); err != nil {
-		// Log but don't fail - file is still usable without metadata
-		dLog("Warning: Failed to write metadata: %v", err)
-	} else {
-		dLog("Metadata written successfully")
-	}
+	committed = true
 
 	dLog("Successfully downloaded: %s (%d bytes)", fileName, bytesRead)
 	return fullPath, nil
@@ -570,6 +577,7 @@ func (d *Downloader) writeOggMetadata(filePath, artist, title, album string, met
 // Returns:
 //   - Sanitized string safe for filesystem use
 func sanitizeFilename(name string) string {
+	name = strings.ToValidUTF8(name, "")
 	// Replace invalid characters with underscores
 	re := regexp.MustCompile(`[<>:"/\\|?*]`)
 	sanitized := re.ReplaceAllString(name, "_")
@@ -580,10 +588,36 @@ func sanitizeFilename(name string) string {
 
 	// Block path traversal sequences
 	sanitized = strings.ReplaceAll(sanitized, "..", "_")
+	if sanitized == "" {
+		sanitized = "Unknown"
+	}
 
-	// Limit length to 200 characters
-	if len(sanitized) > 200 {
-		sanitized = sanitized[:200]
+	base := strings.ToUpper(strings.TrimSuffix(sanitized, filepath.Ext(sanitized)))
+	reserved := map[string]bool{
+		"CON": true, "PRN": true, "AUX": true, "NUL": true,
+		"COM1": true, "COM2": true, "COM3": true, "COM4": true, "COM5": true,
+		"COM6": true, "COM7": true, "COM8": true, "COM9": true,
+		"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true, "LPT5": true,
+		"LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
+	}
+	if reserved[base] {
+		sanitized = "_" + sanitized
+	}
+
+	// Limit by UTF-8 bytes without splitting a rune.
+	const maxComponentBytes = 120
+	if len(sanitized) > maxComponentBytes {
+		length := 0
+		var builder strings.Builder
+		for _, char := range sanitized {
+			encoded := string(char)
+			if length+len(encoded) > maxComponentBytes {
+				break
+			}
+			builder.WriteString(encoded)
+			length += len(encoded)
+		}
+		sanitized = builder.String()
 	}
 
 	return sanitized
@@ -599,14 +633,20 @@ func sanitizeFilename(name string) string {
 // Returns:
 //   - nil if successful or if cover already exists
 //   - error if download or save fails
-func downloadArtworkIfNeeded(imageURL, coverPath string) error {
+func downloadArtworkIfNeeded(ctx context.Context, imageURL, coverPath string) error {
 	if imageURL == "" {
 		dLog("No artwork URL provided, skipping cover download")
 		return nil
 	}
 
-	// Check if cover already exists
-	if _, err := os.Stat(coverPath); err == nil {
+	unlock, err := lockDestination(ctx, coverPath)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	// Check if a non-empty cover already exists.
+	if info, err := os.Stat(coverPath); err == nil && info.Size() > 0 {
 		dLog("Cover already exists at %s, skipping download", coverPath)
 		return nil
 	}
@@ -623,8 +663,12 @@ func downloadArtworkIfNeeded(imageURL, coverPath string) error {
 		return fmt.Errorf("artwork URL domain %q not allowed", host)
 	}
 
-	// Download the image
-	resp, err := http.Get(imageURL)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return fmt.Errorf("create artwork request: %w", err)
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(request)
 	if err != nil {
 		return fmt.Errorf("failed to download artwork: %w", err)
 	}
@@ -633,20 +677,38 @@ func downloadArtworkIfNeeded(imageURL, coverPath string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download artwork: HTTP %d", resp.StatusCode)
 	}
+	if contentType := resp.Header.Get("Content-Type"); contentType != "" && !strings.HasPrefix(contentType, "image/") {
+		return fmt.Errorf("artwork response is not an image: %s", contentType)
+	}
 
-	// Create the cover file
-	coverFile, err := os.Create(coverPath)
+	coverFile, err := os.CreateTemp(filepath.Dir(coverPath), ".cover.*.vctemp")
 	if err != nil {
 		return fmt.Errorf("failed to create cover file: %w", err)
 	}
-	defer coverFile.Close()
+	tempPath := coverFile.Name()
+	committed := false
+	defer func() {
+		_ = coverFile.Close()
+		if !committed {
+			_ = os.Remove(tempPath)
+		}
+	}()
 
-	// Copy the image data
-	_, err = io.Copy(coverFile, resp.Body)
+	const maxArtworkBytes = 20 << 20
+	written, err := io.Copy(coverFile, io.LimitReader(resp.Body, maxArtworkBytes+1))
 	if err != nil {
-		os.Remove(coverPath) // Clean up partial file
 		return fmt.Errorf("failed to save artwork: %w", err)
 	}
+	if written == 0 || written > maxArtworkBytes {
+		return fmt.Errorf("artwork size is invalid: %d bytes", written)
+	}
+	if err := coverFile.Close(); err != nil {
+		return fmt.Errorf("close artwork file: %w", err)
+	}
+	if err := os.Rename(tempPath, coverPath); err != nil {
+		return fmt.Errorf("commit artwork: %w", err)
+	}
+	committed = true
 
 	dLog("Artwork downloaded successfully to %s", coverPath)
 	return nil

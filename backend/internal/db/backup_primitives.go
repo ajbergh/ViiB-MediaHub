@@ -38,7 +38,7 @@ func (d *DB) CreateConsistentCopy(destination string) error {
 
 // ValidateSQLiteCopy opens a database copy read-only and requires integrity_check to return ok.
 func ValidateSQLiteCopy(path string) error {
-	conn, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(path)+"?mode=ro&_foreign_keys=on")
+	conn, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?mode=ro&_pragma=foreign_keys(1)")
 	if err != nil { return err }
 	defer conn.Close()
 	var integrity string

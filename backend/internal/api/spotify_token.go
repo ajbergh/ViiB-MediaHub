@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,7 +43,7 @@ func refreshSpotifyCredentials(ctx context.Context, database *db.DB, force bool)
 	if err != nil {
 		return SpotifyCredentials{}, err
 	}
-	if !force && (credentials.Expiry == 0 || time.Now().Add(5*time.Minute).Before(time.UnixMilli(credentials.Expiry))) {
+	if !force && credentials.Expiry > 0 && time.Now().Add(5*time.Minute).Before(time.UnixMilli(credentials.Expiry)) {
 		return credentials, nil
 	}
 	if credentials.RefreshToken == "" || credentials.ClientId == "" {
@@ -109,7 +110,9 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	for attempt := 0; attempt < 2; attempt++ {
+	refreshed := false
+	rateRetries := 0
+	for {
 		request, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(body))
 		if err != nil {
 			return nil, err
@@ -123,15 +126,34 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 		if err != nil {
 			return nil, err
 		}
-		if response.StatusCode != http.StatusUnauthorized || attempt == 1 {
-			return response, nil
+		if response.StatusCode == http.StatusUnauthorized && !refreshed {
+			response.Body.Close()
+			credentials, err = refreshSpotifyCredentials(ctx, a.db, true)
+			if err != nil {
+				return nil, err
+			}
+			refreshed = true
+			continue
 		}
-		response.Body.Close()
-
-		credentials, err = refreshSpotifyCredentials(ctx, a.db, true)
-		if err != nil {
-			return nil, err
+		if response.StatusCode == http.StatusTooManyRequests && rateRetries < 2 {
+			delaySeconds, _ := strconv.Atoi(response.Header.Get("Retry-After"))
+			if delaySeconds < 1 {
+				delaySeconds = 1
+			}
+			if delaySeconds > 30 {
+				delaySeconds = 30
+			}
+			response.Body.Close()
+			timer := time.NewTimer(time.Duration(delaySeconds) * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
+			rateRetries++
+			continue
 		}
+		return response, nil
 	}
-	return nil, fmt.Errorf("spotify request retry exhausted")
 }

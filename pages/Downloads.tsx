@@ -32,6 +32,7 @@ export const Downloads: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
+  const [sseHealthy, setSseHealthy] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'failed'>('all');
   const [confirmDialog, setConfirmDialog] = useState<{
     type: 'clearQueue' | 'clearCompleted' | null;
@@ -68,7 +69,7 @@ export const Downloads: React.FC = () => {
     // Poll every 3 seconds when there are active downloads
     const hasActiveDownloads = downloads.some(d => d.status === 'downloading' || d.status === 'queued');
     
-    if (hasActiveDownloads && !isLoading) {
+    if (hasActiveDownloads && !isLoading && !sseHealthy) {
       pollIntervalRef.current = setInterval(fetchDownloads, 3000);
     }
 
@@ -78,7 +79,7 @@ export const Downloads: React.FC = () => {
         pollIntervalRef.current = null;
       }
     };
-  }, [downloads, isLoading, fetchDownloads]);
+  }, [downloads, isLoading, sseHealthy, fetchDownloads]);
 
   // Connect to SSE for real-time updates
   useEffect(() => {
@@ -92,6 +93,7 @@ export const Downloads: React.FC = () => {
       try {
         eventSource = new EventSource('/api/spotify/downloads/events');
         eventSourceRef.current = eventSource;
+        eventSource.onopen = () => setSseHealthy(true);
 
         eventSource.onmessage = (event) => {
           try {
@@ -129,6 +131,7 @@ export const Downloads: React.FC = () => {
 
         eventSource.onerror = () => {
           console.warn('SSE connection error, will reconnect...');
+          setSseHealthy(false);
           if (eventSource) {
             eventSource.close();
           }

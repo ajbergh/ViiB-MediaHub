@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/art-media-platform/amp.SDK/stdlib/task"
 	spotifyProto "github.com/art-media-platform/librespot-go/Spotify"
 	"github.com/art-media-platform/librespot-go/librespot/asset"
 	"github.com/art-media-platform/librespot-go/librespot/respot"
@@ -37,6 +38,8 @@ type ActiveStream struct {
 	mu        sync.RWMutex       // Protects closed state
 	closed    bool               // Whether stream has been closed
 	cancelCtx context.CancelFunc // Cancel function for cleanup
+	assetCtx  task.Context       // Per-stream asset lifecycle
+	release   func()             // Releases the shared session lease
 }
 
 // Read implements io.Reader for streaming audio data.
@@ -81,11 +84,19 @@ func (s *ActiveStream) Close() error {
 	if s.cancelCtx != nil {
 		s.cancelCtx()
 	}
-
-	if s.reader != nil {
-		return s.reader.Close()
+	if s.assetCtx != nil {
+		_ = s.assetCtx.Close()
 	}
-	return nil
+
+	var err error
+	if s.reader != nil {
+		err = s.reader.Close()
+	}
+	if s.release != nil {
+		s.release()
+		s.release = nil
+	}
+	return err
 }
 
 // Info returns metadata about the stream.
@@ -190,11 +201,17 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 	}
 
 	// Get authenticated session
-	sess, err := s.sessionManager.GetSession()
+	sess, releaseSession, err := s.sessionManager.AcquireSession()
 	if err != nil {
 		stLog("Failed to get session: %v", err)
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
+	releaseNeeded := true
+	defer func() {
+		if releaseNeeded {
+			releaseSession()
+		}
+	}()
 
 	// Build audio format list based on quality preference
 	var audioFormats []spotifyProto.AudioFile_Format
@@ -219,7 +236,7 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 	// Pin the track with quality preferences
 	stLog("Pinning track with quality preferences: %v", audioFormats)
 	pinOpts := respot.PinOpts{
-		StartInternally: true,
+		StartInternally: false,
 		Format: asset.AssetFormat{
 			AudioFormats: audioFormats,
 		},
@@ -231,10 +248,19 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 		return nil, fmt.Errorf("failed to pin track: %w", err)
 	}
 	stLog("Track pinned successfully: %s", assetMedia.Label())
+	assetCtx, err := sess.Context().Context.StartChild(task.Task{Info: task.Info{Label: "spotify-stream-" + requestID}})
+	if err != nil {
+		return nil, fmt.Errorf("create stream asset context: %w", err)
+	}
+	if err := assetMedia.OnStart(assetCtx); err != nil {
+		_ = assetCtx.Close()
+		return nil, fmt.Errorf("start stream asset: %w", err)
+	}
 
 	// Create asset reader
 	reader, err := assetMedia.NewAssetReader()
 	if err != nil {
+		_ = assetCtx.Close()
 		stLog("Failed to create asset reader: %v", err)
 		return nil, fmt.Errorf("failed to create asset reader: %w", err)
 	}
@@ -252,7 +278,10 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 			ContentType: "audio/ogg",
 		},
 		cancelCtx: cancel,
+		assetCtx:  assetCtx,
+		release:   releaseSession,
 	}
+	releaseNeeded = false
 
 	// Track active stream
 	s.mu.Lock()

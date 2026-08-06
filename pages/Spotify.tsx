@@ -38,7 +38,7 @@ export const Spotify: React.FC = () => {
         ? SPOTIFY_DESKTOP_CALLBACK_URL
         : `${window.location.origin}/callback`;
     const {
-        spotifyClientId, spotifyClientSecret, spotifyUser,
+        spotifyClientId, spotifyUser,
         spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiry,
         logoutSpotify, setSpotifyTokens, setSpotifyUser, addLog,
         playSong, addToQueue, showToast, openContextMenu,
@@ -836,13 +836,13 @@ export const Spotify: React.FC = () => {
                 </p>
                 <button
                     onClick={handleLogin}
-                    disabled={!spotifyClientId || !spotifyClientSecret}
+                    disabled={!spotifyClientId}
                     className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-surface-0 font-bold py-3 px-8 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center gap-2"
                 >
                     <Wifi size={20} /> Connect Spotify
                 </button>
 
-                {(!spotifyClientId || !spotifyClientSecret) && (
+                {!spotifyClientId && (
                     <div className="mt-8 w-full max-w-lg bg-surface-2 border border-warning/30 rounded-xl p-6 relative overflow-hidden text-left">
                         <div className="absolute top-0 left-0 w-1 h-full bg-warning"></div>
                         <h4 className="text-warning font-bold text-sm uppercase tracking-wide mb-3 flex items-center gap-2">

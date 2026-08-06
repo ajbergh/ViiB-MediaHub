@@ -47,6 +47,7 @@ type SessionManager struct {
 	initialized   bool           // Whether session has been initialized
 	initTime      int64          // Unix timestamp when session was initialized
 	mu            sync.RWMutex   // Protects session state
+	useMu         sync.RWMutex   // Prevents closing a session while callers are using it
 }
 
 // NewSessionManager creates a new Spotify session manager.
@@ -94,6 +95,14 @@ func (sm *SessionManager) UpdateAccessToken(accessToken string) {
 // Returns:
 //   - error if any step fails (cache creation, token validation, session start, login)
 func (sm *SessionManager) Initialize() (err error) {
+	sm.mu.RLock()
+	ready := sm.initialized && sm.lastTokenUsed == sm.accessToken
+	sm.mu.RUnlock()
+	if ready {
+		return nil
+	}
+	sm.useMu.Lock()
+	defer sm.useMu.Unlock()
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -156,6 +165,13 @@ func (sm *SessionManager) Initialize() (err error) {
 		return fmt.Errorf("failed to start task context: %w", err)
 	}
 	sm.taskCtx = taskCtx
+	initialized := false
+	defer func() {
+		if !initialized && sm.taskCtx == taskCtx {
+			taskCtx.Close()
+			sm.taskCtx = nil
+		}
+	}()
 	sLog("Task context started successfully")
 
 	// Validate access token
@@ -186,11 +202,13 @@ func (sm *SessionManager) Initialize() (err error) {
 	// Perform login with OAuth token
 	if err := sess.Login(); err != nil {
 		sLog("Failed to login to Spotify: %v", err)
+		_ = sess.Close()
 		return fmt.Errorf("failed to login to Spotify: %w", err)
 	}
 
 	sm.session = sess
 	sm.initialized = true
+	initialized = true
 	sm.lastTokenUsed = sm.accessToken
 	sm.initTime = time.Now().Unix()
 	sLog("Session initialized and logged in successfully!")
@@ -219,6 +237,24 @@ func (sm *SessionManager) GetSession() (respot.Session, error) {
 	return sm.session, nil
 }
 
+// AcquireSession returns the current session and a release function. The
+// release function must be called when the associated media asset is finished;
+// resets and token-driven reinitialization wait for all leases to be released.
+func (sm *SessionManager) AcquireSession() (respot.Session, func(), error) {
+	sm.useMu.RLock()
+	sm.mu.RLock()
+	if !sm.initialized || sm.session == nil {
+		sm.mu.RUnlock()
+		sm.useMu.RUnlock()
+		return nil, nil, fmt.Errorf("session not initialized")
+	}
+	session := sm.session
+	sm.mu.RUnlock()
+	var once sync.Once
+	release := func() { once.Do(sm.useMu.RUnlock) }
+	return session, release, nil
+}
+
 // IsInitialized returns whether the session is currently initialized.
 func (sm *SessionManager) IsInitialized() bool {
 	sm.mu.RLock()
@@ -242,6 +278,8 @@ func (sm *SessionManager) GetInitTime() int64 {
 // Unlike Close(), this method is designed to be called when you want to
 // force a complete session refresh while keeping the manager alive.
 func (sm *SessionManager) ResetSession() {
+	sm.useMu.Lock()
+	defer sm.useMu.Unlock()
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -277,6 +315,8 @@ func (sm *SessionManager) ResetSession() {
 // Returns:
 //   - error: Only if session close fails (logged as warning, not returned)
 func (sm *SessionManager) Close() error {
+	sm.useMu.Lock()
+	defer sm.useMu.Unlock()
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 

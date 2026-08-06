@@ -2,16 +2,16 @@
 package db
 
 import (
+	"context"
 	"database/sql"
-	"database/sql/driver"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/mattn/go-sqlite3"
+	"modernc.org/sqlite"
 )
 
-const sqliteRuntimeDriverName = "viib_sqlite3"
+const sqliteRuntimeDriverName = "viib_sqlite"
 
 var (
 	runtimePolicy    sync.Map
@@ -29,27 +29,21 @@ var connectionPragmas = []string{
 
 func registerSQLiteRuntimeDriver() {
 	sqliteDriverOnce.Do(func() {
-		sql.Register(sqliteRuntimeDriverName, &sqlite3.SQLiteDriver{
-			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-				executor, ok := any(conn).(interface {
-					Exec(string, []driver.Value) (driver.Result, error)
-				})
-				if !ok {
-					return fmt.Errorf("SQLite connection does not support runtime PRAGMAs")
+		driver := &sqlite.Driver{}
+		driver.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, _ string) error {
+			for _, pragma := range connectionPragmas {
+				if _, err := conn.ExecContext(context.Background(), pragma, nil); err != nil {
+					return fmt.Errorf("apply SQLite connection policy %q: %w", pragma, err)
 				}
-				for _, pragma := range connectionPragmas {
-					if _, err := executor.Exec(pragma, nil); err != nil {
-						return fmt.Errorf("apply SQLite connection policy %q: %w", pragma, err)
-					}
-				}
-				return nil
-			},
+			}
+			return nil
 		})
+		sql.Register(sqliteRuntimeDriverName, driver)
 	})
 }
 
 func sqliteRuntimeDSN(dbPath string) string {
-	return dbPath + "?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
+	return dbPath
 }
 
 // ConfigureRuntime applies an explicit SQLite policy instead of relying on

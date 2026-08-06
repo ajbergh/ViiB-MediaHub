@@ -2179,6 +2179,57 @@ func (d *DB) AddDownload(download *SpotifyDownload) error {
 	return err
 }
 
+// AddDownloads inserts a logical album or playlist as one transaction. Either
+// every track is visible to the dispatcher or none are.
+func (d *DB) AddDownloads(downloads []*SpotifyDownload) ([]string, error) {
+	if len(downloads) == 0 {
+		return []string{}, nil
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	statement, err := tx.Prepare(`
+		INSERT INTO spotify_downloads (
+			id, spotify_id, spotify_uri, type, title, artist, album,
+			status, progress, error, file_path, added_at, started_at,
+			completed_at, metadata
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer statement.Close()
+	ids := make([]string, 0, len(downloads))
+	for _, download := range downloads {
+		var existingID string
+		err := tx.QueryRow(`
+			SELECT id FROM spotify_downloads
+			WHERE spotify_id = ? AND metadata = ? AND status IN ('queued', 'downloading')
+			ORDER BY added_at ASC LIMIT 1
+		`, download.SpotifyID, download.Metadata).Scan(&existingID)
+		if err == nil {
+			ids = append(ids, existingID)
+			continue
+		}
+		if err != sql.ErrNoRows {
+			return nil, err
+		}
+		if _, err := statement.Exec(download.ID, download.SpotifyID, download.SpotifyURI,
+			download.Type, download.Title, download.Artist, download.Album, download.Status,
+			download.Progress, download.Error, download.FilePath, download.AddedAt,
+			download.StartedAt, download.CompletedAt, download.Metadata); err != nil {
+			return nil, err
+		}
+		ids = append(ids, download.ID)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // GetDownload retrieves a single SpotifyDownload by ID.
 // GetDownload retrieves a SpotifyDownload by ID.
 func (d *DB) GetDownload(id string) (*SpotifyDownload, error) {
@@ -2228,14 +2279,21 @@ func (d *DB) GetDownload(id string) (*SpotifyDownload, error) {
 
 // GetAllDownloads returns all Spotify downloads (completed, queued, failed).
 // GetAllDownloads returns all Spotify downloads stored in the DB.
-func (d *DB) GetAllDownloads() ([]SpotifyDownload, error) {
+func (d *DB) GetAllDownloads(limit, offset int) ([]SpotifyDownload, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 250
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	rows, err := d.conn.Query(`
 		SELECT id, spotify_id, spotify_uri, type, title, artist, album,
 		       status, progress, error, file_path, added_at, started_at,
 		       completed_at, metadata
 		FROM spotify_downloads
-		ORDER BY added_at DESC
-	`)
+		ORDER BY added_at DESC, id DESC
+		LIMIT ? OFFSET ?
+	`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -2285,15 +2343,19 @@ func (d *DB) GetAllDownloads() ([]SpotifyDownload, error) {
 }
 
 // GetQueuedDownloads returns queued Spotify downloads ordered by added time.
-func (d *DB) GetQueuedDownloads() ([]SpotifyDownload, error) {
+func (d *DB) GetQueuedDownloads(limit int) ([]SpotifyDownload, error) {
+	if limit <= 0 {
+		return []SpotifyDownload{}, nil
+	}
 	rows, err := d.conn.Query(`
 		SELECT id, spotify_id, spotify_uri, type, title, artist, album,
 		       status, progress, error, file_path, added_at, started_at,
 		       completed_at, metadata
 		FROM spotify_downloads
 		WHERE status = 'queued'
-		ORDER BY added_at ASC
-	`)
+		ORDER BY added_at ASC, rowid ASC
+		LIMIT ?
+	`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -2362,33 +2424,45 @@ func (d *DB) UpdateDownloadProgress(id string, progress int) error {
 }
 
 // MarkDownloadStarted marks a download as started and records a timestamp.
-func (d *DB) MarkDownloadStarted(id string) error {
-	_, err := d.conn.Exec(`
+func (d *DB) MarkDownloadStarted(id string) (bool, error) {
+	result, err := d.conn.Exec(`
 		UPDATE spotify_downloads
-		SET status = 'downloading', started_at = ?
-		WHERE id = ?
+		SET status = 'downloading', started_at = ?, completed_at = NULL, error = NULL
+		WHERE id = ? AND status = 'queued'
 	`, time.Now().Unix(), id)
-	return err
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows == 1, err
 }
 
 // MarkDownloadCompleted marks a download as complete and stores the file path.
-func (d *DB) MarkDownloadCompleted(id string, filePath string) error {
-	_, err := d.conn.Exec(`
+func (d *DB) MarkDownloadCompleted(id string, filePath string) (bool, error) {
+	result, err := d.conn.Exec(`
 		UPDATE spotify_downloads
 		SET status = 'completed', progress = 100, file_path = ?, completed_at = ?
-		WHERE id = ?
+		WHERE id = ? AND status = 'downloading'
 	`, filePath, time.Now().Unix(), id)
-	return err
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows == 1, err
 }
 
 // MarkDownloadFailed marks a download as failed and records an error message.
-func (d *DB) MarkDownloadFailed(id string, errorMsg string) error {
-	_, err := d.conn.Exec(`
+func (d *DB) MarkDownloadFailed(id string, errorMsg string) (bool, error) {
+	result, err := d.conn.Exec(`
 		UPDATE spotify_downloads
 		SET status = 'failed', error = ?, completed_at = ?
-		WHERE id = ?
+		WHERE id = ? AND status = 'downloading'
 	`, errorMsg, time.Now().Unix(), id)
-	return err
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows == 1, err
 }
 
 // DeleteDownload removes a download record from the database.
@@ -2399,12 +2473,60 @@ func (d *DB) DeleteDownload(id string) error {
 
 // ResetDownloadForRetry resets a failed download back to queued status
 func (d *DB) ResetDownloadForRetry(id string) error {
-	_, err := d.conn.Exec(`
+	result, err := d.conn.Exec(`
 		UPDATE spotify_downloads
 		SET status = 'queued', progress = 0, error = NULL, completed_at = NULL, added_at = ?
 		WHERE id = ? AND status = 'failed'
 	`, time.Now().Unix(), id)
-	return err
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return fmt.Errorf("download is not failed or does not exist")
+	}
+	return nil
+}
+
+// ResetDownloadForForceRestart makes any non-deleted download eligible for a
+// fresh attempt. An active worker remains registered in memory until it exits,
+// preventing the dispatcher from starting the replacement concurrently.
+func (d *DB) ResetDownloadForForceRestart(id string) error {
+	result, err := d.conn.Exec(`
+		UPDATE spotify_downloads
+		SET status = 'queued', progress = 0, error = NULL, file_path = NULL,
+			started_at = NULL, completed_at = NULL, added_at = ?
+		WHERE id = ?
+	`, time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return fmt.Errorf("download does not exist")
+	}
+	return nil
+}
+
+// RequeueDownloading returns an active item to the queue without allowing a
+// stale worker to overwrite a newer state.
+func (d *DB) RequeueDownloading(id string) (bool, error) {
+	result, err := d.conn.Exec(`
+		UPDATE spotify_downloads
+		SET status = 'queued', progress = 0, error = NULL, started_at = NULL
+		WHERE id = ? AND status = 'downloading'
+	`, id)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows == 1, err
 }
 
 // ResetStuckDownloads resets all downloads that are stuck in 'downloading' status

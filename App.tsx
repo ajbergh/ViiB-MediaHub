@@ -101,8 +101,13 @@ const App: React.FC = () => {
       if (spotifyAccessToken) return;
       try {
         const creds = await api.getSpotifyCredentials();
-        if (creds?.accessToken) {
+        // The public client ID is needed to begin a PKCE login even when the
+        // user has not authenticated yet. The backend intentionally does not
+        // return the stored client secret to the renderer.
+        if (creds?.clientId) {
           setSpotifyCredentials(creds.clientId, '');
+        }
+        if (creds?.accessToken) {
           setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry);
         }
       } catch { /* Spotify is optional. */ }

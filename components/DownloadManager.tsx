@@ -31,7 +31,6 @@ const DownloadManager = () => {
   const [downloads, setDownloads] = useState<ApiSpotifyDownload[]>([]);
   const [hasError, setHasError] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { setDownloadCount } = useStore();
 
   // Update global download count whenever downloads change
@@ -56,23 +55,6 @@ const DownloadManager = () => {
   useEffect(() => {
     fetchDownloads();
   }, [fetchDownloads]);
-
-  // Polling fallback - ensures count stays updated even if SSE has issues
-  useEffect(() => {
-    const hasActiveDownloads = downloads.some(d => d.status === 'downloading' || d.status === 'queued');
-    
-    if (hasActiveDownloads) {
-      // Poll every 2 seconds when there are active downloads
-      pollIntervalRef.current = setInterval(fetchDownloads, 2000);
-    }
-
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-    };
-  }, [downloads, fetchDownloads]);
 
   // Connect to SSE for real-time updates
   useEffect(() => {
@@ -105,8 +87,8 @@ const DownloadManager = () => {
     };
 
     eventSource.onerror = () => {
-      console.warn('DownloadManager SSE connection error, will rely on polling');
-      eventSource.close();
+      console.warn('DownloadManager SSE connection error; EventSource will reconnect');
+      window.setTimeout(fetchDownloads, 2000);
     };
 
     return () => {

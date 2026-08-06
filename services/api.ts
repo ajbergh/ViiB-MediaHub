@@ -639,7 +639,7 @@ export const api = {
    * @returns Promise with array of all downloads
    */
   async getDownloads() {
-    const response = await fetch(`${API_BASE}/spotify/downloads`);
+    const response = await fetch(`${API_BASE}/spotify/downloads?limit=250`);
     return handleResponse<ApiSpotifyDownload[]>(response);
   },
 
