@@ -1,12 +1,12 @@
 import React from 'react';
-import { Play, ArrowUp, Trash2, Disc } from 'lucide-react';
+import { Play, ArrowUp, Trash2, Disc, Info } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
 import { useNavigate } from 'react-router';
 import { Song } from '../../types';
 
 export const QueueItemMenu: React.FC<{ song: Song; index: number; onClose: () => void }> = ({ song, index, onClose }) => {
-    const { playQueueItem, reorderQueue, removeFromQueue } = useStore();
+    const { playQueueItem, reorderQueue, removeFromQueue, openSongInfoModal } = useStore();
     const navigate = useNavigate();
 
     const handleAction = (action: () => void) => {
@@ -34,6 +34,7 @@ export const QueueItemMenu: React.FC<{ song: Song; index: number; onClose: () =>
                 navigate(`/album/${encodeURIComponent(song.album)}/${encodeURIComponent(song.albumArtist || song.artist)}`);
                 onClose();
             }} />
+            <MenuItem icon={Info} label="Song Info & Properties" onClick={() => handleAction(() => openSongInfoModal(song))} />
         </>
     );
 };

@@ -27,7 +27,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon, Info } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
 import { NowPlaying } from './NowPlaying';
 import { ContextMenuType } from '../types';
@@ -43,7 +43,7 @@ export const Player: React.FC = () => {
       currentSong, isPlaying, togglePlay, nextSong, prevSong, volume, setVolume, 
       isQueueOpen, setQueueOpen, queue, isNowPlayingOpen, setNowPlayingOpen, 
       openContextMenu, audioSettings, toggleEqPanel, isBuffering, bufferProgress,
-      streamError, retryStream, clearStreamError
+      streamError, retryStream, clearStreamError, openSongInfoModal
   } = useStore();
   
   const { 
@@ -226,6 +226,17 @@ export const Player: React.FC = () => {
 
         {/* Volume & Extras - Hidden on mobile, shown on tablet+ */}
         <div className="hidden md:flex items-center justify-end gap-3">
+            {/* Song Info Properties */}
+            <Button
+                onClick={() => currentSong && openSongInfoModal(currentSong)}
+                title="Song Information & Properties"
+                aria-label="Song Information & Properties"
+                variant="ghost"
+                className="rounded-full p-2 text-text-secondary hover:text-text-main"
+            >
+                <Info size={18} />
+            </Button>
+
             {/* Sleep Timer Toggle */}
             <Button 
                 onClick={() => setIsSleepTimerOpen(true)}

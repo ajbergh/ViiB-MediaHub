@@ -43,6 +43,7 @@ import DownloadManager from './components/DownloadManager';
 import LibraryEventListener from './components/LibraryEventListener';
 import ConfirmDialog from './components/ConfirmDialog';
 import FirstLaunchDialog from './components/FirstLaunchDialog';
+import { SongInfoDialog } from './components/SongInfoDialog';
 import { useBackgroundEnrichment } from './hooks/useBackgroundEnrichment';
 import { setupGlobalErrorHandlers, createLogger } from './services/loggerService';
 
@@ -164,6 +165,7 @@ const App: React.FC = () => {
           onCancel={closeConfirmDialog}
         />
         <FirstLaunchDialog isOpen={backendAvailable && !hasCompletedSetup} onComplete={() => setHasCompletedSetup(true)} />
+        <SongInfoDialog />
       </BrowserRouter>
     </ErrorBoundary>
   );

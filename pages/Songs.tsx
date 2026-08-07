@@ -17,7 +17,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { Play, Clock, MoreHorizontal, Search, ChevronDown, ArrowUpDown, FolderPlus } from 'lucide-react';
+import { Play, Clock, MoreHorizontal, Search, ChevronDown, ArrowUpDown, FolderPlus, Info } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
@@ -146,7 +146,7 @@ const Footer = () => <div className="h-32 bg-transparent" />;
 
 export const Songs: React.FC = () => {
   const navigate = useNavigate();
-  const { songs, playSong, currentSong, isPlaying, openContextMenu } = useStore();
+  const { songs, playSong, currentSong, isPlaying, openContextMenu, openSongInfoModal } = useStore();
   const isLibraryInitializing = useStore(state => state.isLibraryInitializing);
   const isScanning = useStore(state => state.isScanning);
   const albumCovers = useAlbumCovers();
@@ -233,7 +233,19 @@ export const Songs: React.FC = () => {
                                     )}
                             </div>
                             <div className="flex flex-col truncate">
-                              <span className={`font-medium truncate ${isCurrent ? 'text-accent-green' : 'text-text-main'}`}>{song.title}</span>
+                              <div className="flex items-center gap-1.5 truncate">
+                                <span className={`font-medium truncate ${isCurrent ? 'text-accent-green' : 'text-text-main'}`}>{song.title}</span>
+                                {song.bpm && (
+                                  <span className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-accent-pink/15 text-accent-pink ring-1 ring-accent-pink/30 flex-shrink-0">
+                                    {song.bpm} BPM
+                                  </span>
+                                )}
+                                {song.originalYear && (
+                                  <span className="hidden xl:inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-medium bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30 flex-shrink-0">
+                                    {song.originalYear}
+                                  </span>
+                                )}
+                              </div>
                               <span className="md:hidden text-xs text-text-subtle truncate mt-0.5">{song.artist}</span>
                             </div>
                         </div>
@@ -242,7 +254,19 @@ export const Songs: React.FC = () => {
                         <div className="hidden md:block text-text-secondary text-sm font-mono text-center">{song.playCount || 0}</div>
                         <div className="text-text-secondary text-sm font-mono text-right pr-2">{formatTime(song.duration)}</div>
                         
-                        <div className="hidden md:flex justify-center">
+                        <div className="hidden md:flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              className="rounded-full p-1.5 opacity-0 group-hover:opacity-100 text-text-secondary hover:text-text-main"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openSongInfoModal(song);
+                              }}
+                              aria-label="Track Info"
+                              title="Song Info & Properties"
+                            >
+                              <Info size={16} />
+                            </Button>
                             <LikeButton songId={song.id} size={18} className="opacity-0 group-hover:opacity-100" />
                         </div>
                         

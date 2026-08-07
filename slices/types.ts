@@ -292,6 +292,7 @@ export interface UISlice {
     data: any;
   };
   confirmDialog: ConfirmDialogConfig | null;
+  songInfoModalSong: Song | null;
   logs: LogEntry[];
   toasts: ToastConfig[];
   
@@ -312,6 +313,9 @@ export interface UISlice {
   
   showConfirmDialog: (config: ConfirmDialogConfig) => void;
   closeConfirmDialog: () => void;
+  
+  openSongInfoModal: (song: Song) => void;
+  closeSongInfoModal: () => void;
   
   showToast: (toast: Omit<ToastConfig, 'id'>) => void;
   dismissToast: (id: string) => void;
