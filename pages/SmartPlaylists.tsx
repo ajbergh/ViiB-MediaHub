@@ -531,6 +531,18 @@ export const SmartPlaylists: React.FC = () => {
                     </span>
                   )}
                 </h2>
+                {aiDjMode && (aiDjFilter?.minYear || aiDjFilter?.genres?.length) && (
+                  <div className="flex flex-wrap gap-2 text-meta text-text-secondary mb-2" aria-label="Applied DJ set filters">
+                    {aiDjFilter?.genres?.map(genre => (
+                      <span key={genre} className="bg-surface-highlight px-2 py-1 rounded-lg">{genre}</span>
+                    ))}
+                    {aiDjFilter?.minYear && aiDjFilter.minYear > 0 && (
+                      <span className="bg-brand/20 text-brand px-2 py-1 rounded-lg">
+                        Matched era: {aiDjFilter.minYear}-{aiDjFilter.maxYear}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {/* Genre tags with proportions for multi-genre blend (playlist mode only) */}
                 {!aiDjMode && (
                   <>

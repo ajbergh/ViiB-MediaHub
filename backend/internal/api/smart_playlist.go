@@ -127,12 +127,21 @@ func getLLMSettings(a *API) llm.Settings {
 	return settings
 }
 
+// getSongsForGenre applies explicit era constraints to every local-genre path.
+// An era in a user prompt is a hard constraint, never a ranking hint.
+func (a *API) getSongsForGenre(genreName string, minYear, maxYear int) ([]db.Song, error) {
+	if minYear > 0 || maxYear > 0 {
+		return a.db.GetSongsByExactGenreWithYears(genreName, minYear, maxYear)
+	}
+	return a.db.GetSongsByExactGenre(genreName)
+}
+
 // tryLocalGenreMatch attempts to match the prompt against known local genres.
 // Returns matched genre name, songs, and whether a match was found.
 //
 // IMPORTANT: This only matches if the genre has at least 20 songs to ensure
 // a good playlist experience. For small genres, we fall back to LLM blending.
-func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
+func (a *API) tryLocalGenreMatch(prompt string, minYear, maxYear int) (string, []any, bool) {
 	const minSongsForLocalMatch = 20 // Require at least this many songs for direct match
 
 	prompt = strings.TrimSpace(prompt)
@@ -152,7 +161,7 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 	// First pass: exact match (case-insensitive)
 	for _, genreName := range genreNames {
 		if strings.ToLower(genreName) == promptLower {
-			songs, err := a.db.GetSongsByExactGenre(genreName)
+			songs, err := a.getSongsForGenre(genreName, minYear, maxYear)
 			if err != nil {
 				logger.API("Failed to get songs for genre %s: %v", genreName, err)
 				return "", nil, false
@@ -181,7 +190,7 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 		if strings.Contains(promptLower, genreLower) {
 			// Only match if the genre name is a significant portion of the prompt
 			if len(genreLower) >= len(promptLower)*60/100 {
-				songs, err := a.db.GetSongsByExactGenre(genreName)
+				songs, err := a.getSongsForGenre(genreName, minYear, maxYear)
 				if err != nil {
 					logger.API("Failed to get songs for genre %s: %v", genreName, err)
 					continue
@@ -200,7 +209,7 @@ func (a *API) tryLocalGenreMatch(prompt string) (string, []any, bool) {
 		}
 		// Or if the prompt is contained in the genre name (e.g., "alternative" matches "90s Alternative")
 		if strings.Contains(genreLower, promptLower) {
-			songs, err := a.db.GetSongsByExactGenre(genreName)
+			songs, err := a.getSongsForGenre(genreName, minYear, maxYear)
 			if err != nil {
 				logger.API("Failed to get songs for genre %s: %v", genreName, err)
 				continue
@@ -1215,12 +1224,8 @@ func (a *API) applyPlayHistoryFilters(songs []any, recentlyPlayedIDs map[string]
 	if len(recentlyPlayedIDs) > 0 {
 		filtered := make([]any, 0, len(songs))
 		for _, s := range songs {
-			if song, ok := s.(map[string]any); ok {
-				if id, ok := song["id"].(string); ok {
-					if !recentlyPlayedIDs[id] {
-						filtered = append(filtered, s)
-					}
-				}
+			if id, ok := songID(s); !ok || !recentlyPlayedIDs[id] {
+				filtered = append(filtered, s)
 			}
 		}
 		songs = filtered
@@ -1232,13 +1237,11 @@ func (a *API) applyPlayHistoryFilters(songs []any, recentlyPlayedIDs map[string]
 		seenArtists := make(map[string]bool)
 		filtered := make([]any, 0, len(songs))
 		for _, s := range songs {
-			if song, ok := s.(map[string]any); ok {
-				if artist, ok := song["artist"].(string); ok {
-					if !seenArtists[artist] {
-						seenArtists[artist] = true
-						filtered = append(filtered, s)
-					}
+			if artist, ok := songArtist(s); !ok || !seenArtists[strings.ToLower(artist)] {
+				if ok {
+					seenArtists[strings.ToLower(artist)] = true
 				}
+				filtered = append(filtered, s)
 			}
 		}
 		songs = filtered
@@ -1293,7 +1296,14 @@ func sortSongsByPlayCount(songs []any, ascending bool) {
 }
 
 func getPlayCount(s any) int {
-	if song, ok := s.(map[string]any); ok {
+	switch song := s.(type) {
+	case db.Song:
+		return song.PlayCount
+	case *db.Song:
+		if song != nil {
+			return song.PlayCount
+		}
+	case map[string]any:
 		if count, ok := song["playCount"].(float64); ok {
 			return int(count)
 		}
@@ -1302,6 +1312,52 @@ func getPlayCount(s any) int {
 		}
 	}
 	return 0
+}
+
+func songID(s any) (string, bool) {
+	switch song := s.(type) {
+	case db.Song:
+		return song.ID, song.ID != ""
+	case *db.Song:
+		if song != nil {
+			return song.ID, song.ID != ""
+		}
+	case map[string]any:
+		id, ok := song["id"].(string)
+		return id, ok && id != ""
+	}
+	return "", false
+}
+
+func songArtist(s any) (string, bool) {
+	switch song := s.(type) {
+	case db.Song:
+		return song.Artist, song.Artist != ""
+	case *db.Song:
+		if song != nil {
+			return song.Artist, song.Artist != ""
+		}
+	case map[string]any:
+		artist, ok := song["artist"].(string)
+		return artist, ok && artist != ""
+	}
+	return "", false
+}
+
+// songMatchesYear implements the same original-release-year preference as the
+// database queries. A missing year cannot satisfy an explicit era constraint.
+func songMatchesYear(song db.Song, minYear, maxYear int) bool {
+	if minYear == 0 && maxYear == 0 {
+		return true
+	}
+	year := song.OriginalYear
+	if year == 0 {
+		year = song.Year
+	}
+	if year == 0 {
+		return false
+	}
+	return (minYear == 0 || year >= minYear) && (maxYear == 0 || year <= maxYear)
 }
 
 func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request) {
@@ -1348,6 +1404,11 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	if req.FlowStrictness <= 0 || req.FlowStrictness > 100 {
 		req.FlowStrictness = 60
 	}
+
+	// Extract explicit date constraints before any fast-path matching. This keeps
+	// requests such as "90s west coast hip-hop" from being reduced to a genre-only
+	// query and gives deterministic constraints precedence over LLM output.
+	promptMinYear, promptMaxYear := extractDecadeFromPrompt(req.Prompt)
 
 	// Handle DJ Mode separately
 	if req.Mode == dj.ModeDJ {
@@ -1397,7 +1458,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 	// Second, try local genre matching before calling Gemini
 	// This handles basic cases like exact genre names efficiently without API calls
-	if matchedGenre, songs, matched := a.tryLocalGenreMatch(req.Prompt); matched {
+	if matchedGenre, songs, matched := a.tryLocalGenreMatch(req.Prompt, promptMinYear, promptMaxYear); matched {
 		logger.API("Local genre match found: %s with %d songs", matchedGenre, len(songs))
 
 		// Apply filters
@@ -1408,6 +1469,8 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 		filter := LocalPlaylistFilter{
 			Genres:      []string{matchedGenre},
+			MinYear:     promptMinYear,
+			MaxYear:     promptMaxYear,
 			Description: fmt.Sprintf("Songs from the %s genre", matchedGenre),
 			LocalMatch:  true,
 			BlendMode:   "single",
@@ -1499,14 +1562,12 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	logger.API("AI DJ Result: prompt='%s' → genres=%v mood=%s energy=%s years=%d-%d blendMode=%s",
 		req.Prompt, filter.Genres, filter.Mood, filter.Energy, filter.MinYear, filter.MaxYear, req.BlendMode)
 
-	// If the LLM didn't extract year information, try to extract it from the prompt
-	if filter.MinYear == 0 && filter.MaxYear == 0 {
-		minYear, maxYear := extractDecadeFromPrompt(req.Prompt)
-		if minYear > 0 {
-			filter.MinYear = minYear
-			filter.MaxYear = maxYear
-			logger.API("AI DJ: Extracted decade from prompt: %d-%d", minYear, maxYear)
-		}
+	// Explicit dates in the prompt are authoritative. The LLM can fill an absent
+	// date range, but it must not broaden or replace one the user supplied.
+	if promptMinYear > 0 || promptMaxYear > 0 {
+		filter.MinYear = promptMinYear
+		filter.MaxYear = promptMaxYear
+		logger.API("AI DJ: Applied explicit prompt years: %d-%d", promptMinYear, promptMaxYear)
 	}
 
 	// Multi-genre blending mode
@@ -1528,6 +1589,11 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 			smartFilter := LocalPlaylistFilter{
 				Genres:        genreNames,
+				MinYear:       filter.MinYear,
+				MaxYear:       filter.MaxYear,
+				Mood:          filter.Mood,
+				Energy:        filter.Energy,
+				Tempo:         filter.Tempo,
 				Description:   fmt.Sprintf("Blended playlist from %d genres (matched from: %s)", len(matchedGenres), req.Prompt),
 				LocalMatch:    true,
 				BlendMode:     "mixed",
@@ -1557,6 +1623,11 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 		smartFilter := LocalPlaylistFilter{
 			Genres:      []string{matchedGenre},
+			MinYear:     filter.MinYear,
+			MaxYear:     filter.MaxYear,
+			Mood:        filter.Mood,
+			Energy:      filter.Energy,
+			Tempo:       filter.Tempo,
 			Description: fmt.Sprintf("Songs from the %s genre (matched from: %s)", matchedGenre, req.Prompt),
 			LocalMatch:  true,
 			BlendMode:   "single",
@@ -1650,7 +1721,8 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	seedArtists := []string{}
 
 	// Try local genre matching first
-	if genreName, _, matched := a.tryLocalGenreMatch(prompt); matched {
+	promptMinYear, promptMaxYear := extractDecadeFromPrompt(prompt)
+	if genreName, _, matched := a.tryLocalGenreMatch(prompt, promptMinYear, promptMaxYear); matched {
 		seedGenres = append(seedGenres, genreName)
 		logger.API("DJ Mode: Local genre match found: %s", genreName)
 	}
@@ -1674,6 +1746,12 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 				if err == nil && llmFilter != nil {
 					seedGenres = llmFilter.Genres
 					seedArtists = llmFilter.Artists
+					// Deterministic prompt years are already populated above. Only use
+					// LLM years when the prompt did not contain an explicit era.
+					if promptMinYear == 0 && promptMaxYear == 0 {
+						promptMinYear = llmFilter.MinYear
+						promptMaxYear = llmFilter.MaxYear
+					}
 					logger.API("DJ Mode: LLM extracted genres=%v artists=%v", seedGenres, seedArtists)
 
 					// Apply mood match info from LLM filter if not already matched
@@ -1785,6 +1863,12 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			continue
 		}
 
+		// Era constraints are hard eligibility requirements. Sequencing can relax
+		// BPM or mood fit, but it must never introduce a track outside this range.
+		if !songMatchesYear(song, promptMinYear, promptMaxYear) {
+			continue
+		}
+
 		// If we have seed genres, filter to matching songs
 		if len(seedGenres) > 0 {
 			matchesGenre := false
@@ -1825,8 +1909,10 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 
 	logger.API("DJ Mode: %d candidate songs after filtering (from %d total)", len(candidates), len(allSongs))
 
-	// If we have too few candidates, fall back to all songs
-	if len(candidates) < 10 && len(allSongs) > 10 {
+	// Only broaden an unconstrained discovery request. Falling back to all songs
+	// for an explicit genre, artist, or era violates the user's request.
+	hasHardConstraints := promptMinYear > 0 || promptMaxYear > 0 || len(seedGenres) > 0 || len(seedArtists) > 0
+	if len(candidates) < 10 && len(allSongs) > 10 && !hasHardConstraints {
 		logger.API("DJ Mode: Too few candidates (%d), falling back to all songs", len(candidates))
 		candidates = make([]db.Song, 0, len(allSongs))
 		for _, song := range allSongs {
@@ -1887,6 +1973,10 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			"mode":    "dj",
 			"persona": persona,
 			"prompt":  prompt,
+			"genres":  seedGenres,
+			"artists": seedArtists,
+			"minYear": promptMinYear,
+			"maxYear": promptMaxYear,
 		},
 		"songs": songsAny,
 		"dj":    djResponse,

@@ -3598,13 +3598,14 @@ func (d *DB) GetSongsBySmartFilter(genres []string, artists []string, minYear, m
 		query += ")"
 	}
 
-	// Year filters using COALESCE to prefer original_year (for remasters) over embedded year
+	// Prefer an original release year for remasters. NULLIF also handles legacy
+	// rows where an unknown original year was stored as zero.
 	if minYear > 0 {
-		query += " AND COALESCE(original_year, year) >= ?"
+		query += " AND COALESCE(NULLIF(original_year, 0), NULLIF(year, 0)) >= ?"
 		args = append(args, minYear)
 	}
 	if maxYear > 0 {
-		query += " AND COALESCE(original_year, year) <= ?"
+		query += " AND COALESCE(NULLIF(original_year, 0), NULLIF(year, 0)) <= ?"
 		args = append(args, maxYear)
 	}
 

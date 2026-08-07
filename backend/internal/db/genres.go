@@ -367,13 +367,15 @@ func (d *DB) GetSongsByExactGenreWithYears(genreName string, minYear, maxYear in
 			 WHERE genre LIKE ? ESCAPE '\'`
 	args := []interface{}{buildGenreLikePattern(genreName)}
 
-	// Add year filters using COALESCE to check original_year first
+	// Treat zero as unknown. Older enrichment runs may have written 0 rather
+	// than NULL, and COALESCE(0, year) would otherwise make a valid song fail
+	// every era query.
 	if minYear > 0 {
-		query += " AND COALESCE(original_year, year) >= ?"
+		query += " AND COALESCE(NULLIF(original_year, 0), NULLIF(year, 0)) >= ?"
 		args = append(args, minYear)
 	}
 	if maxYear > 0 {
-		query += " AND COALESCE(original_year, year) <= ?"
+		query += " AND COALESCE(NULLIF(original_year, 0), NULLIF(year, 0)) <= ?"
 		args = append(args, maxYear)
 	}
 
@@ -430,13 +432,13 @@ func (d *DB) GetSongsByExactGenreWithMood(genreName string, minYear, maxYear int
 			 WHERE genre LIKE ? ESCAPE '\'`
 	args := []interface{}{buildGenreLikePattern(genreName)}
 
-	// Add year filters using COALESCE to check original_year first
+	// Treat zero as unknown; see GetSongsByExactGenreWithYears.
 	if minYear > 0 {
-		query += " AND COALESCE(original_year, year) >= ?"
+		query += " AND COALESCE(NULLIF(original_year, 0), NULLIF(year, 0)) >= ?"
 		args = append(args, minYear)
 	}
 	if maxYear > 0 {
-		query += " AND COALESCE(original_year, year) <= ?"
+		query += " AND COALESCE(NULLIF(original_year, 0), NULLIF(year, 0)) <= ?"
 		args = append(args, maxYear)
 	}
 
