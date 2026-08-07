@@ -3357,6 +3357,162 @@ func (d *DB) GetSongsForEnrichment(limit int, force bool, offset int) ([]Song, e
 	return songs, nil
 }
 
+// GetSongsForAIEnrichment returns songs with at least one field that still
+// benefits from AI enrichment. Unlike the older genre-only query, this also
+// includes tracks without mood data and flagged remasters without an original
+// release year. Results are stable and can be paged without a 10,000-song cap.
+func (d *DB) GetSongsForAIEnrichment(limit int, force bool, offset int) ([]Song, error) {
+	baseQuery := `
+		SELECT id, title, artist, album, album_artist, track_number, disc_number,
+		       genre, year, original_year, year_uncertain, mood, energy, tempo, bpm, instrumental
+		FROM songs WHERE COALESCE(ignored, 0) = 0`
+	args := []interface{}{limit, offset}
+	if !force {
+		baseQuery += ` AND (
+			genre IS NULL OR genre = '' OR genre = '[]' OR genre = 'null'
+			OR (genre LIKE '["%"]' AND genre NOT LIKE '%,%')
+			OR mood IS NULL OR mood = ''
+			OR (COALESCE(year_uncertain, 0) = 1 AND COALESCE(original_year, 0) = 0)
+		)`
+	}
+	rows, err := d.conn.Query(baseQuery+` ORDER BY id LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query songs for AI enrichment: %w", err)
+	}
+	defer rows.Close()
+
+	var songs []Song
+	for rows.Next() {
+		var s Song
+		var genreJSON, albumArtist, mood, energy, tempo sql.NullString
+		var trackNum, discNum, originalYear, bpm sql.NullInt64
+		var yearUncertain, instrumental sql.NullBool
+		if err := rows.Scan(&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist, &trackNum, &discNum,
+			&genreJSON, &s.Year, &originalYear, &yearUncertain, &mood, &energy, &tempo, &bpm, &instrumental); err != nil {
+			return nil, fmt.Errorf("failed to scan AI enrichment song: %w", err)
+		}
+		if albumArtist.Valid {
+			s.AlbumArtist = albumArtist.String
+		}
+		if trackNum.Valid {
+			s.TrackNumber = int(trackNum.Int64)
+		}
+		if discNum.Valid {
+			s.DiscNumber = int(discNum.Int64)
+		}
+		if originalYear.Valid {
+			s.OriginalYear = int(originalYear.Int64)
+		}
+		if yearUncertain.Valid {
+			s.YearUncertain = yearUncertain.Bool
+		}
+		if mood.Valid {
+			s.Mood = mood.String
+		}
+		if energy.Valid {
+			s.Energy = energy.String
+		}
+		if tempo.Valid {
+			s.Tempo = tempo.String
+		}
+		if bpm.Valid {
+			s.BPM = int(bpm.Int64)
+		}
+		if instrumental.Valid {
+			s.Instrumental = instrumental.Bool
+		}
+		if genreJSON.Valid && genreJSON.String != "" {
+			_ = json.Unmarshal([]byte(genreJSON.String), &s.Genre)
+		}
+		songs = append(songs, s)
+	}
+	return songs, rows.Err()
+}
+
+// AIEnrichmentUpdate is a validated AI result that can be committed atomically.
+type AIEnrichmentUpdate struct {
+	SongID       string
+	Genres       []string
+	Mood         string
+	Energy       string
+	Tempo        string
+	BPM          int
+	Instrumental bool
+	OriginalYear int
+}
+
+// AIEnrichmentApplyResult reports the number of fields changed in one batch.
+type AIEnrichmentApplyResult struct{ Genres, Mood, Years int }
+
+// ApplyAIEnrichmentBatch applies a batch transactionally and only fills fields
+// that are missing or low-detail unless force is requested.
+func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (AIEnrichmentApplyResult, error) {
+	var result AIEnrichmentApplyResult
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, update := range updates {
+		var genreJSON, mood, energy, tempo sql.NullString
+		var originalYear sql.NullInt64
+		var yearUncertain sql.NullBool
+		if err := tx.QueryRow(`SELECT genre, mood, energy, tempo, original_year, year_uncertain FROM songs WHERE id = ?`, update.SongID).
+			Scan(&genreJSON, &mood, &energy, &tempo, &originalYear, &yearUncertain); err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return result, fmt.Errorf("read enrichment target: %w", err)
+		}
+
+		currentGenre := genreJSON.String
+		applyGenres := len(update.Genres) > 0 && (force || genreNeedsEnrichment(currentGenre))
+		applyMood := update.Mood != "" && (force || !mood.Valid || strings.TrimSpace(mood.String) == "")
+		applyYear := update.OriginalYear > 0 && (force || (yearUncertain.Valid && yearUncertain.Bool && (!originalYear.Valid || originalYear.Int64 == 0)))
+		if !applyGenres && !applyMood && !applyYear {
+			continue
+		}
+
+		newGenre, newMood, newEnergy, newTempo := currentGenre, mood.String, energy.String, tempo.String
+		newOriginalYear, newYearUncertain := originalYear.Int64, yearUncertain.Bool
+		newBPM, newInstrumental := 0, false
+		if applyGenres {
+			normalized := NormalizeGenres(update.Genres)
+			if encoded, err := json.Marshal(normalized); err != nil {
+				return result, err
+			} else {
+				newGenre = string(encoded)
+			}
+			result.Genres++
+		}
+		if applyMood {
+			newMood, newEnergy, newTempo = update.Mood, update.Energy, update.Tempo
+			newBPM, newInstrumental = update.BPM, update.Instrumental
+			result.Mood++
+		}
+		if applyYear {
+			newOriginalYear, newYearUncertain = int64(update.OriginalYear), false
+			result.Years++
+		}
+		now := time.Now().Unix()
+		if _, err := tx.Exec(`UPDATE songs SET genre = ?, mood = ?, energy = ?, tempo = ?, bpm = CASE WHEN ? THEN ? ELSE bpm END, instrumental = CASE WHEN ? THEN ? ELSE instrumental END, mood_analyzed_at = CASE WHEN ? THEN ? ELSE mood_analyzed_at END, original_year = ?, year_uncertain = ?, year_analyzed_at = CASE WHEN ? THEN ? ELSE year_analyzed_at END WHERE id = ?`,
+			newGenre, newMood, newEnergy, newTempo, applyMood, newBPM, applyMood, newInstrumental, applyMood, now, newOriginalYear, newYearUncertain, applyYear, now, update.SongID); err != nil {
+			return result, fmt.Errorf("apply enrichment update: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func genreNeedsEnrichment(genreJSON string) bool {
+	genreJSON = strings.TrimSpace(genreJSON)
+	return genreJSON == "" || genreJSON == "[]" || genreJSON == "null" ||
+		(strings.HasPrefix(genreJSON, `["`) && !strings.Contains(genreJSON, ","))
+}
+
 // UpdateSongGenres updates the genre list for a specific song.
 // Genres are normalized to consistent Title Case capitalization before saving.
 func (d *DB) UpdateSongGenres(songID string, genres []string) error {

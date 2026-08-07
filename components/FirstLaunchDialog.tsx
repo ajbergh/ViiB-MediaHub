@@ -133,7 +133,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         // Set defaults if backend doesn't return settings
         setLlmProviders([
           { id: 'ollama', name: 'Ollama (Local)', requiresKey: false, defaultModel: 'llama3.2:8b', description: 'Run AI models locally on your computer', freeformModel: true },
-          { id: 'gemini', name: 'Google Gemini', requiresKey: true, defaultModel: 'gemini-2.0-flash', description: 'Cloud-based AI from Google', freeformModel: false },
+          { id: 'gemini', name: 'Google Gemini', requiresKey: true, defaultModel: 'gemini-3.6-flash', description: 'Cloud-based AI from Google', freeformModel: false },
         ]);
       } finally {
         setLlmLoading(false);
@@ -289,6 +289,11 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         baseURL: llmBaseURL,
       });
 
+      if (llmProvider === 'openrouter') {
+        const settings = await api.getLLMSettings();
+        setLlmModels(settings.models || {});
+      }
+
       // If using Gemini as LLM provider and no geminiKey set, also save the API key for enrichment
       if (llmProvider === 'gemini' && llmApiKey && !llmApiKey.startsWith('****')) {
         await api.setSetting('gemini_api_key', llmApiKey);
@@ -365,6 +370,11 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
         apiKey: llmApiKey.startsWith('****') ? '' : llmApiKey,
         baseURL: llmBaseURL,
       });
+
+      if (llmProvider === 'openrouter') {
+        const settings = await api.getLLMSettings();
+        setLlmModels(settings.models || {});
+      }
       const result = await api.testLLMConnection();
       setLlmTestStatus(result.success ? 'success' : 'error');
       setLlmTestMessage(result.message);

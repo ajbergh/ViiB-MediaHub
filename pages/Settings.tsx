@@ -271,7 +271,8 @@ export const Settings: React.FC = () => {
       streamingStats, resetStreamingStats,
       logs, clearLogs, addLog, addSongs, resetLibrary,
       isScanning, scanProgress, setScanning, setScanProgress,
-      backendAvailable, scanFolders, loadScanFolders, addScanFolder, removeScanFolder, startBackendScan, startQuickScan
+      backendAvailable, scanFolders, loadScanFolders, addScanFolder, removeScanFolder, startBackendScan, startQuickScan,
+      setEnrichmentStatus
   } = useStore();
 
   const [tempClientId, setTempClientId] = useState(spotifyClientId);
@@ -323,6 +324,36 @@ export const Settings: React.FC = () => {
   // Remaster Detection State
   const [remasterStatus, setRemasterStatus] = useState('');
 
+  const updateGlobalEnrichmentStatus = (progress: import('../services/api').EnrichmentProgress, fallbackMessage: string) => {
+    const isFinished = progress.status === 'complete' || progress.status === 'error';
+    setEnrichmentStatus({
+      isEnriching: !isFinished,
+      totalSongs: progress.totalSongs || 0,
+      processedSongs: progress.processedSongs || 0,
+      currentBatch: progress.currentBatch || 0,
+      totalBatches: progress.totalBatches || 0,
+      message: progress.status === 'error'
+        ? `Error: ${progress.error || progress.message || fallbackMessage}`
+        : progress.message || fallbackMessage,
+    });
+
+    const details = {
+      processedSongs: progress.processedSongs || 0,
+      totalSongs: progress.totalSongs || 0,
+      currentBatch: progress.currentBatch || 0,
+      totalBatches: progress.totalBatches || 0,
+    };
+    if (progress.status === 'started') {
+      addLog('info', `[AI Enhancement] ${progress.message || fallbackMessage}`, details);
+    } else if (progress.status === 'batch_complete') {
+      addLog('info', `[AI Enhancement] ${progress.message || fallbackMessage}`, details);
+    } else if (progress.status === 'complete') {
+      addLog('success', `[AI Enhancement] ${progress.message || 'Completed'}`, details);
+    } else if (progress.status === 'error') {
+      addLog('error', `[AI Enhancement] ${progress.error || progress.message || 'Failed'}`, details);
+    }
+  };
+
   // Genre Normalization State
   const [isNormalizingGenres, setIsNormalizingGenres] = useState(false);
   const [normalizeGenresStatus, setNormalizeGenresStatus] = useState('');
@@ -371,7 +402,7 @@ export const Settings: React.FC = () => {
               setLlmProvider(settings.provider || 'ollama');
               setLlmModel(settings.model || 'llama3.2:8b');
               setLlmApiKey(settings.apiKey || '');
-              setLlmBaseURL(settings.baseURL || 'http://localhost:11434');
+              setLlmBaseURL(settings.baseURL || (settings.provider === 'ollama' ? 'http://localhost:11434' : ''));
               setLlmProviders(settings.providers || []);
               setLlmModels(settings.models || {});
           } catch (e) {
@@ -1697,7 +1728,7 @@ export const Settings: React.FC = () => {
                   ))
               )}
           </div>
-          <p className="text-[10px] text-surface-slider mt-2">Logs capture API requests to Spotify and internal errors.</p>
+          <p className="text-[10px] text-surface-slider mt-2">Logs capture AI enhancement progress, Spotify API activity, and internal errors.</p>
       </section>
 
       {/* Custom Confirmation Modal */}
@@ -1892,6 +1923,12 @@ export const Settings: React.FC = () => {
                           apiKey: llmApiKey.startsWith('****') ? '' : llmApiKey,
                           baseURL: llmBaseURL,
                         });
+                        // Saving an OpenRouter key lets the backend retrieve
+                        // its live model catalog for the dropdown.
+                        if (llmProvider === 'openrouter') {
+                          const settings = await api.getLLMSettings();
+                          setLlmModels(settings.models || {});
+                        }
                         setLlmSaveStatus('saved');
                         setTimeout(() => setLlmSaveStatus('idle'), 3000);
                       } catch (e) {
@@ -2339,9 +2376,18 @@ export const Settings: React.FC = () => {
                   setIsEnriching(true);
                   setEnrichStatus('Connecting to enrichment service...');
                   setEnrichProgress(null);
+                  setEnrichmentStatus({
+                    isEnriching: true,
+                    totalSongs: 0,
+	                    processedSongs: 0,
+	                    currentBatch: 0,
+	                    totalBatches: 0,
+	                    message: 'Starting AI genre enhancement…',
+	                  });
 
                   const eventSource = api.enrichGenresStream(forceEnrichment, (progress) => {
                     setEnrichStatus(progress.message);
+	                    updateGlobalEnrichmentStatus(progress, 'AI genre enhancement is running');
                     
                     if (progress.status === 'started' || progress.status === 'processing' || progress.status === 'batch_complete') {
                       setEnrichProgress({
@@ -2465,9 +2511,18 @@ export const Settings: React.FC = () => {
                   setIsUnifiedEnriching(true);
                   setUnifiedStatus('Connecting to unified enrichment service...');
                   setUnifiedProgress(null);
+	                setEnrichmentStatus({
+	                  isEnriching: true,
+	                  totalSongs: 0,
+	                  processedSongs: 0,
+	                  currentBatch: 0,
+	                  totalBatches: 0,
+	                  message: 'Starting AI metadata enhancement…',
+	                });
 
                   const eventSource = api.enrichAllMetadataStream(forceUnified, (progress) => {
                     setUnifiedStatus(progress.message);
+	                    updateGlobalEnrichmentStatus(progress, 'AI metadata enhancement is running');
                     
                     if (progress.status === 'started' || progress.status === 'processing' || progress.status === 'batch_complete') {
                       setUnifiedProgress({
@@ -2557,9 +2612,44 @@ export const Settings: React.FC = () => {
                   setIsMoodAnalyzing(true);
                   setMoodStatus('Connecting to mood analysis service...');
                   setMoodProgress(null);
+	                  setEnrichmentStatus({
+	                    isEnriching: true,
+	                    totalSongs: 0,
+	                    processedSongs: 0,
+	                    currentBatch: 0,
+                    totalBatches: 0,
+                    message: 'Starting AI mood enhancement…',
+                  });
+	                  addLog('info', '[AI Enhancement] Requested mood & energy analysis using the current AI provider');
 
-                  const eventSource = api.enrichMoodStream((progress) => {
+	                  let receivedFirstProgress = false;
+	                  let eventSource: EventSource;
+	                  const startupTimeout = window.setTimeout(() => {
+	                    if (receivedFirstProgress) return;
+	                    const message = 'Mood analysis did not start within 15 seconds. Check the backend connection and AI provider settings.';
+	                    const timeoutProgress = {
+	                      status: 'error' as const,
+	                      message,
+	                      error: message,
+	                      totalSongs: 0,
+	                      processedSongs: 0,
+	                      currentBatch: 0,
+	                      totalBatches: 0,
+	                    };
+	                    updateGlobalEnrichmentStatus(timeoutProgress, message);
+	                    setIsMoodAnalyzing(false);
+	                    setMoodProgress(null);
+	                    setMoodStatus(`Error: ${message}`);
+	                    eventSource?.close();
+	                  }, 15000);
+
+	                  eventSource = api.enrichMoodStream((progress) => {
+	                    if (!receivedFirstProgress) {
+	                      receivedFirstProgress = true;
+	                      window.clearTimeout(startupTimeout);
+	                    }
                     setMoodStatus(progress.message);
+	                    updateGlobalEnrichmentStatus(progress, 'AI mood enhancement is running');
                     
                     if (progress.status === 'started' || progress.status === 'processing' || progress.status === 'batch_complete') {
                       setMoodProgress({
@@ -2572,6 +2662,7 @@ export const Settings: React.FC = () => {
                     
                     if (progress.status === 'complete') {
                       setIsMoodAnalyzing(false);
+	                      window.clearTimeout(startupTimeout);
                       setTimeout(() => setMoodProgress(null), 5000);
                     }
                     
@@ -2579,6 +2670,7 @@ export const Settings: React.FC = () => {
                       setIsMoodAnalyzing(false);
                       setMoodProgress(null);
                       setMoodStatus(`Error: ${progress.error || progress.message}`);
+	                      window.clearTimeout(startupTimeout);
                     }
                   });
 

@@ -4,9 +4,8 @@
 // energy, tempo, BPM, instrumental detection, original year) using any
 // supported LLM provider via the omnillm SDK.
 //
-// The enrichment uses TOON (Token-Oriented Object Notation) format for
-// maximum token efficiency, allowing up to 200 songs per batch with
-// Gemini and approximately 100 songs with other providers.
+// Enrichment uses a validated JSON request/response contract so arbitrary song
+// tags cannot corrupt a batch or silently update an unrelated record.
 //
 // Key functions:
 //   - EnrichAllMetadata: Unified enrichment for all metadata fields
@@ -20,6 +19,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -72,16 +72,18 @@ type OriginalYearAnalysis struct {
 func (p *Provider) GetOptimalBatchSize() int {
 	switch p.providerName {
 	case ProviderGemini:
-		return 200 // Gemini has large context window, handles TOON well
+		return 100 // Structured JSON needs more output room than the former TOON format
 	case ProviderOpenAI:
-		return 100 // GPT-4o handles 100 songs well
+		return 75
 	case ProviderAnthropic:
-		return 150 // Claude has large context window
+		return 75
 	case ProviderOllama:
 		// Batch size depends on model size - smaller models need smaller batches
 		return p.getOllamaBatchSize()
 	case ProviderXAI:
-		return 100 // Similar to OpenAI
+		return 75
+	case ProviderOpenRouter:
+		return 50 // Routed models vary substantially in context and output limits
 	default:
 		return 50 // Conservative default
 	}
@@ -131,36 +133,14 @@ func (p *Provider) getOllamaBatchSize() int {
 	return 15
 }
 
-// UseTOONFormat returns whether to use TOON format for this provider.
-// TOON is more token-efficient but requires good instruction-following.
+// UseTOONFormat is retained for compatibility. Enrichment now always uses JSON
+// because it safely represents titles and artists containing delimiters.
 func (p *Provider) UseTOONFormat() bool {
-	// TOON works well with most modern LLMs
-	switch p.providerName {
-	case ProviderGemini, ProviderOpenAI, ProviderAnthropic, ProviderXAI:
-		return true
-	case ProviderOllama:
-		// Check if using a capable model
-		model := strings.ToLower(p.model)
-		return strings.Contains(model, "llama3") ||
-			strings.Contains(model, "mixtral") ||
-			strings.Contains(model, "gemma") ||
-			strings.Contains(model, "qwen")
-	default:
-		return false
-	}
+	return false
 }
 
-// EnrichAllMetadata performs unified enrichment of genres, mood, energy, tempo, BPM,
-// instrumental detection, and original year analysis in a single API call.
-//
-// This method uses TOON (Token-Oriented Object Notation) format instead of JSON
-// for maximum token efficiency, allowing up to 200 songs per batch.
-//
-// TOON format uses pipe-delimited values with semicolon-separated genres:
-// Input:  ID|Artist|Title|Album|Year
-// Output: ID|Genres|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
-//
-// Returns a map of song ID to UnifiedMetadata.
+// EnrichAllMetadata performs unified enrichment in one LLM request. It uses a
+// structured JSON contract so track metadata cannot corrupt the batch format.
 func (p *Provider) EnrichAllMetadata(ctx context.Context, songs []db.Song) (map[string]*UnifiedMetadata, error) {
 	if len(songs) == 0 {
 		return nil, nil
@@ -168,32 +148,38 @@ func (p *Provider) EnrichAllMetadata(ctx context.Context, songs []db.Song) (map[
 
 	logger.API("LLM EnrichAllMetadata: Starting with %d songs using %s/%s", len(songs), p.providerName, p.model)
 
-	// Build prompt with TOON-formatted song list
-	var promptBuilder strings.Builder
-	promptBuilder.WriteString(EnrichmentSystemPrompt)
-	promptBuilder.WriteString("\n")
-
-	for _, song := range songs {
-		promptBuilder.WriteString(fmt.Sprintf("%s|%s|%s|%s|%d\n",
-			song.ID, song.Artist, song.Title, song.Album, song.Year))
+	type inputSong struct {
+		ID     string `json:"id"`
+		Artist string `json:"artist"`
+		Title  string `json:"title"`
+		Album  string `json:"album"`
+		Year   int    `json:"year"`
 	}
+	input := make([]inputSong, 0, len(songs))
+	allowedIDs := make(map[string]struct{}, len(songs))
+	for _, song := range songs {
+		input = append(input, inputSong{song.ID, song.Artist, song.Title, song.Album, song.Year})
+		allowedIDs[song.ID] = struct{}{}
+	}
+	prompt, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("marshal enrichment input: %w", err)
+	}
+	logger.API("LLM EnrichAllMetadata: Input length: %d chars", len(prompt))
 
-	prompt := promptBuilder.String()
-	logger.API("LLM EnrichAllMetadata: Prompt length: %d chars", len(prompt))
+	var result map[string]*UnifiedMetadata
 
-	result := make(map[string]*UnifiedMetadata)
-
-	err := p.doWithRetry(ctx, func() error {
+	err = p.doWithRetry(ctx, func() error {
 		resp, err := p.client.CreateChatCompletion(ctx, &omnillm.ChatCompletionRequest{
 			Model: p.model,
 			Messages: []omnillm.Message{
-				{Role: omnillm.RoleUser, Content: prompt},
+				{Role: omnillm.RoleSystem, Content: EnrichmentSystemPrompt},
+				{Role: omnillm.RoleUser, Content: string(prompt)},
 			},
-			Temperature: floatPtr(0.2), // Low temperature for consistent structured output
+			Temperature: p.temperature(0.2), // Low temperature for consistent structured output when supported
 		})
 		if err != nil {
-			// Check if it's a rate limit error
-			if isRateLimitError(err) {
+			if isTransientError(err) {
 				return &retriableError{err}
 			}
 			return fmt.Errorf("LLM request failed: %w", err)
@@ -205,48 +191,11 @@ func (p *Provider) EnrichAllMetadata(ctx context.Context, songs []db.Song) (map[
 
 		responseText := resp.Choices[0].Message.Content
 		logger.API("LLM EnrichAllMetadata: Response length: %d chars", len(responseText))
-
-		// Log preview for debugging
-		preview := responseText
-		if len(preview) > 500 {
-			preview = preview[:500] + "..."
+		parsed, err := parseEnrichmentResponse(responseText, allowedIDs)
+		if err != nil {
+			return &retriableError{fmt.Errorf("invalid enrichment response: %w", err)}
 		}
-		logger.API("LLM EnrichAllMetadata: Response preview: %s", preview)
-
-		// Remove any markdown formatting
-		responseText = strings.TrimPrefix(responseText, "```")
-		responseText = strings.TrimSuffix(responseText, "```")
-		responseText = strings.TrimSpace(responseText)
-
-		// Parse TOON response line by line
-		lines := strings.Split(responseText, "\n")
-		logger.API("LLM EnrichAllMetadata: Parsing %d lines", len(lines))
-
-		parseErrors := 0
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-
-			id, metadata, err := parseTOONLine(line)
-			if err != nil {
-				parseErrors++
-				if parseErrors <= 3 {
-					logger.API("LLM EnrichAllMetadata: Parse error on line: %s - %v", line, err)
-				}
-				continue
-			}
-
-			result[id] = metadata
-		}
-
-		logger.API("LLM EnrichAllMetadata: Parsed %d songs successfully, %d parse errors", len(result), parseErrors)
-
-		// Verify we got results for at least some songs
-		if len(result) == 0 && len(songs) > 0 {
-			return &retriableError{fmt.Errorf("failed to parse TOON response: no valid entries")}
-		}
+		result = parsed
 
 		return nil
 	})
@@ -256,7 +205,7 @@ func (p *Provider) EnrichAllMetadata(ctx context.Context, songs []db.Song) (map[
 		return nil, err
 	}
 
-	logger.API("LLM EnrichAllMetadata: Complete - returned %d results", len(result))
+	logger.API("LLM EnrichAllMetadata: Complete - returned %d validated results", len(result))
 	return result, nil
 }
 
@@ -302,7 +251,7 @@ func (p *Provider) AnalyzeSongMood(ctx context.Context, songs []db.Song) (map[st
 	// Extract mood analysis from unified result
 	result := make(map[string]*MoodAnalysis)
 	for id, meta := range unified {
-		if meta != nil {
+		if meta != nil && meta.Mood != "" {
 			result[id] = &MoodAnalysis{
 				Mood:         meta.Mood,
 				Energy:       meta.Energy,
@@ -405,8 +354,8 @@ func (p *Provider) doWithRetry(ctx context.Context, fn func() error) error {
 	return fmt.Errorf("max retries exceeded: %w", lastErr)
 }
 
-// isRateLimitError checks if an error is a rate limit error
-func isRateLimitError(err error) bool {
+// isTransientError identifies provider failures where retrying is useful.
+func isTransientError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -414,7 +363,103 @@ func isRateLimitError(err error) bool {
 	return strings.Contains(errStr, "429") ||
 		strings.Contains(errStr, "rate") ||
 		strings.Contains(errStr, "quota") ||
-		strings.Contains(errStr, "too many requests")
+		strings.Contains(errStr, "too many requests") ||
+		strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "temporar") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, " 5") ||
+		strings.Contains(errStr, "status 5")
+}
+
+type enrichmentResponse struct {
+	ID           string   `json:"id"`
+	Genres       []string `json:"genres"`
+	Mood         string   `json:"mood"`
+	Energy       string   `json:"energy"`
+	Tempo        string   `json:"tempo"`
+	BPM          int      `json:"bpm"`
+	Instrumental bool     `json:"instrumental"`
+	OriginalYear int      `json:"original_year"`
+}
+
+func parseEnrichmentResponse(responseText string, allowedIDs map[string]struct{}) (map[string]*UnifiedMetadata, error) {
+	responseText = strings.TrimSpace(responseText)
+	if strings.HasPrefix(responseText, "```") {
+		responseText = strings.TrimPrefix(responseText, "```")
+		if newline := strings.IndexByte(responseText, '\n'); newline >= 0 {
+			responseText = responseText[newline+1:]
+		}
+		responseText = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(responseText), "```"))
+	}
+
+	var records []enrichmentResponse
+	if err := json.Unmarshal([]byte(responseText), &records); err != nil {
+		return nil, fmt.Errorf("expected JSON array: %w", err)
+	}
+	if len(records) != len(allowedIDs) {
+		return nil, fmt.Errorf("expected %d records, got %d", len(allowedIDs), len(records))
+	}
+
+	result := make(map[string]*UnifiedMetadata, len(records))
+	for _, record := range records {
+		if _, ok := allowedIDs[record.ID]; !ok {
+			return nil, fmt.Errorf("response contains an unknown id")
+		}
+		if _, duplicate := result[record.ID]; duplicate {
+			return nil, fmt.Errorf("response contains duplicate id %q", record.ID)
+		}
+		metadata, err := validateEnrichmentMetadata(record)
+		if err != nil {
+			return nil, fmt.Errorf("id %q: %w", record.ID, err)
+		}
+		result[record.ID] = metadata
+	}
+	if len(result) != len(allowedIDs) {
+		return nil, fmt.Errorf("response omitted one or more requested ids")
+	}
+	return result, nil
+}
+
+func validateEnrichmentMetadata(record enrichmentResponse) (*UnifiedMetadata, error) {
+	genres := db.NormalizeGenres(record.Genres)
+	if len(genres) > 5 {
+		genres = genres[:5]
+	}
+	mood, err := normalizeChoice(record.Mood, map[string]string{
+		"happy": "happy", "sad": "sad", "energetic": "energetic", "chill": "chill",
+		"romantic": "romantic", "melancholic": "melancholic", "aggressive": "aggressive",
+		"peaceful": "peaceful", "nostalgic": "nostalgic", "uplifting": "uplifting",
+		"calm": "peaceful", "intense": "energetic", "dreamy": "chill",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("invalid mood: %w", err)
+	}
+	energy, err := normalizeChoice(record.Energy, map[string]string{"low": "low", "medium": "medium", "high": "high"})
+	if err != nil {
+		return nil, fmt.Errorf("invalid energy: %w", err)
+	}
+	tempo, err := normalizeChoice(record.Tempo, map[string]string{"slow": "slow", "medium": "medium", "fast": "fast"})
+	if err != nil {
+		return nil, fmt.Errorf("invalid tempo: %w", err)
+	}
+	if record.BPM != 0 && (record.BPM < 20 || record.BPM > 300) {
+		return nil, fmt.Errorf("BPM must be 0 or between 20 and 300")
+	}
+	if record.OriginalYear != 0 && (record.OriginalYear < 1900 || record.OriginalYear > time.Now().Year()+1) {
+		return nil, fmt.Errorf("original_year is outside the accepted range")
+	}
+	return &UnifiedMetadata{Genres: genres, Mood: mood, Energy: energy, Tempo: tempo, BPM: record.BPM, Instrumental: record.Instrumental, OriginalYear: record.OriginalYear}, nil
+}
+
+func normalizeChoice(value string, allowed map[string]string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" || value == "unknown" {
+		return "", nil
+	}
+	if normalized, ok := allowed[value]; ok {
+		return normalized, nil
+	}
+	return "", fmt.Errorf("%q is not allowed", value)
 }
 
 // parseTOONLine parses a single line of TOON (Token-Oriented Object Notation) format.
@@ -524,5 +569,18 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 		}
 	}
 
-	return id, metadata, nil
+	validated, validationErr := validateEnrichmentMetadata(enrichmentResponse{
+		ID:           id,
+		Genres:       metadata.Genres,
+		Mood:         metadata.Mood,
+		Energy:       metadata.Energy,
+		Tempo:        metadata.Tempo,
+		BPM:          metadata.BPM,
+		Instrumental: metadata.Instrumental,
+		OriginalYear: metadata.OriginalYear,
+	})
+	if validationErr != nil {
+		return "", nil, validationErr
+	}
+	return id, validated, nil
 }

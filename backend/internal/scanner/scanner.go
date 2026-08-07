@@ -609,6 +609,12 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		if lastfmEnabled == "true" && lastfmAPIKey != "" {
 			logger.Scanner("Using Last.FM for metadata enrichment...")
 			s.enrichWithLastFM()
+			if enrichmentSource == "hybrid" {
+				// Last.FM only updates tracks it can match. Re-query afterward so
+				// the LLM receives just unresolved or under-enriched tracks.
+				logger.Scanner("Running AI fallback for unresolved Last.FM tracks...")
+				s.enrichWithLLM()
+			}
 		} else if enrichmentSource == "hybrid" {
 			logger.Scanner("Last.FM not configured, falling back to AI enrichment...")
 			s.enrichWithLLM()
@@ -951,8 +957,10 @@ func (s *Scanner) enrichWithLLM() {
 	}
 	defer provider.Close()
 
-	// Get songs needing enrichment
-	allSongsToEnrich, err := s.db.GetSongsWithMissingGenres(10000)
+	// Include tracks with only one genre as well as tracks Last.FM could not
+	// match. This makes hybrid mode a genuine fallback rather than a choice of
+	// one provider or the other.
+	allSongsToEnrich, err := s.db.GetSongsForEnrichment(10000, false, 0)
 	if err != nil || len(allSongsToEnrich) == 0 {
 		logger.Scanner("No songs need LLM enrichment")
 		return

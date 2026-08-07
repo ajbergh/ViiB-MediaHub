@@ -116,6 +116,7 @@ Select and configure the LLM backend used for:
 | Google Gemini | Requires Gemini API key |
 | OpenAI | Requires OpenAI API key |
 | Anthropic | Requires Anthropic API key |
+| OpenRouter | Requires an OpenRouter API key; available text models are loaded into the model dropdown after saving the key |
 | Ollama | Local model; set the model name and endpoint URL |
 | X.AI (Grok) | Requires X.AI API key |
 

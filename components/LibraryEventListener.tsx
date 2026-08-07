@@ -54,6 +54,7 @@ const LibraryEventListener = () => {
   const currentRevisionRef = useRef(0);
   const syncPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const deltaAvailableRef = useRef(false);
+	const lastEnrichmentProgressRef = useRef('');
 
   useEffect(() => useStore.subscribe(state => { storeRef.current = state; }), []);
 
@@ -108,7 +109,7 @@ const LibraryEventListener = () => {
     const handleLegacyEvent = (event: MessageEvent) => {
       try {
         const payload = JSON.parse(event.data) as LegacyLibraryEvent;
-        const { setScanning, setScanProgress, setEnrichmentStatus, refreshLibrary } = storeRef.current;
+        const { setScanning, setScanProgress, setEnrichmentStatus, refreshLibrary, addLog } = storeRef.current;
         switch (payload.type) {
           case 'scan_started':
             setScanning(true);
@@ -129,6 +130,7 @@ const LibraryEventListener = () => {
             break;
           case 'enrichment_started':
           case 'mood_started':
+			lastEnrichmentProgressRef.current = '';
             setEnrichmentStatus({
               isEnriching: true,
               totalSongs: payload.data?.totalSongs || 0,
@@ -137,6 +139,7 @@ const LibraryEventListener = () => {
               totalBatches: payload.data?.totalBatches || 0,
               message: payload.message,
             });
+			addLog('info', `[AI Enhancement] ${payload.message}`, payload.data);
             break;
           case 'enrichment_progress':
           case 'mood_progress':
@@ -148,6 +151,11 @@ const LibraryEventListener = () => {
               totalBatches: payload.data?.totalBatches || 0,
               message: payload.message,
             });
+			const progressKey = `${payload.type}:${payload.data?.processedSongs || 0}:${payload.data?.totalSongs || 0}`;
+			if (payload.data?.processedSongs && progressKey !== lastEnrichmentProgressRef.current) {
+				lastEnrichmentProgressRef.current = progressKey;
+				addLog('info', `[AI Enhancement] ${payload.message}`, payload.data);
+			}
             break;
           case 'enrichment_complete':
           case 'mood_complete':
@@ -156,6 +164,7 @@ const LibraryEventListener = () => {
               processedSongs: payload.data?.enrichedSongs || payload.data?.processedSongs || 0,
               message: payload.message,
             });
+			addLog('success', `[AI Enhancement] ${payload.message}`, payload.data);
             if (deltaAvailableRef.current) enqueueSync();
             else refreshLibrary();
             window.dispatchEvent(new CustomEvent(payload.type, { detail: payload }));
