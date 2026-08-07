@@ -423,8 +423,8 @@ Source-file tag write-back is intentionally unavailable. Metadata editing change
 
 | Key | Description | Example |
 |-----|-------------|---------|
-| `llm_provider` | Provider name | `gemini`, `openai`, `anthropic`, `ollama`, `xai` |
-| `llm_model` | Model name | `gemini-2.0-flash`, `gpt-4o-mini`, `llama3.2:8b` |
+| `llm_provider` | Provider name | `gemini`, `openai`, `anthropic`, `openrouter`, `ollama`, `xai` |
+| `llm_model` | Model name | `gemini-3.6-flash`, `gpt-5-mini`, `llama3.2:8b` |
 | `llm_api_key` | API key (AES-256-GCM encrypted at rest) | — |
 | `llm_base_url` | Custom endpoint | `http://localhost:11434` |
 

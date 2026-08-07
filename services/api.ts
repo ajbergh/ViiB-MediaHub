@@ -1091,7 +1091,7 @@ export const api = {
    * Streams unified metadata enrichment progress via SSE.
    * 
    * This is the RECOMMENDED enrichment endpoint - it enriches ALL metadata in a single
-   * efficient API call per batch using TOON (Token-Oriented Object Notation) format.
+   * efficient API call per batch using a validated JSON response contract.
    * 
    * Enriches:
    * - genres: Detailed genre classifications
@@ -1103,8 +1103,8 @@ export const api = {
    * - originalYear: Original release year (for remasters)
    * 
    * Benefits:
-   * - 3x more token efficient than JSON-based methods
-   * - 200 songs per batch (vs 50 for JSON)
+   * - Validates that every requested song receives a result before writing
+   * - Uses provider-specific batch sizes to leave room for structured output
    * - Single API call gets all data (vs 3 separate calls)
    * 
    * @param force - If true, re-enriches songs that already have metadata

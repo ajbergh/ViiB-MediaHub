@@ -8,6 +8,7 @@
 //   - OpenAI (GPT-4o, GPT-4o-mini)
 //   - Anthropic (Claude Opus, Sonnet, Haiku)
 //   - X.AI (Grok-4, Grok-3)
+//   - OpenRouter (access to its supported text models)
 //   - AWS Bedrock (via external module)
 //
 // The package provides:
@@ -46,21 +47,24 @@ import (
 
 // Supported provider names as constants for type safety
 const (
-	ProviderOllama    = "ollama"
-	ProviderGemini    = "gemini"
-	ProviderOpenAI    = "openai"
-	ProviderAnthropic = "anthropic"
-	ProviderXAI       = "xai"
+	ProviderOllama     = "ollama"
+	ProviderGemini     = "gemini"
+	ProviderOpenAI     = "openai"
+	ProviderAnthropic  = "anthropic"
+	ProviderXAI        = "xai"
+	ProviderOpenRouter = "openrouter"
 )
 
 // Default configuration
 const (
-	DefaultOllamaEndpoint = "http://localhost:11434"
-	DefaultOllamaModel    = "llama3.2:8b"
-	DefaultGeminiModel    = "gemini-2.0-flash"
-	DefaultOpenAIModel    = "gpt-4o-mini"
-	DefaultAnthropicModel = "claude-3-5-haiku-latest"
-	DefaultXAIModel       = "grok-2"
+	DefaultOllamaEndpoint  = "http://localhost:11434"
+	DefaultOllamaModel     = "llama3.2:8b"
+	DefaultGeminiModel     = "gemini-3.6-flash"
+	DefaultOpenAIModel     = "gpt-5-mini"
+	DefaultAnthropicModel  = "claude-sonnet-5"
+	DefaultXAIModel        = "grok-4.5"
+	DefaultOpenRouterModel = "openrouter/auto"
+	DefaultOpenRouterURL   = "https://openrouter.ai/api/v1"
 )
 
 // HTTP client timeouts per provider (local models need much longer timeouts)
@@ -72,8 +76,8 @@ const (
 // Settings contains configuration for LLM provider.
 // Stored encrypted in the settings table.
 type Settings struct {
-	Provider   string `json:"provider"`   // "ollama", "gemini", "openai", "anthropic", "xai"
-	Model      string `json:"model"`      // Model name (e.g., "llama3.2:8b", "gemini-2.0-flash")
+	Provider   string `json:"provider"`   // "ollama", "gemini", "openai", "anthropic", "xai", "openrouter"
+	Model      string `json:"model"`      // Model name (e.g., "llama3.2:8b", "gemini-3.6-flash")
 	APIKey     string `json:"apiKey"`     // API key (empty for Ollama)
 	BaseURL    string `json:"baseURL"`    // Custom endpoint (default for Ollama: localhost:11434)
 	MaxRetries int    `json:"maxRetries"` // Default: 3
@@ -141,13 +145,7 @@ func NewProvider(settings Settings) (*Provider, error) {
 		},
 	}
 
-	// Set custom base URL if provided
-	if settings.BaseURL != "" {
-		config.BaseURL = settings.BaseURL
-	} else if settings.Provider == ProviderOllama {
-		// Default Ollama endpoint
-		config.BaseURL = DefaultOllamaEndpoint
-	}
+	config.BaseURL = baseURLForProvider(settings.Provider, settings.BaseURL)
 
 	// Create omnillm client
 	client, err := omnillm.NewClient(config)
@@ -171,6 +169,22 @@ func NewProvider(settings Settings) (*Provider, error) {
 	}, nil
 }
 
+// baseURLForProvider prevents an old Ollama endpoint from being reused after a
+// user switches to a cloud provider. The UI only supports custom endpoints for
+// Ollama; OpenRouter always uses its OpenAI-compatible API endpoint.
+func baseURLForProvider(provider, configuredBaseURL string) string {
+	if provider == ProviderOllama {
+		if configuredBaseURL != "" {
+			return configuredBaseURL
+		}
+		return DefaultOllamaEndpoint
+	}
+	if provider == ProviderOpenRouter {
+		return DefaultOpenRouterURL
+	}
+	return ""
+}
+
 // NewProviderFromDB creates a provider using settings stored in the database.
 // This reads the llm_provider, llm_model, llm_api_key, and llm_base_url settings.
 func NewProviderFromDB(database *db.DB) (*Provider, error) {
@@ -181,6 +195,10 @@ func NewProviderFromDB(database *db.DB) (*Provider, error) {
 
 	if provider == "" {
 		provider = ProviderOllama // Default to Ollama
+	}
+	// A cloud provider must never inherit the prior local Ollama endpoint.
+	if provider != ProviderOllama {
+		baseURL = ""
 	}
 
 	settings := Settings{
@@ -237,7 +255,7 @@ func (p *Provider) ParsePlaylistFilter(ctx context.Context, prompt string) (*Pla
 			{Role: omnillm.RoleSystem, Content: PlaylistFilterSystemPrompt},
 			{Role: omnillm.RoleUser, Content: prompt},
 		},
-		Temperature: floatPtr(0.3), // Low temperature for structured output
+		Temperature: p.temperature(0.3), // Low temperature for structured output when supported
 	})
 	if err != nil {
 		return nil, fmt.Errorf("LLM request failed: %w", err)
@@ -301,7 +319,7 @@ func (p *Provider) ParsePlaylistFilterWithContext(ctx context.Context, prompt st
 			{Role: omnillm.RoleSystem, Content: systemPrompt},
 			{Role: omnillm.RoleUser, Content: prompt},
 		},
-		Temperature: floatPtr(0.3), // Low temperature for structured output
+		Temperature: p.temperature(0.3), // Low temperature for structured output when supported
 	})
 	if err != nil {
 		return nil, fmt.Errorf("LLM request failed: %w", err)
@@ -341,7 +359,7 @@ func (p *Provider) TestConnection(ctx context.Context) error {
 			{Role: omnillm.RoleUser, Content: "Reply with only the word: OK"},
 		},
 		MaxTokens:   intPtr(10),
-		Temperature: floatPtr(0),
+		Temperature: p.temperature(0),
 	})
 	if err != nil {
 		return fmt.Errorf("connection test failed: %w", err)
@@ -385,6 +403,10 @@ func mapProviderName(provider string) string {
 		return "anthropic"
 	case ProviderXAI:
 		return "xai"
+	case ProviderOpenRouter:
+		// omnillm's OpenAI adapter is compatible with OpenRouter when pointed at
+		// OpenRouter's API base URL.
+		return "openai"
 	default:
 		return ""
 	}
@@ -403,6 +425,8 @@ func getDefaultModel(provider string) string {
 		return DefaultAnthropicModel
 	case ProviderXAI:
 		return DefaultXAIModel
+	case ProviderOpenRouter:
+		return DefaultOpenRouterModel
 	default:
 		return ""
 	}
@@ -450,7 +474,7 @@ func (p *Provider) Generate(ctx context.Context, systemPrompt, userPrompt string
 			{Role: omnillm.RoleSystem, Content: systemPrompt},
 			{Role: omnillm.RoleUser, Content: userPrompt},
 		},
-		Temperature: floatPtr(0.4), // Slightly higher temp for creative generation
+		Temperature: p.temperature(0.4), // Slightly higher temp for creative generation when supported
 	})
 	if err != nil {
 		return "", fmt.Errorf("LLM request failed: %w", err)
@@ -466,6 +490,16 @@ func (p *Provider) Generate(ctx context.Context, systemPrompt, userPrompt string
 // Helper functions
 func floatPtr(f float64) *float64 { return &f }
 func intPtr(i int) *int           { return &i }
+
+// temperature returns nil for providers and models that reject explicit
+// sampling controls. Current Claude models require their default sampling
+// behavior, so the field must be omitted entirely.
+func (p *Provider) temperature(value float64) *float64 {
+	if p.providerName == ProviderAnthropic {
+		return nil
+	}
+	return floatPtr(value)
+}
 
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {

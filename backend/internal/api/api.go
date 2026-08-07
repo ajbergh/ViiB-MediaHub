@@ -2050,7 +2050,7 @@ func (a *API) detectRemasters(w http.ResponseWriter, r *http.Request) {
 // enrichAllMetadataStream provides SSE streaming for unified metadata enrichment.
 // This is the recommended endpoint - it enriches genres, mood, energy, tempo, BPM,
 // instrumental detection, and original year in a single efficient API call per batch.
-// Uses TOON format for ~3x token efficiency compared to JSON-based methods.
+// Uses a strict JSON contract to keep malformed model output from reaching storage.
 // Supports any configured LLM provider (Ollama, Gemini, OpenAI, Anthropic, X.AI).
 func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	logger.API("enrichAllMetadataStream: Starting unified metadata enrichment")
@@ -2095,19 +2095,23 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer provider.Close()
 
-	// Get all songs needing any enrichment
-	// Use GetSongsForEnrichment to get songs without genres (primary need)
+	// Snapshot every song needing any enrichment before writing results. This
+	// prevents pagination from skipping rows as individual fields are filled.
 	logger.API("enrichAllMetadataStream: Querying songs for enrichment (force=%v)", force)
-	allSongs, err := a.db.GetSongsForEnrichment(10000, force, 0)
-	logger.API("enrichAllMetadataStream: Got %d songs, err=%v", len(allSongs), err)
-	if err != nil {
-		sendEvent(EnrichmentProgress{
-			Status:  "error",
-			Message: "Failed to query songs",
-			Error:   err.Error(),
-		})
-		return
+	allSongs := make([]db.Song, 0)
+	const queryPageSize = 500
+	for offset := 0; ; offset += queryPageSize {
+		page, queryErr := a.db.GetSongsForAIEnrichment(queryPageSize, force, offset)
+		if queryErr != nil {
+			sendEvent(EnrichmentProgress{Status: "error", Message: "Failed to query songs", Error: queryErr.Error()})
+			return
+		}
+		allSongs = append(allSongs, page...)
+		if len(page) < queryPageSize {
+			break
+		}
 	}
+	logger.API("enrichAllMetadataStream: Got %d songs", len(allSongs))
 
 	totalSongs := len(allSongs)
 	if totalSongs == 0 {
@@ -2183,40 +2187,24 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 
 			logger.API("enrichAllMetadataStream: Worker %d batch %d returned %d results", workerID, job.batchNum+1, len(unified))
 
-			// Update database
-			batchGenres := 0
-			batchMood := 0
-			batchYears := 0
-
+			updates := make([]db.AIEnrichmentUpdate, 0, len(unified))
 			for id, meta := range unified {
 				if meta == nil {
 					continue
 				}
-
-				if len(meta.Genres) > 0 {
-					if err := a.db.UpdateSongGenres(id, meta.Genres); err != nil {
-						logger.API("enrichAllMetadataStream: Failed to update genres for %s: %v", id, err)
-					} else {
-						batchGenres++
-					}
-				}
-
-				if meta.Mood != "" {
-					if err := a.db.UpdateSongMood(id, meta.Mood, meta.Energy, meta.Tempo, meta.BPM, meta.Instrumental); err != nil {
-						logger.API("enrichAllMetadataStream: Failed to update mood for %s: %v", id, err)
-					} else {
-						batchMood++
-					}
-				}
-
-				if meta.OriginalYear > 0 {
-					if err := a.db.SetOriginalYear(id, meta.OriginalYear); err != nil {
-						logger.API("enrichAllMetadataStream: Failed to update year for %s: %v", id, err)
-					} else {
-						batchYears++
-					}
-				}
+				updates = append(updates, db.AIEnrichmentUpdate{SongID: id, Genres: meta.Genres, Mood: meta.Mood, Energy: meta.Energy, Tempo: meta.Tempo, BPM: meta.BPM, Instrumental: meta.Instrumental, OriginalYear: meta.OriginalYear})
 			}
+			applied, updateErr := a.db.ApplyAIEnrichmentBatch(updates, force)
+			if updateErr != nil {
+				logger.API("enrichAllMetadataStream: Failed to apply batch %d atomically: %v", job.batchNum+1, updateErr)
+				mu.Lock()
+				failedBatches++
+				completedBatches++
+				mu.Unlock()
+				results <- struct{}{}
+				continue
+			}
+			batchGenres, batchMood, batchYears := applied.Genres, applied.Mood, applied.Years
 
 			// Update totals thread-safely
 			mu.Lock()
@@ -2527,7 +2515,6 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No LLM configured. Set AI Provider in Settings.", http.StatusServiceUnavailable)
 		return
 	}
-	defer provider.Close()
 
 	// Setup SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -2544,6 +2531,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 	// Get songs without mood analysis
 	songs, err := a.db.GetSongsWithoutMood(1000)
 	if err != nil {
+		provider.Close()
 		logger.API("enrichMoodStream: Failed to get songs: %v", err)
 		jsonData, _ := json.Marshal(EnrichmentProgress{
 			Status:  "error",
@@ -2557,6 +2545,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 
 	totalSongs := len(songs)
 	if totalSongs == 0 {
+		provider.Close()
 		logger.API("enrichMoodStream: All songs already have mood analysis")
 		jsonData, _ := json.Marshal(EnrichmentProgress{
 			Status:  "complete",
@@ -2603,6 +2592,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 
 	// Start background goroutine for processing (continues even if client disconnects)
 	go func() {
+		defer provider.Close()
 		defer close(progressChan)
 
 		processedSongs := 0

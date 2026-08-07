@@ -76,13 +76,25 @@ func (a *API) getLLMSettings(w http.ResponseWriter, r *http.Request) {
 		maskedKey = "****"
 	}
 
+	models := llm.GetAvailableModels()
+	if provider == llm.ProviderOpenRouter && apiKey != "" {
+		openRouterModels, err := llm.GetOpenRouterModels(r.Context(), apiKey)
+		if err != nil {
+			// Keep the settings screen available and fall back to Auto Router if
+			// the catalog cannot be refreshed (for example, while offline).
+			logger.API("Unable to retrieve OpenRouter models: %v", err)
+		} else {
+			models[llm.ProviderOpenRouter] = openRouterModels
+		}
+	}
+
 	response := LLMSettingsResponse{
 		Provider:  provider,
 		Model:     model,
 		APIKey:    maskedKey,
 		BaseURL:   baseURL,
 		Providers: llm.GetAvailableProviders(),
-		Models:    llm.GetAvailableModels(),
+		Models:    models,
 	}
 
 	respondJSON(w, response)
@@ -138,11 +150,16 @@ func (a *API) updateLLMSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.BaseURL != "" {
-		if err := a.db.SetSetting("llm_base_url", req.BaseURL); err != nil {
-			respondError(w, http.StatusInternalServerError, "Failed to save base URL: "+err.Error())
-			return
-		}
+	// Custom endpoints are only supported for Ollama. Clearing the persisted
+	// value for cloud providers prevents a stale localhost URL from overriding
+	// OpenRouter (or another cloud provider) after a provider switch.
+	baseURL := req.BaseURL
+	if req.Provider != llm.ProviderOllama {
+		baseURL = ""
+	}
+	if err := a.db.SetSetting("llm_base_url", baseURL); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to save base URL: "+err.Error())
+		return
 	}
 
 	respondJSON(w, map[string]string{"status": "ok"})
