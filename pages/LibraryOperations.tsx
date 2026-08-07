@@ -22,7 +22,7 @@ const formatBytes = (bytes: number) => {
 const actionClass = 'inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-black hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryClass = 'inline-flex items-center gap-2 rounded-lg bg-surface-2 px-4 py-2 text-sm font-semibold text-text-main hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50';
 
-export const LibraryOperations: React.FC = () => {
+export const LibraryOperationsPanel: React.FC = () => {
   const [diagnostics, setDiagnostics] = useState<LibraryDiagnostics | null>(null);
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [watcher, setWatcher] = useState<WatcherStatus>({ running: false, intervalMs: 15000, lastChanges: 0, checks: 0 });
@@ -96,18 +96,17 @@ export const LibraryOperations: React.FC = () => {
   });
 
   return (
-    <Page withPlayerPadding={false}>
-      <PageHeader heading="Library Operations" />
-      <p className="mb-6 max-w-3xl text-text-secondary">Diagnose and repair library consistency, create validated backups, stage recovery, and continuously monitor configured folders.</p>
+    <div className="space-y-6">
+      <p className="max-w-3xl text-text-secondary text-sm">Diagnose and repair library consistency, create validated backups, stage recovery, and continuously monitor configured folders.</p>
 
       {(message || error) && (
-        <div className={`mb-6 rounded-lg border p-4 text-sm ${error ? 'border-error/40 bg-error/10 text-error' : 'border-accent-green/30 bg-accent-green/10 text-text-main'}`} role="status">
+        <div className={`rounded-lg border p-4 text-sm ${error ? 'border-error/40 bg-error/10 text-error' : 'border-accent-green/30 bg-accent-green/10 text-text-main'}`} role="status">
           {error || message}
         </div>
       )}
 
       {/* Metadata Health Dashboard */}
-      <div className="mb-6">
+      <div>
         <MetadataHealthWidget />
       </div>
 
@@ -163,6 +162,15 @@ export const LibraryOperations: React.FC = () => {
           </div>
         </section>
       </div>
+    </div>
+  );
+};
+
+export const LibraryOperations: React.FC = () => {
+  return (
+    <Page withPlayerPadding={false}>
+      <PageHeader heading="Library Operations" />
+      <LibraryOperationsPanel />
     </Page>
   );
 };

@@ -36,7 +36,6 @@ import { Duplicates } from './pages/Duplicates';
 import { Stats } from './pages/Stats';
 import { SmartMixDetail } from './pages/SmartMixDetail';
 import { DJModeV2 } from './pages/DJModeV2';
-import { LibraryOperations } from './pages/LibraryOperations';
 import { useStore } from './store';
 import { api } from './services/api';
 import DownloadManager from './components/DownloadManager';
@@ -145,7 +144,7 @@ const App: React.FC = () => {
             <Route path="/search" element={<Search />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/duplicates" element={<Duplicates />} />
-            <Route path="/library-operations" element={<LibraryOperations />} />
+            <Route path="/library-operations" element={<Navigate to="/settings" state={{ tab: 'health' }} replace />} />
             <Route path="/dj" element={<DJModeV2 />} />
             <Route path="/dj-v2" element={<Navigate to="/dj" replace />} />
             <Route path="/settings" element={<Settings />} />

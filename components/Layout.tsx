@@ -2,8 +2,7 @@
  * ViiB MediaHub - Layout Component
  */
 import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router';
-import { ShieldCheck } from 'lucide-react';
+import { useLocation } from 'react-router';
 import { Sidebar } from './Sidebar';
 import { Player } from './Player';
 import { Queue } from './Queue';
@@ -24,16 +23,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       <div className="relative flex flex-1 overflow-hidden">
         <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
         <main className="relative flex-1 overflow-y-auto bg-surface-0">
-          {!isDJRoute && location.pathname !== '/library-operations' && (
-            <NavLink
-              to="/library-operations"
-              className="fixed right-5 top-5 z-20 hidden items-center gap-2 rounded-full border border-surface-highlight bg-surface-1/95 px-3 py-2 text-xs font-semibold text-text-secondary shadow-lg backdrop-blur hover:text-text-main lg:inline-flex"
-              title="Library diagnostics, backup, recovery, and monitoring"
-            >
-              <ShieldCheck size={16} className="text-brand" />
-              Library Health
-            </NavLink>
-          )}
           {children}
         </main>
         {!isDJRoute && <Queue />}
