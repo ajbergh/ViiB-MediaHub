@@ -67,7 +67,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useStore, useAlbumCovers } from '../store';
 import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2, Info, Sparkles, FileText, Tag, Calendar, BarChart3, Clock, Radio, Disc, Mic2 } from 'lucide-react';
-import { formatTime, generateGradient, cssUrl } from '../utils';
+import { formatTime, generateGradient, cssUrl, getAudioFormatInfo } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { api } from '../services/api';
 import { Visualizer } from './Visualizer';
@@ -455,6 +455,25 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                             {/* Inline Song Metadata Strip */}
                             {!isPartyMode && (
                                 <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                    {/* Audio Format Badge */}
+                                    {(() => {
+                                        const fmt = getAudioFormatInfo(currentSong);
+                                        return (
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ring-1 ${fmt.colorClass}`}>
+                                                {fmt.label}
+                                            </span>
+                                        );
+                                    })()}
+                                    {/* ReplayGain Badge */}
+                                    {(currentSong.replayGainDb !== undefined || audioSettings.normalization) && (
+                                        <span
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                                            title={currentSong.replayGainDb !== undefined ? `ReplayGain Loudness: ${currentSong.replayGainDb > 0 ? '+' : ''}${currentSong.replayGainDb.toFixed(2)} dB` : 'Loudness Normalization Active'}
+                                        >
+                                            <Volume2 size={10} />
+                                            {currentSong.replayGainDb !== undefined ? `${currentSong.replayGainDb > 0 ? '+' : ''}${currentSong.replayGainDb.toFixed(1)}dB` : 'RG'}
+                                        </span>
+                                    )}
                                     {currentSong.originalYear && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30">
                                             <Calendar size={10} />

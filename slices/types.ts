@@ -193,6 +193,7 @@ export interface LibrarySlice {
    */
   recordListenEvent: (songId: string, playDuration: number, songDuration: number, context: PlaybackContext) => void;
   updateSongDuration: (songId: string, duration: number) => void;
+  updateSongMetadata: (songId: string, patch: Partial<Song>) => Promise<void>;
   
   fetchArtistMetadata: (artistName: string) => Promise<void>;
   fetchAlbumMetadata: (albumName: string, artistName: string) => Promise<void>;

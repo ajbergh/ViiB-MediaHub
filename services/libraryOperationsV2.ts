@@ -51,4 +51,13 @@ export const libraryOperationsV2 = {
   stopWatcher(signal?: AbortSignal): Promise<WatcherStatus> {
     return requestJSON(`${BASE}/watcher/stop`, { method: 'POST', signal, retry: false });
   },
+  updateSongMetadata(id: string, patch: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+    return requestJSON(`${BASE}/songs/${encodeURIComponent(id)}/metadata`, {
+      method: 'PATCH',
+      signal,
+      retry: false,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+  },
 };

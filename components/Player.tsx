@@ -28,7 +28,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon, Info } from 'lucide-react';
-import { formatTime, generateGradient } from '../utils';
+import { formatTime, generateGradient, getAudioFormatInfo } from '../utils';
 import { NowPlaying } from './NowPlaying';
 import { ContextMenuType } from '../types';
 import { Visualizer } from './Visualizer';
@@ -116,6 +116,39 @@ export const Player: React.FC = () => {
             >
                 {currentSong.artist}
             </span>
+
+            {/* Audio Quality & ReplayGain Badges */}
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              {currentSong && (() => {
+                const formatInfo = getAudioFormatInfo(currentSong);
+                const hasReplayGain = currentSong.replayGainDb !== undefined || audioSettings.normalization;
+                return (
+                  <>
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-mono font-bold ring-1 ${formatInfo.colorClass}`}
+                      title={`Audio Format: ${formatInfo.label}`}
+                    >
+                      {formatInfo.label}
+                    </span>
+                    {hasReplayGain && (
+                      <span
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-accent-blue/15 text-accent-blue ring-1 ring-accent-blue/30"
+                        title={
+                          currentSong.replayGainDb !== undefined
+                            ? `ReplayGain Loudness: ${currentSong.replayGainDb > 0 ? '+' : ''}${currentSong.replayGainDb.toFixed(2)} dB (Peak: ${currentSong.replayPeak?.toFixed(2) || '1.0'})`
+                            : 'Loudness Normalization Active'
+                        }
+                      >
+                        <Volume2 size={9} />
+                        {currentSong.replayGainDb !== undefined
+                          ? `${currentSong.replayGainDb > 0 ? '+' : ''}${currentSong.replayGainDb.toFixed(1)}dB`
+                          : 'RG'}
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
             </div>
         </div>
 

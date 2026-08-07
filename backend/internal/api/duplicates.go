@@ -28,10 +28,7 @@ func (a *API) getIgnoredSongs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for i := range songs {
-		songs[i].FilePath = "/api/audio/" + songs[i].ID
-		if songs[i].CoverPath != "" {
-			songs[i].CoverPath = "/api/cover/" + songs[i].ID
-		}
+		transformLibrarySongForAPI(&songs[i])
 	}
 	respondJSON(w, songs)
 }

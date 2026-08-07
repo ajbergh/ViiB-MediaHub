@@ -45,6 +45,37 @@ export const generateGradient = (seed: string) => {
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
 /**
+ * Returns audio format badge metadata based on track URL / file path.
+ */
+export const getAudioFormatInfo = (song: { path?: string; url?: string; isStreaming?: boolean; spotifyId?: string }) => {
+  if (song.isStreaming || song.spotifyId) {
+    return { label: 'SPOTIFY', isLossless: false, colorClass: 'bg-spotify/20 text-spotify ring-spotify/30' };
+  }
+  const rawPath = song.path || song.url || '';
+  const cleanPath = rawPath.split('?')[0].split('#')[0].toLowerCase();
+
+  if (cleanPath.endsWith('.flac')) {
+    return { label: 'FLAC', isLossless: true, colorClass: 'bg-accent-green/20 text-accent-green ring-accent-green/30' };
+  }
+  if (cleanPath.endsWith('.wav') || cleanPath.endsWith('.aiff') || cleanPath.endsWith('.aif')) {
+    return { label: 'WAV', isLossless: true, colorClass: 'bg-accent-blue/20 text-accent-blue ring-accent-blue/30' };
+  }
+  if (cleanPath.endsWith('.m4a') || cleanPath.endsWith('.aac') || cleanPath.endsWith('.alac')) {
+    return { label: 'AAC', isLossless: false, colorClass: 'bg-purple-500/20 text-purple-300 ring-purple-500/30' };
+  }
+  if (cleanPath.endsWith('.ogg') || cleanPath.endsWith('.opus') || cleanPath.endsWith('.oga')) {
+    return { label: 'OGG', isLossless: false, colorClass: 'bg-amber-500/20 text-amber-300 ring-amber-500/30' };
+  }
+  if (cleanPath.endsWith('.mp3')) {
+    return { label: 'MP3', isLossless: false, colorClass: 'bg-brand/20 text-brand ring-brand/30' };
+  }
+  if (cleanPath.endsWith('.wma')) {
+    return { label: 'WMA', isLossless: false, colorClass: 'bg-blue-500/20 text-blue-300 ring-blue-500/30' };
+  }
+  return { label: 'AUDIO', isLossless: false, colorClass: 'bg-surface-3 text-text-secondary ring-surface-border' };
+};
+
+/**
  * Escapes a URL for use in CSS url() function.
  * Wraps the URL in quotes and escapes special characters.
  */
