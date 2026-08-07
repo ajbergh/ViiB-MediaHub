@@ -66,7 +66,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2, Info, Sparkles, FileText, Tag, Calendar, BarChart3, Clock, Radio, Disc, Mic2 } from 'lucide-react';
 import { formatTime, generateGradient, cssUrl } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { api } from '../services/api';
@@ -110,11 +110,12 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
         // Party mode state
         isPartyMode,
         togglePartyMode,
-        setPartyMode
+        setPartyMode,
+        openSongInfoModal
     } = useStore();
     
     const albumCovers = useAlbumCovers();
-    const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS'>('LYRICS');
+    const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS' | 'INFO'>('LYRICS');
     const [isDownloading, setIsDownloading] = useState(false);
     const [showVisualizerOverlay, setShowVisualizerOverlay] = useState(false);
     const [showVisualizerSelector, setShowVisualizerSelector] = useState(false);
@@ -450,6 +451,45 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                             >
                                 {currentSong.artist}
                             </h2>
+
+                            {/* Inline Song Metadata Strip */}
+                            {!isPartyMode && (
+                                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                    {currentSong.originalYear && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30">
+                                            <Calendar size={10} />
+                                            {currentSong.originalYear} Original
+                                        </span>
+                                    )}
+                                    {currentSong.bpm && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-accent-pink/20 text-accent-pink ring-1 ring-accent-pink/30">
+                                            <Activity size={10} />
+                                            {currentSong.bpm} BPM
+                                        </span>
+                                    )}
+                                    {currentSong.mood && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand/20 text-brand ring-1 ring-brand/30 capitalize">
+                                            <Sparkles size={10} />
+                                            {currentSong.mood}
+                                        </span>
+                                    )}
+                                    {currentSong.genre && currentSong.genre.length > 0 && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-2/80 text-text-secondary ring-1 ring-surface-border">
+                                            <Tag size={10} />
+                                            {currentSong.genre[0]}
+                                        </span>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => openSongInfoModal(currentSong)}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-text-main ring-1 ring-surface-border transition-colors"
+                                        title="View complete song metadata & properties"
+                                    >
+                                        <Info size={10} />
+                                        Info
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         {!isPartyMode && (
                             <div className="flex items-center gap-3">
@@ -501,6 +541,14 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                             >
                                 Lyrics
                             </Button>
+                            <Button
+                                onClick={() => setActiveTab('INFO')}
+                                variant={activeTab === 'INFO' ? 'secondary' : 'ghost'}
+                                className="flex-1 justify-center rounded-lg flex items-center gap-1.5"
+                            >
+                                <Info size={14} />
+                                Track Info
+                            </Button>
                         </div>
 
                         {/* Tab Content */}
@@ -513,6 +561,91 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
 
                             {activeTab === 'QUEUE' && (
                                 <QueueList queue={queue} currentSongIndex={currentSongIndex} />
+                            )}
+
+                            {activeTab === 'INFO' && (
+                                <div className="space-y-4 text-xs text-text-main animate-in fade-in duration-200">
+                                    {/* Core Card */}
+                                    <div className="p-4 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-2">
+                                        <div className="flex items-center justify-between border-b border-surface-border/40 pb-2 mb-2">
+                                            <span className="font-bold text-sm text-brand">{currentSong.title}</span>
+                                            <Button
+                                                variant="secondary"
+                                                className="text-xs py-1 px-2.5"
+                                                onClick={() => openSongInfoModal(currentSong)}
+                                                leftIcon={<Info size={12} />}
+                                            >
+                                                Full Properties
+                                            </Button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 text-text-secondary">
+                                            <div><span className="text-text-subtle font-medium">Artist:</span> {currentSong.artist}</div>
+                                            <div><span className="text-text-subtle font-medium">Album:</span> {currentSong.album}</div>
+                                            {currentSong.albumArtist && <div><span className="text-text-subtle font-medium">Album Artist:</span> {currentSong.albumArtist}</div>}
+                                            {currentSong.year && <div><span className="text-text-subtle font-medium">Year:</span> {currentSong.year}</div>}
+                                            {currentSong.originalYear && <div><span className="text-text-subtle font-medium">Original Release:</span> {currentSong.originalYear}</div>}
+                                            <div><span className="text-text-subtle font-medium">Duration:</span> {formatTime(currentSong.duration)}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* AI & Vibe Profile */}
+                                    <div className="p-4 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-2">
+                                        <div className="flex items-center gap-1.5 font-semibold text-text-main text-xs mb-2">
+                                            <Sparkles size={14} className="text-accent-pink" />
+                                            <span>AI Vibe & Audio Profile</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                                            <div className="p-2 rounded-lg bg-surface-3/60">
+                                                <span className="text-[10px] text-text-subtle block uppercase">Mood</span>
+                                                <span className="font-bold text-accent-pink capitalize">{currentSong.mood || 'N/A'}</span>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-surface-3/60">
+                                                <span className="text-[10px] text-text-subtle block uppercase">Energy</span>
+                                                <span className="font-bold text-amber-400 capitalize">{currentSong.energy || 'N/A'}</span>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-surface-3/60">
+                                                <span className="text-[10px] text-text-subtle block uppercase">Tempo</span>
+                                                <span className="font-bold text-accent-blue capitalize">{currentSong.tempo || 'N/A'}</span>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-surface-3/60">
+                                                <span className="text-[10px] text-text-subtle block uppercase">BPM</span>
+                                                <span className="font-bold text-accent-green font-mono">{currentSong.bpm || 'N/A'}</span>
+                                            </div>
+                                        </div>
+                                        {currentSong.genre && currentSong.genre.length > 0 && (
+                                            <div className="pt-2 flex items-center gap-1.5 flex-wrap">
+                                                <span className="text-text-subtle">Genres:</span>
+                                                {currentSong.genre.map((g, idx) => (
+                                                    <span key={idx} className="px-2 py-0.5 rounded-full bg-surface-3 font-medium text-text-main text-[11px]">
+                                                        {g}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Listening Metrics */}
+                                    <div className="p-4 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-2">
+                                        <div className="flex items-center gap-1.5 font-semibold text-text-main text-xs mb-1">
+                                            <BarChart3 size={14} className="text-brand" />
+                                            <span>Listening Statistics</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2 text-center">
+                                            <div className="p-2 rounded-lg bg-surface-3/60">
+                                                <span className="text-[10px] text-text-subtle block uppercase">Local Plays</span>
+                                                <span className="font-bold font-mono text-accent-green">{currentSong.playCount || 0}</span>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-surface-3/60">
+                                                <span className="text-[10px] text-text-subtle block uppercase">Skips</span>
+                                                <span className="font-bold font-mono text-amber-400">{currentSong.skipCount || 0}</span>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-surface-3/60">
+                                                <span className="text-[10px] text-text-subtle block uppercase">Last.fm Listeners</span>
+                                                <span className="font-bold font-mono text-text-main">{currentSong.lastfmListeners ? currentSong.lastfmListeners.toLocaleString() : 'N/A'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>

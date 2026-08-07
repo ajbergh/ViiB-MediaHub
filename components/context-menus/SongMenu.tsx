@@ -5,7 +5,7 @@
  * navigation to album/artist, and download options for streaming Spotify tracks.
  */
 import React, { useState } from 'react';
-import { Play, SkipForward, ListPlus, ListMusic, ArrowRight, Disc, Mic2, FolderOpen, Download, CheckCircle } from 'lucide-react';
+import { Play, SkipForward, ListPlus, ListMusic, ArrowRight, Disc, Mic2, FolderOpen, Download, CheckCircle, Info } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem, PlaylistsSubmenu } from './MenuShared';
 import { useNavigate } from 'react-router';
@@ -18,7 +18,7 @@ import { api } from '../../services/api';
  *  - onClose: Callback invoked when the menu closes
  */
 export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, onClose }) => {
-    const { playSong, playNext, addToQueue, showToast } = useStore();
+    const { playSong, playNext, addToQueue, showToast, openSongInfoModal } = useStore();
     const navigate = useNavigate();
     const [playlistsSubmenuOpen, setPlaylistsSubmenuOpen] = useState(false);
     const playlistTriggerRef = React.useRef<HTMLButtonElement | null>(null);
@@ -123,6 +123,8 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
             <MenuItem icon={Mic2} label="Go to Artist" onClick={() => navigateTo(`/artists`)} /> 
             
             <div className="border-t border-surface-border my-1"></div>
+
+            <MenuItem icon={Info} label="Song Info & Properties" onClick={() => handleAction(() => openSongInfoModal(song))} />
             
             {/* Download option for streaming Spotify tracks */}
             {isSpotifyStreaming && (

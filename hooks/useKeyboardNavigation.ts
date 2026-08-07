@@ -104,6 +104,14 @@ export function useKeyboardNavigation() {
           toggleEqPanel();
           break;
 
+        case 'i':
+        case 'I':
+          if (currentSong && (e.ctrlKey || e.metaKey || isNowPlayingOpen)) {
+            e.preventDefault();
+            useStore.getState().openSongInfoModal(currentSong);
+          }
+          break;
+
         case 'n':
         case 'N':
           if (currentSong) {

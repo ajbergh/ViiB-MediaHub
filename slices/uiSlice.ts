@@ -48,6 +48,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
     data: null,
   },
   confirmDialog: null,
+  songInfoModalSong: null,
   
   // Local search persistence
   localSearchQuery: '',
@@ -94,6 +95,9 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
 
   showConfirmDialog: (config) => set({ confirmDialog: config }),
   closeConfirmDialog: () => set({ confirmDialog: null }),
+
+  openSongInfoModal: (song) => set({ songInfoModalSong: song }),
+  closeSongInfoModal: () => set({ songInfoModalSong: null }),
 
   showToast: (toast) => set((state) => ({
     toasts: [...state.toasts, { ...toast, id: crypto.randomUUID() }].slice(-5) // Max 5 toasts
