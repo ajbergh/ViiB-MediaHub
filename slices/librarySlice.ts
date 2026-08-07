@@ -30,6 +30,7 @@ import { generateSmartMixes } from '../lib/smartMix';
 import { SpotifyService } from '../services/spotifyService';
 import { libraryService } from '../services/libraryService';
 import { backendService } from '../services/backendService';
+import { libraryOperationsV2 } from '../services/libraryOperationsV2';
 import api, { ApiAlbumMetadata, ApiArtistMetadata } from '../services/api';
 import { Playlist, Song, AlbumMetadata, ArtistMetadata } from '../types';
 
@@ -435,6 +436,42 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           );
       } else {
           const updatedSong = { ...song, duration };
+          libraryService.saveSongs([updatedSong]);
+      }
+  },
+
+  /**
+   * updateSongMetadata - Update song metadata tags (title, artist, album, genre, year, etc.)
+   */
+  updateSongMetadata: async (songId, patch) => {
+      const { backendAvailable, songs } = get();
+      const existing = songs.find(s => s.id === songId);
+      if (!existing) return;
+
+      const updatedSong = { ...existing, ...patch };
+      set((state) => ({
+          songs: state.songs.map(s => (s.id === songId ? updatedSong : s)),
+          currentSong: state.currentSong?.id === songId ? { ...state.currentSong, ...patch } : state.currentSong,
+          queue: state.queue.map(s => (s.id === songId ? { ...s, ...patch } : s)),
+      }));
+
+      if (backendAvailable) {
+          const backendPatch: Record<string, any> = {};
+          if (patch.title !== undefined) backendPatch.title = patch.title;
+          if (patch.artist !== undefined) backendPatch.artist = patch.artist;
+          if (patch.album !== undefined) backendPatch.album = patch.album;
+          if (patch.albumArtist !== undefined) backendPatch.albumArtist = patch.albumArtist;
+          if (patch.trackNumber !== undefined) backendPatch.trackNumber = patch.trackNumber;
+          if (patch.discNumber !== undefined) backendPatch.discNumber = patch.discNumber;
+          if (patch.year !== undefined) backendPatch.year = patch.year;
+          if (patch.genre !== undefined) backendPatch.genre = patch.genre;
+
+          try {
+              await libraryOperationsV2.updateSongMetadata(songId, backendPatch);
+          } catch (err) {
+              console.error('Failed to persist song metadata on backend:', err);
+          }
+      } else {
           libraryService.saveSongs([updatedSong]);
       }
   },

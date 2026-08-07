@@ -92,17 +92,11 @@ func transformSongsForAPI(songs []any) []any {
 		switch song := s.(type) {
 		case db.Song:
 			// Transform paths to API URLs
-			song.FilePath = "/api/audio/" + song.ID
-			if song.CoverPath != "" {
-				song.CoverPath = "/api/cover/" + song.ID
-			}
+			transformLibrarySongForAPI(&song)
 			result = append(result, song)
 		case *db.Song:
 			// Transform paths to API URLs (pointer case)
-			song.FilePath = "/api/audio/" + song.ID
-			if song.CoverPath != "" {
-				song.CoverPath = "/api/cover/" + song.ID
-			}
+			transformLibrarySongForAPI(song)
 			result = append(result, *song)
 		default:
 			// If not a recognized song type, include as-is

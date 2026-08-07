@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Activity, Archive, CheckCircle2, Database, Eye, Play, RefreshCw, ShieldCheck, Square, Wrench } from 'lucide-react';
 import { Page, PageHeader } from '../components/ui/Page';
 import { BackupInfo, LibraryDiagnostics, WatcherStatus, libraryOperationsV2 } from '../services/libraryOperationsV2';
+import { MetadataHealthWidget } from '../components/MetadataHealthWidget';
 
 const formatBytes = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -104,6 +105,11 @@ export const LibraryOperations: React.FC = () => {
           {error || message}
         </div>
       )}
+
+      {/* Metadata Health Dashboard */}
+      <div className="mb-6">
+        <MetadataHealthWidget />
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5">

@@ -98,6 +98,7 @@ type Song struct {
 	ReplayGainDB   float64  `json:"replayGainDb,omitempty"`
 	ReplayPeak     float64  `json:"replayPeak,omitempty"`
 	FilePath       string   `json:"filePath"`
+	Path           string   `json:"path,omitempty"`
 	CoverPath      string   `json:"coverPath,omitempty"`
 	AddedAt        int64    `json:"addedAt"`
 	PlayCount      int      `json:"playCount,omitempty"`

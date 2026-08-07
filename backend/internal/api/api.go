@@ -347,10 +347,7 @@ func (a *API) getSongs(w http.ResponseWriter, r *http.Request) {
 
 	// Transform file paths to API URLs
 	for i := range songs {
-		songs[i].FilePath = "/api/audio/" + songs[i].ID
-		if songs[i].CoverPath != "" {
-			songs[i].CoverPath = "/api/cover/" + songs[i].ID
-		}
+		transformLibrarySongForAPI(&songs[i])
 	}
 
 	if songs == nil {

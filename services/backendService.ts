@@ -72,6 +72,7 @@ export function apiSongToSong(apiSong: ApiSong): Song {
     replayGainDb: apiSong.replayGainDb,
     replayPeak: apiSong.replayPeak,
     url: apiSong.filePath, // API URL like /api/audio/{id}
+    path: apiSong.path, // Physical file path on disk
     coverUrl: apiSong.coverPath, // API URL like /api/cover/{id}
     addedAt: apiSong.addedAt,
     playCount: apiSong.playCount,

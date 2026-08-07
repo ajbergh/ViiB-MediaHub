@@ -83,6 +83,7 @@ export interface ApiSong {
   replayGainDb?: number;
   replayPeak?: number;
   filePath: string; // This will be the API URL like /api/audio/{id}
+  path?: string; // Physical file path on disk
   coverPath?: string; // This will be /api/cover/{id}
   addedAt: number;
   playCount?: number;

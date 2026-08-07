@@ -38,7 +38,10 @@ import {
   BarChart,
   Percent,
   Sliders,
-  Volume2
+  Volume2,
+  Edit3,
+  Save,
+  RotateCcw
 } from 'lucide-react';
 import { useStore, useAlbumCovers } from '../store';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -51,10 +54,22 @@ type TabType = 'vibe' | 'overview' | 'stats' | 'technical';
 
 export const SongInfoDialog: React.FC = () => {
   const navigate = useNavigate();
-  const { songInfoModalSong, closeSongInfoModal, playSong, addToQueue, setLocalSearchQuery, showToast } = useStore();
+  const { songInfoModalSong, closeSongInfoModal, playSong, addToQueue, setLocalSearchQuery, showToast, updateSongMetadata } = useStore();
   const albumCovers = useAlbumCovers();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [copiedPath, setCopiedPath] = useState(false);
+
+  // Edit Mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editArtist, setEditArtist] = useState('');
+  const [editAlbum, setEditAlbum] = useState('');
+  const [editAlbumArtist, setEditAlbumArtist] = useState('');
+  const [editTrackNumber, setEditTrackNumber] = useState<number | string>('');
+  const [editDiscNumber, setEditDiscNumber] = useState<number | string>('');
+  const [editYear, setEditYear] = useState<number | string>('');
+  const [editGenres, setEditGenres] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const containerRef = useFocusTrap<HTMLDivElement>(!!songInfoModalSong, closeSongInfoModal);
 
@@ -62,6 +77,49 @@ export const SongInfoDialog: React.FC = () => {
 
   const song = songInfoModalSong;
   const coverUrl = song.coverUrl || albumCovers[song.album];
+
+  const handleStartEditing = () => {
+    setEditTitle(song.title);
+    setEditArtist(song.artist);
+    setEditAlbum(song.album);
+    setEditAlbumArtist(song.albumArtist || '');
+    setEditTrackNumber(song.trackNumber || '');
+    setEditDiscNumber(song.discNumber || '');
+    setEditYear(song.year || '');
+    setEditGenres(song.genre ? song.genre.join(', ') : '');
+    setIsEditing(true);
+    setActiveTab('overview');
+  };
+
+  const handleSaveTags = async () => {
+    if (!editTitle.trim() || !editArtist.trim() || !editAlbum.trim()) {
+      showToast({ type: 'error', message: 'Title, Artist, and Album cannot be empty' });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const genresArray = editGenres.split(',').map(g => g.trim()).filter(Boolean);
+      await updateSongMetadata(song.id, {
+        title: editTitle.trim(),
+        artist: editArtist.trim(),
+        album: editAlbum.trim(),
+        albumArtist: editAlbumArtist.trim() || undefined,
+        trackNumber: editTrackNumber !== '' ? Number(editTrackNumber) : undefined,
+        discNumber: editDiscNumber !== '' ? Number(editDiscNumber) : undefined,
+        year: editYear !== '' ? Number(editYear) : undefined,
+        genre: genresArray.length > 0 ? genresArray : undefined,
+      });
+
+      showToast({ type: 'success', message: `Saved tags for "${editTitle.trim()}"` });
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Save tags failed:', err);
+      showToast({ type: 'error', message: 'Failed to update song metadata' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleSearchFilter = (query: string) => {
     setLocalSearchQuery(query);
@@ -125,14 +183,35 @@ export const SongInfoDialog: React.FC = () => {
             <FileText size={18} className="text-brand" />
             <span className="font-semibold text-sm tracking-wide text-text-main">Song Information & Properties</span>
           </div>
-          <button
-            type="button"
-            onClick={closeSongInfoModal}
-            className="p-1.5 rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main transition-colors"
-            aria-label="Close dialog"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            {!isEditing ? (
+              <Button
+                variant="secondary"
+                className="text-xs py-1 px-2.5"
+                onClick={handleStartEditing}
+                leftIcon={<Edit3 size={13} />}
+              >
+                Edit Tags
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                className="text-xs py-1 px-2.5 text-text-secondary"
+                onClick={() => setIsEditing(false)}
+                leftIcon={<RotateCcw size={13} />}
+              >
+                Cancel Edit
+              </Button>
+            )}
+            <button
+              type="button"
+              onClick={closeSongInfoModal}
+              className="p-1.5 rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main transition-colors"
+              aria-label="Close dialog"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Header Hero Section */}
@@ -315,8 +394,126 @@ export const SongInfoDialog: React.FC = () => {
 
         {/* Tab Contents Area */}
         <div className="p-6 overflow-y-auto flex-1 min-h-[220px] space-y-4">
-          {/* TAB 1: OVERVIEW */}
+          {/* TAB 1: OVERVIEW / EDIT FORM */}
           {activeTab === 'overview' && (
+            isEditing ? (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between border-b border-surface-border/60 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-brand flex items-center gap-1.5">
+                    <Edit3 size={14} />
+                    Edit Song Metadata Tags
+                  </span>
+                  <span className="text-[10px] text-text-subtle">Saved to local database</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="block text-text-subtle mb-1 font-semibold">Title *</label>
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={e => setEditTitle(e.target.value)}
+                      className="w-full rounded-lg bg-surface-2 border border-surface-border px-3 py-2 text-text-main focus:outline-none focus:border-brand"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-text-subtle mb-1 font-semibold">Artist *</label>
+                    <input
+                      type="text"
+                      value={editArtist}
+                      onChange={e => setEditArtist(e.target.value)}
+                      className="w-full rounded-lg bg-surface-2 border border-surface-border px-3 py-2 text-text-main focus:outline-none focus:border-brand"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-text-subtle mb-1 font-semibold">Album *</label>
+                    <input
+                      type="text"
+                      value={editAlbum}
+                      onChange={e => setEditAlbum(e.target.value)}
+                      className="w-full rounded-lg bg-surface-2 border border-surface-border px-3 py-2 text-text-main focus:outline-none focus:border-brand"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-text-subtle mb-1 font-semibold">Album Artist</label>
+                    <input
+                      type="text"
+                      value={editAlbumArtist}
+                      onChange={e => setEditAlbumArtist(e.target.value)}
+                      placeholder="Same as Artist if empty"
+                      className="w-full rounded-lg bg-surface-2 border border-surface-border px-3 py-2 text-text-main focus:outline-none focus:border-brand"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-text-subtle mb-1 font-semibold">Track Number</label>
+                    <input
+                      type="number"
+                      value={editTrackNumber}
+                      onChange={e => setEditTrackNumber(e.target.value)}
+                      placeholder="e.g. 1"
+                      className="w-full rounded-lg bg-surface-2 border border-surface-border px-3 py-2 text-text-main focus:outline-none focus:border-brand font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-text-subtle mb-1 font-semibold">Disc Number</label>
+                    <input
+                      type="number"
+                      value={editDiscNumber}
+                      onChange={e => setEditDiscNumber(e.target.value)}
+                      placeholder="e.g. 1"
+                      className="w-full rounded-lg bg-surface-2 border border-surface-border px-3 py-2 text-text-main focus:outline-none focus:border-brand font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-text-subtle mb-1 font-semibold">Release Year</label>
+                    <input
+                      type="number"
+                      value={editYear}
+                      onChange={e => setEditYear(e.target.value)}
+                      placeholder="e.g. 1999"
+                      className="w-full rounded-lg bg-surface-2 border border-surface-border px-3 py-2 text-text-main focus:outline-none focus:border-brand font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-text-subtle mb-1 font-semibold">Genres (comma separated)</label>
+                    <input
+                      type="text"
+                      value={editGenres}
+                      onChange={e => setEditGenres(e.target.value)}
+                      placeholder="e.g. Rock, Synthwave, 80s"
+                      className="w-full rounded-lg bg-surface-2 border border-surface-border px-3 py-2 text-text-main focus:outline-none focus:border-brand"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-surface-border/40">
+                  <Button
+                    variant="ghost"
+                    className="text-xs py-1.5 px-3 text-text-secondary"
+                    onClick={() => setIsEditing(false)}
+                    disabled={isSaving}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="text-xs py-1.5 px-4"
+                    onClick={handleSaveTags}
+                    disabled={isSaving}
+                    leftIcon={<Save size={14} />}
+                  >
+                    {isSaving ? 'Saving...' : 'Save Tags'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-3.5 rounded-xl bg-surface-2/60 border border-surface-border/60">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle block mb-1">
@@ -395,6 +592,7 @@ export const SongInfoDialog: React.FC = () => {
                 )}
               </div>
             </div>
+            )
           )}
 
           {/* TAB 2: AI & VIBE PROFILE */}
