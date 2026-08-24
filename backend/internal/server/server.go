@@ -33,13 +33,19 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://wails.localhost", "http://wails.localhost:*"},
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "Last-Event-ID", "X-Request-ID"},
-		ExposedHeaders: []string{"X-Request-ID"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "Last-Event-ID", "Range", "X-Request-ID"},
+		ExposedHeaders: []string{"X-Request-ID", "Content-Range", "Accept-Ranges", "Content-Length"},
 		AllowCredentials: true,
 		MaxAge: 300,
 	}))
 
 	r.Use(middleware.Throttle(100))
+
+	// Source-aware media routes preserve the existing browser contract while
+	// dispatching Plex catalog rows through the authenticated backend proxy.
+	r.Get("/api/audio/*", apiHandler.ServeAudioSourceAware)
+	r.Get("/api/cover/*", apiHandler.ServeCoverSourceAware)
+	r.Mount("/api/v2/plex", apiHandler.PlexRoutes())
 
 	r.Mount("/api/v2/operations", apiHandler.V2LibraryOperationRoutes())
 	r.Mount("/api/v2/jobs", apiHandler.V2JobRoutes())

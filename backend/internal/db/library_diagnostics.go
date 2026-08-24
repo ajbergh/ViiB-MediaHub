@@ -5,6 +5,7 @@ package db
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -67,6 +68,12 @@ func (d *DB) RunLibraryDiagnostics() (LibraryDiagnostics, error) {
 		if err := rows.Scan(&item.SongID, &item.Title, &item.FilePath); err != nil {
 			rows.Close()
 			return result, err
+		}
+		// Remote source URIs are not filesystem paths. Their availability is
+		// tracked by the source integration, so an offline Plex server must never
+		// be interpreted as deleted local media.
+		if strings.HasPrefix(item.FilePath, "plex://") {
+			continue
 		}
 		info, statErr := os.Stat(item.FilePath)
 		if statErr != nil {
