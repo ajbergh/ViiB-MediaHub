@@ -1,13 +1,15 @@
 openapi: 3.1.0
 info:
   title: ViiB MediaHub Local API
-  version: 2.0.0
+  version: 2.1.0
   description: >-
     Local-only API for revisioned library synchronization, indexed search,
-    performance diagnostics, durable jobs, and library maintenance. Every
-    response includes `X-Request-ID`. Jobs and Library Operations return the
-    documented machine-readable error envelope; legacy library and performance
-    handlers retain their existing response shape for compatibility.
+    performance diagnostics, durable jobs, library maintenance, and Plex Media
+    Server music-source configuration. Every response includes `X-Request-ID`.
+    Jobs, Library Operations, and Plex configuration return the documented
+    machine-readable error envelope; legacy library and performance handlers
+    retain their existing response shape for compatibility. Plex credentials
+    are never returned by this API.
 servers:
   - url: /api/v2
 paths:
@@ -86,6 +88,171 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LibrarySearchResult' }
+  /plex/discover:
+    post:
+      operationId: discoverPlexServers
+      summary: Perform one bounded Plex GDM LAN discovery request
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timeoutMs: { type: integer, minimum: 1, maximum: 10000, default: 1500 }
+      responses:
+        '200':
+          description: Discovered Plex Media Servers; an empty array is valid when GDM is disabled or blocked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlexDiscoveryResult' }
+  /plex/connect:
+    post:
+      operationId: connectPlexServer
+      summary: Validate and save a Plex Media Server
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  description: Bare host/IP or complete HTTP(S) Plex server URL. Bare hosts default to port 32400.
+      responses:
+        '200':
+          description: Validated Plex server identity. No token is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlexServer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+  /plex/config:
+    get:
+      operationId: getPlexConfiguration
+      responses:
+        '200':
+          description: Current browser-safe Plex source configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlexConfig' }
+    delete:
+      operationId: disconnectPlexSource
+      summary: Remove the Plex source from ViiB only
+      description: Deletes ViiB cached Plex catalog/configuration and encrypted Plex credentials. It never deletes or modifies media on the Plex server.
+      responses:
+        '200':
+          description: Plex source removed from ViiB
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, example: removed }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /plex/auth/start:
+    post:
+      operationId: startPlexAuthentication
+      summary: Begin Plex JWT/PIN device authentication
+      responses:
+        '200':
+          description: Browser-safe Plex authorization URL and expiration. PIN/device private-key material is not returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlexAuthStart' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /plex/auth/status:
+    get:
+      operationId: getPlexAuthenticationStatus
+      summary: Poll the pending Plex JWT/PIN authentication flow
+      responses:
+        '200':
+          description: Authentication state. Tokens are not returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlexAuthStatus' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /plex/libraries:
+    get:
+      operationId: listPlexMusicLibraries
+      summary: List selectable music/audio libraries from the configured Plex server
+      description: Movie, TV, photo, clip/music-video, and other non-audio libraries are excluded.
+      responses:
+        '200':
+          description: Music/audio libraries only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [libraries]
+                properties:
+                  libraries:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlexLibrary' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /plex/library:
+    put:
+      operationId: selectPlexMusicLibrary
+      summary: Select the Plex music library used by ViiB
+      description: Changing the selected library removes only ViiB cached records from the previous Plex library. No Plex media is modified.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [libraryId]
+              properties:
+                libraryId: { type: string }
+      responses:
+        '200':
+          description: Selected music library
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlexLibrary' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /plex/sync:
+    post:
+      operationId: synchronizePlexMusicLibrary
+      summary: Start an explicit Plex music-library synchronization
+      responses:
+        '200':
+          description: Synchronization started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, example: started }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /plex/sync/status:
+    get:
+      operationId: getPlexSyncStatus
+      responses:
+        '200':
+          description: Current Plex source and synchronization state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [source]
+                properties:
+                  source:
+                    oneOf:
+                      - { $ref: '#/components/schemas/PlexSource' }
+                      - { type: 'null' }
   /jobs/:
     get:
       operationId: listJobs
@@ -228,7 +395,7 @@ paths:
               properties:
                 removeMissing:
                   type: boolean
-                  description: Also remove database records for diagnostics-confirmed missing media; never deletes files.
+                  description: Also remove database records for diagnostics-confirmed missing local media; never deletes files and never treats Plex remote URIs as filesystem paths.
       responses:
         '200':
           description: Search-index and playlist-reference repair results
@@ -261,10 +428,10 @@ paths:
                 year: { type: integer, minimum: 0, maximum: 3000 }
                 writeBack:
                   type: boolean
-                  description: Must be false or omitted. Source-file tag write-back is not available in this build.
+                  description: Must be false or omitted. Source-file/Plex metadata write-back is not available in this build.
       responses:
         '200':
-          description: Updated database metadata; source media is unchanged
+          description: Updated ViiB database metadata; source media and Plex metadata are unchanged
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Song' }
@@ -400,6 +567,11 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unauthorized:
+      description: Authentication is required or expired
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     NotFound:
       description: Resource not found
       content:
@@ -407,6 +579,16 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     Conflict:
       description: Resource state conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    BadGateway:
+      description: Upstream Plex Media Server/service could not satisfy the request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    GatewayTimeout:
+      description: Upstream Plex Media Server timed out
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -438,8 +620,8 @@ components:
         duration: { type: number }
         replayGainDb: { type: number }
         replayPeak: { type: number }
-        filePath: { type: string }
-        coverPath: { type: string }
+        filePath: { type: string, description: Browser playback URL; Plex tokens are never embedded. }
+        coverPath: { type: string, description: Browser artwork URL; authenticated Plex artwork is proxied by ViiB. }
         addedAt: { type: integer }
         playCount: { type: integer }
         lastPlayed: { type: integer }
@@ -481,6 +663,81 @@ components:
         albums: { type: array, items: { type: object, additionalProperties: true } }
         artists: { type: array, items: { type: object, additionalProperties: true } }
         playlists: { type: array, items: { type: object, additionalProperties: true } }
+    PlexServer:
+      type: object
+      required: [name, host, port, scheme, url, machineIdentifier, claimed, authRequired]
+      properties:
+        name: { type: string }
+        host: { type: string }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        scheme: { type: string, enum: [http, https] }
+        url: { type: string }
+        machineIdentifier: { type: string }
+        version: { type: string }
+        claimed: { type: boolean }
+        authRequired: { type: boolean }
+      description: Browser-safe PMS identity. No Plex access token is included.
+    PlexSource:
+      type: object
+      required: [id, machineIdentifier, baseUrl, name, connectedAt, lastSyncStatus, available, active]
+      properties:
+        id: { type: string }
+        machineIdentifier: { type: string }
+        baseUrl: { type: string }
+        name: { type: string }
+        version: { type: string }
+        libraryId: { type: string }
+        libraryTitle: { type: string }
+        connectedAt: { type: integer, description: Unix milliseconds }
+        lastSyncAt: { type: integer, description: Unix milliseconds for the most recent sync attempt/completion state update }
+        lastSyncStatus: { type: string, enum: [never, running, complete, error, auth_required] }
+        lastSyncError: { type: string, description: Redacted status/error message; never contains a Plex credential. }
+        available: { type: boolean }
+        active: { type: boolean }
+      description: Browser-safe ViiB Plex source configuration. Authentication material is stored separately and is never serialized here.
+    PlexLibrary:
+      type: object
+      required: [id, title, type]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        type: { type: string, enum: [artist, music, audio] }
+        contentKey: { type: string }
+        trackKey: { type: string }
+      description: Selectable Plex music/audio library. Video/clip libraries are excluded.
+    PlexConfig:
+      type: object
+      required: [source, authenticated]
+      properties:
+        source:
+          oneOf:
+            - { $ref: '#/components/schemas/PlexSource' }
+            - { type: 'null' }
+        authenticated: { type: boolean }
+      description: No Plex token or private device key is returned.
+    PlexDiscoveryResult:
+      type: object
+      required: [servers]
+      properties:
+        servers:
+          type: array
+          items: { $ref: '#/components/schemas/PlexServer' }
+        warning: { type: string, description: Non-fatal discovery warning; manual configuration remains available. }
+    PlexAuthStart:
+      type: object
+      required: [authUrl, expiresAt]
+      properties:
+        authUrl: { type: string, description: Official Plex authorization URL. }
+        expiresAt: { type: integer, description: Unix seconds }
+    PlexAuthStatus:
+      type: object
+      required: [authenticated, pending]
+      properties:
+        authenticated: { type: boolean }
+        pending: { type: boolean }
+        expiresAt: { type: integer, description: Unix seconds }
+        message: { type: string }
+      description: Authentication status only. Plex JWT/access tokens are never returned.
     Job:
       type: object
       required: [id, type, status, progressCurrent, progressTotal, attempts, createdAt, updatedAt]
