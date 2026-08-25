@@ -1,5 +1,5 @@
 {
-  "components/FirstLaunchDialog.tsx": 2,
+  "components/FirstLaunchDialogLegacy.tsx": 2,
   "components/dj/DJHotCues.tsx": 9,
   "components/dj/DJWaveform.tsx": 9,
   "components/dj/v2/DJAudioSetup.tsx": 20,

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -272,9 +273,36 @@ func plexSyntheticPath(machineID, libraryID, ratingKey string) string {
 	return "plex://" + escape(machineID) + "/" + escape(libraryID) + "/" + escape(ratingKey)
 }
 
+func plexArtworkPath(songID, artworkKey string, updatedAt int64) string {
+	if artworkKey == "" {
+		return ""
+	}
+	version := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d", artworkKey, updatedAt)))
+	return fmt.Sprintf("plex://art/%s?v=%x", songID, version[:8])
+}
+
 type existingPlexCatalogTrack struct {
-	updatedAt int64
-	libraryID string
+	updatedAt   int64
+	libraryID   string
+	metadataKey string
+	mediaKey    string
+	artworkKey  string
+	container   string
+	audioCodec  string
+}
+
+func (record existingPlexCatalogTrack) matches(libraryID string, track PlexCatalogTrack) bool {
+	// updatedAt is the only PMS metadata version signal persisted today. If PMS
+	// omits it (zero), be conservative and refresh the row rather than assuming
+	// title/artist/album/etc. are unchanged merely because source keys match.
+	return track.UpdatedAt > 0 &&
+		record.libraryID == libraryID &&
+		record.updatedAt == track.UpdatedAt &&
+		record.metadataKey == track.MetadataKey &&
+		record.mediaKey == track.MediaKey &&
+		record.artworkKey == track.ArtworkKey &&
+		record.container == track.Container &&
+		record.audioCodec == track.AudioCodec
 }
 
 // SyncPlexLibrary atomically applies a complete successful PMS snapshot. The
@@ -292,14 +320,18 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 	defer tx.Rollback()
 
 	existing := map[string]existingPlexCatalogTrack{}
-	rows, err := tx.Query(`SELECT song_id, updated_at, library_id FROM plex_tracks WHERE source_id=?`, sourceID)
+	rows, err := tx.Query(`
+		SELECT song_id, updated_at, library_id, metadata_key, media_key, artwork_key, container, audio_codec
+		FROM plex_tracks WHERE source_id=?
+	`, sourceID)
 	if err != nil {
 		return 0, 0, 0, err
 	}
 	for rows.Next() {
 		var id string
 		var record existingPlexCatalogTrack
-		if err := rows.Scan(&id, &record.updatedAt, &record.libraryID); err != nil {
+		if err := rows.Scan(&id, &record.updatedAt, &record.libraryID, &record.metadataKey, &record.mediaKey,
+			&record.artworkKey, &record.container, &record.audioCodec); err != nil {
 			rows.Close()
 			return 0, 0, 0, err
 		}
@@ -311,19 +343,24 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 
 	seen := make(map[string]struct{}, len(tracks))
 	for _, track := range tracks {
-		if track.SongID == "" || track.RatingKey == "" || track.MediaKey == "" {
+		// Presence and playability are different concepts in PMS. If a successful
+		// metadata snapshot still reports the rating key but temporarily omits a
+		// Media/Part, retain any existing cached song instead of reconciling it as
+		// deleted. A new unplayable item is simply deferred until a usable part is
+		// returned by a later sync.
+		if track.SongID == "" || track.RatingKey == "" {
 			continue
 		}
 		seen[track.SongID] = struct{}{}
+		if track.MediaKey == "" {
+			continue
+		}
 		previous, exists := existing[track.SongID]
-		if exists && previous.libraryID == libraryID && track.UpdatedAt > 0 && previous.updatedAt == track.UpdatedAt {
+		if exists && previous.matches(libraryID, track) {
 			continue
 		}
 		genres, _ := json.Marshal(NormalizeGenres(track.Genres))
-		coverPath := ""
-		if track.ArtworkKey != "" {
-			coverPath = "plex://art/" + track.SongID
-		}
+		coverPath := plexArtworkPath(track.SongID, track.ArtworkKey, track.UpdatedAt)
 		filePath := plexSyntheticPath(track.MachineID, libraryID, track.RatingKey)
 		if exists {
 			updated++

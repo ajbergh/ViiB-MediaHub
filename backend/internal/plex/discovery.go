@@ -3,17 +3,27 @@ package plex
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
-	gdmSearchRequest     = "M-SEARCH * HTTP/1.0\r\n\r\n"
-	gdmMulticastAddress = "239.0.0.250"
+	gdmSearchRequest         = "M-SEARCH * HTTP/1.0\r\n\r\n"
+	gdmMulticastAddress     = "239.0.0.250"
+	gdmDefaultTimeout       = 3500 * time.Millisecond
+	gdmResponseWindow       = 1500 * time.Millisecond
+	gdmRepeatDelay          = 120 * time.Millisecond
+	plexProbeDialTimeout    = 140 * time.Millisecond
+	plexProbeRequestTimeout = 300 * time.Millisecond
+	plexProbeMaxHosts       = 512
+	plexProbeConcurrency    = 64
 )
 
 // ParseGDMResponse parses Plex GDM's HTTP-header-like UDP response. Malformed
@@ -70,17 +80,22 @@ func usableGDMIPv4(ip net.IP) net.IP {
 	return ipv4
 }
 
-// interfaceIPv4Addresses returns every usable IPv4 address on an active
-// non-loopback interface. GDM is link-local multicast, so do not assume RFC1918
-// addressing: corporate, VPN, link-local, and unusual lab networks can all have
-// valid local interfaces that are not net.IP.IsPrivate().
-func interfaceIPv4Addresses() []net.IP {
+type gdmInterfaceBinding struct {
+	IP      net.IP
+	Network *net.IPNet
+}
+
+// interfaceIPv4Bindings returns every usable IPv4 address and its subnet on an
+// active non-loopback interface. GDM is link-local discovery, so do not assume
+// RFC1918 addressing: corporate, VPN, link-local, and unusual lab networks can
+// all have valid interfaces that are not net.IP.IsPrivate().
+func interfaceIPv4Bindings() []gdmInterfaceBinding {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return []net.IP{net.IPv4zero}
+		return []gdmInterfaceBinding{{IP: net.IPv4zero}}
 	}
 	seen := map[string]struct{}{}
-	result := make([]net.IP, 0, len(interfaces))
+	result := make([]gdmInterfaceBinding, 0, len(interfaces))
 	for _, iface := range interfaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
@@ -104,18 +119,52 @@ func interfaceIPv4Addresses() []net.IP {
 			}
 			seen[key] = struct{}{}
 			copyIP := append(net.IP(nil), ip...)
-			result = append(result, copyIP)
+			copyNet := &net.IPNet{IP: append(net.IP(nil), ipNet.IP.To4()...), Mask: append(net.IPMask(nil), ipNet.Mask...)}
+			result = append(result, gdmInterfaceBinding{IP: copyIP, Network: copyNet})
 		}
 	}
 	if len(result) == 0 {
-		// Let the OS select the egress interface as a last-resort fallback.
-		return []net.IP{net.IPv4zero}
+		// Let the OS select the egress interface as a last-resort GDM fallback.
+		return []gdmInterfaceBinding{{IP: net.IPv4zero}}
 	}
 	return result
 }
 
-// DeduplicateServers removes duplicate GDM responses. A machineIdentifier is
-// authoritative when present; otherwise host:port is used.
+// interfaceIPv4Addresses is retained as a small compatibility/test helper.
+func interfaceIPv4Addresses() []net.IP {
+	bindings := interfaceIPv4Bindings()
+	result := make([]net.IP, 0, len(bindings))
+	for _, binding := range bindings {
+		result = append(result, append(net.IP(nil), binding.IP...))
+	}
+	return result
+}
+
+func directedBroadcast(network *net.IPNet) net.IP {
+	if network == nil {
+		return nil
+	}
+	ip := network.IP.To4()
+	if ip == nil || len(network.Mask) != net.IPv4len {
+		return nil
+	}
+	broadcast := make(net.IP, net.IPv4len)
+	for i := 0; i < net.IPv4len; i++ {
+		broadcast[i] = ip[i] | ^network.Mask[i]
+	}
+	return broadcast
+}
+
+func gdmSearchTargets(binding gdmInterfaceBinding) []*net.UDPAddr {
+	targets := []*net.UDPAddr{{IP: net.ParseIP(gdmMulticastAddress).To4(), Port: GDMPort}}
+	if broadcast := directedBroadcast(binding.Network); broadcast != nil && !broadcast.Equal(binding.IP) {
+		targets = append(targets, &net.UDPAddr{IP: broadcast, Port: GDMPort})
+	}
+	return targets
+}
+
+// DeduplicateServers removes duplicate GDM/probe responses. A
+// machineIdentifier is authoritative when present; otherwise host:port is used.
 func DeduplicateServers(in []Server) []Server {
 	seen := make(map[string]struct{}, len(in))
 	out := make([]Server, 0, len(in))
@@ -141,22 +190,46 @@ type gdmInterfaceResult struct {
 	err     error
 }
 
-func discoverGDMOnAddress(ctx context.Context, localIP net.IP, deadline time.Time) ([]Server, error) {
-	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: localIP, Port: 0})
+func discoverGDMOnBinding(ctx context.Context, binding gdmInterfaceBinding, deadline time.Time) ([]Server, error) {
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: binding.IP, Port: 0})
 	if err != nil {
-		return nil, fmt.Errorf("bind Plex GDM discovery on %s: %w", localIP, err)
+		return nil, fmt.Errorf("bind Plex GDM discovery on %s: %w", binding.IP, err)
 	}
 	defer conn.Close()
 	if err := conn.SetDeadline(deadline); err != nil {
 		return nil, fmt.Errorf("set Plex GDM discovery deadline: %w", err)
 	}
 
-	multicastIP := net.ParseIP(gdmMulticastAddress).To4()
-	if multicastIP == nil {
+	targets := gdmSearchTargets(binding)
+	if len(targets) == 0 || targets[0].IP == nil {
 		return nil, errors.New("invalid Plex GDM multicast address")
 	}
-	if _, err := conn.WriteToUDP([]byte(gdmSearchRequest), &net.UDPAddr{IP: multicastIP, Port: GDMPort}); err != nil {
-		return nil, fmt.Errorf("send Plex GDM multicast on %s: %w", localIP, err)
+
+	// A single multicast datagram is easy to lose and some Plex/server/network
+	// combinations advertise via subnet broadcast rather than multicast. Send
+	// two small search waves to both the documented multicast group and the
+	// interface's directed broadcast address. Responses received while the
+	// second wave is sent remain buffered by the UDP socket.
+	successfulSends := 0
+	var lastSendErr error
+	for wave := 0; wave < 2; wave++ {
+		for _, target := range targets {
+			if _, err := conn.WriteToUDP([]byte(gdmSearchRequest), target); err != nil {
+				lastSendErr = err
+				continue
+			}
+			successfulSends++
+		}
+		if wave == 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(gdmRepeatDelay):
+			}
+		}
+	}
+	if successfulSends == 0 {
+		return nil, fmt.Errorf("send Plex GDM discovery on %s: %w", binding.IP, lastSendErr)
 	}
 
 	servers := make([]Server, 0, 2)
@@ -186,28 +259,188 @@ func discoverGDMOnAddress(ctx context.Context, localIP net.IP, deadline time.Tim
 	return servers, nil
 }
 
-// Discover performs Plex server GDM discovery using the standard local multicast
-// group (239.0.0.250:32414). A request is sent from every usable IPv4 interface
-// in parallel so multi-NIC/VPN systems are not limited to the OS default route.
-// Discovery is bounded and only runs when explicitly invoked by the caller.
+func isSafeStandardPortProbeIP(ip net.IP) bool {
+	ipv4 := ip.To4()
+	return ipv4 != nil && (ipv4.IsPrivate() || ipv4.IsLinkLocalUnicast())
+}
+
+func ipv4Number(ip net.IP) (uint32, bool) {
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return 0, false
+	}
+	return binary.BigEndian.Uint32(ipv4), true
+}
+
+func ipv4FromNumber(value uint32) net.IP {
+	ip := make(net.IP, net.IPv4len)
+	binary.BigEndian.PutUint32(ip, value)
+	return ip
+}
+
+func subnetProbeCandidates(bindings []gdmInterfaceBinding, maximum int) []net.IP {
+	if maximum <= 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	result := make([]net.IP, 0, maximum)
+	add := func(ip net.IP) {
+		if len(result) >= maximum || ip == nil {
+			return
+		}
+		ipv4 := ip.To4()
+		if ipv4 == nil {
+			return
+		}
+		key := ipv4.String()
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		result = append(result, append(net.IP(nil), ipv4...))
+	}
+
+	// Always probe the current machine. This fixes the common case where PMS is
+	// local but multicast loopback/firewall behavior prevents its GDM reply.
+	add(net.IPv4(127, 0, 0, 1))
+	for _, binding := range bindings {
+		if !binding.IP.IsUnspecified() {
+			add(binding.IP)
+		}
+		if !isSafeStandardPortProbeIP(binding.IP) || binding.Network == nil {
+			continue
+		}
+		maskSize, bits := binding.Network.Mask.Size()
+		if bits != 32 || maskSize < 0 {
+			continue
+		}
+		// Never sweep a broad corporate/VPN network. For masks broader than /24,
+		// limit the fallback probe to the /24 containing this host. GDM remains the
+		// primary discovery mechanism across the actual broadcast domain.
+		mask := binding.Network.Mask
+		if maskSize < 24 {
+			mask = net.CIDRMask(24, 32)
+		}
+		networkIP := binding.IP.Mask(mask).To4()
+		broadcastIP := directedBroadcast(&net.IPNet{IP: networkIP, Mask: mask})
+		networkNumber, networkOK := ipv4Number(networkIP)
+		broadcastNumber, broadcastOK := ipv4Number(broadcastIP)
+		if !networkOK || !broadcastOK || broadcastNumber <= networkNumber+1 {
+			continue
+		}
+		for candidateNumber := networkNumber + 1; candidateNumber < broadcastNumber && len(result) < maximum; candidateNumber++ {
+			candidate := ipv4FromNumber(candidateNumber)
+			if candidate.Equal(binding.IP) {
+				continue
+			}
+			add(candidate)
+		}
+	}
+	return result
+}
+
+func probePlexStandardPort(ctx context.Context, ip net.IP) (Server, bool) {
+	transport := &http.Transport{
+		Proxy: nil,
+		DialContext: (&net.Dialer{
+			Timeout:   plexProbeDialTimeout,
+			KeepAlive: -1,
+		}).DialContext,
+		DisableKeepAlives:     true,
+		ResponseHeaderTimeout: plexProbeRequestTimeout,
+	}
+	httpClient := &http.Client{Transport: transport, Timeout: plexProbeRequestTimeout}
+	baseURL := "http://" + net.JoinHostPort(ip.String(), strconv.Itoa(DefaultPort))
+	client, err := NewClientWithHTTP(baseURL, "", "viib-discovery", httpClient)
+	if err != nil {
+		return Server{}, false
+	}
+	server, err := client.ValidateServer(ctx)
+	if err != nil || strings.TrimSpace(server.MachineIdentifier) == "" {
+		return Server{}, false
+	}
+	return server, true
+}
+
+func discoverStandardPort(ctx context.Context, bindings []gdmInterfaceBinding) []Server {
+	candidates := subnetProbeCandidates(bindings, plexProbeMaxHosts)
+	if len(candidates) == 0 {
+		return nil
+	}
+	workerCount := plexProbeConcurrency
+	if len(candidates) < workerCount {
+		workerCount = len(candidates)
+	}
+	jobs := make(chan net.IP)
+	found := make(chan Server, len(candidates))
+	var workers sync.WaitGroup
+	workers.Add(workerCount)
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			defer workers.Done()
+			for ip := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				if server, ok := probePlexStandardPort(ctx, ip); ok {
+					found <- server
+				}
+			}
+		}()
+	}
+	go func() {
+		defer close(jobs)
+		for _, ip := range candidates {
+			select {
+			case <-ctx.Done():
+				return
+			case jobs <- ip:
+			}
+		}
+	}()
+	go func() {
+		workers.Wait()
+		close(found)
+	}()
+
+	servers := make([]Server, 0, 2)
+	for server := range found {
+		servers = append(servers, server)
+	}
+	return DeduplicateServers(servers)
+}
+
+// Discover performs Plex server discovery in two bounded phases. It first uses
+// Plex GDM on every usable IPv4 interface, sending both multicast and directed
+// broadcast search packets. If GDM returns nothing, it performs a conservative
+// standard-port /identity probe on the local machine and at most two local /24
+// neighborhoods. This second phase makes first-run discovery work when Windows
+// firewall/multicast policy drops GDM while normal TCP access to PMS is allowed.
 func Discover(ctx context.Context, timeout time.Duration) ([]Server, error) {
 	if timeout <= 0 || timeout > 10*time.Second {
-		timeout = 1500 * time.Millisecond
+		timeout = gdmDefaultTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	deadline := time.Now().Add(timeout)
+	bindings := interfaceIPv4Bindings()
+	gdmWindow := gdmResponseWindow
+	if timeout < 2*gdmResponseWindow {
+		gdmWindow = timeout / 2
+	}
+	if gdmWindow < 500*time.Millisecond {
+		gdmWindow = timeout
+	}
+	deadline := time.Now().Add(gdmWindow)
 	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
 		deadline = contextDeadline
 	}
 
-	addresses := interfaceIPv4Addresses()
-	results := make(chan gdmInterfaceResult, len(addresses))
-	for _, localIP := range addresses {
-		ip := append(net.IP(nil), localIP...)
+	results := make(chan gdmInterfaceResult, len(bindings))
+	for _, sourceBinding := range bindings {
+		binding := gdmInterfaceBinding{IP: append(net.IP(nil), sourceBinding.IP...), Network: sourceBinding.Network}
 		go func() {
-			servers, err := discoverGDMOnAddress(ctx, ip, deadline)
+			servers, err := discoverGDMOnBinding(ctx, binding, deadline)
 			results <- gdmInterfaceResult{servers: servers, err: err}
 		}()
 	}
@@ -215,7 +448,7 @@ func Discover(ctx context.Context, timeout time.Duration) ([]Server, error) {
 	servers := make([]Server, 0, 4)
 	var lastErr error
 	successfulInterfaces := 0
-	for range addresses {
+	for range bindings {
 		result := <-results
 		if result.err != nil {
 			lastErr = result.err
@@ -224,10 +457,23 @@ func Discover(ctx context.Context, timeout time.Duration) ([]Server, error) {
 		successfulInterfaces++
 		servers = append(servers, result.servers...)
 	}
-
 	servers = DeduplicateServers(servers)
-	if successfulInterfaces == 0 && lastErr != nil {
-		return []Server{}, fmt.Errorf("plex GDM discovery failed on all IPv4 interfaces: %w", lastErr)
+	if len(servers) > 0 {
+		return servers, nil
 	}
-	return servers, nil
+
+	// GDM can be disabled in PMS or filtered by host/network firewalls. A
+	// user-triggered, tightly bounded TCP fallback on the standard PMS port is
+	// substantially more reliable on Windows and typical home LANs.
+	if ctx.Err() == nil {
+		servers = discoverStandardPort(ctx, bindings)
+		if len(servers) > 0 {
+			return servers, nil
+		}
+	}
+
+	if successfulInterfaces == 0 && lastErr != nil {
+		return []Server{}, fmt.Errorf("plex discovery failed on all IPv4 interfaces: %w", lastErr)
+	}
+	return []Server{}, nil
 }

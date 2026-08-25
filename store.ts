@@ -31,6 +31,7 @@ import { createSpotifySlice } from './slices/spotifySlice';
 import { createUISlice } from './slices/uiSlice';
 import { createAIDJSlice } from './slices/aiDjSlice';
 import { createDJMixerSlice } from './slices/djMixerSlice';
+import { buildAlbumCoverIndex, isAuthoritativePlexArtwork, isPlexSourcePath } from './lib/artwork';
 
 export const useStore = create<AppState>()(
   persist(
@@ -107,19 +108,34 @@ export const useStore = create<AppState>()(
 
 // --- Selectors ---
 
+type DerivedAlbum = Album & { plexBacked?: boolean };
+
 export const useAlbums = () => {
   const songs = useStore((state) => state.songs);
   return useMemo(() => {
-    const albumsMap = new Map<string, Album>();
+    const albumsMap = new Map<string, DerivedAlbum>();
 
     songs.forEach((song) => {
       const artist = song.albumArtist || song.artist || 'Unknown Artist';
       const key = `${song.album}::${artist}`;
+      const plexBacked = isPlexSourcePath(song.path);
       const existing = albumsMap.get(key);
       if (existing) {
         existing.songCount += 1;
         existing.addedAt = Math.max(existing.addedAt || 0, song.addedAt || 0);
-        if (!existing.coverUrl && song.coverUrl) existing.coverUrl = song.coverUrl;
+        if (plexBacked) {
+          // Once a logical album has a Plex source, Plex's artwork decision is
+          // authoritative. The first Plex row deliberately clears a local cover
+          // if PMS has no artwork; later Plex rows may supply that PMS cover.
+          if (!existing.plexBacked) {
+            existing.coverUrl = song.coverUrl;
+          } else if (song.coverUrl && (!existing.coverUrl || isAuthoritativePlexArtwork(song.coverUrl))) {
+            existing.coverUrl = song.coverUrl;
+          }
+          existing.plexBacked = true;
+        } else if (!existing.plexBacked && !existing.coverUrl && song.coverUrl) {
+          existing.coverUrl = song.coverUrl;
+        }
         return;
       }
       albumsMap.set(key, {
@@ -128,6 +144,7 @@ export const useAlbums = () => {
         songCount: 1,
         coverUrl: song.coverUrl,
         addedAt: song.addedAt || 0,
+        plexBacked,
       });
     });
 
@@ -206,16 +223,6 @@ export const useArtists = () => {
 };
 
 export const useAlbumCovers = () => {
-  const songs = useStore((state) => state.songs);
-  return useMemo(() => {
-    const covers: Record<string, string> = {};
-    songs.forEach((song) => {
-      if (!song.coverUrl) return;
-      const artist = song.albumArtist || song.artist || 'Unknown Artist';
-      const composite = `${song.album}::${artist}`;
-      if (!covers[composite]) covers[composite] = song.coverUrl;
-      if (!covers[song.album]) covers[song.album] = song.coverUrl;
-    });
-    return covers;
-  }, [songs]);
+  const albums = useAlbums();
+  return useMemo(() => buildAlbumCoverIndex(albums), [albums]);
 };

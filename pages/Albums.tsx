@@ -15,18 +15,18 @@
 
 import React, { useEffect, useState, forwardRef, useMemo } from 'react';
 import { useAlbums, useStore } from '../store';
-import { generateGradient, coverBackground } from '../utils';
+import { coverBackground } from '../utils';
 import { useNavigate } from 'react-router';
-import { ContextMenuType, Album } from '../types';
+import { ContextMenuType } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { ChevronDown, ArrowUpDown } from 'lucide-react';
 import { EmptyAlbums } from '../components/EmptyState';
-import { SkeletonAlbumGrid } from '../components/Skeleton';
-import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
 import { Menu, MenuItem } from '../components/ui/Menu';
 import { Page, PageHeader } from '../components/ui/Page';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { resolveAlbumArtwork } from '../lib/artwork';
 
 type AlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc' | 'songs-desc' | 'songs-asc';
 
@@ -40,8 +40,6 @@ const sortLabels: Record<AlbumSortOption, string> = {
   'songs-asc': 'Fewest Songs',
 };
 
-// Define Grid Components outside to prevent re-renders
-// gridTemplateColumns is driven by the --card-cols CSS variable set on the parent wrapper.
 const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
   <div
     ref={ref}
@@ -79,23 +77,22 @@ export const Albums: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Only fetch metadata for albums that are MISSING artwork
-    // This prevents unnecessary Spotify API calls for albums that already have covers
+    // Plex-backed albums own their artwork decision, including "no artwork".
+    // Do not trigger Spotify enrichment merely to fill a cover Plex did not set.
     const albumsMissingArt = albums.filter(album => {
+        if (album.plexBacked) return false;
         const metadataKey = `${album.name}::${album.artist}`;
-        // Skip if we already have metadata OR if album has embedded cover
         const hasMetadata = !!albumMetadata[metadataKey];
-        const hasEmbeddedCover = !!album.coverUrl;
-        return !hasMetadata && !hasEmbeddedCover;
+        const hasCatalogCover = !!album.coverUrl;
+        return !hasMetadata && !hasCatalogCover;
     });
 
-    // Limit to first 30 to avoid rate limiting, with staggered requests
     albumsMissingArt.slice(0, 30).forEach((album, idx) => {
         setTimeout(() => {
             fetchAlbumMetadata(album.name, album.artist);
-        }, idx * 200); // 200ms between requests to be gentle on Spotify API
+        }, idx * 200);
     });
-  }, [albums.length, albumMetadata]);
+  }, [albums, albumMetadata, fetchAlbumMetadata]);
 
   const sortedAlbums = useMemo(() => {
     const sorted = [...albums];
@@ -127,28 +124,27 @@ export const Albums: React.FC = () => {
           actions={
             <div className="flex items-center gap-3">
               <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
-            <div className="relative">
-          <Button
-            variant="secondary"
-            onClick={() => setShowSortMenu(!showSortMenu)}
-            className="rounded-full"
-            leftIcon={<ArrowUpDown size={16} className="text-text-secondary" aria-hidden="true" />}
-            rightIcon={<ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />}
-            aria-haspopup="menu"
-            aria-expanded={showSortMenu}
-          >
-            {sortLabels[sortBy]}
-          </Button>
-                
+              <div className="relative">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowSortMenu(!showSortMenu)}
+                  className="rounded-full"
+                  leftIcon={<ArrowUpDown size={16} className="text-text-secondary" aria-hidden="true" />}
+                  rightIcon={<ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />}
+                  aria-haspopup="menu"
+                  aria-expanded={showSortMenu}
+                >
+                  {sortLabels[sortBy]}
+                </Button>
                 {showSortMenu && (
-                    <>
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          aria-label="Close sort menu"
-                          className="fixed inset-0 z-40"
-                          onClick={() => setShowSortMenu(false)}
-                        />
+                  <>
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label="Close sort menu"
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowSortMenu(false)}
+                    />
                     <Menu
                       className="absolute right-0 top-full mt-2 z-50 min-w-[180px]"
                       onRequestClose={() => setShowSortMenu(false)}
@@ -163,74 +159,69 @@ export const Albums: React.FC = () => {
                         </MenuItem>
                       ))}
                     </Menu>
-                    </>
+                  </>
                 )}
+              </div>
             </div>
-            </div>
-                }
-              />
+          }
+        />
 
         {sortedAlbums.length === 0 ? (
-            <EmptyAlbums />
+          <EmptyAlbums />
         ) : (
-            <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
+          <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
             <VirtuosoGrid
-                useWindowScroll={false}
-                customScrollParent={scrollParent}
-                data={sortedAlbums}
-                components={{
-                    List: ListContainer,
-                    Item: ItemContainer
-                }}
-                itemContent={(index, album) => {
-                    const metadataKey = `${album.name}::${album.artist}`;
-                    const metadata = albumMetadata[metadataKey];
-                    const coverUrl = metadata?.coverUrl || album.coverUrl;
+              useWindowScroll={false}
+              customScrollParent={scrollParent}
+              data={sortedAlbums}
+              components={{ List: ListContainer, Item: ItemContainer }}
+              itemContent={(index, album) => {
+                const metadataKey = `${album.name}::${album.artist}`;
+                const metadata = albumMetadata[metadataKey];
+                const coverUrl = resolveAlbumArtwork(album.coverUrl, metadata?.coverUrl, album.plexBacked);
 
-                    return (
-                      <Card 
-                        interactive
-                        className="p-4 h-full flex flex-col cursor-pointer"
-                        onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
-                        onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`);
-                          }
-                        }}
-                      >
-                            <div 
-                              className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden bg-surface-3"
-                                style={{ background: coverBackground(coverUrl, album.name) }}
-                            >
-                                {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}
-                                
-                                {/* Hover Overlay */}
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <Button
-                              variant="primary"
-                              className="w-12 h-12 rounded-full p-0 translate-y-4 group-hover:translate-y-0 transition-transform duration-200"
-                              aria-label="Open album"
-                            >
-                              <svg className="w-6 h-6 text-black fill-current ml-0.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-                            </Button>
-                                </div>
-                            </div>
-                            <h4 className="font-bold truncate text-text-main mb-1">{album.name}</h4>
-                            <div className="flex justify-between items-center mt-auto">
-                                <p className="text-sm text-text-secondary truncate max-w-[70%]">{album.artist}</p>
-                                {metadata?.releaseDate && (
-                            <span className="text-[10px] text-text-subtle font-mono">{new Date(metadata.releaseDate).getFullYear()}</span>
-                                )}
-                            </div>
-                      </Card>
-                    );
-                }}
+                return (
+                  <Card
+                    interactive
+                    className="p-4 h-full flex flex-col cursor-pointer"
+                    onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
+                    onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`);
+                      }
+                    }}
+                  >
+                    <div
+                      className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden bg-surface-3"
+                      style={{ background: coverBackground(coverUrl, album.name) }}
+                    >
+                      {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Button
+                          variant="primary"
+                          className="w-12 h-12 rounded-full p-0 translate-y-4 group-hover:translate-y-0 transition-transform duration-200"
+                          aria-label="Open album"
+                        >
+                          <svg className="w-6 h-6 text-black fill-current ml-0.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                        </Button>
+                      </div>
+                    </div>
+                    <h4 className="font-bold truncate text-text-main mb-1">{album.name}</h4>
+                    <div className="flex justify-between items-center mt-auto">
+                      <p className="text-sm text-text-secondary truncate max-w-[70%]">{album.artist}</p>
+                      {metadata?.releaseDate && (
+                        <span className="text-[10px] text-text-subtle font-mono">{new Date(metadata.releaseDate).getFullYear()}</span>
+                      )}
+                    </div>
+                  </Card>
+                );
+              }}
             />
-            </div>
+          </div>
         )}
     </Page>
   );

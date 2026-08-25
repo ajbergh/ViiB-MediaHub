@@ -163,6 +163,31 @@ func (c *Client) sameServer(u *url.URL) bool {
 	return strings.EqualFold(u.Scheme, c.baseURL.Scheme) && strings.EqualFold(u.Host, c.baseURL.Host)
 }
 
+// guardedHTTPClient preserves any injected transport/client behavior while
+// ensuring a PMS authentication token can never follow a redirect off the
+// configured server origin. X-Plex-Token is a custom header, so relying on the
+// standard library's special handling for Authorization/Cookie is insufficient.
+func (c *Client) guardedHTTPClient(stream bool) *http.Client {
+	clone := *c.httpClient
+	if stream {
+		clone.Timeout = 0
+	}
+	previousRedirectPolicy := clone.CheckRedirect
+	clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if !c.sameServer(req.URL) {
+			req.Header.Del("X-Plex-Token")
+		}
+		if previousRedirectPolicy != nil {
+			return previousRedirectPolicy(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &clone
+}
+
 func (c *Client) newRequest(ctx context.Context, method, parent, key string, authenticated bool) (*http.Request, error) {
 	u, err := c.resolveKey(parent, key)
 	if err != nil {
@@ -195,7 +220,7 @@ func classifyHTTPError(resp *http.Response) error {
 }
 
 func (c *Client) doJSON(req *http.Request, out any) error {
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.guardedHTTPClient(false).Do(req)
 	if err != nil {
 		var dnsErr *net.DNSError
 		var netErr net.Error
@@ -492,43 +517,55 @@ type trackEnvelope struct {
 	} `json:"MediaContainer"`
 }
 
+func selectPlayablePart(media []plexMedia) (plexMedia, plexPart, bool) {
+	for _, candidate := range media {
+		for _, part := range candidate.Part {
+			if strings.TrimSpace(part.Key) != "" {
+				return candidate, part, true
+			}
+		}
+	}
+	return plexMedia{}, plexPart{}, false
+}
+
 func mapPlexTrack(raw plexTrack) (Track, bool) {
 	if raw.Type != "" && !strings.EqualFold(raw.Type, "track") {
 		return Track{}, false
 	}
-	if raw.RatingKey == "" || raw.Title == "" || len(raw.Media) == 0 || len(raw.Media[0].Part) == 0 || raw.Media[0].Part[0].Key == "" {
+	if raw.RatingKey == "" || raw.Title == "" {
 		return Track{}, false
 	}
+	// PMS metadata identity is authoritative even when the server temporarily
+	// omits a playable Media/Part. Preserve the track in the snapshot with an
+	// empty MediaKey so reconciliation can distinguish "still present" from
+	// "deleted"; the DB defers new unplayable items and retains cached ones.
+	media, part, _ := selectPlayablePart(raw.Media)
 	genres := make([]string, 0, len(raw.Genre))
 	for _, genre := range raw.Genre {
 		if value := strings.TrimSpace(genre.Tag); value != "" {
 			genres = append(genres, value)
 		}
 	}
-	artwork := raw.Thumb
-	if artwork == "" {
-		artwork = raw.ParentThumb
-	}
-	albumArtist := raw.GrandparentTitle
-	if albumArtist == "" {
-		albumArtist = raw.OriginalTitle
-	}
+	// A music track's parent is its album. Prefer the parent thumbnail so ViiB's
+	// album-centric artwork matches the artwork Plex shows for that album; fall
+	// back to the track thumbnail for servers/items without parent artwork.
+	artwork := firstNonEmpty(raw.ParentThumb, raw.Thumb)
 	return Track{
 		RatingKey:       raw.RatingKey,
 		MetadataKey:     raw.Key,
 		Title:           raw.Title,
 		Artist:          raw.GrandparentTitle,
 		Album:           raw.ParentTitle,
-		AlbumArtist:     albumArtist,
+		AlbumArtist:     raw.GrandparentTitle,
 		TrackNumber:     raw.Index,
 		DiscNumber:      raw.ParentIndex,
 		Genres:          genres,
 		Year:            raw.Year,
 		DurationSeconds: float64(raw.Duration) / 1000,
 		ArtworkKey:      artwork,
-		MediaKey:        raw.Media[0].Part[0].Key,
-		Container:       firstNonEmpty(raw.Media[0].Part[0].Container, raw.Media[0].Container),
-		AudioCodec:      raw.Media[0].AudioCodec,
+		MediaKey:        part.Key,
+		Container:       firstNonEmpty(part.Container, media.Container),
+		AudioCodec:      media.AudioCodec,
 		AddedAt:         raw.AddedAt * 1000,
 		UpdatedAt:       raw.UpdatedAt * 1000,
 	}, true
@@ -557,7 +594,8 @@ func (c *Client) FetchTracks(ctx context.Context, library Library) (SyncResult, 
 	}
 	const pageSize = 500
 	tracks := make([]Track, 0, pageSize)
-	for offset := 0; ; offset += pageSize {
+	seenRatingKeys := make(map[string]struct{}, pageSize)
+	for offset := 0; ; {
 		req, err := c.newRequest(ctx, http.MethodGet, "", library.TrackKey, true)
 		if err != nil {
 			return SyncResult{}, err
@@ -568,15 +606,43 @@ func (c *Client) FetchTracks(ctx context.Context, library Library) (SyncResult, 
 		if err := c.doJSON(req, &response); err != nil {
 			return SyncResult{}, fmt.Errorf("read Plex music library page at offset %d: %w", offset, err)
 		}
-		for _, raw := range response.MediaContainer.Metadata {
-			if track, ok := mapPlexTrack(raw); ok {
-				tracks = append(tracks, track)
-			}
-		}
 		count := len(response.MediaContainer.Metadata)
-		if count == 0 || count < pageSize || (response.MediaContainer.TotalSize > 0 && offset+count >= response.MediaContainer.TotalSize) {
+		if count == 0 {
 			break
 		}
+		for _, raw := range response.MediaContainer.Metadata {
+			track, ok := mapPlexTrack(raw)
+			if !ok {
+				continue
+			}
+			if _, duplicate := seenRatingKeys[track.RatingKey]; duplicate {
+				continue
+			}
+			seenRatingKeys[track.RatingKey] = struct{}{}
+			tracks = append(tracks, track)
+		}
+
+		// PMS may return fewer rows than requested because of a server/provider
+		// cap. totalSize is authoritative when present, so advance by the actual
+		// number returned instead of pageSize and continue until it is exhausted.
+		nextOffset := offset + count
+		if response.MediaContainer.Offset > offset {
+			nextOffset = response.MediaContainer.Offset + count
+		}
+		if nextOffset <= offset {
+			return SyncResult{}, fmt.Errorf("plex music library paging made no progress at offset %d", offset)
+		}
+		if response.MediaContainer.TotalSize > 0 {
+			if nextOffset >= response.MediaContainer.TotalSize {
+				break
+			}
+			offset = nextOffset
+			continue
+		}
+		if count < pageSize {
+			break
+		}
+		offset = nextOffset
 	}
 	return SyncResult{Tracks: tracks, Started: started, Finished: time.Now()}, nil
 }
@@ -597,7 +663,5 @@ func (c *Client) MediaRequest(ctx context.Context, key string) (*http.Request, e
 // MediaHTTPClient has no whole-response timeout so long audio streams are not
 // interrupted; connection/header timeouts remain enforced by the transport.
 func (c *Client) MediaHTTPClient() *http.Client {
-	clone := *c.httpClient
-	clone.Timeout = 0
-	return &clone
+	return c.guardedHTTPClient(true)
 }

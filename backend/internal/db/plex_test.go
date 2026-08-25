@@ -73,6 +73,37 @@ func TestPlexSyncAddUpdateRemoveAndOfflineRetention(t *testing.T) {
 	}
 }
 
+func TestPlexSyncRetainsExistingTrackWhenSnapshotOmitsPlayablePart(t *testing.T) {
+	database := openPlexTestDB(t)
+	defer database.Close()
+	const sourceID, libraryID, machineID = "plexsrc_test", "2", "machine-test"
+	if err := database.SavePlexSource(PlexSource{ID: sourceID, MachineIdentifier: machineID, BaseURL: "http://127.0.0.1:32400", Name: "Plex", LibraryID: libraryID, LibraryTitle: "Music", Active: true, Available: true}); err != nil {
+		t.Fatal(err)
+	}
+	original := plexFixture(sourceID, libraryID, machineID, "1", "Still Here", 100)
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{original}); err != nil {
+		t.Fatal(err)
+	}
+
+	presenceOnly := original
+	presenceOnly.MediaKey = ""
+	presenceOnly.Container = ""
+	presenceOnly.AudioCodec = ""
+	presenceOnly.UpdatedAt = 200
+	added, updated, removed, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{presenceOnly})
+	if err != nil || added != 0 || updated != 0 || removed != 0 {
+		t.Fatalf("presence-only sync: added=%d updated=%d removed=%d err=%v", added, updated, removed, err)
+	}
+	retained, err := database.GetSongByID("plex_song_1")
+	if err != nil || retained == nil || retained.Title != "Still Here" {
+		t.Fatalf("temporarily unplayable track was removed: song=%#v err=%v", retained, err)
+	}
+	trackSource, err := database.GetPlexTrackSource("plex_song_1")
+	if err != nil || trackSource == nil || trackSource.MediaKey != original.MediaKey {
+		t.Fatalf("cached playable source should remain intact: source=%#v err=%v", trackSource, err)
+	}
+}
+
 func TestChangingPlexLibraryRetainsCacheUntilSuccessfulSync(t *testing.T) {
 	database := openPlexTestDB(t)
 	defer database.Close()

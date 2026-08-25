@@ -38,13 +38,93 @@ func TestDeduplicateServers(t *testing.T) {
 	}
 }
 
-func TestGDMServerDiscoveryUsesMulticast(t *testing.T) {
+func TestGDMServerDiscoveryUsesMulticastAndDirectedBroadcast(t *testing.T) {
 	ip := net.ParseIP(gdmMulticastAddress)
 	if ip == nil || !ip.IsMulticast() {
 		t.Fatalf("expected GDM server endpoint to be multicast, got %q", gdmMulticastAddress)
 	}
 	if gdmMulticastAddress != "239.0.0.250" || GDMPort != 32414 {
 		t.Fatalf("unexpected Plex GDM server endpoint %s:%d", gdmMulticastAddress, GDMPort)
+	}
+
+	binding := gdmInterfaceBinding{
+		IP: net.ParseIP("192.168.50.23").To4(),
+		Network: &net.IPNet{IP: net.ParseIP("192.168.50.23").To4(), Mask: net.CIDRMask(24, 32)},
+	}
+	targets := gdmSearchTargets(binding)
+	if len(targets) != 2 {
+		t.Fatalf("expected multicast and directed broadcast targets, got %#v", targets)
+	}
+	if got := targets[1].IP.String(); got != "192.168.50.255" {
+		t.Fatalf("directed broadcast=%s want 192.168.50.255", got)
+	}
+}
+
+func TestDirectedBroadcastHonorsNon24Mask(t *testing.T) {
+	network := &net.IPNet{IP: net.ParseIP("192.168.10.70").To4(), Mask: net.CIDRMask(26, 32)}
+	if got := directedBroadcast(network).String(); got != "192.168.10.127" {
+		t.Fatalf("broadcast=%s want 192.168.10.127", got)
+	}
+}
+
+func TestSubnetProbeCandidatesStayInsideBoundedNetwork(t *testing.T) {
+	binding := gdmInterfaceBinding{
+		IP: net.ParseIP("192.168.10.70").To4(),
+		Network: &net.IPNet{IP: net.ParseIP("192.168.10.70").To4(), Mask: net.CIDRMask(26, 32)},
+	}
+	candidates := subnetProbeCandidates([]gdmInterfaceBinding{binding}, 512)
+	seen := map[string]bool{}
+	for _, candidate := range candidates {
+		seen[candidate.String()] = true
+		if candidate.IsLoopback() {
+			continue
+		}
+		last := candidate.To4()[3]
+		if last < 65 || last > 126 {
+			t.Fatalf("candidate escaped /26: %s", candidate)
+		}
+	}
+	if !seen["127.0.0.1"] || !seen["192.168.10.70"] || !seen["192.168.10.65"] || !seen["192.168.10.126"] {
+		t.Fatalf("missing expected fallback candidates: %#v", seen)
+	}
+	if seen["192.168.10.64"] || seen["192.168.10.127"] {
+		t.Fatalf("network/broadcast address should not be probed: %#v", seen)
+	}
+}
+
+func TestBroadPrivateSubnetProbeIsLimitedToLocal24(t *testing.T) {
+	binding := gdmInterfaceBinding{
+		IP: net.ParseIP("10.44.12.99").To4(),
+		Network: &net.IPNet{IP: net.ParseIP("10.44.12.99").To4(), Mask: net.CIDRMask(16, 32)},
+	}
+	candidates := subnetProbeCandidates([]gdmInterfaceBinding{binding}, 512)
+	for _, candidate := range candidates {
+		if candidate.IsLoopback() {
+			continue
+		}
+		ipv4 := candidate.To4()
+		if ipv4[0] != 10 || ipv4[1] != 44 || ipv4[2] != 12 {
+			t.Fatalf("broad-subnet fallback escaped local /24: %s", candidate)
+		}
+	}
+}
+
+func TestStandardPortFallbackDoesNotSweepPublicNetworks(t *testing.T) {
+	binding := gdmInterfaceBinding{
+		IP: net.ParseIP("203.0.113.20").To4(),
+		Network: &net.IPNet{IP: net.ParseIP("203.0.113.20").To4(), Mask: net.CIDRMask(24, 32)},
+	}
+	candidates := subnetProbeCandidates([]gdmInterfaceBinding{binding}, 512)
+	if len(candidates) != 2 || candidates[0].String() != "127.0.0.1" || candidates[1].String() != "203.0.113.20" {
+		t.Fatalf("public network should only probe loopback/current host, got %#v", candidates)
+	}
+}
+
+func TestInterfaceIPv4AddressesAreIPv4Values(t *testing.T) {
+	for _, address := range interfaceIPv4Addresses() {
+		if address.To4() == nil {
+			t.Fatalf("expected discovery helper to return IPv4 values, got %s", address)
+		}
 	}
 }
 

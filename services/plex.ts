@@ -71,7 +71,7 @@ function isMusicLibrary(library: PlexLibrary): boolean {
 }
 
 export const plexService = {
-  async discover(timeoutMs = 1500): Promise<{ servers: PlexServer[]; warning?: string }> {
+  async discover(timeoutMs = 3500): Promise<{ servers: PlexServer[]; warning?: string }> {
     const response = await fetch(`${PLEX_API_BASE}/discover`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
