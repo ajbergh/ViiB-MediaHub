@@ -73,7 +73,7 @@ func TestPlexSyncAddUpdateRemoveAndOfflineRetention(t *testing.T) {
 	}
 }
 
-func TestChangingPlexLibraryRemovesOnlyViiBCachedSourceTracks(t *testing.T) {
+func TestChangingPlexLibraryRetainsCacheUntilSuccessfulSync(t *testing.T) {
 	database := openPlexTestDB(t)
 	defer database.Close()
 	const sourceID, machineID = "plexsrc_test", "machine-test"
@@ -83,15 +83,38 @@ func TestChangingPlexLibraryRemovesOnlyViiBCachedSourceTracks(t *testing.T) {
 	if _, _, _, err := database.SyncPlexLibrary(sourceID, "2", []PlexCatalogTrack{plexFixture(sourceID, "2", machineID, "1", "Old Library Track", 1)}); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := database.SetPlexLibrary(sourceID, "3", "Music B"); err != nil {
 		t.Fatal(err)
 	}
-	if oldSong, err := database.GetSongByID("plex_song_1"); err == nil || oldSong != nil {
-		t.Fatalf("old selected library remained visible after explicit library change: song=%#v err=%v", oldSong, err)
+	// Selecting a different library is not an authoritative remote read. The old
+	// cache must remain available if the server becomes unreachable before sync.
+	if oldSong, err := database.GetSongByID("plex_song_1"); err != nil || oldSong == nil {
+		t.Fatalf("old selected library cache was removed before successful sync: song=%#v err=%v", oldSong, err)
 	}
+	if err := database.SetPlexSyncState(sourceID, "error", "offline", false, 0); err != nil {
+		t.Fatal(err)
+	}
+	if retained, err := database.GetSongByID("plex_song_1"); err != nil || retained == nil {
+		t.Fatalf("offline library switch deleted cached track: song=%#v err=%v", retained, err)
+	}
+
 	source, err := database.GetActivePlexSource()
-	if err != nil || source.LibraryID != "3" || source.LibraryTitle != "Music B" || source.LastSyncStatus != "never" {
-		t.Fatalf("unexpected source after library change: %#v err=%v", source, err)
+	if err != nil || source.LibraryID != "3" || source.LibraryTitle != "Music B" {
+		t.Fatalf("unexpected source after library selection: %#v err=%v", source, err)
+	}
+
+	added, updated, removed, err := database.SyncPlexLibrary(sourceID, "3", []PlexCatalogTrack{
+		plexFixture(sourceID, "3", machineID, "2", "New Library Track", 1),
+	})
+	if err != nil || added != 1 || updated != 0 || removed != 1 {
+		t.Fatalf("new library authoritative sync: added=%d updated=%d removed=%d err=%v", added, updated, removed, err)
+	}
+	if oldSong, err := database.GetSongByID("plex_song_1"); err == nil || oldSong != nil {
+		t.Fatalf("old library track remained after successful new-library sync: song=%#v err=%v", oldSong, err)
+	}
+	if newSong, err := database.GetSongByID("plex_song_2"); err != nil || newSong == nil || newSong.Title != "New Library Track" {
+		t.Fatalf("new library track missing after successful sync: song=%#v err=%v", newSong, err)
 	}
 }
 
