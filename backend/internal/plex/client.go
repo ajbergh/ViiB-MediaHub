@@ -492,11 +492,26 @@ type trackEnvelope struct {
 	} `json:"MediaContainer"`
 }
 
+func selectPlayablePart(media []plexMedia) (plexMedia, plexPart, bool) {
+	for _, candidate := range media {
+		for _, part := range candidate.Part {
+			if strings.TrimSpace(part.Key) != "" {
+				return candidate, part, true
+			}
+		}
+	}
+	return plexMedia{}, plexPart{}, false
+}
+
 func mapPlexTrack(raw plexTrack) (Track, bool) {
 	if raw.Type != "" && !strings.EqualFold(raw.Type, "track") {
 		return Track{}, false
 	}
-	if raw.RatingKey == "" || raw.Title == "" || len(raw.Media) == 0 || len(raw.Media[0].Part) == 0 || raw.Media[0].Part[0].Key == "" {
+	if raw.RatingKey == "" || raw.Title == "" {
+		return Track{}, false
+	}
+	media, part, ok := selectPlayablePart(raw.Media)
+	if !ok {
 		return Track{}, false
 	}
 	genres := make([]string, 0, len(raw.Genre))
@@ -505,10 +520,10 @@ func mapPlexTrack(raw plexTrack) (Track, bool) {
 			genres = append(genres, value)
 		}
 	}
-	artwork := raw.Thumb
-	if artwork == "" {
-		artwork = raw.ParentThumb
-	}
+	// A music track's parent is its album. Prefer the parent thumbnail so ViiB's
+	// album-centric artwork matches the artwork Plex shows for that album; fall
+	// back to the track thumbnail for servers/items without parent artwork.
+	artwork := firstNonEmpty(raw.ParentThumb, raw.Thumb)
 	albumArtist := raw.GrandparentTitle
 	if albumArtist == "" {
 		albumArtist = raw.OriginalTitle
@@ -526,9 +541,9 @@ func mapPlexTrack(raw plexTrack) (Track, bool) {
 		Year:            raw.Year,
 		DurationSeconds: float64(raw.Duration) / 1000,
 		ArtworkKey:      artwork,
-		MediaKey:        raw.Media[0].Part[0].Key,
-		Container:       firstNonEmpty(raw.Media[0].Part[0].Container, raw.Media[0].Container),
-		AudioCodec:      raw.Media[0].AudioCodec,
+		MediaKey:        part.Key,
+		Container:       firstNonEmpty(part.Container, media.Container),
+		AudioCodec:      media.AudioCodec,
 		AddedAt:         raw.AddedAt * 1000,
 		UpdatedAt:       raw.UpdatedAt * 1000,
 	}, true
@@ -557,7 +572,8 @@ func (c *Client) FetchTracks(ctx context.Context, library Library) (SyncResult, 
 	}
 	const pageSize = 500
 	tracks := make([]Track, 0, pageSize)
-	for offset := 0; ; offset += pageSize {
+	seenRatingKeys := make(map[string]struct{}, pageSize)
+	for offset := 0; ; {
 		req, err := c.newRequest(ctx, http.MethodGet, "", library.TrackKey, true)
 		if err != nil {
 			return SyncResult{}, err
@@ -568,15 +584,43 @@ func (c *Client) FetchTracks(ctx context.Context, library Library) (SyncResult, 
 		if err := c.doJSON(req, &response); err != nil {
 			return SyncResult{}, fmt.Errorf("read Plex music library page at offset %d: %w", offset, err)
 		}
-		for _, raw := range response.MediaContainer.Metadata {
-			if track, ok := mapPlexTrack(raw); ok {
-				tracks = append(tracks, track)
-			}
-		}
 		count := len(response.MediaContainer.Metadata)
-		if count == 0 || count < pageSize || (response.MediaContainer.TotalSize > 0 && offset+count >= response.MediaContainer.TotalSize) {
+		if count == 0 {
 			break
 		}
+		for _, raw := range response.MediaContainer.Metadata {
+			track, ok := mapPlexTrack(raw)
+			if !ok {
+				continue
+			}
+			if _, duplicate := seenRatingKeys[track.RatingKey]; duplicate {
+				continue
+			}
+			seenRatingKeys[track.RatingKey] = struct{}{}
+			tracks = append(tracks, track)
+		}
+
+		// PMS may return fewer rows than requested because of a server/provider
+		// cap. totalSize is authoritative when present, so advance by the actual
+		// number returned instead of pageSize and continue until it is exhausted.
+		nextOffset := offset + count
+		if response.MediaContainer.Offset > offset {
+			nextOffset = response.MediaContainer.Offset + count
+		}
+		if nextOffset <= offset {
+			return SyncResult{}, fmt.Errorf("plex music library paging made no progress at offset %d", offset)
+		}
+		if response.MediaContainer.TotalSize > 0 {
+			if nextOffset >= response.MediaContainer.TotalSize {
+				break
+			}
+			offset = nextOffset
+			continue
+		}
+		if count < pageSize {
+			break
+		}
+		offset = nextOffset
 	}
 	return SyncResult{Tracks: tracks, Started: started, Finished: time.Now()}, nil
 }
