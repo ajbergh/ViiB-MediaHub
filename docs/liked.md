@@ -4,47 +4,32 @@
 
 ![Liked Albums](../assets/screenshots/liked-albums.png)
 
-ViiB MediaHub lets you like individual tracks and whole albums for quick access later.
+ViiB MediaHub stores song and album likes as ViiB application state. Local filesystem tracks and synchronized Plex tracks can both be liked through the same UI.
 
 ---
 
 ## Liked Songs
 
-### Accessing Liked Songs
+Liked Songs includes catalog tracks whose ViiB liked state is enabled. The page supports normal playback, shuffle, queue, and track context actions.
 
-Click **Liked Songs** in the sidebar.
-
-### Features
-
-- All tracks you have liked, sorted by when they were liked (most recent first)
-- **Play All** and **Shuffle All** controls
-- Like/unlike toggle on each row
-- Context menu per track (same as [Songs](songs.md))
-
-### Liking a Track
-
-Click the **heart icon** ( ♡ ) on any track row anywhere in the app. The heart fills to indicate the track is liked. Click again to unlike.
+For a Plex-backed track, liking or unliking changes ViiB's database only. It does not change the Plex account's rating/favorite state and does not send a metadata update to PMS.
 
 ---
 
 ## Liked Albums
 
-### Accessing Liked Albums
-
-Click **Liked Albums** in the sidebar.
-
-### Features
-
-- All albums you have liked, displayed as a card grid
-- Click an album card to open [Album Detail](albums.md)
-- Unlike an album by clicking the filled heart on the card
-
-### Liking an Album
-
-Click the **heart icon** on an album card in the [Albums](albums.md) grid, or on the album detail header.
+Liked Albums is also ViiB-local state. Album cards open the normal [Album Detail](albums.md) experience whether the underlying catalog tracks are local or Plex-hosted.
 
 ---
 
 ## Persistence
 
-Likes are stored in the SQLite database (`songs.liked` and `album_metadata.liked` columns) and survive app restarts. They are not synced to Spotify or any external service.
+Likes survive ViiB restarts because they are stored in the ViiB SQLite database.
+
+They are intentionally independent from external services:
+
+- not synchronized to Plex;
+- not synchronized to Spotify;
+- not removed merely because a Plex server is temporarily offline.
+
+If a successful authoritative source reconciliation later removes a catalog item that truly no longer exists in the selected Plex library, normal ViiB cleanup/repair behavior applies to stale references.
