@@ -507,6 +507,14 @@ func (a *API) getPlexSyncStatus(w http.ResponseWriter, r *http.Request) {
 
 var proxyHeaders = []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified", "Cache-Control", "Content-Disposition"}
 
+func copyPlexProxyHeaders(dst http.Header, src http.Header) {
+	for _, header := range proxyHeaders {
+		if value := src.Get(header); value != "" {
+			dst.Set(header, value)
+		}
+	}
+}
+
 func (a *API) proxyPlexAsset(w http.ResponseWriter, r *http.Request, track *db.PlexTrackSource, key string, rangeRequest bool) {
 	if key == "" {
 		respondPlexStreamMessage(w, http.StatusNotFound, "Plex media asset is unavailable")
@@ -543,20 +551,33 @@ func (a *API) proxyPlexAsset(w http.ResponseWriter, r *http.Request, track *db.P
 		respondPlexStreamMessage(w, http.StatusUnauthorized, "Plex authentication expired; reconnect in Settings")
 		return
 	}
+	// Preserve RFC 7233 range semantics. In particular, a seek beyond the end of
+	// the media must remain 416 with PMS's Content-Range (for example bytes */N)
+	// rather than being rewritten as a generic upstream 502.
+	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		copyPlexProxyHeaders(w.Header(), resp.Header)
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+		return
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respondPlexStreamMessage(w, http.StatusBadGateway, fmt.Sprintf("Plex media request returned HTTP %d", resp.StatusCode))
 		return
 	}
-	for _, header := range proxyHeaders {
-		if value := resp.Header.Get(header); value != "" {
-			w.Header().Set(header, value)
-		}
-	}
+	copyPlexProxyHeaders(w.Header(), resp.Header)
 	if rangeRequest && w.Header().Get("Accept-Ranges") == "" {
 		w.Header().Set("Accept-Ranges", "bytes")
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	_, copyErr := io.Copy(w, resp.Body)
+	if copyErr != nil {
+		// A client cancellation is not evidence that PMS is unavailable. A
+		// mid-stream upstream/read failure while the client is still connected is.
+		if r.Context().Err() == nil {
+			_ = a.db.SetPlexSyncState(source.ID, source.LastSyncStatus, "Plex server connection interrupted during playback", false, 0)
+		}
+		return
+	}
 	if !source.Available {
 		_ = a.db.SetPlexSyncState(source.ID, source.LastSyncStatus, source.LastSyncError, true, 0)
 	}
