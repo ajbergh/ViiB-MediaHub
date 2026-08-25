@@ -227,7 +227,7 @@ func Discover(ctx context.Context, timeout time.Duration) ([]Server, error) {
 
 	servers = DeduplicateServers(servers)
 	if successfulInterfaces == 0 && lastErr != nil {
-		return []Server{}, fmt.Errorf("Plex GDM discovery failed on all IPv4 interfaces: %w", lastErr)
+		return []Server{}, fmt.Errorf("plex GDM discovery failed on all IPv4 interfaces: %w", lastErr)
 	}
 	return servers, nil
 }
