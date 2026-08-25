@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -40,15 +41,29 @@ func parseBoundedInt(raw string, fallback, maximum int) int {
 	}
 	return value
 }
+
 func transformLibrarySongForAPI(song *db.Song) {
 	if song.Path == "" {
 		song.Path = song.FilePath
 	}
 	song.FilePath = "/api/audio/" + song.ID
-	if song.CoverPath != "" {
-		song.CoverPath = "/api/cover/" + song.ID
+	if song.CoverPath == "" {
+		return
+	}
+	originalCoverPath := song.CoverPath
+	song.CoverPath = "/api/cover/" + song.ID
+	if !strings.HasPrefix(originalCoverPath, "plex://art/") {
+		return
+	}
+	parsed, err := url.Parse(originalCoverPath)
+	if err != nil {
+		return
+	}
+	if version := parsed.Query().Get("v"); version != "" {
+		song.CoverPath += "?v=" + url.QueryEscape(version)
 	}
 }
+
 func transformLibrarySongsForAPI(songs []db.Song) {
 	for i := range songs {
 		transformLibrarySongForAPI(&songs[i])
