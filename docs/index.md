@@ -17,6 +17,7 @@ Spotify remains a separate integration for Spotify browsing, streaming, and down
 
 | Page | Description |
 |---|---|
+| [Architecture](architecture.md) | Current media-source, catalog, playback, synchronization, and security model |
 | [Home](home.md) | Dashboard with Smart Mixes, recently played, recently added, and library stats |
 | [Songs](songs.md) | Unified local/Plex song catalog with sort, filter, and playback |
 | [Albums](albums.md) | Source-transparent album grid and detail view |
@@ -54,6 +55,8 @@ Spotify ───────separate integration──> Spotify browse / stream
 ```
 
 Local and Plex tracks use the same ViiB song IDs at the frontend/API boundary. Plex-specific remote identity such as PMS machine identifier, library ID, rating key, and media part key is maintained by the backend.
+
+See [Architecture and Media Source Model](architecture.md) for the detailed backend/frontend boundaries and synchronization rules.
 
 ---
 
@@ -103,4 +106,4 @@ Plex does not add duplicate Plex-only Songs, Albums, Artists, Search, or Now Pla
 - **Security:** machine-bound AES-256-GCM sensitive-setting storage; Plex tokens stay server-side for PMS media requests
 - **Platform:** Wails desktop on Windows/macOS/Linux plus browser/server mode
 
-See the [README](../README.md) for development/build requirements and [Plex Music](plex-music.md) for the PMS integration architecture.
+See the [README](../README.md) for development/build requirements.
