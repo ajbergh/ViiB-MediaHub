@@ -222,49 +222,29 @@ func (d *DB) GetPlexSource(id string) (*PlexSource, error) {
 	return source, err
 }
 
+// SetPlexLibrary changes the desired library selection without deleting the
+// currently cached catalog. Old Plex rows are retained until a complete,
+// successful synchronization of the new selection can reconcile them safely.
 func (d *DB) SetPlexLibrary(sourceID, libraryID, libraryTitle string) error {
 	if err := d.EnsurePlexSchema(); err != nil {
 		return err
 	}
-	tx, err := d.conn.Begin()
+	result, err := d.conn.Exec(`
+		UPDATE plex_sources
+		SET library_id=?, library_title=?, last_sync_status='never', last_sync_error=''
+		WHERE id=?
+	`, libraryID, libraryTitle, sourceID)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-	var previousLibrary string
-	if err := tx.QueryRow(`SELECT library_id FROM plex_sources WHERE id=?`, sourceID).Scan(&previousLibrary); err != nil {
+	rows, err := result.RowsAffected()
+	if err != nil {
 		return err
 	}
-	if previousLibrary != "" && previousLibrary != libraryID {
-		rows, err := tx.Query(`SELECT song_id FROM plex_tracks WHERE source_id=?`, sourceID)
-		if err != nil {
-			return err
-		}
-		var songIDs []string
-		for rows.Next() {
-			var songID string
-			if err := rows.Scan(&songID); err != nil {
-				rows.Close()
-				return err
-			}
-			songIDs = append(songIDs, songID)
-		}
-		if err := rows.Close(); err != nil {
-			return err
-		}
-		for _, songID := range songIDs {
-			if _, err := tx.Exec(`DELETE FROM plex_tracks WHERE song_id=?`, songID); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(`DELETE FROM songs WHERE id=?`, songID); err != nil {
-				return err
-			}
-		}
+	if rows == 0 {
+		return sql.ErrNoRows
 	}
-	if _, err := tx.Exec(`UPDATE plex_sources SET library_id=?, library_title=?, last_sync_status='never', last_sync_error='' WHERE id=?`, libraryID, libraryTitle, sourceID); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 func (d *DB) UpdatePlexConnection(sourceID, baseURL, name, version string, available bool) error {
@@ -292,9 +272,15 @@ func plexSyntheticPath(machineID, libraryID, ratingKey string) string {
 	return "plex://" + escape(machineID) + "/" + escape(libraryID) + "/" + escape(ratingKey)
 }
 
-// SyncPlexLibrary atomically applies a complete successful PMS snapshot. Tracks
-// missing from that authoritative snapshot are removed from ViiB's catalog; a
-// caller must not invoke this method when the remote request failed/offline.
+type existingPlexCatalogTrack struct {
+	updatedAt int64
+	libraryID string
+}
+
+// SyncPlexLibrary atomically applies a complete successful PMS snapshot. The
+// snapshot becomes authoritative for this active source only after the remote
+// read has succeeded. That means a library switch while PMS is offline leaves
+// the previous cache intact; the successful new snapshot performs the cleanup.
 func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTrack) (added, updated, removed int, err error) {
 	if err = d.EnsurePlexSchema(); err != nil {
 		return
@@ -305,19 +291,19 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 	}
 	defer tx.Rollback()
 
-	existing := map[string]int64{}
-	rows, err := tx.Query(`SELECT song_id, updated_at FROM plex_tracks WHERE source_id=? AND library_id=?`, sourceID, libraryID)
+	existing := map[string]existingPlexCatalogTrack{}
+	rows, err := tx.Query(`SELECT song_id, updated_at, library_id FROM plex_tracks WHERE source_id=?`, sourceID)
 	if err != nil {
 		return 0, 0, 0, err
 	}
 	for rows.Next() {
 		var id string
-		var updatedAt int64
-		if err := rows.Scan(&id, &updatedAt); err != nil {
+		var record existingPlexCatalogTrack
+		if err := rows.Scan(&id, &record.updatedAt, &record.libraryID); err != nil {
 			rows.Close()
 			return 0, 0, 0, err
 		}
-		existing[id] = updatedAt
+		existing[id] = record
 	}
 	if err := rows.Close(); err != nil {
 		return 0, 0, 0, err
@@ -329,8 +315,8 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 			continue
 		}
 		seen[track.SongID] = struct{}{}
-		previousUpdatedAt, exists := existing[track.SongID]
-		if exists && track.UpdatedAt > 0 && previousUpdatedAt == track.UpdatedAt {
+		previous, exists := existing[track.SongID]
+		if exists && previous.libraryID == libraryID && track.UpdatedAt > 0 && previous.updatedAt == track.UpdatedAt {
 			continue
 		}
 		genres, _ := json.Marshal(NormalizeGenres(track.Genres))
@@ -364,13 +350,16 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 				machine_identifier=excluded.machine_identifier, rating_key=excluded.rating_key, metadata_key=excluded.metadata_key,
 				media_key=excluded.media_key, artwork_key=excluded.artwork_key, container=excluded.container,
 				audio_codec=excluded.audio_codec, updated_at=excluded.updated_at
-		`, track.SongID, track.SourceID, track.LibraryID, track.MachineID, track.RatingKey, track.MetadataKey,
+		`, track.SongID, sourceID, libraryID, track.MachineID, track.RatingKey, track.MetadataKey,
 			track.MediaKey, track.ArtworkKey, track.Container, track.AudioCodec, track.UpdatedAt)
 		if err != nil {
 			return 0, 0, 0, fmt.Errorf("upsert Plex source metadata: %w", err)
 		}
 	}
 
+	// Reconcile every cached row belonging to this currently configured source.
+	// This deliberately includes rows from a previously selected library, but it
+	// runs only after the caller obtained a complete successful new snapshot.
 	for id := range existing {
 		if _, ok := seen[id]; ok {
 			continue
