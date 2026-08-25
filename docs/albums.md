@@ -2,56 +2,47 @@
 
 ![Albums page](../assets/screenshots/albums.png)
 
-The Albums page displays your library organized by album. Each album is shown as a card with cover art (or a color gradient when art is unavailable).
+The Albums page groups the canonical ViiB song catalog by album. Albums can therefore contain local filesystem tracks or synchronized Plex music tracks without requiring separate Plex album screens.
 
 ---
 
 ## Layout
 
-Albums are shown in a responsive grid. The number of columns adjusts automatically based on window width.
+Albums are displayed in a responsive grid. Each card shows available artwork, album title, artist, and track information.
 
-Each card shows:
-- Cover art image or generated color gradient
-- Album title
-- Artist name
-- Track count
+Artwork can come from ViiB's local cache or, for Plex tracks, through ViiB's authenticated backend cover proxy. Plex credentials are not embedded in browser artwork URLs.
 
 ---
 
 ## Album Detail
 
-Clicking an album card opens the **Album Detail** page, which shows:
+Opening an album shows its catalog tracks with the normal ViiB actions:
 
-- Large album artwork
-- Album title, artist, and year (if available)
-- Track listing with play counts and durations
-- **Play Album** button (plays all tracks in album order)
-- **Shuffle** button
-- Like button for the whole album
-- Context menu on each track
+- Play Album
+- Shuffle
+- queue controls
+- per-track context menus
+- like/unlike controls
+- navigation to artists
 
-### Album Detail Context Menu
-
-Right-click any track inside an album to:
-- Play the track
-- Play Next / Add to Queue
-- Add to playlist
-- Like / Unlike
+Local and Plex tracks use the same interactions. If a Plex source is offline, album metadata can remain visible from the cached ViiB catalog even though remote playback is temporarily unavailable.
 
 ---
 
-## Metadata Enrichment
+## Album identity
 
-Albums can be enriched automatically in the background using the configured AI or Last.FM integration. Enriched albums may have:
-
-- High-resolution cover art from Spotify or MusicBrainz
-- Correct release year
-- Genre tags
-
-Run background enrichment from the [Settings](settings.md) page under **Library Intelligence**.
+Album grouping uses ViiB catalog metadata, including album title and album-artist identity where available. Plex synchronization maps PMS album and album-artist metadata into these existing fields rather than creating a separate Plex album model.
 
 ---
 
-## Album Like
+## Metadata enrichment and edits
 
-Clicking the heart icon on an album card toggles the like status. Liked albums appear in [Liked Albums](liked.md).
+ViiB can enrich catalog metadata through configured metadata/AI services. Metadata changes in the ViiB database are local ViiB state.
+
+For Plex-backed tracks, ViiB does **not** write album metadata changes back to Plex. A later authoritative Plex synchronization can refresh synchronized metadata from PMS.
+
+---
+
+## Album likes
+
+Album likes are stored by ViiB. They are not pushed to Plex or Spotify. Liked albums appear in [Liked Songs & Albums](liked.md).
