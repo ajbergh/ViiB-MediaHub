@@ -120,6 +120,11 @@ type Song struct {
 	LastFMURL        string `json:"lastfmUrl,omitempty"`        // Last.FM track page URL
 	LastFMMBID       string `json:"lastfmMbid,omitempty"`       // MusicBrainz track ID
 	LastFMEnrichedAt int64  `json:"lastfmEnrichedAt,omitempty"` // Timestamp of Last.FM enrichment
+	// Source fields are derived at read time for source-aware experiences such
+	// as AI DJ. They are not persisted on songs because Plex identity belongs in
+	// plex_tracks, while songs remains the unified catalog.
+	Source     string `json:"source,omitempty"`     // "local" or "plex"
+	SourceName string `json:"sourceName,omitempty"` // Friendly Plex server name
 }
 
 // Playlist represents a user-defined playlist persisted in the database.

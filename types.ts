@@ -83,6 +83,11 @@ export interface Song {
   // User preferences
   liked?: boolean; // true if user has liked this song
   likedAt?: number; // timestamp when song was liked
+
+  // Catalog origin. Plex tracks continue to use the normal playback URL; this
+  // metadata is only for source-aware UI such as AI DJ.
+  source?: 'local' | 'plex';
+  sourceName?: string;
 }
 
 export interface Album {

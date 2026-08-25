@@ -105,6 +105,8 @@ export interface ApiSong {
   // User preferences
   liked?: boolean;
   likedAt?: number;
+  source?: 'local' | 'plex';
+  sourceName?: string;
 }
 
 export interface DuplicateSong extends ApiSong {
@@ -1319,6 +1321,7 @@ export const api = {
    * @param options.targetDurationMinutes - DJ set duration in minutes
    * @param options.flowStrictness - BPM continuity strictness 0-100
    * @param options.talkMode - Enable DJ narration cues
+   * @param options.source - 'all' (online sources), 'local', or 'plex'
    * @returns Playlist filter and matching songs, plus DJ payload when mode='dj'
    */
   async generateSmartPlaylist(
@@ -1336,6 +1339,7 @@ export const api = {
       targetDurationMinutes?: number;
       flowStrictness?: number;
       talkMode?: boolean;
+      source?: SmartPlaylistSource;
     }
   ): Promise<SmartPlaylistResponse> {
     // Cancel any previous in-flight smart playlist request
@@ -1362,6 +1366,7 @@ export const api = {
         targetDurationMinutes: options?.targetDurationMinutes || 45,
         flowStrictness: options?.flowStrictness || 60,
         talkMode: options?.talkMode || false,
+        source: options?.source || 'all',
       }),
     });
     return handleResponse(response);
@@ -1582,6 +1587,7 @@ export interface SmartPlaylistFilter {
   localMatch?: boolean;
   blendMode?: 'single' | 'mixed';
   matchedGenres?: MatchedGenre[];
+  source?: SmartPlaylistSource;
 }
 
 // ==================== DJ Mode Types ====================
@@ -1590,6 +1596,9 @@ export interface SmartPlaylistFilter {
  * Mode for smart playlist generation.
  */
 export type SmartPlaylistMode = 'playlist' | 'dj';
+
+/** Catalog sources that can contribute tracks to an AI DJ result. */
+export type SmartPlaylistSource = 'all' | 'local' | 'plex';
 
 /**
  * Persona keys for DJ mode.

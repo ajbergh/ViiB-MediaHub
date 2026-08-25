@@ -72,6 +72,7 @@ type LocalPlaylistFilter struct {
 	LocalMatch    bool           `json:"localMatch,omitempty"` // True if matched locally without AI
 	BlendMode     string         `json:"blendMode,omitempty"`  // "single" or "mixed" genre mode
 	MatchedGenres []MatchedGenre `json:"matchedGenres,omitempty"`
+	Source        string         `json:"source,omitempty"` // "all", "local", or "plex"
 }
 
 // MatchedGenre represents a genre that matched the AI DJ prompt with its score and proportion.
@@ -104,6 +105,36 @@ func transformSongsForAPI(songs []any) []any {
 		}
 	}
 	return result
+}
+
+// filterSongsForAIDJ applies the source policy after each of the smart
+// playlist matching paths. This keeps all matching and playback source-
+// agnostic while ensuring cached tracks from an offline Plex server can never
+// reach an AI DJ queue. It also adds the source metadata used by the UI.
+func (a *API) filterSongsForAIDJ(songs []any, source string) ([]any, error) {
+	candidates := make([]db.Song, 0, len(songs))
+	for _, value := range songs {
+		switch song := value.(type) {
+		case db.Song:
+			candidates = append(candidates, song)
+		case *db.Song:
+			if song != nil {
+				candidates = append(candidates, *song)
+			}
+		default:
+			return nil, fmt.Errorf("unexpected AI DJ song type %T", value)
+		}
+	}
+
+	eligible, err := a.db.FilterSongsForAIDJ(candidates, source)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]any, len(eligible))
+	for i, song := range eligible {
+		result[i] = song
+	}
+	return result, nil
 }
 
 // getLLMSettings retrieves the LLM configuration from the database.
@@ -1009,6 +1040,14 @@ func (a *API) tryMatchMultipleGenres(filter *llm.PlaylistFilter, originalPrompt 
 	// Determine the score threshold for including genres
 	// Default is within 30 points of the highest score
 	scoreThreshold := 30
+	// A compound LLM interpretation such as ["Alternative", "Rock"] should
+	// retain both catalog concepts even when one broad label scores higher. This
+	// also lets era-filtered matching recover when the highest-scoring generic
+	// genre has no tracks in the requested period but its companion genre does.
+	if len(filter.Genres) > 1 {
+		scoreThreshold = 60
+		logger.API("Multi-genre: Multiple requested genres, widening threshold to %d points", scoreThreshold)
+	}
 
 	// If the top genre has few songs, widen the threshold to include more genres
 	// This helps blend "Classic Rock" (11 songs) with "60s Rock" (100 songs) etc.
@@ -1369,6 +1408,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		AvoidRecentlyHours int    `json:"avoidRecentlyHours"` // Avoid songs played in last N hours (0 = disabled)
 		OnePerArtist       bool   `json:"onePerArtist"`       // Limit to one song per artist
 		UseTimeContext     bool   `json:"useTimeContext"`     // Add time-of-day context to prompt
+		Source             string `json:"source"`             // "all" (default), "local", or "plex"
 		// DJ Mode fields
 		Mode                  string `json:"mode"`                  // "playlist" (default) or "dj"
 		Persona               string `json:"persona"`               // DJ persona key (default "FlowMaster")
@@ -1391,6 +1431,12 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	if req.DiscoverMode == "" {
 		req.DiscoverMode = "balanced"
 	}
+	source, err := db.NormalizeAIDJSource(req.Source)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.Source = string(source)
 	// DJ Mode defaults
 	if req.Mode == "" {
 		req.Mode = dj.ModePlaylist
@@ -1414,7 +1460,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	if req.Mode == dj.ModeDJ {
 		a.handleDJMode(w, r, req.Prompt, req.Persona, req.TargetDurationMinutes,
 			req.FlowStrictness, req.TalkMode, req.UseTimeContext,
-			req.DiscoverMode, req.AvoidRecentlyHours)
+			req.DiscoverMode, req.AvoidRecentlyHours, req.Source)
 		return
 	}
 
@@ -1434,6 +1480,11 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	// First, try artist-based matching for "more like [artist]" prompts
 	if artistName, songs, matched := a.tryArtistBasedMatch(req.Prompt); matched {
 		logger.API("Artist-based match found: %s with %d songs", artistName, len(songs))
+		songs, err = a.filterSongsForAIDJ(songs, req.Source)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to filter AI DJ sources: %v", err), http.StatusInternalServerError)
+			return
+		}
 
 		// Apply filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
@@ -1446,6 +1497,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 			Description: fmt.Sprintf("Songs similar to %s", artistName),
 			LocalMatch:  true,
 			BlendMode:   "single",
+			Source:      req.Source,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1460,6 +1512,11 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	// This handles basic cases like exact genre names efficiently without API calls
 	if matchedGenre, songs, matched := a.tryLocalGenreMatch(req.Prompt, promptMinYear, promptMaxYear); matched {
 		logger.API("Local genre match found: %s with %d songs", matchedGenre, len(songs))
+		songs, err = a.filterSongsForAIDJ(songs, req.Source)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to filter AI DJ sources: %v", err), http.StatusInternalServerError)
+			return
+		}
 
 		// Apply filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
@@ -1474,6 +1531,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 			Description: fmt.Sprintf("Songs from the %s genre", matchedGenre),
 			LocalMatch:  true,
 			BlendMode:   "single",
+			Source:      req.Source,
 			MatchedGenres: []MatchedGenre{{
 				Name:       matchedGenre,
 				Score:      100,
@@ -1496,6 +1554,12 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	if moodFilter, songs, matched := a.tryMoodBasedMatch(req.Prompt); matched {
 		logger.API("Mood-based match found: mood=%s, energy=%s with %d songs",
 			moodFilter.Mood, moodFilter.Energy, len(songs))
+		songs, err = a.filterSongsForAIDJ(songs, req.Source)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to filter AI DJ sources: %v", err), http.StatusInternalServerError)
+			return
+		}
+		moodFilter.Source = req.Source
 
 		// Apply filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
@@ -1557,6 +1621,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 	// Use the LLM filter directly (no conversion needed)
 	filter := llmFilter
+	filter.Source = req.Source
 
 	// Log what the LLM returned with detailed info
 	logger.API("AI DJ Result: prompt='%s' → genres=%v mood=%s energy=%s years=%d-%d blendMode=%s",
@@ -1575,6 +1640,11 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		matchedGenres, songs, matched := a.tryMatchMultipleGenres(filter, req.Prompt, 3, req.TargetSongs)
 		if matched {
 			logger.API("Multi-genre blend: %d genres, %d songs", len(matchedGenres), len(songs))
+			songs, err = a.filterSongsForAIDJ(songs, req.Source)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to filter AI DJ sources: %v", err), http.StatusInternalServerError)
+				return
+			}
 
 			// Apply play history filters
 			songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
@@ -1598,6 +1668,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 				LocalMatch:    true,
 				BlendMode:     "mixed",
 				MatchedGenres: matchedGenres,
+				Source:        req.Source,
 			}
 
 			w.Header().Set("Content-Type", "application/json")
@@ -1614,6 +1685,11 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	// and the user's actual indexed genres (e.g., "90s Alternative")
 	if matchedGenre, songs, matched := a.tryMatchIndexedGenre(filter, req.Prompt); matched {
 		logger.API("Smart indexed genre match after Gemini: '%s' with %d songs", matchedGenre, len(songs))
+		songs, err = a.filterSongsForAIDJ(songs, req.Source)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to filter AI DJ sources: %v", err), http.StatusInternalServerError)
+			return
+		}
 
 		// Apply play history filters
 		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
@@ -1631,6 +1707,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 			Description: fmt.Sprintf("Songs from the %s genre (matched from: %s)", matchedGenre, req.Prompt),
 			LocalMatch:  true,
 			BlendMode:   "single",
+			Source:      req.Source,
 			MatchedGenres: []MatchedGenre{{
 				Name:       matchedGenre,
 				Score:      100,
@@ -1669,6 +1746,11 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	for i, s := range songs {
 		songsAny[i] = s
 	}
+	songsAny, err = a.filterSongsForAIDJ(songsAny, req.Source)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to filter AI DJ sources: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	// Apply play history filters
 	songsAny = a.applyPlayHistoryFilters(songsAny, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
@@ -1688,12 +1770,12 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	prompt string, persona string, durationMinutes int,
 	flowStrictness int, talkMode bool, useTimeContext bool,
-	discoverMode string, avoidRecentlyHours int) {
+	discoverMode string, avoidRecentlyHours int, source string) {
 
 	ctx := r.Context()
 
-	logger.API("DJ Mode request: prompt=%q persona=%s duration=%dmin flow=%d talkMode=%v",
-		prompt, persona, durationMinutes, flowStrictness, talkMode)
+	logger.API("DJ Mode request: prompt=%q persona=%s duration=%dmin flow=%d talkMode=%v source=%s",
+		prompt, persona, durationMinutes, flowStrictness, talkMode, source)
 
 	// Get the persona definition (returns default if not found)
 	personaDef := dj.GetPersona(persona)
@@ -1710,6 +1792,16 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	if len(allSongs) == 0 {
 		logger.API("DJ Mode failed: library is empty")
 		http.Error(w, "Library is empty", http.StatusNotFound)
+		return
+	}
+	allSongs, err = a.db.FilterSongsForAIDJ(allSongs, source)
+	if err != nil {
+		logger.API("DJ Mode failed to filter catalog sources: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to filter DJ sources: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if len(allSongs) == 0 {
+		http.Error(w, "No playable songs are available from the selected source", http.StatusNotFound)
 		return
 	}
 
@@ -1977,6 +2069,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			"artists": seedArtists,
 			"minYear": promptMinYear,
 			"maxYear": promptMaxYear,
+			"source":  source,
 		},
 		"songs": songsAny,
 		"dj":    djResponse,

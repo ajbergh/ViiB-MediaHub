@@ -182,7 +182,7 @@ func TestFetchTracksMapsMusicMetadataAndPaginationHeaders(t *testing.T) {
 	}
 }
 
-func TestFetchTracksFallsBackToAlbumGenres(t *testing.T) {
+func TestFetchTracksFallsBackToAlbumMetadata(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Plex-Container-Start") != "0" || r.Header.Get("X-Plex-Container-Size") != "500" {
 			t.Errorf("pagination headers missing: start=%q size=%q", r.Header.Get("X-Plex-Container-Start"), r.Header.Get("X-Plex-Container-Size"))
@@ -192,7 +192,7 @@ func TestFetchTracksFallsBackToAlbumGenres(t *testing.T) {
 		case "/tracks":
 			_, _ = w.Write([]byte(`{"MediaContainer":{"size":1,"totalSize":1,"Metadata":[{"ratingKey":"123","parentRatingKey":"album-9","key":"/library/metadata/123","type":"track","title":"Track","parentTitle":"Album","grandparentTitle":"Artist","Media":[{"container":"flac","audioCodec":"flac","Part":[{"key":"/library/parts/55/file.flac","container":"flac"}]}]}]}}`))
 		case "/albums":
-			_, _ = w.Write([]byte(`{"MediaContainer":{"size":1,"totalSize":1,"Metadata":[{"ratingKey":"album-9","type":"album","title":"Album","Genre":[{"tag":"Jazz"},{"tag":"Fusion"}]}]}}`))
+			_, _ = w.Write([]byte(`{"MediaContainer":{"size":1,"totalSize":1,"Metadata":[{"ratingKey":"album-9","type":"album","title":"Album","year":1994,"Genre":[{"tag":"Jazz"},{"tag":"Fusion"}]}]}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -206,8 +206,8 @@ func TestFetchTracksFallsBackToAlbumGenres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Tracks) != 1 || result.Tracks[0].ParentRatingKey != "album-9" || len(result.Tracks[0].Genres) != 2 || result.Tracks[0].Genres[0] != "Jazz" || result.Tracks[0].Genres[1] != "Fusion" {
-		t.Fatalf("track did not inherit album genres: %#v", result.Tracks)
+	if len(result.Tracks) != 1 || result.Tracks[0].ParentRatingKey != "album-9" || result.Tracks[0].Year != 1994 || len(result.Tracks[0].Genres) != 2 || result.Tracks[0].Genres[0] != "Jazz" || result.Tracks[0].Genres[1] != "Fusion" {
+		t.Fatalf("track did not inherit album metadata: %#v", result.Tracks)
 	}
 }
 

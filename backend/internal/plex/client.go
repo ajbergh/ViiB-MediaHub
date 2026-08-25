@@ -671,34 +671,47 @@ func (c *Client) FetchTracks(ctx context.Context, library Library) (SyncResult, 
 		offset = nextOffset
 	}
 	if library.AlbumKey != "" {
-		needsAlbumGenres := false
+		needsAlbumMetadata := false
 		for _, track := range tracks {
-			if track.ParentRatingKey != "" && len(track.Genres) == 0 {
-				needsAlbumGenres = true
+			if track.ParentRatingKey != "" && (len(track.Genres) == 0 || track.Year == 0) {
+				needsAlbumMetadata = true
 				break
 			}
 		}
-		if needsAlbumGenres {
-			albumGenres, err := c.fetchAlbumGenres(ctx, library.AlbumKey)
+		if needsAlbumMetadata {
+			albumMetadata, err := c.fetchAlbumMetadata(ctx, library.AlbumKey)
 			if err != nil {
-				return SyncResult{}, fmt.Errorf("read Plex music album genres: %w", err)
+				return SyncResult{}, fmt.Errorf("read Plex music album metadata: %w", err)
 			}
 			for index := range tracks {
-				if len(tracks[index].Genres) != 0 || tracks[index].ParentRatingKey == "" {
+				if tracks[index].ParentRatingKey == "" {
 					continue
 				}
-				tracks[index].Genres = append([]string(nil), albumGenres[tracks[index].ParentRatingKey]...)
+				metadata := albumMetadata[tracks[index].ParentRatingKey]
+				if len(tracks[index].Genres) == 0 {
+					tracks[index].Genres = append([]string(nil), metadata.Genres...)
+				}
+				if tracks[index].Year == 0 {
+					tracks[index].Year = metadata.Year
+				}
 			}
 		}
 	}
 	return SyncResult{Tracks: tracks, Started: started, Finished: time.Now()}, nil
 }
 
-// fetchAlbumGenres reads the album type pivot because PMS can attach genres to
-// an album without repeating them on each child track.
-func (c *Client) fetchAlbumGenres(ctx context.Context, albumKey string) (map[string][]string, error) {
+// albumMetadata is the small album-level fallback required by tracks that do
+// not repeat their parent album's genre or release year in PMS responses.
+type albumMetadata struct {
+	Genres []string
+	Year   int
+}
+
+// fetchAlbumMetadata reads the album type pivot because PMS can attach genres
+// and release years to an album without repeating them on each child track.
+func (c *Client) fetchAlbumMetadata(ctx context.Context, albumKey string) (map[string]albumMetadata, error) {
 	const pageSize = 500
-	genresByAlbum := make(map[string][]string)
+	metadataByAlbum := make(map[string]albumMetadata)
 	for offset := 0; ; {
 		req, err := c.newRequest(ctx, http.MethodGet, "", albumKey, true)
 		if err != nil {
@@ -718,8 +731,8 @@ func (c *Client) fetchAlbumGenres(ctx context.Context, albumKey string) (map[str
 			if raw.RatingKey == "" || (raw.Type != "" && !strings.EqualFold(raw.Type, "album")) {
 				continue
 			}
-			if genres := plexGenres(raw.Genre); len(genres) > 0 {
-				genresByAlbum[raw.RatingKey] = genres
+			if genres := plexGenres(raw.Genre); len(genres) > 0 || raw.Year > 0 {
+				metadataByAlbum[raw.RatingKey] = albumMetadata{Genres: genres, Year: raw.Year}
 			}
 		}
 
@@ -742,7 +755,7 @@ func (c *Client) fetchAlbumGenres(ctx context.Context, albumKey string) (map[str
 		}
 		offset = nextOffset
 	}
-	return genresByAlbum, nil
+	return metadataByAlbum, nil
 }
 
 // MediaRequest builds a same-origin PMS request for a media/artwork key. Tokens

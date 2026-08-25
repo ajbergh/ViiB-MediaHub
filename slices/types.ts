@@ -23,7 +23,7 @@
 
 import React from 'react';
 import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType, MilkdropSettings, HomeLayoutVariant, PlaybackContext } from '../types';
-import { SmartPlaylistFilter, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
+import { SmartPlaylistFilter, SmartPlaylistSource, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
 
 export interface PlayerSlice {
   isPlaying: boolean;
@@ -341,6 +341,7 @@ export interface AIDJSlice {
   aiDjAvoidRecentlyHours: number;
   aiDjOnePerArtist: boolean;
   aiDjUseTimeContext: boolean;
+  aiDjSource: SmartPlaylistSource;
   
   // DJ Mode state
   aiDjMode: boolean; // true = DJ mode, false = playlist mode
@@ -361,6 +362,7 @@ export interface AIDJSlice {
   setAIDJAvoidRecentlyHours: (hours: number) => void;
   setAIDJOnePerArtist: (onePerArtist: boolean) => void;
   setAIDJUseTimeContext: (useTimeContext: boolean) => void;
+  setAIDJSource: (source: SmartPlaylistSource) => void;
   setAIDJResult: (prompt: string, songs: Song[], filter: SmartPlaylistFilter | null) => void;
   
   // DJ Mode actions

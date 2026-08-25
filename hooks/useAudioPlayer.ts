@@ -32,6 +32,7 @@ import {
     normalizeCrossfadeDuration,
     resolvePlaybackContext,
 } from '../lib/playbackLifecycle';
+import { findPlexPlaybackFallback } from '../lib/plexPlayback';
 
 // Pre-buffer threshold: start preloading next track when X seconds remain
 const PRELOAD_THRESHOLD_SECONDS = 15;
@@ -248,6 +249,41 @@ export const useAudioPlayer = () => {
             if (!isActivePlaybackEvent(e.currentTarget, activeElement())) return;
             const audio = e.target as HTMLAudioElement;
             const { currentSong, retryCount, setBuffering, setStreamError, showToast, retryStream, nextSong, recordStreamEvent } = useStore.getState();
+
+            // Plex tracks use ViiB's normal /api/audio/{id} transport, so they
+            // are not classified as third-party streaming. The backend marks a
+            // source offline when its proxy fails; here we finish the handoff
+            // by moving an AI DJ queue to its next local candidate.
+            if (currentSong?.source === 'plex') {
+                const state = useStore.getState();
+                const fallbackIndex = findPlexPlaybackFallback(state.queue, state.currentSongIndex);
+                setBuffering(false);
+
+                if (fallbackIndex >= 0) {
+                    const fallback = state.queue[fallbackIndex];
+                    showToast({
+                        type: 'warning',
+                        message: `Plex Media Server is unavailable. Continuing with ${fallback.title}.`,
+                        duration: 5000,
+                    });
+                    setTimeout(() => {
+                        const latest = useStore.getState();
+                        if (latest.currentSong?.id === currentSong.id) {
+                            void latest.playSong(fallback, latest.queue, currentSong.playbackContext || 'queue');
+                        }
+                    }, 0);
+                } else {
+                    showToast({
+                        type: 'error',
+                        message: 'Plex Media Server is unavailable and there is no local fallback in this queue.',
+                        duration: 5000,
+                    });
+                    if (state.isPlaying) {
+                        state.togglePlay();
+                    }
+                }
+                return;
+            }
             
             if (!currentSong?.isStreaming) return;
             

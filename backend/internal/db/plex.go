@@ -12,6 +12,32 @@ import (
 
 const PlexCredentialsSettingKey = "plex_credentials"
 
+// AIDJSource controls which catalog source may contribute tracks to an AI DJ
+// result. "all" deliberately includes only Plex sources that are currently
+// reachable, so a generated queue cannot contain a known-offline remote track.
+type AIDJSource string
+
+const (
+	AIDJSourceAll   AIDJSource = "all"
+	AIDJSourceLocal AIDJSource = "local"
+	AIDJSourcePlex  AIDJSource = "plex"
+)
+
+// NormalizeAIDJSource validates a client-provided source preference and
+// provides the backwards-compatible default for older clients.
+func NormalizeAIDJSource(value string) (AIDJSource, error) {
+	switch AIDJSource(strings.ToLower(strings.TrimSpace(value))) {
+	case "", AIDJSourceAll:
+		return AIDJSourceAll, nil
+	case AIDJSourceLocal:
+		return AIDJSourceLocal, nil
+	case AIDJSourcePlex:
+		return AIDJSourcePlex, nil
+	default:
+		return "", fmt.Errorf("invalid AI DJ source %q", value)
+	}
+}
+
 // PlexSource is a persisted remote music source. Credentials are deliberately
 // stored separately in the encrypted settings table and never appear here.
 type PlexSource struct {
@@ -70,6 +96,93 @@ type PlexTrackSource struct {
 	UpdatedAt   int64
 	BaseURL     string
 	Available   bool
+}
+
+// FilterSongsForAIDJ labels songs with their catalog source and keeps only
+// tracks eligible for the requested source. Plex tracks are retained only
+// while their source is available; cached metadata remains in the library but
+// cannot create an unplayable AI DJ queue.
+func (d *DB) FilterSongsForAIDJ(songs []Song, requestedSource string) ([]Song, error) {
+	source, err := NormalizeAIDJSource(requestedSource)
+	if err != nil {
+		return nil, err
+	}
+	if err := d.EnsurePlexSchema(); err != nil {
+		return nil, err
+	}
+
+	type plexSongInfo struct {
+		name      string
+		available bool
+	}
+	plexSongs := make(map[string]plexSongInfo)
+	ids := make([]string, 0, len(songs))
+	for _, song := range songs {
+		if song.ID != "" {
+			ids = append(ids, song.ID)
+		}
+	}
+
+	// SQLite's default variable limit is commonly 999. Chunking keeps this
+	// safe for full-library DJ planning without requiring a temporary table.
+	for start := 0; start < len(ids); start += 900 {
+		end := start + 900
+		if end > len(ids) {
+			end = len(ids)
+		}
+		placeholders := make([]string, end-start)
+		args := make([]any, end-start)
+		for i, id := range ids[start:end] {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+		query := fmt.Sprintf(`
+			SELECT t.song_id, s.name, s.available
+			FROM plex_tracks t
+			JOIN plex_sources s ON s.id = t.source_id
+			WHERE t.song_id IN (%s)
+		`, strings.Join(placeholders, ","))
+		rows, err := d.conn.Query(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("look up AI DJ Plex sources: %w", err)
+		}
+		for rows.Next() {
+			var songID, name string
+			var available int
+			if err := rows.Scan(&songID, &name, &available); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan AI DJ Plex source: %w", err)
+			}
+			plexSongs[songID] = plexSongInfo{name: name, available: available != 0}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("read AI DJ Plex sources: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, fmt.Errorf("close AI DJ Plex source lookup: %w", err)
+		}
+	}
+
+	eligible := make([]Song, 0, len(songs))
+	for _, song := range songs {
+		info, isPlex := plexSongs[song.ID]
+		if isPlex {
+			song.Source = string(AIDJSourcePlex)
+			song.SourceName = info.name
+			if !info.available || source == AIDJSourceLocal {
+				continue
+			}
+		} else {
+			song.Source = string(AIDJSourceLocal)
+			song.SourceName = ""
+			if source == AIDJSourcePlex {
+				continue
+			}
+		}
+		eligible = append(eligible, song)
+	}
+	return eligible, nil
 }
 
 // EnsurePlexSchema installs additive source metadata without changing the
@@ -290,6 +403,7 @@ type existingPlexCatalogTrack struct {
 	container   string
 	audioCodec  string
 	genres      []string
+	year        int
 }
 
 func (record existingPlexCatalogTrack) matches(libraryID string, track PlexCatalogTrack, genres []string) bool {
@@ -304,6 +418,7 @@ func (record existingPlexCatalogTrack) matches(libraryID string, track PlexCatal
 		record.artworkKey == track.ArtworkKey &&
 		record.container == track.Container &&
 		record.audioCodec == track.AudioCodec &&
+		record.year == track.Year &&
 		stringSlicesEqual(record.genres, genres)
 }
 
@@ -335,7 +450,7 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 
 	existing := map[string]existingPlexCatalogTrack{}
 	rows, err := tx.Query(`
-		SELECT t.song_id, t.updated_at, t.library_id, t.metadata_key, t.media_key, t.artwork_key, t.container, t.audio_codec, s.genre
+		SELECT t.song_id, t.updated_at, t.library_id, t.metadata_key, t.media_key, t.artwork_key, t.container, t.audio_codec, s.genre, s.year
 		FROM plex_tracks t JOIN songs s ON s.id=t.song_id WHERE t.source_id=?
 	`, sourceID)
 	if err != nil {
@@ -346,7 +461,7 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 		var record existingPlexCatalogTrack
 		var storedGenres string
 		if err := rows.Scan(&id, &record.updatedAt, &record.libraryID, &record.metadataKey, &record.mediaKey,
-			&record.artworkKey, &record.container, &record.audioCodec, &storedGenres); err != nil {
+			&record.artworkKey, &record.container, &record.audioCodec, &storedGenres, &record.year); err != nil {
 			rows.Close()
 			return 0, 0, 0, err
 		}

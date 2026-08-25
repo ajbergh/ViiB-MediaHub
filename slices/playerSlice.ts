@@ -547,8 +547,9 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             return;
         }
         
-        // Only preload Spotify streaming tracks (local files don't need it)
-        if (!nextTrack.spotifyId || !nextTrack.isStreaming) {
+        // Local files do not need a network warm-up. Remote tracks use their
+        // normal ViiB playback URL, whether they originate in Spotify or Plex.
+        if (!nextTrack.isStreaming && nextTrack.source !== 'plex') {
             return;
         }
         
@@ -558,7 +559,9 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             // Create a hidden audio element to pre-buffer
             const preloadAudio = new Audio();
             const { api } = await import('../services/api');
-            const streamUrl = api.getSpotifyStreamUrl(nextTrack.spotifyId, streamingQuality);
+            const streamUrl = nextTrack.source === 'plex'
+                ? nextTrack.url
+                : api.getSpotifyStreamUrl(nextTrack.spotifyId!, streamingQuality);
             
             preloadAudio.preload = 'auto';
             preloadAudio.src = streamUrl;

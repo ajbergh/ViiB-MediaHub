@@ -93,6 +93,8 @@ export function apiSongToSong(apiSong: ApiSong): Song {
     lastfmEnrichedAt: apiSong.lastfmEnrichedAt,
     liked: apiSong.liked,
     likedAt: apiSong.likedAt,
+    source: apiSong.source,
+    sourceName: apiSong.sourceName,
   };
 }
 

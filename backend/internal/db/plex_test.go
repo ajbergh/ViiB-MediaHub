@@ -111,6 +111,83 @@ func TestPlexSyncUpdatesGenreWithoutTrackVersionChange(t *testing.T) {
 	}
 }
 
+func TestPlexSyncUpdatesYearWithoutTrackVersionChange(t *testing.T) {
+	database := openPlexTestDB(t)
+	defer database.Close()
+	const sourceID, libraryID, machineID = "plexsrc_test", "2", "machine-test"
+	if err := database.SavePlexSource(PlexSource{ID: sourceID, MachineIdentifier: machineID, BaseURL: "http://127.0.0.1:32400", Name: "Plex", LibraryID: libraryID, LibraryTitle: "Music", Active: true, Available: true}); err != nil {
+		t.Fatal(err)
+	}
+	track := plexFixture(sourceID, libraryID, machineID, "1", "Year Test", 100)
+	track.Year = 0
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+
+	// PMS often keeps a track's updatedAt unchanged when only its parent album
+	// metadata has changed. A later album-year fallback must still repair the
+	// cached catalog row so era-based AI DJ requests become eligible.
+	track.Year = 1994
+	added, updated, removed, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track})
+	if err != nil || added != 0 || updated != 1 || removed != 0 {
+		t.Fatalf("year-only update: added=%d updated=%d removed=%d err=%v", added, updated, removed, err)
+	}
+	stored, err := database.GetSongByID(track.SongID)
+	if err != nil || stored.Year != 1994 {
+		t.Fatalf("year was not refreshed: %#v err=%v", stored, err)
+	}
+}
+
+func TestFilterSongsForAIDJHonorsSourceAndPlexAvailability(t *testing.T) {
+	database := openPlexTestDB(t)
+	defer database.Close()
+	const sourceID, libraryID, machineID = "plexsrc_test", "2", "machine-test"
+	if err := database.SavePlexSource(PlexSource{ID: sourceID, MachineIdentifier: machineID, BaseURL: "http://127.0.0.1:32400", Name: "Living Room Plex", LibraryID: libraryID, Active: true, Available: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{plexFixture(sourceID, libraryID, machineID, "1", "Remote", 1)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSong(&Song{ID: "local_song", Title: "Local", Artist: "Artist", Album: "Album", FilePath: "C:/Music/local.flac", Duration: 180, AddedAt: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	songs, err := database.GetAllSongs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := database.FilterSongsForAIDJ(songs, "all")
+	if err != nil || len(all) != 2 {
+		t.Fatalf("online all-source filter: songs=%#v err=%v", all, err)
+	}
+	sources := make(map[string]Song)
+	for _, song := range all {
+		sources[song.ID] = song
+	}
+	if sources["local_song"].Source != "local" || sources["plex_song_1"].Source != "plex" || sources["plex_song_1"].SourceName != "Living Room Plex" {
+		t.Fatalf("unexpected source annotations: %#v", sources)
+	}
+
+	if err := database.SetPlexSyncState(sourceID, "error", "offline", false, 0); err != nil {
+		t.Fatal(err)
+	}
+	available, err := database.FilterSongsForAIDJ(songs, "all")
+	if err != nil || len(available) != 1 || available[0].ID != "local_song" {
+		t.Fatalf("offline Plex must be excluded from all sources: songs=%#v err=%v", available, err)
+	}
+	plexOnly, err := database.FilterSongsForAIDJ(songs, "plex")
+	if err != nil || len(plexOnly) != 0 {
+		t.Fatalf("offline Plex-only filter: songs=%#v err=%v", plexOnly, err)
+	}
+	localOnly, err := database.FilterSongsForAIDJ(songs, "local")
+	if err != nil || len(localOnly) != 1 || localOnly[0].ID != "local_song" {
+		t.Fatalf("local-only filter: songs=%#v err=%v", localOnly, err)
+	}
+	if _, err := database.FilterSongsForAIDJ(songs, "spotify"); err == nil {
+		t.Fatal("expected invalid AI DJ source to be rejected")
+	}
+}
+
 func TestPlexSyncRetainsExistingTrackWhenSnapshotOmitsPlayablePart(t *testing.T) {
 	database := openPlexTestDB(t)
 	defer database.Close()

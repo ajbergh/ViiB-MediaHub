@@ -31,7 +31,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import { Sparkles, Play, Save, RefreshCw, Music, Zap, Heart, Clock, Shuffle, User, Compass, Sun, Radio, Mic2, Timer, BarChart3 } from 'lucide-react';
+import { Sparkles, Play, Save, RefreshCw, Music, Zap, Heart, Clock, Shuffle, User, Compass, Sun, Radio, Mic2, Timer, BarChart3, Server } from 'lucide-react';
 import { Song } from '../types';
 import { api, MatchedGenre, SmartPlaylistFilter, DJPersonaDefinition } from '../services/api';
 import { apiSongToSong } from '../services/backendService';
@@ -64,6 +64,7 @@ export const SmartPlaylists: React.FC = () => {
     aiDjAvoidRecentlyHours,
     aiDjOnePerArtist,
     aiDjUseTimeContext,
+    aiDjSource,
     // DJ Mode state
     aiDjMode,
     aiDjPersona,
@@ -82,6 +83,7 @@ export const SmartPlaylists: React.FC = () => {
     setAIDJAvoidRecentlyHours,
     setAIDJOnePerArtist,
     setAIDJUseTimeContext,
+    setAIDJSource,
     // DJ Mode actions
     setAIDJMode,
     setAIDJPersona,
@@ -118,6 +120,7 @@ export const SmartPlaylists: React.FC = () => {
         targetDurationMinutes: aiDjTargetDurationMinutes,
         talkMode: aiDjTalkMode,
         flowStrictness: aiDjFlowStrictness,
+        source: aiDjSource,
       });
       const apiSongs = result.songs || [];
       // Convert ApiSong[] to Song[] so they have the correct url field for playback
@@ -251,6 +254,42 @@ export const SmartPlaylists: React.FC = () => {
           >
             {aiDjMode ? 'Start Set' : 'Generate'}
           </Button>
+        </div>
+
+        <div className="mt-4">
+          <h4 className="text-meta text-text-secondary mb-2 flex items-center gap-2">
+            <Server size={14} />
+            Music source
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            <Chip
+              selected={aiDjSource === 'all'}
+              accent="brand"
+              onClick={() => setAIDJSource('all')}
+              className="rounded-lg px-3 py-1.5 text-meta font-medium"
+            >
+              All available
+            </Chip>
+            <Chip
+              selected={aiDjSource === 'local'}
+              accent="brand"
+              onClick={() => setAIDJSource('local')}
+              className="rounded-lg px-3 py-1.5 text-meta font-medium"
+            >
+              Local music
+            </Chip>
+            <Chip
+              selected={aiDjSource === 'plex'}
+              accent="brand"
+              onClick={() => setAIDJSource('plex')}
+              className="rounded-lg px-3 py-1.5 text-meta font-medium"
+            >
+              Plex music
+            </Chip>
+          </div>
+          <p className="text-meta text-text-subtle mt-2">
+            Plex tracks are included only while their server is reachable.
+          </p>
         </div>
 
         {/* DJ Mode Controls */}
@@ -531,6 +570,12 @@ export const SmartPlaylists: React.FC = () => {
                     </span>
                   )}
                 </h2>
+                {aiDjFilter?.source && (
+                  <span className="inline-flex items-center gap-1 text-meta text-text-secondary mb-2">
+                    <Server size={12} />
+                    {aiDjFilter.source === 'all' ? 'All available sources' : aiDjFilter.source === 'plex' ? 'Plex music' : 'Local music'}
+                  </span>
+                )}
                 {aiDjMode && (aiDjFilter?.minYear || aiDjFilter?.genres?.length) && (
                   <div className="flex flex-wrap gap-2 text-meta text-text-secondary mb-2" aria-label="Applied DJ set filters">
                     {aiDjFilter?.genres?.map(genre => (
@@ -650,7 +695,19 @@ export const SmartPlaylists: React.FC = () => {
                   {aiDjGeneratedSongs.map((song, index) => (
                     <tr key={song.id} className="group hover:bg-surface-highlight/50 transition-colors cursor-pointer" onClick={() => playSong(song, aiDjGeneratedSongs)}>
                       <td className="px-6 py-3 text-text-subtle text-center">{index + 1}</td>
-                      <td className="px-6 py-3 font-medium text-text-main">{song.title}</td>
+                      <td className="px-6 py-3 font-medium text-text-main">
+                        <span className="inline-flex items-center gap-2">
+                          {song.title}
+                          {song.source === 'plex' && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-brand/15 px-2 py-0.5 text-xs font-medium text-brand"
+                              title={song.sourceName ? `Plex Media Server: ${song.sourceName}` : 'Plex Media Server'}
+                            >
+                              <Server size={11} /> Plex
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td className="px-6 py-3 text-text-secondary">{song.artist}</td>
                       <td className="px-6 py-3 text-text-secondary">{song.album}</td>
                       <td className="px-6 py-3 text-text-subtle text-right font-mono text-xs">

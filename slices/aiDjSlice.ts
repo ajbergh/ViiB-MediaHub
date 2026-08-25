@@ -36,7 +36,8 @@ import {
   DJPersona, 
   DJSetPlan, 
   DJPhaseResult, 
-  DJNarration 
+  DJNarration,
+  SmartPlaylistSource
 } from '../services/api';
 import { AppState } from './types';
 
@@ -52,6 +53,7 @@ export interface AIDJSlice {
   aiDjAvoidRecentlyHours: number;
   aiDjOnePerArtist: boolean;
   aiDjUseTimeContext: boolean;
+  aiDjSource: SmartPlaylistSource;
   
   // DJ Mode state
   aiDjMode: boolean; // true = DJ mode, false = playlist mode
@@ -72,6 +74,7 @@ export interface AIDJSlice {
   setAIDJAvoidRecentlyHours: (hours: number) => void;
   setAIDJOnePerArtist: (onePerArtist: boolean) => void;
   setAIDJUseTimeContext: (useTimeContext: boolean) => void;
+  setAIDJSource: (source: SmartPlaylistSource) => void;
   
   // DJ Mode actions
   setAIDJMode: (djMode: boolean) => void;
@@ -110,6 +113,7 @@ export const createAIDJSlice: StateCreator<AppState, [], [], AIDJSlice> = (set) 
   aiDjAvoidRecentlyHours: 0,
   aiDjOnePerArtist: false,
   aiDjUseTimeContext: false,
+  aiDjSource: 'all',
   
   // DJ Mode initial state
   aiDjMode: false,
@@ -137,6 +141,7 @@ export const createAIDJSlice: StateCreator<AppState, [], [], AIDJSlice> = (set) 
   setAIDJOnePerArtist: (onePerArtist) => set({ aiDjOnePerArtist: onePerArtist }),
   
   setAIDJUseTimeContext: (useTimeContext) => set({ aiDjUseTimeContext: useTimeContext }),
+  setAIDJSource: (source) => set({ aiDjSource: source }),
   
   // DJ Mode actions
   setAIDJMode: (djMode) => set({ aiDjMode: djMode }),
@@ -182,6 +187,7 @@ export const createAIDJSlice: StateCreator<AppState, [], [], AIDJSlice> = (set) 
     aiDjAvoidRecentlyHours: 0,
     aiDjOnePerArtist: false,
     aiDjUseTimeContext: false,
+    aiDjSource: 'all',
     aiDjMode: false,
     aiDjPersona: 'FlowMaster' as DJPersona,
     aiDjTargetDurationMinutes: 45,

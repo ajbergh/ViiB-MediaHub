@@ -109,6 +109,9 @@ type PlaylistFilter struct {
 	Instrumental bool     `json:"instrumental,omitempty"` // true for instrumental only
 	FromCache    bool     `json:"fromCache,omitempty"`    // indicates if result was from cache
 	FromProvider string   `json:"fromProvider,omitempty"` // which provider generated this
+	// Source is assigned by the API after parsing. It is never delegated to the
+	// model, which only interprets musical intent.
+	Source string `json:"source,omitempty"`
 }
 
 // Provider wraps omnillm with AI DJ-specific functionality.
