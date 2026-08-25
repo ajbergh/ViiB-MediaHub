@@ -163,6 +163,31 @@ func (c *Client) sameServer(u *url.URL) bool {
 	return strings.EqualFold(u.Scheme, c.baseURL.Scheme) && strings.EqualFold(u.Host, c.baseURL.Host)
 }
 
+// guardedHTTPClient preserves any injected transport/client behavior while
+// ensuring a PMS authentication token can never follow a redirect off the
+// configured server origin. X-Plex-Token is a custom header, so relying on the
+// standard library's special handling for Authorization/Cookie is insufficient.
+func (c *Client) guardedHTTPClient(stream bool) *http.Client {
+	clone := *c.httpClient
+	if stream {
+		clone.Timeout = 0
+	}
+	previousRedirectPolicy := clone.CheckRedirect
+	clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if !c.sameServer(req.URL) {
+			req.Header.Del("X-Plex-Token")
+		}
+		if previousRedirectPolicy != nil {
+			return previousRedirectPolicy(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &clone
+}
+
 func (c *Client) newRequest(ctx context.Context, method, parent, key string, authenticated bool) (*http.Request, error) {
 	u, err := c.resolveKey(parent, key)
 	if err != nil {
@@ -195,7 +220,7 @@ func classifyHTTPError(resp *http.Response) error {
 }
 
 func (c *Client) doJSON(req *http.Request, out any) error {
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.guardedHTTPClient(false).Do(req)
 	if err != nil {
 		var dnsErr *net.DNSError
 		var netErr net.Error
@@ -638,7 +663,5 @@ func (c *Client) MediaRequest(ctx context.Context, key string) (*http.Request, e
 // MediaHTTPClient has no whole-response timeout so long audio streams are not
 // interrupted; connection/header timeouts remain enforced by the transport.
 func (c *Client) MediaHTTPClient() *http.Client {
-	clone := *c.httpClient
-	clone.Timeout = 0
-	return &clone
+	return c.guardedHTTPClient(true)
 }
