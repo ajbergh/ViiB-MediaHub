@@ -4,20 +4,6 @@
  * Displays all albums that the user has liked (favorited).
  * Albums are sorted by when they were liked (newest first) by default.
  * 
- * Features:
- * - Grid view using virtualized scrolling for performance
- * - Multiple sort options (recent, name, artist)
- * - Unlike albums directly from the grid
- * - Context menu support for additional actions
- * - Click to navigate to album detail
- * - Empty state using EmptyState component with centralized copy
- * 
- * Design System Usage:
- * - EmptyState component with copy from lib/emptyStateCopy.ts
- * - Page component for consistent layout
- * - AlbumLikeButton for consistent like/unlike UI
- * - VirtuosoGrid for performant virtualized grid
- * 
  * @module LikedAlbums
  */
 
@@ -25,7 +11,7 @@ import React, { useMemo, useState, useEffect, forwardRef } from 'react';
 import { useStore, useAlbums } from '../store';
 import { Heart, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { coverBackground } from '../utils';
-import { ContextMenuType, Album } from '../types';
+import { ContextMenuType } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { useNavigate } from 'react-router';
 import { AlbumLikeButton } from '../components/AlbumLikeButton';
@@ -33,6 +19,7 @@ import { Page } from '../components/ui/Page';
 import { EmptyState } from '../components/EmptyState';
 import { EMPTY_STATE } from '../lib/emptyStateCopy';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { resolveAlbumArtwork } from '../lib/artwork';
 
 type LikedAlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc';
 
@@ -44,8 +31,6 @@ const sortLabels: Record<LikedAlbumSortOption, string> = {
     'artist-desc': 'Artist (Z-A)',
 };
 
-// Define Grid Components outside to prevent re-renders
-// gridTemplateColumns driven by --card-cols CSS variable on the parent wrapper.
 const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
     <div
         ref={ref}
@@ -82,7 +67,6 @@ export const LikedAlbums: React.FC = () => {
         setScrollParent(document.querySelector('main'));
     }, []);
 
-    // Get liked albums with their metadata
     const likedAlbums = useMemo(() => {
         return albums.filter(album => {
             const albumKey = `${album.name}::${album.artist}`;
@@ -90,20 +74,11 @@ export const LikedAlbums: React.FC = () => {
         });
     }, [albums, likedAlbumKeys]);
 
-    // Sort the albums
     const sortedLikedAlbums = useMemo(() => {
         const sorted = [...likedAlbums];
         switch (sortBy) {
             case 'recent':
-                // For recent, we'd need likedAt from metadata - fallback to addedAt for now
-                return sorted.sort((a, b) => {
-                    const keyA = `${a.name}::${a.artist}`;
-                    const keyB = `${b.name}::${b.artist}`;
-                    const metaA = albumMetadata[keyA];
-                    const metaB = albumMetadata[keyB];
-                    // Use addedAt as fallback if likedAt not available
-                    return (b.addedAt || 0) - (a.addedAt || 0);
-                });
+                return sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
             case 'name-asc':
                 return sorted.sort((a, b) => a.name.localeCompare(b.name));
             case 'name-desc':
@@ -115,26 +90,22 @@ export const LikedAlbums: React.FC = () => {
             default:
                 return sorted;
         }
-    }, [likedAlbums, sortBy, albumMetadata]);
+    }, [likedAlbums, sortBy]);
 
-    // Empty state
     const likedAlbumsCopy = EMPTY_STATE.likedAlbums;
     if (sortedLikedAlbums.length === 0) {
         return (
             <Page withPlayerPadding={false}>
-                {/* Header Section */}
                 <div className="flex items-end gap-6 mb-8">
                     <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand/40 to-surface-1 flex items-center justify-center shadow-2xl">
                         <Heart size={80} className="text-white/50" />
                     </div>
-                    
                     <div className="flex-1">
                         <p className="text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibold">Collection</p>
                         <h1 className="text-display font-bold text-text-main mb-4">Liked Albums</h1>
                         <p className="text-text-secondary text-sm">No liked albums yet</p>
                     </div>
                 </div>
-                
                 <div className="flex items-center justify-center py-12">
                     <EmptyState
                         icon={<likedAlbumsCopy.icon size={48} />}
@@ -156,12 +127,10 @@ export const LikedAlbums: React.FC = () => {
 
     return (
         <Page withPlayerPadding={false}>
-            {/* Header Section */}
             <div className="flex items-end gap-6 mb-8">
                 <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand to-surface-1 flex items-center justify-center shadow-2xl shadow-brand/30">
                     <Heart size={80} className="text-white fill-current" />
                 </div>
-                
                 <div className="flex-1">
                     <p className="text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibold">Collection</p>
                     <h1 className="text-display font-bold text-text-main mb-4">Liked Albums</h1>
@@ -171,7 +140,6 @@ export const LikedAlbums: React.FC = () => {
                 </div>
             </div>
 
-            {/* Sort Dropdown */}
             <div className="flex items-center justify-end gap-3 mb-6">
                 <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
                 <div className="relative">
@@ -186,7 +154,6 @@ export const LikedAlbums: React.FC = () => {
                         <span>{sortLabels[sortBy]}</span>
                         <ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />
                     </button>
-                    
                     {showSortMenu && (
                         <>
                             <button
@@ -213,48 +180,40 @@ export const LikedAlbums: React.FC = () => {
                 </div>
             </div>
 
-            {/* Album Grid */}
             <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
-            <VirtuosoGrid
+              <VirtuosoGrid
                 useWindowScroll={false}
                 customScrollParent={scrollParent}
                 data={sortedLikedAlbums}
-                components={{
-                    List: ListContainer,
-                    Item: ItemContainer
-                }}
+                components={{ List: ListContainer, Item: ItemContainer }}
                 itemContent={(index, album) => {
                     const metadataKey = `${album.name}::${album.artist}`;
                     const metadata = albumMetadata[metadataKey];
-                    const coverUrl = metadata?.coverUrl || album.coverUrl;
+                    const coverUrl = resolveAlbumArtwork(album.coverUrl, metadata?.coverUrl);
 
                     return (
-                                                <div 
+                        <div
                             className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer border border-transparent hover:border-surface-border h-full flex flex-col relative"
                             onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
                             onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
-                                                        role="button"
-                                                        tabIndex={0}
-                                                        aria-label={`Open album ${album.name}`}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                                e.preventDefault();
-                                                                navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`);
-                                                            }
-                                                        }}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Open album ${album.name}`}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`);
+                                }
+                            }}
                         >
-                            {/* Like Button (top-right corner) */}
                             <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <AlbumLikeButton albumKey={metadataKey} size={20} />
                             </div>
-                            
-                            <div 
+                            <div
                                 className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden bg-surface-3"
                                 style={{ background: coverBackground(coverUrl, album.name) }}
                             >
                                 {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}
-                                
-                                {/* Hover Overlay */}
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                     <div className="w-12 h-12 bg-brand rounded-full flex items-center justify-center shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
                                         <svg className="w-6 h-6 text-black fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
@@ -271,7 +230,7 @@ export const LikedAlbums: React.FC = () => {
                         </div>
                     );
                 }}
-            />
+              />
             </div>
         </Page>
     );
