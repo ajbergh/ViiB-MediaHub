@@ -1,6 +1,6 @@
 # Full Reliability Remediation Status
 
-Branch: `agent/full-reliability-remediation`
+The reliability remediation originally tracked on `agent/full-reliability-remediation` is complete and merged. This file is retained as a historical phase record; current architecture/source behavior is documented in [architecture.md](architecture.md), [plex-music.md](plex-music.md), and [library-operations.md](library-operations.md).
 
 ## Phase 0 — Library integrity
 
@@ -39,16 +39,16 @@ Branch: `agent/full-reliability-remediation`
 - [x] Apply and reset the selected main output device when `setSinkId` is supported.
 - [x] Make gapless mode use a zero-duration handoff rather than a hidden fade.
 - [x] Persist streaming enabled, quality, and local-playback preference.
-- [x] Parse ReplayGain track gain/peak and Opus R128 track gain during library scans.
+- [x] Parse ReplayGain track gain/peak and Opus R128 track gain during local-library scans.
 - [x] Persist per-track loudness metadata and apply clipping-safe normalization in the Web Audio graph.
 
 ## Phase 4 — Library identity and metadata
 
-- [x] Add stable content fingerprints.
-- [x] Reconcile file moves and renames without changing logical song IDs.
-- [x] Preserve user metadata during normal rescans.
+- [x] Add stable content fingerprints for local media.
+- [x] Reconcile local file moves and renames without changing logical song IDs.
+- [x] Preserve user metadata during normal local rescans.
 - [x] Correct cached cover extensions and MIME behavior.
-- [x] Add an interactive Duplicate Manager that hides/restores redundant copies without deleting files.
+- [x] Add an interactive Duplicate Manager that hides/restores redundant local copies without deleting files.
 - [x] Add M3U/M3U8 playlist import and export with matching/unmatched reporting.
 - [x] Extend the application error boundary across the full router and global UI.
 
@@ -56,14 +56,23 @@ Branch: `agent/full-reliability-remediation`
 
 - [x] Add backend scanner, duplicate, playlist, and Spotify token tests.
 - [x] Add frontend playback lifecycle and ReplayGain tests.
-- [x] Run frontend checks, TypeScript, Vitest, production build, and high-severity npm audit.
-- [x] Run Go tests, race detection, vet, staticcheck, application builds, and binary vulnerability scans.
+- [x] Run frontend checks, TypeScript, Vitest, production build, and production-dependency audit.
+- [x] Run Go tests, race detection, vet, Staticcheck, application builds, and binary vulnerability scans.
 - [x] Retain Windows Wails packaging and packaged-executable vulnerability gates.
+- [x] Upgrade the Go security baseline to **1.25.13**.
+
+## Subsequent source architecture work
+
+After this remediation, Plex Media Server music support was added as a first-class remote music source. Plex extends the canonical ViiB catalog and player rather than replacing the reliability rules above:
+
+- remote `plex://` catalog identity is excluded from local missing-file repair;
+- failed PMS synchronization never becomes deletion reconciliation;
+- Plex playback uses backend-authenticated source-aware media routes;
+- Plex credentials use the existing encrypted sensitive-setting path;
+- full frontend/backend/Windows CI passed before the Plex feature was merged.
 
 ## Remaining architecture-scale follow-ons
 
-These items are intentionally not represented as completed because they require platform-specific infrastructure rather than the reliability and capability phases above:
-
-- Move persisted credentials from encrypted SQLite to native OS credential stores.
-- Remove access and refresh tokens from renderer memory entirely by migrating every Spotify operation behind typed backend endpoints.
-- Perform a manual physical Windows release-candidate smoke test, including real library scans, output-device routing, Spotify reconnection, and long-running playback.
+- Consider native OS credential stores for sensitive credentials where the platform complexity is justified.
+- Continue reducing Spotify token exposure in renderer memory by moving remaining Spotify operations behind backend-owned typed APIs.
+- Perform physical release-candidate smoke testing with a real large local library and real Plex Media Server, including output routing, Spotify reconnection, Plex discovery/authentication/sync/seeking, backup/restore, and long-running playback.
