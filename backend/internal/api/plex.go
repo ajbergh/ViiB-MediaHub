@@ -32,6 +32,7 @@ func (a *API) PlexRoutes() chi.Router {
 	r.Get("/auth/status", a.getPlexAuthStatus)
 	r.Get("/servers", a.getPlexAccountServers)
 	r.Post("/servers/select", a.connectPlexAccountServer)
+	r.Get("/artist-artwork/{name}", a.proxyPlexArtistArtwork)
 	r.Get("/libraries", a.getPlexLibraries)
 	r.Put("/library", a.selectPlexLibrary)
 	r.Post("/sync", a.startPlexSync)
@@ -551,7 +552,8 @@ func (a *API) runPlexSync(sourceID string) {
 			SongID: plex.StableTrackID(source.MachineIdentifier, track.RatingKey), SourceID: source.ID,
 			LibraryID: source.LibraryID, MachineID: source.MachineIdentifier, RatingKey: track.RatingKey,
 			MetadataKey: track.MetadataKey, MediaKey: track.MediaKey, ArtworkKey: track.ArtworkKey,
-			Container: track.Container, AudioCodec: track.AudioCodec, UpdatedAt: track.UpdatedAt,
+			ArtistArtworkKey: track.ArtistArtworkKey,
+			Container:        track.Container, AudioCodec: track.AudioCodec, UpdatedAt: track.UpdatedAt,
 			Title: track.Title, Artist: track.Artist, Album: track.Album, AlbumArtist: track.AlbumArtist,
 			TrackNumber: track.TrackNumber, DiscNumber: track.DiscNumber, Genres: track.Genres,
 			Year: track.Year, Duration: track.DurationSeconds, AddedAt: track.AddedAt,
@@ -606,6 +608,31 @@ func copyPlexProxyHeaders(dst http.Header, src http.Header) {
 	}
 }
 
+// proxyPlexArtistArtwork serves a PMS artist portrait through ViiB so the
+// account/server token never reaches the browser.
+func (a *API) proxyPlexArtistArtwork(w http.ResponseWriter, r *http.Request) {
+	artistName := strings.TrimSpace(chi.URLParam(r, "name"))
+	if artistName == "" {
+		respondPlexStreamMessage(w, http.StatusBadRequest, "Plex artist name is required")
+		return
+	}
+	artwork, err := a.db.GetActivePlexArtistArtwork(artistName)
+	if err != nil {
+		respondPlexStreamMessage(w, http.StatusInternalServerError, "Plex artist artwork is unavailable")
+		return
+	}
+	if artwork == nil || artwork.ArtworkKey == "" {
+		respondPlexStreamMessage(w, http.StatusNotFound, "Plex artist artwork is unavailable")
+		return
+	}
+	source, err := a.db.GetPlexSource(artwork.SourceID)
+	if err != nil || source == nil {
+		respondPlexStreamMessage(w, http.StatusServiceUnavailable, "Plex source is not configured")
+		return
+	}
+	a.proxyPlexSourceAsset(w, r, source, artwork.ArtworkKey, "", false)
+}
+
 func (a *API) proxyPlexAsset(w http.ResponseWriter, r *http.Request, track *db.PlexTrackSource, key string, rangeRequest bool) {
 	if key == "" {
 		respondPlexStreamMessage(w, http.StatusNotFound, "Plex media asset is unavailable")
@@ -616,25 +643,62 @@ func (a *API) proxyPlexAsset(w http.ResponseWriter, r *http.Request, track *db.P
 		respondPlexStreamMessage(w, http.StatusServiceUnavailable, "Plex source is not configured")
 		return
 	}
+	a.proxyPlexSourceAsset(w, r, source, key, track.MetadataKey, rangeRequest)
+}
+
+func plexMediaRequest(r *http.Request, client *plex.Client, key string, rangeRequest bool) (*http.Request, error) {
+	upstream, err := client.MediaRequest(r.Context(), key)
+	if err != nil {
+		return nil, err
+	}
+	upstream.Header.Set("Accept", "*/*")
+	if rangeRequest {
+		client.ApplyPlaybackIdentity(upstream)
+	}
+	if rangeRequest && r.Header.Get("Range") != "" {
+		upstream.Header.Set("Range", r.Header.Get("Range"))
+	}
+	return upstream, nil
+}
+
+func (a *API) proxyPlexSourceAsset(w http.ResponseWriter, r *http.Request, source *db.PlexSource, key, metadataKey string, rangeRequest bool) {
 	client, err := a.plexClientForSource(r.Context(), source)
 	if err != nil {
 		respondPlexStreamError(w, err)
 		return
 	}
-	upstream, err := client.MediaRequest(r.Context(), key)
+	upstream, err := plexMediaRequest(r, client, key, rangeRequest)
 	if err != nil {
 		respondPlexStreamError(w, err)
 		return
-	}
-	upstream.Header.Set("Accept", "*/*")
-	if rangeRequest && r.Header.Get("Range") != "" {
-		upstream.Header.Set("Range", r.Header.Get("Range"))
 	}
 	resp, err := client.MediaHTTPClient().Do(upstream)
 	if err != nil {
 		_ = a.db.SetPlexSyncState(source.ID, source.LastSyncStatus, "Plex server unreachable during playback", false, 0)
 		respondPlexStreamMessage(w, http.StatusServiceUnavailable, "Plex Media Server is unreachable")
 		return
+	}
+	// PMS 1.43 can reject a media-part request with 503 when it has no active
+	// playback decision. Ask PMS for a direct-play decision once, then repeat
+	// the exact original (including Range) request. We intentionally do not
+	// enable transcoding: ViiB's player contract remains direct audio playback.
+	if resp.StatusCode == http.StatusServiceUnavailable && rangeRequest && metadataKey != "" {
+		resp.Body.Close()
+		if err := client.PrepareDirectPlay(r.Context(), metadataKey); err != nil {
+			respondPlexStreamError(w, err)
+			return
+		}
+		upstream, err = plexMediaRequest(r, client, key, rangeRequest)
+		if err != nil {
+			respondPlexStreamError(w, err)
+			return
+		}
+		resp, err = client.MediaHTTPClient().Do(upstream)
+		if err != nil {
+			_ = a.db.SetPlexSyncState(source.ID, source.LastSyncStatus, "Plex server unreachable during playback", false, 0)
+			respondPlexStreamMessage(w, http.StatusServiceUnavailable, "Plex Media Server is unreachable")
+			return
+		}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == 498 {

@@ -156,7 +156,7 @@ func TestFetchTracksMapsMusicMetadataAndPaginationHeaders(t *testing.T) {
 			t.Errorf("pagination headers missing: start=%q size=%q", r.Header.Get("X-Plex-Container-Start"), r.Header.Get("X-Plex-Container-Size"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"MediaContainer":{"size":1,"totalSize":1,"Metadata":[{"ratingKey":"123","key":"/library/metadata/123","type":"track","title":"Track","parentTitle":"Album","grandparentTitle":"Artist","index":4,"parentIndex":2,"year":2025,"duration":245000,"thumb":"/library/metadata/123/thumb/1","parentThumb":"/library/metadata/100/thumb/9","addedAt":100,"updatedAt":200,"Genre":[{"tag":"Rock"}],"Media":[{"container":"flac","audioCodec":"flac","Part":[{"key":"/library/parts/55/file.flac","container":"flac"}]}]}]}}`))
+		_, _ = w.Write([]byte(`{"MediaContainer":{"size":1,"totalSize":1,"Metadata":[{"ratingKey":"123","key":"/library/metadata/123","type":"track","title":"Track","parentTitle":"Album","grandparentTitle":"Artist","index":4,"parentIndex":2,"year":2025,"duration":245000,"thumb":"/library/metadata/123/thumb/1","parentThumb":"/library/metadata/100/thumb/9","grandparentThumb":"/library/metadata/artist-8/thumb/42","addedAt":100,"updatedAt":200,"Genre":[{"tag":"Rock"}],"Media":[{"container":"flac","audioCodec":"flac","Part":[{"key":"/library/parts/55/file.flac","container":"flac"}]}]}]}}`))
 	}))
 	defer server.Close()
 	client, err := NewClientWithHTTP(server.URL, "secret", "viib-test", server.Client())
@@ -176,6 +176,9 @@ func TestFetchTracksMapsMusicMetadataAndPaginationHeaders(t *testing.T) {
 	}
 	if track.ArtworkKey != "/library/metadata/100/thumb/9" {
 		t.Fatalf("artwork key=%q want parent album thumb", track.ArtworkKey)
+	}
+	if track.ArtistArtworkKey != "/library/metadata/artist-8/thumb/42" {
+		t.Fatalf("artist artwork key=%q", track.ArtistArtworkKey)
 	}
 	if StableTrackID("machine", "123") == StableTrackID("machine", "124") || StableTrackID("machine", "123") == "123" {
 		t.Fatal("stable Plex IDs are not namespaced/stable")

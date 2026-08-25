@@ -78,3 +78,45 @@ func TestPlexSyncRefreshesMediaKeyWhenUpdatedAtIsUnchanged(t *testing.T) {
 		t.Fatalf("media key=%q err=%v", source.MediaKey, err)
 	}
 }
+
+func TestPlexSyncPublishesAndReconcilesArtistArtwork(t *testing.T) {
+	database := openPlexTestDB(t)
+	defer database.Close()
+	const sourceID, libraryID, machineID = "plexsrc_artist_art", "2", "machine-artist-art"
+	if err := database.SavePlexSource(PlexSource{
+		ID: sourceID, MachineIdentifier: machineID, BaseURL: "http://127.0.0.1:32400",
+		Name: "Plex", LibraryID: libraryID, Active: true, Available: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	track := plexFixture(sourceID, libraryID, machineID, "1", "Track", 100)
+	track.Artist = "The Lumineers"
+	track.AlbumArtist = track.Artist
+	track.ArtistArtworkKey = "/library/metadata/artist-8/thumb/42"
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+
+	artwork, err := database.GetActivePlexArtistArtwork(track.Artist)
+	if err != nil || artwork == nil || artwork.SourceID != sourceID || artwork.ArtworkKey != track.ArtistArtworkKey {
+		t.Fatalf("artist artwork=%#v err=%v", artwork, err)
+	}
+	metadata, err := database.GetArtistMetadata(track.Artist)
+	if err != nil || metadata == nil || !strings.HasPrefix(metadata.PlexImageURL, "/api/v2/plex/artist-artwork/The%20Lumineers?v=") {
+		t.Fatalf("artist metadata=%#v err=%v", metadata, err)
+	}
+
+	track.ArtistArtworkKey = ""
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	artwork, err = database.GetActivePlexArtistArtwork(track.Artist)
+	if err != nil || artwork != nil {
+		t.Fatalf("stale artwork=%#v err=%v", artwork, err)
+	}
+	metadata, err = database.GetArtistMetadata(track.Artist)
+	if err != nil || metadata == nil || metadata.PlexImageURL != "" {
+		t.Fatalf("stale Plex image URL=%#v err=%v", metadata, err)
+	}
+}

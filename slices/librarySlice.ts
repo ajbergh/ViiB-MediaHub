@@ -34,6 +34,28 @@ import { libraryOperationsV2 } from '../services/libraryOperationsV2';
 import api, { ApiAlbumMetadata, ApiArtistMetadata } from '../services/api';
 import { Playlist, Song, AlbumMetadata, ArtistMetadata } from '../types';
 
+function mapCachedArtistMetadata(entries: ApiArtistMetadata[]): Record<string, ArtistMetadata> {
+    const artistMetadata: Record<string, ArtistMetadata> = {};
+    for (const cached of entries) {
+        if (!cached.plexImageUrl && !(cached.spotifyFound && (cached.localImagePath || cached.imageUrl))) continue;
+
+        // Plex artist portraits are authoritative for Plex-backed artists.
+        // Local/Spotify artwork remains available if Plex has no portrait.
+        let imageUrl = cached.plexImageUrl || cached.imageUrl || '';
+        if (!cached.plexImageUrl && cached.localImagePath) {
+            imageUrl = `/api/cover/${encodeURIComponent(cached.localImagePath)}`;
+        }
+        artistMetadata[cached.artistName] = {
+            spotifyId: cached.spotifyId,
+            name: cached.artistName,
+            imageUrl,
+            url: cached.spotifyUrl || '',
+            fetchedAt: cached.fetchedAt || Date.now()
+        };
+    }
+    return artistMetadata;
+}
+
 let isPollingActive = false;
 
 export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = (set, get) => ({
@@ -103,26 +125,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               }
 
               // Convert cached artist metadata to the format used by the store
-              const artistMetadata: Record<string, ArtistMetadata> = {};
               console.log(`📦 Processing ${cachedArtistMetadata.length} cached artist metadata entries`);
-              for (const cached of cachedArtistMetadata) {
-                  if (cached.spotifyFound && (cached.localImagePath || cached.imageUrl)) {
-                      // Prefer local image path if available, fallback to Spotify URL
-                      let imageUrl = cached.imageUrl || '';  // Start with Spotify URL as fallback
-                      if (cached.localImagePath) {
-                          imageUrl = `/api/cover/${encodeURIComponent(cached.localImagePath)}`;
-                      }
-                      
-                      artistMetadata[cached.artistName] = {
-                          spotifyId: cached.spotifyId,
-                          name: cached.artistName,
-                          imageUrl,
-                          url: cached.spotifyUrl || '',
-                          fetchedAt: cached.fetchedAt || Date.now()
-                      };
-                      console.log(`📦 Loaded cached artist "${cached.artistName}" imageUrl: ${imageUrl.substring(0, 60)}...`);
-                  }
-              }
+              const artistMetadata = mapCachedArtistMetadata(cachedArtistMetadata);
               
               const mixes = generateSmartMixes(songs);
               const likedSongIds = new Set(likedIds);
@@ -172,14 +176,15 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       if (backendAvailable) {
           try {
               console.log('🔄 Refreshing library from backend...');
-              const [songs, playlists, scanFolders] = await Promise.all([
+              const [songs, playlists, scanFolders, cachedArtistMetadata] = await Promise.all([
                   backendService.getAllSongs(),
                   backendService.getAllPlaylists(),
-                  backendService.getFolders()
+                  backendService.getFolders(),
+                  api.getAllArtistMetadata()
               ]);
               
               const mixes = generateSmartMixes(songs);
-              set({ songs, playlists, smartMixes: mixes, scanFolders });
+              set({ songs, playlists, smartMixes: mixes, scanFolders, artistMetadata: mapCachedArtistMetadata(cachedArtistMetadata) });
               console.log(`✅ Library refreshed: ${songs.length} songs`);
           } catch (e) {
               console.error("Failed to refresh library from backend", e);
@@ -483,6 +488,21 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       // Check if we've already checked Spotify and found nothing (cached "not found")
       try {
           const cached = await api.getArtistMetadata(artistName);
+          if (cached?.plexImageUrl) {
+              set((s) => ({
+                  artistMetadata: {
+                      ...s.artistMetadata,
+                      [artistName]: {
+                          spotifyId: cached.spotifyId,
+                          name: cached.artistName,
+                          imageUrl: cached.plexImageUrl,
+                          url: cached.spotifyUrl || '',
+                          fetchedAt: cached.fetchedAt || Date.now()
+                      }
+                  }
+              }));
+              return;
+          }
           if (cached?.spotifyChecked && !cached.spotifyFound) {
               // Already checked, Spotify had nothing - don't re-query
               console.log(`📦 Artist "${artistName}" already checked - Spotify had no results`);

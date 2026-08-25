@@ -522,6 +522,7 @@ type plexTrack struct {
 	Duration         int64       `json:"duration"`
 	Thumb            string      `json:"thumb"`
 	ParentThumb      string      `json:"parentThumb"`
+	GrandparentThumb string      `json:"grandparentThumb"`
 	AddedAt          int64       `json:"addedAt"`
 	UpdatedAt        int64       `json:"updatedAt"`
 	Genre            []plexTag   `json:"Genre"`
@@ -566,24 +567,25 @@ func mapPlexTrack(raw plexTrack) (Track, bool) {
 	// back to the track thumbnail for servers/items without parent artwork.
 	artwork := firstNonEmpty(raw.ParentThumb, raw.Thumb)
 	return Track{
-		RatingKey:       raw.RatingKey,
-		MetadataKey:     raw.Key,
-		ParentRatingKey: raw.ParentRatingKey,
-		Title:           raw.Title,
-		Artist:          raw.GrandparentTitle,
-		Album:           raw.ParentTitle,
-		AlbumArtist:     raw.GrandparentTitle,
-		TrackNumber:     raw.Index,
-		DiscNumber:      raw.ParentIndex,
-		Genres:          genres,
-		Year:            raw.Year,
-		DurationSeconds: float64(raw.Duration) / 1000,
-		ArtworkKey:      artwork,
-		MediaKey:        part.Key,
-		Container:       firstNonEmpty(part.Container, media.Container),
-		AudioCodec:      media.AudioCodec,
-		AddedAt:         raw.AddedAt * 1000,
-		UpdatedAt:       raw.UpdatedAt * 1000,
+		RatingKey:        raw.RatingKey,
+		MetadataKey:      raw.Key,
+		ParentRatingKey:  raw.ParentRatingKey,
+		Title:            raw.Title,
+		Artist:           raw.GrandparentTitle,
+		Album:            raw.ParentTitle,
+		AlbumArtist:      raw.GrandparentTitle,
+		TrackNumber:      raw.Index,
+		DiscNumber:       raw.ParentIndex,
+		Genres:           genres,
+		Year:             raw.Year,
+		DurationSeconds:  float64(raw.Duration) / 1000,
+		ArtworkKey:       artwork,
+		ArtistArtworkKey: raw.GrandparentThumb,
+		MediaKey:         part.Key,
+		Container:        firstNonEmpty(part.Container, media.Container),
+		AudioCodec:       media.AudioCodec,
+		AddedAt:          raw.AddedAt * 1000,
+		UpdatedAt:        raw.UpdatedAt * 1000,
 	}, true
 }
 
@@ -769,6 +771,69 @@ func (c *Client) MediaRequest(ctx context.Context, key string) (*http.Request, e
 		req.Header.Del("X-Plex-Token")
 	}
 	return req, nil
+}
+
+// ApplyPlaybackIdentity identifies an audio request as the same PMS client and
+// session that created its playback decision. It is deliberately separate from
+// ordinary API/artwork requests because only media playback needs this state.
+func (c *Client) ApplyPlaybackIdentity(req *http.Request) {
+	if req == nil {
+		return
+	}
+	sessionID := c.clientIdentifier
+	if sessionID == "" {
+		sessionID = "viib-mediahub"
+	}
+	req.Header.Set("X-Plex-Platform", "Generic")
+	req.Header.Set("X-Plex-Device", "ViiB MediaHub")
+	req.Header.Set("X-Plex-Device-Name", "ViiB MediaHub")
+	req.Header.Set("X-Plex-Session-Identifier", sessionID)
+}
+
+// PrepareDirectPlay creates the PMS media decision required before some newer
+// PMS versions will allow a direct request to /library/parts. The browser still
+// receives the original media part through ViiB's range-aware proxy; this call
+// only reserves/authorizes that direct-play decision with PMS.
+func (c *Client) PrepareDirectPlay(ctx context.Context, metadataKey string) error {
+	metadataKey = strings.TrimSpace(metadataKey)
+	if metadataKey == "" {
+		return errors.New("empty Plex metadata key")
+	}
+	metadataURL, err := url.Parse(metadataKey)
+	if err != nil || metadataURL.IsAbs() || !strings.HasPrefix(metadataURL.Path, "/") {
+		return errors.New("invalid Plex metadata key")
+	}
+	req, err := c.newRequest(ctx, http.MethodGet, "", "/music/:/transcode/universal/decision", true)
+	if err != nil {
+		return err
+	}
+	query := req.URL.Query()
+	query.Set("path", metadataURL.Path)
+	query.Set("protocol", "http")
+	query.Set("hasMDE", "1")
+	query.Set("mediaIndex", "0")
+	query.Set("partIndex", "0")
+	query.Set("directPlay", "1")
+	query.Set("directStream", "1")
+	sessionID := c.clientIdentifier
+	if sessionID == "" {
+		sessionID = "viib-mediahub"
+	}
+	query.Set("session", sessionID)
+	req.URL.RawQuery = query.Encode()
+	// The decision endpoint evaluates a PMS client profile. A custom product
+	// alone is not a valid profile selector on newer PMS releases and results in
+	// HTTP 400, so identify ViiB as the portable Generic profile. This does not
+	// relax direct-play requirements or enable a transcode fallback.
+	c.ApplyPlaybackIdentity(req)
+
+	// PMS can include the selected media in this response, but direct playback
+	// deliberately keeps using the catalogued part URL so ViiB's byte-range
+	// contract remains stable.
+	var response struct {
+		MediaContainer json.RawMessage `json:"MediaContainer"`
+	}
+	return c.doJSON(req, &response)
 }
 
 // MediaHTTPClient has no whole-response timeout so long audio streams are not

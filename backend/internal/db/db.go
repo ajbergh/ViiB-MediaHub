@@ -306,6 +306,7 @@ func (d *DB) migrate() error {
 		artist_name TEXT PRIMARY KEY,
 		spotify_id TEXT,
 		image_url TEXT,
+		plex_image_url TEXT,
 		local_image_path TEXT,
 		spotify_url TEXT,
 		spotify_checked INTEGER DEFAULT 0,
@@ -604,6 +605,7 @@ func (d *DB) migrateColumns() error {
 
 	// Migration: Add Last.FM columns to artist_metadata table
 	lastfmArtistMigrations := []string{
+		`ALTER TABLE artist_metadata ADD COLUMN plex_image_url TEXT`,
 		`ALTER TABLE artist_metadata ADD COLUMN lastfm_listeners INTEGER`,
 		`ALTER TABLE artist_metadata ADD COLUMN lastfm_playcount INTEGER`,
 		`ALTER TABLE artist_metadata ADD COLUMN lastfm_tags TEXT`,
@@ -3067,6 +3069,7 @@ type ArtistMetadata struct {
 	ArtistName     string `json:"artistName"`
 	SpotifyID      string `json:"spotifyId,omitempty"`
 	ImageURL       string `json:"imageUrl,omitempty"`
+	PlexImageURL   string `json:"plexImageUrl,omitempty"`
 	LocalImagePath string `json:"localImagePath,omitempty"`
 	SpotifyURL     string `json:"spotifyUrl,omitempty"`
 	SpotifyChecked bool   `json:"spotifyChecked"` // True if we've checked Spotify (even if not found)
@@ -3078,16 +3081,16 @@ type ArtistMetadata struct {
 // GetArtistMetadata retrieves cached metadata for an artist
 func (d *DB) GetArtistMetadata(artistName string) (*ArtistMetadata, error) {
 	var m ArtistMetadata
-	var spotifyID, imageURL, localImagePath, spotifyURL sql.NullString
+	var spotifyID, imageURL, plexImageURL, localImagePath, spotifyURL sql.NullString
 	var fetchedAt, updatedAt sql.NullInt64
 	var spotifyChecked, spotifyFound sql.NullInt64
 
 	err := d.conn.QueryRow(`
-		SELECT artist_name, spotify_id, image_url, local_image_path, spotify_url,
+		SELECT artist_name, spotify_id, image_url, plex_image_url, local_image_path, spotify_url,
 		       spotify_checked, spotify_found, fetched_at, updated_at
 		FROM artist_metadata WHERE artist_name = ?
 	`, artistName).Scan(
-		&m.ArtistName, &spotifyID, &imageURL, &localImagePath, &spotifyURL,
+		&m.ArtistName, &spotifyID, &imageURL, &plexImageURL, &localImagePath, &spotifyURL,
 		&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt,
 	)
 
@@ -3103,6 +3106,9 @@ func (d *DB) GetArtistMetadata(artistName string) (*ArtistMetadata, error) {
 	}
 	if imageURL.Valid {
 		m.ImageURL = imageURL.String
+	}
+	if plexImageURL.Valid {
+		m.PlexImageURL = plexImageURL.String
 	}
 	if localImagePath.Valid {
 		m.LocalImagePath = localImagePath.String
@@ -3129,7 +3135,7 @@ func (d *DB) GetArtistMetadata(artistName string) (*ArtistMetadata, error) {
 // GetAllArtistMetadata retrieves all cached artist metadata
 func (d *DB) GetAllArtistMetadata() ([]ArtistMetadata, error) {
 	rows, err := d.conn.Query(`
-		SELECT artist_name, spotify_id, image_url, local_image_path, spotify_url,
+		SELECT artist_name, spotify_id, image_url, plex_image_url, local_image_path, spotify_url,
 		       spotify_checked, spotify_found, fetched_at, updated_at
 		FROM artist_metadata
 	`)
@@ -3141,12 +3147,12 @@ func (d *DB) GetAllArtistMetadata() ([]ArtistMetadata, error) {
 	var results []ArtistMetadata
 	for rows.Next() {
 		var m ArtistMetadata
-		var spotifyID, imageURL, localImagePath, spotifyURL sql.NullString
+		var spotifyID, imageURL, plexImageURL, localImagePath, spotifyURL sql.NullString
 		var fetchedAt, updatedAt sql.NullInt64
 		var spotifyChecked, spotifyFound sql.NullInt64
 
 		err := rows.Scan(
-			&m.ArtistName, &spotifyID, &imageURL, &localImagePath, &spotifyURL,
+			&m.ArtistName, &spotifyID, &imageURL, &plexImageURL, &localImagePath, &spotifyURL,
 			&spotifyChecked, &spotifyFound, &fetchedAt, &updatedAt,
 		)
 		if err != nil {
@@ -3158,6 +3164,9 @@ func (d *DB) GetAllArtistMetadata() ([]ArtistMetadata, error) {
 		}
 		if imageURL.Valid {
 			m.ImageURL = imageURL.String
+		}
+		if plexImageURL.Valid {
+			m.PlexImageURL = plexImageURL.String
 		}
 		if localImagePath.Valid {
 			m.LocalImagePath = localImagePath.String
@@ -3198,19 +3207,20 @@ func (d *DB) SaveArtistMetadata(m *ArtistMetadata) error {
 
 	_, err := d.conn.Exec(`
 		INSERT INTO artist_metadata (
-			artist_name, spotify_id, image_url, local_image_path, spotify_url,
+			artist_name, spotify_id, image_url, plex_image_url, local_image_path, spotify_url,
 			spotify_checked, spotify_found, fetched_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(artist_name) DO UPDATE SET
 			spotify_id = excluded.spotify_id,
 			image_url = excluded.image_url,
+			plex_image_url = COALESCE(excluded.plex_image_url, artist_metadata.plex_image_url),
 			local_image_path = COALESCE(excluded.local_image_path, artist_metadata.local_image_path),
 			spotify_url = excluded.spotify_url,
 			spotify_checked = excluded.spotify_checked,
 			spotify_found = excluded.spotify_found,
 			fetched_at = COALESCE(excluded.fetched_at, artist_metadata.fetched_at),
 			updated_at = excluded.updated_at
-	`, m.ArtistName, m.SpotifyID, m.ImageURL, m.LocalImagePath, m.SpotifyURL,
+	`, m.ArtistName, m.SpotifyID, m.ImageURL, m.PlexImageURL, m.LocalImagePath, m.SpotifyURL,
 		spotifyChecked, spotifyFound, m.FetchedAt, now)
 	return err
 }

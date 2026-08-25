@@ -57,24 +57,25 @@ type Library struct {
 
 // Track is the subset of PMS track metadata required by ViiB's unified catalog.
 type Track struct {
-	RatingKey       string
-	MetadataKey     string
-	ParentRatingKey string
-	Title           string
-	Artist          string
-	Album           string
-	AlbumArtist     string
-	TrackNumber     int
-	DiscNumber      int
-	Genres          []string
-	Year            int
-	DurationSeconds float64
-	ArtworkKey      string
-	MediaKey        string
-	Container       string
-	AudioCodec      string
-	AddedAt         int64
-	UpdatedAt       int64
+	RatingKey        string
+	MetadataKey      string
+	ParentRatingKey  string
+	Title            string
+	Artist           string
+	Album            string
+	AlbumArtist      string
+	TrackNumber      int
+	DiscNumber       int
+	Genres           []string
+	Year             int
+	DurationSeconds  float64
+	ArtworkKey       string
+	ArtistArtworkKey string
+	MediaKey         string
+	Container        string
+	AudioCodec       string
+	AddedAt          int64
+	UpdatedAt        int64
 }
 
 // SyncResult is returned after a complete, authoritative PMS library read.

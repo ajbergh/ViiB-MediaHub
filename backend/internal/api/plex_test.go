@@ -28,7 +28,7 @@ func setupPlexProxyTest(t *testing.T, upstreamURL, mediaKey, token string, avail
 	}
 	track := db.PlexCatalogTrack{
 		SongID: plex.StableTrackID(machineID, "99"), SourceID: sourceID, LibraryID: libraryID, MachineID: machineID,
-		RatingKey: "99", MetadataKey: "/library/metadata/99", MediaKey: mediaKey, Title: "Proxy Track", Artist: "Artist", Album: "Album", Duration: 10, AddedAt: 1,
+		RatingKey: "99", MetadataKey: "/library/metadata/99", MediaKey: mediaKey, ArtistArtworkKey: "/artist-artwork", Title: "Proxy Track", Artist: "Artist", Album: "Album", Duration: 10, AddedAt: 1,
 	}
 	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []db.PlexCatalogTrack{track}); err != nil {
 		t.Fatal(err)
@@ -38,6 +38,32 @@ func setupPlexProxyTest(t *testing.T, upstreamURL, mediaKey, token string, avail
 		t.Fatal(err)
 	}
 	return database, &API{db: database}, track
+}
+
+func TestPlexArtistArtworkProxyKeepsTokenServerSide(t *testing.T) {
+	const token = "artist-art-secret"
+	var sawToken bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/artist-artwork" {
+			http.NotFound(w, r)
+			return
+		}
+		sawToken = r.Header.Get("X-Plex-Token") == token
+		w.Header().Set("Content-Type", "image/jpeg")
+		_, _ = w.Write([]byte("artist-image"))
+	}))
+	defer upstream.Close()
+
+	_, handler, _ := setupPlexProxyTest(t, upstream.URL, "/audio", token, true)
+	recorder := httptest.NewRecorder()
+	handler.PlexRoutes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/artist-artwork/Artist", nil))
+
+	if recorder.Code != http.StatusOK || !sawToken || recorder.Header().Get("Content-Type") != "image/jpeg" || recorder.Body.String() != "artist-image" {
+		t.Fatalf("artist proxy failed: code=%d token=%v headers=%#v body=%q", recorder.Code, sawToken, recorder.Header(), recorder.Body.String())
+	}
+	if bytes.Contains(recorder.Body.Bytes(), []byte(token)) {
+		t.Fatal("Plex token leaked into artist artwork response")
+	}
 }
 
 func TestPlexAudioProxyForwardsRangeAndKeepsTokenServerSide(t *testing.T) {
@@ -83,6 +109,63 @@ func TestPlexAudioProxyForwardsRangeAndKeepsTokenServerSide(t *testing.T) {
 	}
 	if bytes.Contains(recorder.Body.Bytes(), []byte(token)) {
 		t.Fatal("Plex token leaked into browser-visible response")
+	}
+}
+
+func TestPlexAudioProxyCreatesDirectPlayDecisionAfterPMS503(t *testing.T) {
+	const token = "decision-token"
+	var mediaRequests, decisionRequests int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/audio":
+			mediaRequests++
+			if r.Header.Get("X-Plex-Token") != token {
+				t.Fatalf("media request lost Plex token")
+			}
+			if r.Header.Get("X-Plex-Platform") != "Generic" || r.Header.Get("X-Plex-Device") != "ViiB MediaHub" || r.Header.Get("X-Plex-Session-Identifier") != "viib-test" {
+				t.Fatalf("media request lost PMS playback identity: %#v", r.Header)
+			}
+			if r.Header.Get("Range") != "bytes=2-5" {
+				t.Fatalf("media request lost Range: %q", r.Header.Get("Range"))
+			}
+			if mediaRequests == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			w.Header().Set("Content-Type", "audio/mpeg")
+			w.Header().Set("Content-Range", "bytes 2-5/10")
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write([]byte("2345"))
+		case "/music/:/transcode/universal/decision":
+			decisionRequests++
+			if r.Header.Get("X-Plex-Token") != token {
+				t.Fatalf("decision request lost Plex token")
+			}
+			if r.Header.Get("X-Plex-Platform") != "Generic" || r.Header.Get("X-Plex-Device") != "ViiB MediaHub" || r.Header.Get("X-Plex-Session-Identifier") != "viib-test" {
+				t.Fatalf("missing PMS decision client identity: %#v", r.Header)
+			}
+			query := r.URL.Query()
+			if query.Get("path") != "/library/metadata/99" || query.Get("protocol") != "http" || query.Get("hasMDE") != "1" || query.Get("mediaIndex") != "0" || query.Get("partIndex") != "0" || query.Get("directPlay") != "1" || query.Get("session") != "viib-test" {
+				t.Fatalf("unexpected direct-play decision query: %q", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"MediaContainer":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	_, handler, track := setupPlexProxyTest(t, upstream.URL, "/audio", token, true)
+	req := httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil)
+	req.Header.Set("Range", "bytes=2-5")
+	recorder := httptest.NewRecorder()
+	handler.ServeAudioSourceAware(recorder, req)
+
+	if recorder.Code != http.StatusPartialContent || recorder.Body.String() != "2345" {
+		t.Fatalf("expected retried direct playback, got status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	if mediaRequests != 2 || decisionRequests != 1 {
+		t.Fatalf("unexpected request counts: media=%d decision=%d", mediaRequests, decisionRequests)
 	}
 }
 

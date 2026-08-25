@@ -76,9 +76,9 @@ export const ArtistDetail: React.FC = () => {
 
     const metadata = artistMetadata[decodedArtistName];
     const artistHasPlex = artistSongs.some(song => isPlexSourcePath(song.path));
-    // Plex album covers are not artist portraits. Until Plex artist/type-8
-    // metadata is imported separately, use the true enrichment portrait or a
-    // neutral fallback instead of turning a Plex album cover into a portrait.
+    // Plex artist portraits are synced separately from album artwork. If PMS
+    // does not provide one, keep the neutral fallback rather than using an
+    // unrelated album cover as an artist photo.
     const imageUrl = metadata?.imageUrl || (artistHasPlex ? undefined : artistSongs[0]?.coverUrl);
     const totalDuration = artistSongs.reduce((acc, s) => acc + s.duration, 0);
     const durationHours = Math.floor(totalDuration / 3600);

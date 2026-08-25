@@ -1756,6 +1756,7 @@ export interface ApiArtistMetadata {
   artistName: string;
   spotifyId?: string;
   imageUrl?: string;          // Spotify image URL
+  plexImageUrl?: string;      // Authenticated Plex artist portrait proxy
   localImagePath?: string;    // Local path to cached image
   spotifyUrl?: string;
   spotifyChecked: boolean;

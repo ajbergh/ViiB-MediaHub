@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -58,27 +59,28 @@ type PlexSource struct {
 
 // PlexCatalogTrack contains the unified song fields plus PMS source identity.
 type PlexCatalogTrack struct {
-	SongID      string
-	SourceID    string
-	LibraryID   string
-	MachineID   string
-	RatingKey   string
-	MetadataKey string
-	MediaKey    string
-	ArtworkKey  string
-	Container   string
-	AudioCodec  string
-	UpdatedAt   int64
-	Title       string
-	Artist      string
-	Album       string
-	AlbumArtist string
-	TrackNumber int
-	DiscNumber  int
-	Genres      []string
-	Year        int
-	Duration    float64
-	AddedAt     int64
+	SongID           string
+	SourceID         string
+	LibraryID        string
+	MachineID        string
+	RatingKey        string
+	MetadataKey      string
+	MediaKey         string
+	ArtworkKey       string
+	ArtistArtworkKey string
+	Container        string
+	AudioCodec       string
+	UpdatedAt        int64
+	Title            string
+	Artist           string
+	Album            string
+	AlbumArtist      string
+	TrackNumber      int
+	DiscNumber       int
+	Genres           []string
+	Year             int
+	Duration         float64
+	AddedAt          int64
 }
 
 // PlexTrackSource is the lookup required to stream/proxy a catalog track.
@@ -217,6 +219,7 @@ func (d *DB) EnsurePlexSchema() error {
 			metadata_key TEXT NOT NULL DEFAULT '',
 			media_key TEXT NOT NULL,
 			artwork_key TEXT NOT NULL DEFAULT '',
+			artist_artwork_key TEXT NOT NULL DEFAULT '',
 			container TEXT NOT NULL DEFAULT '',
 			audio_codec TEXT NOT NULL DEFAULT '',
 			updated_at INTEGER NOT NULL DEFAULT 0,
@@ -226,9 +229,21 @@ func (d *DB) EnsurePlexSchema() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_plex_tracks_source_library ON plex_tracks(source_id, library_id);
 		CREATE INDEX IF NOT EXISTS idx_plex_tracks_machine_rating ON plex_tracks(machine_identifier, rating_key);
+		CREATE TABLE IF NOT EXISTS plex_artist_artwork (
+			source_id TEXT NOT NULL,
+			artist_name TEXT NOT NULL COLLATE NOCASE,
+			artwork_key TEXT NOT NULL,
+			updated_at INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY(source_id, artist_name),
+			FOREIGN KEY(source_id) REFERENCES plex_sources(id) ON DELETE CASCADE
+		);
+		CREATE INDEX IF NOT EXISTS idx_plex_artist_artwork_active ON plex_artist_artwork(source_id, artist_name);
 	`)
 	if err != nil {
 		return fmt.Errorf("create Plex source schema: %w", err)
+	}
+	if _, err := d.conn.Exec(`ALTER TABLE plex_tracks ADD COLUMN artist_artwork_key TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return fmt.Errorf("add Plex artist artwork column: %w", err)
 	}
 	return nil
 }
@@ -394,16 +409,25 @@ func plexArtworkPath(songID, artworkKey string, updatedAt int64) string {
 	return fmt.Sprintf("plex://art/%s?v=%x", songID, version[:8])
 }
 
+func plexArtistArtworkPath(artistName, artworkKey string, updatedAt int64) string {
+	if artistName == "" || artworkKey == "" {
+		return ""
+	}
+	version := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d", artworkKey, updatedAt)))
+	return "/api/v2/plex/artist-artwork/" + url.PathEscape(artistName) + "?v=" + fmt.Sprintf("%x", version[:8])
+}
+
 type existingPlexCatalogTrack struct {
-	updatedAt   int64
-	libraryID   string
-	metadataKey string
-	mediaKey    string
-	artworkKey  string
-	container   string
-	audioCodec  string
-	genres      []string
-	year        int
+	updatedAt        int64
+	libraryID        string
+	metadataKey      string
+	mediaKey         string
+	artworkKey       string
+	artistArtworkKey string
+	container        string
+	audioCodec       string
+	genres           []string
+	year             int
 }
 
 func (record existingPlexCatalogTrack) matches(libraryID string, track PlexCatalogTrack, genres []string) bool {
@@ -416,6 +440,7 @@ func (record existingPlexCatalogTrack) matches(libraryID string, track PlexCatal
 		record.metadataKey == track.MetadataKey &&
 		record.mediaKey == track.MediaKey &&
 		record.artworkKey == track.ArtworkKey &&
+		record.artistArtworkKey == track.ArtistArtworkKey &&
 		record.container == track.Container &&
 		record.audioCodec == track.AudioCodec &&
 		record.year == track.Year &&
@@ -434,6 +459,48 @@ func stringSlicesEqual(left, right []string) bool {
 	return true
 }
 
+type plexArtistArtwork struct {
+	key       string
+	updatedAt int64
+}
+
+func syncPlexArtistArtwork(tx *sql.Tx, sourceID string, artwork map[string]plexArtistArtwork) error {
+	// A successful library snapshot is authoritative for artist portraits too.
+	// Clear only the Plex-specific URLs; Spotify/local metadata stays intact as a
+	// fallback when a server stops providing an artist thumbnail.
+	if _, err := tx.Exec(`
+		UPDATE artist_metadata SET plex_image_url=NULL
+		WHERE artist_name IN (SELECT artist_name FROM plex_artist_artwork WHERE source_id=?)
+	`, sourceID); err != nil {
+		return fmt.Errorf("clear stale Plex artist artwork URLs: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM plex_artist_artwork WHERE source_id=?`, sourceID); err != nil {
+		return fmt.Errorf("clear stale Plex artist artwork: %w", err)
+	}
+	now := time.Now().Unix()
+	for artistName, portrait := range artwork {
+		if artistName == "" || portrait.key == "" {
+			continue
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO plex_artist_artwork (source_id, artist_name, artwork_key, updated_at)
+			VALUES (?, ?, ?, ?)
+		`, sourceID, artistName, portrait.key, portrait.updatedAt); err != nil {
+			return fmt.Errorf("save Plex artist artwork: %w", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO artist_metadata (artist_name, plex_image_url, updated_at)
+			VALUES (?, ?, ?)
+			ON CONFLICT(artist_name) DO UPDATE SET
+				plex_image_url=excluded.plex_image_url,
+				updated_at=excluded.updated_at
+		`, artistName, plexArtistArtworkPath(artistName, portrait.key, portrait.updatedAt), now); err != nil {
+			return fmt.Errorf("publish Plex artist artwork: %w", err)
+		}
+	}
+	return nil
+}
+
 // SyncPlexLibrary atomically applies a complete successful PMS snapshot. The
 // snapshot becomes authoritative for this active source only after the remote
 // read has succeeded. That means a library switch while PMS is offline leaves
@@ -450,7 +517,7 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 
 	existing := map[string]existingPlexCatalogTrack{}
 	rows, err := tx.Query(`
-		SELECT t.song_id, t.updated_at, t.library_id, t.metadata_key, t.media_key, t.artwork_key, t.container, t.audio_codec, s.genre, s.year
+		SELECT t.song_id, t.updated_at, t.library_id, t.metadata_key, t.media_key, t.artwork_key, t.artist_artwork_key, t.container, t.audio_codec, s.genre, s.year
 		FROM plex_tracks t JOIN songs s ON s.id=t.song_id WHERE t.source_id=?
 	`, sourceID)
 	if err != nil {
@@ -461,7 +528,7 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 		var record existingPlexCatalogTrack
 		var storedGenres string
 		if err := rows.Scan(&id, &record.updatedAt, &record.libraryID, &record.metadataKey, &record.mediaKey,
-			&record.artworkKey, &record.container, &record.audioCodec, &storedGenres, &record.year); err != nil {
+			&record.artworkKey, &record.artistArtworkKey, &record.container, &record.audioCodec, &storedGenres, &record.year); err != nil {
 			rows.Close()
 			return 0, 0, 0, err
 		}
@@ -473,6 +540,7 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 	}
 
 	seen := make(map[string]struct{}, len(tracks))
+	artistArtwork := make(map[string]plexArtistArtwork)
 	for _, track := range tracks {
 		// Presence and playability are different concepts in PMS. If a successful
 		// metadata snapshot still reports the rating key but temporarily omits a
@@ -483,6 +551,11 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 			continue
 		}
 		seen[track.SongID] = struct{}{}
+		if track.Artist != "" && track.ArtistArtworkKey != "" {
+			if _, alreadyMapped := artistArtwork[track.Artist]; !alreadyMapped {
+				artistArtwork[track.Artist] = plexArtistArtwork{key: track.ArtistArtworkKey, updatedAt: track.UpdatedAt}
+			}
+		}
 		if track.MediaKey == "" {
 			continue
 		}
@@ -513,14 +586,14 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 			return 0, 0, 0, fmt.Errorf("upsert Plex song: %w", err)
 		}
 		_, err = tx.Exec(`
-			INSERT INTO plex_tracks (song_id, source_id, library_id, machine_identifier, rating_key, metadata_key, media_key, artwork_key, container, audio_codec, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO plex_tracks (song_id, source_id, library_id, machine_identifier, rating_key, metadata_key, media_key, artwork_key, artist_artwork_key, container, audio_codec, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(song_id) DO UPDATE SET source_id=excluded.source_id, library_id=excluded.library_id,
 				machine_identifier=excluded.machine_identifier, rating_key=excluded.rating_key, metadata_key=excluded.metadata_key,
-				media_key=excluded.media_key, artwork_key=excluded.artwork_key, container=excluded.container,
+				media_key=excluded.media_key, artwork_key=excluded.artwork_key, artist_artwork_key=excluded.artist_artwork_key, container=excluded.container,
 				audio_codec=excluded.audio_codec, updated_at=excluded.updated_at
 		`, track.SongID, sourceID, libraryID, track.MachineID, track.RatingKey, track.MetadataKey,
-			track.MediaKey, track.ArtworkKey, track.Container, track.AudioCodec, track.UpdatedAt)
+			track.MediaKey, track.ArtworkKey, track.ArtistArtworkKey, track.Container, track.AudioCodec, track.UpdatedAt)
 		if err != nil {
 			return 0, 0, 0, fmt.Errorf("upsert Plex source metadata: %w", err)
 		}
@@ -541,10 +614,41 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 		}
 		removed++
 	}
+	if err := syncPlexArtistArtwork(tx, sourceID, artistArtwork); err != nil {
+		return 0, 0, 0, err
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, 0, 0, err
 	}
 	return added, updated, removed, nil
+}
+
+// PlexArtistArtwork identifies the authenticated PMS artwork needed for an
+// artist portrait. It never includes a browser-visible Plex token.
+type PlexArtistArtwork struct {
+	SourceID   string
+	ArtworkKey string
+}
+
+func (d *DB) GetActivePlexArtistArtwork(artistName string) (*PlexArtistArtwork, error) {
+	if err := d.EnsurePlexSchema(); err != nil {
+		return nil, err
+	}
+	var artwork PlexArtistArtwork
+	err := d.conn.QueryRow(`
+		SELECT a.source_id, a.artwork_key
+		FROM plex_artist_artwork a
+		JOIN plex_sources s ON s.id=a.source_id
+		WHERE s.active=1 AND a.artist_name=? COLLATE NOCASE
+		LIMIT 1
+	`, artistName).Scan(&artwork.SourceID, &artwork.ArtworkKey)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &artwork, nil
 }
 
 func (d *DB) GetPlexTrackSource(songID string) (*PlexTrackSource, error) {
@@ -581,6 +685,15 @@ func (d *DB) RemovePlexSource(sourceID string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if _, err := tx.Exec(`
+		UPDATE artist_metadata SET plex_image_url=NULL
+		WHERE artist_name IN (SELECT artist_name FROM plex_artist_artwork WHERE source_id=?)
+	`, sourceID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM plex_artist_artwork WHERE source_id=?`, sourceID); err != nil {
+		return err
+	}
 	rows, err := tx.Query(`SELECT song_id FROM plex_tracks WHERE source_id=?`, sourceID)
 	if err != nil {
 		return err
