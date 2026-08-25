@@ -510,10 +510,11 @@ func mapPlexTrack(raw plexTrack) (Track, bool) {
 	if raw.RatingKey == "" || raw.Title == "" {
 		return Track{}, false
 	}
-	media, part, ok := selectPlayablePart(raw.Media)
-	if !ok {
-		return Track{}, false
-	}
+	// PMS metadata identity is authoritative even when the server temporarily
+	// omits a playable Media/Part. Preserve the track in the snapshot with an
+	// empty MediaKey so reconciliation can distinguish "still present" from
+	// "deleted"; the DB defers new unplayable items and retains cached ones.
+	media, part, _ := selectPlayablePart(raw.Media)
 	genres := make([]string, 0, len(raw.Genre))
 	for _, genre := range raw.Genre {
 		if value := strings.TrimSpace(genre.Tag); value != "" {
