@@ -77,9 +77,10 @@ export const Albums: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Only fetch metadata for albums that are MISSING artwork.
-    // Plex artwork is supplied by PMS and must not be replaced by enrichment.
+    // Plex-backed albums own their artwork decision, including "no artwork".
+    // Do not trigger Spotify enrichment merely to fill a cover Plex did not set.
     const albumsMissingArt = albums.filter(album => {
+        if (album.plexBacked) return false;
         const metadataKey = `${album.name}::${album.artist}`;
         const hasMetadata = !!albumMetadata[metadataKey];
         const hasCatalogCover = !!album.coverUrl;
@@ -91,7 +92,7 @@ export const Albums: React.FC = () => {
             fetchAlbumMetadata(album.name, album.artist);
         }, idx * 200);
     });
-  }, [albums.length, albumMetadata]);
+  }, [albums, albumMetadata, fetchAlbumMetadata]);
 
   const sortedAlbums = useMemo(() => {
     const sorted = [...albums];
@@ -177,7 +178,7 @@ export const Albums: React.FC = () => {
               itemContent={(index, album) => {
                 const metadataKey = `${album.name}::${album.artist}`;
                 const metadata = albumMetadata[metadataKey];
-                const coverUrl = resolveAlbumArtwork(album.coverUrl, metadata?.coverUrl);
+                const coverUrl = resolveAlbumArtwork(album.coverUrl, metadata?.coverUrl, album.plexBacked);
 
                 return (
                   <Card
