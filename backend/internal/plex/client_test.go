@@ -234,7 +234,7 @@ func TestFetchTracksContinuesWhenServerReturnsShortPageWithTotalRemaining(t *tes
 				"Media": []any{map[string]any{"container": "mp3", "audioCodec": "mp3", "Part": []any{map[string]any{"key": "/library/parts/" + id + "/file.mp3"}}}},
 			}
 		}
-		metadata := []any{}
+		var metadata []any
 		switch start {
 		case 0:
 			metadata = []any{makeTrack("1"), makeTrack("2")}
