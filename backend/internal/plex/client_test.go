@@ -197,6 +197,26 @@ func TestMapPlexTrackUsesFirstUsableMediaPart(t *testing.T) {
 	}
 }
 
+func TestMapPlexTrackRetainsPresenceWithoutPlayableMediaPart(t *testing.T) {
+	track, ok := mapPlexTrack(plexTrack{
+		RatingKey:        "77",
+		Key:              "/library/metadata/77",
+		Type:             "track",
+		Title:            "Temporarily unavailable",
+		ParentTitle:      "Album",
+		GrandparentTitle: "Artist",
+		ParentThumb:      "/library/metadata/70/thumb/5",
+		UpdatedAt:        123,
+		Media:            []plexMedia{{Container: "flac", AudioCodec: "flac", Part: []plexPart{{Key: ""}}}},
+	})
+	if !ok {
+		t.Fatal("expected Plex metadata identity to remain in the authoritative snapshot")
+	}
+	if track.RatingKey != "77" || track.MediaKey != "" || track.ArtworkKey != "/library/metadata/70/thumb/5" {
+		t.Fatalf("unexpected unplayable track mapping: %#v", track)
+	}
+}
+
 func TestFetchTracksContinuesWhenServerReturnsShortPageWithTotalRemaining(t *testing.T) {
 	starts := make([]int, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
