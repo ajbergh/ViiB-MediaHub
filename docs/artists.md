@@ -2,36 +2,42 @@
 
 ![Artists page](../assets/screenshots/artists.png)
 
-The Artists page lists every distinct artist in your library with browsable discography pages.
+The Artists page lists distinct artists represented in the canonical ViiB song catalog. Local filesystem music and synchronized Plex music contribute to the same artist and discography views.
 
 ---
 
-## Layout
+## Artist browser
 
-Artists are displayed in a responsive card grid, each showing:
-- Artist image or generated color gradient
-- Artist name
-- Number of tracks
+Artist cards show the artist name, available artwork/fallback presentation, and catalog depth information. Selecting an artist opens the normal Artist Detail view.
+
+There is no separate Plex artist browser after synchronization.
 
 ---
 
 ## Artist Detail
 
-Clicking an artist card opens the **Artist Detail** page, which shows:
+Artist Detail can show:
 
-- Artist header image and name
-- Total tracks and albums count
-- **Albums** section: all albums by this artist with cover art
-- **All Tracks** section: every track by this artist
-- Play All / Shuffle controls
+- artist identity and artwork;
+- album/discography groupings;
+- all matching catalog tracks;
+- Play All / Shuffle actions;
+- navigation to album details.
 
-### Navigating from Artist Detail
-
-- Click an album to open [Album Detail](albums.md)
-- Click a track to play it immediately
+Local and Plex-backed songs use the same ViiB queue/player interactions.
 
 ---
 
-## Metadata
+## Plex behavior
 
-If the configured AI provider or Last.FM integration is enabled, artist metadata (images, biography hints) can be enriched during background processing. See [Settings → Library Intelligence](settings.md#library-intelligence).
+Plex synchronization maps PMS artist/album/track metadata into ViiB's existing song fields. PMS machine/library/track identity is retained separately by the backend for synchronization and playback, so artist aggregation does not need Plex-specific UI branching.
+
+If PMS is temporarily offline, already synchronized artist and album metadata remain in ViiB. Remote playback resumes when the Plex source becomes reachable and authenticated again.
+
+---
+
+## Metadata enrichment
+
+Configured AI/metadata services can enrich ViiB's catalog presentation. Enrichment is ViiB-side state; ViiB does not silently write artist or track metadata back to Plex.
+
+See [Settings → Library Intelligence](settings.md#library-intelligence).

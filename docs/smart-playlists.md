@@ -2,105 +2,59 @@
 
 ![Smart Playlists / AI DJ](../assets/screenshots/smart-playlists.png)
 
-The Smart Playlists page provides two related capabilities:
+Smart Playlists and AI DJ operate on ViiB's canonical music catalog. After a Plex music library has synchronized successfully, Plex tracks can participate alongside local filesystem tracks in the same generated playlists and DJ sets.
 
-1. **Playlist Mode** — Generate a one-shot playlist from a natural language prompt
-2. **DJ Mode** — Generate a structured DJ set with energy progression, persona, and transitions
-
-Both use the configured LLM provider (see [Settings → Library Intelligence](settings.md#library-intelligence)) to match your local library tracks against the prompt.
-
----
-
-## Mode Toggle
-
-A toggle at the top of the page switches between **Playlist** and **DJ** modes.
+Spotify's remote catalog is not implicitly searched by this feature; Spotify remains a separate integration.
 
 ---
 
 ## Playlist Mode
 
-### Prompt Input
+Playlist Mode builds a one-shot ViiB playlist from a natural-language request and the metadata/history already available in the ViiB catalog.
 
-Type a natural language description of the music you want:
+Examples:
 
-```
+```text
 90s alternative rock
 chill evening vibes
 upbeat morning run
 jazz standards for dinner
 ```
 
-### Options
+Generation can use artist/album/genre metadata, enriched mood/energy/tempo information, and listening history depending on the active implementation and configured provider.
 
-| Option | Description |
-|---|---|
-| Discovery | **Balanced** — mix of familiar and new; **Discover New** — leans toward unplayed tracks; **Favorites** — leans toward your most-played |
-| Avoid Recently Played | Exclude tracks played within the chosen window (1 h, 6 h, 24 h, 3 d, 1 wk) |
-| One Per Artist | Ensures no artist repeats in the generated list |
-| Time-Aware Mode | Adjusts energy level based on the current time of day |
-
-### Generate
-
-Click **Generate** to run the playlist generation. The backend performs a four-tier matching pass:
-
-1. Exact genre/mood match from enriched metadata
-2. Fuzzy match using the LLM provider
-3. BPM/energy-range scoring
-4. Fallback using play history popularity
-
-### Result Actions
-
-- **Play** — Load the generated list into the queue and start playing
-- **Save as Playlist** — Saves the result as a named [Playlist](playlists.md)
-- **Regenerate** — Run a new generation with the same prompt and options
+Generated results use normal ViiB song IDs, so a result can contain both local and Plex-backed catalog tracks without a Plex-specific playback path in the UI.
 
 ---
 
 ## DJ Mode
 
-DJ Mode adds professional set-building on top of Playlist Mode.
+DJ Mode adds set-building behavior such as persona/selection bias, duration targets, transition/flow constraints, and energy progression where available in the current UI.
 
-### Additional DJ Controls
-
-| Control | Description |
-|---|---|
-| Persona | Chooses the scoring bias for track selection |
-| Set Duration | Target length of the DJ set (15–120 minutes) |
-| Flow Strictness | How tightly BPM must stay consistent across transitions |
-| Talk Mode | Inserts DJ narration cue markers between tracks |
-
-### DJ Personas
-
-| Persona | Bias |
-|---|---|
-| Flow Master | Smooth BPM continuity, minimal key jumps |
-| Crowd Pleaser | Favors your highest-rated and most-played tracks |
-| Deep Cut DJ | Finds hidden gems and rarely played tracks |
-| Explorer | Balanced between familiar and novel |
-| Curator | Strict genre purity, one artist per set |
-| Night Drive | Smooth tempos, medium energy, atmospheric feel |
-
-### Energy Arc Visualization
-
-When a DJ set is generated, a phase chart shows the energy arc — how the set builds from opening tracks through the peak and winds down to the closing tracks. Each phase is color-coded.
+The resulting set is still built from the ViiB catalog and handed to the normal player/queue.
 
 ---
 
-## Smart Mix Cards (Home Page)
+## Smart Mixes
 
-Smart Mixes are pre-generated playlists that appear on the [Home](home.md) page as a scrollable carousel. They are automatically created from your library's genre and mood distribution. Smart Mixes refresh when the library changes.
+Home-page Smart Mixes are derived from catalog metadata and listening behavior. Because Plex synchronization writes normalized metadata into the same catalog, Plex tracks can appear in mixes such as favorites, rediscovery, recent/fresh, or genre-based mixes where they satisfy the mix rules.
 
-### Smart Mix Detail
-
-Clicking a Smart Mix card opens the Smart Mix Detail page, showing:
-- Mix name and description
-- Full track list
-- Play / Shuffle controls
+See [Home](home.md).
 
 ---
 
-## Requirements
+## Source availability
 
-- At least one AI provider must be configured in [Settings → Library Intelligence](settings.md#library-intelligence).
-- Genre enrichment should be run first for best results (the AI can still generate playlists using artist/album names alone).
-- Mood, energy, and tempo metadata (from Unified Enrichment) improve DJ mode accuracy.
+A temporarily offline Plex server does not cause AI/Smart Mix generation to erase cached Plex catalog entries. Those tracks can remain discoverable as catalog candidates, but playback will require PMS to be reachable and authenticated at the time the track is played.
+
+A later successful authoritative Plex synchronization reconciles additions, updates, and confirmed removals.
+
+---
+
+## Metadata enrichment
+
+For best results, configure the desired AI/metadata provider in [Settings → Library Intelligence](settings.md#library-intelligence).
+
+ViiB-side enrichment may add or improve genre, mood, energy, tempo, BPM, and year metadata used by Smart Mixes/AI DJ.
+
+For Plex-backed tracks, ViiB enrichment is local ViiB state. ViiB does not silently write enriched metadata back to Plex; a later Plex synchronization can refresh fields that are sourced from PMS.

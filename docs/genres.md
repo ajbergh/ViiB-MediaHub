@@ -2,35 +2,38 @@
 
 ![Genres page](../assets/screenshots/genres.png)
 
-The Genres page organizes your library by genre tag, sourced from the embedded file metadata or AI-enriched genre data.
+The Genres page organizes the canonical ViiB catalog by genre metadata. Local filesystem tracks and synchronized Plex music tracks can appear together in the same genre views.
 
 ---
 
 ## Layout
 
-Genres are shown as a card grid. Each card shows:
-- Genre name
-- Track count
+Genres are shown as a card grid with the genre name and catalog track count. Opening a genre displays matching tracks with normal ViiB playback, queue, playlist, and context-menu actions.
 
 ---
 
-## Genre Detail
+## Genre metadata sources
 
-Clicking a genre card opens the **Genre Detail** page, which shows:
+Genre values can enter the ViiB catalog through several paths:
 
-- All tracks tagged with that genre
-- Play All and Shuffle buttons
-- Context menu on individual tracks
+1. **Local file metadata** — tags extracted from scanned local audio files.
+2. **Plex metadata** — genre tags returned by PMS and mapped during a successful Plex library synchronization.
+3. **ViiB enrichment** — configured AI/metadata services can populate or improve genre metadata stored in ViiB.
+
+The Genres page consumes the resulting ViiB catalog metadata rather than querying Plex independently.
+
+---
+
+## Plex behavior
+
+Plex genre metadata is cached with the synchronized track catalog. A temporary PMS outage therefore does not erase existing genre groupings. A later successful authoritative Plex synchronization can update genre values when PMS metadata changes.
+
+ViiB-side genre enrichment is not silently written back to Plex.
 
 ---
 
 ## Genre Enrichment
 
-Genres are populated from two sources:
+Configure and run enrichment from [Settings → Library Intelligence](settings.md#library-intelligence).
 
-1. **File metadata** — Tags embedded in MP3/FLAC/AAC files during ripping
-2. **AI enrichment** — The configured LLM provider can infer genres from artist and album names
-
-To trigger genre enrichment, go to [Settings → Library Intelligence → Genre Enrichment](settings.md#library-intelligence).
-
-Genres that are blank in the original file tags will remain blank until enrichment runs.
+Enrichment changes ViiB catalog metadata used by Genre browsing, Smart Mixes, AI DJ, and statistics. It does not modify local source-file tags or PMS metadata unless a future explicitly supported source-writeback feature is introduced.

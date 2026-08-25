@@ -2,73 +2,57 @@
 
 ![Home page](../assets/screenshots/home.png)
 
-The Home page is the landing screen that appears when ViiB MediaHub starts. It gives you an at-a-glance view of your library and listening history so you can jump straight into music.
+The Home page is ViiB MediaHub's landing screen. It summarizes the canonical ViiB music catalog and listening history, so local filesystem music and synchronized Plex music can appear together in the same shelves, Smart Mixes, recent activity, and statistics.
 
 ---
 
 ## Layout Options
 
-The Home page has three selectable layouts. Change the active layout in [Settings](settings.md) → **Personalization**.
+The Home page supports multiple layouts configured under [Settings](settings.md) → **Personalization**.
 
-| Layout | Best for | What appears first |
+| Layout | Best for | Typical emphasis |
 |---|---|---|
-| **Music Shelves** | Balanced browsing | Search, spotlight, quick tiles, albums, artists |
-| **Cover Wall** | Artwork-forward browsing | Album-art mosaic hero with search and shelves below |
-| **Compact Dashboard** | Dense library navigation | Search, jump-back-in tiles, top albums, top artists |
+| **Music Shelves** | Balanced browsing | Search, spotlight, albums, artists, Smart Mixes |
+| **Cover Wall** | Artwork-forward browsing | Album-art mosaic with search and shelves |
+| **Compact Dashboard** | Dense navigation | Recent activity, albums, artists, quick metrics |
 
 ---
 
 ## Sections
 
-### Search Bar
-- Available in every Home layout.
-- Pressing **Enter** while focused navigates to the [Search](search.md) page with your query pre-filled.
-- The arrow button opens the Search page for mouse/touch users.
-- The full [Search](search.md) page supports result tabs and filtering.
+### Search
 
-### Spotlight
-- Appears in the **Music Shelves** layout.
-- Features a recent album, top artist, or Smart Mix depending on available library data.
-- The card opens detail view; the Play button starts playback without navigating.
+The Home search bar opens the full [Search](search.md) experience. Indexed search includes local and synchronized Plex catalog tracks; Spotify catalog search remains on the Spotify page.
 
-### Cover Wall
-- Appears in the **Cover Wall** layout.
-- Uses real album artwork when available, with gradient fallbacks for missing covers.
-- Falls back to the standard spotlight treatment if the library does not have enough album artwork.
+### Spotlight and Cover Wall
 
-### Jump Back In
-- Appears most prominently in the **Compact Dashboard** layout.
-- Shows quick tiles from recent playback or recent albums.
+These surfaces use ViiB catalog metadata and artwork. For Plex-backed albums, authenticated artwork is delivered through the ViiB backend rather than exposing Plex credentials to the renderer.
 
 ### Smart Mixes
-- Horizontally scrollable row of all available Smart Mixes.
-- Each card shows the mix name, track count, and a color gradient.
-- Clicking a card opens [Smart Mix Detail](smart-playlists.md); the Play button starts playback.
-- Hidden when `showSmartMixes` is disabled in Settings.
+
+Smart Mixes are derived from the ViiB catalog and listening/enrichment metadata. Plex tracks can participate after synchronization just like local catalog tracks.
+
+See [Smart Playlists / AI DJ](smart-playlists.md).
 
 ### Library Snapshot
-- **Total Songs** — total tracks in the library.
-- **Albums** — total distinct albums.
-- **Artists** — total distinct artists.
-- Each compact card is clickable and navigates to the corresponding library section.
+
+Catalog counters such as Songs, Albums, and Artists represent the unified ViiB catalog, not only local filesystem media.
 
 ### Recently Played
-- Recent tracks played, sorted by most recent first.
-- Each row shows album art, title, artist, and a relative timestamp (e.g., "2h ago", "Yesterday").
-- Click a row to play the track.
 
-### Recently Added Albums
-- Newest albums added to the library.
-- Useful for seeing what a recent scan picked up.
+Recently Played is driven by ViiB play history. Plays of normal local/Plex catalog songs participate in the same history and statistics pipeline.
 
-### Top Artists
-- Artists ranked by library depth or listening activity, depending on the active layout.
-- Click an artist to open their [Artist Detail](artists.md) page.
+### Recently Added
+
+Recently Added reflects catalog metadata. Local tracks enter through filesystem scanning; Plex tracks enter through successful PMS synchronization and use the available Plex added-date metadata where mapped.
+
+A Plex outage does not remove already synchronized entries from the Home catalog surfaces.
 
 ---
 
-## Tips
+## Keeping Home current
 
-- Smart Mixes are generated automatically when the library has enough tracks. Run a library scan if the carousel is empty.
-- The search bar on the Home page is a shortcut — the full [Search](search.md) page supports category filtering.
-- Recently Played only shows tracks that have been played through the player at least once. Plays are recorded in SQLite.
+- For local folders, run or allow the normal ViiB scanner to reconcile filesystem changes.
+- For Plex, use **Resynchronize** in [Library Operations](library-operations.md) to import new/changed/removed PMS music metadata.
+- Temporary Plex connectivity/authentication failures retain the cached catalog until a later successful authoritative sync.
+- Spotify streaming/browse content is not automatically folded into the ViiB catalog unless it becomes local downloaded media through the supported download workflow.

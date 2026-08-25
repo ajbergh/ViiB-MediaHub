@@ -4,136 +4,95 @@
 
 ![Player — Equalizer panel](../assets/screenshots/player-equalizer.png)
 
-The Player bar is persistent at the bottom of the screen and provides all core playback controls. It also serves as the entry point for the Queue, Equalizer, and Now Playing panels.
+The Player bar is persistent at the bottom of ViiB and is the playback surface for normal catalog tracks regardless of whether they originate from a local file or a synchronized Plex music library. Spotify streaming uses the same visible player controls but a separate Spotify streaming route.
 
 ---
 
-## Player Bar Layout
+## Player Bar
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│ [Album art]  Track title          ◀◀  ▶/⏸  ▶▶   ─── progress ───  🔊  │
-│              Artist · Album       Shuffle  Repeat  Vol  Queue  EQ  ↑  │
-└────────────────────────────────────────────────────────────────────────┘
-```
+The player shows artwork, title, artist/album, previous/play-next controls, progress, volume, queue, EQ, shuffle/repeat, and Now Playing access. Secondary controls collapse on narrow layouts.
 
-On narrower screens, shuffle, repeat, EQ, and secondary controls are hidden. On mobile, only the essential controls (play/pause, skip) are shown.
-
----
-
-## Playback Controls
+### Core controls
 
 | Control | Description |
 |---|---|
-| ◀◀ Previous | Jump to the previous track in the queue (or restart current if >3s in) |
-| ▶/⏸ Play/Pause | Toggle playback |
-| ▶▶ Next | Skip to the next track in the queue |
-| Shuffle | Toggle shuffle mode (randomizes queue order) |
-| Repeat | Cycle through Off → Repeat All → Repeat One |
+| Previous | Previous queued track, or restart the current track when appropriate |
+| Play/Pause | Toggle playback |
+| Next | Skip to the next queued track |
+| Shuffle | Toggle shuffled queue behavior |
+| Repeat | Cycle Off → Repeat All → Repeat One |
 
 ---
 
-## Progress Bar
+## Seeking and media URLs
 
-- Click anywhere on the progress bar to seek.
-- Hover to see the time at the cursor position.
-- Current position and total duration are displayed on either side.
+The frontend uses stable ViiB-controlled playback URLs.
 
----
+For local and Plex catalog tracks:
 
-## Volume
+```text
+/api/audio/{songId}
+```
 
-- Drag the volume slider to adjust.
-- Click the speaker icon to mute/unmute.
+For a local track, the Go backend serves the configured filesystem media. For a Plex track, the same route resolves the stored PMS media-part identity, attaches Plex authentication on the backend, and streams the remote audio to the player.
 
----
+Plex playback supports HTTP byte-range forwarding for normal seeking. The proxy preserves relevant `206 Partial Content`, `Content-Range`, `Content-Length`, `Accept-Ranges`, and content-type headers. Valid `416 Range Not Satisfiable` responses are also preserved so the player receives correct range semantics.
 
-## Album Artwork
-
-- Displays the album cover of the current track (or a color gradient fallback).
-- Click the artwork to open the **Now Playing** panel (full-screen expanded view).
+Plex access tokens are never placed in the browser-visible audio URL.
 
 ---
 
-## Visualizer
+## Artwork
 
-When a visualizer mode is active, a visualization renders inside the player bar. Modes: **Waveform**, **Spectrum**, **Milkdrop**. Configure in [Settings → Audio](settings.md#audio).
+The current track's album artwork is shown in the player and Now Playing views. Local artwork is served from ViiB's local artwork path/cache. Authenticated Plex artwork is proxied through the existing backend cover route so the browser does not need a Plex token.
+
+---
+
+## Queue
+
+The queue is source-transparent. Local and Plex tracks can be mixed in the same queue and use the same operations:
+
+- Play Next
+- Add to Queue
+- drag/reorder
+- remove from queue
+- jump to current
+- clear queue
+
+If PMS becomes unavailable while a Plex item is queued, the item remains in the queue/catalog and playback reports source unavailability rather than deleting the track.
+
+---
+
+## Equalizer and visualizer
+
+The player uses the Web Audio stack for EQ/visualization where supported by the active browser/WebView.
+
+The equalizer provides 10 frequency bands from 32 Hz through 16 kHz, per-band gain, presets, enable/bypass, and reset-to-flat behavior.
+
+Visualizer availability depends on the active mode and platform. Configure audio/visualizer behavior in [Settings](settings.md#audio).
+
+---
+
+## Now Playing
+
+Open Now Playing from the artwork/expand control. The expanded view uses the same source-transparent song object and playback URL as the player bar and includes large artwork, metadata, playback controls, seek, visualizer, and like controls.
+
+There is no Plex-specific Now Playing screen.
+
+---
+
+## Spotify streaming
+
+Spotify remains a separate remote streaming integration. Spotify streamed tracks use the Spotify streaming backend path rather than becoming normal Plex/local catalog media. Player controls such as play/pause, seek, queue, and volume remain consistent where supported.
 
 ---
 
 ## Sleep Timer
 
-Click the moon icon to set a sleep timer. Available durations: 15, 30, 45, 60, 90, 120 minutes.
-
-When the timer expires, the music fades out and playback stops. The remaining time is shown on the icon.
-
----
-
-## Queue Panel
-
-Click the queue icon (≡) to toggle the Queue panel. It slides in from the right side.
-
-### Queue Features
-
-| Feature | Description |
-|---|---|
-| Virtualized list | Smooth scrolling even with 2,000+ tracks queued |
-| Drag to reorder | Grab the drag handle ( ⠿ ) to move tracks |
-| Remove | Click × on any row to remove it from the queue |
-| Clear All | Button at the top to empty the queue |
-| Jump to Current | Button that scrolls the list to the currently playing track |
-| Click to play | Click any row to jump to that track |
-
----
-
-## Equalizer Panel
-
-Click the EQ icon ( sliders ) or press **E** to open the Equalizer panel as a modal overlay.
-
-### EQ Features
-
-- **10 frequency bands**: 32 Hz, 64 Hz, 125 Hz, 250 Hz, 500 Hz, 1 kHz, 2 kHz, 4 kHz, 8 kHz, 16 kHz
-- **Gain range**: −12 dB to +12 dB per band
-- **Enable/Disable toggle** — bypass the EQ without losing your settings
-- **Reset to Flat** — set all bands to 0 dB
-- **Presets**: Flat, Rock, Pop, Jazz, Classical, Bass Boost, Treble Boost, and more
-
-Drag each frequency slider vertically to adjust the gain. Changes apply in real time.
-
----
-
-## Now Playing Panel
-
-Click the album art or the expand icon (↑) to open the Now Playing panel as a full-screen overlay.
-
-### Now Playing Features
-
-- Large album artwork
-- Track title, artist, album
-- Playback controls (same as the player bar)
-- Progress bar with seek
-- Visualizer (cycles with **V** key)
-- Like button
-- Milkdrop preset cycling (when Milkdrop mode is active)
-
-### Closing Now Playing
-
-Press **Escape** or click the ✕ button to close.
-
----
-
-## Streaming Tracks
-
-When playing a Spotify streamed track (requires librespot setup), the player bar shows a Spotify badge next to the track info. Seek and volume behave the same as local playback.
+Use the sleep-timer control to stop playback after a selected duration or supported completion condition. Optional fade behavior is applied through the normal player state and therefore does not depend on whether the current ViiB catalog track is local or Plex-hosted.
 
 ---
 
 ## Media Session / OS Integration
 
-ViiB MediaHub registers with the OS **Media Session API**:
-
-- **Windows**: Media transport controls on the taskbar, lock screen, and compatible Bluetooth headsets
-- **macOS**: Control Strip and headset controls
-- **Linux**: MPRIS via the browser's media session support
-
-Album art, track title, and artist are sent to the OS for display in the system media overlay.
+ViiB registers current playback metadata with the browser/WebView media-session integration where available. Track title, artist, artwork, and transport controls can therefore appear in OS media surfaces and compatible headset controls.

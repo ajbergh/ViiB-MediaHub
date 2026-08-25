@@ -2,74 +2,40 @@
 
 ![Stats page](../assets/screenshots/stats.png)
 
-The Stats page shows personalized listening statistics and insights derived from your play history.
+The Stats page shows listening statistics derived from ViiB's play history. Playback of normal ViiB catalog tracks contributes to the same history regardless of whether a song originated from a local filesystem scan or a synchronized Plex music library.
 
 ---
 
-## Accessing Stats
+## Overview
 
-Click **Stats** in the sidebar.
+Typical summary metrics include listening time, play counts, recent-period activity, and top catalog entities.
 
----
-
-## Overview Cards
-
-The top of the page shows high-level numbers:
-
-| Stat | Description |
-|---|---|
-| Total Listening Time | Sum of all play durations recorded |
-| This Month | Listening time for the current calendar month |
-| This Week | Listening time for the current week |
-| Total Plays | Total number of play events recorded |
+Because history is keyed to ViiB catalog identity, Plex tracks do not need a separate statistics pipeline.
 
 ---
 
-## Top Charts
+## Top Artists, Albums, and Genres
 
-### Top Artists
-- Ranked by total play count.
-- Click an artist to navigate to their [Artist Detail](artists.md) page.
+Top charts aggregate play-history data against the current ViiB catalog metadata.
 
-### Top Albums
-- Ranked by total play count.
-- Click an album to navigate to its [Album Detail](albums.md) page.
+- Local and Plex-backed tracks can contribute to the same artist/album rankings.
+- Genre-based statistics depend on populated genre metadata.
+- ViiB-side metadata enrichment can improve genre-based reporting.
 
-### Top Genres
-- Ranked by total plays across all tracks in each genre.
-- Requires genre enrichment to be populated (see [Settings → Library Intelligence](settings.md#library-intelligence)).
+See [Settings → Library Intelligence](settings.md#library-intelligence).
 
 ---
 
-## Activity Calendar / Heatmap
+## Recently Played and activity views
 
-A calendar grid showing your listening activity over time. Each cell represents one day and is shaded by the number of plays — darker = more active.
+Recently Played and calendar/heatmap-style activity views are generated from ViiB's persisted play events. A Plex outage does not retroactively remove historical play events.
 
----
-
-## Fun Statistics
-
-A set of additional highlight stats, including:
-
-- **Most Played Song** — the track with the highest all-time play count
-- **Longest Listening Session** — the session with the most continuous listening time
-- **Favorite Day** — the day of the week you listen most
-- **Average Session Length** — mean duration of a listening session
+If a Plex track remains in the cached catalog while PMS is offline, its historical metadata can still be displayed even though new playback cannot start until the source is reachable again.
 
 ---
 
-## Recently Played
+## Data ownership
 
-A chronological list of the last 50 play events with track name, artist, and timestamp.
+ViiB statistics are local application data stored in SQLite. The Stats feature does not synchronize ViiB play history to Plex or Spotify as part of this catalog/history model.
 
----
-
-## Empty State
-
-If you have never played a track, the Stats page shows an empty state prompting you to start listening. Stats begin accumulating from the first play.
-
----
-
-## Data Source
-
-All statistics are computed in real time from the `plays` table in the SQLite database. No data is sent externally.
+Plex synchronization changes source/catalog metadata; it does not rewrite past ViiB listening history merely because PMS metadata changed.
