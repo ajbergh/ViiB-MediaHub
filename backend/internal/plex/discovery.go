@@ -62,6 +62,14 @@ func ParseGDMResponse(payload []byte, remoteIP net.IP) (Server, error) {
 	return server, nil
 }
 
+func usableGDMIPv4(ip net.IP) net.IP {
+	ipv4 := ip.To4()
+	if ipv4 == nil || ipv4.IsUnspecified() || ipv4.IsLoopback() || ipv4.IsMulticast() {
+		return nil
+	}
+	return ipv4
+}
+
 // interfaceIPv4Addresses returns every usable IPv4 address on an active
 // non-loopback interface. GDM is link-local multicast, so do not assume RFC1918
 // addressing: corporate, VPN, link-local, and unusual lab networks can all have
@@ -86,8 +94,8 @@ func interfaceIPv4Addresses() []net.IP {
 			if !ok {
 				continue
 			}
-			ip := ipNet.IP.To4()
-			if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsMulticast() {
+			ip := usableGDMIPv4(ipNet.IP)
+			if ip == nil {
 				continue
 			}
 			key := ip.String()
