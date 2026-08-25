@@ -107,6 +107,11 @@ export const useStore = create<AppState>()(
 
 // --- Selectors ---
 
+// Plex artwork URLs carry a PMS-derived version query. Besides cache busting,
+// this lets aggregation preserve PMS artwork if the same logical album is also
+// present from a local source.
+const isVersionedPlexArtwork = (coverUrl?: string) => Boolean(coverUrl && /^\/api\/cover\/[^?]+\?v=/.test(coverUrl));
+
 export const useAlbums = () => {
   const songs = useStore((state) => state.songs);
   return useMemo(() => {
@@ -119,7 +124,9 @@ export const useAlbums = () => {
       if (existing) {
         existing.songCount += 1;
         existing.addedAt = Math.max(existing.addedAt || 0, song.addedAt || 0);
-        if (!existing.coverUrl && song.coverUrl) existing.coverUrl = song.coverUrl;
+        if (song.coverUrl && (!existing.coverUrl || isVersionedPlexArtwork(song.coverUrl))) {
+          existing.coverUrl = song.coverUrl;
+        }
         return;
       }
       albumsMap.set(key, {
@@ -213,8 +220,8 @@ export const useAlbumCovers = () => {
       if (!song.coverUrl) return;
       const artist = song.albumArtist || song.artist || 'Unknown Artist';
       const composite = `${song.album}::${artist}`;
-      if (!covers[composite]) covers[composite] = song.coverUrl;
-      if (!covers[song.album]) covers[song.album] = song.coverUrl;
+      if (!covers[composite] || isVersionedPlexArtwork(song.coverUrl)) covers[composite] = song.coverUrl;
+      if (!covers[song.album] || isVersionedPlexArtwork(song.coverUrl)) covers[song.album] = song.coverUrl;
     });
     return covers;
   }, [songs]);
