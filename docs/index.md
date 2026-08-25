@@ -18,11 +18,12 @@ ViiB MediaHub is a local music player for Windows, macOS, and Linux. It combines
 | [Smart Playlists / AI DJ](smart-playlists.md) | AI-generated playlists and DJ sets |
 | [Search](search.md) | Global library search |
 | [Spotify](spotify.md) | Spotify integration, browse, and download |
+| [Plex Music](plex-music.md) | Plex Media Server discovery, authentication, music-library sync, playback, and troubleshooting |
 | [DJ Mode](dj-mode.md) | Full-featured two-deck DJ interface |
 | [Downloads](downloads.md) | Spotify download queue and status |
 | [Stats](stats.md) | Listening history, top artists, heatmap |
-| [Settings](settings.md) | Library, audio, Spotify, AI, and system settings |
-| [Library Operations](library-operations.md) | Diagnostics, repair, backup, staged restore, and continuous monitoring |
+| [Settings](settings.md) | Library, audio, Plex, Spotify, AI, and system settings |
+| [Library Operations](library-operations.md) | Music sources, diagnostics, repair, backup, staged restore, and continuous monitoring |
 | [Player](player.md) | Playback controls, queue, EQ, visualizer, and Now Playing |
 | [Keyboard Shortcuts](keyboard-shortcuts.md) | Full keyboard shortcut reference |
 
@@ -62,10 +63,11 @@ ViiB MediaHub is a local music player for Windows, macOS, and Linux. It combines
 - **Frontend**: React 19 + TypeScript + Vite, Zustand state, Tailwind CSS
 - **Backend**: Go 1.25.12+, chi HTTP router, SQLite (WAL mode), Wails v2
 - **Data**: SQLite primary store; IndexedDB fallback for browser-only mode; `localStorage` for UI settings
+- **Music sources**: local filesystem scanning plus synchronized Plex Media Server music/audio libraries; both feed the same ViiB song catalog
 - **Real-time**: legacy SSE (`/api/events`) for scan progress plus revision and job SSE streams under `/api/v2`
 - **Library scale**: cursor-based snapshots, revisioned deltas, indexed backend search, and bounded scanner/SQLite work
 - **Recovery**: local diagnostics, validated SQLite backups, and staged offline restore through Library Operations
-- **Audio**: HTML5 `<audio>` with Web Audio API for EQ and visualization
+- **Audio**: HTML5 `<audio>` with Web Audio API for EQ and visualization; authenticated Plex media is streamed through the Go backend
 - **Platform**: Single native executable. Windows via WebView2; macOS via WKWebView; Linux via WebKitGTK
 
 See the [development and build guide](../README.md#quick-start) for environment setup and platform build commands.

@@ -18,7 +18,7 @@ The Settings page provides full configuration for all aspects of ViiB MediaHub.
 | [Spotify](#spotify) | OAuth credentials, download location, concurrency |
 | [Library Intelligence](#library-intelligence) | AI provider, Last.FM, genre/mood enrichment |
 | [Activity Log](#activity-log) | In-app debug log viewer |
-| [Library Operations](library-operations.md) | Diagnostics, repair, backup, restore staging, and continuous monitoring |
+| [Library Operations](library-operations.md) | Plex music sources, diagnostics, repair, backup, restore staging, and continuous monitoring |
 
 ---
 
@@ -32,21 +32,37 @@ Shows whether the React frontend is successfully connected to the Go HTTP backen
 
 ### Scan Folders
 
-Lists all music directories ViiB MediaHub monitors. Each folder has:
+Lists all local music directories ViiB MediaHub monitors. Each folder has:
 - **Path** — directory path
 - **Remove** button — stop watching this folder
 
 To add a folder click **Add Folder** and use the folder browser dialog.
 
-For database diagnostics, repair, validated backups, offline restore staging, and configurable continuous monitoring, use the **Library Health** shortcut rather than resetting the library. See [Library Operations](library-operations.md).
+For Plex Media Server music, database diagnostics, repair, validated backups, offline restore staging, and configurable continuous monitoring, use the **Library Health** shortcut. See [Library Operations](library-operations.md) and [Plex Music](plex-music.md).
+
+### Plex Media Server music
+
+Open **Settings → Library Health** to configure Plex as a remote music source. The Plex panel supports:
+
+- bounded automatic LAN discovery through Plex GDM;
+- manual hostname, IP, HTTP, or HTTPS server configuration;
+- Plex-hosted sign-in/reconnect for claimed servers;
+- music/audio-library selection;
+- explicit synchronization/resynchronization;
+- offline/authentication-required status;
+- changing or removing the Plex source without modifying anything on the Plex server.
+
+Plex songs synchronize into the same ViiB catalog used by local files, so they appear in the existing Songs, Albums, Artists, Search, queue, playlists, likes, history, Smart Mixes, AI DJ, and statistics experiences. Plex video libraries are not supported.
+
+See [Plex Media Server Music Support](plex-music.md) for setup, authentication/security, synchronization behavior, playback details, and troubleshooting.
 
 ### Scan Now
 
-Triggers an immediate incremental scan of all configured folders. Progress is streamed via SSE and shown in the sidebar and Downloads page.
+Triggers an immediate incremental scan of all configured local folders. Progress is streamed via SSE and shown in the sidebar and Downloads page. Plex synchronization is a separate explicit operation in the Plex source panel.
 
 ### Reset Library
 
-**Destructive action.** Removes all songs, albums, and play history from the database, then re-scans. Use this to recover from a corrupted library state or if you have renamed all your files.
+**Destructive to ViiB's local catalog state.** Removes catalog data from the ViiB database, then re-scans configured local folders. It does not delete source media. Use Library Operations diagnostics/repair before resetting the library when possible.
 
 ---
 
@@ -139,7 +155,7 @@ Runs the configured AI provider over your library to fill in missing or empty ge
 
 - Click **Run Genre Enrichment** to start.
 - Progress is shown in the Activity Log.
-- Genres are written back to the `songs.genre` column in SQLite (not embedded back into the audio file).
+- Genres are written back to the `songs.genre` column in SQLite (not embedded back into the source audio file or written back to Plex).
 
 ### Unified Enrichment
 
@@ -154,6 +170,7 @@ Runs full metadata enrichment: genres, mood, energy, tempo, BPM, and release yea
 
 A scrollable live log of backend events:
 - Library scan progress
+- Plex source/synchronization activity
 - Enrichment status
 - Download events
 - API errors

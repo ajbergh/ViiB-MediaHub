@@ -33,13 +33,35 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://wails.localhost", "http://wails.localhost:*"},
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "Last-Event-ID", "X-Request-ID"},
-		ExposedHeaders: []string{"X-Request-ID"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "Last-Event-ID", "Range", "X-Request-ID"},
+		ExposedHeaders: []string{"X-Request-ID", "Content-Range", "Accept-Ranges", "Content-Length"},
 		AllowCredentials: true,
 		MaxAge: 300,
 	}))
 
 	r.Use(middleware.Throttle(100))
+
+	// Local song IDs are hexadecimal hashes. Plex song IDs use the reserved
+	// `plex_` namespace, so ordinary local playback bypasses Plex source/schema
+	// lookups entirely while preserving the existing /api/audio and /api/cover
+	// browser contracts for both source types.
+	r.Get("/api/audio/*", func(w http.ResponseWriter, req *http.Request) {
+		songID := strings.TrimPrefix(req.URL.Path, "/api/audio/")
+		if strings.HasPrefix(songID, "plex_") {
+			apiHandler.ServeAudioSourceAware(w, req)
+			return
+		}
+		apiHandler.ServeLocalAudio(w, req)
+	})
+	r.Get("/api/cover/*", func(w http.ResponseWriter, req *http.Request) {
+		pathOrID := strings.TrimPrefix(req.URL.Path, "/api/cover/")
+		if strings.HasPrefix(pathOrID, "plex_") {
+			apiHandler.ServeCoverSourceAware(w, req)
+			return
+		}
+		apiHandler.ServeLocalCover(w, req)
+	})
+	r.Mount("/api/v2/plex", apiHandler.PlexRoutes())
 
 	r.Mount("/api/v2/operations", apiHandler.V2LibraryOperationRoutes())
 	r.Mount("/api/v2/jobs", apiHandler.V2JobRoutes())
