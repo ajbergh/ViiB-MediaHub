@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const gdmSearchRequest = "M-SEARCH * HTTP/1.0\r\n\r\n"
+const (
+	gdmSearchRequest     = "M-SEARCH * HTTP/1.0\r\n\r\n"
+	gdmMulticastAddress = "239.0.0.250"
+)
 
 // ParseGDMResponse parses Plex GDM's HTTP-header-like UDP response. Malformed
 // individual lines are ignored so one noisy device cannot abort discovery.
@@ -59,13 +62,17 @@ func ParseGDMResponse(payload []byte, remoteIP net.IP) (Server, error) {
 	return server, nil
 }
 
-func interfaceBroadcasts() []net.IP {
+// interfaceIPv4Addresses returns every usable IPv4 address on an active
+// non-loopback interface. GDM is link-local multicast, so do not assume RFC1918
+// addressing: corporate, VPN, link-local, and unusual lab networks can all have
+// valid local interfaces that are not net.IP.IsPrivate().
+func interfaceIPv4Addresses() []net.IP {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return []net.IP{net.IPv4bcast}
+		return []net.IP{net.IPv4zero}
 	}
 	seen := map[string]struct{}{}
-	result := make([]net.IP, 0, len(interfaces)+1)
+	result := make([]net.IP, 0, len(interfaces))
 	for _, iface := range interfaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
@@ -80,24 +87,21 @@ func interfaceBroadcasts() []net.IP {
 				continue
 			}
 			ip := ipNet.IP.To4()
-			mask := ipNet.Mask
-			if ip == nil || len(mask) != net.IPv4len || !ip.IsPrivate() {
+			if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsMulticast() {
 				continue
 			}
-			broadcast := make(net.IP, net.IPv4len)
-			for i := 0; i < net.IPv4len; i++ {
-				broadcast[i] = ip[i] | ^mask[i]
+			key := ip.String()
+			if _, exists := seen[key]; exists {
+				continue
 			}
-			if key := broadcast.String(); key != "" {
-				if _, exists := seen[key]; !exists {
-					seen[key] = struct{}{}
-					result = append(result, broadcast)
-				}
-			}
+			seen[key] = struct{}{}
+			copyIP := append(net.IP(nil), ip...)
+			result = append(result, copyIP)
 		}
 	}
-	if _, exists := seen[net.IPv4bcast.String()]; !exists {
-		result = append(result, net.IPv4bcast)
+	if len(result) == 0 {
+		// Let the OS select the egress interface as a last-resort fallback.
+		return []net.IP{net.IPv4zero}
 	}
 	return result
 }
@@ -124,8 +128,60 @@ func DeduplicateServers(in []Server) []Server {
 	return out
 }
 
-// Discover broadcasts a bounded Plex GDM search. It never runs continuously;
-// callers choose the timeout and typically invoke it only from explicit UI actions.
+type gdmInterfaceResult struct {
+	servers []Server
+	err     error
+}
+
+func discoverGDMOnAddress(ctx context.Context, localIP net.IP, deadline time.Time) ([]Server, error) {
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: localIP, Port: 0})
+	if err != nil {
+		return nil, fmt.Errorf("bind Plex GDM discovery on %s: %w", localIP, err)
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(deadline); err != nil {
+		return nil, fmt.Errorf("set Plex GDM discovery deadline: %w", err)
+	}
+
+	multicastIP := net.ParseIP(gdmMulticastAddress).To4()
+	if multicastIP == nil {
+		return nil, errors.New("invalid Plex GDM multicast address")
+	}
+	if _, err := conn.WriteToUDP([]byte(gdmSearchRequest), &net.UDPAddr{IP: multicastIP, Port: GDMPort}); err != nil {
+		return nil, fmt.Errorf("send Plex GDM multicast on %s: %w", localIP, err)
+	}
+
+	servers := make([]Server, 0, 2)
+	buffer := make([]byte, 64*1024)
+	for {
+		if ctx.Err() != nil {
+			break
+		}
+		n, addr, readErr := conn.ReadFromUDP(buffer)
+		if readErr != nil {
+			var netErr net.Error
+			if errors.As(readErr, &netErr) && netErr.Timeout() {
+				break
+			}
+			if ctx.Err() != nil {
+				break
+			}
+			// A malformed/noisy datagram must not abort discovery on this interface.
+			continue
+		}
+		server, parseErr := ParseGDMResponse(buffer[:n], addr.IP)
+		if parseErr != nil {
+			continue
+		}
+		servers = append(servers, server)
+	}
+	return servers, nil
+}
+
+// Discover performs Plex server GDM discovery using the standard local multicast
+// group (239.0.0.250:32414). A request is sent from every usable IPv4 interface
+// in parallel so multi-NIC/VPN systems are not limited to the OS default route.
+// Discovery is bounded and only runs when explicitly invoked by the caller.
 func Discover(ctx context.Context, timeout time.Duration) ([]Server, error) {
 	if timeout <= 0 || timeout > 10*time.Second {
 		timeout = 1500 * time.Millisecond
@@ -133,48 +189,37 @@ func Discover(ctx context.Context, timeout time.Duration) ([]Server, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
-	if err != nil {
-		return nil, fmt.Errorf("start Plex discovery: %w", err)
+	deadline := time.Now().Add(timeout)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
 	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(timeout))
 
-	request := []byte(gdmSearchRequest)
-	var writeErr error
-	for _, broadcast := range interfaceBroadcasts() {
-		if _, err := conn.WriteToUDP(request, &net.UDPAddr{IP: broadcast, Port: GDMPort}); err != nil {
-			writeErr = err
-		}
+	addresses := interfaceIPv4Addresses()
+	results := make(chan gdmInterfaceResult, len(addresses))
+	for _, localIP := range addresses {
+		ip := append(net.IP(nil), localIP...)
+		go func() {
+			servers, err := discoverGDMOnAddress(ctx, ip, deadline)
+			results <- gdmInterfaceResult{servers: servers, err: err}
+		}()
 	}
 
 	servers := make([]Server, 0, 4)
-	buffer := make([]byte, 64*1024)
-	for {
-		if err := ctx.Err(); err != nil {
-			break
-		}
-		n, addr, err := conn.ReadFromUDP(buffer)
-		if err != nil {
-			var netErr net.Error
-			if errors.As(err, &netErr) && netErr.Timeout() {
-				break
-			}
-			if ctx.Err() != nil {
-				break
-			}
+	var lastErr error
+	successfulInterfaces := 0
+	for range addresses {
+		result := <-results
+		if result.err != nil {
+			lastErr = result.err
 			continue
 		}
-		server, err := ParseGDMResponse(buffer[:n], addr.IP)
-		if err != nil {
-			continue
-		}
-		servers = append(servers, server)
+		successfulInterfaces++
+		servers = append(servers, result.servers...)
 	}
 
 	servers = DeduplicateServers(servers)
-	if len(servers) == 0 && writeErr != nil {
-		return []Server{}, fmt.Errorf("Plex discovery broadcast failed: %w", writeErr)
+	if successfulInterfaces == 0 && lastErr != nil {
+		return []Server{}, fmt.Errorf("Plex GDM discovery failed on all IPv4 interfaces: %w", lastErr)
 	}
 	return servers, nil
 }
