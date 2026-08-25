@@ -22,3 +22,60 @@ export const resolveAlbumArtwork = (
   if (plexBacked || isAuthoritativePlexArtwork(catalogArtwork)) return catalogArtwork || undefined;
   return enrichmentArtwork || catalogArtwork || undefined;
 };
+
+export interface AlbumArtworkIndexEntry {
+  name: string;
+  artist: string;
+  coverUrl?: string;
+  plexBacked?: boolean;
+}
+
+/**
+ * Builds both exact `album::artist` cover keys and the legacy album-title alias.
+ * The title-only alias is emitted only when every logical album with that title
+ * has the same artwork authority and value. This prevents a Plex album whose
+ * authoritative state is "no artwork" from borrowing artwork from a different
+ * local album with the same title, while also avoiding suppressing that local
+ * album through a globally shared Plex sentinel.
+ *
+ * An empty string is retained as an intentional Plex no-art sentinel for an
+ * unambiguous title. Existing track-level surfaces use a truthy/falsy fallback,
+ * so a missing ambiguous alias safely produces a placeholder rather than the
+ * wrong album cover.
+ */
+export const buildAlbumCoverIndex = (albums: AlbumArtworkIndexEntry[]): Record<string, string> => {
+  const covers: Record<string, string> = {};
+  const titleAliases = new Map<string, {
+    value: string | undefined;
+    plexBacked: boolean;
+    ambiguous: boolean;
+  }>();
+
+  albums.forEach((album) => {
+    const plexBacked = Boolean(album.plexBacked);
+    const value = plexBacked ? (album.coverUrl || '') : album.coverUrl;
+    const composite = `${album.name}::${album.artist}`;
+
+    if (value !== undefined) {
+      covers[composite] = value;
+    }
+
+    const current = titleAliases.get(album.name);
+    if (!current) {
+      titleAliases.set(album.name, { value, plexBacked, ambiguous: false });
+      return;
+    }
+
+    if (current.plexBacked !== plexBacked || current.value !== value) {
+      current.ambiguous = true;
+    }
+  });
+
+  titleAliases.forEach((alias, title) => {
+    if (!alias.ambiguous && alias.value !== undefined) {
+      covers[title] = alias.value;
+    }
+  });
+
+  return covers;
+};
