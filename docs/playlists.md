@@ -2,60 +2,51 @@
 
 ![Playlists page](../assets/screenshots/playlists.png)
 
-The Playlists page lets you create and manage manual playlists composed of tracks from your local library.
+ViiB playlists are application-level playlists built from ViiB song IDs. They can therefore contain local filesystem tracks and synchronized Plex music tracks in the same playlist.
 
 ---
 
 ## Creating a Playlist
 
-1. Click **Create Playlist** in the top-right corner.
-2. Type a name and press **Enter** (or click the checkmark).
-3. The new playlist appears in the grid immediately.
-
----
-
-## Playlist Grid
-
-Each playlist card shows:
-- Composite cover art (mosaic of up to 4 track covers)
-- Playlist name
-- Track count
+1. Click **Create Playlist**.
+2. Enter a name.
+3. Add tracks from Songs, Albums, Search, Smart Mixes, or other supported catalog views.
 
 ---
 
 ## Playlist Detail
 
-Click a playlist card to open the **Playlist Detail** page:
+Playlist Detail provides the normal ViiB controls:
 
-- Full track listing
-- **Play** and **Shuffle** buttons
-- Drag-to-reorder tracks (grab the drag handle on the left)
-- Remove individual tracks from the playlist
-- Rename playlist (via context menu on the card, or the header)
+- Play / Shuffle
+- drag-to-reorder
+- remove individual playlist entries
+- rename playlist
+- per-track context actions
 
----
-
-## Adding Tracks to a Playlist
-
-Right-click any song anywhere in the app and choose **Add to Playlist**, then select the target playlist.
+A playlist entry references ViiB catalog identity, not a filesystem path. This is what allows a Plex track to participate naturally without ViiB having access to PMS storage paths.
 
 ---
 
-## Context Menu on Playlist Cards
+## Plex behavior
 
-Right-click a playlist card in the grid to:
-- **Rename** — Edit the playlist name inline
-- **Delete** — Remove the playlist (does not delete the files)
+Adding a Plex track to a ViiB playlist does not create or edit a Plex playlist. The playlist exists only in ViiB.
+
+If PMS is temporarily offline, the playlist entry remains because the synchronized Plex song remains in the ViiB catalog. Playback can report source unavailability until the Plex server returns.
+
+If a later **successful authoritative Plex synchronization** confirms that a track no longer exists in the selected Plex library, ViiB can remove the stale catalog row; Library Operations repair can remove playlist references whose song IDs no longer exist.
 
 ---
 
-## Empty State
+## Deleting a Playlist
 
-When no playlists exist, an empty state is shown with a prompt to create your first playlist.
+Deleting a ViiB playlist removes the playlist definition only. It does not delete local audio files and does not delete or modify Plex-hosted media.
 
 ---
 
 ## See Also
 
-- [Liked Songs](liked.md) — auto-playlist of your liked tracks
-- [Smart Playlists / AI DJ](smart-playlists.md) — AI-generated playlists
+- [Songs](songs.md)
+- [Liked Songs & Albums](liked.md)
+- [Smart Playlists / AI DJ](smart-playlists.md)
+- [Plex Music](plex-music.md)
