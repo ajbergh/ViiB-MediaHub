@@ -5,6 +5,7 @@ import { Music, Search, ChevronRight, Play, Shuffle, Loader2 } from 'lucide-reac
 import { Song } from '../types';
 import { api, GenreStat } from '../services/api';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { TextInput } from '../components/ui/TextInput';
 
 /**
  * Genres Page Component
@@ -117,14 +118,15 @@ export const Genres: React.FC = () => {
         </div>
 
         {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle" size={20} />
-          <input
+        <div className="max-w-md">
+          <TextInput
+            leftIcon={<Search size={18} className="text-text-secondary" aria-hidden="true" />}
             type="text"
-            placeholder="Search genres..."
+            placeholder="Search genres…"
+            aria-label="Search genres"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-surface-1 border border-surface-highlight rounded-full py-2 pl-10 pr-4 text-text-main placeholder:text-text-subtle focus:outline-none focus:border-brand transition-colors"
+            className="rounded-full"
           />
         </div>
       </div>

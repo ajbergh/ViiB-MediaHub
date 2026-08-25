@@ -19,13 +19,14 @@ import { coverBackground } from '../utils';
 import { useNavigate } from 'react-router';
 import { ContextMenuType } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
-import { ChevronDown, ArrowUpDown } from 'lucide-react';
+import { ChevronDown, ArrowUpDown, Search } from 'lucide-react';
 import { EmptyAlbums } from '../components/EmptyState';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Menu, MenuItem } from '../components/ui/Menu';
 import { Page, PageHeader } from '../components/ui/Page';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { TextInput } from '../components/ui/TextInput';
 import { resolveAlbumArtwork } from '../lib/artwork';
 
 type AlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc' | 'songs-desc' | 'songs-asc';
@@ -69,6 +70,7 @@ export const Albums: React.FC = () => {
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
   const [sortBy, setSortBy] = useState<AlbumSortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [filter, setFilter] = useState('');
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('albums-card-cols') ?? 4));
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('albums-card-cols', String(v)); };
 
@@ -116,11 +118,19 @@ export const Albums: React.FC = () => {
     }
   }, [albums, sortBy]);
 
+  const filteredAlbums = useMemo(() => {
+    if (!filter.trim()) return sortedAlbums;
+    const query = filter.toLowerCase();
+    return sortedAlbums.filter(
+      album => album.name.toLowerCase().includes(query) || album.artist.toLowerCase().includes(query)
+    );
+  }, [sortedAlbums, filter]);
+
   return (
     <Page withPlayerPadding={false}>
         <PageHeader
           heading="Albums"
-          subtitle={`${albums.length} albums`}
+          subtitle={`${filteredAlbums.length}${filter ? ` of ${albums.length}` : ''} albums`}
           actions={
             <div className="flex items-center gap-3">
               <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
@@ -162,18 +172,30 @@ export const Albums: React.FC = () => {
                   </>
                 )}
               </div>
+              {/* Search Input */}
+              <div className="w-full md:w-72">
+                <TextInput
+                  leftIcon={<Search size={18} className="text-text-secondary" aria-hidden="true" />}
+                  type="text"
+                  placeholder="Search albums…"
+                  aria-label="Search albums"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="rounded-full"
+                />
+              </div>
             </div>
           }
         />
 
-        {sortedAlbums.length === 0 ? (
+        {filteredAlbums.length === 0 ? (
           <EmptyAlbums />
         ) : (
           <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
             <VirtuosoGrid
               useWindowScroll={false}
               customScrollParent={scrollParent}
-              data={sortedAlbums}
+              data={filteredAlbums}
               components={{ List: ListContainer, Item: ItemContainer }}
               itemContent={(index, album) => {
                 const metadataKey = `${album.name}::${album.artist}`;

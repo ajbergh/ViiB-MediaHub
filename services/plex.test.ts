@@ -23,4 +23,21 @@ describe('plexService', () => {
 
     await expect(plexService.connect('192.168.1.20')).rejects.toThrow('Plex server connection refused');
   });
+
+  it('lists and selects Plex account servers without exposing server tokens', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ servers: [{
+        name: 'Shared Music', url: 'https://shared.example:32400', machineIdentifier: 'shared-server', owned: false, local: false, relay: false,
+      }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        name: 'Shared Music', host: 'shared.example', port: 32400, scheme: 'https', url: 'https://shared.example:32400', machineIdentifier: 'shared-server', claimed: true, authRequired: true,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    await expect(plexService.getAccountServers()).resolves.toMatchObject([{ machineIdentifier: 'shared-server', owned: false }]);
+    await expect(plexService.connectAccountServer('shared-server')).resolves.toMatchObject({ machineIdentifier: 'shared-server' });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v2/plex/servers');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v2/plex/servers/select', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ machineIdentifier: 'shared-server' }),
+    }));
+  });
 });

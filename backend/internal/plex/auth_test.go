@@ -63,5 +63,52 @@ func TestRedactError(t *testing.T) {
 	}
 }
 
+func TestListServersIncludesOwnedAndSharedPlexResources(t *testing.T) {
+	var tokenHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/resources" {
+			http.NotFound(w, r)
+			return
+		}
+		tokenHeader = r.Header.Get("X-Plex-Token")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"name":"Personal Server","productVersion":"1.42.0","provides":"server","clientIdentifier":"owned-server","accessToken":"owned-token","owned":true,"connections":[
+				{"uri":"https://owned.example:32400","local":false,"relay":false},
+				{"uri":"http://192.168.1.20:32400","local":true,"relay":false}
+			]},
+			{"name":"Alice's Music","provides":"server","clientIdentifier":"shared-server","accessToken":"shared-token","owned":false,"sourceTitle":"Alice","connections":[
+				{"uri":"https://shared.relay.plex.tv","local":false,"relay":true}
+			]},
+			{"name":"Plex Web","provides":"client,player","clientIdentifier":"client","owned":true},
+			{"name":"Offline","provides":"server","clientIdentifier":"offline-server","accessToken":"offline-token","owned":true,"connections":[]}
+		]`))
+	}))
+	defer server.Close()
+
+	credentials := Credentials{
+		ClientIdentifier:   "viib-test",
+		AccountToken:       "account-token",
+		AccountTokenExpiry: time.Now().Add(48 * time.Hour).Unix(),
+	}
+	servers, err := NewAuthClientWithHTTP(server.URL, server.Client()).ListServers(context.Background(), &credentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tokenHeader != "account-token" {
+		t.Fatalf("X-Plex-Token=%q", tokenHeader)
+	}
+	if len(servers) != 2 {
+		t.Fatalf("servers=%#v", servers)
+	}
+	if servers[0].MachineIdentifier != "owned-server" || !servers[0].Owned || servers[0].URL != "http://192.168.1.20:32400" || servers[0].Version != "1.42.0" {
+		t.Fatalf("owned server was not mapped/preferred correctly: %#v", servers[0])
+	}
+	if servers[1].MachineIdentifier != "shared-server" || servers[1].Owned || servers[1].Owner != "Alice" || !servers[1].Relay {
+		t.Fatalf("shared server was not exposed correctly: %#v", servers[1])
+	}
+}
+
 type testError struct{ text string }
+
 func (e *testError) Error() string { return e.text }

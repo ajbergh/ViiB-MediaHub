@@ -1,13 +1,14 @@
-import type { PlexLibrary, PlexServer, PlexSource } from '../services/plex';
+import type { PlexAccountServer, PlexLibrary, PlexServer, PlexSource } from '../services/plex';
 
 export interface PlexSettingsState {
   source: PlexSource | null;
   authenticated: boolean;
   discovered: PlexServer[];
+  accountServers: PlexAccountServer[];
   libraries: PlexLibrary[];
   selectedLibraryId: string;
   manualUrl: string;
-  busy: 'loading' | 'discovering' | 'connecting' | 'authenticating' | 'libraries' | 'saving' | 'syncing' | 'disconnecting' | null;
+  busy: 'loading' | 'discovering' | 'account_servers' | 'connecting' | 'authenticating' | 'libraries' | 'saving' | 'syncing' | 'disconnecting' | null;
   message: string;
   error: string;
 }
@@ -16,6 +17,7 @@ export const initialPlexSettingsState: PlexSettingsState = {
   source: null,
   authenticated: false,
   discovered: [],
+  accountServers: [],
   libraries: [],
   selectedLibraryId: '',
   manualUrl: '',
@@ -30,6 +32,7 @@ export type PlexSettingsAction =
   | { type: 'error'; error: string }
   | { type: 'message'; message: string }
   | { type: 'discovered'; servers: PlexServer[]; warning?: string }
+  | { type: 'account_servers'; servers: PlexAccountServer[] }
   | { type: 'libraries'; libraries: PlexLibrary[] }
   | { type: 'manual_url'; url: string }
   | { type: 'selected_library'; id: string }
@@ -67,6 +70,8 @@ export function plexSettingsReducer(state: PlexSettingsState, action: PlexSettin
       return { ...state, busy: null, message: action.message, error: '' };
     case 'discovered':
       return { ...state, busy: null, discovered: action.servers, message: action.warning || '', error: '' };
+    case 'account_servers':
+      return { ...state, busy: null, accountServers: action.servers, error: '' };
     case 'libraries':
       return {
         ...state,

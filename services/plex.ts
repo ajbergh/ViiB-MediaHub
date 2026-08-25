@@ -12,6 +12,20 @@ export interface PlexServer {
   authRequired: boolean;
 }
 
+// A sanitized PMS resource returned by the signed-in Plex account. `owned`
+// differentiates a user's own servers from servers whose libraries were shared
+// with them; no Plex token is ever exposed to the browser.
+export interface PlexAccountServer {
+  name: string;
+  url: string;
+  machineIdentifier: string;
+  version?: string;
+  owned: boolean;
+  owner?: string;
+  local: boolean;
+  relay: boolean;
+}
+
 export interface PlexSource {
   id: string;
   machineIdentifier: string;
@@ -108,6 +122,21 @@ export const plexService = {
   async getAuthStatus(): Promise<PlexAuthStatus> {
     const response = await fetch(`${PLEX_API_BASE}/auth/status`);
     return plexResponse<PlexAuthStatus>(response);
+  },
+
+  async getAccountServers(): Promise<PlexAccountServer[]> {
+    const response = await fetch(`${PLEX_API_BASE}/servers`);
+    const result = await plexResponse<{ servers?: PlexAccountServer[] }>(response);
+    return result.servers || [];
+  },
+
+  async connectAccountServer(machineIdentifier: string): Promise<PlexServer> {
+    const response = await fetch(`${PLEX_API_BASE}/servers/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ machineIdentifier }),
+    });
+    return plexResponse<PlexServer>(response);
   },
 
   async getLibraries(): Promise<PlexLibrary[]> {

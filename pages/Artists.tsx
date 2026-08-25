@@ -13,15 +13,17 @@
  * @module Artists
  */
 
-import React, { useEffect, useState, forwardRef, useCallback } from 'react';
+import React, { useEffect, useState, forwardRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useArtists, useStore } from '../store';
 import { generateGradient, cssUrl } from '../utils';
 import { ContextMenuType } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
+import { Search } from 'lucide-react';
 import { EmptyArtists } from '../components/EmptyState';
 import { Page, PageHeader } from '../components/ui/Page';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { TextInput } from '../components/ui/TextInput';
 
 // Define Grid Components
 // gridTemplateColumns driven by --card-cols CSS variable on the parent wrapper.
@@ -52,6 +54,7 @@ export const Artists: React.FC = () => {
   const artists = useArtists();
   const { openContextMenu, artistMetadata } = useStore();
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
+  const [filter, setFilter] = useState('');
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('artists-card-cols') ?? 5));
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('artists-card-cols', String(v)); };
 
@@ -74,10 +77,32 @@ export const Artists: React.FC = () => {
       navigate(`/artist/${encodeURIComponent(artistName)}`);
   }, [navigate]);
 
+  const filteredArtists = useMemo(() => {
+    if (!filter.trim()) return artists;
+    const query = filter.toLowerCase();
+    return artists.filter(artist => artist.name.toLowerCase().includes(query));
+  }, [artists, filter]);
+
   return (
     <Page withPlayerPadding={false}>
-        <PageHeader heading="Artists" subtitle={`${artists.length} artists`}
-          actions={<CardSizeSlider value={cardCols} onChange={handleCardColsChange} />}
+        <PageHeader heading="Artists" subtitle={`${filteredArtists.length}${filter ? ` of ${artists.length}` : ''} artists`}
+          actions={
+            <div className="flex items-center gap-3">
+              <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
+              {/* Search Input */}
+              <div className="w-full md:w-72">
+                <TextInput
+                  leftIcon={<Search size={18} className="text-text-secondary" aria-hidden="true" />}
+                  type="text"
+                  placeholder="Search artists…"
+                  aria-label="Search artists"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="rounded-full"
+                />
+              </div>
+            </div>
+          }
         />
 
         {artists.length === 0 ? (
@@ -87,7 +112,7 @@ export const Artists: React.FC = () => {
              <VirtuosoGrid
                 useWindowScroll={false}
                 customScrollParent={scrollParent}
-                data={artists}
+                data={filteredArtists}
                 components={{
                     List: ListContainer,
                     Item: ItemContainer

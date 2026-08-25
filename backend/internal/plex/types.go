@@ -28,6 +28,21 @@ type Server struct {
 	AuthRequired      bool   `json:"authRequired"`
 }
 
+// AccountServer describes a server made available by the signed-in Plex
+// account. It is deliberately separate from Server because it only contains
+// safe resource-directory metadata: the per-server access token remains in
+// Credentials and is never sent to the UI.
+type AccountServer struct {
+	Name              string `json:"name"`
+	URL               string `json:"url"`
+	MachineIdentifier string `json:"machineIdentifier"`
+	Version           string `json:"version,omitempty"`
+	Owned             bool   `json:"owned"`
+	Owner             string `json:"owner,omitempty"`
+	Local             bool   `json:"local"`
+	Relay             bool   `json:"relay"`
+}
+
 // Library is a selectable music library. ContentKey is the documented provider
 // key used to browse the section; TrackKey and AlbumKey are its documented type
 // pivots. PMS commonly places music genres on album metadata rather than tracks.

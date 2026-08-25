@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -203,7 +204,9 @@ func tokenExpiry(token string) int64 {
 	if err != nil {
 		return 0
 	}
-	var claims struct{ Exp int64 `json:"exp"` }
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
 	if json.Unmarshal(payload, &claims) != nil {
 		return 0
 	}
@@ -244,8 +247,12 @@ func (a *AuthClient) PollPIN(ctx context.Context, credentials *Credentials) (Aut
 	return AuthStatus{Authenticated: true, Pending: false, ExpiresAt: credentials.AccountTokenExpiry}, nil
 }
 
-type nonceResponse struct{ Nonce string `json:"nonce"` }
-type tokenResponse struct{ AuthToken string `json:"auth_token"` }
+type nonceResponse struct {
+	Nonce string `json:"nonce"`
+}
+type tokenResponse struct {
+	AuthToken string `json:"auth_token"`
+}
 
 // Refresh refreshes a Plex JWT using the stored ED25519 device key.
 func (a *AuthClient) Refresh(ctx context.Context, credentials *Credentials) error {
@@ -300,10 +307,108 @@ type resourceConnection struct {
 }
 type resource struct {
 	Name             string               `json:"name"`
+	ProductVersion   string               `json:"productVersion"`
 	Provides         string               `json:"provides"`
 	ClientIdentifier string               `json:"clientIdentifier"`
 	AccessToken      string               `json:"accessToken"`
 	Connections      []resourceConnection `json:"connections"`
+	Owned            bool                 `json:"owned"`
+	Owner            string               `json:"owner"`
+	SourceTitle      string               `json:"sourceTitle"`
+}
+
+func preferredResourceConnection(connections []resourceConnection) (resourceConnection, bool) {
+	for _, connection := range connections {
+		if connection.Local && !connection.Relay && connection.URI != "" {
+			return connection, true
+		}
+	}
+	for _, connection := range connections {
+		if !connection.Relay && connection.URI != "" {
+			return connection, true
+		}
+	}
+	for _, connection := range connections {
+		if connection.URI != "" {
+			return connection, true
+		}
+	}
+	return resourceConnection{}, false
+}
+
+func (a *AuthClient) listResources(ctx context.Context, credentials *Credentials) ([]resource, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.baseURL+"/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Plex-Product", ProductName)
+	req.Header.Set("X-Plex-Client-Identifier", credentials.ClientIdentifier)
+	req.Header.Set("X-Plex-Token", credentials.AccountToken)
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("get Plex server resources: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, ErrInvalidToken
+		}
+		return nil, fmt.Errorf("plex resources service returned HTTP %d", resp.StatusCode)
+	}
+	var resources []resource
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&resources); err != nil {
+		return nil, fmt.Errorf("decode Plex resources: %w", err)
+	}
+	return resources, nil
+}
+
+// ListServers returns every reachable PMS resource the account can access,
+// including servers shared with the user. It intentionally omits resources
+// without an access token or usable connection because those cannot be added
+// or played through ViiB.
+func (a *AuthClient) ListServers(ctx context.Context, credentials *Credentials) ([]AccountServer, error) {
+	if err := a.EnsureFreshToken(ctx, credentials); err != nil {
+		return nil, err
+	}
+	resources, err := a.listResources(ctx, credentials)
+	if err != nil {
+		return nil, err
+	}
+	servers := make([]AccountServer, 0, len(resources))
+	for _, candidate := range resources {
+		if candidate.ClientIdentifier == "" || candidate.AccessToken == "" || !strings.Contains(candidate.Provides, "server") {
+			continue
+		}
+		connection, ok := preferredResourceConnection(candidate.Connections)
+		if !ok {
+			continue
+		}
+		endpoint, err := NormalizeServerURL(connection.URI)
+		if err != nil {
+			continue
+		}
+		servers = append(servers, AccountServer{
+			Name: candidate.Name, URL: endpoint, MachineIdentifier: candidate.ClientIdentifier, Version: candidate.ProductVersion,
+			Owned: candidate.Owned, Owner: firstNonEmptyResourceValue(candidate.Owner, candidate.SourceTitle), Local: connection.Local, Relay: connection.Relay,
+		})
+	}
+	sort.Slice(servers, func(i, j int) bool {
+		if servers[i].Owned != servers[j].Owned {
+			return servers[i].Owned
+		}
+		return strings.ToLower(servers[i].Name) < strings.ToLower(servers[j].Name)
+	})
+	return servers, nil
+}
+
+func firstNonEmptyResourceValue(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // ResolveServerToken follows Plex's documented resources endpoint to obtain the
@@ -315,25 +420,9 @@ func (a *AuthClient) ResolveServerToken(ctx context.Context, credentials *Creden
 	if err := a.EnsureFreshToken(ctx, credentials); err != nil {
 		return "", "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.baseURL+"/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1", nil)
+	resources, err := a.listResources(ctx, credentials)
 	if err != nil {
 		return "", "", err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Plex-Product", ProductName)
-	req.Header.Set("X-Plex-Client-Identifier", credentials.ClientIdentifier)
-	req.Header.Set("X-Plex-Token", credentials.AccountToken)
-	resp, err := a.httpClient.Do(req)
-	if err != nil {
-		return "", "", fmt.Errorf("get Plex server resources: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("plex resources service returned HTTP %d", resp.StatusCode)
-	}
-	var resources []resource
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&resources); err != nil {
-		return "", "", fmt.Errorf("decode Plex resources: %w", err)
 	}
 	for _, candidate := range resources {
 		if candidate.ClientIdentifier != machineIdentifier || !strings.Contains(candidate.Provides, "server") {
@@ -343,20 +432,8 @@ func (a *AuthClient) ResolveServerToken(ctx context.Context, credentials *Creden
 			return "", "", errors.New("plex server resource did not provide an access token")
 		}
 		credentials.ServerTokens[machineIdentifier] = candidate.AccessToken
-		for _, connection := range candidate.Connections {
-			if connection.Local && !connection.Relay && connection.URI != "" {
-				return candidate.AccessToken, connection.URI, nil
-			}
-		}
-		for _, connection := range candidate.Connections {
-			if !connection.Relay && connection.URI != "" {
-				return candidate.AccessToken, connection.URI, nil
-			}
-		}
-		for _, connection := range candidate.Connections {
-			if connection.URI != "" {
-				return candidate.AccessToken, connection.URI, nil
-			}
+		if connection, ok := preferredResourceConnection(candidate.Connections); ok {
+			return candidate.AccessToken, connection.URI, nil
 		}
 		return candidate.AccessToken, "", nil
 	}

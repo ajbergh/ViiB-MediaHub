@@ -30,6 +30,8 @@ func (a *API) PlexRoutes() chi.Router {
 	r.Delete("/config", a.disconnectPlex)
 	r.Post("/auth/start", a.startPlexAuth)
 	r.Get("/auth/status", a.getPlexAuthStatus)
+	r.Get("/servers", a.getPlexAccountServers)
+	r.Post("/servers/select", a.connectPlexAccountServer)
 	r.Get("/libraries", a.getPlexLibraries)
 	r.Put("/library", a.selectPlexLibrary)
 	r.Post("/sync", a.startPlexSync)
@@ -179,7 +181,11 @@ func (a *API) connectPlexServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	credentials, _ := a.loadPlexCredentials()
+	credentials, err := a.loadPlexCredentials()
+	if err != nil {
+		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
+		return
+	}
 	if credentials.ServerTokens == nil {
 		credentials.ServerTokens = map[string]string{}
 	}
@@ -192,6 +198,20 @@ func (a *API) connectPlexServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err := a.activatePlexServer(server, &credentials); err != nil {
+		respondPlexAPIError(w, r, err)
+		return
+	}
+	if err := a.savePlexCredentials(credentials); err != nil {
+		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_save_failed", "Plex server was connected but authentication state could not be saved", true)
+		return
+	}
+	respondV2JSON(w, http.StatusOK, server)
+}
+
+// activatePlexServer persists a validated server as ViiB's single active Plex
+// source. The cached media removal is local-only; it never alters PMS data.
+func (a *API) activatePlexServer(server plex.Server, credentials *plex.Credentials) error {
 	source := db.PlexSource{
 		ID: plex.StableSourceID(server.MachineIdentifier), MachineIdentifier: server.MachineIdentifier,
 		BaseURL: server.URL, Name: server.Name, Version: server.Version, ConnectedAt: time.Now().UnixMilli(),
@@ -205,17 +225,14 @@ func (a *API) connectPlexServer(w http.ResponseWriter, r *http.Request) {
 	// removes only ViiB's prior catalog/cache and never sends a delete to PMS.
 	if active, _ := a.db.GetActivePlexSource(); active != nil && active.ID != source.ID {
 		if err := a.db.RemovePlexSource(active.ID); err != nil {
-			respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_source_replace_failed", "Failed to replace the previous Plex source", true)
-			return
+			return fmt.Errorf("replace previous Plex source: %w", err)
 		}
 		delete(credentials.ServerTokens, active.MachineIdentifier)
-		_ = a.savePlexCredentials(credentials)
 	}
 	if err := a.db.SavePlexSource(source); err != nil {
-		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_config_save_failed", "Failed to save Plex server configuration", true)
-		return
+		return fmt.Errorf("save Plex server configuration: %w", err)
 	}
-	respondV2JSON(w, http.StatusOK, server)
+	return nil
 }
 
 func (a *API) getPlexConfig(w http.ResponseWriter, r *http.Request) {
@@ -225,9 +242,9 @@ func (a *API) getPlexConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	credentials, _ := a.loadPlexCredentials()
-	authenticated := false
+	authenticated := credentials.AccountToken != ""
 	if source != nil {
-		authenticated = credentials.ServerTokens[source.MachineIdentifier] != "" || credentials.AccountToken != ""
+		authenticated = authenticated || credentials.ServerTokens[source.MachineIdentifier] != ""
 	}
 	respondV2JSON(w, http.StatusOK, map[string]any{"source": source, "authenticated": authenticated})
 }
@@ -255,11 +272,6 @@ func (a *API) disconnectPlex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) startPlexAuth(w http.ResponseWriter, r *http.Request) {
-	source, err := a.db.GetActivePlexSource()
-	if err != nil || source == nil {
-		respondPlexAPIMessage(w, r, http.StatusBadRequest, "plex_server_required", "Connect a Plex server before signing in", false)
-		return
-	}
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
@@ -279,8 +291,8 @@ func (a *API) startPlexAuth(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) getPlexAuthStatus(w http.ResponseWriter, r *http.Request) {
 	source, err := a.db.GetActivePlexSource()
-	if err != nil || source == nil {
-		respondPlexAPIMessage(w, r, http.StatusBadRequest, "plex_server_required", "Connect a Plex server before signing in", false)
+	if err != nil {
+		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_config_load_failed", "Failed to load Plex configuration", true)
 		return
 	}
 	credentials, err := a.loadPlexCredentials()
@@ -293,7 +305,7 @@ func (a *API) getPlexAuthStatus(w http.ResponseWriter, r *http.Request) {
 		respondPlexAPIError(w, r, err)
 		return
 	}
-	if status.Authenticated {
+	if status.Authenticated && source != nil {
 		auth := plex.NewAuthClient()
 		token, preferredURL, resolveErr := auth.ResolveServerToken(r.Context(), &credentials, source.MachineIdentifier)
 		if resolveErr != nil || token == "" {
@@ -330,6 +342,82 @@ func (a *API) getPlexAuthStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondV2JSON(w, http.StatusOK, status)
+}
+
+// getPlexAccountServers queries Plex's resource directory after account sign-in.
+// The directory includes both servers owned by the account and servers shared
+// with it; access tokens remain encrypted in the backend.
+func (a *API) getPlexAccountServers(w http.ResponseWriter, r *http.Request) {
+	credentials, err := a.loadPlexCredentials()
+	if err != nil {
+		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
+		return
+	}
+	servers, err := plex.NewAuthClient().ListServers(r.Context(), &credentials)
+	if err != nil {
+		respondPlexAPIError(w, r, err)
+		return
+	}
+	if err := a.savePlexCredentials(credentials); err != nil {
+		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_save_failed", "Plex authentication state could not be saved", true)
+		return
+	}
+	respondV2JSON(w, http.StatusOK, map[string]any{"servers": servers})
+}
+
+// connectPlexAccountServer validates and activates one PMS returned by the
+// signed-in account's resource directory. This is what makes remote and shared
+// Plex libraries usable without knowing a LAN address.
+func (a *API) connectPlexAccountServer(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		MachineIdentifier string `json:"machineIdentifier"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || strings.TrimSpace(request.MachineIdentifier) == "" {
+		respondPlexAPIMessage(w, r, http.StatusBadRequest, "plex_server_required", "Choose a Plex account server first", false)
+		return
+	}
+	credentials, err := a.loadPlexCredentials()
+	if err != nil {
+		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
+		return
+	}
+	auth := plex.NewAuthClient()
+	token, preferredURL, err := auth.ResolveServerToken(r.Context(), &credentials, strings.TrimSpace(request.MachineIdentifier))
+	if err != nil {
+		respondPlexAPIError(w, r, err)
+		return
+	}
+	if preferredURL == "" {
+		respondPlexAPIMessage(w, r, http.StatusBadGateway, "plex_connection_failed", "Plex did not provide a usable connection for this server", true)
+		return
+	}
+	client, err := plex.NewClient(preferredURL, token, credentials.ClientIdentifier)
+	if err != nil {
+		respondPlexAPIError(w, r, err)
+		return
+	}
+	server, err := client.ValidateServer(r.Context())
+	if err != nil {
+		respondPlexAPIError(w, r, err)
+		return
+	}
+	if server.MachineIdentifier != strings.TrimSpace(request.MachineIdentifier) {
+		respondPlexAPIMessage(w, r, http.StatusBadGateway, "plex_server_identity_mismatch", "Plex returned a different server than the one selected", true)
+		return
+	}
+	if credentials.ServerTokens == nil {
+		credentials.ServerTokens = map[string]string{}
+	}
+	credentials.ServerTokens[server.MachineIdentifier] = token
+	if err := a.activatePlexServer(server, &credentials); err != nil {
+		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_config_save_failed", "Failed to save Plex server configuration", true)
+		return
+	}
+	if err := a.savePlexCredentials(credentials); err != nil {
+		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_save_failed", "Plex server was connected but authentication state could not be saved", true)
+		return
+	}
+	respondV2JSON(w, http.StatusOK, server)
 }
 
 func (a *API) plexClientForSource(ctx context.Context, source *db.PlexSource) (*plex.Client, error) {

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileMusic, Library, Loader2, Music, RefreshCw, Search, Server } from 'lucide-react';
-import { plexService, type PlexLibrary, type PlexServer, type PlexSource } from '../services/plex';
+import { plexService, type PlexAccountServer, type PlexLibrary, type PlexServer, type PlexSource } from '../services/plex';
 import { useStore } from '../store';
 import { Button } from './ui/Button';
 import { TextInput } from './ui/TextInput';
@@ -53,6 +53,7 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
   const [step, setStep] = useState<SetupStep>('discovery');
   const [status, setStatus] = useState<SetupStatus>('idle');
   const [servers, setServers] = useState<PlexServer[]>([]);
+  const [accountServers, setAccountServers] = useState<PlexAccountServer[]>([]);
   const [source, setSource] = useState<PlexSource | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [needsAuth, setNeedsAuth] = useState(false);
@@ -98,6 +99,25 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     }
   }, []);
 
+  const loadAccountServers = useCallback(async () => {
+    setStatus('connecting');
+    setError('');
+    setMessage('Finding servers available to your Plex account…');
+    try {
+      const result = await plexService.getAccountServers();
+      if (disposed.current) return;
+      setAccountServers(result);
+      setStatus('idle');
+      setMessage(result.length > 0
+        ? 'Choose one of your Plex servers or a server with a library shared with you.'
+        : 'Your Plex account has no reachable media servers or shared servers right now.');
+    } catch (cause) {
+      if (disposed.current) return;
+      setStatus('idle');
+      setError(cause instanceof Error ? cause.message : 'Unable to load Plex account servers.');
+    }
+  }, []);
+
   const loadLibraries = useCallback(async () => {
     setStep('libraries');
     setStatus('connecting');
@@ -127,6 +147,8 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       setSelectedLibraryId(config.source?.libraryId || '');
       if (config.source) {
         await loadLibraries();
+      } else if (config.authenticated) {
+        await loadAccountServers();
       } else {
         await discover(true);
       }
@@ -135,7 +157,7 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       setError(cause instanceof Error ? cause.message : 'Unable to load Plex configuration.');
       await discover(true);
     }
-  }, [discover, loadLibraries]);
+  }, [discover, loadAccountServers, loadLibraries]);
 
   useEffect(() => {
     disposed.current = false;
@@ -168,6 +190,27 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     }
   };
 
+  const connectAccountServer = async (server: PlexAccountServer) => {
+    setStatus('connecting');
+    setError('');
+    setMessage(`Connecting to ${server.name || 'Plex Media Server'}…`);
+    try {
+      const connected = await plexService.connectAccountServer(server.machineIdentifier);
+      const config = await plexService.getConfig();
+      if (disposed.current) return;
+      setSource(config.source);
+      setAuthenticated(config.authenticated);
+      setNeedsAuth(false);
+      setSelectedLibraryId(config.source?.libraryId || '');
+      addLog('success', `[Plex] First-run setup connected to ${connected.name || server.name || connected.machineIdentifier}`);
+      await loadLibraries();
+    } catch (cause) {
+      if (disposed.current) return;
+      setStatus('idle');
+      setError(cause instanceof Error ? cause.message : 'Unable to connect to Plex account server.');
+    }
+  };
+
   const pollAuthentication = useCallback(async (expiresAt: number) => {
     if (disposed.current) return;
     try {
@@ -177,11 +220,20 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
         setNeedsAuth(false);
         setStatus('idle');
         setError('');
-        setMessage('Plex sign-in complete. Loading music libraries…');
         addLog('success', '[Plex] First-run authentication completed');
         const config = await plexService.getConfig();
-        if (!disposed.current) setSource(config.source);
-        await loadLibraries();
+        if (!disposed.current) {
+          setSource(config.source);
+          setSelectedLibraryId(config.source?.libraryId || '');
+        }
+        if (config.source) {
+          setMessage('Plex sign-in complete. Loading music libraries…');
+          await loadLibraries();
+        } else {
+          setStep('discovery');
+          setMessage('Plex sign-in complete. Finding your available servers…');
+          await loadAccountServers();
+        }
         return;
       }
       if (!result.pending || Date.now() >= expiresAt * 1000) {
@@ -195,7 +247,7 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       setStatus('idle');
       setError(cause instanceof Error ? cause.message : 'Unable to check Plex sign-in status.');
     }
-  }, [addLog, loadLibraries]);
+  }, [addLog, loadAccountServers, loadLibraries]);
 
   const signIn = async () => {
     setStatus('authenticating');
@@ -296,7 +348,7 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
   const busy = status !== 'idle';
   const title = step === 'discovery' ? 'Find your Plex server' : step === 'libraries' ? 'Choose your music library' : step === 'syncing' ? 'Importing your music' : 'Your Plex library is ready';
   const subtitle = step === 'discovery'
-    ? 'ViiB is looking on your computer and local network. You can also add a server manually.'
+    ? 'Search your computer and local network, or sign in to Plex to find remote and shared servers.'
     : step === 'libraries'
       ? 'Select one Plex music library for ViiB to make available right away.'
       : step === 'syncing'
@@ -322,7 +374,33 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" disabled={busy} onClick={() => void discover(false)} leftIcon={<Search size={16} />}>Search again</Button>
+            {!authenticated ? (
+              <Button variant="primary" accent="brand" disabled={busy} onClick={() => void signIn()} leftIcon={<ExternalLink size={16} />}>Sign in to Plex</Button>
+            ) : (
+              <Button variant="secondary" disabled={busy} onClick={() => void loadAccountServers()} leftIcon={<RefreshCw size={16} />}>Refresh Plex Account Servers</Button>
+            )}
           </div>
+          {!authenticated && <p className="text-xs text-text-subtle">Plex sign-in finds your online servers and any servers whose libraries are shared with you.</p>}
+          {accountServers.length > 0 && (
+            <div>
+              <div className="mb-2 text-sm font-semibold text-text-main">Plex account servers</div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {accountServers.map(server => (
+                  <button
+                    type="button"
+                    key={server.machineIdentifier}
+                    disabled={busy}
+                    onClick={() => void connectAccountServer(server)}
+                    className="rounded-lg border border-surface-border bg-surface-1 p-3 text-left transition hover:border-brand hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
+                  >
+                    <div className="flex items-center justify-between gap-2"><span className="font-semibold text-text-main">{server.name || server.machineIdentifier}</span><span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${server.owned ? 'bg-brand/10 text-brand' : 'bg-success/15 text-success'}`}>{server.owned ? 'Your server' : 'Shared with you'}</span></div>
+                    <div className="mt-1 truncate font-mono text-xs text-text-subtle">{server.url}</div>
+                    <div className="mt-1 text-xs text-text-secondary">{server.owner ? `Shared by ${server.owner}` : server.version ? `Plex ${server.version}` : 'Plex Media Server'}{server.relay ? ' · Relay connection' : ''}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {servers.length > 0 && (
             <div className="grid gap-2 sm:grid-cols-2">
               {servers.map(server => (
