@@ -2,7 +2,7 @@
 
 ![Songs page](../assets/screenshots/songs.png)
 
-The Songs page shows every track in your library with virtualized scrolling for high performance even with tens of thousands of tracks.
+The Songs page shows the canonical ViiB track catalog. It is source-transparent: local filesystem tracks and successfully synchronized Plex music tracks appear in the same list and use the same queue, playlist, like, history, and playback interactions.
 
 ---
 
@@ -10,59 +10,57 @@ The Songs page shows every track in your library with virtualized scrolling for 
 
 | Feature | Description |
 |---|---|
-| Virtualized list | Uses `react-virtuoso` — 50,000 track libraries render without lag |
-| Sort options | Title (A-Z/Z-A), Artist, Album, Duration, Most Played, Recently Added |
-| Filter bar | Type to filter the visible list in real time |
-| Play All | Plays the entire (filtered/sorted) list from the first track |
-| Shuffle All | Queues all visible tracks in random order |
-| Add Folder | Opens the Settings folder browser to add a new scan directory |
-| Context menu | Right-click any row for extended actions |
-| Like button | Inline heart icon to like/unlike a track |
-| Loading skeleton | Shows a placeholder grid while the library is loading |
-| Empty state | Shown when the library is empty with a prompt to scan a folder |
+| Virtualized list | Keeps large libraries responsive without rendering every row at once |
+| Sort options | Title, artist, album, duration, play activity, and recently added options where exposed by the UI |
+| Filter bar | Filters visible catalog tracks |
+| Play All / Shuffle All | Build playback from the current visible/sorted set |
+| Context menu | Play, Play Next, Add to Queue, playlist, like, album, and artist actions |
+| Like button | Stores the like in ViiB regardless of source |
+| Artwork | Local artwork or backend-proxied Plex artwork with fallback handling |
 
 ---
 
-## Sort Options
+## Music sources
 
-| Option | Description |
-|---|---|
-| Recently Added | Default; newest files first |
-| Title (A-Z) / (Z-A) | Alphabetical by track title |
-| Artist (A-Z) / (Z-A) | Alphabetical by artist name |
-| Album (A-Z) / (Z-A) | Alphabetical by album name |
-| Duration (Short) | Shortest tracks first |
-| Duration (Long) | Longest tracks first |
-| Most Played | Highest play count first |
+### Local tracks
+
+Local songs are created by scanning configured folders. Their ViiB catalog rows retain filesystem identity so local playback and local-library diagnostics can operate normally.
+
+### Plex tracks
+
+Plex tracks are imported by synchronizing the selected PMS music library. ViiB stores normalized song metadata plus Plex source identity separately, including the PMS machine/library/track/media identifiers required for future synchronization and playback.
+
+The UI does not need a Plex-specific Song type. Plex tracks use normal ViiB song IDs and the existing `/api/audio/{songId}` and `/api/cover/{songId}` routes.
+
+A temporarily offline Plex server does not remove already synchronized songs from the catalog. Playback can fail with a source-unavailable or reconnect/authentication state until PMS becomes reachable again.
 
 ---
 
 ## Context Menu Actions
 
-Right-click any track to access:
+Right-click a catalog track to use the normal supported actions, including:
 
-- **Play** — Play this track now
-- **Play Next** — Insert at the front of the queue
-- **Add to Queue** — Append to the end of the queue
-- **Add to Playlist** — Add to an existing playlist
-- **Like / Unlike** — Toggle the liked status
-- **Go to Album** — Navigate to the album detail page
-- **Go to Artist** — Navigate to the artist detail page
+- **Play**
+- **Play Next**
+- **Add to Queue**
+- **Add to Playlist**
+- **Like / Unlike**
+- **Go to Album**
+- **Go to Artist**
 
----
-
-## Row Layout
-
-Each row displays:
-- Album art thumbnail (or color gradient fallback)
-- Track title and artist
-- Album name
-- Duration
-- Like button
-- More (`⋯`) button for the context menu
+These actions are ViiB operations. They do not rename, move, delete, or rewrite a Plex source file.
 
 ---
 
-## Keyboard Shortcut
+## Recently Added
 
-While on the Songs page, pressing **Space** plays/pauses the current track (handled globally by the player).
+For local media, the added date comes from ViiB's scan/catalog ingestion. For Plex media, ViiB maps the available PMS `addedAt` metadata during synchronization. This allows source-transparent recently-added sorting without filesystem access to the Plex host.
+
+---
+
+## Empty library
+
+If the ViiB catalog is empty, configure at least one music source:
+
+- add a local folder in [Settings](settings.md), or
+- connect and synchronize Plex in [Library Operations](library-operations.md).
