@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -151,7 +152,7 @@ func TestFetchTracksMapsMusicMetadataAndPaginationHeaders(t *testing.T) {
 			t.Errorf("pagination headers missing: start=%q size=%q", r.Header.Get("X-Plex-Container-Start"), r.Header.Get("X-Plex-Container-Size"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"MediaContainer":{"size":1,"totalSize":1,"Metadata":[{"ratingKey":"123","key":"/library/metadata/123","type":"track","title":"Track","parentTitle":"Album","grandparentTitle":"Artist","index":4,"parentIndex":2,"year":2025,"duration":245000,"thumb":"/library/metadata/123/thumb/1","addedAt":100,"updatedAt":200,"Genre":[{"tag":"Rock"}],"Media":[{"container":"flac","audioCodec":"flac","Part":[{"key":"/library/parts/55/file.flac","container":"flac"}]}]}]}}`))
+		_, _ = w.Write([]byte(`{"MediaContainer":{"size":1,"totalSize":1,"Metadata":[{"ratingKey":"123","key":"/library/metadata/123","type":"track","title":"Track","parentTitle":"Album","grandparentTitle":"Artist","index":4,"parentIndex":2,"year":2025,"duration":245000,"thumb":"/library/metadata/123/thumb/1","parentThumb":"/library/metadata/100/thumb/9","addedAt":100,"updatedAt":200,"Genre":[{"tag":"Rock"}],"Media":[{"container":"flac","audioCodec":"flac","Part":[{"key":"/library/parts/55/file.flac","container":"flac"}]}]}]}}`))
 	}))
 	defer server.Close()
 	client, err := NewClientWithHTTP(server.URL, "secret", "viib-test", server.Client())
@@ -169,8 +170,78 @@ func TestFetchTracksMapsMusicMetadataAndPaginationHeaders(t *testing.T) {
 	if track.RatingKey != "123" || track.Artist != "Artist" || track.Album != "Album" || track.AlbumArtist != "Artist" || track.TrackNumber != 4 || track.DiscNumber != 2 || track.DurationSeconds != 245 || track.MediaKey != "/library/parts/55/file.flac" || track.AudioCodec != "flac" || len(track.Genres) != 1 || track.Genres[0] != "Rock" {
 		t.Fatalf("unexpected mapped track: %#v", track)
 	}
+	if track.ArtworkKey != "/library/metadata/100/thumb/9" {
+		t.Fatalf("artwork key=%q want parent album thumb", track.ArtworkKey)
+	}
 	if StableTrackID("machine", "123") == StableTrackID("machine", "124") || StableTrackID("machine", "123") == "123" {
 		t.Fatal("stable Plex IDs are not namespaced/stable")
+	}
+}
+
+func TestMapPlexTrackUsesFirstUsableMediaPart(t *testing.T) {
+	track, ok := mapPlexTrack(plexTrack{
+		RatingKey:     "55",
+		Title:         "Alternate",
+		ParentTitle:   "Album",
+		ParentThumb:   "/album/thumb",
+		Media: []plexMedia{
+			{Container: "flac", AudioCodec: "flac", Part: []plexPart{{Key: ""}}},
+			{Container: "mp3", AudioCodec: "mp3", Part: []plexPart{{Key: "/library/parts/55/file.mp3", Container: "mp3"}}},
+		},
+	})
+	if !ok {
+		t.Fatal("expected track with a later valid media part to map")
+	}
+	if track.MediaKey != "/library/parts/55/file.mp3" || track.Container != "mp3" || track.AudioCodec != "mp3" {
+		t.Fatalf("unexpected selected media: %#v", track)
+	}
+}
+
+func TestFetchTracksContinuesWhenServerReturnsShortPageWithTotalRemaining(t *testing.T) {
+	starts := make([]int, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start, _ := strconv.Atoi(r.Header.Get("X-Plex-Container-Start"))
+		starts = append(starts, start)
+		w.Header().Set("Content-Type", "application/json")
+		makeTrack := func(id string) map[string]any {
+			return map[string]any{
+				"ratingKey": id,
+				"key":       "/library/metadata/" + id,
+				"type":      "track",
+				"title":     "Track " + id,
+				"parentTitle": "Album",
+				"parentThumb": "/library/metadata/album/thumb/1",
+				"Media": []any{map[string]any{"container": "mp3", "audioCodec": "mp3", "Part": []any{map[string]any{"key": "/library/parts/" + id + "/file.mp3"}}}},
+			}
+		}
+		metadata := []any{}
+		switch start {
+		case 0:
+			metadata = []any{makeTrack("1"), makeTrack("2")}
+		case 2:
+			metadata = []any{makeTrack("3")}
+		default:
+			t.Fatalf("unexpected paging start %d", start)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"MediaContainer": map[string]any{
+			"offset": start, "size": len(metadata), "totalSize": 3, "Metadata": metadata,
+		}})
+	}))
+	defer server.Close()
+
+	client, err := NewClientWithHTTP(server.URL, "secret", "viib-test", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.FetchTracks(context.Background(), Library{ID: "2", TrackKey: server.URL + "/tracks"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Tracks) != 3 {
+		t.Fatalf("got %d tracks, want 3", len(result.Tracks))
+	}
+	if len(starts) != 2 || starts[0] != 0 || starts[1] != 2 {
+		t.Fatalf("unexpected page starts: %v", starts)
 	}
 }
 
