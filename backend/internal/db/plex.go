@@ -339,10 +339,18 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 
 	seen := make(map[string]struct{}, len(tracks))
 	for _, track := range tracks {
-		if track.SongID == "" || track.RatingKey == "" || track.MediaKey == "" {
+		// Presence and playability are different concepts in PMS. If a successful
+		// metadata snapshot still reports the rating key but temporarily omits a
+		// Media/Part, retain any existing cached song instead of reconciling it as
+		// deleted. A new unplayable item is simply deferred until a usable part is
+		// returned by a later sync.
+		if track.SongID == "" || track.RatingKey == "" {
 			continue
 		}
 		seen[track.SongID] = struct{}{}
+		if track.MediaKey == "" {
+			continue
+		}
 		previous, exists := existing[track.SongID]
 		if exists && previous.matches(libraryID, track) {
 			continue
