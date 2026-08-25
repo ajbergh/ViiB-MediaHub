@@ -189,7 +189,7 @@ export const LikedAlbums: React.FC = () => {
                 itemContent={(index, album) => {
                     const metadataKey = `${album.name}::${album.artist}`;
                     const metadata = albumMetadata[metadataKey];
-                    const coverUrl = resolveAlbumArtwork(album.coverUrl, metadata?.coverUrl);
+                    const coverUrl = resolveAlbumArtwork(album.coverUrl, metadata?.coverUrl, album.plexBacked);
 
                     return (
                         <div
