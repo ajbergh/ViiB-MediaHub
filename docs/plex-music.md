@@ -25,6 +25,8 @@ The integration follows the current Plex Media Server API model and Plex network
 - PMS identity is validated with `/identity` before a manual address is saved.
 - Library discovery uses `/media/providers` and follows provider-returned content/library keys instead of assuming fixed legacy section URLs.
 - For a music section, ViiB follows the returned `track` type pivot (Plex metadata type `10`) rather than blindly constructing `/all` URLs. Video/clip pivots such as music videos are not selected.
+- Track hierarchy follows Plex metadata semantics: the parent is the album and `grandparentTitle` is the artist hierarchy value. `originalTitle` is not treated as an artist fallback.
+- PMS pagination is driven by the response's actual offset/count/total state. ViiB does not assume that receiving fewer objects than the requested page size means the library is exhausted.
 - PMS authentication is sent server-side with `X-Plex-Token`; credentials are never appended to browser-visible media URLs.
 - New Plex account authentication uses Plex's JWT/PIN device flow with an ED25519 device key.
 
@@ -106,12 +108,16 @@ The initial import and every explicit resync are treated as authoritative **only
 After a successful synchronization ViiB:
 
 - adds newly discovered Plex tracks;
-- updates changed Plex metadata;
+- updates changed Plex metadata, media keys, codec/container information, and artwork identity;
 - removes ViiB catalog rows for tracks a successful Plex synchronization confirms are no longer in the selected library.
+
+Plex metadata presence and immediate playability are treated separately. If a complete successful PMS snapshot still reports a track `ratingKey` but temporarily omits a usable `Media/Part`, ViiB does not interpret that track as deleted. An existing cached track and its last known playable media key are retained; a newly discovered track without a usable part is deferred until PMS reports one on a later synchronization.
 
 If Plex is offline, times out, becomes unreachable, or authentication fails, ViiB does **not** interpret that as an empty library. Existing cached Plex catalog entries remain and the source is marked unavailable or authentication-required as appropriate.
 
-Changing the selected Plex music library removes only ViiB's cached rows from the previously selected Plex library. Removing the Plex source removes only ViiB's cached source/catalog data and encrypted Plex credentials. Neither action sends a delete operation to PMS or modifies Plex media.
+Changing the selected Plex music library updates the desired library selection but intentionally retains the previously synchronized Plex cache until a **complete successful synchronization** of the new library is available. That successful snapshot then reconciles old rows. This prevents a library switch followed by an outage from erasing the last usable catalog.
+
+Removing the Plex source removes only ViiB's cached source/catalog data and encrypted Plex credentials. It never sends a delete operation to PMS or modifies Plex media.
 
 Local filesystem scanning also treats Plex synthetic source paths as remote records; filesystem diagnostics/reconciliation cannot classify an unavailable Plex source as deleted local media.
 
@@ -141,11 +147,23 @@ Direct play is preferred. Plex's documented universal audio-transcode APIs were 
 
 No video transcoding or Plex video playback is implemented.
 
-## Artwork
+## Artwork fidelity
 
-Authenticated PMS artwork is exposed through ViiB's existing backend-controlled cover route. The browser never receives a PMS artwork URL containing a Plex token.
+Plex-backed **track/album artwork is authoritative** in the ViiB music UI.
 
-If a returned asset key resolves to another origin, ViiB strips `X-Plex-Token` before the backend request so PMS credentials cannot be disclosed cross-origin.
+- For a Plex track, ViiB prefers the Plex parent/album thumbnail and falls back to the track thumbnail only when PMS does not provide parent artwork.
+- The exact PMS artwork key is persisted with the Plex track and fetched through ViiB's backend-controlled `/api/cover/{songId}` proxy.
+- Browser-facing Plex cover URLs include a source-derived version query. When PMS changes the artwork key or relevant source update state, the ViiB URL changes so browser/Wails caches do not keep displaying the old cover.
+- Spotify or other enrichment artwork may still enhance local filesystem albums, but it cannot replace the authoritative PMS artwork for a Plex-backed album. This precedence is used on Albums, Album Detail, Liked Albums, artist-discography album cards, and derived album-cover aggregation.
+- The browser never receives a PMS artwork URL containing a Plex token.
+
+Plex may return either PMS-relative artwork keys or absolute publicly accessible artwork URLs. Authentication is attached only to same-server requests. If an asset key is already cross-origin, ViiB strips `X-Plex-Token`. Redirect handling also strips the token **before** following any redirect away from the configured PMS origin, for both JSON API requests and media/artwork streams.
+
+### Artist portrait scope
+
+The circular artist portrait shown on ViiB's Artists/Artist Detail pages is a separate artist-metadata enrichment feature and currently remains Spotify-backed when enrichment is available. It is intentionally **not** populated with an album cover merely to appear Plex-native.
+
+If Plex artist-portrait parity is added, it should browse Plex's documented artist/type-8 metadata and use each artist item's own `thumb`. Album/track artwork fidelity does not depend on that future enhancement.
 
 ## Security
 
@@ -157,7 +175,8 @@ Plex credentials are sensitive application settings.
 - Tokens are sent to PMS in backend HTTP headers, not browser media URLs.
 - Tokens are not stored in browser `localStorage` or Zustand state.
 - Credential-bearing error strings are redacted before logging or API error responses.
-- Cross-origin asset requests never carry a Plex token.
+- Absolute cross-origin asset requests never carry a Plex token.
+- Cross-origin redirects are allowed only after `X-Plex-Token` has been removed from the redirected request.
 
 ## Read-only source behavior
 
