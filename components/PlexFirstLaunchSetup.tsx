@@ -480,6 +480,8 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       <div className="mt-7 flex items-center justify-between border-t border-surface-border pt-5">
         {step === 'discovery' ? (
           <Button variant="ghost" onClick={onBack} className="px-0" leftIcon={<ArrowLeft size={16} />}>Change source</Button>
+        ) : step === 'libraries' ? (
+          <Button variant="ghost" onClick={() => { setStep('discovery'); setNeedsAuth(false); setError(''); setMessage('Choose a different Plex server.'); }} className="px-0" leftIcon={<ArrowLeft size={16} />}>Back to servers</Button>
         ) : (
           <span className="text-xs text-text-subtle">Plex stays read-only. You can change it later in Settings.</span>
         )}

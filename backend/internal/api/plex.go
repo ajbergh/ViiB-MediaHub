@@ -382,7 +382,7 @@ func (a *API) connectPlexAccountServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth := plex.NewAuthClient()
-	token, preferredURL, err := auth.ResolveServerToken(r.Context(), &credentials, strings.TrimSpace(request.MachineIdentifier))
+	token, preferredURL, err := auth.ResolveAccountServerToken(r.Context(), &credentials, strings.TrimSpace(request.MachineIdentifier))
 	if err != nil {
 		respondPlexAPIError(w, r, err)
 		return

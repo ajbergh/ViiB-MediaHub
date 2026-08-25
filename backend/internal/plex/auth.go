@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -135,11 +136,36 @@ func (a *AuthClient) requestJSON(ctx context.Context, method, endpoint, clientID
 }
 
 type pinResponse struct {
-	ID        int64  `json:"id"`
-	Code      string `json:"code"`
-	AuthToken string `json:"authToken"`
-	ExpiresIn int64  `json:"expiresIn"`
-	ExpiresAt int64  `json:"expiresAt"`
+	ID        int64           `json:"id"`
+	Code      string          `json:"code"`
+	AuthToken string          `json:"authToken"`
+	ExpiresIn int64           `json:"expiresIn"`
+	ExpiresAt json.RawMessage `json:"expiresAt"`
+}
+
+// pinExpirySeconds supports Plex's RFC 3339 expiresAt value as well as the
+// epoch-second value returned by older endpoints. expiresIn remains the safe
+// fallback when Plex omits either representation.
+func pinExpirySeconds(raw json.RawMessage) int64 {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0
+	}
+	var unix int64
+	if json.Unmarshal(raw, &unix) == nil && unix > 0 {
+		return unix
+	}
+	var timestamp string
+	if json.Unmarshal(raw, &timestamp) != nil || timestamp == "" {
+		return 0
+	}
+	if unix, err := strconv.ParseInt(timestamp, 10, 64); err == nil && unix > 0 {
+		return unix
+	}
+	parsed, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		return 0
+	}
+	return parsed.Unix()
 }
 
 // StartPIN begins Plex's recommended JWT PIN authentication flow.
@@ -160,7 +186,7 @@ func (a *AuthClient) StartPIN(ctx context.Context, credentials *Credentials) (Au
 	if pin.ID == 0 || pin.Code == "" {
 		return AuthStart{}, errors.New("plex authentication service returned an incomplete PIN")
 	}
-	expiresAt := pin.ExpiresAt
+	expiresAt := pinExpirySeconds(pin.ExpiresAt)
 	if expiresAt == 0 {
 		expiresIn := pin.ExpiresIn
 		if expiresIn <= 0 {
@@ -336,6 +362,24 @@ func preferredResourceConnection(connections []resourceConnection) (resourceConn
 	return resourceConnection{}, false
 }
 
+// preferredRemoteResourceConnection is used for account-discovered servers.
+// A resource often advertises its LAN address first; that address is not useful
+// for a shared server outside the user's network. Prefer Plex's non-local
+// direct route, then its relay, while retaining LAN as a last-resort fallback.
+func preferredRemoteResourceConnection(connections []resourceConnection) (resourceConnection, bool) {
+	for _, connection := range connections {
+		if !connection.Local && !connection.Relay && connection.URI != "" {
+			return connection, true
+		}
+	}
+	for _, connection := range connections {
+		if !connection.Local && connection.Relay && connection.URI != "" {
+			return connection, true
+		}
+	}
+	return preferredResourceConnection(connections)
+}
+
 func (a *AuthClient) listResources(ctx context.Context, credentials *Credentials) ([]resource, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.baseURL+"/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1", nil)
 	if err != nil {
@@ -380,7 +424,7 @@ func (a *AuthClient) ListServers(ctx context.Context, credentials *Credentials) 
 		if candidate.ClientIdentifier == "" || candidate.AccessToken == "" || !strings.Contains(candidate.Provides, "server") {
 			continue
 		}
-		connection, ok := preferredResourceConnection(candidate.Connections)
+		connection, ok := preferredRemoteResourceConnection(candidate.Connections)
 		if !ok {
 			continue
 		}
@@ -413,7 +457,7 @@ func firstNonEmptyResourceValue(values ...string) string {
 
 // ResolveServerToken follows Plex's documented resources endpoint to obtain the
 // PMS-specific access token for a machine. It prefers local non-relay URLs.
-func (a *AuthClient) ResolveServerToken(ctx context.Context, credentials *Credentials, machineIdentifier string) (token, preferredURL string, err error) {
+func (a *AuthClient) resolveServerToken(ctx context.Context, credentials *Credentials, machineIdentifier string, connectionPicker func([]resourceConnection) (resourceConnection, bool)) (token, preferredURL string, err error) {
 	if credentials.ServerTokens == nil {
 		credentials.ServerTokens = map[string]string{}
 	}
@@ -432,12 +476,26 @@ func (a *AuthClient) ResolveServerToken(ctx context.Context, credentials *Creden
 			return "", "", errors.New("plex server resource did not provide an access token")
 		}
 		credentials.ServerTokens[machineIdentifier] = candidate.AccessToken
-		if connection, ok := preferredResourceConnection(candidate.Connections); ok {
+		if connection, ok := connectionPicker(candidate.Connections); ok {
 			return candidate.AccessToken, connection.URI, nil
 		}
 		return candidate.AccessToken, "", nil
 	}
 	return "", "", errors.New("authenticated Plex account cannot access this server")
+}
+
+// ResolveServerToken follows Plex's documented resources endpoint to obtain the
+// PMS-specific access token for a machine. It prefers local non-relay URLs for
+// a previously configured local source.
+func (a *AuthClient) ResolveServerToken(ctx context.Context, credentials *Credentials, machineIdentifier string) (token, preferredURL string, err error) {
+	return a.resolveServerToken(ctx, credentials, machineIdentifier, preferredResourceConnection)
+}
+
+// ResolveAccountServerToken uses the remote route that was shown in account
+// discovery, so choosing a shared server does not unexpectedly attempt its
+// private LAN address.
+func (a *AuthClient) ResolveAccountServerToken(ctx context.Context, credentials *Credentials, machineIdentifier string) (token, preferredURL string, err error) {
+	return a.resolveServerToken(ctx, credentials, machineIdentifier, preferredRemoteResourceConnection)
 }
 
 // RedactError removes credential-like values from errors before they reach logs

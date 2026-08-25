@@ -20,7 +20,7 @@ func TestJWTAuthenticationStartAndPoll(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			jwk, _ := body["jwk"].(map[string]any)
 			sawJWK = jwk["kty"] == "OKP" && jwk["crv"] == "Ed25519" && jwk["alg"] == "EdDSA" && body["strong"] == true
-			_, _ = w.Write([]byte(`{"id":77,"code":"ABCD","expiresIn":300}`))
+			_, _ = w.Write([]byte(`{"id":77,"code":"ABCD","expiresAt":"2100-01-01T00:00:00Z"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v2/pins/77":
 			jwt := r.URL.Query().Get("deviceJWT")
 			if len(strings.Split(jwt, ".")) != 3 {
@@ -38,7 +38,7 @@ func TestJWTAuthenticationStartAndPoll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sawJWK || !strings.HasPrefix(start.AuthURL, "https://app.plex.tv/auth#?") || credentials.PrivateKey == "" || credentials.ClientIdentifier == "" {
+	if !sawJWK || !strings.HasPrefix(start.AuthURL, "https://app.plex.tv/auth#?") || credentials.PrivateKey == "" || credentials.ClientIdentifier == "" || start.ExpiresAt != 4102444800 {
 		t.Fatalf("unexpected start state: %#v credentials=%#v", start, credentials)
 	}
 	status, err := auth.PollPIN(context.Background(), &credentials)
@@ -91,7 +91,8 @@ func TestListServersIncludesOwnedAndSharedPlexResources(t *testing.T) {
 		AccountToken:       "account-token",
 		AccountTokenExpiry: time.Now().Add(48 * time.Hour).Unix(),
 	}
-	servers, err := NewAuthClientWithHTTP(server.URL, server.Client()).ListServers(context.Background(), &credentials)
+	auth := NewAuthClientWithHTTP(server.URL, server.Client())
+	servers, err := auth.ListServers(context.Background(), &credentials)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,11 +102,15 @@ func TestListServersIncludesOwnedAndSharedPlexResources(t *testing.T) {
 	if len(servers) != 2 {
 		t.Fatalf("servers=%#v", servers)
 	}
-	if servers[0].MachineIdentifier != "owned-server" || !servers[0].Owned || servers[0].URL != "http://192.168.1.20:32400" || servers[0].Version != "1.42.0" {
-		t.Fatalf("owned server was not mapped/preferred correctly: %#v", servers[0])
+	if servers[0].MachineIdentifier != "owned-server" || !servers[0].Owned || servers[0].URL != "https://owned.example:32400" || servers[0].Version != "1.42.0" {
+		t.Fatalf("owned server remote route was not mapped/preferred correctly: %#v", servers[0])
 	}
 	if servers[1].MachineIdentifier != "shared-server" || servers[1].Owned || servers[1].Owner != "Alice" || !servers[1].Relay {
 		t.Fatalf("shared server was not exposed correctly: %#v", servers[1])
+	}
+	token, endpoint, err := auth.ResolveAccountServerToken(context.Background(), &credentials, "owned-server")
+	if err != nil || token != "owned-token" || endpoint != "https://owned.example:32400" {
+		t.Fatalf("account connection did not retain its remote route: token=%q endpoint=%q err=%v", token, endpoint, err)
 	}
 }
 
