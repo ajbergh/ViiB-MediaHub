@@ -9,7 +9,7 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useStore, useAlbumCovers } from '../store';
-import { Play, Clock, ArrowLeft, Disc, Download, MoreHorizontal, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Play, Pause, Clock, ArrowLeft, Disc, Download, MoreHorizontal, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
@@ -38,6 +38,8 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
         durationHours,
         durationMin,
         playSong,
+        togglePlay,
+        isAlbumPlaying,
         showFullDesc,
         setShowFullDesc,
         isRefreshing,
@@ -127,11 +129,15 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
             <div className="bg-surface-1/60 p-8 pt-6 backdrop-blur-lg relative z-10">
                 <div className="flex items-center gap-6 mb-8 relative">
                     <button
-                        onClick={() => playSong(albumSongs[0], albumSongs)}
+                        onClick={() => isAlbumPlaying ? togglePlay() : playSong(albumSongs[0], albumSongs)}
                         className="w-14 h-14 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 shadow-lg shadow-black/40 text-black"
-                        aria-label="Play album"
+                        aria-label={isAlbumPlaying ? 'Pause album' : 'Play album'}
                     >
-                        <Play size={28} className="fill-current ml-1" />
+                        {isAlbumPlaying ? (
+                            <Pause size={28} className="fill-current" />
+                        ) : (
+                            <Play size={28} className="fill-current ml-1" />
+                        )}
                     </button>
                     <AlbumLikeButton albumKey={metadataKey} size={32} className="text-text-secondary hover:text-white" />
                     <button className="text-text-secondary hover:text-white transition-all duration-200" aria-label="Download album"><Download size={32} /></button>
@@ -207,7 +213,7 @@ const AlbumFooter: React.FC<{ context?: any }> = ({ context }) => {
 export const AlbumDetail: React.FC = () => {
     const { albumName, artistName } = useParams<{ albumName: string; artistName?: string }>();
     const navigate = useNavigate();
-    const { songs, playSong, currentSong, isPlaying, openContextMenu, fetchAlbumMetadata, albumMetadata, clearAlbumMetadata } = useStore();
+    const { songs, playSong, togglePlay, currentSong, isPlaying, openContextMenu, fetchAlbumMetadata, albumMetadata, clearAlbumMetadata } = useStore();
     const albumCovers = useAlbumCovers();
     const [showFullDesc, setShowFullDesc] = useState(false);
     const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
@@ -281,6 +287,7 @@ export const AlbumDetail: React.FC = () => {
     const totalDuration = albumSongs.reduce((acc, s) => acc + s.duration, 0);
     const durationHours = Math.floor(totalDuration / 3600);
     const durationMin = Math.floor((totalDuration % 3600) / 60);
+    const isAlbumPlaying = isPlaying && albumSongs.some(song => song.id === currentSong?.id);
 
     const virtualItems = useMemo(() => {
         const items: Array<{ type: 'HEADER' | 'SONG'; data: any }> = [];
@@ -345,6 +352,8 @@ export const AlbumDetail: React.FC = () => {
         durationHours,
         durationMin,
         playSong,
+        togglePlay,
+        isAlbumPlaying,
         showFullDesc,
         setShowFullDesc,
         isRefreshing,
