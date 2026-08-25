@@ -289,9 +289,10 @@ type existingPlexCatalogTrack struct {
 	artworkKey  string
 	container   string
 	audioCodec  string
+	genres      []string
 }
 
-func (record existingPlexCatalogTrack) matches(libraryID string, track PlexCatalogTrack) bool {
+func (record existingPlexCatalogTrack) matches(libraryID string, track PlexCatalogTrack, genres []string) bool {
 	// updatedAt is the only PMS metadata version signal persisted today. If PMS
 	// omits it (zero), be conservative and refresh the row rather than assuming
 	// title/artist/album/etc. are unchanged merely because source keys match.
@@ -302,7 +303,20 @@ func (record existingPlexCatalogTrack) matches(libraryID string, track PlexCatal
 		record.mediaKey == track.MediaKey &&
 		record.artworkKey == track.ArtworkKey &&
 		record.container == track.Container &&
-		record.audioCodec == track.AudioCodec
+		record.audioCodec == track.AudioCodec &&
+		stringSlicesEqual(record.genres, genres)
+}
+
+func stringSlicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // SyncPlexLibrary atomically applies a complete successful PMS snapshot. The
@@ -321,8 +335,8 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 
 	existing := map[string]existingPlexCatalogTrack{}
 	rows, err := tx.Query(`
-		SELECT song_id, updated_at, library_id, metadata_key, media_key, artwork_key, container, audio_codec
-		FROM plex_tracks WHERE source_id=?
+		SELECT t.song_id, t.updated_at, t.library_id, t.metadata_key, t.media_key, t.artwork_key, t.container, t.audio_codec, s.genre
+		FROM plex_tracks t JOIN songs s ON s.id=t.song_id WHERE t.source_id=?
 	`, sourceID)
 	if err != nil {
 		return 0, 0, 0, err
@@ -330,11 +344,13 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 	for rows.Next() {
 		var id string
 		var record existingPlexCatalogTrack
+		var storedGenres string
 		if err := rows.Scan(&id, &record.updatedAt, &record.libraryID, &record.metadataKey, &record.mediaKey,
-			&record.artworkKey, &record.container, &record.audioCodec); err != nil {
+			&record.artworkKey, &record.container, &record.audioCodec, &storedGenres); err != nil {
 			rows.Close()
 			return 0, 0, 0, err
 		}
+		_ = json.Unmarshal([]byte(storedGenres), &record.genres)
 		existing[id] = record
 	}
 	if err := rows.Close(); err != nil {
@@ -355,11 +371,12 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 		if track.MediaKey == "" {
 			continue
 		}
+		normalizedGenres := NormalizeGenres(track.Genres)
 		previous, exists := existing[track.SongID]
-		if exists && previous.matches(libraryID, track) {
+		if exists && previous.matches(libraryID, track, normalizedGenres) {
 			continue
 		}
-		genres, _ := json.Marshal(NormalizeGenres(track.Genres))
+		genres, _ := json.Marshal(normalizedGenres)
 		coverPath := plexArtworkPath(track.SongID, track.ArtworkKey, track.UpdatedAt)
 		filePath := plexSyntheticPath(track.MachineID, libraryID, track.RatingKey)
 		if exists {

@@ -29,19 +29,22 @@ type Server struct {
 }
 
 // Library is a selectable music library. ContentKey is the documented provider
-// key used to browse the section; TrackKey is the type pivot that returns tracks.
+// key used to browse the section; TrackKey and AlbumKey are its documented type
+// pivots. PMS commonly places music genres on album metadata rather than tracks.
 type Library struct {
 	ID         string `json:"id"`
 	Title      string `json:"title"`
 	Type       string `json:"type"`
 	ContentKey string `json:"contentKey,omitempty"`
 	TrackKey   string `json:"trackKey,omitempty"`
+	AlbumKey   string `json:"albumKey,omitempty"`
 }
 
 // Track is the subset of PMS track metadata required by ViiB's unified catalog.
 type Track struct {
 	RatingKey       string
 	MetadataKey     string
+	ParentRatingKey string
 	Title           string
 	Artist          string
 	Album           string

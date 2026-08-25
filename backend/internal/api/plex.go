@@ -474,6 +474,9 @@ func (a *API) runPlexSync(sourceID string) {
 		a.failPlexSync(source, err)
 		return
 	}
+	if err := a.db.UpdateGenreStats(); err != nil {
+		logger.API("Failed to rebuild genre stats after Plex sync: %v", err)
+	}
 	message := fmt.Sprintf("Plex sync complete: %d added, %d updated, %d removed", added, updated, removed)
 	_ = a.db.SetPlexSyncState(source.ID, "complete", "", true, time.Now().UnixMilli())
 	if a.scanner != nil {

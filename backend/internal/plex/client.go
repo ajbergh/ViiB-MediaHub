@@ -428,11 +428,12 @@ func (c *Client) ListMusicLibraries(ctx context.Context) ([]Library, error) {
 					}
 				}
 				library := Library{ID: id, Title: directory.Title, Type: directory.Type, ContentKey: directory.Key}
-				trackKey, err := c.findTrackKey(ctx, library.ContentKey)
+				trackKey, albumKey, err := c.findMusicPivotKeys(ctx, library.ContentKey)
 				if err != nil {
 					return nil, fmt.Errorf("inspect Plex music library %q: %w", library.Title, err)
 				}
 				library.TrackKey = trackKey
+				library.AlbumKey = albumKey
 				libraries = append(libraries, library)
 			}
 		}
@@ -441,16 +442,24 @@ func (c *Client) ListMusicLibraries(ctx context.Context) ([]Library, error) {
 }
 
 func (c *Client) findTrackKey(ctx context.Context, sectionKey string) (string, error) {
+	trackKey, _, err := c.findMusicPivotKeys(ctx, sectionKey)
+	return trackKey, err
+}
+
+// findMusicPivotKeys resolves the documented type pivots exposed by a music
+// library. Track and album data are intentionally read through their own keys;
+// constructing a "type" query manually is not valid for every provider.
+func (c *Client) findMusicPivotKeys(ctx context.Context, sectionKey string) (trackKey, albumKey string, err error) {
 	u, err := c.resolveKey("", sectionKey)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	query := u.Query()
 	query.Set("includeDetails", "1")
 	u.RawQuery = query.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Plex-Pms-Api-Version", PMSAPIVersion)
@@ -463,23 +472,33 @@ func (c *Client) findTrackKey(ctx context.Context, sectionKey string) (string, e
 	}
 	var response sectionEnvelope
 	if err := c.doJSON(req, &response); err != nil {
-		return "", err
+		return "", "", err
 	}
 	for _, pivots := range [][]sectionPivot{response.MediaContainer.Type, response.MediaContainer.Directory} {
 		for _, pivot := range pivots {
-			if strings.EqualFold(pivot.Type, "track") && pivot.Key != "" {
-				resolved, err := c.resolveKey(sectionKey, pivot.Key)
-				if err != nil {
-					return "", err
-				}
-				return resolved.String(), nil
+			if pivot.Key == "" || (!strings.EqualFold(pivot.Type, "track") && !strings.EqualFold(pivot.Type, "album")) {
+				continue
+			}
+			resolved, err := c.resolveKey(sectionKey, pivot.Key)
+			if err != nil {
+				return "", "", err
+			}
+			if strings.EqualFold(pivot.Type, "track") {
+				trackKey = resolved.String()
+			} else if strings.EqualFold(pivot.Type, "album") {
+				albumKey = resolved.String()
 			}
 		}
 	}
-	return "", errors.New("documented track type key not found")
+	if trackKey == "" {
+		return "", "", errors.New("documented track type key not found")
+	}
+	return trackKey, albumKey, nil
 }
 
-type plexTag struct{ Tag string `json:"tag"` }
+type plexTag struct {
+	Tag string `json:"tag"`
+}
 type plexPart struct {
 	Key       string `json:"key"`
 	Container string `json:"container"`
@@ -492,6 +511,7 @@ type plexMedia struct {
 type plexTrack struct {
 	RatingKey        string      `json:"ratingKey"`
 	Key              string      `json:"key"`
+	ParentRatingKey  string      `json:"parentRatingKey"`
 	Title            string      `json:"title"`
 	ParentTitle      string      `json:"parentTitle"`
 	GrandparentTitle string      `json:"grandparentTitle"`
@@ -540,12 +560,7 @@ func mapPlexTrack(raw plexTrack) (Track, bool) {
 	// empty MediaKey so reconciliation can distinguish "still present" from
 	// "deleted"; the DB defers new unplayable items and retains cached ones.
 	media, part, _ := selectPlayablePart(raw.Media)
-	genres := make([]string, 0, len(raw.Genre))
-	for _, genre := range raw.Genre {
-		if value := strings.TrimSpace(genre.Tag); value != "" {
-			genres = append(genres, value)
-		}
-	}
+	genres := plexGenres(raw.Genre)
 	// A music track's parent is its album. Prefer the parent thumbnail so ViiB's
 	// album-centric artwork matches the artwork Plex shows for that album; fall
 	// back to the track thumbnail for servers/items without parent artwork.
@@ -553,6 +568,7 @@ func mapPlexTrack(raw plexTrack) (Track, bool) {
 	return Track{
 		RatingKey:       raw.RatingKey,
 		MetadataKey:     raw.Key,
+		ParentRatingKey: raw.ParentRatingKey,
 		Title:           raw.Title,
 		Artist:          raw.GrandparentTitle,
 		Album:           raw.ParentTitle,
@@ -569,6 +585,16 @@ func mapPlexTrack(raw plexTrack) (Track, bool) {
 		AddedAt:         raw.AddedAt * 1000,
 		UpdatedAt:       raw.UpdatedAt * 1000,
 	}, true
+}
+
+func plexGenres(tags []plexTag) []string {
+	genres := make([]string, 0, len(tags))
+	for _, genre := range tags {
+		if value := strings.TrimSpace(genre.Tag); value != "" {
+			genres = append(genres, value)
+		}
+	}
+	return genres
 }
 
 func firstNonEmpty(values ...string) string {
@@ -644,7 +670,79 @@ func (c *Client) FetchTracks(ctx context.Context, library Library) (SyncResult, 
 		}
 		offset = nextOffset
 	}
+	if library.AlbumKey != "" {
+		needsAlbumGenres := false
+		for _, track := range tracks {
+			if track.ParentRatingKey != "" && len(track.Genres) == 0 {
+				needsAlbumGenres = true
+				break
+			}
+		}
+		if needsAlbumGenres {
+			albumGenres, err := c.fetchAlbumGenres(ctx, library.AlbumKey)
+			if err != nil {
+				return SyncResult{}, fmt.Errorf("read Plex music album genres: %w", err)
+			}
+			for index := range tracks {
+				if len(tracks[index].Genres) != 0 || tracks[index].ParentRatingKey == "" {
+					continue
+				}
+				tracks[index].Genres = append([]string(nil), albumGenres[tracks[index].ParentRatingKey]...)
+			}
+		}
+	}
 	return SyncResult{Tracks: tracks, Started: started, Finished: time.Now()}, nil
+}
+
+// fetchAlbumGenres reads the album type pivot because PMS can attach genres to
+// an album without repeating them on each child track.
+func (c *Client) fetchAlbumGenres(ctx context.Context, albumKey string) (map[string][]string, error) {
+	const pageSize = 500
+	genresByAlbum := make(map[string][]string)
+	for offset := 0; ; {
+		req, err := c.newRequest(ctx, http.MethodGet, "", albumKey, true)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-Plex-Container-Start", strconv.Itoa(offset))
+		req.Header.Set("X-Plex-Container-Size", strconv.Itoa(pageSize))
+		var response trackEnvelope
+		if err := c.doJSON(req, &response); err != nil {
+			return nil, fmt.Errorf("read Plex music album page at offset %d: %w", offset, err)
+		}
+		count := len(response.MediaContainer.Metadata)
+		if count == 0 {
+			break
+		}
+		for _, raw := range response.MediaContainer.Metadata {
+			if raw.RatingKey == "" || (raw.Type != "" && !strings.EqualFold(raw.Type, "album")) {
+				continue
+			}
+			if genres := plexGenres(raw.Genre); len(genres) > 0 {
+				genresByAlbum[raw.RatingKey] = genres
+			}
+		}
+
+		nextOffset := offset + count
+		if response.MediaContainer.Offset > offset {
+			nextOffset = response.MediaContainer.Offset + count
+		}
+		if nextOffset <= offset {
+			return nil, fmt.Errorf("Plex music album paging made no progress at offset %d", offset)
+		}
+		if response.MediaContainer.TotalSize > 0 {
+			if nextOffset >= response.MediaContainer.TotalSize {
+				break
+			}
+			offset = nextOffset
+			continue
+		}
+		if count < pageSize {
+			break
+		}
+		offset = nextOffset
+	}
+	return genresByAlbum, nil
 }
 
 // MediaRequest builds a same-origin PMS request for a media/artwork key. Tokens

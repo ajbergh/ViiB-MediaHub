@@ -2,6 +2,7 @@ package db
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -70,6 +71,43 @@ func TestPlexSyncAddUpdateRemoveAndOfflineRetention(t *testing.T) {
 	}
 	if retained, err := database.GetSongByID("plex_song_1"); err != nil || retained.Title == "" {
 		t.Fatalf("offline state deleted cached track: %#v err=%v", retained, err)
+	}
+}
+
+func TestPlexSyncUpdatesGenreWithoutTrackVersionChange(t *testing.T) {
+	database := openPlexTestDB(t)
+	defer database.Close()
+	const sourceID, libraryID, machineID = "plexsrc_test", "2", "machine-test"
+	if err := database.SavePlexSource(PlexSource{ID: sourceID, MachineIdentifier: machineID, BaseURL: "http://127.0.0.1:32400", Name: "Plex", LibraryID: libraryID, LibraryTitle: "Music", Active: true, Available: true}); err != nil {
+		t.Fatal(err)
+	}
+	track := plexFixture(sourceID, libraryID, machineID, "1", "Genre Test", 100)
+	track.Genres = []string{"ambient"}
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Album genre changes do not necessarily update an individual track's
+	// updatedAt in PMS. ViiB must still refresh the cached song genres.
+	track.Genres = []string{"electronic", "ambient"}
+	added, updated, removed, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track})
+	if err != nil || added != 0 || updated != 1 || removed != 0 {
+		t.Fatalf("genre-only update: added=%d updated=%d removed=%d err=%v", added, updated, removed, err)
+	}
+	stored, err := database.GetSongByID(track.SongID)
+	if err != nil || !reflect.DeepEqual(stored.Genre, []string{"Electronic", "Ambient"}) {
+		t.Fatalf("genres were not refreshed: %#v err=%v", stored, err)
+	}
+	if err := database.UpdateGenreStats(); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := database.GetAllGenreStats()
+	statsByName := make(map[string]int, len(stats))
+	for _, stat := range stats {
+		statsByName[stat.Name] = stat.Count
+	}
+	if err != nil || len(stats) != 2 || statsByName["Ambient"] != 1 || statsByName["Electronic"] != 1 {
+		t.Fatalf("genre stats were not rebuilt: %#v err=%v", stats, err)
 	}
 }
 

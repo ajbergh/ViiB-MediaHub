@@ -100,6 +100,7 @@ func TestValidateServerPreservesDNSFailure(t *testing.T) {
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
+
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
 
 func TestListMusicLibrariesFiltersVideoAndUsesTrackPivot(t *testing.T) {
@@ -144,6 +145,9 @@ func TestListMusicLibrariesFiltersVideoAndUsesTrackPivot(t *testing.T) {
 	if !strings.Contains(libraries[0].TrackKey, "/library/sections/2/all") || !strings.Contains(libraries[0].TrackKey, "type=10") {
 		t.Fatalf("track key did not use documented track pivot: %s", libraries[0].TrackKey)
 	}
+	if !strings.Contains(libraries[0].AlbumKey, "/library/sections/2/all") || !strings.Contains(libraries[0].AlbumKey, "type=9") {
+		t.Fatalf("album key did not use documented album pivot: %s", libraries[0].AlbumKey)
+	}
 }
 
 func TestFetchTracksMapsMusicMetadataAndPaginationHeaders(t *testing.T) {
@@ -178,12 +182,41 @@ func TestFetchTracksMapsMusicMetadataAndPaginationHeaders(t *testing.T) {
 	}
 }
 
+func TestFetchTracksFallsBackToAlbumGenres(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Plex-Container-Start") != "0" || r.Header.Get("X-Plex-Container-Size") != "500" {
+			t.Errorf("pagination headers missing: start=%q size=%q", r.Header.Get("X-Plex-Container-Start"), r.Header.Get("X-Plex-Container-Size"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/tracks":
+			_, _ = w.Write([]byte(`{"MediaContainer":{"size":1,"totalSize":1,"Metadata":[{"ratingKey":"123","parentRatingKey":"album-9","key":"/library/metadata/123","type":"track","title":"Track","parentTitle":"Album","grandparentTitle":"Artist","Media":[{"container":"flac","audioCodec":"flac","Part":[{"key":"/library/parts/55/file.flac","container":"flac"}]}]}]}}`))
+		case "/albums":
+			_, _ = w.Write([]byte(`{"MediaContainer":{"size":1,"totalSize":1,"Metadata":[{"ratingKey":"album-9","type":"album","title":"Album","Genre":[{"tag":"Jazz"},{"tag":"Fusion"}]}]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := NewClientWithHTTP(server.URL, "secret", "viib-test", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.FetchTracks(context.Background(), Library{ID: "2", TrackKey: server.URL + "/tracks", AlbumKey: server.URL + "/albums"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Tracks) != 1 || result.Tracks[0].ParentRatingKey != "album-9" || len(result.Tracks[0].Genres) != 2 || result.Tracks[0].Genres[0] != "Jazz" || result.Tracks[0].Genres[1] != "Fusion" {
+		t.Fatalf("track did not inherit album genres: %#v", result.Tracks)
+	}
+}
+
 func TestMapPlexTrackUsesFirstUsableMediaPart(t *testing.T) {
 	track, ok := mapPlexTrack(plexTrack{
-		RatingKey:     "55",
-		Title:         "Alternate",
-		ParentTitle:   "Album",
-		ParentThumb:   "/album/thumb",
+		RatingKey:   "55",
+		Title:       "Alternate",
+		ParentTitle: "Album",
+		ParentThumb: "/album/thumb",
 		Media: []plexMedia{
 			{Container: "flac", AudioCodec: "flac", Part: []plexPart{{Key: ""}}},
 			{Container: "mp3", AudioCodec: "mp3", Part: []plexPart{{Key: "/library/parts/55/file.mp3", Container: "mp3"}}},
@@ -225,13 +258,13 @@ func TestFetchTracksContinuesWhenServerReturnsShortPageWithTotalRemaining(t *tes
 		w.Header().Set("Content-Type", "application/json")
 		makeTrack := func(id string) map[string]any {
 			return map[string]any{
-				"ratingKey": id,
-				"key":       "/library/metadata/" + id,
-				"type":      "track",
-				"title":     "Track " + id,
+				"ratingKey":   id,
+				"key":         "/library/metadata/" + id,
+				"type":        "track",
+				"title":       "Track " + id,
 				"parentTitle": "Album",
 				"parentThumb": "/library/metadata/album/thumb/1",
-				"Media": []any{map[string]any{"container": "mp3", "audioCodec": "mp3", "Part": []any{map[string]any{"key": "/library/parts/" + id + "/file.mp3"}}}},
+				"Media":       []any{map[string]any{"container": "mp3", "audioCodec": "mp3", "Part": []any{map[string]any{"key": "/library/parts/" + id + "/file.mp3"}}}},
 			}
 		}
 		var metadata []any
