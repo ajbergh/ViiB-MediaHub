@@ -525,17 +525,13 @@ func mapPlexTrack(raw plexTrack) (Track, bool) {
 	// album-centric artwork matches the artwork Plex shows for that album; fall
 	// back to the track thumbnail for servers/items without parent artwork.
 	artwork := firstNonEmpty(raw.ParentThumb, raw.Thumb)
-	albumArtist := raw.GrandparentTitle
-	if albumArtist == "" {
-		albumArtist = raw.OriginalTitle
-	}
 	return Track{
 		RatingKey:       raw.RatingKey,
 		MetadataKey:     raw.Key,
 		Title:           raw.Title,
 		Artist:          raw.GrandparentTitle,
 		Album:           raw.ParentTitle,
-		AlbumArtist:     albumArtist,
+		AlbumArtist:     raw.GrandparentTitle,
 		TrackNumber:     raw.Index,
 		DiscNumber:      raw.ParentIndex,
 		Genres:          genres,
