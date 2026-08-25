@@ -6,14 +6,19 @@
 export const isAuthoritativePlexArtwork = (url?: string | null): boolean =>
   Boolean(url && /^\/api\/cover\/[^?]+\?v=/.test(url));
 
+export const isPlexSourcePath = (path?: string | null): boolean =>
+  Boolean(path && path.startsWith('plex://'));
+
 /**
  * Preserve the existing enrichment preference for local media, but never let
- * Spotify or other enrichment artwork replace artwork supplied by Plex.
+ * Spotify or other enrichment artwork replace Plex's artwork decision. That
+ * includes the intentional absence of artwork on the Plex item.
  */
 export const resolveAlbumArtwork = (
   catalogArtwork?: string | null,
   enrichmentArtwork?: string | null,
+  plexBacked = false,
 ): string | undefined => {
-  if (isAuthoritativePlexArtwork(catalogArtwork)) return catalogArtwork || undefined;
+  if (plexBacked || isAuthoritativePlexArtwork(catalogArtwork)) return catalogArtwork || undefined;
   return enrichmentArtwork || catalogArtwork || undefined;
 };
