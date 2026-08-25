@@ -12,7 +12,7 @@ import { useStore, useAlbums } from '../store';
 import { Play, ArrowLeft, User, MoreHorizontal, ExternalLink, Shuffle, Disc } from 'lucide-react';
 import { generateGradient, coverBackground } from '../utils';
 import { ContextMenuType } from '../types';
-import { resolveAlbumArtwork } from '../lib/artwork';
+import { isPlexSourcePath, resolveAlbumArtwork } from '../lib/artwork';
 
 const splitArtistNames = (artistString: string): string[] => {
   if (!artistString) return [];
@@ -72,10 +72,14 @@ export const ArtistDetail: React.FC = () => {
 
     useEffect(() => {
         if (decodedArtistName) fetchArtistMetadata(decodedArtistName);
-    }, [decodedArtistName]);
+    }, [decodedArtistName, fetchArtistMetadata]);
 
     const metadata = artistMetadata[decodedArtistName];
-    const imageUrl = metadata?.imageUrl || artistSongs[0]?.coverUrl;
+    const artistHasPlex = artistSongs.some(song => isPlexSourcePath(song.path));
+    // Plex album covers are not artist portraits. Until Plex artist/type-8
+    // metadata is imported separately, use the true enrichment portrait or a
+    // neutral fallback instead of turning a Plex album cover into a portrait.
+    const imageUrl = metadata?.imageUrl || (artistHasPlex ? undefined : artistSongs[0]?.coverUrl);
     const totalDuration = artistSongs.reduce((acc, s) => acc + s.duration, 0);
     const durationHours = Math.floor(totalDuration / 3600);
     const durationMin = Math.floor((totalDuration % 3600) / 60);
@@ -220,7 +224,7 @@ export const ArtistDetail: React.FC = () => {
                     {artistAlbums.map((album) => {
                         const metadataKey = `${album.name}::${album.artist}`;
                         const albumMeta = albumMetadata[metadataKey];
-                        const coverUrl = resolveAlbumArtwork(album.coverUrl, albumMeta?.coverUrl);
+                        const coverUrl = resolveAlbumArtwork(album.coverUrl, albumMeta?.coverUrl, album.plexBacked);
 
                         return (
                             <div
