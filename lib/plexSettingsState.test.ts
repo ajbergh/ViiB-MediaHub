@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initialPlexSettingsState, plexSettingsReducer } from './plexSettingsState';
+import { initialPlexSettingsState, plexSettingsReducer, plexSourceNeedsAuthentication } from './plexSettingsState';
 
 const source = {
   id: 'plexsrc_a', machineIdentifier: 'machine-a', baseUrl: 'http://192.168.1.2:32400', name: 'Studio Plex',
@@ -32,6 +32,12 @@ describe('plexSettingsReducer', () => {
     expect(state.source?.available).toBe(false);
     expect(state.source?.lastSyncStatus).toBe('error');
     expect(state.source?.libraryTitle).toBe('Music');
+  });
+
+  it('does not require account auth solely because no token exists', () => {
+    expect(plexSourceNeedsAuthentication(source, '')).toBe(false);
+    expect(plexSourceNeedsAuthentication(source, 'Plex authentication is required or has expired')).toBe(true);
+    expect(plexSourceNeedsAuthentication({ ...source, lastSyncStatus: 'auth_required' }, '')).toBe(true);
   });
 
   it('clears configuration on disconnect reset', () => {

@@ -37,6 +37,16 @@ export type PlexSettingsAction =
   | { type: 'authenticated'; authenticated: boolean }
   | { type: 'reset' };
 
+// Unclaimed Plex servers can expose libraries without account authentication,
+// so token presence alone must never gate the UI. Require sign-in only after the
+// source/backend explicitly reports auth failure or the current request error
+// says authentication/reconnect is required.
+export function plexSourceNeedsAuthentication(source: PlexSource | null, error: string): boolean {
+  if (!source) return false;
+  if (source.lastSyncStatus === 'auth_required') return true;
+  return /authentication|sign[ -]?in|reconnect/i.test(error);
+}
+
 export function plexSettingsReducer(state: PlexSettingsState, action: PlexSettingsAction): PlexSettingsState {
   switch (action.type) {
     case 'loaded':

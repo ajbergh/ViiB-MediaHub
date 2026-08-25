@@ -4,7 +4,7 @@ import { Button } from './ui/Button';
 import { TextInput } from './ui/TextInput';
 import { useStore } from '../store';
 import { plexService, type PlexServer } from '../services/plex';
-import { initialPlexSettingsState, plexSettingsReducer } from '../lib/plexSettingsState';
+import { initialPlexSettingsState, plexSettingsReducer, plexSourceNeedsAuthentication } from '../lib/plexSettingsState';
 
 const busyLabel: Record<string, string> = {
   loading: 'Loading Plex configuration…',
@@ -18,19 +18,13 @@ const busyLabel: Record<string, string> = {
 };
 
 function formatSyncTime(value?: number): string {
-  if (!value) return 'Never';
-  return new Date(value).toLocaleString();
+  return value ? new Date(value).toLocaleString() : 'Never';
 }
 
 function serverAddress(server: PlexServer): string {
   return server.url || `${server.scheme || 'http'}://${server.host}:${server.port}`;
 }
 
-/**
- * PlexMusicSourceSettings configures a remote audio catalog while keeping all
- * normal music browsing/playback in the existing ViiB library UI. No Plex token
- * is stored in component/Zustand/browser storage or included in media URLs.
- */
 export const PlexMusicSourceSettings: React.FC = () => {
   const [state, dispatch] = useReducer(plexSettingsReducer, initialPlexSettingsState);
   const [editingServer, setEditingServer] = useState(false);
@@ -57,22 +51,18 @@ export const PlexMusicSourceSettings: React.FC = () => {
     }
   }, []);
 
-  const loadConfig = useCallback(async (loadMusicLibraries = true) => {
+  const loadConfig = useCallback(async () => {
     dispatch({ type: 'busy', busy: 'loading' });
     try {
       const config = await plexService.getConfig();
       if (disposed.current) return;
       dispatch({ type: 'loaded', source: config.source, authenticated: config.authenticated });
-      if (config.source && loadMusicLibraries) {
-        try {
-          const libraries = await plexService.getLibraries();
-          if (!disposed.current) dispatch({ type: 'libraries', libraries });
-        } catch (error) {
-          // Claimed servers commonly require sign-in. Preserve the connected
-          // server so the UI can offer reconnect/authentication instead of
-          // treating this as a failed configuration.
-          if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Plex authentication may be required' });
-        }
+      if (!config.source) return;
+      try {
+        const libraries = await plexService.getLibraries();
+        if (!disposed.current) dispatch({ type: 'libraries', libraries });
+      } catch (error) {
+        if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Plex authentication may be required' });
       }
     } catch (error) {
       if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to load Plex configuration' });
@@ -95,7 +85,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
       dispatch({ type: 'discovered', servers: result.servers, warning: result.warning });
       setEditingServer(true);
       if (result.servers.length === 0 && !result.warning) {
-        dispatch({ type: 'message', message: 'No Plex servers were found on the LAN. You can add one manually below.' });
+        dispatch({ type: 'message', message: 'No Plex servers were found on the LAN. Add one manually below.' });
       }
     } catch (error) {
       dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Plex discovery failed' });
@@ -112,8 +102,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
       const config = await plexService.getConfig();
       dispatch({ type: 'loaded', source: config.source, authenticated: config.authenticated });
       try {
-        const libraries = await plexService.getLibraries();
-        dispatch({ type: 'libraries', libraries });
+        dispatch({ type: 'libraries', libraries: await plexService.getLibraries() });
       } catch (error) {
         dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Sign in to Plex to view this server’s music libraries' });
       }
@@ -128,9 +117,9 @@ export const PlexMusicSourceSettings: React.FC = () => {
       const status = await plexService.getAuthStatus();
       if (status.authenticated) {
         dispatch({ type: 'authenticated', authenticated: true });
-        dispatch({ type: 'message', message: 'Plex sign-in complete.' });
         addLog('success', '[Plex] Authentication completed');
         await loadConfig();
+        dispatch({ type: 'message', message: 'Plex sign-in complete.' });
         return;
       }
       if (!status.pending || Date.now() >= expiresAt * 1000) {
@@ -145,16 +134,29 @@ export const PlexMusicSourceSettings: React.FC = () => {
 
   const signIn = async () => {
     dispatch({ type: 'busy', busy: 'authenticating', message: '' });
+    // Open a blank window synchronously while this click still has a user
+    // gesture. Opening only after the network request is commonly popup-blocked.
+    const authWindow = window.open('', '_blank', 'noopener,noreferrer');
     try {
       const start = await plexService.startAuth();
-      const opened = window.open(start.authUrl, '_blank', 'noopener,noreferrer');
-      if (!opened) {
-        dispatch({ type: 'message', message: 'Your browser blocked the Plex sign-in window. Open the sign-in link and then return to ViiB.' });
-        window.location.assign(start.authUrl);
-        return;
+      if (authWindow) {
+        authWindow.location.href = start.authUrl;
+      } else {
+        const secondAttempt = window.open(start.authUrl, '_blank', 'noopener,noreferrer');
+        if (!secondAttempt) {
+          try {
+            await navigator.clipboard.writeText(start.authUrl);
+            dispatch({ type: 'message', message: 'The Plex sign-in popup was blocked. The official Plex authorization URL was copied to your clipboard.' });
+          } catch {
+            dispatch({ type: 'message', message: 'The Plex sign-in popup was blocked. Allow popups for ViiB and choose Sign in / Reconnect again.' });
+          }
+        }
       }
+      // Keep ViiB open and poll even if the authorization window needed a
+      // second attempt; never navigate the desktop app away from its UI.
       authTimer.current = setTimeout(() => void pollAuthentication(start.expiresAt), 1500);
     } catch (error) {
+      authWindow?.close();
       dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to start Plex sign-in' });
     }
   };
@@ -209,7 +211,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
   };
 
   const disconnect = async () => {
-    const confirmed = window.confirm('Remove this Plex source from ViiB? This only removes ViiB’s cached catalog and credentials. Nothing will be deleted or changed on the Plex server.');
+    const confirmed = window.confirm('Remove this Plex source from ViiB? This removes only ViiB’s cached catalog and credentials. Nothing is deleted or changed on the Plex server.');
     if (!confirmed) return;
     dispatch({ type: 'busy', busy: 'disconnecting', message: '' });
     try {
@@ -224,7 +226,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
     }
   };
 
-  const sourceNeedsAuth = !!state.source && (!state.authenticated || state.source.lastSyncStatus === 'auth_required');
+  const sourceNeedsAuth = plexSourceNeedsAuthentication(state.source, state.error);
   const busy = state.busy !== null;
 
   return (
@@ -270,7 +272,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
           {state.source.lastSyncStatus === 'error' && state.source.lastSyncError && (
             <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               <WifiOff size={16} className="mt-0.5" />
-              <span>{state.source.lastSyncError}. Cached Plex music remains in ViiB and will not be removed until a later successful sync confirms changes.</span>
+              <span>{state.source.lastSyncError}. Cached Plex music remains in ViiB until a later successful sync confirms changes.</span>
             </div>
           )}
         </div>
@@ -286,13 +288,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
               <h3 className="mb-2 text-sm font-semibold text-text-main">Discovered Plex servers</h3>
               <div className="grid gap-2 md:grid-cols-2">
                 {state.discovered.map(server => (
-                  <button
-                    key={server.machineIdentifier || serverAddress(server)}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void connect(serverAddress(server))}
-                    className="rounded-lg border border-surface-border bg-surface-2 p-3 text-left transition hover:border-brand disabled:opacity-50"
-                  >
+                  <button key={server.machineIdentifier || serverAddress(server)} type="button" disabled={busy} onClick={() => void connect(serverAddress(server))} className="rounded-lg border border-surface-border bg-surface-2 p-3 text-left transition hover:border-brand disabled:opacity-50">
                     <div className="font-semibold text-text-main">{server.name || server.host}</div>
                     <div className="mt-1 font-mono text-xs text-text-subtle">{serverAddress(server)}</div>
                     <div className="mt-1 text-xs text-text-secondary">{server.version ? `Plex ${server.version}` : 'Plex Media Server'}{server.claimed ? ' · Claimed' : ' · Unclaimed'}</div>
@@ -305,13 +301,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
           <div>
             <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">Manual Plex server</label>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <TextInput
-                value={state.manualUrl}
-                onChange={event => dispatch({ type: 'manual_url', url: event.target.value })}
-                placeholder="192.168.1.20 or https://plex.example.com"
-                className="flex-1"
-                inputClassName="font-mono"
-              />
+              <TextInput value={state.manualUrl} onChange={event => dispatch({ type: 'manual_url', url: event.target.value })} placeholder="192.168.1.20 or https://plex.example.com" className="flex-1" inputClassName="font-mono" />
               <Button variant="secondary" disabled={busy || !state.manualUrl.trim()} onClick={() => void connect(state.manualUrl)} leftIcon={<Server size={16} />}>Connect</Button>
             </div>
             <p className="mt-2 text-xs text-text-subtle">Bare hosts/IP addresses default to port 32400. Full HTTP/HTTPS URLs are used as entered so reverse proxies on 80/443 work. The endpoint is validated as Plex before it is saved.</p>
@@ -335,13 +325,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
               {state.libraries.map(library => {
                 const selected = state.selectedLibraryId === library.id || state.source?.libraryId === library.id;
                 return (
-                  <button
-                    type="button"
-                    key={library.id}
-                    disabled={busy}
-                    onClick={() => void selectLibrary(library.id)}
-                    className={`rounded-lg border p-3 text-left transition disabled:opacity-50 ${selected ? 'border-brand bg-brand/10' : 'border-surface-border bg-surface-2 hover:border-brand/60'}`}
-                  >
+                  <button type="button" key={library.id} disabled={busy} onClick={() => void selectLibrary(library.id)} className={`rounded-lg border p-3 text-left transition disabled:opacity-50 ${selected ? 'border-brand bg-brand/10' : 'border-surface-border bg-surface-2 hover:border-brand/60'}`}>
                     <div className="flex items-center gap-2"><Music size={15} className={selected ? 'text-brand' : 'text-text-subtle'} /><span className="font-semibold text-text-main">{library.title}</span></div>
                     <div className="mt-1 text-xs text-text-subtle">Music / audio only{selected ? ' · Selected' : ''}</div>
                   </button>

@@ -41,10 +41,26 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 
 	r.Use(middleware.Throttle(100))
 
-	// Source-aware media routes preserve the existing browser contract while
-	// dispatching Plex catalog rows through the authenticated backend proxy.
-	r.Get("/api/audio/*", apiHandler.ServeAudioSourceAware)
-	r.Get("/api/cover/*", apiHandler.ServeCoverSourceAware)
+	// Local song IDs are hexadecimal hashes. Plex song IDs use the reserved
+	// `plex_` namespace, so ordinary local playback bypasses Plex source/schema
+	// lookups entirely while preserving the existing /api/audio and /api/cover
+	// browser contracts for both source types.
+	r.Get("/api/audio/*", func(w http.ResponseWriter, req *http.Request) {
+		songID := strings.TrimPrefix(req.URL.Path, "/api/audio/")
+		if strings.HasPrefix(songID, "plex_") {
+			apiHandler.ServeAudioSourceAware(w, req)
+			return
+		}
+		apiHandler.ServeLocalAudio(w, req)
+	})
+	r.Get("/api/cover/*", func(w http.ResponseWriter, req *http.Request) {
+		pathOrID := strings.TrimPrefix(req.URL.Path, "/api/cover/")
+		if strings.HasPrefix(pathOrID, "plex_") {
+			apiHandler.ServeCoverSourceAware(w, req)
+			return
+		}
+		apiHandler.ServeLocalCover(w, req)
+	})
 	r.Mount("/api/v2/plex", apiHandler.PlexRoutes())
 
 	r.Mount("/api/v2/operations", apiHandler.V2LibraryOperationRoutes())
