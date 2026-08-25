@@ -122,7 +122,7 @@ func (a *AuthClient) requestJSON(ctx context.Context, method, endpoint, clientID
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("Plex authentication service returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("plex authentication service returned HTTP %d", resp.StatusCode)
 	}
 	if out == nil {
 		return nil
@@ -157,7 +157,7 @@ func (a *AuthClient) StartPIN(ctx context.Context, credentials *Credentials) (Au
 		return AuthStart{}, err
 	}
 	if pin.ID == 0 || pin.Code == "" {
-		return AuthStart{}, errors.New("Plex authentication service returned an incomplete PIN")
+		return AuthStart{}, errors.New("plex authentication service returned an incomplete PIN")
 	}
 	expiresAt := pin.ExpiresAt
 	if expiresAt == 0 {
@@ -257,7 +257,7 @@ func (a *AuthClient) Refresh(ctx context.Context, credentials *Credentials) erro
 		return err
 	}
 	if nonce.Nonce == "" {
-		return errors.New("Plex authentication service returned no nonce")
+		return errors.New("plex authentication service returned no nonce")
 	}
 	now := time.Now()
 	jwt, err := signDeviceJWT(*credentials, map[string]any{
@@ -272,7 +272,7 @@ func (a *AuthClient) Refresh(ctx context.Context, credentials *Credentials) erro
 		return RedactError(err)
 	}
 	if response.AuthToken == "" {
-		return errors.New("Plex authentication refresh returned no token")
+		return errors.New("plex authentication refresh returned no token")
 	}
 	credentials.AccountToken = response.AuthToken
 	credentials.AccountTokenExpiry = tokenExpiry(response.AuthToken)
@@ -329,7 +329,7 @@ func (a *AuthClient) ResolveServerToken(ctx context.Context, credentials *Creden
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("Plex resources service returned HTTP %d", resp.StatusCode)
+		return "", "", fmt.Errorf("plex resources service returned HTTP %d", resp.StatusCode)
 	}
 	var resources []resource
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&resources); err != nil {
@@ -340,7 +340,7 @@ func (a *AuthClient) ResolveServerToken(ctx context.Context, credentials *Creden
 			continue
 		}
 		if candidate.AccessToken == "" {
-			return "", "", errors.New("Plex server resource did not provide an access token")
+			return "", "", errors.New("plex server resource did not provide an access token")
 		}
 		credentials.ServerTokens[machineIdentifier] = candidate.AccessToken
 		for _, connection := range candidate.Connections {
