@@ -9,7 +9,7 @@ import (
 // ErrAudioKeyRejected means Spotify did not return a usable decryption key for
 // a track. librespot-go currently reports this as crypto/aes key size zero,
 // even though the AES implementation itself is not the source of the failure.
-var ErrAudioKeyRejected = errors.New("Spotify rejected the audio key request")
+var ErrAudioKeyRejected = errors.New("spotify rejected the audio key request")
 
 // IsAudioKeyRejected recognizes both the normalized error and messages emitted
 // by current and older librespot implementations.
