@@ -2,14 +2,16 @@
 
 ![Search page](../assets/screenshots/search.png)
 
-The Search page finds tracks, albums, artists, playlists, genres, and media paths in your local library. In desktop/backend mode it uses the indexed `/api/v2/search` endpoint; browser-only mode and a failed server request fall back to the songs already loaded in the renderer.
+The Search page finds tracks, albums, artists, playlists, genres, and media identities in the ViiB catalog. In desktop/backend mode it uses the indexed `/api/v2/search` endpoint; browser-only mode and failed server requests fall back to songs already loaded in the renderer.
+
+The indexed catalog includes both local filesystem tracks and synchronized Plex music tracks. Spotify catalog search remains separate on the [Spotify](spotify.md) page.
 
 ---
 
 ## Accessing Search
 
 - Click **Search** in the sidebar.
-- Type a query in the [Home](home.md) page search bar and press **Enter** — the Search page opens with that query pre-filled.
+- Type a query in the [Home](home.md) search bar and press **Enter**.
 
 ---
 
@@ -17,36 +19,41 @@ The Search page finds tracks, albums, artists, playlists, genres, and media path
 
 | Feature | Description |
 |---|---|
-| Debounced results | Results update 250 ms after typing stops; a new query aborts the previous server request |
+| Debounced results | Results update after typing pauses; a newer query cancels the previous request |
 | Category tabs | Filter results by All, Tracks, Albums, Artists, Playlists |
-| Indexed backend search | Desktop/backend mode searches the persisted index instead of filtering a full library download |
-| Play directly | Click a result to play immediately |
-| Persistent state | Your last query and selected tab are remembered when you navigate away and return |
-| Resilient fallback | If the indexed request fails, the page explains that it is showing locally loaded results |
+| Indexed backend search | Desktop/backend mode searches the persisted catalog index instead of filtering a full library download |
+| Source-transparent results | Local and synchronized Plex tracks use the same search/result interactions |
+| Play directly | Click a result to play immediately through the normal ViiB player |
+| Persistent state | Last query and selected tab are retained across navigation |
+| Resilient fallback | If indexed search fails, the page can fall back to songs already loaded locally in the renderer |
 
 ---
 
 ## Result Categories
 
 ### All
-Shows the top results from all categories combined.
+Shows top results from all supported categories.
 
 ### Tracks
-In backend mode, matches the beginning of title, artist, album, album artist, first genre, or media path. The local fallback matches title, artist, album, and genre from already loaded songs.
+Backend mode matches indexed song metadata such as title, artist, album, album artist, genre, and source/media identity fields. Local fallback searches the song metadata already loaded in the renderer.
+
+For Plex tracks, playback still uses the normal ViiB song result; the frontend does not receive a Plex token or raw authenticated PMS media URL.
 
 ### Albums
-Matches the beginning of album name, album artist, or track artist. Clicking an album navigates to [Album Detail](albums.md).
+Matches album name, album artist, or track artist. Clicking an album opens [Album Detail](albums.md).
 
 ### Artists
-Matches the beginning of artist name. Clicking an artist navigates to [Artist Detail](artists.md).
+Matches artist name. Clicking an artist opens [Artist Detail](artists.md).
 
 ### Playlists
-Matches the beginning of playlist name. Clicking a playlist navigates to the [Playlist Detail](playlists.md) page.
+Matches playlist name. Clicking a playlist opens [Playlist Detail](playlists.md).
 
 ---
 
 ## Search Tips
 
-- Search is case-insensitive. Backend mode uses prefix matching to keep large-library queries index-friendly; begin with the title, artist, album, genre, path, or playlist name you expect.
-- Results are capped per category. Add more leading characters to narrow a broad query.
-- The search searches your **local library only** — for Spotify catalog search, use the [Spotify](spotify.md) page.
+- Search is case-insensitive.
+- Backend mode uses prefix-oriented indexing to keep large-library queries efficient; enter additional leading characters to narrow broad results.
+- Plex tracks become searchable after a successful Plex library synchronization.
+- A temporarily offline Plex server does not remove cached Plex tracks from search. Those tracks remain cataloged, while playback can report source unavailability until PMS reconnects.
+- Spotify's remote catalog is not folded into ViiB's indexed catalog search; use [Spotify](spotify.md) for Spotify catalog discovery.
