@@ -17,13 +17,13 @@ import (
 )
 
 var (
-	ErrAuthenticationRequired = errors.New("Plex authentication required")
-	ErrInvalidToken           = errors.New("Plex authentication token is invalid or expired")
+	ErrAuthenticationRequired = errors.New("plex authentication required")
+	ErrInvalidToken           = errors.New("plex authentication token is invalid or expired")
 	ErrNotPlexServer          = errors.New("endpoint is not a Plex Media Server")
-	ErrDNSFailure             = errors.New("Plex server DNS lookup failed")
-	ErrConnectionFailed       = errors.New("Plex server connection failed")
-	ErrConnectionTimeout      = errors.New("Plex server connection timed out")
-	ErrTLSFailure             = errors.New("Plex server TLS validation failed")
+	ErrDNSFailure             = errors.New("plex server DNS lookup failed")
+	ErrConnectionFailed       = errors.New("plex server connection failed")
+	ErrConnectionTimeout      = errors.New("plex server connection timed out")
+	ErrTLSFailure             = errors.New("plex server TLS validation failed")
 )
 
 // Client communicates with one PMS. Tokens are sent only as X-Plex-Token
@@ -77,7 +77,7 @@ func (c *Client) BaseURL() string { return strings.TrimRight(c.baseURL.String(),
 func NormalizeServerURL(input string) (string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return "", errors.New("Plex server address is required")
+		return "", errors.New("plex server address is required")
 	}
 	explicitURL := strings.Contains(input, "://")
 	if !explicitURL {
@@ -88,16 +88,16 @@ func NormalizeServerURL(input string) (string, error) {
 		return "", fmt.Errorf("invalid Plex server address: %w", err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return "", errors.New("Plex server URL must use http or https")
+		return "", errors.New("plex server URL must use http or https")
 	}
 	if u.User != nil {
-		return "", errors.New("Plex server URL must not contain credentials")
+		return "", errors.New("plex server URL must not contain credentials")
 	}
 	if u.Hostname() == "" {
-		return "", errors.New("Plex server hostname or IP is required")
+		return "", errors.New("plex server hostname or IP is required")
 	}
 	if u.RawQuery != "" || u.Fragment != "" {
-		return "", errors.New("Plex server URL must not contain a query or fragment")
+		return "", errors.New("plex server URL must not contain a query or fragment")
 	}
 	port := u.Port()
 	if port == "" && !explicitURL {
@@ -106,7 +106,7 @@ func NormalizeServerURL(input string) (string, error) {
 	} else if port != "" {
 		parsedPort, err := strconv.Atoi(port)
 		if err != nil || parsedPort < 1 || parsedPort > 65535 {
-			return "", errors.New("Plex server port is invalid")
+			return "", errors.New("plex server port is invalid")
 		}
 		u.Host = net.JoinHostPort(u.Hostname(), port)
 	}
@@ -190,7 +190,7 @@ func classifyHTTPError(resp *http.Response) error {
 	case http.StatusUnauthorized, http.StatusForbidden, 498:
 		return ErrInvalidToken
 	default:
-		return fmt.Errorf("Plex server returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("plex server returned HTTP %d", resp.StatusCode)
 	}
 }
 
@@ -294,7 +294,7 @@ func (c *Client) ValidateServer(ctx context.Context) (Server, error) {
 		return server, err
 	}
 	if root.MediaContainer.MachineIdentifier != "" && root.MediaContainer.MachineIdentifier != server.MachineIdentifier {
-		return Server{}, errors.New("Plex server identity changed during validation")
+		return Server{}, errors.New("plex server identity changed during validation")
 	}
 	server.Name = root.MediaContainer.FriendlyName
 	if server.Name == "" {
