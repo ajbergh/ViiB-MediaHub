@@ -92,7 +92,7 @@ const App: React.FC = () => {
           api.getSongs().catch(() => []),
           plexService.getConfig().catch(() => null),
         ]);
-        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.clientId) || Boolean(plexConfig?.source)) {
+        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.clientId) || Boolean(plexConfig?.source?.libraryId)) {
           setHasCompletedSetup(true);
         }
       } catch (error) { appLogger.warn('Failed to check existing configuration', error); }
