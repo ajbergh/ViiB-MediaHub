@@ -38,6 +38,7 @@ import { SmartMixDetail } from './pages/SmartMixDetail';
 import { DJModeV2 } from './pages/DJModeV2';
 import { useStore } from './store';
 import { api } from './services/api';
+import { plexService } from './services/plex';
 import DownloadManager from './components/DownloadManager';
 import LibraryEventListener from './components/LibraryEventListener';
 import ConfirmDialog from './components/ConfirmDialog';
@@ -85,12 +86,15 @@ const App: React.FC = () => {
     const checkExistingConfig = async () => {
       if (!backendAvailable || hasCompletedSetup) return;
       try {
-        const [folders, creds, songs] = await Promise.all([
+        const [folders, creds, songs, plexConfig] = await Promise.all([
           api.getFolders().catch(() => []),
           api.getSpotifyCredentials().catch(() => null),
           api.getSongs().catch(() => []),
+          plexService.getConfig().catch(() => null),
         ]);
-        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.clientId)) setHasCompletedSetup(true);
+        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.clientId) || Boolean(plexConfig?.source)) {
+          setHasCompletedSetup(true);
+        }
       } catch (error) { appLogger.warn('Failed to check existing configuration', error); }
     };
     void checkExistingConfig();
