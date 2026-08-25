@@ -138,7 +138,7 @@ func (d *DB) SavePlexSource(source PlexSource) error {
 		return err
 	}
 	if source.ID == "" || source.MachineIdentifier == "" || source.BaseURL == "" {
-		return errors.New("Plex source id, machine identifier, and base URL are required")
+		return errors.New("plex source id, machine identifier, and base URL are required")
 	}
 	if source.ConnectedAt == 0 {
 		source.ConnectedAt = time.Now().UnixMilli()
