@@ -227,10 +227,19 @@ export const useAlbumCovers = () => {
   return useMemo(() => {
     const covers: Record<string, string> = {};
     albums.forEach((album) => {
-      if (!album.coverUrl) return;
       const composite = `${album.name}::${album.artist}`;
+      if (album.plexBacked) {
+        // Empty string is an intentional sentinel: Plex owns this album but did
+        // not provide artwork. This prevents track-level UI using
+        // `song.coverUrl || albumCovers[...]` from borrowing a local cover with
+        // the same album name.
+        covers[composite] = album.coverUrl || '';
+        covers[album.name] = album.coverUrl || '';
+        return;
+      }
+      if (!album.coverUrl) return;
       covers[composite] = album.coverUrl;
-      if (!covers[album.name] || album.plexBacked || isAuthoritativePlexArtwork(album.coverUrl)) {
+      if (!(album.name in covers)) {
         covers[album.name] = album.coverUrl;
       }
     });
