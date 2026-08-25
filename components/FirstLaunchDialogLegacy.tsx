@@ -44,10 +44,19 @@ import { SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
 interface FirstLaunchDialogProps {
   isOpen: boolean;
   onComplete: () => void;
+  /** Start at the folder screen when source choice has already happened. */
+  initialStep?: number;
+  /** Return to the source chooser instead of the legacy welcome screen. */
+  onBackToSourceChoice?: () => void;
 }
 
-export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, onComplete }) => {
-  const [step, setStep] = useState(1);
+export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
+  isOpen,
+  onComplete,
+  initialStep = 1,
+  onBackToSourceChoice,
+}) => {
+  const [step, setStep] = useState(initialStep);
   const [isScanning, setIsScanning] = useState(false);
   const [localScanProgress, setLocalScanProgress] = useState('');
 
@@ -613,10 +622,10 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
       <div className="flex items-center justify-between">
         <Button
           variant="ghost"
-          onClick={() => setStep(1)}
+          onClick={() => onBackToSourceChoice ? onBackToSourceChoice() : setStep(1)}
           className="px-0 py-0 text-text-secondary hover:text-text-main hover:bg-transparent"
         >
-          ← Back
+          ← {onBackToSourceChoice ? 'Change source' : 'Back'}
         </Button>
 
         <div className="flex items-center gap-3">
