@@ -120,6 +120,14 @@ func TestStandardPortFallbackDoesNotSweepPublicNetworks(t *testing.T) {
 	}
 }
 
+func TestInterfaceIPv4AddressesAreIPv4Values(t *testing.T) {
+	for _, address := range interfaceIPv4Addresses() {
+		if address.To4() == nil {
+			t.Fatalf("expected discovery helper to return IPv4 values, got %s", address)
+		}
+	}
+}
+
 func TestUsableGDMIPv4DoesNotRequirePrivateAddressing(t *testing.T) {
 	accepted := []string{
 		"192.168.1.20", // RFC1918 LAN
