@@ -292,7 +292,11 @@ type existingPlexCatalogTrack struct {
 }
 
 func (record existingPlexCatalogTrack) matches(libraryID string, track PlexCatalogTrack) bool {
-	return record.libraryID == libraryID &&
+	// updatedAt is the only PMS metadata version signal persisted today. If PMS
+	// omits it (zero), be conservative and refresh the row rather than assuming
+	// title/artist/album/etc. are unchanged merely because source keys match.
+	return track.UpdatedAt > 0 &&
+		record.libraryID == libraryID &&
 		record.updatedAt == track.UpdatedAt &&
 		record.metadataKey == track.MetadataKey &&
 		record.mediaKey == track.MediaKey &&
