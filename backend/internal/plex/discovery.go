@@ -3,6 +3,7 @@ package plex
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -14,15 +15,15 @@ import (
 )
 
 const (
-	gdmSearchRequest        = "M-SEARCH * HTTP/1.0\r\n\r\n"
-	gdmMulticastAddress    = "239.0.0.250"
-	gdmDefaultTimeout      = 3500 * time.Millisecond
-	gdmResponseWindow      = 1500 * time.Millisecond
-	gdmRepeatDelay         = 120 * time.Millisecond
-	plexProbeDialTimeout   = 140 * time.Millisecond
+	gdmSearchRequest         = "M-SEARCH * HTTP/1.0\r\n\r\n"
+	gdmMulticastAddress     = "239.0.0.250"
+	gdmDefaultTimeout       = 3500 * time.Millisecond
+	gdmResponseWindow       = 1500 * time.Millisecond
+	gdmRepeatDelay          = 120 * time.Millisecond
+	plexProbeDialTimeout    = 140 * time.Millisecond
 	plexProbeRequestTimeout = 300 * time.Millisecond
-	plexProbeMaxHosts      = 512
-	plexProbeConcurrency   = 64
+	plexProbeMaxHosts       = 512
+	plexProbeConcurrency    = 64
 )
 
 // ParseGDMResponse parses Plex GDM's HTTP-header-like UDP response. Malformed
@@ -207,9 +208,8 @@ func discoverGDMOnBinding(ctx context.Context, binding gdmInterfaceBinding, dead
 	// A single multicast datagram is easy to lose and some Plex/server/network
 	// combinations advertise via subnet broadcast rather than multicast. Send
 	// two small search waves to both the documented multicast group and the
-	// interface's directed broadcast address. UDPConn supports concurrent reads
-	// and writes, but sending the second wave before reading also works because
-	// kernel receive buffers retain any immediate response.
+	// interface's directed broadcast address. Responses received while the
+	// second wave is sent remain buffered by the UDP socket.
 	successfulSends := 0
 	var lastSendErr error
 	for wave := 0; wave < 2; wave++ {
@@ -264,6 +264,20 @@ func isSafeStandardPortProbeIP(ip net.IP) bool {
 	return ipv4 != nil && (ipv4.IsPrivate() || ipv4.IsLinkLocalUnicast())
 }
 
+func ipv4Number(ip net.IP) (uint32, bool) {
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return 0, false
+	}
+	return binary.BigEndian.Uint32(ipv4), true
+}
+
+func ipv4FromNumber(value uint32) net.IP {
+	ip := make(net.IP, net.IPv4len)
+	binary.BigEndian.PutUint32(ip, value)
+	return ip
+}
+
 func subnetProbeCandidates(bindings []gdmInterfaceBinding, maximum int) []net.IP {
 	if maximum <= 0 {
 		return nil
@@ -308,13 +322,15 @@ func subnetProbeCandidates(bindings []gdmInterfaceBinding, maximum int) []net.IP
 			mask = net.CIDRMask(24, 32)
 		}
 		networkIP := binding.IP.Mask(mask).To4()
-		if networkIP == nil {
+		broadcastIP := directedBroadcast(&net.IPNet{IP: networkIP, Mask: mask})
+		networkNumber, networkOK := ipv4Number(networkIP)
+		broadcastNumber, broadcastOK := ipv4Number(broadcastIP)
+		if !networkOK || !broadcastOK || broadcastNumber <= networkNumber+1 {
 			continue
 		}
-		broadcast := directedBroadcast(&net.IPNet{IP: networkIP, Mask: mask})
-		for host := 1; host < 255 && len(result) < maximum; host++ {
-			candidate := net.IPv4(networkIP[0], networkIP[1], networkIP[2], byte(host)).To4()
-			if candidate.Equal(binding.IP) || (broadcast != nil && candidate.Equal(broadcast)) {
+		for candidateNumber := networkNumber + 1; candidateNumber < broadcastNumber && len(result) < maximum; candidateNumber++ {
+			candidate := ipv4FromNumber(candidateNumber)
+			if candidate.Equal(binding.IP) {
 				continue
 			}
 			add(candidate)
