@@ -12,6 +12,34 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/plex"
 )
 
+func setupPlexProxyTest(t *testing.T, upstreamURL, mediaKey, token string, available bool) (*db.DB, *API, db.PlexCatalogTrack) {
+	t.Helper()
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.EnsurePlexSchema(); err != nil {
+		t.Fatal(err)
+	}
+	machineID, sourceID, libraryID := "machine-proxy", plex.StableSourceID("machine-proxy"), "2"
+	if err := database.SavePlexSource(db.PlexSource{ID: sourceID, MachineIdentifier: machineID, BaseURL: upstreamURL, Name: "Plex", LibraryID: libraryID, Active: true, Available: available}); err != nil {
+		t.Fatal(err)
+	}
+	track := db.PlexCatalogTrack{
+		SongID: plex.StableTrackID(machineID, "99"), SourceID: sourceID, LibraryID: libraryID, MachineID: machineID,
+		RatingKey: "99", MetadataKey: "/library/metadata/99", MediaKey: mediaKey, Title: "Proxy Track", Artist: "Artist", Album: "Album", Duration: 10, AddedAt: 1,
+	}
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []db.PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	credentials, _ := json.Marshal(plex.Credentials{ClientIdentifier: "viib-test", ServerTokens: map[string]string{machineID: token}})
+	if err := database.SetSetting(db.PlexCredentialsSettingKey, string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	return database, &API{db: database}, track
+}
+
 func TestPlexAudioProxyForwardsRangeAndKeepsTokenServerSide(t *testing.T) {
 	const token = "super-secret-plex-token"
 	var sawRange, sawToken, sawQueryLeak bool
@@ -32,31 +60,8 @@ func TestPlexAudioProxyForwardsRangeAndKeepsTokenServerSide(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	if err := database.EnsurePlexSchema(); err != nil {
-		t.Fatal(err)
-	}
-	machineID, sourceID, libraryID := "machine-proxy", plex.StableSourceID("machine-proxy"), "2"
-	if err := database.SavePlexSource(db.PlexSource{ID: sourceID, MachineIdentifier: machineID, BaseURL: upstream.URL, Name: "Plex", LibraryID: libraryID, Active: true, Available: true}); err != nil {
-		t.Fatal(err)
-	}
-	track := db.PlexCatalogTrack{
-		SongID: plex.StableTrackID(machineID, "99"), SourceID: sourceID, LibraryID: libraryID, MachineID: machineID,
-		RatingKey: "99", MetadataKey: "/library/metadata/99", MediaKey: "/audio", Title: "Proxy Track", Artist: "Artist", Album: "Album", Duration: 10, AddedAt: 1,
-	}
-	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []db.PlexCatalogTrack{track}); err != nil {
-		t.Fatal(err)
-	}
-	credentials, _ := json.Marshal(plex.Credentials{ClientIdentifier: "viib-test", ServerTokens: map[string]string{machineID: token}})
-	if err := database.SetSetting(db.PlexCredentialsSettingKey, string(credentials)); err != nil {
-		t.Fatal(err)
-	}
-
-	handler := &API{db: database}
+	database, handler, track := setupPlexProxyTest(t, upstream.URL, "/audio", token, true)
+	_ = database
 	req := httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil)
 	req.Header.Set("Range", "bytes=2-5")
 	recorder := httptest.NewRecorder()
@@ -78,6 +83,57 @@ func TestPlexAudioProxyForwardsRangeAndKeepsTokenServerSide(t *testing.T) {
 	}
 	if bytes.Contains(recorder.Body.Bytes(), []byte(token)) {
 		t.Fatal("Plex token leaked into browser-visible response")
+	}
+}
+
+func TestPlexAudioProxyPreservesRangeNotSatisfiable(t *testing.T) {
+	const token = "range-token"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Range") != "bytes=999-" {
+			t.Fatalf("upstream Range=%q", r.Header.Get("Range"))
+		}
+		w.Header().Set("Content-Range", "bytes */10")
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+	}))
+	defer upstream.Close()
+
+	_, handler, track := setupPlexProxyTest(t, upstream.URL, "/audio", token, true)
+	req := httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil)
+	req.Header.Set("Range", "bytes=999-")
+	recorder := httptest.NewRecorder()
+	handler.ServeAudioSourceAware(recorder, req)
+
+	if recorder.Code != http.StatusRequestedRangeNotSatisfiable {
+		t.Fatalf("expected 416 passthrough, got %d body=%q", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Content-Range"); got != "bytes */10" {
+		t.Fatalf("expected unsatisfied Content-Range, got %q", got)
+	}
+}
+
+func TestPlexAudioProxyMarksSourceUnavailableOnInterruptedUpstream(t *testing.T) {
+	const token = "stream-token"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/flac")
+		w.Header().Set("Content-Length", "10")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("short"))
+	}))
+	defer upstream.Close()
+
+	database, handler, track := setupPlexProxyTest(t, upstream.URL, "/audio", token, true)
+	recorder := httptest.NewRecorder()
+	handler.ServeAudioSourceAware(recorder, httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil))
+
+	source, err := database.GetActivePlexSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source == nil || source.Available {
+		t.Fatalf("expected interrupted upstream to mark source unavailable: %#v", source)
+	}
+	if source.LastSyncError != "Plex server connection interrupted during playback" {
+		t.Fatalf("unexpected interrupted-stream status: %#v", source)
 	}
 }
 
