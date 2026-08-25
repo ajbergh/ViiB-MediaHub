@@ -16,7 +16,7 @@ import { Virtuoso, Components } from 'react-virtuoso';
 import api from '../services/api';
 import { LikeButton } from '../components/LikeButton';
 import { AlbumLikeButton } from '../components/AlbumLikeButton';
-import { isAuthoritativePlexArtwork, resolveAlbumArtwork } from '../lib/artwork';
+import { isPlexSourcePath, resolveAlbumArtwork } from '../lib/artwork';
 
 const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
     if (!context) return null;
@@ -247,7 +247,7 @@ export const AlbumDetail: React.FC = () => {
 
     useEffect(() => {
         if (decodedAlbumName && artist) fetchAlbumMetadata(decodedAlbumName, artist);
-    }, [decodedAlbumName, artist]);
+    }, [decodedAlbumName, artist, fetchAlbumMetadata]);
 
     const year = firstSong?.year;
     const originalYear = firstSong?.originalYear;
@@ -269,12 +269,14 @@ export const AlbumDetail: React.FC = () => {
         }
     };
 
-    // Any Plex-backed copy of the album makes PMS artwork authoritative for the
-    // album view. This prevents cached Spotify enrichment from changing the
-    // visual identity relative to Plex while preserving local-library behavior.
-    const plexCover = albumSongs.find(song => isAuthoritativePlexArtwork(song.coverUrl))?.coverUrl;
-    const catalogCover = plexCover || firstSong?.coverUrl || albumCovers[metadataKey] || albumCovers[decodedAlbumName];
-    const coverUrl = resolveAlbumArtwork(catalogCover, metadata?.coverUrl);
+    // A Plex-backed copy makes PMS artwork authoritative for this logical
+    // album. If Plex supplies no artwork, do not borrow local or Spotify art.
+    const plexBacked = albumSongs.some(song => isPlexSourcePath(song.path));
+    const plexCover = albumSongs.find(song => isPlexSourcePath(song.path) && song.coverUrl)?.coverUrl;
+    const catalogCover = plexBacked
+        ? plexCover
+        : firstSong?.coverUrl || albumCovers[metadataKey] || albumCovers[decodedAlbumName];
+    const coverUrl = resolveAlbumArtwork(catalogCover, metadata?.coverUrl, plexBacked);
 
     const totalDuration = albumSongs.reduce((acc, s) => acc + s.duration, 0);
     const durationHours = Math.floor(totalDuration / 3600);
