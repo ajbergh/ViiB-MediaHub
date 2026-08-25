@@ -37,3 +37,33 @@ func TestDeduplicateServers(t *testing.T) {
 		t.Fatalf("expected 2 unique servers, got %d: %#v", len(result), result)
 	}
 }
+
+func TestGDMServerDiscoveryUsesMulticast(t *testing.T) {
+	ip := net.ParseIP(gdmMulticastAddress)
+	if ip == nil || !ip.IsMulticast() {
+		t.Fatalf("expected GDM server endpoint to be multicast, got %q", gdmMulticastAddress)
+	}
+	if gdmMulticastAddress != "239.0.0.250" || GDMPort != 32414 {
+		t.Fatalf("unexpected Plex GDM server endpoint %s:%d", gdmMulticastAddress, GDMPort)
+	}
+}
+
+func TestUsableGDMIPv4DoesNotRequirePrivateAddressing(t *testing.T) {
+	accepted := []string{
+		"192.168.1.20", // RFC1918 LAN
+		"169.254.10.20", // IPv4 link-local
+		"203.0.113.20", // non-RFC1918 address used here to prove no IsPrivate gate
+	}
+	for _, value := range accepted {
+		if got := usableGDMIPv4(net.ParseIP(value)); got == nil {
+			t.Fatalf("expected %s to be usable for interface-scoped GDM multicast", value)
+		}
+	}
+
+	rejected := []string{"127.0.0.1", "0.0.0.0", "239.0.0.250", "2001:db8::1"}
+	for _, value := range rejected {
+		if got := usableGDMIPv4(net.ParseIP(value)); got != nil {
+			t.Fatalf("expected %s to be rejected, got %s", value, got)
+		}
+	}
+}
