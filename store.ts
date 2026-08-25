@@ -31,7 +31,7 @@ import { createSpotifySlice } from './slices/spotifySlice';
 import { createUISlice } from './slices/uiSlice';
 import { createAIDJSlice } from './slices/aiDjSlice';
 import { createDJMixerSlice } from './slices/djMixerSlice';
-import { isAuthoritativePlexArtwork, isPlexSourcePath } from './lib/artwork';
+import { buildAlbumCoverIndex, isAuthoritativePlexArtwork, isPlexSourcePath } from './lib/artwork';
 
 export const useStore = create<AppState>()(
   persist(
@@ -224,25 +224,5 @@ export const useArtists = () => {
 
 export const useAlbumCovers = () => {
   const albums = useAlbums();
-  return useMemo(() => {
-    const covers: Record<string, string> = {};
-    albums.forEach((album) => {
-      const composite = `${album.name}::${album.artist}`;
-      if (album.plexBacked) {
-        // Empty string is an intentional sentinel: Plex owns this album but did
-        // not provide artwork. This prevents track-level UI using
-        // `song.coverUrl || albumCovers[...]` from borrowing a local cover with
-        // the same album name.
-        covers[composite] = album.coverUrl || '';
-        covers[album.name] = album.coverUrl || '';
-        return;
-      }
-      if (!album.coverUrl) return;
-      covers[composite] = album.coverUrl;
-      if (!(album.name in covers)) {
-        covers[album.name] = album.coverUrl;
-      }
-    });
-    return covers;
-  }, [albums]);
+  return useMemo(() => buildAlbumCoverIndex(albums), [albums]);
 };
