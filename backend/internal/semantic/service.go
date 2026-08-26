@@ -539,6 +539,27 @@ func (service *Service) Status() ServiceStatus {
 	return service.status
 }
 
+// TestProvider performs a single non-persistent document embedding. It is
+// used by the local settings endpoint to validate credentials/model presence
+// without modifying the semantic queue or in-memory arenas.
+func (service *Service) TestProvider(ctx context.Context) (EmbeddingIdentity, error) {
+	vectors, err := service.embedDocumentsWithRetry(ctx, []string{"Semantic music retrieval connectivity check."})
+	if err != nil {
+		return EmbeddingIdentity{}, err
+	}
+	normalized, err := NormalizeEmbeddingBatch(vectors, 1, 0)
+	if err != nil {
+		return EmbeddingIdentity{}, err
+	}
+	return EmbeddingIdentity{
+		Provider:       service.provider.Name(),
+		Model:          service.provider.Model(),
+		Dimensions:     len(normalized[0]),
+		DocumentPrefix: service.provider.DocumentPrefix(),
+		QueryPrefix:    service.provider.QueryPrefix(),
+	}, nil
+}
+
 func (service *Service) setStatus(status ServiceStatus) {
 	status.UpdatedAt = time.Now().UTC()
 	service.statusMu.Lock()

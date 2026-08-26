@@ -1359,17 +1359,17 @@ No new third-party dependency is added in this PR.
 - [ ] Implement the OpenAI provider (`text-embedding-3-small`, `dimensions: 512`, token-capped batches).
 - [ ] Decide and record: add the Gemini embeddings adapter, or document that Gemini users get no semantic retrieval (§7.3).
 - [x] Implement `auto` resolution including the `GET /api/tags` reachability probe. Never pull.
-- [ ] Implement the provider test/validation endpoint.
+- [x] Implement the provider test/validation endpoint.
 - [x] Implement batching, retries with backoff and jitter, cancellation, and bounded concurrency.
-- [ ] Implement the semantic service lifecycle. Core `semantic.Service` lifecycle is complete; backend construction and API ownership remain.
+- [x] Implement the semantic service lifecycle.
 - [x] Generate artist, then album, then track documents in the background.
 - [x] Store embeddings in bounded transactions; `CheckpointWAL()` after bulk runs.
 - [ ] Incrementally upsert and delete arena entries.
 - [x] Implement `library_changes` cursor tailing, including the pruned-log fallback to full rescan.
 - [x] Add explicit invalidation for `artist_metadata` / `album_metadata`, which the trigger log does not cover.
-- [ ] Add the status, rebuild (`reindex` | `reload`), and retry endpoints.
+- [x] Add the status, rebuild (`reindex` | `reload`), and retry endpoints.
 - [ ] Add the Settings UI using design tokens, including the cloud cost estimate and confirmation.
-- [ ] Add unit and integration tests with a fake embedding provider.
+- [x] Add unit and integration tests with a fake embedding provider.
 - [x] Update this plan with implementation notes.
 
 #### PR 2 implementation notes
@@ -1379,6 +1379,7 @@ No new third-party dependency is added in this PR.
 - **2026-08-26:** Added the durable `semantic.Service`: content-hash-gated document generation in artist/album/track order, sequential bounded embedding batches, retry/backoff/jitter, cancellation, model-identity reset, transactional persistence, WAL checkpointing, durable-arena reload, and manual error retry. It is intentionally not yet constructed by `api.New`; that integration follows the OpenAI adapter and semantic API endpoints.
 - **2026-08-26:** Added durable `library_changes` cursor tailing. Each observed change window runs a full catalog content-hash reconciliation (so aggregate documents and deletions are correct without re-embedding behavioural-only writes), advances all three entity cursors, and falls back to a full reconciliation if a pruned change log leaves a revision gap. Obsolete track, album, and artist documents are removed transactionally before the replacement arenas load.
 - **2026-08-26:** Added the explicit metadata invalidation path that `library_changes` cannot provide. Last.fm artist updates, similar-artist updates, and album metadata saves enqueue durable metadata-change records. The semantic worker loads artist tags/bio/similar artists and album genres in bounded bulk queries, reconciles content hashes in the background, and acknowledges each queue page only after reconciliation. This keeps metadata enrichment asynchronous and avoids an N+1 read pattern.
+- **2026-08-26:** API startup now owns the semantic service asynchronously and shutdown closes it cleanly. Added `/api/semantic/status`, `/rebuild` (`reindex` or `reload` only), `/retry-errors`, and `/test-embedding-provider`; no endpoint exposes embeddings, documents, or keys. This slice activates locally configured Ollama indexing. An OpenAI semantic configuration is reported as needing configuration until the dedicated adapter is completed.
 - **2026-08-26:** Corrected the pre-existing Windows-only expectation in `internal/validation.TestSanitizePath` so it compares the cleaned path for the running platform. The sanitization behavior itself is unchanged.
 
 #### Acceptance criteria

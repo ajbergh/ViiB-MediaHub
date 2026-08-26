@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -178,4 +179,19 @@ func readyOpenAIResolution(settings EmbeddingSettings, source string) EmbeddingR
 		return EmbeddingResolution{Settings: settings, Status: embeddingResolutionNeedsConfiguration, Source: source, Reason: "an OpenAI API key is required for semantic retrieval"}
 	}
 	return EmbeddingResolution{Settings: settings, Status: embeddingResolutionReady, Source: source}
+}
+
+// NewConfiguredEmbeddingProvider constructs the selected local embedding
+// adapter. OpenAI construction is deliberately kept separate until its
+// documented transport adapter is available; callers can expose that state
+// without affecting the legacy AI DJ path.
+func NewConfiguredEmbeddingProvider(settings EmbeddingSettings, client *http.Client) (EmbeddingProvider, error) {
+	switch settings.Provider {
+	case EmbeddingProviderOllama:
+		return NewOllamaEmbeddingProvider(settings.BaseURL, settings.Model, client), nil
+	case EmbeddingProviderOpenAI:
+		return nil, errors.New("openai semantic embedding adapter is not available")
+	default:
+		return nil, fmt.Errorf("unsupported semantic embedding provider %q", settings.Provider)
+	}
 }
