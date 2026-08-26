@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -68,9 +69,9 @@ func TestSemanticSettingsEndpointStoresDedicatedSettingsAndMasksAPIKey(t *testin
 		t.Fatal(err)
 	}
 	defer database.Close()
-	api := &API{db: database}
+	api := &API{db: database, semanticClosed: true}
 	routes := api.Routes()
-	body := bytes.NewBufferString(`{"provider":"disabled","model":"text-embedding-3-small","dimensions":512,"baseURL":"https://example.invalid","apiKey":"secret-value"}`)
+	body := bytes.NewBufferString(`{"provider":"openai","model":"text-embedding-3-small","dimensions":512,"baseURL":"https://example.invalid","apiKey":"secret-value"}`)
 	updateRecorder := httptest.NewRecorder()
 	routes.ServeHTTP(updateRecorder, httptest.NewRequest(http.MethodPut, "/semantic/settings", body))
 	if updateRecorder.Code != http.StatusOK {
@@ -88,7 +89,7 @@ func TestSemanticSettingsEndpointStoresDedicatedSettingsAndMasksAPIKey(t *testin
 	if err := json.NewDecoder(settingsRecorder.Body).Decode(&settings); err != nil {
 		t.Fatal(err)
 	}
-	if settings.Provider != semantic.EmbeddingProviderDisabled || settings.Dimensions != 512 || !settings.APIKeyConfigured {
+	if settings.Provider != semantic.EmbeddingProviderOpenAI || settings.Dimensions != 512 || !settings.APIKeyConfigured || settings.CloudCost == nil || settings.CloudCost.Confirmed {
 		t.Fatalf("settings=%#v", settings)
 	}
 	if bytes.Contains(settingsRecorder.Body.Bytes(), []byte("secret-value")) {
@@ -107,6 +108,39 @@ func TestSemanticSettingsEndpointStoresDedicatedSettingsAndMasksAPIKey(t *testin
 	}
 	if loaded.Dimensions != 0 {
 		t.Fatalf("auto dimensions=%d, want 0", loaded.Dimensions)
+	}
+
+	confirmBody := bytes.NewBufferString(`{"provider":"openai","model":"text-embedding-3-small","dimensions":512,"baseURL":"","confirmCloudCost":true}`)
+	confirmRecorder := httptest.NewRecorder()
+	routes.ServeHTTP(confirmRecorder, httptest.NewRequest(http.MethodPut, "/semantic/settings", confirmBody))
+	if confirmRecorder.Code != http.StatusOK {
+		t.Fatalf("confirmation update code=%d body=%s", confirmRecorder.Code, confirmRecorder.Body.String())
+	}
+	confirmed, err := semantic.OpenAIEmbeddingCostConfirmed(context.Background(), database, semantic.EmbeddingSettings{Model: semantic.DefaultOpenAIEmbeddingModel, Dimensions: semantic.DefaultOpenAIEmbeddingDimensions})
+	if err != nil || !confirmed.Confirmed {
+		t.Fatalf("confirmed=%#v err=%v", confirmed, err)
+	}
+}
+
+func TestSemanticServiceRequiresOpenAICostConfirmationBeforeStarting(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "semantic-openai-confirmation.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.SetSettingsBatch(map[string]string{
+		semantic.SemanticEmbeddingProviderSetting:   semantic.EmbeddingProviderOpenAI,
+		semantic.SemanticEmbeddingModelSetting:      semantic.DefaultOpenAIEmbeddingModel,
+		semantic.SemanticEmbeddingDimensionsSetting: "512",
+		semantic.SemanticEmbeddingAPIKeySetting:     "not-a-real-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	api := &API{db: database}
+	api.initSemanticService()
+	resolution, service, _ := api.semanticSnapshot()
+	if service != nil || resolution.Status != "needs_configuration" || !strings.Contains(resolution.Reason, "confirm the one-time OpenAI embedding estimate") {
+		t.Fatalf("resolution=%#v service=%v", resolution, service)
 	}
 }
 

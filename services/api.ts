@@ -1868,6 +1868,7 @@ export interface SemanticSettings {
   apiKeyConfigured: boolean;
   status: string;
   reason?: string;
+  cloudCost?: SemanticCloudCost;
 }
 
 export interface SemanticSettingsRequest {
@@ -1876,6 +1877,19 @@ export interface SemanticSettingsRequest {
   dimensions?: number;
   baseURL: string;
   apiKey?: string;
+  confirmCloudCost?: boolean;
+}
+
+export interface SemanticCloudCost {
+  model: string;
+  dimensions: number;
+  documents: number;
+  typicalInputTokens: number;
+  maximumInputTokens: number;
+  usdPerMillionInputTokens: number;
+  typicalUSD: number;
+  maximumUSD: number;
+  confirmed: boolean;
 }
 
 export interface SemanticIndexState {

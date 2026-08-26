@@ -377,6 +377,10 @@ export const Settings: React.FC = () => {
   const [semanticProvider, setSemanticProvider] = useState<'auto' | 'ollama' | 'openai' | 'disabled'>('auto');
   const [semanticModel, setSemanticModel] = useState('');
   const [semanticBaseURL, setSemanticBaseURL] = useState('http://localhost:11434');
+  const [semanticDimensions, setSemanticDimensions] = useState(0);
+  const [semanticAPIKey, setSemanticAPIKey] = useState('');
+  const [semanticCloudCost, setSemanticCloudCost] = useState<import('../services/api').SemanticCloudCost | null>(null);
+  const [semanticCloudConfirmed, setSemanticCloudConfirmed] = useState(false);
   const [semanticStatus, setSemanticStatus] = useState<import('../services/api').SemanticStatus | null>(null);
   const [semanticLoading, setSemanticLoading] = useState(false);
   const [semanticSaveStatus, setSemanticSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -450,6 +454,10 @@ export const Settings: React.FC = () => {
               setSemanticProvider(settings.provider);
               setSemanticModel(settings.model || '');
               setSemanticBaseURL(settings.baseURL || 'http://localhost:11434');
+              setSemanticDimensions(settings.dimensions || (settings.provider === 'openai' ? 512 : 0));
+              setSemanticAPIKey('');
+              setSemanticCloudCost(settings.cloudCost || null);
+              setSemanticCloudConfirmed(false);
               setSemanticStatus(status);
           } catch (e) {
               console.error('Failed to load semantic index settings:', e);
@@ -2180,14 +2188,20 @@ export const Settings: React.FC = () => {
                         <select
                           value={semanticProvider}
                           onChange={(e) => {
-                            setSemanticProvider(e.target.value as 'auto' | 'ollama' | 'openai' | 'disabled');
+                            const provider = e.target.value as 'auto' | 'ollama' | 'openai' | 'disabled';
+                            setSemanticProvider(provider);
+                            if (provider === 'openai') {
+                              if (!semanticModel || semanticModel === 'nomic-embed-text') setSemanticModel('text-embedding-3-small');
+                              if (!semanticDimensions) setSemanticDimensions(512);
+                            }
+                            setSemanticCloudConfirmed(false);
                             setSemanticSaveStatus('idle');
                           }}
                           className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
                         >
                           <option value="auto">Auto (configured chat provider, then local Ollama)</option>
                           <option value="ollama">Ollama (local)</option>
-                          <option value="openai" disabled>OpenAI (adapter pending)</option>
+                          <option value="openai">OpenAI (cloud embeddings)</option>
                           <option value="disabled">Disabled</option>
                         </select>
                       </div>
@@ -2222,8 +2236,36 @@ export const Settings: React.FC = () => {
                       </div>
                     )}
 
+                    {semanticProvider === 'openai' && (
+                      <div className="space-y-3 rounded-lg border border-surface-border bg-surface-2 p-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">Embedding dimensions</label>
+                            <TextInput type="number" min="1" value={String(semanticDimensions || 512)} onChange={(e) => { setSemanticDimensions(Number(e.target.value) || 0); setSemanticCloudConfirmed(false); setSemanticSaveStatus('idle'); }} className="w-full bg-surface-3" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">OpenAI API key</label>
+                            <TextInput type="password" value={semanticAPIKey} onChange={(e) => { setSemanticAPIKey(e.target.value); setSemanticSaveStatus('idle'); }} placeholder="Leave blank to keep the saved key" className="w-full bg-surface-3" />
+                          </div>
+                        </div>
+                        <p className="text-xs text-warning">OpenAI receives the deterministic semantic document text, but never file paths, internal song IDs, or listening history.</p>
+                        {semanticCloudCost ? (
+                          <div className="space-y-2 text-sm text-text-subtle">
+                            <p>Current catalog: {semanticCloudCost.documents.toLocaleString()} semantic documents. One-time input estimate: about ${semanticCloudCost.typicalUSD.toFixed(2)}, with a conservative maximum of ${semanticCloudCost.maximumUSD.toFixed(2)}.</p>
+                            <label className="flex items-start gap-2 cursor-pointer text-text-main">
+                              <input type="checkbox" checked={semanticCloudConfirmed} onChange={(e) => setSemanticCloudConfirmed(e.target.checked)} className="mt-1" />
+                              <span>I understand this starts a paid OpenAI embedding build for this catalog.</span>
+                            </label>
+                            {semanticCloudCost.confirmed && <p className="text-success text-xs">This current estimate has already been confirmed.</p>}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-text-subtle">Save the OpenAI configuration once to calculate the current catalog estimate before confirming it.</p>
+                        )}
+                      </div>
+                    )}
+
                     <p className="text-xs text-text-subtle">
-                      Ollama uses <code>POST /api/embed</code> and never downloads a model automatically. OpenAI configuration is retained, but cloud controls remain unavailable until the documented adapter and cost confirmation are complete.
+                      Ollama uses <code>POST /api/embed</code> and never downloads a model automatically. OpenAI uses its separate embeddings API and will not index until the displayed cloud estimate is explicitly confirmed.
                     </p>
 
                     {(semanticStatus?.reason || semanticStatus?.lastError) && (
@@ -2248,8 +2290,15 @@ export const Settings: React.FC = () => {
                             await api.updateSemanticSettings({
                               provider: semanticProvider,
                               model: semanticModel,
+                              dimensions: semanticProvider === 'openai' ? semanticDimensions : undefined,
                               baseURL: semanticProvider === 'ollama' ? semanticBaseURL : '',
+                              apiKey: semanticProvider === 'openai' && semanticAPIKey ? semanticAPIKey : undefined,
+                              confirmCloudCost: semanticProvider === 'openai' && semanticCloudConfirmed,
                             });
+                            const settings = await api.getSemanticSettings();
+                            setSemanticCloudCost(settings.cloudCost || null);
+                            setSemanticCloudConfirmed(false);
+                            setSemanticAPIKey('');
                             setSemanticSaveStatus('saved');
                             await refreshSemanticStatus();
                             setTimeout(() => setSemanticSaveStatus('idle'), 3000);

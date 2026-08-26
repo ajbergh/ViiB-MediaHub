@@ -644,7 +644,7 @@ Requirements:
 - Default model `text-embedding-3-small`: 1,536 native dimensions, 8,192 max input tokens, returned vectors already unit length.
 - Request **512 dimensions** via the `dimensions` request parameter unless the user explicitly chose a supported alternative. Use the API parameter, not manual truncation — the API re-normalizes, manual truncation does not.
 - No task prefixes; `DocumentPrefix()` and `QueryPrefix()` return `""`.
-- Batch size 128, and additionally cap each request by total input tokens so a future larger document cap cannot silently produce oversized requests.
+- Batch size 128, and additionally cap each request by total input tokens so a future larger document cap cannot silently produce oversized requests. The implementation uses conservative UTF-8 byte guards (8,192 bytes per input and 300,000 bytes per batch), which cannot exceed the documented token limits.
 - Use existing HTTP/retry conventions and encrypted secret storage.
 - Implement as a small adapter behind `EmbeddingProvider`. Do not upgrade or restructure the OmniLLM chat stack for Phase 1 embeddings.
 
@@ -656,6 +656,12 @@ near-zero incremental cost afterwards because of the content-hash gate. Compute 
 estimate from the actual catalog size and show it in Settings before a cloud index build
 starts, requiring explicit confirmation. Re-verify pricing at implementation time and
 record the figure used.
+
+**Implemented price verification (2026-08-26).** OpenAI's current embedding guide lists
+`text-embedding-3-small` at 62,500 roughly-800-token pages per US dollar, equivalent to
+$0.02 per million input tokens, with an 8,192-token maximum input. The implementation
+uses this figure for the small model and records the estimate, model, dimensions, and
+document count in the confirmation fingerprint. Source: [OpenAI embedding models](https://developers.openai.com/api/docs/guides/embeddings#embedding-models).
 
 ### 7.6 Model identity changes
 
@@ -1287,6 +1293,9 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
 - **2026-08-26:** Opened draft PR [#24](https://github.com/ajbergh/ViiB-MediaHub/pull/24)
   for the active PR 2 implementation so CI runs continuously while the remaining OpenAI
   adapter, incremental arena maintenance, and cloud-cost confirmation work is completed.
+- **2026-08-26:** Completed the OpenAI embedding transport and explicit catalog-cost
+  confirmation gate. Cloud indexing remains unavailable until the current catalog/model/
+  dimensions estimate has been acknowledged in Settings.
 
 #### PR 1 implementation notes (2026-08-26)
 
@@ -1358,7 +1367,7 @@ No new third-party dependency is added in this PR.
 - [x] Add semantic embedding settings; register `semantic_embedding_api_key` in `crypto.sensitiveKeys` via `init()`, with a test asserting it is treated as sensitive.
 - [x] Implement the `EmbeddingProvider` abstraction with separate document/query methods and task prefixes.
 - [x] Implement the Ollama provider against `POST /api/embed` with array `input`, explicit `truncate: false`, and `nomic-embed-text` task prefixes.
-- [ ] Implement the OpenAI provider (`text-embedding-3-small`, `dimensions: 512`, token-capped batches).
+- [x] Implement the OpenAI provider (`text-embedding-3-small`, `dimensions: 512`, token-capped batches).
 - [x] Decide and record: defer a Gemini embeddings adapter; use local Ollama fallback or report `needs_configuration` (§7.3).
 - [x] Implement `auto` resolution including the `GET /api/tags` reachability probe. Never pull.
 - [x] Implement the provider test/validation endpoint.
@@ -1371,7 +1380,7 @@ No new third-party dependency is added in this PR.
 - [x] Add explicit invalidation for `artist_metadata` / `album_metadata`, which the trigger log does not cover.
 - [x] Add the status, rebuild (`reindex` | `reload`), and retry endpoints.
 - [x] Add the Settings UI using design tokens for local/auto provider configuration, status, provider test, reindex, and error retry.
-- [ ] Add the OpenAI cloud cost estimate and explicit confirmation before a cloud index build.
+- [x] Add the OpenAI cloud cost estimate and explicit confirmation before a cloud index build.
 - [x] Add unit and integration tests with a fake embedding provider.
 - [x] Update this plan with implementation notes.
 
@@ -1388,6 +1397,9 @@ No new third-party dependency is added in this PR.
 - **2026-08-26:** Decided not to add a Gemini embedding adapter in Phase 1. `auto` now recognizes both an explicit Gemini chat provider and the legacy `gemini_api_key` fallback, and never repurposes either for another embeddings API. Gemini, Anthropic, xAI, and OpenRouter instead use an already-pulled local Ollama embedding model when available, or receive a provider-specific `needs_configuration` message. Tests cover all four configured chat providers and legacy Gemini fallback.
 - **2026-08-26:** Changed normal `library_changes` synchronization from all-arena reloads to incremental updates. SQLite returns IDs whose ready embeddings were invalidated or deleted only after the corresponding transaction commits; the service removes those exact arena rows, then upserts just the successfully persisted replacement vectors. Full reindex, explicit retry, startup recovery, and provider-identity changes retain the complete snapshot-rebuild path, so a changed model can never mix vector identities in one arena. A pre-persistence dimension guard rejects an unexpected same-provider vector shape before it can create a durable/arena mismatch.
 - **2026-08-26:** Corrected the pre-existing Windows-only expectation in `internal/validation.TestSanitizePath` so it compares the cleaned path for the running platform. The sanitization behavior itself is unchanged.
+- **2026-08-26:** Added the OpenAI `POST /v1/embeddings` adapter. It sends the documented `model`, array `input`, `dimensions`, and `encoding_format: float` request fields, uses bearer authorization, preserves response-index ordering, and makes no task-prefix change. Tests cover headers, payload, response ordering, invalid input, and HTTP failures. Conservative byte guards keep inputs below the API's 8,192-token-per-input and 300,000-token-per-request ceilings.
+- **2026-08-26:** Added the explicit OpenAI cloud gate. Settings derives the exact current count of deterministic track/album/artist documents, calculates typical (250-token) and conservative (1,024-token) one-time input estimates, and requires the user to confirm the current model/dimension/catalog fingerprint. API startup checks that fingerprint before it constructs a provider or starts indexing, so an API key alone cannot send catalog text to OpenAI. The Settings UI exposes the separate encrypted key, the estimate, the data-sharing warning, and the acknowledgement checkbox.
+- **2026-08-26:** Verified this OpenAI checkpoint with the complete backend `go test ./...`, the focused semantic/db/API suite, frontend TypeScript checking, all 30 frontend unit tests, and the production Vite build. Existing Vite chunking warnings remain unchanged.
 
 #### Acceptance criteria
 

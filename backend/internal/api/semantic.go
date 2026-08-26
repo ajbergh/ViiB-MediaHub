@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,21 +33,23 @@ type semanticRebuildRequest struct {
 }
 
 type semanticSettingsResponse struct {
-	Provider         string `json:"provider"`
-	Model            string `json:"model"`
-	Dimensions       int    `json:"dimensions"`
-	BaseURL          string `json:"baseURL"`
-	APIKeyConfigured bool   `json:"apiKeyConfigured"`
-	Status           string `json:"status"`
-	Reason           string `json:"reason,omitempty"`
+	Provider         string                                `json:"provider"`
+	Model            string                                `json:"model"`
+	Dimensions       int                                   `json:"dimensions"`
+	BaseURL          string                                `json:"baseURL"`
+	APIKeyConfigured bool                                  `json:"apiKeyConfigured"`
+	Status           string                                `json:"status"`
+	Reason           string                                `json:"reason,omitempty"`
+	CloudCost        *semantic.OpenAIEmbeddingCostEstimate `json:"cloudCost,omitempty"`
 }
 
 type semanticSettingsRequest struct {
-	Provider   string  `json:"provider"`
-	Model      string  `json:"model"`
-	Dimensions *int    `json:"dimensions"`
-	BaseURL    string  `json:"baseURL"`
-	APIKey     *string `json:"apiKey"`
+	Provider         string  `json:"provider"`
+	Model            string  `json:"model"`
+	Dimensions       *int    `json:"dimensions"`
+	BaseURL          string  `json:"baseURL"`
+	APIKey           *string `json:"apiKey"`
+	ConfirmCloudCost bool    `json:"confirmCloudCost"`
 }
 
 // initSemanticService resolves configuration after API construction. It keeps
@@ -70,6 +73,19 @@ func (a *API) initSemanticServiceGeneration(generation uint64) {
 	if !resolution.Ready() {
 		a.storeSemanticUnavailable(generation, resolution, "")
 		return
+	}
+	if resolution.Settings.Provider == semantic.EmbeddingProviderOpenAI {
+		estimate, estimateErr := semantic.OpenAIEmbeddingCostConfirmed(ctx, a.db, resolution.Settings)
+		if estimateErr != nil {
+			a.storeSemanticUnavailable(generation, resolution, estimateErr.Error())
+			return
+		}
+		if !estimate.Confirmed {
+			resolution.Status = "needs_configuration"
+			resolution.Reason = fmt.Sprintf("confirm the one-time OpenAI embedding estimate for %d documents in Settings before cloud indexing starts", estimate.Documents)
+			a.storeSemanticUnavailable(generation, resolution, "")
+			return
+		}
 	}
 	provider, err := semantic.NewConfiguredEmbeddingProvider(resolution.Settings, nil)
 	if err != nil {
@@ -160,6 +176,14 @@ func (a *API) getSemanticSettings(w http.ResponseWriter, _ *http.Request) {
 	if response.Status == "" {
 		response.Status = "initializing"
 	}
+	if provider == semantic.EmbeddingProviderOpenAI {
+		estimate, estimateErr := semantic.OpenAIEmbeddingCostConfirmed(context.Background(), a.db, settings)
+		if estimateErr == nil {
+			response.CloudCost = &estimate
+		} else if response.Reason == "" {
+			response.Reason = estimateErr.Error()
+		}
+	}
 	respondJSON(w, response)
 }
 
@@ -201,14 +225,36 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 	if dimensions > 0 {
 		dimensionsValue = strconv.Itoa(dimensions)
 	}
+	candidate := existing
+	candidate.Provider = provider
+	candidate.Model = strings.TrimSpace(request.Model)
+	candidate.Dimensions = dimensions
+	candidate.BaseURL = strings.TrimSpace(request.BaseURL)
+	if request.APIKey != nil {
+		candidate.APIKey = strings.TrimSpace(*request.APIKey)
+	}
 	values := map[string]string{
 		semantic.SemanticEmbeddingProviderSetting:   provider,
-		semantic.SemanticEmbeddingModelSetting:      strings.TrimSpace(request.Model),
+		semantic.SemanticEmbeddingModelSetting:      candidate.Model,
 		semantic.SemanticEmbeddingDimensionsSetting: dimensionsValue,
-		semantic.SemanticEmbeddingBaseURLSetting:    strings.TrimSpace(request.BaseURL),
+		semantic.SemanticEmbeddingBaseURLSetting:    candidate.BaseURL,
 	}
 	if request.APIKey != nil {
-		values[semantic.SemanticEmbeddingAPIKeySetting] = strings.TrimSpace(*request.APIKey)
+		values[semantic.SemanticEmbeddingAPIKeySetting] = candidate.APIKey
+	}
+	if provider == semantic.EmbeddingProviderOpenAI {
+		estimate, estimateErr := semantic.EstimateOpenAIEmbeddingCost(r.Context(), a.db, candidate)
+		if estimateErr != nil {
+			respondError(w, http.StatusBadRequest, estimateErr.Error())
+			return
+		}
+		if request.ConfirmCloudCost {
+			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = estimate.ConfirmationID()
+		} else if existing.Provider != semantic.EmbeddingProviderOpenAI || existing.Model != candidate.Model || existing.Dimensions != candidate.Dimensions {
+			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = ""
+		}
+	} else {
+		values[semantic.SemanticEmbeddingCloudConfirmationSetting] = ""
 	}
 	if err := a.db.SetSettingsBatch(values); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save semantic settings")

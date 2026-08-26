@@ -2,7 +2,6 @@ package semantic
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -170,7 +169,7 @@ func resolveEmbeddingSettings(ctx context.Context, database *db.DB, client *http
 // never be sent to an unrelated embedding API; an already-pulled local Ollama
 // model remains the supported automatic fallback.
 func autoConfigurationReason(chatProvider, ollamaModel string) string {
-	base := fmt.Sprintf("pull %q in Ollama or configure OpenAI embeddings when that adapter is available", ollamaModel)
+	base := fmt.Sprintf("pull %q in Ollama or configure an OpenAI API key for semantic embeddings", ollamaModel)
 	switch chatProvider {
 	case llm.ProviderGemini, llm.ProviderAnthropic, llm.ProviderXAI, llm.ProviderOpenRouter:
 		return fmt.Sprintf("%s chat has no native Phase 1 embedding adapter; %s", chatProvider, base)
@@ -204,16 +203,14 @@ func readyOpenAIResolution(settings EmbeddingSettings, source string) EmbeddingR
 	return EmbeddingResolution{Settings: settings, Status: embeddingResolutionReady, Source: source}
 }
 
-// NewConfiguredEmbeddingProvider constructs the selected local embedding
-// adapter. OpenAI construction is deliberately kept separate until its
-// documented transport adapter is available; callers can expose that state
-// without affecting the legacy AI DJ path.
+// NewConfiguredEmbeddingProvider constructs the selected semantic embedding
+// adapter without changing the configured chat provider or model.
 func NewConfiguredEmbeddingProvider(settings EmbeddingSettings, client *http.Client) (EmbeddingProvider, error) {
 	switch settings.Provider {
 	case EmbeddingProviderOllama:
 		return NewOllamaEmbeddingProvider(settings.BaseURL, settings.Model, client), nil
 	case EmbeddingProviderOpenAI:
-		return nil, errors.New("openai semantic embedding adapter is not available")
+		return NewOpenAIEmbeddingProvider(settings.APIKey, settings.Model, settings.Dimensions, client)
 	default:
 		return nil, fmt.Errorf("unsupported semantic embedding provider %q", settings.Provider)
 	}

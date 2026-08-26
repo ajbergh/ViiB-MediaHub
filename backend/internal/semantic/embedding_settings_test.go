@@ -104,6 +104,18 @@ func TestLoadEmbeddingSettingsRejectsInvalidDimensions(t *testing.T) {
 	}
 }
 
+func TestNewConfiguredEmbeddingProviderCreatesOpenAIAdapter(t *testing.T) {
+	provider, err := NewConfiguredEmbeddingProvider(EmbeddingSettings{
+		Provider:   EmbeddingProviderOpenAI,
+		Model:      DefaultOpenAIEmbeddingModel,
+		Dimensions: DefaultOpenAIEmbeddingDimensions,
+		APIKey:     "test-key",
+	}, nil)
+	if err != nil || provider.Name() != EmbeddingProviderOpenAI || provider.Model() != DefaultOpenAIEmbeddingModel {
+		t.Fatalf("provider=%T err=%v", provider, err)
+	}
+}
+
 func newEmbeddingSettingsTestDB(t *testing.T) *db.DB {
 	t.Helper()
 	database, err := db.New(filepath.Join(t.TempDir(), "settings.db"))
