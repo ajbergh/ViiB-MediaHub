@@ -77,6 +77,8 @@ type DB struct {
 	conn               *sql.DB
 	librarySyncOnce    sync.Once
 	librarySyncInitErr error
+	semanticOnce       sync.Once
+	semanticInitErr    error
 }
 
 // Song represents a persisted audio track with metadata and file locations
