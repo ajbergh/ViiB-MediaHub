@@ -1399,6 +1399,26 @@ func songMatchesYear(song db.Song, minYear, maxYear int) bool {
 	return (minYear == 0 || year >= minYear) && (maxYear == 0 || year <= maxYear)
 }
 
+func songMatchesAnyGenre(song db.Song, genres []string) bool {
+	for _, requested := range genres {
+		for _, songGenre := range song.Genre {
+			if strings.EqualFold(songGenre, requested) || strings.Contains(strings.ToLower(songGenre), strings.ToLower(requested)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func songMatchesAnyArtist(song db.Song, artists []string) bool {
+	for _, requested := range artists {
+		if strings.EqualFold(song.Artist, requested) || strings.Contains(strings.ToLower(song.Artist), strings.ToLower(requested)) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Prompt             string `json:"prompt"`
@@ -1814,31 +1834,30 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	personaDef := dj.GetPersona(persona)
 	logger.API("DJ Mode using persona: %s (%s)", personaDef.Name, personaDef.Description)
 
-	// Get all songs from the database for analysis
-	allSongs, err := a.db.GetAllSongs()
+	// Get planner-scale aggregate data without materializing the full catalog.
+	// The semantic phase path below is the normal recall path; the full library
+	// is loaded only by the explicitly retained legacy fallback.
+	librarySummary, err := a.db.GetAIDJLibrarySummary(ctx, source)
 	if err != nil {
-		logger.API("DJ Mode failed to get songs: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to get songs: %v", err), http.StatusInternalServerError)
+		logger.API("DJ Mode failed to summarize library: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to summarize songs: %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	if len(allSongs) == 0 {
+	if librarySummary.SongCount == 0 {
 		logger.API("DJ Mode failed: library is empty")
-		http.Error(w, "Library is empty", http.StatusNotFound)
-		return
-	}
-	allSongs, err = a.db.FilterSongsForAIDJ(allSongs, source)
-	if err != nil {
-		logger.API("DJ Mode failed to filter catalog sources: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to filter DJ sources: %v", err), http.StatusInternalServerError)
-		return
-	}
-	if len(allSongs) == 0 {
 		http.Error(w, "No playable songs are available from the selected source", http.StatusNotFound)
 		return
 	}
-
-	logger.API("DJ Mode: %d songs in library", len(allSongs))
+	genres, genresErr := a.db.GetGenreNames()
+	if genresErr != nil {
+		logger.API("DJ Mode could not load genre statistics: %v", genresErr)
+		genres = []string{}
+	}
+	avgSongLengthSec := librarySummary.AverageDurationSec
+	if avgSongLengthSec <= 0 {
+		avgSongLengthSec = dj.DefaultAvgSongLengthSec
+	}
+	logger.API("DJ Mode: %d eligible songs in library", librarySummary.SongCount)
 
 	// First, try to match the prompt against genres using existing logic
 	// This extracts seed genres from the user's prompt
@@ -1859,57 +1878,20 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			moodMatch.mood, moodMatch.energy, moodMatch.tempo)
 	}
 
-	// If no local match and we have LLM, try to get genres from LLM
+	// Compile semantic intent without sending the catalog taxonomy to the LLM.
+	// A raw-prompt fallback still allows local embeddings to serve a DJ request.
+	intent := a.compileSemanticPlaylistIntent(ctx, enhancePromptWithTimeContext(prompt, useTimeContext))
 	if len(seedGenres) == 0 {
-		llmSettings := getLLMSettings(a)
-		if llmSettings.Provider == llm.ProviderOllama || llmSettings.APIKey != "" {
-			provider, err := llm.NewProvider(llmSettings)
-			if err == nil {
-				defer provider.Close()
-				availableGenres := a.getAvailableGenreNames()
-				llmFilter, err := provider.ParsePlaylistFilterWithContext(ctx, prompt, availableGenres)
-				if err == nil && llmFilter != nil {
-					seedGenres = llmFilter.Genres
-					seedArtists = llmFilter.Artists
-					// Deterministic prompt years are already populated above. Only use
-					// LLM years when the prompt did not contain an explicit era.
-					if promptMinYear == 0 && promptMaxYear == 0 {
-						promptMinYear = llmFilter.MinYear
-						promptMaxYear = llmFilter.MaxYear
-					}
-					logger.API("DJ Mode: LLM extracted genres=%v artists=%v", seedGenres, seedArtists)
-
-					// Apply mood match info from LLM filter if not already matched
-					if moodMatch == nil && (llmFilter.Mood != "" || llmFilter.Energy != "" || llmFilter.Tempo != "") {
-						moodMatch = &moodMatchInfo{
-							mood:   llmFilter.Mood,
-							energy: llmFilter.Energy,
-							tempo:  llmFilter.Tempo,
-						}
-					}
-				} else {
-					logger.API("DJ Mode: LLM filter failed: %v", err)
-				}
-			}
-		}
+		seedGenres = intent.PreferredGenres
 	}
-
-	// Collect genre stats and calculate avg song length
-	genreCounts := make(map[string]int)
-	var totalDuration float64
-	for _, song := range allSongs {
-		for _, g := range song.Genre {
-			genreCounts[g]++
-		}
-		totalDuration += song.Duration
-	}
-	var genres []string
-	for genre := range genreCounts {
-		genres = append(genres, genre)
-	}
-	avgSongLengthSec := 210 // Default 3.5 min
-	if len(allSongs) > 0 {
-		avgSongLengthSec = int(totalDuration / float64(len(allSongs)))
+	seedArtists = intent.IncludeArtists
+	if promptMinYear > 0 || promptMaxYear > 0 {
+		intent.MinYear = promptMinYear
+		intent.MaxYear = promptMaxYear
+		intent.YearConstraintHard = true
+	} else if intent.YearConstraintHard {
+		promptMinYear = intent.MinYear
+		promptMaxYear = intent.MaxYear
 	}
 
 	// Get recently played song IDs if avoidance is enabled
@@ -1929,7 +1911,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		SeedGenres:       seedGenres,
 		SeedArtists:      seedArtists,
 		AvgSongLengthSec: avgSongLengthSec,
-		TotalSongs:       len(allSongs),
+		TotalSongs:       librarySummary.SongCount,
 	}
 
 	// Build plan options
@@ -1977,74 +1959,59 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			i+1, phase.Name, phase.TargetEnergy, phase.TargetTempo, phase.TargetCount, phase.MinBPM, phase.MaxBPM)
 	}
 
-	// Filter candidates based on:
-	// 1. Recently played (if avoidance enabled)
-	// 2. Matching genres (if seed genres were extracted)
-	// 3. Matching mood/energy/tempo (if mood match was found)
-	candidates := make([]db.Song, 0, len(allSongs))
-	for _, song := range allSongs {
-		// Skip recently played
-		if recentlyPlayedIDs[song.ID] {
-			continue
-		}
-
-		// Era constraints are hard eligibility requirements. Sequencing can relax
-		// BPM or mood fit, but it must never introduce a track outside this range.
-		if !songMatchesYear(song, promptMinYear, promptMaxYear) {
-			continue
-		}
-
-		// If we have seed genres, filter to matching songs
-		if len(seedGenres) > 0 {
-			matchesGenre := false
-			for _, sg := range seedGenres {
-				for _, songGenre := range song.Genre {
-					if strings.EqualFold(songGenre, sg) || strings.Contains(strings.ToLower(songGenre), strings.ToLower(sg)) {
-						matchesGenre = true
-						break
-					}
-				}
-				if matchesGenre {
-					break
-				}
-			}
-			if !matchesGenre {
-				continue
-			}
-		}
-
-		// If we have seed artists, include their songs
-		if len(seedArtists) > 0 {
-			matchesArtist := false
-			for _, sa := range seedArtists {
-				if strings.EqualFold(song.Artist, sa) || strings.Contains(strings.ToLower(song.Artist), strings.ToLower(sa)) {
-					matchesArtist = true
-					break
-				}
-			}
-			// Note: We include if artist matches OR genre matches, not AND
-			if matchesArtist {
-				candidates = append(candidates, song)
-				continue
-			}
-		}
-
-		candidates = append(candidates, song)
+	semanticDJ, semanticUsed, semanticErr := a.retrieveSemanticDJPhasePools(ctx, plan, semanticDJRequest{
+		Source:            source,
+		DiscoverMode:      discoverMode,
+		RecentlyPlayedIDs: recentlyPlayedIDs,
+		Intent:            intent,
+	})
+	if semanticErr != nil {
+		logger.API("DJ Mode semantic retrieval failed; using legacy fallback: %v", semanticErr)
 	}
 
-	logger.API("DJ Mode: %d candidate songs after filtering (from %d total)", len(candidates), len(allSongs))
-
-	// Only broaden an unconstrained discovery request. Falling back to all songs
-	// for an explicit genre, artist, or era violates the user's request.
-	hasHardConstraints := promptMinYear > 0 || promptMaxYear > 0 || len(seedGenres) > 0 || len(seedArtists) > 0
-	if len(candidates) < 10 && len(allSongs) > 10 && !hasHardConstraints {
-		logger.API("DJ Mode: Too few candidates (%d), falling back to all songs", len(candidates))
+	// Retain the full-catalog path only when semantic retrieval is unavailable
+	// or cannot supply every phase with a usable bounded pool.
+	var candidates []db.Song
+	if !semanticUsed {
+		allSongs, loadErr := a.db.GetAllSongs()
+		if loadErr != nil {
+			logger.API("DJ Mode legacy fallback failed to get songs: %v", loadErr)
+			http.Error(w, fmt.Sprintf("Failed to get songs: %v", loadErr), http.StatusInternalServerError)
+			return
+		}
+		allSongs, loadErr = a.db.FilterSongsForAIDJ(allSongs, source)
+		if loadErr != nil {
+			logger.API("DJ Mode legacy fallback failed to filter catalog sources: %v", loadErr)
+			http.Error(w, fmt.Sprintf("Failed to filter DJ sources: %v", loadErr), http.StatusInternalServerError)
+			return
+		}
 		candidates = make([]db.Song, 0, len(allSongs))
 		for _, song := range allSongs {
-			if !recentlyPlayedIDs[song.ID] {
+			if recentlyPlayedIDs[song.ID] || !songMatchesYear(song, promptMinYear, promptMaxYear) {
+				continue
+			}
+			if len(seedGenres) > 0 && !songMatchesAnyGenre(song, seedGenres) {
+				continue
+			}
+			if len(seedArtists) > 0 && songMatchesAnyArtist(song, seedArtists) {
 				candidates = append(candidates, song)
+				continue
+			}
+			candidates = append(candidates, song)
+		}
+		logger.API("DJ Mode legacy fallback: %d candidate songs after filtering (from %d total)", len(candidates), len(allSongs))
+		hasHardConstraints := promptMinYear > 0 || promptMaxYear > 0 || len(seedGenres) > 0 || len(seedArtists) > 0
+		if len(candidates) < 10 && len(allSongs) > 10 && !hasHardConstraints {
+			logger.API("DJ Mode legacy fallback: too few candidates (%d), broadening unconstrained request", len(candidates))
+			candidates = make([]db.Song, 0, len(allSongs))
+			for _, song := range allSongs {
+				if !recentlyPlayedIDs[song.ID] {
+					candidates = append(candidates, song)
+				}
 			}
 		}
+	} else {
+		logger.API("DJ Mode semantic retrieval: %d candidates across phase pools %v", semanticDJ.CandidateCount, semanticDJ.PhaseCandidateCount)
 	}
 
 	// Create score context
@@ -2056,8 +2023,15 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	// Create the sequencer
 	sequencer := dj.NewSequencer()
 
-	// Build the queue using the sequencer
-	queue, phaseResults, err := sequencer.BuildQueue(candidates, plan, personaDef, scoreCtx)
+	// Build the queue from semantic phase pools when available. The legacy
+	// single-candidate path remains the fallback for unavailable semantic state.
+	var queue []db.Song
+	var phaseResults []dj.PhaseResult
+	if semanticUsed {
+		queue, phaseResults, err = sequencer.BuildQueueFromPhasePools(semanticDJ.Pools, plan, personaDef, scoreCtx)
+	} else {
+		queue, phaseResults, err = sequencer.BuildQueue(candidates, plan, personaDef, scoreCtx)
+	}
 	if err != nil {
 		logger.API("DJ Mode: Failed to build queue: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to build DJ queue: %v", err), http.StatusInternalServerError)
@@ -2093,7 +2067,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 
 	// Return combined response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response := map[string]interface{}{
 		"filter": map[string]interface{}{
 			"mode":    "dj",
 			"persona": persona,
@@ -2106,5 +2080,14 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		},
 		"songs": songsAny,
 		"dj":    djResponse,
-	})
+	}
+	if semanticUsed {
+		response["retrieval"] = map[string]interface{}{
+			"mode":                 "semantic",
+			"candidateCount":       semanticDJ.CandidateCount,
+			"phaseCandidateCounts": semanticDJ.PhaseCandidateCount,
+			"fallbackUsed":         false,
+		}
+	}
+	json.NewEncoder(w).Encode(response)
 }

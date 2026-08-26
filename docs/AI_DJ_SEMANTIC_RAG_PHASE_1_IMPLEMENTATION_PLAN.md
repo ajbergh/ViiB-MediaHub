@@ -1446,8 +1446,8 @@ No new third-party dependency is added in this PR.
 - [x] Implement the MMR/diversity pass with a bounded working set.
 - [x] Add `SemanticScores` to `dj.ScoreContext`.
 - [x] Reweight `ScoreSongForPhase` around semantic relevance.
-- [ ] Replace the `db.GetAllSongs()` recall path in `handleDJMode`; move genre stats to `genre_stats` and average duration to an aggregate query (§13.1).
-- [ ] Update the sequencer to consume semantic phase candidate pools.
+- [x] Replace the `db.GetAllSongs()` recall path in `handleDJMode`; move genre stats to `genre_stats` and average duration to an aggregate query (§13.1).
+- [x] Update the sequencer to consume semantic phase candidate pools.
 - [x] Preserve the legacy fallback path.
 - [x] Preserve current API response fields; add the optional retrieval diagnostics block.
 - [x] Add unit and integration tests.
@@ -1505,6 +1505,17 @@ No new third-party dependency is added in this PR.
   `filter` and `songs` fields plus count-only `retrieval` diagnostics. A missing or empty index
   retains the legacy local/metadata path; API tests cover successful semantic output and that
   fallback condition.
+- **2026-08-26:** Replaced DJ mode's normal `GetAllSongs()` recall with per-phase semantic
+  retrieval. `db.GetAIDJLibrarySummary` supplies source-aware eligible count and average
+  duration through one aggregate query, while `genre_stats` supplies planner genre scale.
+  The DJ intent compiler no longer receives a local taxonomy. Each phase now retrieves,
+  negative-adjusts, hybrid-ranks, and MMR-diversifies a bounded pool with its own semantic
+  score map; `dj.BuildQueueFromPhasePools` retains phase metadata, persona, stochastic, BPM,
+  and flow logic while preventing cross-phase song reuse. The previous full-catalog path is
+  invoked only if semantic retrieval is unavailable or cannot fill a phase. DJ diagnostics
+  expose counts only. New API/database/DJ tests cover pool creation, empty-index fallback,
+  aggregate source availability, phase selection, and reuse prevention; the full backend and
+  frontend type-check suites pass.
 
 #### Acceptance criteria
 

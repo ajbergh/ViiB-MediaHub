@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -185,6 +186,40 @@ func TestFilterSongsForAIDJHonorsSourceAndPlexAvailability(t *testing.T) {
 	}
 	if _, err := database.FilterSongsForAIDJ(songs, "spotify"); err == nil {
 		t.Fatal("expected invalid AI DJ source to be rejected")
+	}
+}
+
+func TestGetAIDJLibrarySummaryHonorsSourceAndAvailability(t *testing.T) {
+	database := openPlexTestDB(t)
+	defer database.Close()
+	const sourceID, libraryID, machineID = "summary_source", "3", "summary_machine"
+	if err := database.SavePlexSource(PlexSource{ID: sourceID, MachineIdentifier: machineID, BaseURL: "http://127.0.0.1:32400", Name: "Summary Plex", LibraryID: libraryID, Active: true, Available: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSong(&Song{ID: "summary_local", Title: "Local", Artist: "Artist", FilePath: filepath.Join(t.TempDir(), "summary-local.flac"), Duration: 180, AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	track := plexFixture(sourceID, libraryID, machineID, "summary", "Plex", 1)
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdateSongDuration(track.SongID, 240); err != nil {
+		t.Fatal(err)
+	}
+	all, err := database.GetAIDJLibrarySummary(context.Background(), "all")
+	if err != nil || all.SongCount != 2 || all.AverageDurationSec != 210 {
+		t.Fatalf("all=%#v err=%v", all, err)
+	}
+	local, err := database.GetAIDJLibrarySummary(context.Background(), "local")
+	if err != nil || local.SongCount != 1 || local.AverageDurationSec != 180 {
+		t.Fatalf("local=%#v err=%v", local, err)
+	}
+	if err := database.SetPlexSyncState(sourceID, "error", "offline", false, 0); err != nil {
+		t.Fatal(err)
+	}
+	available, err := database.GetAIDJLibrarySummary(context.Background(), "all")
+	if err != nil || available.SongCount != 1 || available.AverageDurationSec != 180 {
+		t.Fatalf("available=%#v err=%v", available, err)
 	}
 }
 

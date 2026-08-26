@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ajbergh/viib-mediahub/internal/db"
 )
 
 // ============================================================================
@@ -59,6 +61,14 @@ type PhaseResult struct {
 	MaxBPM    int      `json:"maxBpm"`    // Actual max BPM in selection
 	Notes     string   `json:"notes"`     // Computed notes for this phase
 	SongCount int      `json:"songCount"` // Number of songs in phase
+}
+
+// PhaseCandidatePool is the bounded recall result for one DJ phase. Semantic
+// score maps are phase-specific because the same song can have a different
+// relevance to a warm-up than to a peak-time query.
+type PhaseCandidatePool struct {
+	Songs          []db.Song
+	SemanticScores map[string]float64
 }
 
 // DJNarration contains optional DJ talk mode narration cues.
@@ -115,6 +125,10 @@ type ScoreContext struct {
 	// Recently played song IDs to avoid (keyed by ID)
 	RecentlyPlayedIDs map[string]bool
 
+	// Song IDs already used in the set. This prevents semantic phase pools from
+	// selecting the same catalog identity twice across an arc.
+	UsedSongIDs map[string]bool
+
 	// Last song context for continuity scoring
 	LastSongBPM    int
 	LastSongMood   string
@@ -142,6 +156,7 @@ func NewScoreContext() *ScoreContext {
 		GenreAffinity:       make(map[string]float64),
 		ArtistSeen:          make(map[string]bool),
 		RecentlyPlayedIDs:   make(map[string]bool),
+		UsedSongIDs:         make(map[string]bool),
 		SongSkipRates:       make(map[string]float64),
 		GenreCompletionRate: make(map[string]float64),
 		SemanticScores:      make(map[string]float64),
