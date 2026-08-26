@@ -49,18 +49,19 @@ import (
 // It contains references to the database, server logger, and other shared
 // components required by handler implementations.
 type API struct {
-	db              *db.DB
-	dataDir         string
-	coverDir        string
-	downloadManager *DownloadManager
-	scanner         *scanner.Scanner
-	lastfmClient    *lastfm.Client
-	enrichRunning   int32 // atomic: 1 if enrichment goroutine is active
-	semanticMu      sync.RWMutex
-	semanticService *semantic.Service
-	semanticState   semantic.EmbeddingResolution
-	semanticError   string
-	semanticClosed  bool
+	db                 *db.DB
+	dataDir            string
+	coverDir           string
+	downloadManager    *DownloadManager
+	scanner            *scanner.Scanner
+	lastfmClient       *lastfm.Client
+	enrichRunning      int32 // atomic: 1 if enrichment goroutine is active
+	semanticMu         sync.RWMutex
+	semanticService    *semantic.Service
+	semanticState      semantic.EmbeddingResolution
+	semanticError      string
+	semanticClosed     bool
+	semanticGeneration uint64
 }
 
 // New constructs a new API instance using the given database and
@@ -177,6 +178,8 @@ func (a *API) Routes() chi.Router {
 	r.Get("/scan/status", a.getScanStatus)
 
 	// Semantic indexing endpoints
+	r.Get("/semantic/settings", a.getSemanticSettings)
+	r.Put("/semantic/settings", a.updateSemanticSettings)
 	r.Get("/semantic/status", a.getSemanticStatus)
 	r.Post("/semantic/rebuild", a.rebuildSemanticIndex)
 	r.Post("/semantic/retry-errors", a.retrySemanticErrors)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,41 +31,66 @@ type semanticRebuildRequest struct {
 	Scope string `json:"scope"`
 }
 
+type semanticSettingsResponse struct {
+	Provider         string `json:"provider"`
+	Model            string `json:"model"`
+	Dimensions       int    `json:"dimensions"`
+	BaseURL          string `json:"baseURL"`
+	APIKeyConfigured bool   `json:"apiKeyConfigured"`
+	Status           string `json:"status"`
+	Reason           string `json:"reason,omitempty"`
+}
+
+type semanticSettingsRequest struct {
+	Provider   string  `json:"provider"`
+	Model      string  `json:"model"`
+	Dimensions *int    `json:"dimensions"`
+	BaseURL    string  `json:"baseURL"`
+	APIKey     *string `json:"apiKey"`
+}
+
 // initSemanticService resolves configuration after API construction. It keeps
 // startup non-blocking, and a missing provider only publishes a local status
 // rather than changing the existing AI DJ behavior.
 func (a *API) initSemanticService() {
+	a.semanticMu.RLock()
+	generation := a.semanticGeneration
+	a.semanticMu.RUnlock()
+	a.initSemanticServiceGeneration(generation)
+}
+
+func (a *API) initSemanticServiceGeneration(generation uint64) {
 	ctx, cancel := context.WithTimeout(context.Background(), semanticProviderTestTimeout)
 	defer cancel()
 	resolution, err := semantic.ResolveEmbeddingSettings(ctx, a.db, nil)
 	if err != nil {
-		a.storeSemanticUnavailable(semantic.EmbeddingResolution{Status: "error"}, err.Error())
+		a.storeSemanticUnavailable(generation, semantic.EmbeddingResolution{Status: "error"}, err.Error())
 		return
 	}
 	if !resolution.Ready() {
-		a.storeSemanticUnavailable(resolution, "")
+		a.storeSemanticUnavailable(generation, resolution, "")
 		return
 	}
 	provider, err := semantic.NewConfiguredEmbeddingProvider(resolution.Settings, nil)
 	if err != nil {
 		resolution.Status = "needs_configuration"
 		resolution.Reason = err.Error()
-		a.storeSemanticUnavailable(resolution, "")
+		a.storeSemanticUnavailable(generation, resolution, "")
 		return
 	}
 	service, err := semantic.NewService(a.db, provider)
 	if err != nil {
 		_ = provider.Close()
-		a.storeSemanticUnavailable(resolution, err.Error())
+		a.storeSemanticUnavailable(generation, resolution, err.Error())
 		return
 	}
 	if err := service.Start(context.Background()); err != nil {
 		_ = service.Close()
-		a.storeSemanticUnavailable(resolution, err.Error())
+		a.storeSemanticUnavailable(generation, resolution, err.Error())
 		return
 	}
 	a.semanticMu.Lock()
-	if a.semanticClosed {
+	if a.semanticClosed || a.semanticGeneration != generation {
 		a.semanticMu.Unlock()
 		_ = service.Close()
 		return
@@ -75,15 +101,121 @@ func (a *API) initSemanticService() {
 	a.semanticMu.Unlock()
 }
 
-func (a *API) storeSemanticUnavailable(resolution semantic.EmbeddingResolution, errMessage string) {
+func (a *API) storeSemanticUnavailable(generation uint64, resolution semantic.EmbeddingResolution, errMessage string) {
 	a.semanticMu.Lock()
 	defer a.semanticMu.Unlock()
-	if a.semanticClosed {
+	if a.semanticClosed || a.semanticGeneration != generation {
 		return
 	}
 	a.semanticService = nil
 	a.semanticState = resolution
 	a.semanticError = errMessage
+}
+
+// restartSemanticService safely retires a previous provider before resolving
+// the saved configuration. The generation prevents a slow Ollama probe from
+// installing a stale service after a later settings update.
+func (a *API) restartSemanticService() {
+	a.semanticMu.Lock()
+	if a.semanticClosed {
+		a.semanticMu.Unlock()
+		return
+	}
+	a.semanticGeneration++
+	generation := a.semanticGeneration
+	previous := a.semanticService
+	a.semanticService = nil
+	a.semanticState = semantic.EmbeddingResolution{Status: "initializing"}
+	a.semanticError = ""
+	a.semanticMu.Unlock()
+
+	if previous != nil {
+		if err := previous.Close(); err != nil {
+			logger.API("close previous semantic service: %v", err)
+		}
+	}
+	a.initSemanticServiceGeneration(generation)
+}
+
+func (a *API) getSemanticSettings(w http.ResponseWriter, _ *http.Request) {
+	settings, err := semantic.LoadEmbeddingSettings(a.db)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load semantic settings")
+		return
+	}
+	resolution, _, _ := a.semanticSnapshot()
+	provider := settings.Provider
+	if provider == "" {
+		provider = semantic.EmbeddingProviderAuto
+	}
+	response := semanticSettingsResponse{
+		Provider:         provider,
+		Model:            settings.Model,
+		Dimensions:       settings.Dimensions,
+		BaseURL:          settings.BaseURL,
+		APIKeyConfigured: settings.APIKey != "",
+		Status:           resolution.Status,
+		Reason:           resolution.Reason,
+	}
+	if response.Status == "" {
+		response.Status = "initializing"
+	}
+	respondJSON(w, response)
+}
+
+func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
+	var request semanticSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid semantic settings request")
+		return
+	}
+	existing, err := semantic.LoadEmbeddingSettings(a.db)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load semantic settings")
+		return
+	}
+	provider := strings.ToLower(strings.TrimSpace(request.Provider))
+	if provider == "" {
+		provider = semantic.EmbeddingProviderAuto
+	}
+	switch provider {
+	case semantic.EmbeddingProviderAuto, semantic.EmbeddingProviderOllama, semantic.EmbeddingProviderOpenAI, semantic.EmbeddingProviderDisabled:
+	default:
+		respondError(w, http.StatusBadRequest, "semantic embedding provider must be auto, ollama, openai, or disabled")
+		return
+	}
+	dimensions := existing.Dimensions
+	if request.Dimensions != nil {
+		dimensions = *request.Dimensions
+	}
+	if dimensions < 0 {
+		respondError(w, http.StatusBadRequest, "semantic embedding dimensions must not be negative")
+		return
+	}
+	// Ollama reports its vector size. Persisting an old cloud dimension here
+	// would make the next local provider incorrectly reject valid vectors.
+	if provider == semantic.EmbeddingProviderAuto || provider == semantic.EmbeddingProviderOllama {
+		dimensions = 0
+	}
+	dimensionsValue := ""
+	if dimensions > 0 {
+		dimensionsValue = strconv.Itoa(dimensions)
+	}
+	values := map[string]string{
+		semantic.SemanticEmbeddingProviderSetting:   provider,
+		semantic.SemanticEmbeddingModelSetting:      strings.TrimSpace(request.Model),
+		semantic.SemanticEmbeddingDimensionsSetting: dimensionsValue,
+		semantic.SemanticEmbeddingBaseURLSetting:    strings.TrimSpace(request.BaseURL),
+	}
+	if request.APIKey != nil {
+		values[semantic.SemanticEmbeddingAPIKeySetting] = strings.TrimSpace(*request.APIKey)
+	}
+	if err := a.db.SetSettingsBatch(values); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save semantic settings")
+		return
+	}
+	go a.restartSemanticService()
+	respondJSON(w, map[string]string{"status": "accepted"})
 }
 
 func (a *API) getSemanticStatus(w http.ResponseWriter, r *http.Request) {

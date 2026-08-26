@@ -1283,8 +1283,9 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
   head. The active scope is embedding-provider configuration, background document/index
   maintenance, and index status/rebuild controls; semantic DJ retrieval remains PR 3.
 - **2026-08-26:** Opened draft PR [#24](https://github.com/ajbergh/ViiB-MediaHub/pull/24)
-  for the active PR 2 implementation so CI runs continuously while the remaining adapter,
-  API, metadata-invalidation, and Settings UI work is completed.
+  for the active PR 2 implementation so CI runs continuously while the remaining OpenAI
+  adapter, Gemini decision, incremental arena maintenance, and cloud-cost confirmation
+  work is completed.
 
 #### PR 1 implementation notes (2026-08-26)
 
@@ -1368,7 +1369,8 @@ No new third-party dependency is added in this PR.
 - [x] Implement `library_changes` cursor tailing, including the pruned-log fallback to full rescan.
 - [x] Add explicit invalidation for `artist_metadata` / `album_metadata`, which the trigger log does not cover.
 - [x] Add the status, rebuild (`reindex` | `reload`), and retry endpoints.
-- [ ] Add the Settings UI using design tokens, including the cloud cost estimate and confirmation.
+- [x] Add the Settings UI using design tokens for local/auto provider configuration, status, provider test, reindex, and error retry.
+- [ ] Add the OpenAI cloud cost estimate and explicit confirmation before a cloud index build.
 - [x] Add unit and integration tests with a fake embedding provider.
 - [x] Update this plan with implementation notes.
 
@@ -1380,6 +1382,8 @@ No new third-party dependency is added in this PR.
 - **2026-08-26:** Added durable `library_changes` cursor tailing. Each observed change window runs a full catalog content-hash reconciliation (so aggregate documents and deletions are correct without re-embedding behavioural-only writes), advances all three entity cursors, and falls back to a full reconciliation if a pruned change log leaves a revision gap. Obsolete track, album, and artist documents are removed transactionally before the replacement arenas load.
 - **2026-08-26:** Added the explicit metadata invalidation path that `library_changes` cannot provide. Last.fm artist updates, similar-artist updates, and album metadata saves enqueue durable metadata-change records. The semantic worker loads artist tags/bio/similar artists and album genres in bounded bulk queries, reconciles content hashes in the background, and acknowledges each queue page only after reconciliation. This keeps metadata enrichment asynchronous and avoids an N+1 read pattern.
 - **2026-08-26:** API startup now owns the semantic service asynchronously and shutdown closes it cleanly. Added `/api/semantic/status`, `/rebuild` (`reindex` or `reload` only), `/retry-errors`, and `/test-embedding-provider`; no endpoint exposes embeddings, documents, or keys. This slice activates locally configured Ollama indexing. An OpenAI semantic configuration is reported as needing configuration until the dedicated adapter is completed.
+- **2026-08-26:** Added `GET`/`PUT /api/semantic/settings` and the Settings semantic-index card. Dedicated semantic settings save atomically; API keys remain encrypted and write-only. A settings change retires the previous service and starts a replacement asynchronously, with a monotonic generation guard so a slow prior provider probe cannot overwrite a newer configuration. The UI exposes auto/local Ollama configuration, live status polling, provider test, reindex, and error retry. It deliberately marks OpenAI cloud controls unavailable until the adapter, current price verification, and explicit cost confirmation are implemented.
+- **2026-08-26:** Verified the settings/lifecycle slice with focused backend semantic tests, frontend TypeScript check, 30 frontend unit tests, and a production frontend build. The preceding lifecycle/API checkpoint on PR #24 completed successfully in GitHub Actions: [run 33008542425](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33008542425).
 - **2026-08-26:** Corrected the pre-existing Windows-only expectation in `internal/validation.TestSanitizePath` so it compares the cleaned path for the running platform. The sanitization behavior itself is unchanged.
 
 #### Acceptance criteria
