@@ -120,6 +120,15 @@ func resolveEmbeddingSettings(ctx context.Context, database *db.DB, client *http
 		return EmbeddingResolution{}, fmt.Errorf("read chat provider: %w", err)
 	}
 	chatProvider = strings.ToLower(strings.TrimSpace(chatProvider))
+	if chatProvider == "" {
+		legacyGeminiKey, err := database.GetSetting("gemini_api_key")
+		if err != nil {
+			return EmbeddingResolution{}, fmt.Errorf("read legacy Gemini API key: %w", err)
+		}
+		if strings.TrimSpace(legacyGeminiKey) != "" {
+			chatProvider = llm.ProviderGemini
+		}
+	}
 	if chatProvider == llm.ProviderOllama {
 		if settings.BaseURL == "" {
 			settings.BaseURL, err = database.GetSetting("llm_base_url")
@@ -149,11 +158,25 @@ func resolveEmbeddingSettings(ctx context.Context, database *db.DB, client *http
 	if probeErr == nil && available {
 		return readyOllamaResolution(settings, "local_probe"), nil
 	}
-	reason := fmt.Sprintf("configure an OpenAI API key or pull %q in Ollama", settings.Model)
+	reason := autoConfigurationReason(chatProvider, settings.Model)
 	if probeErr != nil {
 		reason += "; local Ollama probe failed: " + probeErr.Error()
 	}
 	return EmbeddingResolution{Settings: settings, Status: embeddingResolutionNeedsConfiguration, Source: "auto", Reason: reason}, nil
+}
+
+// autoConfigurationReason is intentionally explicit about chat providers that
+// do not have a native Phase 1 embedding adapter. Their chat credentials must
+// never be sent to an unrelated embedding API; an already-pulled local Ollama
+// model remains the supported automatic fallback.
+func autoConfigurationReason(chatProvider, ollamaModel string) string {
+	base := fmt.Sprintf("pull %q in Ollama or configure OpenAI embeddings when that adapter is available", ollamaModel)
+	switch chatProvider {
+	case llm.ProviderGemini, llm.ProviderAnthropic, llm.ProviderXAI, llm.ProviderOpenRouter:
+		return fmt.Sprintf("%s chat has no native Phase 1 embedding adapter; %s", chatProvider, base)
+	default:
+		return base
+	}
 }
 
 func readyOllamaResolution(settings EmbeddingSettings, source string) EmbeddingResolution {

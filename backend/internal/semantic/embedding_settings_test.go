@@ -4,9 +4,11 @@ import (
 	"context"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/llm"
 )
 
 func TestResolveEmbeddingSettingsUsesDedicatedAndChatConfiguration(t *testing.T) {
@@ -57,6 +59,37 @@ func TestResolveEmbeddingSettingsAutoProbeAndConfigurationMessage(t *testing.T) 
 
 	resolution, err = resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) { return false, nil })
 	if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || resolution.Reason == "" {
+		t.Fatalf("resolution=%#v err=%v", resolution, err)
+	}
+}
+
+func TestResolveEmbeddingSettingsDocumentsNonNativeChatProviderFallback(t *testing.T) {
+	providers := []string{llm.ProviderGemini, llm.ProviderAnthropic, llm.ProviderXAI, llm.ProviderOpenRouter}
+	for _, provider := range providers {
+		t.Run(provider, func(t *testing.T) {
+			database := newEmbeddingSettingsTestDB(t)
+			if err := database.SetSetting("llm_provider", provider); err != nil {
+				t.Fatal(err)
+			}
+			resolution, err := resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) {
+				return false, nil
+			})
+			if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || !strings.Contains(resolution.Reason, provider+" chat has no native Phase 1 embedding adapter") {
+				t.Fatalf("resolution=%#v err=%v", resolution, err)
+			}
+		})
+	}
+}
+
+func TestResolveEmbeddingSettingsRecognizesLegacyGeminiFallback(t *testing.T) {
+	database := newEmbeddingSettingsTestDB(t)
+	if err := database.SetSetting("gemini_api_key", "legacy-key"); err != nil {
+		t.Fatal(err)
+	}
+	resolution, err := resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) {
+		return false, nil
+	})
+	if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || !strings.Contains(resolution.Reason, "gemini chat has no native Phase 1 embedding adapter") {
 		t.Fatalf("resolution=%#v err=%v", resolution, err)
 	}
 }
