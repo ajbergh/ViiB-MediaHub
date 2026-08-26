@@ -93,9 +93,47 @@ jobs:
         if: ${{ steps.backend_checks.outcome == 'failure' }}
         run: exit 1
 
+  semantic-cross-compile:
+    name: Semantic foundation (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: linux
+            goarch: amd64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.13'
+          cache-dependency-path: backend/go.sum
+      # This package compiles the complete foundation dependency closure,
+      # including SQLite persistence, without trying to cross-package a native
+      # Wails shell. The platform-specific application builds stay in release CI.
+      - name: Cross-compile semantic foundation
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: go build ./internal/semantic/...
+
   windows-build:
     runs-on: windows-latest
-    needs: [frontend, backend]
+    needs: [frontend, backend, semantic-cross-compile]
     steps:
       - uses: actions/checkout@v4
         with:

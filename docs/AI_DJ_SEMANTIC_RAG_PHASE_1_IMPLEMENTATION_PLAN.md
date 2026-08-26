@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** Implementation-ready
+**Status:** PR 1 implemented — awaiting CI validation and PR handoff
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1268,6 +1268,37 @@ Never log API keys or full library contents. Keep prompt logging at debug level 
 
 Four ordered PRs. Each must leave `main` buildable and usable after squash merge.
 
+### Implementation progress
+
+- **2026-08-26:** Implemented PR 1 on `feature/semantic-library-foundation`. The
+  scope is the schema, deterministic document builders, vector codec, exact in-memory
+  index, tests, and cross-compilation CI. No AI DJ production path changes are included.
+
+#### PR 1 implementation notes (2026-08-26)
+
+- `EnsureSemanticSchema()` is an additive, per-DB `sync.Once` installation path; it does
+  not change `db.migrate()` or existing catalog data.
+- The existing `GetSongsByIDs([]string)` API could not be changed to take a context
+  without breaking current callers, so semantic retrieval uses the new bounded,
+  context-aware `GetSongsByIDsContext(context.Context, []string)` companion.
+- `BuildDocuments` builds artist, album, then track documents from reusable aggregate
+  maps. Stored document text is whitespace-normalized, contains no ViiB song ID or task
+  prefix, and its hash includes `SemanticDocumentVersion`.
+- Vector BLOBs are little-endian, validated, and normalized before storage. The exact
+  scan index has deterministic tie-breaking, free-list deletion, replacement-on-rebuild,
+  and sharded scans above 25,000 rows.
+- CI now cross-compiles the semantic foundation dependency closure (semantic package and
+  SQLite persistence) for all five release GOOS/GOARCH targets with `CGO_ENABLED=0`.
+  Native Wails application packaging remains covered by its platform-specific build jobs.
+- Local verification passed `go test ./internal/db ./internal/semantic`, `go build ./...`,
+  `go vet` for the new packages, and the five semantic cross-build targets. The complete
+  `go test ./...` run reaches the semantic tests but currently fails an unrelated Windows
+  path expectation in `internal/validation.TestSanitizePath` (it expects slash-separated
+  paths while Windows returns backslashes). `go test -race ./internal/semantic/...` could
+  not run locally because this workstation has no C compiler; CI's Linux backend job
+  remains the required race-test gate. Frontend `npm run check` did not complete here:
+  its unchanged TypeScript check stalled and its orphaned process was stopped.
+
 ### PR 1 — Semantic library foundation
 
 **Branch:** `feature/semantic-library-foundation`
@@ -1276,19 +1307,19 @@ No new third-party dependency is added in this PR.
 
 #### Tasks
 
-- [ ] Add `EnsureSemanticSchema()` in `backend/internal/db/semantic.go` — tables, indexes, `sync.Once`, no new migration framework.
-- [ ] Add bulk DB operations from §5.4 with bounded transactions and 900-parameter chunking.
-- [ ] Add `backend/internal/semantic/types.go`.
-- [ ] Implement deterministic track/album/artist document builders.
-- [ ] Implement content hashing and document versioning.
-- [ ] Implement the float32 BLOB codec with full validation, including zero-magnitude rejection.
-- [ ] Implement the shared L2 normalization helper used by every write path.
-- [ ] Implement the `VectorIndex` interface.
-- [ ] Implement `scanIndex`: contiguous arena, in-place upsert, free-list delete, bounded-heap exact top-k, sharded scan above the parallelism threshold.
-- [ ] Implement `Rebuild` from stored `ready` embeddings with preallocation and dimension validation.
-- [ ] Add unit tests for every foundation component.
-- [ ] Add the five-target cross-compile check to CI.
-- [ ] Update this plan with implementation notes.
+- [x] Add `EnsureSemanticSchema()` in `backend/internal/db/semantic.go` — tables, indexes, `sync.Once`, no new migration framework.
+- [x] Add bulk DB operations from §5.4 with bounded transactions and 900-parameter chunking.
+- [x] Add `backend/internal/semantic/types.go`.
+- [x] Implement deterministic track/album/artist document builders.
+- [x] Implement content hashing and document versioning.
+- [x] Implement the float32 BLOB codec with full validation, including zero-magnitude rejection.
+- [x] Implement the shared L2 normalization helper used by every write path.
+- [x] Implement the `VectorIndex` interface.
+- [x] Implement `scanIndex`: contiguous arena, in-place upsert, free-list delete, bounded-heap exact top-k, sharded scan above the parallelism threshold.
+- [x] Implement `Rebuild` from stored `ready` embeddings with preallocation and dimension validation.
+- [x] Add unit tests for every foundation component.
+- [x] Add the five-target cross-compile check to CI.
+- [x] Update this plan with implementation notes.
 
 #### Acceptance criteria
 
