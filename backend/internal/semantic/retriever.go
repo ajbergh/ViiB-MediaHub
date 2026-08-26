@@ -44,12 +44,24 @@ type SemanticSearchResult struct {
 // SemanticEvidence records why a local song entered the candidate pool.
 // Track matches are intentionally weighted above album and artist rescue.
 type SemanticEvidence struct {
-	TrackSimilarity  float64
-	AlbumSimilarity  float64
-	ArtistSimilarity float64
-	BestSimilarity   float64
-	MatchedAlbum     string
-	MatchedArtist    string
+	TrackSimilarity    float64
+	AlbumSimilarity    float64
+	ArtistSimilarity   float64
+	BestSimilarity     float64
+	NegativeSimilarity float64
+	AdjustedSimilarity float64
+	NegativeApplied    bool
+	MatchedAlbum       string
+	MatchedArtist      string
+}
+
+// Relevance returns the final semantic score for ranking. A negative query is
+// optional; without one, the original direct/album/artist evidence is used.
+func (evidence SemanticEvidence) Relevance() float64 {
+	if evidence.NegativeApplied {
+		return evidence.AdjustedSimilarity
+	}
+	return evidence.BestSimilarity
 }
 
 // SemanticCandidate pairs a valid local ViiB catalog song with durable
@@ -62,13 +74,14 @@ type SemanticCandidate struct {
 // SemanticRetrievalOptions contains only deterministic eligibility filters.
 // Behavioural ranking and diversity are intentionally separate concerns.
 type SemanticRetrievalOptions struct {
-	Source             string
-	IncludeArtists     []string
-	ExcludeArtists     []string
-	MinYear            int
-	MaxYear            int
-	YearConstraintHard bool
-	InstrumentalOnly   bool
+	Source                string
+	IncludeArtists        []string
+	ExcludeArtists        []string
+	MinYear               int
+	MaxYear               int
+	YearConstraintHard    bool
+	InstrumentalOnly      bool
+	NegativeSemanticQuery string
 }
 
 // SemanticRetrievalResult is the expanded, deduplicated candidate pool ready
@@ -175,13 +188,80 @@ func (service *Service) RetrieveSemanticCandidates(ctx context.Context, query st
 			result.Candidates = append(result.Candidates, candidate)
 		}
 	}
+	if strings.TrimSpace(options.NegativeSemanticQuery) != "" {
+		adjusted, adjustErr := service.ApplyNegativeSemanticPenalty(ctx, result.Candidates, options.NegativeSemanticQuery)
+		if adjustErr != nil {
+			return SemanticRetrievalResult{}, adjustErr
+		}
+		result.Candidates = adjusted
+	}
 	sort.Slice(result.Candidates, func(left, right int) bool {
-		if result.Candidates[left].Evidence.BestSimilarity == result.Candidates[right].Evidence.BestSimilarity {
+		if result.Candidates[left].Evidence.Relevance() == result.Candidates[right].Evidence.Relevance() {
 			return result.Candidates[left].Song.ID < result.Candidates[right].Song.ID
 		}
-		return result.Candidates[left].Evidence.BestSimilarity > result.Candidates[right].Evidence.BestSimilarity
+		return result.Candidates[left].Evidence.Relevance() > result.Candidates[right].Evidence.Relevance()
 	})
 	return result, nil
+}
+
+// ApplyNegativeSemanticPenalty embeds the negative intent once, then compares
+// it only with vectors belonging to the already-bounded positive candidate
+// pool. It deliberately does not run a second corpus search.
+func (service *Service) ApplyNegativeSemanticPenalty(ctx context.Context, candidates []SemanticCandidate, negativeQuery string) ([]SemanticCandidate, error) {
+	negativeQuery = strings.TrimSpace(negativeQuery)
+	if negativeQuery == "" || len(candidates) == 0 {
+		return candidates, nil
+	}
+	_, dimensions, hasReadyIndex, err := service.searchableIndexes()
+	if err != nil {
+		return nil, err
+	}
+	if !hasReadyIndex {
+		return nil, ErrNoSearchableSemanticIndex
+	}
+	negativeVector, _, err := service.embedQuery(ctx, negativeQuery, dimensions)
+	if err != nil {
+		return nil, fmt.Errorf("embed negative semantic query: %w", err)
+	}
+	songIDs := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		songIDs = append(songIDs, candidate.Song.ID)
+	}
+	stored, err := service.database.GetReadySemanticTrackEmbeddingsBySongIDs(ctx, songIDs)
+	if err != nil {
+		return nil, fmt.Errorf("load positive candidate vectors: %w", err)
+	}
+	vectors := make(map[string][]float32, len(stored))
+	for _, item := range stored {
+		vector, decodeErr := DecodeVector(item.Embedding, dimensions)
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode semantic track vector for %q: %w", item.SongID, decodeErr)
+		}
+		vectors[item.SongID] = vector
+	}
+	adjusted := append([]SemanticCandidate(nil), candidates...)
+	for index := range adjusted {
+		vector, exists := vectors[adjusted[index].Song.ID]
+		if !exists {
+			continue
+		}
+		negativeSimilarity := cosineSimilarity(vector, negativeVector)
+		adjusted[index].Evidence.NegativeSimilarity = negativeSimilarity
+		adjusted[index].Evidence.AdjustedSimilarity = clampSemanticScore(adjusted[index].Evidence.BestSimilarity - 0.25*negativeSimilarity)
+		adjusted[index].Evidence.NegativeApplied = true
+	}
+	return adjusted, nil
+}
+
+func cosineSimilarity(left, right []float32) float64 {
+	if len(left) == 0 || len(left) != len(right) {
+		return 0
+	}
+	similarity := 0.0
+	for index, value := range left {
+		similarity += float64(value) * float64(right[index])
+	}
+	return clampSemanticScore(similarity)
 }
 
 func (service *Service) addSemanticCandidate(candidates map[string]SemanticCandidate, song db.Song, evidence SemanticEvidence) {

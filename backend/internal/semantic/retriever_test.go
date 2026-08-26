@@ -67,3 +67,33 @@ func TestSearchSemanticDocumentsFallsBackWithoutReadyIndexes(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+func TestRetrieveSemanticCandidatesAppliesNegativeQueryOnlyToPositiveCandidates(t *testing.T) {
+	database := newServiceTestDB(t)
+	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: filepath.Join(t.TempDir(), "song.flac"), AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	provider := &fakeEmbeddingProvider{}
+	service, err := NewService(database, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	if err := service.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	retrieval, err := service.RetrieveSemanticCandidates(context.Background(), "positive mood", SemanticRetrievalOptions{Source: "local", NegativeSemanticQuery: "avoid this"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(retrieval.Candidates) != 1 {
+		t.Fatalf("retrieval=%#v", retrieval)
+	}
+	evidence := retrieval.Candidates[0].Evidence
+	if !evidence.NegativeApplied || evidence.NegativeSimilarity <= 0 || evidence.AdjustedSimilarity >= evidence.BestSimilarity {
+		t.Fatalf("evidence=%#v", evidence)
+	}
+	if provider.queryCallCount() != 2 {
+		t.Fatalf("query calls=%d, want one positive and one negative embedding", provider.queryCallCount())
+	}
+}

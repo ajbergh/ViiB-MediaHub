@@ -1441,8 +1441,8 @@ No new third-party dependency is added in this PR.
 - [x] Implement album and artist expansion into valid local catalog tracks.
 - [x] Implement hard filters, delegating source filtering to `db.FilterSongsForAIDJ`.
 - [x] Implement semantic evidence aggregation.
-- [ ] Implement the negative semantic penalty.
-- [ ] Implement `HybridRanker`.
+- [x] Implement the negative semantic penalty.
+- [x] Implement `HybridRanker`.
 - [ ] Implement the MMR/diversity pass with a bounded working set.
 - [x] Add `SemanticScores` to `dj.ScoreContext`.
 - [x] Reweight `ScoreSongForPhase` around semantic relevance.
@@ -1451,7 +1451,7 @@ No new third-party dependency is added in this PR.
 - [ ] Preserve the legacy fallback path.
 - [ ] Preserve current API response fields; add the optional retrieval diagnostics block.
 - [ ] Add unit and integration tests.
-- [ ] Update this plan with implementation notes.
+- [x] Update this plan with implementation notes.
 
 #### PR 3 implementation notes
 
@@ -1482,6 +1482,17 @@ No new third-party dependency is added in this PR.
   BPM continuity, 10% persona/behaviour, and 5% genre affinity before existing penalties;
   without a semantic score it retains the legacy weighting. Tests assert relevance wins for
   otherwise equivalent tracks.
+- **2026-08-26:** Added a reusable `semantic.HybridRanker` with named 70% semantic,
+  20% behavioural, and 10% metadata-fit weights. It keeps like/play/skip data out of
+  embeddings, removes recent tracks, honours one-per-artist selection, applies a small
+  deterministic artist-repeat penalty, and makes favorites favour familiarity while discover
+  favours well-performing deep cuts. Ordering tests cover semantic dominance and each policy.
+- **2026-08-26:** Added the bounded negative-query adjustment. The retriever embeds the
+  negative query through the same LRU cache, fetches ready track vectors only for the already
+  bounded positive candidate pool, and applies `clamp(positive - 0.25 * negative, 0, 1)`.
+  It never issues a second corpus search; tests verify a single positive and single negative
+  provider embedding call. `go test ./...`, `npm run typecheck`, and the focused semantic/db
+  suites are green for the current branch.
 
 #### Acceptance criteria
 
