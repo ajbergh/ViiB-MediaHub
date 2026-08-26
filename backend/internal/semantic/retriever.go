@@ -4,15 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
 )
 
 const (
-	semanticTrackSearchLimit  = 300
-	semanticAlbumSearchLimit  = 40
-	semanticArtistSearchLimit = 30
+	semanticTrackSearchLimit     = 300
+	semanticAlbumSearchLimit     = 40
+	semanticArtistSearchLimit    = 30
+	semanticAlbumExpansionLimit  = 8
+	semanticArtistExpansionLimit = 10
+	semanticCandidatePoolLimit   = 900
 )
 
 // ErrNoSearchableSemanticIndex tells callers to use their existing fallback
@@ -35,6 +39,43 @@ type SemanticSearchResult struct {
 	Tracks   []SemanticDocumentMatch
 	Albums   []SemanticDocumentMatch
 	Artists  []SemanticDocumentMatch
+}
+
+// SemanticEvidence records why a local song entered the candidate pool.
+// Track matches are intentionally weighted above album and artist rescue.
+type SemanticEvidence struct {
+	TrackSimilarity  float64
+	AlbumSimilarity  float64
+	ArtistSimilarity float64
+	BestSimilarity   float64
+	MatchedAlbum     string
+	MatchedArtist    string
+}
+
+// SemanticCandidate pairs a valid local ViiB catalog song with durable
+// retrieval evidence. It never carries raw embedding or document content.
+type SemanticCandidate struct {
+	Song     db.Song
+	Evidence SemanticEvidence
+}
+
+// SemanticRetrievalOptions contains only deterministic eligibility filters.
+// Behavioural ranking and diversity are intentionally separate concerns.
+type SemanticRetrievalOptions struct {
+	Source             string
+	IncludeArtists     []string
+	ExcludeArtists     []string
+	MinYear            int
+	MaxYear            int
+	YearConstraintHard bool
+	InstrumentalOnly   bool
+}
+
+// SemanticRetrievalResult is the expanded, deduplicated candidate pool ready
+// for ranking. CandidateCount is capped before hard filters by design.
+type SemanticRetrievalResult struct {
+	Search     SemanticSearchResult
+	Candidates []SemanticCandidate
 }
 
 // SearchSemanticDocuments embeds one query once, then exact-searches each
@@ -66,6 +107,160 @@ func (service *Service) SearchSemanticDocuments(ctx context.Context, query strin
 		return SemanticSearchResult{}, err
 	}
 	return result, nil
+}
+
+// RetrieveSemanticCandidates expands exact document matches into local songs,
+// applies source availability plus hard constraints, and retains evidence for
+// the hybrid ranker. It never falls back to loading the entire catalog.
+func (service *Service) RetrieveSemanticCandidates(ctx context.Context, query string, options SemanticRetrievalOptions) (SemanticRetrievalResult, error) {
+	search, err := service.SearchSemanticDocuments(ctx, query)
+	if err != nil {
+		return SemanticRetrievalResult{}, err
+	}
+	candidates := make(map[string]SemanticCandidate)
+	trackIDs := make([]string, 0, len(search.Tracks))
+	trackScores := make(map[string]float64, len(search.Tracks))
+	for _, match := range search.Tracks {
+		if songID := strings.TrimSpace(match.Document.SongID); songID != "" {
+			if match.Similarity > trackScores[songID] {
+				trackScores[songID] = match.Similarity
+			}
+			trackIDs = append(trackIDs, songID)
+		}
+	}
+	tracks, err := service.database.GetSongsByIDsContext(ctx, uniqueStrings(trackIDs))
+	if err != nil {
+		return SemanticRetrievalResult{}, fmt.Errorf("expand semantic track matches: %w", err)
+	}
+	for _, song := range tracks {
+		service.addSemanticCandidate(candidates, song, SemanticEvidence{TrackSimilarity: trackScores[song.ID]})
+	}
+	for _, match := range search.Albums {
+		if len(candidates) >= semanticCandidatePoolLimit {
+			break
+		}
+		songs, expansionErr := service.database.GetSongsForSemanticAlbum(ctx, match.Document.Artist, match.Document.Album, semanticAlbumExpansionLimit)
+		if expansionErr != nil {
+			return SemanticRetrievalResult{}, fmt.Errorf("expand semantic album %q: %w", match.Document.DisplayName, expansionErr)
+		}
+		for _, song := range songs {
+			service.addSemanticCandidate(candidates, song, SemanticEvidence{AlbumSimilarity: match.Similarity, MatchedAlbum: match.Document.Album})
+		}
+	}
+	for _, match := range search.Artists {
+		if len(candidates) >= semanticCandidatePoolLimit {
+			break
+		}
+		songs, expansionErr := service.database.GetSongsForSemanticArtist(ctx, match.Document.Artist, semanticArtistExpansionLimit)
+		if expansionErr != nil {
+			return SemanticRetrievalResult{}, fmt.Errorf("expand semantic artist %q: %w", match.Document.DisplayName, expansionErr)
+		}
+		for _, song := range songs {
+			service.addSemanticCandidate(candidates, song, SemanticEvidence{ArtistSimilarity: match.Similarity, MatchedArtist: match.Document.Artist})
+		}
+	}
+	songs := make([]db.Song, 0, len(candidates))
+	for _, candidate := range candidates {
+		songs = append(songs, candidate.Song)
+	}
+	songs, err = service.database.FilterSongsForAIDJ(songs, options.Source)
+	if err != nil {
+		return SemanticRetrievalResult{}, fmt.Errorf("filter semantic candidate sources: %w", err)
+	}
+	result := SemanticRetrievalResult{Search: search, Candidates: make([]SemanticCandidate, 0, len(songs))}
+	for _, song := range songs {
+		candidate := candidates[song.ID]
+		candidate.Song = song
+		if semanticCandidateAllowed(candidate.Song, options) {
+			result.Candidates = append(result.Candidates, candidate)
+		}
+	}
+	sort.Slice(result.Candidates, func(left, right int) bool {
+		if result.Candidates[left].Evidence.BestSimilarity == result.Candidates[right].Evidence.BestSimilarity {
+			return result.Candidates[left].Song.ID < result.Candidates[right].Song.ID
+		}
+		return result.Candidates[left].Evidence.BestSimilarity > result.Candidates[right].Evidence.BestSimilarity
+	})
+	return result, nil
+}
+
+func (service *Service) addSemanticCandidate(candidates map[string]SemanticCandidate, song db.Song, evidence SemanticEvidence) {
+	if song.ID == "" {
+		return
+	}
+	candidate, exists := candidates[song.ID]
+	if !exists && len(candidates) >= semanticCandidatePoolLimit {
+		return
+	}
+	if !exists {
+		candidate.Song = song
+	}
+	candidate.Evidence.TrackSimilarity = max(candidate.Evidence.TrackSimilarity, evidence.TrackSimilarity)
+	candidate.Evidence.AlbumSimilarity = max(candidate.Evidence.AlbumSimilarity, evidence.AlbumSimilarity)
+	candidate.Evidence.ArtistSimilarity = max(candidate.Evidence.ArtistSimilarity, evidence.ArtistSimilarity)
+	if evidence.MatchedAlbum != "" {
+		candidate.Evidence.MatchedAlbum = evidence.MatchedAlbum
+	}
+	if evidence.MatchedArtist != "" {
+		candidate.Evidence.MatchedArtist = evidence.MatchedArtist
+	}
+	candidate.Evidence.BestSimilarity = max(
+		candidate.Evidence.TrackSimilarity,
+		candidate.Evidence.AlbumSimilarity*0.94,
+		candidate.Evidence.ArtistSimilarity*0.88,
+	)
+	candidates[song.ID] = candidate
+}
+
+func semanticCandidateAllowed(song db.Song, options SemanticRetrievalOptions) bool {
+	artist := strings.TrimSpace(song.Artist)
+	if semanticArtistListed(artist, options.ExcludeArtists) {
+		return false
+	}
+	if len(options.IncludeArtists) > 0 && !semanticArtistListed(artist, options.IncludeArtists) {
+		return false
+	}
+	if options.InstrumentalOnly && !song.Instrumental {
+		return false
+	}
+	if options.YearConstraintHard {
+		year := song.OriginalYear
+		if year == 0 {
+			year = song.Year
+		}
+		if options.MinYear > 0 && year < options.MinYear {
+			return false
+		}
+		if options.MaxYear > 0 && year > options.MaxYear {
+			return false
+		}
+	}
+	return true
+}
+
+func semanticArtistListed(artist string, artists []string) bool {
+	for _, candidate := range artists {
+		if strings.EqualFold(strings.TrimSpace(candidate), artist) {
+			return true
+		}
+	}
+	return false
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func (service *Service) searchableIndexes() (map[string]VectorIndex, int, bool, error) {

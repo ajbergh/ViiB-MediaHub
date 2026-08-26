@@ -41,6 +41,20 @@ func TestSearchSemanticDocumentsUsesOneCachedQueryEmbeddingAndPreservesEntitySet
 	if provider.queryCallCount() != 1 {
 		t.Fatalf("query calls=%d", provider.queryCallCount())
 	}
+	retrieval, err := service.RetrieveSemanticCandidates(context.Background(), "atmospheric drive", SemanticRetrievalOptions{Source: "local"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(retrieval.Candidates) != 2 || retrieval.Candidates[0].Evidence.TrackSimilarity == 0 || retrieval.Candidates[0].Evidence.BestSimilarity < retrieval.Candidates[0].Evidence.TrackSimilarity {
+		t.Fatalf("retrieval=%#v", retrieval)
+	}
+	if provider.queryCallCount() != 1 {
+		t.Fatalf("cached retrieval query calls=%d", provider.queryCallCount())
+	}
+	filtered, err := service.RetrieveSemanticCandidates(context.Background(), "atmospheric drive", SemanticRetrievalOptions{Source: "all", ExcludeArtists: []string{"Artist One"}})
+	if err != nil || len(filtered.Candidates) != 1 || filtered.Candidates[0].Song.ID != "second" {
+		t.Fatalf("filtered=%#v err=%v", filtered, err)
+	}
 }
 
 func TestSearchSemanticDocumentsFallsBackWithoutReadyIndexes(t *testing.T) {

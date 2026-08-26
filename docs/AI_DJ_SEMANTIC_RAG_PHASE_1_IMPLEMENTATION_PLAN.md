@@ -1438,9 +1438,9 @@ No new third-party dependency is added in this PR.
 - [x] Fix `dj.PlanCacheKey.String()` numeric encoding, add `UseTimeContext` and the time bucket, remove the genre-hash dependency, and add a collision test (§10.5).
 - [x] Implement the query embedding cache.
 - [x] Implement track, album, and artist semantic search.
-- [ ] Implement album and artist expansion into valid local catalog tracks.
-- [ ] Implement hard filters, delegating source filtering to `db.FilterSongsForAIDJ`.
-- [ ] Implement semantic evidence aggregation.
+- [x] Implement album and artist expansion into valid local catalog tracks.
+- [x] Implement hard filters, delegating source filtering to `db.FilterSongsForAIDJ`.
+- [x] Implement semantic evidence aggregation.
 - [ ] Implement the negative semantic penalty.
 - [ ] Implement `HybridRanker`.
 - [ ] Implement the MMR/diversity pass with a bounded working set.
@@ -1471,6 +1471,12 @@ No new third-party dependency is added in this PR.
   embeds a non-empty query once, validates its dimensions, exact-searches track/album/artist
   arenas at the documented 300/40/30 quotas, and resolves only the matched durable documents.
   An empty arena returns a sentinel fallback condition without issuing a provider request.
+- **2026-08-26:** Added bounded expansion from matched albums (up to 8 tracks each) and
+  artists (up to 10 each), deduplicated with direct track matches into a maximum 900-song
+  pool. Each candidate records direct/album/artist evidence and `BestSimilarity` using the
+  documented 1.00/0.94/0.88 weighting. The expansion path loads only matching song IDs,
+  invokes `db.FilterSongsForAIDJ` once for source/Plex availability, then applies explicit
+  artist, hard-year, and instrumental constraints before returning a deterministic order.
 
 #### Acceptance criteria
 
