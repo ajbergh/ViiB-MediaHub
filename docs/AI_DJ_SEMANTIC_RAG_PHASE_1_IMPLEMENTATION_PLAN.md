@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 1 open for review — awaiting CI validation
+**Status:** PR 2 in progress — semantic embedding and indexing pipeline
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1273,11 +1273,15 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
 - **2026-08-26:** Implemented PR 1 on `feature/semantic-library-foundation`. The
   scope is the schema, deterministic document builders, vector codec, exact in-memory
   index, tests, and cross-compilation CI. PR [#23](https://github.com/ajbergh/ViiB-MediaHub/pull/23)
-  is open against `main`. No AI DJ production path changes are included.
+  merged to `main` as `e6b1f07` after all frontend, backend, five-target semantic,
+  and Windows packaged-build checks passed. No AI DJ production path changes are included.
 - **2026-08-26:** PR #23's initial backend CI run passed the semantic tests and all five
   cross-builds, but staticcheck flagged a pre-existing capitalized error string in Plex
   pagination. A behavior-neutral lowercase correction is included so the required backend
   validation can proceed.
+- **2026-08-26:** Started PR 2 on `feature/semantic-library-indexer` from the merged PR 1
+  head. The active scope is embedding-provider configuration, background document/index
+  maintenance, and index status/rebuild controls; semantic DJ retrieval remains PR 3.
 
 #### PR 1 implementation notes (2026-08-26)
 
@@ -1297,10 +1301,10 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
   Native Wails application packaging remains covered by its platform-specific build jobs.
 - Local verification passed `go test ./internal/db ./internal/semantic`, `go build ./...`,
   `go vet` for the new packages, and the five semantic cross-build targets. The complete
-  `go test ./...` run reaches the semantic tests but currently fails an unrelated Windows
-  path expectation in `internal/validation.TestSanitizePath` (it expects slash-separated
-  paths while Windows returns backslashes). `go test -race ./internal/semantic/...` could
-  not run locally because this workstation has no C compiler; CI's Linux backend job
+  `go test ./...` run reaches the semantic tests. Its previously failing Windows path
+  assertion in `internal/validation.TestSanitizePath` is corrected in PR 2 to expect the
+  platform-cleaned separator. `go test -race ./internal/semantic/...` could not run
+  locally because this workstation has no C compiler; CI's Linux backend job
   remains the required race-test gate. Frontend `npm run check` did not complete here:
   its unchanged TypeScript check stalled and its orphaned process was stopped.
 
@@ -1346,24 +1350,32 @@ No new third-party dependency is added in this PR.
 
 #### Tasks
 
-- [ ] Add semantic embedding settings; register `semantic_embedding_api_key` in `crypto.sensitiveKeys` via `init()`, with a test asserting it is treated as sensitive.
-- [ ] Implement the `EmbeddingProvider` abstraction with separate document/query methods and task prefixes.
-- [ ] Implement the Ollama provider against `POST /api/embed` with array `input`, explicit `truncate: false`, and `nomic-embed-text` task prefixes.
+- [x] Add semantic embedding settings; register `semantic_embedding_api_key` in `crypto.sensitiveKeys` via `init()`, with a test asserting it is treated as sensitive.
+- [x] Implement the `EmbeddingProvider` abstraction with separate document/query methods and task prefixes.
+- [x] Implement the Ollama provider against `POST /api/embed` with array `input`, explicit `truncate: false`, and `nomic-embed-text` task prefixes.
 - [ ] Implement the OpenAI provider (`text-embedding-3-small`, `dimensions: 512`, token-capped batches).
 - [ ] Decide and record: add the Gemini embeddings adapter, or document that Gemini users get no semantic retrieval (§7.3).
-- [ ] Implement `auto` resolution including the `GET /api/tags` reachability probe. Never pull.
+- [x] Implement `auto` resolution including the `GET /api/tags` reachability probe. Never pull.
 - [ ] Implement the provider test/validation endpoint.
-- [ ] Implement batching, retries with backoff and jitter, cancellation, and bounded concurrency.
-- [ ] Implement the semantic service lifecycle.
-- [ ] Generate artist, then album, then track documents in the background.
-- [ ] Store embeddings in bounded transactions; `CheckpointWAL()` after bulk runs.
+- [x] Implement batching, retries with backoff and jitter, cancellation, and bounded concurrency.
+- [ ] Implement the semantic service lifecycle. Core `semantic.Service` lifecycle is complete; backend construction and API ownership remain.
+- [x] Generate artist, then album, then track documents in the background.
+- [x] Store embeddings in bounded transactions; `CheckpointWAL()` after bulk runs.
 - [ ] Incrementally upsert and delete arena entries.
-- [ ] Implement `library_changes` cursor tailing, including the pruned-log fallback to full rescan.
+- [x] Implement `library_changes` cursor tailing, including the pruned-log fallback to full rescan.
 - [ ] Add explicit invalidation for `artist_metadata` / `album_metadata`, which the trigger log does not cover.
 - [ ] Add the status, rebuild (`reindex` | `reload`), and retry endpoints.
 - [ ] Add the Settings UI using design tokens, including the cloud cost estimate and confirmation.
 - [ ] Add unit and integration tests with a fake embedding provider.
-- [ ] Update this plan with implementation notes.
+- [x] Update this plan with implementation notes.
+
+#### PR 2 implementation notes
+
+- **2026-08-26:** Added the provider-neutral embedding contract, strict L2-normalization/shape validation, and the Ollama `POST /api/embed` adapter. The adapter batches 32 documents, sets `truncate: false`, adds the required `nomic-embed-text` document/query prefixes, and can only probe `/api/tags`; it never pulls a model.
+- **2026-08-26:** Added encrypted semantic settings, including the `semantic_embedding_api_key` crypto registration test. `auto` resolution honors explicit settings, reuses configured Ollama/OpenAI chat credentials where appropriate, and falls back to the non-mutating local Ollama probe.
+- **2026-08-26:** Added the durable `semantic.Service`: content-hash-gated document generation in artist/album/track order, sequential bounded embedding batches, retry/backoff/jitter, cancellation, model-identity reset, transactional persistence, WAL checkpointing, durable-arena reload, and manual error retry. It is intentionally not yet constructed by `api.New`; that integration follows the OpenAI adapter and semantic API endpoints.
+- **2026-08-26:** Added durable `library_changes` cursor tailing. Each observed change window runs a full catalog content-hash reconciliation (so aggregate documents and deletions are correct without re-embedding behavioural-only writes), advances all three entity cursors, and falls back to a full reconciliation if a pruned change log leaves a revision gap. Obsolete track, album, and artist documents are removed transactionally before the replacement arenas load.
+- **2026-08-26:** Corrected the pre-existing Windows-only expectation in `internal/validation.TestSanitizePath` so it compares the cleaned path for the running platform. The sanitization behavior itself is unchanged.
 
 #### Acceptance criteria
 

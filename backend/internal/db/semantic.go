@@ -327,8 +327,13 @@ func invalidateReadySemanticDocuments(ctx context.Context, tx *sql.Tx, deltas ma
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE semantic_index_state
-			SET document_revision = document_revision + ?, item_count = MAX(0, item_count - ?)
-			WHERE entity_type = ?`, delta, delta, entityType); err != nil {
+			SET document_revision = document_revision + ?,
+				item_count = MAX(0, item_count - ?),
+				dimensions = CASE WHEN item_count <= ? THEN 0 ELSE dimensions END,
+				embedding_provider = CASE WHEN item_count <= ? THEN '' ELSE embedding_provider END,
+				embedding_model = CASE WHEN item_count <= ? THEN '' ELSE embedding_model END,
+				embedding_input_prefix = CASE WHEN item_count <= ? THEN '' ELSE embedding_input_prefix END
+			WHERE entity_type = ?`, delta, delta, delta, delta, delta, delta, entityType); err != nil {
 			return err
 		}
 	}
@@ -466,6 +471,48 @@ func (d *DB) MarkSemanticDocumentError(ctx context.Context, id int64, err error)
 	return updateErr
 }
 
+// ResetSemanticEmbeddings invalidates every durable vector when the embedding
+// identity changes. Documents remain available for re-embedding, while an
+// already-loaded in-memory arena can continue serving the prior identity until
+// the caller swaps in a complete replacement.
+func (d *DB) ResetSemanticEmbeddings(ctx context.Context) error {
+	if err := d.EnsureSemanticSchema(); err != nil {
+		return err
+	}
+	tx, err := d.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE semantic_documents SET
+		embedding_provider = '', embedding_model = '', embedding_dimensions = 0, embedding = NULL,
+		status = 'pending', retry_count = 0, last_error = '', embedded_at = 0, updated_at = ?`, time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE semantic_index_state SET
+		document_revision = document_revision + 1, item_count = 0, dimensions = 0,
+		embedding_provider = '', embedding_model = '', embedding_input_prefix = '', last_error = ''`); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RetrySemanticDocumentErrors puts explicitly retried provider failures back
+// onto the pending queue. It deliberately does not touch ready embeddings.
+func (d *DB) RetrySemanticDocumentErrors(ctx context.Context) (int, error) {
+	if err := d.EnsureSemanticSchema(); err != nil {
+		return 0, err
+	}
+	result, err := d.conn.ExecContext(ctx, `UPDATE semantic_documents SET
+		status = 'pending', retry_count = 0, last_error = '', updated_at = ?
+		WHERE status = 'error'`, time.Now().UnixMilli())
+	if err != nil {
+		return 0, err
+	}
+	count, err := result.RowsAffected()
+	return int(count), err
+}
+
 // DeleteSemanticDocumentsForMissingSongs removes orphaned track identities.
 func (d *DB) DeleteSemanticDocumentsForMissingSongs(ctx context.Context) (int, error) {
 	if err := d.EnsureSemanticSchema(); err != nil {
@@ -495,6 +542,90 @@ func (d *DB) DeleteSemanticDocumentsForMissingSongs(ctx context.Context) (int, e
 		}
 	}
 	return int(deleted), tx.Commit()
+}
+
+// ListSemanticDocumentKeys returns durable entity keys so the indexer can
+// remove artist/album aggregates that disappeared after a catalog change.
+func (d *DB) ListSemanticDocumentKeys(ctx context.Context, entityType string) ([]string, error) {
+	if !validSemanticEntityType(entityType) {
+		return nil, fmt.Errorf("invalid semantic entity type %q", entityType)
+	}
+	if err := d.EnsureSemanticSchema(); err != nil {
+		return nil, err
+	}
+	rows, err := d.conn.QueryContext(ctx, `SELECT entity_key FROM semantic_documents WHERE entity_type = ? ORDER BY entity_key`, entityType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	keys := make([]string, 0)
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+// DeleteSemanticDocumentsByKeys removes obsolete entities in bounded
+// transactions and keeps their arena state truthful until the next rebuild.
+func (d *DB) DeleteSemanticDocumentsByKeys(ctx context.Context, entityType string, keys []string) (int, error) {
+	if !validSemanticEntityType(entityType) {
+		return 0, fmt.Errorf("invalid semantic entity type %q", entityType)
+	}
+	if err := d.EnsureSemanticSchema(); err != nil {
+		return 0, err
+	}
+	deleted := 0
+	for start := 0; start < len(keys); start += semanticSQLiteParamCap {
+		end := start + semanticSQLiteParamCap
+		if end > len(keys) {
+			end = len(keys)
+		}
+		count, err := d.deleteSemanticDocumentKeyBatch(ctx, entityType, keys[start:end])
+		if err != nil {
+			return deleted, err
+		}
+		deleted += count
+	}
+	return deleted, nil
+}
+
+func (d *DB) deleteSemanticDocumentKeyBatch(ctx context.Context, entityType string, keys []string) (int, error) {
+	if len(keys) == 0 {
+		return 0, nil
+	}
+	tx, err := d.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(keys)), ",")
+	args := make([]any, 0, len(keys)+1)
+	args = append(args, entityType)
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	var ready int64
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM semantic_documents WHERE entity_type = ? AND status = 'ready' AND entity_key IN (`+placeholders+`)`, args...).Scan(&ready); err != nil {
+		return 0, err
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM semantic_documents WHERE entity_type = ? AND entity_key IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return 0, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if ready > 0 {
+		if err := invalidateReadySemanticDocuments(ctx, tx, map[string]int64{entityType: ready}); err != nil {
+			return 0, err
+		}
+	}
+	return int(count), tx.Commit()
 }
 
 // ListReadySemanticEmbeddings returns the corpus in ID order for sequential

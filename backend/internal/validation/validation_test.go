@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -98,8 +99,12 @@ func TestSanitizePath(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			result := SanitizePath(tc.input)
-			if result != tc.expected {
-				t.Errorf("SanitizePath(%q) = %q, expected %q", tc.input, result, tc.expected)
+			expected := tc.expected
+			if expected != "" {
+				expected = filepath.Clean(expected)
+			}
+			if result != expected {
+				t.Errorf("SanitizePath(%q) = %q, expected %q", tc.input, result, expected)
 			}
 		})
 	}
