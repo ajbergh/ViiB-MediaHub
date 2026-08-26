@@ -42,11 +42,12 @@ type Service struct {
 	database *db.DB
 	provider EmbeddingProvider
 
-	runMu     sync.Mutex
-	statusMu  sync.RWMutex
-	indexesMu sync.RWMutex
-	indexes   map[string]VectorIndex
-	status    ServiceStatus
+	runMu      sync.Mutex
+	statusMu   sync.RWMutex
+	indexesMu  sync.RWMutex
+	indexes    map[string]VectorIndex
+	queryCache *queryEmbeddingCache
+	status     ServiceStatus
 
 	lifecycleMu sync.Mutex
 	cancel      context.CancelFunc
@@ -69,7 +70,8 @@ func NewService(database *db.DB, provider EmbeddingProvider) (*Service, error) {
 			db.SemanticEntityAlbum:  newScanIndex(),
 			db.SemanticEntityTrack:  newScanIndex(),
 		},
-		status: ServiceStatus{State: serviceStateIdle, UpdatedAt: time.Now().UTC()},
+		queryCache: newQueryEmbeddingCache(semanticQueryCacheCapacity),
+		status:     ServiceStatus{State: serviceStateIdle, UpdatedAt: time.Now().UTC()},
 	}, nil
 }
 

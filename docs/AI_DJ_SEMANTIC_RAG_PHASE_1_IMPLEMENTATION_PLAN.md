@@ -1436,8 +1436,8 @@ No new third-party dependency is added in this PR.
 - [ ] Update LLM system prompts to compile semantic intent instead of constraining to local genre taxonomy.
 - [x] Extend `DJPhase` with semantic query, negative query, and style hints.
 - [x] Fix `dj.PlanCacheKey.String()` numeric encoding, add `UseTimeContext` and the time bucket, remove the genre-hash dependency, and add a collision test (§10.5).
-- [ ] Implement the query embedding cache.
-- [ ] Implement track, album, and artist semantic search.
+- [x] Implement the query embedding cache.
+- [x] Implement track, album, and artist semantic search.
 - [ ] Implement album and artist expansion into valid local catalog tracks.
 - [ ] Implement hard filters, delegating source filtering to `db.FilterSongsForAIDJ`.
 - [ ] Implement semantic evidence aggregation.
@@ -1466,6 +1466,11 @@ No new third-party dependency is added in this PR.
 - **2026-08-26:** Replaced Unicode-rune cache-key encoding with decimal fields, added
   time-context/bucket fields, and removed the seed-genre hash. Collision tests cover both
   numeric fields and time-aware planning.
+- **2026-08-26:** Added a 128-entry LRU query-embedding cache keyed by the embedding
+  identity tuple and prefixed query text. `semantic.Service.SearchSemanticDocuments`
+  embeds a non-empty query once, validates its dimensions, exact-searches track/album/artist
+  arenas at the documented 300/40/30 quotas, and resolves only the matched durable documents.
+  An empty arena returns a sentinel fallback condition without issuing a provider request.
 
 #### Acceptance criteria
 
