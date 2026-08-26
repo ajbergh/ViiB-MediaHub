@@ -1282,6 +1282,9 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
 - **2026-08-26:** Started PR 2 on `feature/semantic-library-indexer` from the merged PR 1
   head. The active scope is embedding-provider configuration, background document/index
   maintenance, and index status/rebuild controls; semantic DJ retrieval remains PR 3.
+- **2026-08-26:** Opened draft PR [#24](https://github.com/ajbergh/ViiB-MediaHub/pull/24)
+  for the active PR 2 implementation so CI runs continuously while the remaining adapter,
+  API, metadata-invalidation, and Settings UI work is completed.
 
 #### PR 1 implementation notes (2026-08-26)
 
