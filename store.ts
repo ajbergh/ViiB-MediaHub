@@ -57,6 +57,8 @@ export const useStore = create<AppState>()(
           showSmartMixes: state.showSmartMixes,
           homeLayoutVariant: state.homeLayoutVariant,
           hasCompletedSetup: state.hasCompletedSetup,
+          isSkinnyMode: state.isSkinnyMode,
+          isSkinnyAlwaysOnTop: state.isSkinnyAlwaysOnTop,
           spotifyClientId: state.spotifyClientId,
           // NOTE: spotifyAccessToken, spotifyRefreshToken, and spotifyTokenExpiry
           // are intentionally NOT persisted to localStorage to avoid XSS token theft.

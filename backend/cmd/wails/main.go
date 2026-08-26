@@ -318,7 +318,7 @@ func main() {
 		MinHeight:         600,
 		DisableResize:     false,
 		Fullscreen:        false,
-		Frameless:         false,
+		Frameless:         true,
 		StartHidden:       false,
 		HideWindowOnClose: true,                                       // Minimize to tray on close
 		BackgroundColour:  &options.RGBA{R: 18, G: 18, B: 18, A: 255}, // Match app background (#121212)

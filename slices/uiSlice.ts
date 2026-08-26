@@ -10,6 +10,7 @@
  * - homeLayoutVariant: Selected Home screen redesign layout
  * - hasCompletedSetup: First-launch wizard completion flag
  * - isPartyMode: Fullscreen immersive mode with minimal UI
+ * - isSkinnyMode: Compact window player with optional native pinning
  * - logs: Application log entries for debugging
  * - toasts: User-visible toast notifications (success, error, info, warning)
  * - contextMenu: Right-click menu state and position
@@ -38,6 +39,8 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   homeLayoutVariant: 'shelves',
   hasCompletedSetup: false,
   isPartyMode: false,
+  isSkinnyMode: false,
+  isSkinnyAlwaysOnTop: false,
   logs: [],
   toasts: [],
   contextMenu: {
@@ -78,6 +81,17 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
     }
     set({ isPartyMode: !current });
   },
+
+  setSkinnyMode: (enabled) => set((state) => ({
+    isSkinnyMode: enabled,
+    // Pinning is meaningful only for the compact player. Leaving skinny mode
+    // always releases the native always-on-top flag.
+    isSkinnyAlwaysOnTop: enabled ? state.isSkinnyAlwaysOnTop : false,
+  })),
+
+  setSkinnyAlwaysOnTop: (enabled) => set((state) => ({
+    isSkinnyAlwaysOnTop: state.isSkinnyMode ? enabled : false,
+  })),
   
   // Local search persistence
   setLocalSearchQuery: (query) => set({ localSearchQuery: query }),

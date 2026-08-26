@@ -24,6 +24,12 @@ The player shows artwork, title, artist/album, previous/play-next controls, prog
 
 ---
 
+## Skinny player
+
+Use the skinny-player control in the desktop player bar to reduce ViiB to an unobtrusive strip with album art, track information, transport controls, seek progress, and volume. In the native desktop app, the window resizes to this compact layout and can be pinned with the Always on Top control. Leaving skinny mode restores the previous window size and releases the pin.
+
+---
+
 ## Seeking and media URLs
 
 The frontend uses stable ViiB-controlled playback URLs.

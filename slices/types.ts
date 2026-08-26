@@ -285,6 +285,8 @@ export interface UISlice {
   homeLayoutVariant: HomeLayoutVariant;
   hasCompletedSetup: boolean;
   isPartyMode: boolean; // Fullscreen immersive mode with minimal UI
+  isSkinnyMode: boolean;
+  isSkinnyAlwaysOnTop: boolean;
   contextMenu: {
     isOpen: boolean;
     x: number;
@@ -308,6 +310,8 @@ export interface UISlice {
   setHasCompletedSetup: (completed: boolean) => void;
   setPartyMode: (enabled: boolean) => void;
   togglePartyMode: () => void;
+  setSkinnyMode: (enabled: boolean) => void;
+  setSkinnyAlwaysOnTop: (enabled: boolean) => void;
   
   openContextMenu: (e: React.MouseEvent, type: ContextMenuType, data: any) => void;
   closeContextMenu: () => void;
