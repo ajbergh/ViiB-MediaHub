@@ -144,6 +144,46 @@ func TestServiceTailsLibraryChangesWithoutReembeddingBehavior(t *testing.T) {
 	}
 }
 
+func TestServiceRefreshesDocumentsAfterMetadataChanges(t *testing.T) {
+	database := newServiceTestDB(t)
+	if err := database.EnsureLibrarySyncSchema(); err != nil {
+		t.Fatal(err)
+	}
+	song := db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: filepath.Join(t.TempDir(), "song.flac"), AddedAt: 1}
+	if err := database.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	provider := &fakeEmbeddingProvider{}
+	service, err := NewService(database, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	if err := service.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdateArtistLastFM("Artist", db.LastFMArtistUpdate{Tags: []string{"dream pop"}, Bio: "A detailed and atmospheric artist biography."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveAlbumMetadata(&db.AlbumMetadata{AlbumKey: "Album::Artist", AlbumName: "Album", ArtistName: "Artist", Genre: "shoegaze, dream pop"}); err != nil {
+		t.Fatal(err)
+	}
+	changes, err := database.GetSemanticMetadataChanges(context.Background(), 10)
+	if err != nil || len(changes) != 2 {
+		t.Fatalf("metadata changes=%#v err=%v", changes, err)
+	}
+	if err := service.SyncChanges(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if provider.callCount() != 6 {
+		t.Fatalf("metadata refresh calls=%d, want one refreshed artist, album, and track batch", provider.callCount())
+	}
+	changes, err = database.GetSemanticMetadataChanges(context.Background(), 10)
+	if err != nil || len(changes) != 0 {
+		t.Fatalf("metadata changes after sync=%#v err=%v", changes, err)
+	}
+}
+
 type fakeEmbeddingProvider struct {
 	mu        sync.Mutex
 	calls     int

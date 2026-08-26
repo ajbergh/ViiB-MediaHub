@@ -84,6 +84,32 @@ type SemanticStats struct {
 	State             []SemanticIndexState
 }
 
+// SemanticArtistEnrichment is the small, stable artist-metadata subset used
+// while assembling deterministic semantic documents.
+type SemanticArtistEnrichment struct {
+	Artist         string
+	LastFMTags     string
+	LastFMBio      string
+	SimilarArtists []string
+}
+
+// SemanticAlbumEnrichment is the album-metadata subset that can materially
+// improve document context without copying artwork or provider identifiers.
+type SemanticAlbumEnrichment struct {
+	Artist string
+	Album  string
+	Genre  string
+}
+
+// SemanticMetadataChange identifies metadata writes that do not pass through
+// the songs triggers and therefore need a semantic reconciliation pass.
+type SemanticMetadataChange struct {
+	ID         int64
+	EntityType string
+	EntityKey  string
+	ChangedAt  int64
+}
+
 func validSemanticEntityType(entityType string) bool {
 	switch entityType {
 	case SemanticEntityTrack, SemanticEntityAlbum, SemanticEntityArtist:
@@ -151,6 +177,14 @@ func (d *DB) ensureSemanticSchema() error {
 			last_full_rebuild_at INTEGER NOT NULL DEFAULT 0,
 			last_error TEXT NOT NULL DEFAULT ''
 		);
+		CREATE TABLE IF NOT EXISTS semantic_metadata_changes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			entity_type TEXT NOT NULL CHECK(entity_type IN ('artist','album')),
+			entity_key TEXT NOT NULL,
+			changed_at INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_semantic_metadata_changes_id
+			ON semantic_metadata_changes(id);
 	`
 	if _, err := d.conn.Exec(schema); err != nil {
 		return fmt.Errorf("create semantic schema: %w", err)
@@ -161,6 +195,151 @@ func (d *DB) ensureSemanticSchema() error {
 		}
 	}
 	return nil
+}
+
+// RecordSemanticMetadataChange records metadata writes that are invisible to
+// library_changes. The background semantic worker folds these into a
+// content-hash reconciliation; recording never embeds synchronously.
+func (d *DB) RecordSemanticMetadataChange(ctx context.Context, entityType, entityKey string) error {
+	if entityType != SemanticEntityArtist && entityType != SemanticEntityAlbum {
+		return fmt.Errorf("invalid semantic metadata entity type %q", entityType)
+	}
+	if strings.TrimSpace(entityKey) == "" {
+		return errors.New("semantic metadata entity key is required")
+	}
+	if err := d.EnsureSemanticSchema(); err != nil {
+		return err
+	}
+	_, err := d.conn.ExecContext(ctx, `INSERT INTO semantic_metadata_changes(entity_type, entity_key, changed_at) VALUES (?, ?, ?)`, entityType, entityKey, time.Now().UnixMilli())
+	return err
+}
+
+// GetSemanticMetadataChanges returns a bounded FIFO page. It deliberately
+// retains rows until the semantic worker has durably reconciled their content.
+func (d *DB) GetSemanticMetadataChanges(ctx context.Context, limit int) ([]SemanticMetadataChange, error) {
+	if err := d.EnsureSemanticSchema(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > semanticWriteRowLimit {
+		limit = semanticWriteRowLimit
+	}
+	rows, err := d.conn.QueryContext(ctx, `SELECT id, entity_type, entity_key, changed_at FROM semantic_metadata_changes ORDER BY id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	changes := make([]SemanticMetadataChange, 0, limit)
+	for rows.Next() {
+		var change SemanticMetadataChange
+		if err := rows.Scan(&change.ID, &change.EntityType, &change.EntityKey, &change.ChangedAt); err != nil {
+			return nil, err
+		}
+		changes = append(changes, change)
+	}
+	return changes, rows.Err()
+}
+
+// DeleteSemanticMetadataChangesThrough acknowledges an already reconciled
+// FIFO page. Newer changes remain intact if metadata is updated mid-run.
+func (d *DB) DeleteSemanticMetadataChangesThrough(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return nil
+	}
+	if err := d.EnsureSemanticSchema(); err != nil {
+		return err
+	}
+	_, err := d.conn.ExecContext(ctx, `DELETE FROM semantic_metadata_changes WHERE id <= ?`, id)
+	return err
+}
+
+// GetSemanticEnrichments loads artist and album metadata in bounded bulk
+// queries so document generation never does N+1 catalog reads.
+func (d *DB) GetSemanticEnrichments(ctx context.Context, artists []string) ([]SemanticArtistEnrichment, []SemanticAlbumEnrichment, error) {
+	artistNames := make([]string, 0, len(artists))
+	seen := make(map[string]struct{}, len(artists))
+	for _, artist := range artists {
+		artist = strings.TrimSpace(artist)
+		if artist == "" {
+			continue
+		}
+		if _, exists := seen[artist]; exists {
+			continue
+		}
+		seen[artist] = struct{}{}
+		artistNames = append(artistNames, artist)
+	}
+	if len(artistNames) == 0 {
+		return []SemanticArtistEnrichment{}, []SemanticAlbumEnrichment{}, nil
+	}
+	artistByName := make(map[string]*SemanticArtistEnrichment)
+	albums := make([]SemanticAlbumEnrichment, 0)
+	for start := 0; start < len(artistNames); start += semanticSQLiteParamCap {
+		end := start + semanticSQLiteParamCap
+		if end > len(artistNames) {
+			end = len(artistNames)
+		}
+		chunk := artistNames[start:end]
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(chunk)), ",")
+		args := make([]any, len(chunk))
+		for index, artist := range chunk {
+			args[index] = artist
+		}
+		rows, err := d.conn.QueryContext(ctx, `SELECT artist_name, COALESCE(lastfm_tags, ''), COALESCE(lastfm_bio, '') FROM artist_metadata WHERE artist_name IN (`+placeholders+`)`, args...)
+		if err != nil {
+			return nil, nil, err
+		}
+		for rows.Next() {
+			item := &SemanticArtistEnrichment{}
+			if err := rows.Scan(&item.Artist, &item.LastFMTags, &item.LastFMBio); err != nil {
+				rows.Close()
+				return nil, nil, err
+			}
+			artistByName[item.Artist] = item
+		}
+		if err := rows.Close(); err != nil {
+			return nil, nil, err
+		}
+		similarRows, err := d.conn.QueryContext(ctx, `SELECT artist_name, similar_artist FROM lastfm_similar_artists WHERE artist_name IN (`+placeholders+`) ORDER BY artist_name, match_score DESC, similar_artist`, args...)
+		if err != nil {
+			return nil, nil, err
+		}
+		for similarRows.Next() {
+			var artist, similar string
+			if err := similarRows.Scan(&artist, &similar); err != nil {
+				similarRows.Close()
+				return nil, nil, err
+			}
+			item := artistByName[artist]
+			if item == nil {
+				item = &SemanticArtistEnrichment{Artist: artist}
+				artistByName[artist] = item
+			}
+			item.SimilarArtists = append(item.SimilarArtists, similar)
+		}
+		if err := similarRows.Close(); err != nil {
+			return nil, nil, err
+		}
+		albumRows, err := d.conn.QueryContext(ctx, `SELECT album_name, artist_name, COALESCE(genre, '') FROM album_metadata WHERE artist_name IN (`+placeholders+`)`, args...)
+		if err != nil {
+			return nil, nil, err
+		}
+		for albumRows.Next() {
+			var album SemanticAlbumEnrichment
+			if err := albumRows.Scan(&album.Album, &album.Artist, &album.Genre); err != nil {
+				albumRows.Close()
+				return nil, nil, err
+			}
+			albums = append(albums, album)
+		}
+		if err := albumRows.Close(); err != nil {
+			return nil, nil, err
+		}
+	}
+	artistResults := make([]SemanticArtistEnrichment, 0, len(artistByName))
+	for _, artist := range artistByName {
+		artistResults = append(artistResults, *artist)
+	}
+	return artistResults, albums, nil
 }
 
 func semanticDocumentSelect() string {

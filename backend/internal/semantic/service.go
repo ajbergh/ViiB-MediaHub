@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -186,6 +187,14 @@ func (service *Service) syncChangesLocked(ctx context.Context) (err error) {
 	if err := service.database.EnsureLibrarySyncSchema(); err != nil {
 		return fmt.Errorf("initialize library change log: %w", err)
 	}
+	metadataChanges, err := service.database.GetSemanticMetadataChanges(ctx, 200)
+	if err != nil {
+		return fmt.Errorf("read semantic metadata changes: %w", err)
+	}
+	metadataChangeID := int64(0)
+	if len(metadataChanges) > 0 {
+		metadataChangeID = metadataChanges[len(metadataChanges)-1].ID
+	}
 	cursor, err := service.catalogCursor(ctx)
 	if err != nil {
 		return err
@@ -194,22 +203,28 @@ func (service *Service) syncChangesLocked(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("read catalog revision: %w", err)
 	}
-	if currentRevision <= cursor {
+	hasCatalogChanges := currentRevision > cursor
+	if !hasCatalogChanges && metadataChangeID == 0 {
 		return nil
 	}
-	oldest, retained, err := service.database.OldestLibraryChangeRevision()
-	if err != nil {
-		return fmt.Errorf("read oldest library change: %w", err)
-	}
-	if cursor == 0 || (retained && oldest > cursor+1) {
-		return service.reindexLocked(ctx)
-	}
-	page, err := service.database.GetLibraryChanges(cursor, 1)
-	if err != nil {
-		return fmt.Errorf("read library changes: %w", err)
-	}
-	if len(page.Changes) == 0 {
-		return service.setCatalogCursor(ctx, currentRevision)
+	if hasCatalogChanges {
+		oldest, retained, err := service.database.OldestLibraryChangeRevision()
+		if err != nil {
+			return fmt.Errorf("read oldest library change: %w", err)
+		}
+		if cursor == 0 || (retained && oldest > cursor+1) {
+			if err := service.reindexLocked(ctx); err != nil {
+				return err
+			}
+			return service.database.DeleteSemanticMetadataChangesThrough(ctx, metadataChangeID)
+		}
+		page, err := service.database.GetLibraryChanges(cursor, 1)
+		if err != nil {
+			return fmt.Errorf("read library changes: %w", err)
+		}
+		if len(page.Changes) == 0 && metadataChangeID == 0 {
+			return service.setCatalogCursor(ctx, currentRevision)
+		}
 	}
 	service.setStatus(ServiceStatus{State: serviceStateIndexing})
 	songs, err := service.database.GetAllSongs()
@@ -220,8 +235,10 @@ func (service *Service) syncChangesLocked(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	if err := service.setCatalogCursor(ctx, currentRevision); err != nil {
-		return err
+	if hasCatalogChanges {
+		if err := service.setCatalogCursor(ctx, currentRevision); err != nil {
+			return err
+		}
 	}
 	indexed, failed, err := service.processPending(ctx)
 	if err != nil {
@@ -238,6 +255,9 @@ func (service *Service) syncChangesLocked(ctx context.Context) (err error) {
 		if err := service.loadReadyIndexesLocked(ctx); err != nil {
 			return err
 		}
+	}
+	if err := service.database.DeleteSemanticMetadataChangesThrough(ctx, metadataChangeID); err != nil {
+		return fmt.Errorf("acknowledge semantic metadata changes: %w", err)
 	}
 	service.setStatus(ServiceStatus{State: serviceStateReady, DocumentsIndexed: indexed + removed})
 	return nil
@@ -323,7 +343,11 @@ func (service *Service) resetForIdentityChange(ctx context.Context) error {
 }
 
 func (service *Service) reconcileCatalogDocuments(ctx context.Context, songs []db.Song) (int, error) {
-	documents := BuildDocuments(songs, DocumentContext{})
+	documentContext, err := service.documentContext(ctx, songs)
+	if err != nil {
+		return 0, err
+	}
+	documents := BuildDocuments(songs, documentContext)
 	if err := service.database.UpsertSemanticDocuments(ctx, documents); err != nil {
 		return 0, fmt.Errorf("upsert semantic documents: %w", err)
 	}
@@ -353,6 +377,39 @@ func (service *Service) reconcileCatalogDocuments(ctx context.Context, songs []d
 		removed += deleted
 	}
 	return removed, nil
+}
+
+func (service *Service) documentContext(ctx context.Context, songs []db.Song) (DocumentContext, error) {
+	artists := make([]string, 0, len(songs))
+	for _, song := range songs {
+		artists = append(artists, song.Artist)
+		if song.AlbumArtist != "" {
+			artists = append(artists, song.AlbumArtist)
+		}
+	}
+	artistEnrichments, albumEnrichments, err := service.database.GetSemanticEnrichments(ctx, artists)
+	if err != nil {
+		return DocumentContext{}, fmt.Errorf("load semantic document enrichment: %w", err)
+	}
+	result := DocumentContext{Artists: make(map[string]ArtistContext), Albums: make(map[string]AlbumContext)}
+	for _, enrichment := range artistEnrichments {
+		result.Artists[CanonicalArtistKey(enrichment.Artist)] = ArtistContext{
+			Tags:           parseTags(enrichment.LastFMTags),
+			Bio:            enrichment.LastFMBio,
+			SimilarArtists: enrichment.SimilarArtists,
+		}
+	}
+	for _, enrichment := range albumEnrichments {
+		result.Albums[CanonicalAlbumKey(enrichment.Artist, enrichment.Album)] = AlbumContext{Tags: splitMetadataTags(enrichment.Genre)}
+	}
+	return result, nil
+}
+
+func splitMetadataTags(value string) []string {
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '|' || r == '/'
+	})
+	return normalizedValues(parts)
 }
 
 func (service *Service) catalogCursor(ctx context.Context) (int64, error) {
