@@ -1274,6 +1274,10 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
   scope is the schema, deterministic document builders, vector codec, exact in-memory
   index, tests, and cross-compilation CI. PR [#23](https://github.com/ajbergh/ViiB-MediaHub/pull/23)
   is open against `main`. No AI DJ production path changes are included.
+- **2026-08-26:** PR #23's initial backend CI run passed the semantic tests and all five
+  cross-builds, but staticcheck flagged a pre-existing capitalized error string in Plex
+  pagination. A behavior-neutral lowercase correction is included so the required backend
+  validation can proceed.
 
 #### PR 1 implementation notes (2026-08-26)
 

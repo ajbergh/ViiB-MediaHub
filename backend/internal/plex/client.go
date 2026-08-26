@@ -743,7 +743,7 @@ func (c *Client) fetchAlbumMetadata(ctx context.Context, albumKey string) (map[s
 			nextOffset = response.MediaContainer.Offset + count
 		}
 		if nextOffset <= offset {
-			return nil, fmt.Errorf("Plex music album paging made no progress at offset %d", offset)
+			return nil, fmt.Errorf("plex music album paging made no progress at offset %d", offset)
 		}
 		if response.MediaContainer.TotalSize > 0 {
 			if nextOffset >= response.MediaContainer.TotalSize {
