@@ -1477,6 +1477,39 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	// Prefer semantic retrieval whenever a ready service is available. The
+	// compiler receives no local genre taxonomy; local matching below remains
+	// the compatibility fallback when no searchable semantic index exists.
+	if a.currentSemanticService() != nil {
+		semanticPrompt := enhancePromptWithTimeContext(req.Prompt, req.UseTimeContext)
+		intent := a.compileSemanticPlaylistIntent(r.Context(), semanticPrompt)
+		semanticResult, handled, semanticErr := a.retrieveSemanticPlaylist(r.Context(), intent, semanticPlaylistRequest{
+			TargetSongs:       req.TargetSongs,
+			DiscoverMode:      req.DiscoverMode,
+			RecentlyPlayedIDs: recentlyPlayedIDs,
+			OnePerArtist:      req.OnePerArtist,
+			Source:            req.Source,
+			PromptMinYear:     promptMinYear,
+			PromptMaxYear:     promptMaxYear,
+		})
+		if semanticErr != nil {
+			logger.API("Semantic playlist retrieval failed; using legacy matching: %v", semanticErr)
+		} else if handled {
+			logger.API("Semantic playlist retrieval returned %d songs from %d candidates", semanticResult.Diagnostics.ReturnedCount, semanticResult.Diagnostics.CandidateCount)
+			songsAny := make([]any, len(semanticResult.Songs))
+			for index, song := range semanticResult.Songs {
+				songsAny[index] = song
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"filter":    semanticResult.Filter,
+				"songs":     transformSongsForAPI(songsAny),
+				"retrieval": semanticResult.Diagnostics,
+			})
+			return
+		}
+	}
+
 	// First, try artist-based matching for "more like [artist]" prompts
 	if artistName, songs, matched := a.tryArtistBasedMatch(req.Prompt); matched {
 		logger.API("Artist-based match found: %s with %d songs", artistName, len(songs))

@@ -1433,7 +1433,7 @@ No new third-party dependency is added in this PR.
 #### Tasks
 
 - [x] Add `PlaylistIntent` and the semantic query fields.
-- [ ] Update LLM system prompts to compile semantic intent instead of constraining to local genre taxonomy.
+- [x] Update LLM system prompts to compile semantic intent instead of constraining to local genre taxonomy.
 - [x] Extend `DJPhase` with semantic query, negative query, and style hints.
 - [x] Fix `dj.PlanCacheKey.String()` numeric encoding, add `UseTimeContext` and the time bucket, remove the genre-hash dependency, and add a collision test (§10.5).
 - [x] Implement the query embedding cache.
@@ -1443,14 +1443,14 @@ No new third-party dependency is added in this PR.
 - [x] Implement semantic evidence aggregation.
 - [x] Implement the negative semantic penalty.
 - [x] Implement `HybridRanker`.
-- [ ] Implement the MMR/diversity pass with a bounded working set.
+- [x] Implement the MMR/diversity pass with a bounded working set.
 - [x] Add `SemanticScores` to `dj.ScoreContext`.
 - [x] Reweight `ScoreSongForPhase` around semantic relevance.
 - [ ] Replace the `db.GetAllSongs()` recall path in `handleDJMode`; move genre stats to `genre_stats` and average duration to an aggregate query (§13.1).
 - [ ] Update the sequencer to consume semantic phase candidate pools.
-- [ ] Preserve the legacy fallback path.
-- [ ] Preserve current API response fields; add the optional retrieval diagnostics block.
-- [ ] Add unit and integration tests.
+- [x] Preserve the legacy fallback path.
+- [x] Preserve current API response fields; add the optional retrieval diagnostics block.
+- [x] Add unit and integration tests.
 - [x] Update this plan with implementation notes.
 
 #### PR 3 implementation notes
@@ -1493,6 +1493,18 @@ No new third-party dependency is added in this PR.
   It never issues a second corpus search; tests verify a single positive and single negative
   provider embedding call. `go test ./...`, `npm run typecheck`, and the focused semantic/db
   suites are green for the current branch.
+- **2026-08-26:** Added a bounded MMR diversity pass over at most 120 hybrid-ranked tracks.
+  It uses persisted vectors only for that working set, retains the original hybrid score for
+  diagnostics, uses the documented favorites/balanced/discover lambdas of 0.85/0.75/0.60,
+  and adds a same-album guard against long album runs. Tests cover both mode-specific diversity
+  choices and the album-run guard.
+- **2026-08-26:** Connected the normal Smart Playlist path to semantic retrieval whenever a
+  searchable service is ready. It compiles intent with the dedicated no-taxonomy LLM prompt,
+  falls back deterministically to the raw prompt when no LLM is configured, applies explicit
+  prompt-year constraints, retrieval, hybrid ranking, and MMR, then returns the existing
+  `filter` and `songs` fields plus count-only `retrieval` diagnostics. A missing or empty index
+  retains the legacy local/metadata path; API tests cover successful semantic output and that
+  fallback condition.
 
 #### Acceptance criteria
 
