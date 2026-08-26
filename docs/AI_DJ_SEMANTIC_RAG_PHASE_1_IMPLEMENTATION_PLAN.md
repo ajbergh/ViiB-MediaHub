@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 1 open for review — awaiting CI validation
+**Status:** PR 2 in progress — semantic embedding and indexing pipeline
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -585,13 +585,15 @@ Provider capability, to be stated plainly in the Settings UI:
 |---|---|---|
 | Ollama | Yes, same instance | Fully local; model must already be pulled |
 | OpenAI | Yes, same key | `text-embedding-3-small` |
-| Gemini | Pending decision in PR 2 | Provider offers `gemini-embedding-001`; `google.golang.org/genai` is already an indirect dependency. Gemini is this app's chat fallback, so this is the largest gap in `auto` |
-| Anthropic | Not possible | Anthropic publishes no embeddings API |
-| xAI | No | Not evaluated |
-| OpenRouter | No | Chat-completions oriented; do not assume an embeddings route exists without verifying |
+| Gemini | No native adapter in Phase 1 | `auto` may use an already-pulled local Ollama embedding model; otherwise it reports `needs_configuration` |
+| Anthropic | No native adapter in Phase 1 | Same local-Ollama fallback and explicit configuration message |
+| xAI | No native adapter in Phase 1 | Same local-Ollama fallback and explicit configuration message |
+| OpenRouter | No native adapter in Phase 1 | Same local-Ollama fallback and explicit configuration message |
 
-PR 2 must either add the Gemini adapter or record the decision that Gemini users get no
-semantic retrieval. Recommendation: add it.
+**PR 2 decision:** Defer a Gemini embedding transport. The existing Gemini chat fallback
+does not cause its credential to be reused for embeddings. Gemini users retain semantic
+retrieval automatically when a local Ollama embedding model is already available; otherwise
+they receive an actionable configuration status and AI DJ remains on the legacy path.
 
 ### 7.4 Ollama provider
 
@@ -642,7 +644,7 @@ Requirements:
 - Default model `text-embedding-3-small`: 1,536 native dimensions, 8,192 max input tokens, returned vectors already unit length.
 - Request **512 dimensions** via the `dimensions` request parameter unless the user explicitly chose a supported alternative. Use the API parameter, not manual truncation — the API re-normalizes, manual truncation does not.
 - No task prefixes; `DocumentPrefix()` and `QueryPrefix()` return `""`.
-- Batch size 128, and additionally cap each request by total input tokens so a future larger document cap cannot silently produce oversized requests.
+- Batch size 128, and additionally cap each request by total input tokens so a future larger document cap cannot silently produce oversized requests. The implementation uses conservative UTF-8 byte guards (8,192 bytes per input and 300,000 bytes per batch), which cannot exceed the documented token limits.
 - Use existing HTTP/retry conventions and encrypted secret storage.
 - Implement as a small adapter behind `EmbeddingProvider`. Do not upgrade or restructure the OmniLLM chat stack for Phase 1 embeddings.
 
@@ -654,6 +656,12 @@ near-zero incremental cost afterwards because of the content-hash gate. Compute 
 estimate from the actual catalog size and show it in Settings before a cloud index build
 starts, requiring explicit confirmation. Re-verify pricing at implementation time and
 record the figure used.
+
+**Implemented price verification (2026-08-26).** OpenAI's current embedding guide lists
+`text-embedding-3-small` at 62,500 roughly-800-token pages per US dollar, equivalent to
+$0.02 per million input tokens, with an 8,192-token maximum input. The implementation
+uses this figure for the small model and records the estimate, model, dimensions, and
+document count in the confirmation fingerprint. Source: [OpenAI embedding models](https://developers.openai.com/api/docs/guides/embeddings#embedding-models).
 
 ### 7.6 Model identity changes
 
@@ -1273,11 +1281,25 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
 - **2026-08-26:** Implemented PR 1 on `feature/semantic-library-foundation`. The
   scope is the schema, deterministic document builders, vector codec, exact in-memory
   index, tests, and cross-compilation CI. PR [#23](https://github.com/ajbergh/ViiB-MediaHub/pull/23)
-  is open against `main`. No AI DJ production path changes are included.
+  merged to `main` as `e6b1f07` after all frontend, backend, five-target semantic,
+  and Windows packaged-build checks passed. No AI DJ production path changes are included.
 - **2026-08-26:** PR #23's initial backend CI run passed the semantic tests and all five
   cross-builds, but staticcheck flagged a pre-existing capitalized error string in Plex
   pagination. A behavior-neutral lowercase correction is included so the required backend
   validation can proceed.
+- **2026-08-26:** Started PR 2 on `feature/semantic-library-indexer` from the merged PR 1
+  head. The active scope is embedding-provider configuration, background document/index
+  maintenance, and index status/rebuild controls; semantic DJ retrieval remains PR 3.
+- **2026-08-26:** Opened draft PR [#24](https://github.com/ajbergh/ViiB-MediaHub/pull/24)
+  for the active PR 2 implementation so CI runs continuously while the remaining OpenAI
+  adapter, incremental arena maintenance, and cloud-cost confirmation work is completed.
+- **2026-08-26:** Completed the OpenAI embedding transport and explicit catalog-cost
+  confirmation gate. Cloud indexing remains unavailable until the current catalog/model/
+  dimensions estimate has been acknowledged in Settings.
+- **2026-08-26:** PR #24 is complete and its description is refreshed with the validation
+  record. GitHub Actions [run 33021768567](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33021768567)
+  passed backend validation (including race/static analysis/vulnerability checks), frontend
+  checks, all five semantic cross-compiles, and the packaged Windows Wails build/binary scan.
 
 #### PR 1 implementation notes (2026-08-26)
 
@@ -1297,10 +1319,10 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
   Native Wails application packaging remains covered by its platform-specific build jobs.
 - Local verification passed `go test ./internal/db ./internal/semantic`, `go build ./...`,
   `go vet` for the new packages, and the five semantic cross-build targets. The complete
-  `go test ./...` run reaches the semantic tests but currently fails an unrelated Windows
-  path expectation in `internal/validation.TestSanitizePath` (it expects slash-separated
-  paths while Windows returns backslashes). `go test -race ./internal/semantic/...` could
-  not run locally because this workstation has no C compiler; CI's Linux backend job
+  `go test ./...` run reaches the semantic tests. Its previously failing Windows path
+  assertion in `internal/validation.TestSanitizePath` is corrected in PR 2 to expect the
+  platform-cleaned separator. `go test -race ./internal/semantic/...` could not run
+  locally because this workstation has no C compiler; CI's Linux backend job
   remains the required race-test gate. Frontend `npm run check` did not complete here:
   its unchanged TypeScript check stalled and its orphaned process was stopped.
 
@@ -1346,24 +1368,42 @@ No new third-party dependency is added in this PR.
 
 #### Tasks
 
-- [ ] Add semantic embedding settings; register `semantic_embedding_api_key` in `crypto.sensitiveKeys` via `init()`, with a test asserting it is treated as sensitive.
-- [ ] Implement the `EmbeddingProvider` abstraction with separate document/query methods and task prefixes.
-- [ ] Implement the Ollama provider against `POST /api/embed` with array `input`, explicit `truncate: false`, and `nomic-embed-text` task prefixes.
-- [ ] Implement the OpenAI provider (`text-embedding-3-small`, `dimensions: 512`, token-capped batches).
-- [ ] Decide and record: add the Gemini embeddings adapter, or document that Gemini users get no semantic retrieval (§7.3).
-- [ ] Implement `auto` resolution including the `GET /api/tags` reachability probe. Never pull.
-- [ ] Implement the provider test/validation endpoint.
-- [ ] Implement batching, retries with backoff and jitter, cancellation, and bounded concurrency.
-- [ ] Implement the semantic service lifecycle.
-- [ ] Generate artist, then album, then track documents in the background.
-- [ ] Store embeddings in bounded transactions; `CheckpointWAL()` after bulk runs.
-- [ ] Incrementally upsert and delete arena entries.
-- [ ] Implement `library_changes` cursor tailing, including the pruned-log fallback to full rescan.
-- [ ] Add explicit invalidation for `artist_metadata` / `album_metadata`, which the trigger log does not cover.
-- [ ] Add the status, rebuild (`reindex` | `reload`), and retry endpoints.
-- [ ] Add the Settings UI using design tokens, including the cloud cost estimate and confirmation.
-- [ ] Add unit and integration tests with a fake embedding provider.
-- [ ] Update this plan with implementation notes.
+- [x] Add semantic embedding settings; register `semantic_embedding_api_key` in `crypto.sensitiveKeys` via `init()`, with a test asserting it is treated as sensitive.
+- [x] Implement the `EmbeddingProvider` abstraction with separate document/query methods and task prefixes.
+- [x] Implement the Ollama provider against `POST /api/embed` with array `input`, explicit `truncate: false`, and `nomic-embed-text` task prefixes.
+- [x] Implement the OpenAI provider (`text-embedding-3-small`, `dimensions: 512`, token-capped batches).
+- [x] Decide and record: defer a Gemini embeddings adapter; use local Ollama fallback or report `needs_configuration` (§7.3).
+- [x] Implement `auto` resolution including the `GET /api/tags` reachability probe. Never pull.
+- [x] Implement the provider test/validation endpoint.
+- [x] Implement batching, retries with backoff and jitter, cancellation, and bounded concurrency.
+- [x] Implement the semantic service lifecycle.
+- [x] Generate artist, then album, then track documents in the background.
+- [x] Store embeddings in bounded transactions; `CheckpointWAL()` after bulk runs.
+- [x] Incrementally upsert and delete arena entries during change-log synchronization.
+- [x] Implement `library_changes` cursor tailing, including the pruned-log fallback to full rescan.
+- [x] Add explicit invalidation for `artist_metadata` / `album_metadata`, which the trigger log does not cover.
+- [x] Add the status, rebuild (`reindex` | `reload`), and retry endpoints.
+- [x] Add the Settings UI using design tokens for local/auto provider configuration, status, provider test, reindex, and error retry.
+- [x] Add the OpenAI cloud cost estimate and explicit confirmation before a cloud index build.
+- [x] Add unit and integration tests with a fake embedding provider.
+- [x] Update this plan with implementation notes.
+
+#### PR 2 implementation notes
+
+- **2026-08-26:** Added the provider-neutral embedding contract, strict L2-normalization/shape validation, and the Ollama `POST /api/embed` adapter. The adapter batches 32 documents, sets `truncate: false`, adds the required `nomic-embed-text` document/query prefixes, and can only probe `/api/tags`; it never pulls a model.
+- **2026-08-26:** Added encrypted semantic settings, including the `semantic_embedding_api_key` crypto registration test. `auto` resolution honors explicit settings, reuses configured Ollama/OpenAI chat credentials where appropriate, and falls back to the non-mutating local Ollama probe.
+- **2026-08-26:** Added the durable `semantic.Service`: content-hash-gated document generation in artist/album/track order, sequential bounded embedding batches, retry/backoff/jitter, cancellation, model-identity reset, transactional persistence, WAL checkpointing, durable-arena reload, and manual error retry. It is intentionally not yet constructed by `api.New`; that integration follows the OpenAI adapter and semantic API endpoints.
+- **2026-08-26:** Added durable `library_changes` cursor tailing. Each observed change window runs a full catalog content-hash reconciliation (so aggregate documents and deletions are correct without re-embedding behavioural-only writes), advances all three entity cursors, and falls back to a full reconciliation if a pruned change log leaves a revision gap. Obsolete track, album, and artist documents are removed transactionally before the replacement arenas load.
+- **2026-08-26:** Added the explicit metadata invalidation path that `library_changes` cannot provide. Last.fm artist updates, similar-artist updates, and album metadata saves enqueue durable metadata-change records. The semantic worker loads artist tags/bio/similar artists and album genres in bounded bulk queries, reconciles content hashes in the background, and acknowledges each queue page only after reconciliation. This keeps metadata enrichment asynchronous and avoids an N+1 read pattern.
+- **2026-08-26:** API startup now owns the semantic service asynchronously and shutdown closes it cleanly. Added `/api/semantic/status`, `/rebuild` (`reindex` or `reload` only), `/retry-errors`, and `/test-embedding-provider`; no endpoint exposes embeddings, documents, or keys. This slice activates locally configured Ollama indexing. An OpenAI semantic configuration is reported as needing configuration until the dedicated adapter is completed.
+- **2026-08-26:** Added `GET`/`PUT /api/semantic/settings` and the Settings semantic-index card. Dedicated semantic settings save atomically; API keys remain encrypted and write-only. A settings change retires the previous service and starts a replacement asynchronously, with a monotonic generation guard so a slow prior provider probe cannot overwrite a newer configuration. The UI exposes auto/local Ollama configuration, live status polling, provider test, reindex, and error retry. It deliberately marks OpenAI cloud controls unavailable until the adapter, current price verification, and explicit cost confirmation are implemented.
+- **2026-08-26:** Verified the settings/lifecycle slice with focused backend semantic tests, frontend TypeScript check, 30 frontend unit tests, and a production frontend build. The preceding lifecycle/API checkpoint on PR #24 completed successfully in GitHub Actions: [run 33008542425](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33008542425).
+- **2026-08-26:** Decided not to add a Gemini embedding adapter in Phase 1. `auto` now recognizes both an explicit Gemini chat provider and the legacy `gemini_api_key` fallback, and never repurposes either for another embeddings API. Gemini, Anthropic, xAI, and OpenRouter instead use an already-pulled local Ollama embedding model when available, or receive a provider-specific `needs_configuration` message. Tests cover all four configured chat providers and legacy Gemini fallback.
+- **2026-08-26:** Changed normal `library_changes` synchronization from all-arena reloads to incremental updates. SQLite returns IDs whose ready embeddings were invalidated or deleted only after the corresponding transaction commits; the service removes those exact arena rows, then upserts just the successfully persisted replacement vectors. Full reindex, explicit retry, startup recovery, and provider-identity changes retain the complete snapshot-rebuild path, so a changed model can never mix vector identities in one arena. A pre-persistence dimension guard rejects an unexpected same-provider vector shape before it can create a durable/arena mismatch.
+- **2026-08-26:** Corrected the pre-existing Windows-only expectation in `internal/validation.TestSanitizePath` so it compares the cleaned path for the running platform. The sanitization behavior itself is unchanged.
+- **2026-08-26:** Added the OpenAI `POST /v1/embeddings` adapter. It sends the documented `model`, array `input`, `dimensions`, and `encoding_format: float` request fields, uses bearer authorization, preserves response-index ordering, and makes no task-prefix change. Tests cover headers, payload, response ordering, invalid input, and HTTP failures. Conservative byte guards keep inputs below the API's 8,192-token-per-input and 300,000-token-per-request ceilings.
+- **2026-08-26:** Added the explicit OpenAI cloud gate. Settings derives the exact current count of deterministic track/album/artist documents, calculates typical (250-token) and conservative (1,024-token) one-time input estimates, and requires the user to confirm the current model/dimension/catalog fingerprint. API startup checks that fingerprint before it constructs a provider or starts indexing, so an API key alone cannot send catalog text to OpenAI. The Settings UI exposes the separate encrypted key, the estimate, the data-sharing warning, and the acknowledgement checkbox.
+- **2026-08-26:** Verified this OpenAI checkpoint with the complete backend `go test ./...`, the focused semantic/db/API suite, frontend TypeScript checking, all 30 frontend unit tests, and the production Vite build. Existing Vite chunking warnings remain unchanged.
 
 #### Acceptance criteria
 

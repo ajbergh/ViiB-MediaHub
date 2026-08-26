@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"math"
 	"path/filepath"
 	"testing"
@@ -123,6 +124,69 @@ func TestSemanticDocumentOperationsChunkAndRemoveOrphans(t *testing.T) {
 	ready, err := database.ListReadySemanticEmbeddings(ctx, SemanticEntityTrack)
 	if err != nil || len(ready) != 0 {
 		t.Fatalf("orphaned ready rows = %#v, err=%v", ready, err)
+	}
+}
+
+func TestResetAndRetrySemanticEmbeddings(t *testing.T) {
+	database := newSemanticTestDB(t)
+	ctx := context.Background()
+	doc := SemanticDocument{EntityType: SemanticEntityTrack, EntityKey: "song", DisplayName: "Song", SongID: "song", Artist: "Artist", Album: "Album", Content: "Track: Song.", ContentHash: "hash-one", DocumentVersion: 1}
+	if err := database.UpsertSemanticDocuments(ctx, []SemanticDocument{doc}); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := database.GetPendingSemanticDocuments(ctx, SemanticEntityTrack, 1)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("pending=%#v err=%v", pending, err)
+	}
+	if err := database.StoreSemanticEmbeddings(ctx, []EmbeddingUpdate{{DocumentID: pending[0].ID, EntityType: SemanticEntityTrack, EmbeddingProvider: "test", EmbeddingModel: "unit", EmbeddingDimensions: 2, Embedding: normalizedBlob(t, []float32{1, 0})}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.ResetSemanticEmbeddings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	pending, err = database.GetPendingSemanticDocuments(ctx, SemanticEntityTrack, 1)
+	if err != nil || len(pending) != 1 || pending[0].Embedding != nil || pending[0].EmbeddingProvider != "" {
+		t.Fatalf("reset pending=%#v err=%v", pending, err)
+	}
+	if err := database.MarkSemanticDocumentError(ctx, pending[0].ID, errors.New("provider unavailable")); err != nil {
+		t.Fatal(err)
+	}
+	if retried, err := database.RetrySemanticDocumentErrors(ctx); err != nil || retried != 1 {
+		t.Fatalf("retried=%d err=%v", retried, err)
+	}
+}
+
+func TestDeleteSemanticDocumentsByKeys(t *testing.T) {
+	database := newSemanticTestDB(t)
+	ctx := context.Background()
+	docs := []SemanticDocument{
+		{EntityType: SemanticEntityArtist, EntityKey: "one", DisplayName: "One", Content: "Artist: One.", ContentHash: "one", DocumentVersion: 1},
+		{EntityType: SemanticEntityArtist, EntityKey: "two", DisplayName: "Two", Content: "Artist: Two.", ContentHash: "two", DocumentVersion: 1},
+	}
+	if err := database.UpsertSemanticDocuments(ctx, docs); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := database.GetPendingSemanticDocuments(ctx, SemanticEntityArtist, 2)
+	if err != nil || len(pending) != 2 {
+		t.Fatalf("pending=%#v err=%v", pending, err)
+	}
+	updates := make([]EmbeddingUpdate, len(pending))
+	for index, document := range pending {
+		updates[index] = EmbeddingUpdate{DocumentID: document.ID, EntityType: SemanticEntityArtist, EmbeddingProvider: "test", EmbeddingModel: "unit", EmbeddingDimensions: 2, Embedding: normalizedBlob(t, []float32{1, float32(index + 1)})}
+	}
+	if err := database.StoreSemanticEmbeddings(ctx, updates); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := database.ListSemanticDocumentKeys(ctx, SemanticEntityArtist)
+	if err != nil || len(keys) != 2 || keys[0] != "one" || keys[1] != "two" {
+		t.Fatalf("keys=%#v err=%v", keys, err)
+	}
+	if deleted, err := database.DeleteSemanticDocumentsByKeys(ctx, SemanticEntityArtist, []string{"one"}); err != nil || deleted != 1 {
+		t.Fatalf("deleted=%d err=%v", deleted, err)
+	}
+	state, err := database.GetSemanticIndexState(ctx, SemanticEntityArtist)
+	if err != nil || state.ItemCount != 1 {
+		t.Fatalf("state=%#v err=%v", state, err)
 	}
 }
 

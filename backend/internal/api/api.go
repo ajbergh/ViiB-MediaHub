@@ -39,6 +39,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/mediafetch"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
+	"github.com/ajbergh/viib-mediahub/internal/semantic"
 	"github.com/ajbergh/viib-mediahub/internal/validation"
 	"github.com/ajbergh/viib-mediahub/internal/version"
 	"github.com/go-chi/chi/v5"
@@ -48,13 +49,19 @@ import (
 // It contains references to the database, server logger, and other shared
 // components required by handler implementations.
 type API struct {
-	db              *db.DB
-	dataDir         string
-	coverDir        string
-	downloadManager *DownloadManager
-	scanner         *scanner.Scanner
-	lastfmClient    *lastfm.Client
-	enrichRunning   int32 // atomic: 1 if enrichment goroutine is active
+	db                 *db.DB
+	dataDir            string
+	coverDir           string
+	downloadManager    *DownloadManager
+	scanner            *scanner.Scanner
+	lastfmClient       *lastfm.Client
+	enrichRunning      int32 // atomic: 1 if enrichment goroutine is active
+	semanticMu         sync.RWMutex
+	semanticService    *semantic.Service
+	semanticState      semantic.EmbeddingResolution
+	semanticError      string
+	semanticClosed     bool
+	semanticGeneration uint64
 }
 
 // New constructs a new API instance using the given database and
@@ -113,6 +120,9 @@ func New(database *db.DB, dataDir string) *API {
 		}
 	}()
 
+	// Provider probing and background indexing must never delay API startup.
+	go api.initSemanticService()
+
 	return api
 }
 
@@ -166,6 +176,14 @@ func (a *API) Routes() chi.Router {
 	r.Post("/scan", a.startScan)
 	r.Post("/scan/quick", a.startQuickScan)
 	r.Get("/scan/status", a.getScanStatus)
+
+	// Semantic indexing endpoints
+	r.Get("/semantic/settings", a.getSemanticSettings)
+	r.Put("/semantic/settings", a.updateSemanticSettings)
+	r.Get("/semantic/status", a.getSemanticStatus)
+	r.Post("/semantic/rebuild", a.rebuildSemanticIndex)
+	r.Post("/semantic/retry-errors", a.retrySemanticErrors)
+	r.Post("/semantic/test-embedding-provider", a.testSemanticEmbeddingProvider)
 
 	// Library events SSE
 	r.Get("/library/events", a.libraryEventsSSE)

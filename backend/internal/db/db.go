@@ -30,6 +30,7 @@ package db
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
@@ -2872,7 +2873,10 @@ func (d *DB) SaveAlbumMetadata(m *AlbumMetadata) error {
 	`, m.AlbumKey, m.AlbumName, m.ArtistName, m.SpotifyID, m.CoverURL, m.LocalCoverPath,
 		m.Description, m.Genre, m.ReleaseDate, m.SpotifyURL, m.Copyright,
 		spotifyChecked, spotifyFound, m.FetchedAt, now)
-	return err
+	if err != nil {
+		return err
+	}
+	return d.RecordSemanticMetadataChange(context.Background(), SemanticEntityAlbum, m.AlbumKey)
 }
 
 // UpdateAlbumLocalCover updates just the local cover path for an album
@@ -4285,7 +4289,10 @@ func (d *DB) StoreSimilarArtists(artistName string, similar []LastFMSimilarArtis
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return d.RecordSemanticMetadataChange(context.Background(), SemanticEntityArtist, artistName)
 }
 
 // GetLastFMSimilarArtists retrieves similar artists from Last.FM data
@@ -4483,7 +4490,10 @@ func (d *DB) UpdateArtistLastFM(artistName string, update LastFMArtistUpdate) er
 		`, update.Listeners, update.Playcount, string(tagsJSON), update.Bio, update.URL, update.MBID, now, now, artistName)
 	}
 
-	return err
+	if err != nil {
+		return err
+	}
+	return d.RecordSemanticMetadataChange(context.Background(), SemanticEntityArtist, artistName)
 }
 
 // GetArtistsWithoutLastFM retrieves artists that haven't been enriched with Last.FM data

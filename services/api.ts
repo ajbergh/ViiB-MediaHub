@@ -1029,6 +1029,46 @@ export const api = {
     return handleResponse<LLMTestResponse>(response);
   },
 
+  // ==================== Semantic Index API ====================
+
+  async getSemanticSettings(): Promise<SemanticSettings> {
+    const response = await fetch(`${API_BASE}/semantic/settings`);
+    return handleResponse<SemanticSettings>(response);
+  },
+
+  async updateSemanticSettings(settings: SemanticSettingsRequest): Promise<{ status: string }> {
+    const response = await fetch(`${API_BASE}/semantic/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    return handleResponse<{ status: string }>(response);
+  },
+
+  async getSemanticStatus(): Promise<SemanticStatus> {
+    const response = await fetch(`${API_BASE}/semantic/status`);
+    return handleResponse<SemanticStatus>(response);
+  },
+
+  async rebuildSemanticIndex(scope: 'reindex' | 'reload' = 'reindex'): Promise<{ status: string; scope: string }> {
+    const response = await fetch(`${API_BASE}/semantic/rebuild`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope }),
+    });
+    return handleResponse<{ status: string; scope: string }>(response);
+  },
+
+  async retrySemanticErrors(): Promise<{ status: string }> {
+    const response = await fetch(`${API_BASE}/semantic/retry-errors`, { method: 'POST' });
+    return handleResponse<{ status: string }>(response);
+  },
+
+  async testSemanticEmbeddingProvider(): Promise<SemanticProviderTestResponse> {
+    const response = await fetch(`${API_BASE}/semantic/test-embedding-provider`, { method: 'POST' });
+    return handleResponse<SemanticProviderTestResponse>(response);
+  },
+
   /**
    * Triggers the Gemini genre enrichment process.
    * @param apiKey - Optional Gemini API key. If not provided, backend will use stored key.
@@ -1816,6 +1856,70 @@ export interface LLMSettingsRequest {
 export interface LLMTestResponse {
   success: boolean;
   message: string;
+}
+
+// ==================== Semantic Index Types ====================
+
+export interface SemanticSettings {
+  provider: 'auto' | 'ollama' | 'openai' | 'disabled';
+  model: string;
+  dimensions: number;
+  baseURL: string;
+  apiKeyConfigured: boolean;
+  status: string;
+  reason?: string;
+  cloudCost?: SemanticCloudCost;
+}
+
+export interface SemanticSettingsRequest {
+  provider: 'auto' | 'ollama' | 'openai' | 'disabled';
+  model: string;
+  dimensions?: number;
+  baseURL: string;
+  apiKey?: string;
+  confirmCloudCost?: boolean;
+}
+
+export interface SemanticCloudCost {
+  model: string;
+  dimensions: number;
+  documents: number;
+  typicalInputTokens: number;
+  maximumInputTokens: number;
+  usdPerMillionInputTokens: number;
+  typicalUSD: number;
+  maximumUSD: number;
+  confirmed: boolean;
+}
+
+export interface SemanticIndexState {
+  entityType: string;
+  documentRevision: number;
+  itemCount: number;
+  dimensions: number;
+  embeddingProvider: string;
+  embeddingModel: string;
+  lastError?: string;
+}
+
+export interface SemanticStatus {
+  state: string;
+  reason?: string;
+  provider?: string;
+  model?: string;
+  dimensions?: number;
+  documentsByStatus: Record<string, number>;
+  indexes: SemanticIndexState[];
+  progress: number;
+  lastError?: string;
+}
+
+export interface SemanticProviderTestResponse {
+  success: boolean;
+  message?: string;
+  provider?: string;
+  model?: string;
+  dimensions?: number;
 }
 
 // ==================== Last.FM Types ====================
