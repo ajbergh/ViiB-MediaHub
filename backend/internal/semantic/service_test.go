@@ -144,6 +144,44 @@ func TestServiceTailsLibraryChangesWithoutReembeddingBehavior(t *testing.T) {
 	}
 }
 
+func TestServiceSyncUpdatesOnlyInvalidatedArenaEntries(t *testing.T) {
+	database := newServiceTestDB(t)
+	song := db.Song{ID: "song", Title: "Original", Artist: "Artist", Album: "Album", FilePath: filepath.Join(t.TempDir(), "song.flac"), AddedAt: 1}
+	if err := database.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	provider := &fakeEmbeddingProvider{}
+	service, err := NewService(database, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	if err := service.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	song.Title = "Renamed"
+	if err := database.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	songs, err := database.GetAllSongs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.reconcileCatalogDocuments(context.Background(), songs, true); err != nil {
+		t.Fatal(err)
+	}
+	if service.Index(db.SemanticEntityTrack).Len() != 0 || service.Index(db.SemanticEntityAlbum).Len() != 0 || service.Index(db.SemanticEntityArtist).Len() != 1 {
+		t.Fatalf("only the content-hash-invalidated track and album should leave their arenas: track=%d album=%d artist=%d", service.Index(db.SemanticEntityTrack).Len(), service.Index(db.SemanticEntityAlbum).Len(), service.Index(db.SemanticEntityArtist).Len())
+	}
+	if indexed, failed, err := service.processPending(context.Background(), true); err != nil || indexed != 2 || failed != 0 {
+		t.Fatalf("incremental pending processing indexed=%d failed=%d err=%v", indexed, failed, err)
+	}
+	if service.Index(db.SemanticEntityTrack).Len() != 1 || service.Index(db.SemanticEntityAlbum).Len() != 1 || service.Index(db.SemanticEntityArtist).Len() != 1 {
+		t.Fatalf("replacement embeddings were not incrementally restored: track=%d album=%d artist=%d", service.Index(db.SemanticEntityTrack).Len(), service.Index(db.SemanticEntityAlbum).Len(), service.Index(db.SemanticEntityArtist).Len())
+	}
+}
+
 func TestServiceRefreshesDocumentsAfterMetadataChanges(t *testing.T) {
 	database := newServiceTestDB(t)
 	if err := database.EnsureLibrarySyncSchema(); err != nil {

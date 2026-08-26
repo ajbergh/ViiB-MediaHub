@@ -1366,7 +1366,7 @@ No new third-party dependency is added in this PR.
 - [x] Implement the semantic service lifecycle.
 - [x] Generate artist, then album, then track documents in the background.
 - [x] Store embeddings in bounded transactions; `CheckpointWAL()` after bulk runs.
-- [ ] Incrementally upsert and delete arena entries.
+- [x] Incrementally upsert and delete arena entries during change-log synchronization.
 - [x] Implement `library_changes` cursor tailing, including the pruned-log fallback to full rescan.
 - [x] Add explicit invalidation for `artist_metadata` / `album_metadata`, which the trigger log does not cover.
 - [x] Add the status, rebuild (`reindex` | `reload`), and retry endpoints.
@@ -1386,6 +1386,7 @@ No new third-party dependency is added in this PR.
 - **2026-08-26:** Added `GET`/`PUT /api/semantic/settings` and the Settings semantic-index card. Dedicated semantic settings save atomically; API keys remain encrypted and write-only. A settings change retires the previous service and starts a replacement asynchronously, with a monotonic generation guard so a slow prior provider probe cannot overwrite a newer configuration. The UI exposes auto/local Ollama configuration, live status polling, provider test, reindex, and error retry. It deliberately marks OpenAI cloud controls unavailable until the adapter, current price verification, and explicit cost confirmation are implemented.
 - **2026-08-26:** Verified the settings/lifecycle slice with focused backend semantic tests, frontend TypeScript check, 30 frontend unit tests, and a production frontend build. The preceding lifecycle/API checkpoint on PR #24 completed successfully in GitHub Actions: [run 33008542425](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33008542425).
 - **2026-08-26:** Decided not to add a Gemini embedding adapter in Phase 1. `auto` now recognizes both an explicit Gemini chat provider and the legacy `gemini_api_key` fallback, and never repurposes either for another embeddings API. Gemini, Anthropic, xAI, and OpenRouter instead use an already-pulled local Ollama embedding model when available, or receive a provider-specific `needs_configuration` message. Tests cover all four configured chat providers and legacy Gemini fallback.
+- **2026-08-26:** Changed normal `library_changes` synchronization from all-arena reloads to incremental updates. SQLite returns IDs whose ready embeddings were invalidated or deleted only after the corresponding transaction commits; the service removes those exact arena rows, then upserts just the successfully persisted replacement vectors. Full reindex, explicit retry, startup recovery, and provider-identity changes retain the complete snapshot-rebuild path, so a changed model can never mix vector identities in one arena. A pre-persistence dimension guard rejects an unexpected same-provider vector shape before it can create a durable/arena mismatch.
 - **2026-08-26:** Corrected the pre-existing Windows-only expectation in `internal/validation.TestSanitizePath` so it compares the cleaned path for the running platform. The sanitization behavior itself is unchanged.
 
 #### Acceptance criteria

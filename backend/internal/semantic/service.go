@@ -36,8 +36,8 @@ type ServiceStatus struct {
 }
 
 // Service owns the durable document-to-vector pipeline. SQLite is the source
-// of truth; vector arenas are replaceable read-only snapshots rebuilt only
-// after a complete successful pass.
+// of truth. Full rebuilds swap complete arena snapshots; ordinary catalog
+// changes mutate only the durable transaction's affected arena entries.
 type Service struct {
 	database *db.DB
 	provider EmbeddingProvider
@@ -144,14 +144,14 @@ func (service *Service) reindexLocked(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("load catalog for semantic indexing: %w", err)
 	}
-	removed, err := service.reconcileCatalogDocuments(ctx, songs)
+	removed, err := service.reconcileCatalogDocuments(ctx, songs, false)
 	if err != nil {
 		return err
 	}
 	if err := service.setCatalogCursor(ctx, catalogRevision); err != nil {
 		return err
 	}
-	indexed, failed, err := service.processPending(ctx)
+	indexed, failed, err := service.processPending(ctx, false)
 	if err != nil {
 		return err
 	}
@@ -231,7 +231,7 @@ func (service *Service) syncChangesLocked(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("load catalog for semantic change reconciliation: %w", err)
 	}
-	removed, err := service.reconcileCatalogDocuments(ctx, songs)
+	removed, err := service.reconcileCatalogDocuments(ctx, songs, true)
 	if err != nil {
 		return err
 	}
@@ -240,7 +240,7 @@ func (service *Service) syncChangesLocked(ctx context.Context) (err error) {
 			return err
 		}
 	}
-	indexed, failed, err := service.processPending(ctx)
+	indexed, failed, err := service.processPending(ctx, true)
 	if err != nil {
 		return err
 	}
@@ -250,11 +250,6 @@ func (service *Service) syncChangesLocked(ctx context.Context) (err error) {
 	if failed > 0 {
 		service.setStatus(ServiceStatus{State: serviceStateError, DocumentsIndexed: indexed, FailedDocuments: failed, LastError: "some semantic documents could not be embedded"})
 		return nil
-	}
-	if indexed > 0 || removed > 0 {
-		if err := service.loadReadyIndexesLocked(ctx); err != nil {
-			return err
-		}
 	}
 	if err := service.database.DeleteSemanticMetadataChangesThrough(ctx, metadataChangeID); err != nil {
 		return fmt.Errorf("acknowledge semantic metadata changes: %w", err)
@@ -273,7 +268,7 @@ func (service *Service) RetryErrors(ctx context.Context) (int, error) {
 		return count, err
 	}
 	service.setStatus(ServiceStatus{State: serviceStateIndexing})
-	indexed, failed, err := service.processPending(ctx)
+	indexed, failed, err := service.processPending(ctx, false)
 	if err != nil {
 		return count, err
 	}
@@ -342,13 +337,21 @@ func (service *Service) resetForIdentityChange(ctx context.Context) error {
 	return nil
 }
 
-func (service *Service) reconcileCatalogDocuments(ctx context.Context, songs []db.Song) (int, error) {
+func (service *Service) reconcileCatalogDocuments(ctx context.Context, songs []db.Song, updateArena bool) (int, error) {
 	documentContext, err := service.documentContext(ctx, songs)
 	if err != nil {
 		return 0, err
 	}
 	documents := BuildDocuments(songs, documentContext)
-	if err := service.database.UpsertSemanticDocuments(ctx, documents); err != nil {
+	if updateArena {
+		invalidated, err := service.database.UpsertSemanticDocumentsWithInvalidations(ctx, documents)
+		if err != nil {
+			return 0, fmt.Errorf("upsert semantic documents: %w", err)
+		}
+		if err := service.deleteArenaDocuments(invalidated); err != nil {
+			return 0, err
+		}
+	} else if err := service.database.UpsertSemanticDocuments(ctx, documents); err != nil {
 		return 0, fmt.Errorf("upsert semantic documents: %w", err)
 	}
 	expected := make(map[string]map[string]struct{}, len(semanticEntityOrder))
@@ -370,9 +373,22 @@ func (service *Service) reconcileCatalogDocuments(ctx context.Context, songs []d
 				obsolete = append(obsolete, key)
 			}
 		}
-		deleted, err := service.database.DeleteSemanticDocumentsByKeys(ctx, entityType, obsolete)
-		if err != nil {
-			return removed, fmt.Errorf("remove obsolete %s semantic documents: %w", entityType, err)
+		var deleted int
+		if updateArena {
+			result, err := service.database.DeleteSemanticDocumentsByKeysWithReadyIDs(ctx, entityType, obsolete)
+			if err != nil {
+				return removed, fmt.Errorf("remove obsolete %s semantic documents: %w", entityType, err)
+			}
+			if err := service.deleteArenaIDs(entityType, result.ReadyIDs); err != nil {
+				return removed, err
+			}
+			deleted = result.Count
+		} else {
+			var err error
+			deleted, err = service.database.DeleteSemanticDocumentsByKeys(ctx, entityType, obsolete)
+			if err != nil {
+				return removed, fmt.Errorf("remove obsolete %s semantic documents: %w", entityType, err)
+			}
 		}
 		removed += deleted
 	}
@@ -435,7 +451,7 @@ func (service *Service) setCatalogCursor(ctx context.Context, revision int64) er
 	return nil
 }
 
-func (service *Service) processPending(ctx context.Context) (int, int, error) {
+func (service *Service) processPending(ctx context.Context, updateArena bool) (int, int, error) {
 	indexed, failed := 0, 0
 	for _, entityType := range semanticEntityOrder {
 		service.setStatus(ServiceStatus{State: serviceStateIndexing, CurrentEntity: entityType, DocumentsIndexed: indexed, FailedDocuments: failed})
@@ -450,7 +466,7 @@ func (service *Service) processPending(ctx context.Context) (int, int, error) {
 			if len(documents) == 0 {
 				break
 			}
-			if err := service.embedBatch(ctx, documents); err != nil {
+			if err := service.embedBatch(ctx, documents, updateArena); err != nil {
 				failed += len(documents)
 				for _, document := range documents {
 					if markErr := service.database.MarkSemanticDocumentError(ctx, document.ID, err); markErr != nil {
@@ -465,7 +481,7 @@ func (service *Service) processPending(ctx context.Context) (int, int, error) {
 	return indexed, failed, nil
 }
 
-func (service *Service) embedBatch(ctx context.Context, documents []db.SemanticDocument) error {
+func (service *Service) embedBatch(ctx context.Context, documents []db.SemanticDocument, updateArena bool) error {
 	texts := make([]string, len(documents))
 	for index, document := range documents {
 		texts[index] = document.Content
@@ -484,6 +500,15 @@ func (service *Service) embedBatch(ctx context.Context, documents []db.SemanticD
 	if err != nil {
 		return err
 	}
+	if updateArena {
+		index := service.Index(documents[0].EntityType)
+		if index == nil {
+			return fmt.Errorf("semantic %s arena is unavailable", documents[0].EntityType)
+		}
+		if dimensions := index.Dimensions(); dimensions != 0 && dimensions != len(normalized[0]) {
+			return fmt.Errorf("semantic %s arena dimensions %d do not match provider dimensions %d", documents[0].EntityType, dimensions, len(normalized[0]))
+		}
+	}
 	updates := make([]db.EmbeddingUpdate, len(documents))
 	for index, vector := range normalized {
 		encoded, encodeErr := EncodeVector(vector)
@@ -500,7 +525,51 @@ func (service *Service) embedBatch(ctx context.Context, documents []db.SemanticD
 			Embedding:            encoded,
 		}
 	}
-	return service.database.StoreSemanticEmbeddings(ctx, updates)
+	if err := service.database.StoreSemanticEmbeddings(ctx, updates); err != nil {
+		return err
+	}
+	if !updateArena {
+		return nil
+	}
+	return service.upsertArenaVectors(documents[0].EntityType, documents, normalized)
+}
+
+func (service *Service) deleteArenaDocuments(documents []db.SemanticDocumentReference) error {
+	for _, document := range documents {
+		if err := service.deleteArenaIDs(document.EntityType, []int64{document.ID}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (service *Service) deleteArenaIDs(entityType string, ids []int64) error {
+	index := service.Index(entityType)
+	if index == nil {
+		return fmt.Errorf("semantic %s arena is unavailable", entityType)
+	}
+	for _, id := range ids {
+		if err := index.Delete(id); err != nil {
+			return fmt.Errorf("delete semantic %s arena item %d: %w", entityType, id, err)
+		}
+	}
+	return nil
+}
+
+func (service *Service) upsertArenaVectors(entityType string, documents []db.SemanticDocument, vectors [][]float32) error {
+	if len(documents) != len(vectors) {
+		return errors.New("semantic arena update has mismatched documents and vectors")
+	}
+	index := service.Index(entityType)
+	if index == nil {
+		return fmt.Errorf("semantic %s arena is unavailable", entityType)
+	}
+	for position, vector := range vectors {
+		if err := index.Upsert(documents[position].ID, vector); err != nil {
+			return fmt.Errorf("upsert semantic %s arena item %d: %w", entityType, documents[position].ID, err)
+		}
+	}
+	return nil
 }
 
 func (service *Service) embedDocumentsWithRetry(ctx context.Context, texts []string) ([][]float32, error) {

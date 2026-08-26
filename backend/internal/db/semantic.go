@@ -64,6 +64,21 @@ type StoredEmbedding struct {
 	Embedding []byte
 }
 
+// SemanticDocumentReference identifies a durable document without exposing
+// its content. It lets the indexer make the matching in-memory arena change
+// after the SQLite transaction has committed.
+type SemanticDocumentReference struct {
+	EntityType string
+	ID         int64
+}
+
+// SemanticDocumentDeletion contains the rows that were actually removed and
+// the subset that had a live vector before deletion.
+type SemanticDocumentDeletion struct {
+	Count    int
+	ReadyIDs []int64
+}
+
 // SemanticIndexState describes one entity-type arena and its provider identity.
 type SemanticIndexState struct {
 	EntityType           string
@@ -372,39 +387,51 @@ func scanSemanticDocument(scanner interface{ Scan(...any) error }) (SemanticDocu
 // unchanged content hash retains its embedding, while a changed ready document
 // is atomically returned to pending and advances its arena revision.
 func (d *DB) UpsertSemanticDocuments(ctx context.Context, docs []SemanticDocument) error {
+	_, err := d.UpsertSemanticDocumentsWithInvalidations(ctx, docs)
+	return err
+}
+
+// UpsertSemanticDocumentsWithInvalidations preserves the ordinary upsert
+// semantics while returning ready document IDs whose changed hash moved them
+// back to pending. Callers must apply these IDs to a live arena only after the
+// transaction has committed.
+func (d *DB) UpsertSemanticDocumentsWithInvalidations(ctx context.Context, docs []SemanticDocument) ([]SemanticDocumentReference, error) {
 	if err := d.EnsureSemanticSchema(); err != nil {
-		return err
+		return nil, err
 	}
+	invalidated := make([]SemanticDocumentReference, 0)
 	for start := 0; start < len(docs); start += semanticWriteRowLimit {
 		end := start + semanticWriteRowLimit
 		if end > len(docs) {
 			end = len(docs)
 		}
-		if err := d.upsertSemanticDocumentBatch(ctx, docs[start:end]); err != nil {
-			return err
+		batchInvalidated, err := d.upsertSemanticDocumentBatch(ctx, docs[start:end])
+		if err != nil {
+			return nil, err
 		}
+		invalidated = append(invalidated, batchInvalidated...)
 	}
-	return nil
+	return invalidated, nil
 }
 
-func (d *DB) upsertSemanticDocumentBatch(ctx context.Context, docs []SemanticDocument) error {
+func (d *DB) upsertSemanticDocumentBatch(ctx context.Context, docs []SemanticDocument) ([]SemanticDocumentReference, error) {
 	if len(docs) == 0 {
-		return nil
+		return []SemanticDocumentReference{}, nil
 	}
 	for _, doc := range docs {
 		if !validSemanticEntityType(doc.EntityType) || strings.TrimSpace(doc.EntityKey) == "" || strings.TrimSpace(doc.Content) == "" || strings.TrimSpace(doc.ContentHash) == "" || doc.DocumentVersion <= 0 {
-			return errors.New("semantic document has invalid required fields")
+			return nil, errors.New("semantic document has invalid required fields")
 		}
 	}
 	tx, err := d.conn.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
-	changedReady, err := semanticReadyRevisionDeltas(ctx, tx, docs)
+	changedReady, err := semanticReadyInvalidations(ctx, tx, docs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO semantic_documents(
@@ -441,9 +468,9 @@ func (d *DB) upsertSemanticDocumentBatch(ctx context.Context, docs []SemanticDoc
 			OR semantic_documents.artist IS NOT excluded.artist
 			OR semantic_documents.album IS NOT excluded.album
 			OR semantic_documents.content_hash != excluded.content_hash
-			OR semantic_documents.document_version != excluded.document_version`)
+		OR semantic_documents.document_version != excluded.document_version`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer stmt.Close()
 	now := time.Now().UnixMilli()
@@ -457,18 +484,25 @@ func (d *DB) upsertSemanticDocumentBatch(ctx context.Context, docs []SemanticDoc
 			updatedAt = now
 		}
 		if _, err := stmt.ExecContext(ctx, doc.EntityType, doc.EntityKey, doc.DisplayName, doc.SongID, doc.Artist, doc.Album, doc.Content, doc.ContentHash, doc.DocumentVersion, createdAt, updatedAt); err != nil {
-			return fmt.Errorf("upsert semantic document: %w", err)
+			return nil, fmt.Errorf("upsert semantic document: %w", err)
 		}
 	}
-	if err := invalidateReadySemanticDocuments(ctx, tx, changedReady); err != nil {
-		return err
+	deltas := make(map[string]int64)
+	for _, document := range changedReady {
+		deltas[document.EntityType]++
 	}
-	return tx.Commit()
+	if err := invalidateReadySemanticDocuments(ctx, tx, deltas); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return changedReady, nil
 }
 
-func semanticReadyRevisionDeltas(ctx context.Context, tx *sql.Tx, docs []SemanticDocument) (map[string]int64, error) {
+func semanticReadyInvalidations(ctx context.Context, tx *sql.Tx, docs []SemanticDocument) ([]SemanticDocumentReference, error) {
 	if len(docs) == 0 {
-		return nil, nil
+		return []SemanticDocumentReference{}, nil
 	}
 	values := make([]string, 0, len(docs))
 	args := make([]any, 0, len(docs)*4)
@@ -477,24 +511,24 @@ func semanticReadyRevisionDeltas(ctx context.Context, tx *sql.Tx, docs []Semanti
 		args = append(args, doc.EntityType, doc.EntityKey, doc.ContentHash, doc.DocumentVersion)
 	}
 	rows, err := tx.QueryContext(ctx, `WITH incoming(entity_type, entity_key, content_hash, document_version) AS (VALUES `+strings.Join(values, ",")+`)
-		SELECT d.entity_type, COUNT(*)
+		SELECT d.entity_type, d.id
 		FROM semantic_documents d JOIN incoming i ON d.entity_type = i.entity_type AND d.entity_key = i.entity_key
 		WHERE d.status = 'ready' AND (d.content_hash != i.content_hash OR d.document_version != i.document_version)
-		GROUP BY d.entity_type`, args...)
+		ORDER BY d.entity_type, d.id`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	deltas := make(map[string]int64)
+	invalidated := make([]SemanticDocumentReference, 0)
 	for rows.Next() {
 		var entityType string
-		var count int64
-		if err := rows.Scan(&entityType, &count); err != nil {
+		var id int64
+		if err := rows.Scan(&entityType, &id); err != nil {
 			return nil, err
 		}
-		deltas[entityType] = count
+		invalidated = append(invalidated, SemanticDocumentReference{EntityType: entityType, ID: id})
 	}
-	return deltas, rows.Err()
+	return invalidated, rows.Err()
 }
 
 // invalidateReadySemanticDocuments keeps the durable state count truthful while
@@ -751,34 +785,43 @@ func (d *DB) ListSemanticDocumentKeys(ctx context.Context, entityType string) ([
 // DeleteSemanticDocumentsByKeys removes obsolete entities in bounded
 // transactions and keeps their arena state truthful until the next rebuild.
 func (d *DB) DeleteSemanticDocumentsByKeys(ctx context.Context, entityType string, keys []string) (int, error) {
+	result, err := d.DeleteSemanticDocumentsByKeysWithReadyIDs(ctx, entityType, keys)
+	return result.Count, err
+}
+
+// DeleteSemanticDocumentsByKeysWithReadyIDs reports deleted ready IDs after
+// the transaction commits so a caller can delete the same rows from its
+// in-memory arena without a full table reload.
+func (d *DB) DeleteSemanticDocumentsByKeysWithReadyIDs(ctx context.Context, entityType string, keys []string) (SemanticDocumentDeletion, error) {
 	if !validSemanticEntityType(entityType) {
-		return 0, fmt.Errorf("invalid semantic entity type %q", entityType)
+		return SemanticDocumentDeletion{}, fmt.Errorf("invalid semantic entity type %q", entityType)
 	}
 	if err := d.EnsureSemanticSchema(); err != nil {
-		return 0, err
+		return SemanticDocumentDeletion{}, err
 	}
-	deleted := 0
+	result := SemanticDocumentDeletion{ReadyIDs: make([]int64, 0)}
 	for start := 0; start < len(keys); start += semanticSQLiteParamCap {
 		end := start + semanticSQLiteParamCap
 		if end > len(keys) {
 			end = len(keys)
 		}
-		count, err := d.deleteSemanticDocumentKeyBatch(ctx, entityType, keys[start:end])
+		batchResult, err := d.deleteSemanticDocumentKeyBatch(ctx, entityType, keys[start:end])
 		if err != nil {
-			return deleted, err
+			return result, err
 		}
-		deleted += count
+		result.Count += batchResult.Count
+		result.ReadyIDs = append(result.ReadyIDs, batchResult.ReadyIDs...)
 	}
-	return deleted, nil
+	return result, nil
 }
 
-func (d *DB) deleteSemanticDocumentKeyBatch(ctx context.Context, entityType string, keys []string) (int, error) {
+func (d *DB) deleteSemanticDocumentKeyBatch(ctx context.Context, entityType string, keys []string) (SemanticDocumentDeletion, error) {
 	if len(keys) == 0 {
-		return 0, nil
+		return SemanticDocumentDeletion{ReadyIDs: []int64{}}, nil
 	}
 	tx, err := d.conn.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return SemanticDocumentDeletion{}, err
 	}
 	defer tx.Rollback()
 	placeholders := strings.TrimRight(strings.Repeat("?,", len(keys)), ",")
@@ -787,24 +830,39 @@ func (d *DB) deleteSemanticDocumentKeyBatch(ctx context.Context, entityType stri
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	var ready int64
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM semantic_documents WHERE entity_type = ? AND status = 'ready' AND entity_key IN (`+placeholders+`)`, args...).Scan(&ready); err != nil {
-		return 0, err
+	readyRows, err := tx.QueryContext(ctx, `SELECT id FROM semantic_documents WHERE entity_type = ? AND status = 'ready' AND entity_key IN (`+placeholders+`) ORDER BY id`, args...)
+	if err != nil {
+		return SemanticDocumentDeletion{}, err
+	}
+	readyIDs := make([]int64, 0)
+	for readyRows.Next() {
+		var id int64
+		if err := readyRows.Scan(&id); err != nil {
+			readyRows.Close()
+			return SemanticDocumentDeletion{}, err
+		}
+		readyIDs = append(readyIDs, id)
+	}
+	if err := readyRows.Close(); err != nil {
+		return SemanticDocumentDeletion{}, err
 	}
 	result, err := tx.ExecContext(ctx, `DELETE FROM semantic_documents WHERE entity_type = ? AND entity_key IN (`+placeholders+`)`, args...)
 	if err != nil {
-		return 0, err
+		return SemanticDocumentDeletion{}, err
 	}
 	count, err := result.RowsAffected()
 	if err != nil {
-		return 0, err
+		return SemanticDocumentDeletion{}, err
 	}
-	if ready > 0 {
-		if err := invalidateReadySemanticDocuments(ctx, tx, map[string]int64{entityType: ready}); err != nil {
-			return 0, err
+	if len(readyIDs) > 0 {
+		if err := invalidateReadySemanticDocuments(ctx, tx, map[string]int64{entityType: int64(len(readyIDs))}); err != nil {
+			return SemanticDocumentDeletion{}, err
 		}
 	}
-	return int(count), tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return SemanticDocumentDeletion{}, err
+	}
+	return SemanticDocumentDeletion{Count: int(count), ReadyIDs: readyIDs}, nil
 }
 
 // ListReadySemanticEmbeddings returns the corpus in ID order for sequential
