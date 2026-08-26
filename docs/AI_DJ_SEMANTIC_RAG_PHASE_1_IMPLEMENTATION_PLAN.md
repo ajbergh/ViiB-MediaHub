@@ -1296,6 +1296,10 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
 - **2026-08-26:** Completed the OpenAI embedding transport and explicit catalog-cost
   confirmation gate. Cloud indexing remains unavailable until the current catalog/model/
   dimensions estimate has been acknowledged in Settings.
+- **2026-08-26:** PR #24 is complete locally and its description has been refreshed with
+  the validation record. It remains a draft while the current head's GitHub Actions run is
+  requested; the previous PR 2 CI runs are green, but are not treated as validation of a
+  later commit.
 
 #### PR 1 implementation notes (2026-08-26)
 
