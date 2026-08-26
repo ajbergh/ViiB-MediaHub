@@ -1444,8 +1444,8 @@ No new third-party dependency is added in this PR.
 - [ ] Implement the negative semantic penalty.
 - [ ] Implement `HybridRanker`.
 - [ ] Implement the MMR/diversity pass with a bounded working set.
-- [ ] Add `SemanticScores` to `dj.ScoreContext`.
-- [ ] Reweight `ScoreSongForPhase` around semantic relevance.
+- [x] Add `SemanticScores` to `dj.ScoreContext`.
+- [x] Reweight `ScoreSongForPhase` around semantic relevance.
 - [ ] Replace the `db.GetAllSongs()` recall path in `handleDJMode`; move genre stats to `genre_stats` and average duration to an aggregate query (§13.1).
 - [ ] Update the sequencer to consume semantic phase candidate pools.
 - [ ] Preserve the legacy fallback path.
@@ -1477,6 +1477,11 @@ No new third-party dependency is added in this PR.
   documented 1.00/0.94/0.88 weighting. The expansion path loads only matching song IDs,
   invokes `db.FilterSongsForAIDJ` once for source/Plex availability, then applies explicit
   artist, hard-year, and instrumental constraints before returning a deterministic order.
+- **2026-08-26:** `dj.ScoreContext` now carries semantic relevance keyed by song ID. When
+  present, `ScoreSongForPhase` uses 50% semantic relevance, 20% phase metadata fit, 15%
+  BPM continuity, 10% persona/behaviour, and 5% genre affinity before existing penalties;
+  without a semantic score it retains the legacy weighting. Tests assert relevance wins for
+  otherwise equivalent tracks.
 
 #### Acceptance criteria
 

@@ -160,6 +160,7 @@ func NewScoreContext() *ScoreContext {
 type ScoreBreakdown struct {
 	SongID             string  `json:"songId"`
 	TotalScore         float64 `json:"totalScore"`
+	SemanticScore      float64 `json:"semanticScore,omitempty"`
 	PhaseFitScore      float64 `json:"phaseFitScore"`      // How well song fits phase requirements
 	BPMMatchScore      float64 `json:"bpmMatchScore"`      // BPM within phase range
 	BPMContinuityScore float64 `json:"bpmContinuityScore"` // BPM proximity to last song
