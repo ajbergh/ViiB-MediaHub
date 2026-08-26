@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 2 in progress — semantic embedding and indexing pipeline
+**Status:** PR 3 in progress — semantic AI DJ retrieval and ranking
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1300,6 +1300,10 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
   record. GitHub Actions [run 33021768567](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33021768567)
   passed backend validation (including race/static analysis/vulnerability checks), frontend
   checks, all five semantic cross-compiles, and the packaged Windows Wails build/binary scan.
+- **2026-08-26:** PR [#24](https://github.com/ajbergh/ViiB-MediaHub/pull/24) merged to
+  `main` as `4d7256a`. Started PR 3 on `feature/ai-dj-semantic-retrieval` from that merged
+  head; this scope connects semantic retrieval to normal AI playlists and DJ sets while
+  retaining the tested legacy fallback.
 
 #### PR 1 implementation notes (2026-08-26)
 
@@ -1428,10 +1432,10 @@ No new third-party dependency is added in this PR.
 
 #### Tasks
 
-- [ ] Add `PlaylistIntent` and the semantic query fields.
+- [x] Add `PlaylistIntent` and the semantic query fields.
 - [ ] Update LLM system prompts to compile semantic intent instead of constraining to local genre taxonomy.
-- [ ] Extend `DJPhase` with semantic query, negative query, and style hints.
-- [ ] Fix `dj.PlanCacheKey.String()` numeric encoding, add `UseTimeContext` and the time bucket, remove the genre-hash dependency, and add a collision test (§10.5).
+- [x] Extend `DJPhase` with semantic query, negative query, and style hints.
+- [x] Fix `dj.PlanCacheKey.String()` numeric encoding, add `UseTimeContext` and the time bucket, remove the genre-hash dependency, and add a collision test (§10.5).
 - [ ] Implement the query embedding cache.
 - [ ] Implement track, album, and artist semantic search.
 - [ ] Implement album and artist expansion into valid local catalog tracks.
@@ -1448,6 +1452,20 @@ No new third-party dependency is added in this PR.
 - [ ] Preserve current API response fields; add the optional retrieval diagnostics block.
 - [ ] Add unit and integration tests.
 - [ ] Update this plan with implementation notes.
+
+#### PR 3 implementation notes
+
+- **2026-08-26:** Added `llm.PlaylistIntent`: strict JSON parsing, 512-character
+  semantic-query bounds, 50-entry normalized artist/style lists, year validation, bias
+  clamping, and a deterministic raw-prompt fallback. The new compiler prompt deliberately
+  receives no library genre or song list.
+- **2026-08-26:** Extended `dj.DJPhase` and the DJ planning prompt with per-phase positive
+  and negative semantic queries plus style hints. Missing LLM query text falls back to the
+  plan summary/phase notes so retrieval can remain deterministic. The DJ planner now sends
+  catalog scale and optional seed hints, not a full local genre taxonomy.
+- **2026-08-26:** Replaced Unicode-rune cache-key encoding with decimal fields, added
+  time-context/bucket fields, and removed the seed-genre hash. Collision tests cover both
+  numeric fields and time-aware planning.
 
 #### Acceptance criteria
 

@@ -11,6 +11,8 @@
 package dj
 
 import (
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -21,14 +23,17 @@ import (
 // DJPhase represents a single phase in a DJ set (e.g., Warm-up, Build, Peak).
 // Each phase has target energy/tempo/mood parameters and BPM constraints.
 type DJPhase struct {
-	Name         string   `json:"name"`         // "Warm-up", "Build", "Peak", "Cooldown", "Afterhours"
-	TargetEnergy string   `json:"targetEnergy"` // "low", "medium", "high"
-	TargetTempo  string   `json:"targetTempo"`  // "slow", "medium", "fast"
-	TargetMoods  []string `json:"targetMoods"`  // e.g., ["calm", "dreamy"]
-	TargetCount  int      `json:"targetCount"`  // Number of songs for this phase
-	MinBPM       int      `json:"minBPM"`       // Minimum BPM for this phase
-	MaxBPM       int      `json:"maxBPM"`       // Maximum BPM for this phase
-	Notes        string   `json:"notes"`        // Short DJ note for this phase
+	Name                  string   `json:"name"`         // "Warm-up", "Build", "Peak", "Cooldown", "Afterhours"
+	TargetEnergy          string   `json:"targetEnergy"` // "low", "medium", "high"
+	TargetTempo           string   `json:"targetTempo"`  // "slow", "medium", "fast"
+	TargetMoods           []string `json:"targetMoods"`  // e.g., ["calm", "dreamy"]
+	TargetCount           int      `json:"targetCount"`  // Number of songs for this phase
+	MinBPM                int      `json:"minBPM"`       // Minimum BPM for this phase
+	MaxBPM                int      `json:"maxBPM"`       // Maximum BPM for this phase
+	Notes                 string   `json:"notes"`        // Short DJ note for this phase
+	SemanticQuery         string   `json:"semanticQuery"`
+	NegativeSemanticQuery string   `json:"negativeSemanticQuery,omitempty"`
+	StyleHints            []string `json:"styleHints,omitempty"`
 }
 
 // DJSetPlan represents the complete structure of a DJ set.
@@ -126,6 +131,9 @@ type ScoreContext struct {
 
 	// Current timestamp for time-aware recommendations
 	CurrentTime time.Time
+
+	// SemanticScores holds retrieval relevance keyed by ViiB song ID.
+	SemanticScores map[string]float64
 }
 
 // NewScoreContext creates a new empty ScoreContext with initialized maps.
@@ -136,6 +144,7 @@ func NewScoreContext() *ScoreContext {
 		RecentlyPlayedIDs:   make(map[string]bool),
 		SongSkipRates:       make(map[string]float64),
 		GenreCompletionRate: make(map[string]float64),
+		SemanticScores:      make(map[string]float64),
 		CurrentTime:         time.Now(),
 		DiscoverMode:        "balanced",
 		FlowStrictness:      60,
@@ -211,12 +220,23 @@ type PlanCacheKey struct {
 	Persona           string
 	TargetDurationMin int
 	FlowStrictness    int
-	TopGenresHash     string
+	UseTimeContext    bool
+	TimeBucket        string
 }
 
 // String returns a string representation of the cache key for use as a map key.
 func (k PlanCacheKey) String() string {
-	return k.Provider + "|" + k.Model + "|" + k.NormalizedPrompt + "|" +
-		k.Persona + "|" + string(rune(k.TargetDurationMin)) + "|" +
-		string(rune(k.FlowStrictness)) + "|" + k.TopGenresHash
+	parts := []string{
+		k.Provider,
+		k.Model,
+		k.NormalizedPrompt,
+		k.Persona,
+		strconv.Itoa(k.TargetDurationMin),
+		strconv.Itoa(k.FlowStrictness),
+		strconv.FormatBool(k.UseTimeContext),
+	}
+	if k.UseTimeContext {
+		parts = append(parts, k.TimeBucket)
+	}
+	return strings.Join(parts, "|")
 }
