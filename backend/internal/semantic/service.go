@@ -78,6 +78,16 @@ func NewService(database *db.DB, provider EmbeddingProvider) (*Service, error) {
 // Start loads any previously durable arenas then begins a content-hash-gated
 // pass in the background. Backend startup never waits for provider calls.
 func (service *Service) Start(parent context.Context) error {
+	service.lifecycleMu.Lock()
+	if service.closed {
+		service.lifecycleMu.Unlock()
+		return errors.New("semantic service is closed")
+	}
+	if service.cancel != nil {
+		service.lifecycleMu.Unlock()
+		return nil
+	}
+	service.lifecycleMu.Unlock()
 	if err := service.LoadReadyIndexes(parent); err != nil {
 		return err
 	}
@@ -492,11 +502,9 @@ func (service *Service) embedBatch(ctx context.Context, documents []db.SemanticD
 	if err != nil {
 		return err
 	}
-	expectedDimensions := 0
-	if state, stateErr := service.database.GetSemanticIndexState(ctx, documents[0].EntityType); stateErr == nil {
-		expectedDimensions = state.Dimensions
-	} else {
-		return stateErr
+	expectedDimensions, err := service.expectedEmbeddingDimensions(ctx)
+	if err != nil {
+		return err
 	}
 	normalized, err := NormalizeEmbeddingBatch(vectors, len(documents), expectedDimensions)
 	if err != nil {
@@ -534,6 +542,27 @@ func (service *Service) embedBatch(ctx context.Context, documents []db.SemanticD
 		return nil
 	}
 	return service.upsertArenaVectors(documents[0].EntityType, documents, normalized)
+}
+
+// expectedEmbeddingDimensions keeps all durable entity arenas in one vector
+// space. A changed document can temporarily make its own state dimension zero,
+// so inspect every surviving entity state before accepting a replacement.
+func (service *Service) expectedEmbeddingDimensions(ctx context.Context) (int, error) {
+	expected := 0
+	for _, entityType := range semanticEntityOrder {
+		state, err := service.database.GetSemanticIndexState(ctx, entityType)
+		if err != nil {
+			return 0, err
+		}
+		if state.Dimensions == 0 {
+			continue
+		}
+		if expected != 0 && state.Dimensions != expected {
+			return 0, fmt.Errorf("semantic index has inconsistent stored dimensions %d and %d", expected, state.Dimensions)
+		}
+		expected = state.Dimensions
+	}
+	return expected, nil
 }
 
 func (service *Service) deleteArenaDocuments(documents []db.SemanticDocumentReference) error {

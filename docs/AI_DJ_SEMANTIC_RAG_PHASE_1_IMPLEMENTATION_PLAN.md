@@ -1549,11 +1549,11 @@ No new third-party dependency is added in this PR.
 
 - [x] Add semantic readiness, indexing, and fallback status to the Smart Playlists UI.
 - [x] Add retrieval diagnostics only where they aid troubleshooting; do not clutter normal UX.
-- [ ] Add the 20k+ synthetic-library performance fixture and benchmarks.
-- [ ] Add semantic service lifecycle and shutdown tests.
-- [ ] Add exactness tests against a naive reference scan, and dimension-inconsistency recovery tests.
-- [ ] Add provider failure and retry tests, including a provider returning zero-magnitude vectors.
-- [ ] Add a migration-from-existing-user-library test.
+- [x] Add the 20k+ synthetic-library performance fixture and benchmarks.
+- [x] Add semantic service lifecycle and shutdown tests.
+- [x] Add exactness tests against a naive reference scan, and dimension-inconsistency recovery tests.
+- [x] Add provider failure and retry tests, including a provider returning zero-magnitude vectors.
+- [x] Add a migration-from-existing-user-library test.
 - [ ] Run the manual QA prompt matrix (§19).
 - [ ] Update `docs/smart-playlists.md`, `docs/dj-mode.md`, and `docs/architecture.md`.
 - [ ] Update relevant AI/settings documentation and the README feature summary.
@@ -1570,6 +1570,16 @@ No new third-party dependency is added in this PR.
   semantic request they appear in a collapsed “Semantic retrieval details” disclosure, so
   troubleshooting data never clutters the normal generation flow. Frontend TypeScript and
   production-build validation, plus the 30 existing frontend unit tests, pass.
+- **2026-08-27:** Added semantic service shutdown coverage that cancels a blocked background
+  embedding call, releases arenas and its provider, and rejects restart after closure. Provider
+  tests now prove that zero-magnitude responses and a changed vector dimension become retryable
+  errors without entering an arena; recovery with the expected dimension restores the ready
+  index. The persistence guard now checks every surviving entity state before accepting a batch,
+  preventing a temporarily empty entity from silently changing the shared vector space. The
+  existing-library case is explicit, and `BenchmarkScanIndexExactSearch20K` supplies a 20k-track,
+  512-dimension exact-scan fixture. One local run measured 13.4 ms per 300-result scan; the
+  semantic suite passes. Local race execution is unavailable because CGO is disabled, so GitHub
+  Actions remains the race-validation source.
 
 #### Acceptance criteria
 
