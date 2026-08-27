@@ -38,20 +38,51 @@ func (s *Sequencer) BuildQueue(
 	if plan == nil || len(plan.Phases) == 0 {
 		return nil, nil, fmt.Errorf("plan is required with at least one phase")
 	}
-
 	if len(candidates) == 0 {
 		return nil, nil, fmt.Errorf("no candidates provided")
 	}
+	pools := make([]PhaseCandidatePool, len(plan.Phases))
+	for index := range pools {
+		pools[index].Songs = candidates
+	}
+	return s.BuildQueueFromPhasePools(pools, plan, persona, ctx)
+}
 
-	// Partition candidates by energy/tempo/mood buckets for faster matching
-	buckets := s.partitionCandidates(candidates)
+// BuildQueueFromPhasePools sequences independently retrieved phase pools. It
+// retains the existing metadata/BPM scoring and stochastic selection, but the
+// semantic retriever is now the primary recall mechanism rather than a
+// full-library energy or tempo bucket scan.
+func (s *Sequencer) BuildQueueFromPhasePools(
+	pools []PhaseCandidatePool,
+	plan *DJSetPlan,
+	persona PersonaDefinition,
+	ctx *ScoreContext,
+) ([]db.Song, []PhaseResult, error) {
+	if plan == nil || len(plan.Phases) == 0 {
+		return nil, nil, fmt.Errorf("plan is required with at least one phase")
+	}
+	if len(pools) < len(plan.Phases) {
+		return nil, nil, fmt.Errorf("phase candidate pools do not cover the plan")
+	}
 
 	var queue []db.Song
 	var phaseResults []PhaseResult
 
 	// Process each phase
 	for i, phase := range plan.Phases {
-		phaseResult, phaseSongs := s.selectForPhase(phase, buckets, persona, ctx, candidates)
+		pool := pools[i]
+		if len(pool.Songs) == 0 {
+			return nil, nil, fmt.Errorf("phase %q has no candidates", phase.Name)
+		}
+		// Partition only this phase's bounded recall set. The existing energy,
+		// tempo, BPM, persona, and stochastic logic remains selection logic.
+		buckets := s.partitionCandidates(pool.Songs)
+		previousScores := ctx.SemanticScores
+		if pool.SemanticScores != nil {
+			ctx.SemanticScores = pool.SemanticScores
+		}
+		phaseResult, phaseSongs := s.selectForPhase(phase, buckets, persona, ctx, pool.Songs)
+		ctx.SemanticScores = previousScores
 
 		// Apply micro-shuffle within phase if low flow strictness
 		if ctx.FlowStrictness < FlowStrictnessNormal && len(phaseSongs) > 3 {
@@ -66,6 +97,10 @@ func (s *Sequencer) BuildQueue(
 		for _, song := range phaseSongs {
 			ctx.MarkArtistSeen(song.Artist)
 			ctx.UpdateLastSong(song)
+			if ctx.UsedSongIDs == nil {
+				ctx.UsedSongIDs = make(map[string]bool)
+			}
+			ctx.UsedSongIDs[song.ID] = true
 		}
 
 		// Log progress
@@ -302,7 +337,7 @@ func (s *Sequencer) selectWithStochasticity(
 			}
 
 			// Skip already used
-			if usedIDs[s.Song.ID] {
+			if usedIDs[s.Song.ID] || (ctx.UsedSongIDs != nil && ctx.UsedSongIDs[s.Song.ID]) {
 				weights[i] = 0
 			}
 		}

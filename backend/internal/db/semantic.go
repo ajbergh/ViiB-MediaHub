@@ -64,6 +64,13 @@ type StoredEmbedding struct {
 	Embedding []byte
 }
 
+// SemanticSongEmbedding is the track-vector form needed for bounded
+// post-retrieval scoring. It never includes semantic document content.
+type SemanticSongEmbedding struct {
+	SongID    string
+	Embedding []byte
+}
+
 // SemanticDocumentReference identifies a durable document without exposing
 // its content. It lets the indexer make the matching in-memory arena change
 // after the SQLite transaction has committed.
@@ -956,6 +963,63 @@ func (d *DB) GetSongsByIDsContext(ctx context.Context, ids []string) ([]Song, er
 		songs = append(songs, chunk...)
 	}
 	return songs, nil
+}
+
+// GetReadySemanticTrackEmbeddingsBySongIDs returns only the ready track
+// vectors for a bounded candidate set. It is intentionally not a corpus scan:
+// callers use it for negative-query adjustment and diversity scoring after
+// semantic retrieval has already reduced the working set.
+func (d *DB) GetReadySemanticTrackEmbeddingsBySongIDs(ctx context.Context, songIDs []string) ([]SemanticSongEmbedding, error) {
+	if len(songIDs) == 0 {
+		return []SemanticSongEmbedding{}, nil
+	}
+	if err := d.EnsureSemanticSchema(); err != nil {
+		return nil, err
+	}
+	uniqueIDs := make([]string, 0, len(songIDs))
+	seen := make(map[string]struct{}, len(songIDs))
+	for _, songID := range songIDs {
+		if songID == "" {
+			continue
+		}
+		if _, exists := seen[songID]; exists {
+			continue
+		}
+		seen[songID] = struct{}{}
+		uniqueIDs = append(uniqueIDs, songID)
+	}
+	result := make([]SemanticSongEmbedding, 0, len(uniqueIDs))
+	for start := 0; start < len(uniqueIDs); start += semanticSQLiteParamCap {
+		end := start + semanticSQLiteParamCap
+		if end > len(uniqueIDs) {
+			end = len(uniqueIDs)
+		}
+		placeholders := strings.TrimRight(strings.Repeat("?,", end-start), ",")
+		args := make([]any, 0, end-start+2)
+		args = append(args, SemanticEntityTrack, "ready")
+		for _, songID := range uniqueIDs[start:end] {
+			args = append(args, songID)
+		}
+		rows, err := d.conn.QueryContext(ctx, `SELECT song_id, embedding FROM semantic_documents
+			WHERE entity_type = ? AND status = ? AND song_id IN (`+placeholders+`) AND embedding IS NOT NULL
+			ORDER BY song_id`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var item SemanticSongEmbedding
+			if err := rows.Scan(&item.SongID, &item.Embedding); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			item.Embedding = append([]byte(nil), item.Embedding...)
+			result = append(result, item)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
 }
 
 func (d *DB) GetSongsForSemanticAlbum(ctx context.Context, artist, album string, limit int) ([]Song, error) {

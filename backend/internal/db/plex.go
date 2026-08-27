@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
@@ -23,6 +24,14 @@ const (
 	AIDJSourceLocal AIDJSource = "local"
 	AIDJSourcePlex  AIDJSource = "plex"
 )
+
+// AIDJLibrarySummary provides planner-scale data without materializing the
+// library. Source eligibility mirrors FilterSongsForAIDJ, including offline
+// Plex exclusions.
+type AIDJLibrarySummary struct {
+	SongCount          int
+	AverageDurationSec int
+}
 
 // NormalizeAIDJSource validates a client-provided source preference and
 // provides the backwards-compatible default for older clients.
@@ -185,6 +194,40 @@ func (d *DB) FilterSongsForAIDJ(songs []Song, requestedSource string) ([]Song, e
 		eligible = append(eligible, song)
 	}
 	return eligible, nil
+}
+
+// GetAIDJLibrarySummary returns the eligible catalog size and average duration
+// using a small aggregate query. It exists so semantic DJ planning does not
+// need GetAllSongs merely to describe the catalog to the set planner.
+func (d *DB) GetAIDJLibrarySummary(ctx context.Context, requestedSource string) (AIDJLibrarySummary, error) {
+	source, err := NormalizeAIDJSource(requestedSource)
+	if err != nil {
+		return AIDJLibrarySummary{}, err
+	}
+	if err := d.EnsurePlexSchema(); err != nil {
+		return AIDJLibrarySummary{}, err
+	}
+	joinedPlex := `SELECT 1 FROM plex_tracks t JOIN plex_sources p ON p.id = t.source_id WHERE t.song_id = songs.id`
+	availablePlex := `SELECT 1 FROM plex_tracks t JOIN plex_sources p ON p.id = t.source_id WHERE t.song_id = songs.id AND p.available = 1`
+	sourceClause := ""
+	switch source {
+	case AIDJSourceLocal:
+		sourceClause = `NOT EXISTS (` + joinedPlex + `)`
+	case AIDJSourcePlex:
+		sourceClause = `EXISTS (` + availablePlex + `)`
+	default:
+		sourceClause = `(NOT EXISTS (` + joinedPlex + `) OR EXISTS (` + availablePlex + `))`
+	}
+	var summary AIDJLibrarySummary
+	var average sql.NullFloat64
+	query := `SELECT COUNT(*), AVG(duration) FROM songs WHERE COALESCE(ignored, 0) = 0 AND ` + sourceClause
+	if err := d.conn.QueryRowContext(ctx, query).Scan(&summary.SongCount, &average); err != nil {
+		return AIDJLibrarySummary{}, err
+	}
+	if average.Valid && average.Float64 > 0 {
+		summary.AverageDurationSec = int(average.Float64)
+	}
+	return summary, nil
 }
 
 // EnsurePlexSchema installs additive source metadata without changing the

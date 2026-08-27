@@ -20,6 +20,14 @@ func ScoreSongForPhase(song db.Song, phase DJPhase, ctx *ScoreContext, persona P
 	}
 
 	var totalScore float64
+	semanticScore, hasSemanticScore := ctx.SemanticScores[song.ID]
+	phaseWeight, bpmWeight, personaWeight, affinityWeight := 0.4, 0.2, 0.2, 0.1
+	if hasSemanticScore {
+		semanticScore = max(0, min(1, semanticScore))
+		breakdown.SemanticScore = semanticScore
+		totalScore += semanticScore * 0.5
+		phaseWeight, bpmWeight, personaWeight, affinityWeight = 0.2, 0.15, 0.1, 0.05
+	}
 
 	// ========================================================================
 	// 1. Phase Fit Score (base relevance to phase requirements)
@@ -44,7 +52,7 @@ func ScoreSongForPhase(song db.Song, phase DJPhase, ctx *ScoreContext, persona P
 	// Combine phase fit (weighted average)
 	phaseFitScore := (energyScore*0.3 + tempoScore*0.25 + moodScore*0.25 + bpmScore*0.2)
 	breakdown.PhaseFitScore = phaseFitScore
-	totalScore += phaseFitScore * 0.4 // 40% of total score
+	totalScore += phaseFitScore * phaseWeight
 
 	// ========================================================================
 	// 2. BPM Continuity Score (smoothness from previous song)
@@ -66,10 +74,10 @@ func ScoreSongForPhase(song db.Song, phase DJPhase, ctx *ScoreContext, persona P
 		bpmContinuityScore = bpmContinuityScore * (0.5 + 0.5*strictnessMultiplier)
 
 		breakdown.BPMContinuityScore = bpmContinuityScore
-		totalScore += bpmContinuityScore * weights.BPMContinuityWeight * 0.2 // Up to 20%
+		totalScore += bpmContinuityScore * weights.BPMContinuityWeight * bpmWeight
 	} else {
 		breakdown.BPMContinuityScore = 1.0 // First song has no penalty
-		totalScore += 0.2
+		totalScore += bpmWeight
 	}
 
 	// ========================================================================
@@ -92,7 +100,7 @@ func ScoreSongForPhase(song db.Song, phase DJPhase, ctx *ScoreContext, persona P
 	personaBonus += likedBonus * 0.2
 
 	breakdown.PersonaBonus = personaBonus
-	totalScore += personaBonus * 0.2 // 20% of total
+	totalScore += personaBonus * personaWeight
 
 	// ========================================================================
 	// 4. Genre Affinity Bonus
@@ -100,7 +108,7 @@ func ScoreSongForPhase(song db.Song, phase DJPhase, ctx *ScoreContext, persona P
 
 	affinityBonus := calculateAffinityBonus(song.Genre, ctx.GenreAffinity, weights.AffinityBoost)
 	breakdown.AffinityBonus = affinityBonus
-	totalScore += affinityBonus * 0.1 // 10% of total
+	totalScore += affinityBonus * affinityWeight
 
 	// ========================================================================
 	// 5. Penalties

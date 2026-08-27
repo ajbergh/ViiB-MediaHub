@@ -223,10 +223,11 @@ func TestServiceRefreshesDocumentsAfterMetadataChanges(t *testing.T) {
 }
 
 type fakeEmbeddingProvider struct {
-	mu        sync.Mutex
-	calls     int
-	failCalls int
-	model     string
+	mu         sync.Mutex
+	calls      int
+	queryCalls int
+	failCalls  int
+	model      string
 }
 
 func (provider *fakeEmbeddingProvider) Name() string { return "fake" }
@@ -256,6 +257,9 @@ func (provider *fakeEmbeddingProvider) EmbedDocuments(_ context.Context, texts [
 }
 
 func (provider *fakeEmbeddingProvider) EmbedQuery(_ context.Context, _ string) ([]float32, error) {
+	provider.mu.Lock()
+	provider.queryCalls++
+	provider.mu.Unlock()
 	return []float32{1, 1}, nil
 }
 
@@ -263,6 +267,12 @@ func (provider *fakeEmbeddingProvider) callCount() int {
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
 	return provider.calls
+}
+
+func (provider *fakeEmbeddingProvider) queryCallCount() int {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	return provider.queryCalls
 }
 
 func newServiceTestDB(t *testing.T) *db.DB {

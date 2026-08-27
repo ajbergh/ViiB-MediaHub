@@ -11,7 +11,11 @@
 package dj
 
 import (
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/ajbergh/viib-mediahub/internal/db"
 )
 
 // ============================================================================
@@ -21,14 +25,17 @@ import (
 // DJPhase represents a single phase in a DJ set (e.g., Warm-up, Build, Peak).
 // Each phase has target energy/tempo/mood parameters and BPM constraints.
 type DJPhase struct {
-	Name         string   `json:"name"`         // "Warm-up", "Build", "Peak", "Cooldown", "Afterhours"
-	TargetEnergy string   `json:"targetEnergy"` // "low", "medium", "high"
-	TargetTempo  string   `json:"targetTempo"`  // "slow", "medium", "fast"
-	TargetMoods  []string `json:"targetMoods"`  // e.g., ["calm", "dreamy"]
-	TargetCount  int      `json:"targetCount"`  // Number of songs for this phase
-	MinBPM       int      `json:"minBPM"`       // Minimum BPM for this phase
-	MaxBPM       int      `json:"maxBPM"`       // Maximum BPM for this phase
-	Notes        string   `json:"notes"`        // Short DJ note for this phase
+	Name                  string   `json:"name"`         // "Warm-up", "Build", "Peak", "Cooldown", "Afterhours"
+	TargetEnergy          string   `json:"targetEnergy"` // "low", "medium", "high"
+	TargetTempo           string   `json:"targetTempo"`  // "slow", "medium", "fast"
+	TargetMoods           []string `json:"targetMoods"`  // e.g., ["calm", "dreamy"]
+	TargetCount           int      `json:"targetCount"`  // Number of songs for this phase
+	MinBPM                int      `json:"minBPM"`       // Minimum BPM for this phase
+	MaxBPM                int      `json:"maxBPM"`       // Maximum BPM for this phase
+	Notes                 string   `json:"notes"`        // Short DJ note for this phase
+	SemanticQuery         string   `json:"semanticQuery"`
+	NegativeSemanticQuery string   `json:"negativeSemanticQuery,omitempty"`
+	StyleHints            []string `json:"styleHints,omitempty"`
 }
 
 // DJSetPlan represents the complete structure of a DJ set.
@@ -54,6 +61,14 @@ type PhaseResult struct {
 	MaxBPM    int      `json:"maxBpm"`    // Actual max BPM in selection
 	Notes     string   `json:"notes"`     // Computed notes for this phase
 	SongCount int      `json:"songCount"` // Number of songs in phase
+}
+
+// PhaseCandidatePool is the bounded recall result for one DJ phase. Semantic
+// score maps are phase-specific because the same song can have a different
+// relevance to a warm-up than to a peak-time query.
+type PhaseCandidatePool struct {
+	Songs          []db.Song
+	SemanticScores map[string]float64
 }
 
 // DJNarration contains optional DJ talk mode narration cues.
@@ -110,6 +125,10 @@ type ScoreContext struct {
 	// Recently played song IDs to avoid (keyed by ID)
 	RecentlyPlayedIDs map[string]bool
 
+	// Song IDs already used in the set. This prevents semantic phase pools from
+	// selecting the same catalog identity twice across an arc.
+	UsedSongIDs map[string]bool
+
 	// Last song context for continuity scoring
 	LastSongBPM    int
 	LastSongMood   string
@@ -126,6 +145,9 @@ type ScoreContext struct {
 
 	// Current timestamp for time-aware recommendations
 	CurrentTime time.Time
+
+	// SemanticScores holds retrieval relevance keyed by ViiB song ID.
+	SemanticScores map[string]float64
 }
 
 // NewScoreContext creates a new empty ScoreContext with initialized maps.
@@ -134,8 +156,10 @@ func NewScoreContext() *ScoreContext {
 		GenreAffinity:       make(map[string]float64),
 		ArtistSeen:          make(map[string]bool),
 		RecentlyPlayedIDs:   make(map[string]bool),
+		UsedSongIDs:         make(map[string]bool),
 		SongSkipRates:       make(map[string]float64),
 		GenreCompletionRate: make(map[string]float64),
+		SemanticScores:      make(map[string]float64),
 		CurrentTime:         time.Now(),
 		DiscoverMode:        "balanced",
 		FlowStrictness:      60,
@@ -151,6 +175,7 @@ func NewScoreContext() *ScoreContext {
 type ScoreBreakdown struct {
 	SongID             string  `json:"songId"`
 	TotalScore         float64 `json:"totalScore"`
+	SemanticScore      float64 `json:"semanticScore,omitempty"`
 	PhaseFitScore      float64 `json:"phaseFitScore"`      // How well song fits phase requirements
 	BPMMatchScore      float64 `json:"bpmMatchScore"`      // BPM within phase range
 	BPMContinuityScore float64 `json:"bpmContinuityScore"` // BPM proximity to last song
@@ -211,12 +236,23 @@ type PlanCacheKey struct {
 	Persona           string
 	TargetDurationMin int
 	FlowStrictness    int
-	TopGenresHash     string
+	UseTimeContext    bool
+	TimeBucket        string
 }
 
 // String returns a string representation of the cache key for use as a map key.
 func (k PlanCacheKey) String() string {
-	return k.Provider + "|" + k.Model + "|" + k.NormalizedPrompt + "|" +
-		k.Persona + "|" + string(rune(k.TargetDurationMin)) + "|" +
-		string(rune(k.FlowStrictness)) + "|" + k.TopGenresHash
+	parts := []string{
+		k.Provider,
+		k.Model,
+		k.NormalizedPrompt,
+		k.Persona,
+		strconv.Itoa(k.TargetDurationMin),
+		strconv.Itoa(k.FlowStrictness),
+		strconv.FormatBool(k.UseTimeContext),
+	}
+	if k.UseTimeContext {
+		parts = append(parts, k.TimeBucket)
+	}
+	return strings.Join(parts, "|")
 }

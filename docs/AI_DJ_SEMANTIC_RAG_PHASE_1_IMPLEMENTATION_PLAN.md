@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 2 in progress — semantic embedding and indexing pipeline
+**Status:** PR 3 in progress — semantic AI DJ retrieval and ranking
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1300,6 +1300,10 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
   record. GitHub Actions [run 33021768567](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33021768567)
   passed backend validation (including race/static analysis/vulnerability checks), frontend
   checks, all five semantic cross-compiles, and the packaged Windows Wails build/binary scan.
+- **2026-08-26:** PR [#24](https://github.com/ajbergh/ViiB-MediaHub/pull/24) merged to
+  `main` as `4d7256a`. Started PR 3 on `feature/ai-dj-semantic-retrieval` from that merged
+  head; this scope connects semantic retrieval to normal AI playlists and DJ sets while
+  retaining the tested legacy fallback.
 
 #### PR 1 implementation notes (2026-08-26)
 
@@ -1428,26 +1432,95 @@ No new third-party dependency is added in this PR.
 
 #### Tasks
 
-- [ ] Add `PlaylistIntent` and the semantic query fields.
-- [ ] Update LLM system prompts to compile semantic intent instead of constraining to local genre taxonomy.
-- [ ] Extend `DJPhase` with semantic query, negative query, and style hints.
-- [ ] Fix `dj.PlanCacheKey.String()` numeric encoding, add `UseTimeContext` and the time bucket, remove the genre-hash dependency, and add a collision test (§10.5).
-- [ ] Implement the query embedding cache.
-- [ ] Implement track, album, and artist semantic search.
-- [ ] Implement album and artist expansion into valid local catalog tracks.
-- [ ] Implement hard filters, delegating source filtering to `db.FilterSongsForAIDJ`.
-- [ ] Implement semantic evidence aggregation.
-- [ ] Implement the negative semantic penalty.
-- [ ] Implement `HybridRanker`.
-- [ ] Implement the MMR/diversity pass with a bounded working set.
-- [ ] Add `SemanticScores` to `dj.ScoreContext`.
-- [ ] Reweight `ScoreSongForPhase` around semantic relevance.
-- [ ] Replace the `db.GetAllSongs()` recall path in `handleDJMode`; move genre stats to `genre_stats` and average duration to an aggregate query (§13.1).
-- [ ] Update the sequencer to consume semantic phase candidate pools.
-- [ ] Preserve the legacy fallback path.
-- [ ] Preserve current API response fields; add the optional retrieval diagnostics block.
-- [ ] Add unit and integration tests.
-- [ ] Update this plan with implementation notes.
+- [x] Add `PlaylistIntent` and the semantic query fields.
+- [x] Update LLM system prompts to compile semantic intent instead of constraining to local genre taxonomy.
+- [x] Extend `DJPhase` with semantic query, negative query, and style hints.
+- [x] Fix `dj.PlanCacheKey.String()` numeric encoding, add `UseTimeContext` and the time bucket, remove the genre-hash dependency, and add a collision test (§10.5).
+- [x] Implement the query embedding cache.
+- [x] Implement track, album, and artist semantic search.
+- [x] Implement album and artist expansion into valid local catalog tracks.
+- [x] Implement hard filters, delegating source filtering to `db.FilterSongsForAIDJ`.
+- [x] Implement semantic evidence aggregation.
+- [x] Implement the negative semantic penalty.
+- [x] Implement `HybridRanker`.
+- [x] Implement the MMR/diversity pass with a bounded working set.
+- [x] Add `SemanticScores` to `dj.ScoreContext`.
+- [x] Reweight `ScoreSongForPhase` around semantic relevance.
+- [x] Replace the `db.GetAllSongs()` recall path in `handleDJMode`; move genre stats to `genre_stats` and average duration to an aggregate query (§13.1).
+- [x] Update the sequencer to consume semantic phase candidate pools.
+- [x] Preserve the legacy fallback path.
+- [x] Preserve current API response fields; add the optional retrieval diagnostics block.
+- [x] Add unit and integration tests.
+- [x] Update this plan with implementation notes.
+
+#### PR 3 implementation notes
+
+- **2026-08-26:** Added `llm.PlaylistIntent`: strict JSON parsing, 512-character
+  semantic-query bounds, 50-entry normalized artist/style lists, year validation, bias
+  clamping, and a deterministic raw-prompt fallback. The new compiler prompt deliberately
+  receives no library genre or song list.
+- **2026-08-26:** Extended `dj.DJPhase` and the DJ planning prompt with per-phase positive
+  and negative semantic queries plus style hints. Missing LLM query text falls back to the
+  plan summary/phase notes so retrieval can remain deterministic. The DJ planner now sends
+  catalog scale and optional seed hints, not a full local genre taxonomy.
+- **2026-08-26:** Replaced Unicode-rune cache-key encoding with decimal fields, added
+  time-context/bucket fields, and removed the seed-genre hash. Collision tests cover both
+  numeric fields and time-aware planning.
+- **2026-08-26:** Added a 128-entry LRU query-embedding cache keyed by the embedding
+  identity tuple and prefixed query text. `semantic.Service.SearchSemanticDocuments`
+  embeds a non-empty query once, validates its dimensions, exact-searches track/album/artist
+  arenas at the documented 300/40/30 quotas, and resolves only the matched durable documents.
+  An empty arena returns a sentinel fallback condition without issuing a provider request.
+- **2026-08-26:** Added bounded expansion from matched albums (up to 8 tracks each) and
+  artists (up to 10 each), deduplicated with direct track matches into a maximum 900-song
+  pool. Each candidate records direct/album/artist evidence and `BestSimilarity` using the
+  documented 1.00/0.94/0.88 weighting. The expansion path loads only matching song IDs,
+  invokes `db.FilterSongsForAIDJ` once for source/Plex availability, then applies explicit
+  artist, hard-year, and instrumental constraints before returning a deterministic order.
+- **2026-08-26:** `dj.ScoreContext` now carries semantic relevance keyed by song ID. When
+  present, `ScoreSongForPhase` uses 50% semantic relevance, 20% phase metadata fit, 15%
+  BPM continuity, 10% persona/behaviour, and 5% genre affinity before existing penalties;
+  without a semantic score it retains the legacy weighting. Tests assert relevance wins for
+  otherwise equivalent tracks.
+- **2026-08-26:** Added a reusable `semantic.HybridRanker` with named 70% semantic,
+  20% behavioural, and 10% metadata-fit weights. It keeps like/play/skip data out of
+  embeddings, removes recent tracks, honours one-per-artist selection, applies a small
+  deterministic artist-repeat penalty, and makes favorites favour familiarity while discover
+  favours well-performing deep cuts. Ordering tests cover semantic dominance and each policy.
+- **2026-08-26:** Added the bounded negative-query adjustment. The retriever embeds the
+  negative query through the same LRU cache, fetches ready track vectors only for the already
+  bounded positive candidate pool, and applies `clamp(positive - 0.25 * negative, 0, 1)`.
+  It never issues a second corpus search; tests verify a single positive and single negative
+  provider embedding call. `go test ./...`, `npm run typecheck`, and the focused semantic/db
+  suites are green for the current branch.
+- **2026-08-26:** Added a bounded MMR diversity pass over at most 120 hybrid-ranked tracks.
+  It uses persisted vectors only for that working set, retains the original hybrid score for
+  diagnostics, uses the documented favorites/balanced/discover lambdas of 0.85/0.75/0.60,
+  and adds a same-album guard against long album runs. Tests cover both mode-specific diversity
+  choices and the album-run guard.
+- **2026-08-26:** Connected the normal Smart Playlist path to semantic retrieval whenever a
+  searchable service is ready. It compiles intent with the dedicated no-taxonomy LLM prompt,
+  falls back deterministically to the raw prompt when no LLM is configured, applies explicit
+  prompt-year constraints, retrieval, hybrid ranking, and MMR, then returns the existing
+  `filter` and `songs` fields plus count-only `retrieval` diagnostics. A missing or empty index
+  retains the legacy local/metadata path; API tests cover successful semantic output and that
+  fallback condition.
+- **2026-08-26:** Replaced DJ mode's normal `GetAllSongs()` recall with per-phase semantic
+  retrieval. `db.GetAIDJLibrarySummary` supplies source-aware eligible count and average
+  duration through one aggregate query, while `genre_stats` supplies planner genre scale.
+  The DJ intent compiler no longer receives a local taxonomy. Each phase now retrieves,
+  negative-adjusts, hybrid-ranks, and MMR-diversifies a bounded pool with its own semantic
+  score map; `dj.BuildQueueFromPhasePools` retains phase metadata, persona, stochastic, BPM,
+  and flow logic while preventing cross-phase song reuse. The previous full-catalog path is
+  invoked only if semantic retrieval is unavailable or cannot fill a phase. DJ diagnostics
+  expose counts only. New API/database/DJ tests cover pool creation, empty-index fallback,
+  aggregate source availability, phase selection, and reuse prevention; the full backend and
+  frontend type-check suites pass.
+- **2026-08-26:** Added a final deterministic recovery guard: semantic DJ pools must contain
+  enough distinct song IDs for every planned phase target, otherwise the handler uses the
+  legacy fallback before sequencing. The fallback also applies compiler-derived mandatory
+  artist inclusions and explicit artist exclusions, preserving those user constraints even
+  when a semantic index is unavailable.
 
 #### Acceptance criteria
 

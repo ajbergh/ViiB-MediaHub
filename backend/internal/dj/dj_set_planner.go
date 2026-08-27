@@ -104,16 +104,20 @@ func (p *LLMPlanner) BuildPlan(ctx context.Context, prompt string, opts PlanOpti
 
 // buildCacheKey generates a unique cache key for the plan request.
 func (p *LLMPlanner) buildCacheKey(prompt string, opts PlanOptions, libContext LibraryContext) string {
-	normalized := NormalizePrompt(prompt)
-	genresHash := HashGenres(libContext.SeedGenres)
-
-	key := fmt.Sprintf("%s|%s|%d|%d|%s",
-		normalized,
-		opts.Persona,
-		opts.TargetDurationMin,
-		opts.FlowStrictness,
-		genresHash,
-	)
+	provider, model := "fallback", "fallback"
+	if p.provider != nil {
+		provider, model = p.provider.GetProviderName(), p.provider.GetModel()
+	}
+	key := PlanCacheKey{
+		Provider:          provider,
+		Model:             model,
+		NormalizedPrompt:  NormalizePrompt(prompt),
+		Persona:           opts.Persona,
+		TargetDurationMin: opts.TargetDurationMin,
+		FlowStrictness:    opts.FlowStrictness,
+		UseTimeContext:    opts.UseTimeContext,
+		TimeBucket:        planTimeBucket(time.Now()),
+	}.String()
 
 	hash := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(hash[:16]) // Use first 16 bytes
@@ -121,28 +125,21 @@ func (p *LLMPlanner) buildCacheKey(prompt string, opts PlanOptions, libContext L
 
 // buildUserPrompt constructs the user prompt from the template.
 func (p *LLMPlanner) buildUserPrompt(prompt string, opts PlanOptions, libContext LibraryContext, targetSongs int) string {
-	// Build time context if enabled
+	// Build time context if enabled.
 	timeContext := ""
 	if opts.UseTimeContext {
-		hour := time.Now().Hour()
-		switch {
-		case hour >= 5 && hour < 12:
+		switch planTimeBucket(time.Now()) {
+		case "morning":
 			timeContext = "Time context: Morning (energizing start)"
-		case hour >= 12 && hour < 17:
+		case "afternoon":
 			timeContext = "Time context: Afternoon (steady energy)"
-		case hour >= 17 && hour < 21:
+		case "evening":
 			timeContext = "Time context: Evening (building energy)"
-		case hour >= 21 || hour < 5:
+		default:
 			timeContext = "Time context: Night (peak energy or late night chill)"
 		}
 	}
 
-	// Format genres
-	availableGenres := strings.Join(libContext.AvailableGenres, ", ")
-	if len(availableGenres) > 500 {
-		// Truncate if too long
-		availableGenres = availableGenres[:500] + "..."
-	}
 	seedGenres := strings.Join(libContext.SeedGenres, ", ")
 	seedArtists := strings.Join(libContext.SeedArtists, ", ")
 
@@ -154,9 +151,9 @@ func (p *LLMPlanner) buildUserPrompt(prompt string, opts PlanOptions, libContext
 	userPrompt = strings.ReplaceAll(userPrompt, "{{TARGET_SONGS}}", fmt.Sprintf("%d", targetSongs))
 	userPrompt = strings.ReplaceAll(userPrompt, "{{FLOW}}", fmt.Sprintf("%d", opts.FlowStrictness))
 	userPrompt = strings.ReplaceAll(userPrompt, "{{TIME_CONTEXT}}", timeContext)
-	userPrompt = strings.ReplaceAll(userPrompt, "{{GENRES}}", availableGenres)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{SEED_GENRES}}", seedGenres)
 	userPrompt = strings.ReplaceAll(userPrompt, "{{SEED_ARTISTS}}", seedArtists)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{TOTAL_SONGS}}", fmt.Sprintf("%d", libContext.TotalSongs))
 
 	return userPrompt
 }
@@ -173,14 +170,17 @@ func (p *LLMPlanner) parseAndValidatePlan(response string, opts PlanOptions, lib
 	var rawPlan struct {
 		IntentSummary string `json:"intentSummary"`
 		Phases        []struct {
-			Name         string   `json:"name"`
-			TargetEnergy string   `json:"targetEnergy"`
-			TargetTempo  string   `json:"targetTempo"`
-			TargetMoods  []string `json:"targetMoods"`
-			TargetCount  int      `json:"targetCount"`
-			MinBPM       int      `json:"minBPM"`
-			MaxBPM       int      `json:"maxBPM"`
-			Notes        string   `json:"notes"`
+			Name                  string   `json:"name"`
+			TargetEnergy          string   `json:"targetEnergy"`
+			TargetTempo           string   `json:"targetTempo"`
+			TargetMoods           []string `json:"targetMoods"`
+			TargetCount           int      `json:"targetCount"`
+			MinBPM                int      `json:"minBPM"`
+			MaxBPM                int      `json:"maxBPM"`
+			Notes                 string   `json:"notes"`
+			SemanticQuery         string   `json:"semanticQuery"`
+			NegativeSemanticQuery string   `json:"negativeSemanticQuery"`
+			StyleHints            []string `json:"styleHints"`
 		} `json:"phases"`
 	}
 
@@ -208,14 +208,17 @@ func (p *LLMPlanner) parseAndValidatePlan(response string, opts PlanOptions, lib
 	totalCount := 0
 	for _, rp := range rawPlan.Phases {
 		phase := DJPhase{
-			Name:         validatePhaseName(rp.Name),
-			TargetEnergy: validateEnergy(rp.TargetEnergy),
-			TargetTempo:  validateTempo(rp.TargetTempo),
-			TargetMoods:  rp.TargetMoods,
-			TargetCount:  rp.TargetCount,
-			MinBPM:       ClampBPM(rp.MinBPM),
-			MaxBPM:       ClampBPM(rp.MaxBPM),
-			Notes:        rp.Notes,
+			Name:                  validatePhaseName(rp.Name),
+			TargetEnergy:          validateEnergy(rp.TargetEnergy),
+			TargetTempo:           validateTempo(rp.TargetTempo),
+			TargetMoods:           rp.TargetMoods,
+			TargetCount:           rp.TargetCount,
+			MinBPM:                ClampBPM(rp.MinBPM),
+			MaxBPM:                ClampBPM(rp.MaxBPM),
+			Notes:                 rp.Notes,
+			SemanticQuery:         normalizePhaseSemanticQuery(rp.SemanticQuery, rawPlan.IntentSummary, rp.Notes, rp.TargetMoods),
+			NegativeSemanticQuery: normalizePhaseSemanticQuery(rp.NegativeSemanticQuery, "", "", nil),
+			StyleHints:            normalizePhaseStyleHints(rp.StyleHints),
 		}
 
 		// Ensure MinBPM < MaxBPM
@@ -238,6 +241,51 @@ func (p *LLMPlanner) parseAndValidatePlan(response string, opts PlanOptions, lib
 	}
 
 	return plan, nil
+}
+
+func planTimeBucket(now time.Time) string {
+	switch hour := now.Hour(); {
+	case hour >= 5 && hour < 12:
+		return "morning"
+	case hour >= 12 && hour < 17:
+		return "afternoon"
+	case hour >= 17 && hour < 21:
+		return "evening"
+	default:
+		return "night"
+	}
+}
+
+func normalizePhaseSemanticQuery(query, summary, notes string, moods []string) string {
+	query = strings.TrimSpace(strings.Join(strings.Fields(query), " "))
+	if query == "" {
+		query = strings.TrimSpace(strings.Join([]string{summary, notes, strings.Join(moods, " ")}, " "))
+	}
+	if len(query) > 512 {
+		query = query[:512]
+	}
+	return query
+}
+
+func normalizePhaseStyleHints(hints []string) []string {
+	result := make([]string, 0, min(12, len(hints)))
+	seen := make(map[string]struct{})
+	for _, hint := range hints {
+		hint = strings.TrimSpace(strings.Join(strings.Fields(hint), " "))
+		if hint == "" {
+			continue
+		}
+		key := strings.ToLower(hint)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, hint)
+		if len(result) == 12 {
+			break
+		}
+	}
+	return result
 }
 
 // buildDefaultPlan creates a deterministic fallback plan when LLM fails.
