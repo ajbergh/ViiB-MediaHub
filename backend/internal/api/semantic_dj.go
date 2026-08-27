@@ -40,6 +40,8 @@ func (a *API) retrieveSemanticDJPhasePools(ctx context.Context, plan *dj.DJSetPl
 		Pools:               make([]dj.PhaseCandidatePool, len(plan.Phases)),
 		PhaseCandidateCount: make([]int, len(plan.Phases)),
 	}
+	distinctSongIDs := make(map[string]struct{})
+	targetSongCount := 0
 	for index, phase := range plan.Phases {
 		query := strings.TrimSpace(phase.SemanticQuery)
 		if query == "" {
@@ -69,6 +71,7 @@ func (a *API) retrieveSemanticDJPhasePools(ctx context.Context, plan *dj.DJSetPl
 			return semanticDJRetrievalResult{}, false, fmt.Errorf("phase %q semantic retrieval: %w", phase.Name, err)
 		}
 		targetCount := max(phase.TargetCount, 1)
+		targetSongCount += targetCount
 		if len(retrieval.Candidates) < targetCount {
 			return semanticDJRetrievalResult{}, false, nil
 		}
@@ -98,10 +101,14 @@ func (a *API) retrieveSemanticDJPhasePools(ctx context.Context, plan *dj.DJSetPl
 		for candidateIndex, candidate := range selected {
 			pool.Songs[candidateIndex] = candidate.Candidate.Song
 			pool.SemanticScores[candidate.Candidate.Song.ID] = candidate.Candidate.Evidence.Relevance()
+			distinctSongIDs[candidate.Candidate.Song.ID] = struct{}{}
 		}
 		result.Pools[index] = pool
 		result.PhaseCandidateCount[index] = len(pool.Songs)
 		result.CandidateCount += len(retrieval.Candidates)
+	}
+	if len(distinctSongIDs) < targetSongCount {
+		return semanticDJRetrievalResult{}, false, nil
 	}
 	return result, true, nil
 }

@@ -65,3 +65,33 @@ func TestRetrieveSemanticDJPhasePoolsFallsBackWhenIndexIsEmpty(t *testing.T) {
 		t.Fatalf("handled=%v err=%v", handled, err)
 	}
 }
+
+func TestRetrieveSemanticDJPhasePoolsFallsBackWhenPoolsLackDistinctSongs(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "semantic-dj-small.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	song := db.Song{ID: "only", Title: "Only", Artist: "Artist", Album: "Album", FilePath: filepath.Join(t.TempDir(), "only.flac"), AddedAt: 1}
+	if err := database.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	service, err := semantic.NewService(database, apiEmbeddingProvider{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	if err := service.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	api := &API{db: database, semanticService: service}
+	if _, handled, err := api.retrieveSemanticDJPhasePools(context.Background(), &dj.DJSetPlan{
+		IntentSummary: "anything",
+		Phases: []dj.DJPhase{
+			{Name: "Warm-up", SemanticQuery: "quiet", TargetCount: 1},
+			{Name: "Peak", SemanticQuery: "loud", TargetCount: 1},
+		},
+	}, semanticDJRequest{Source: "local"}); err != nil || handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+}

@@ -1516,6 +1516,11 @@ No new third-party dependency is added in this PR.
   expose counts only. New API/database/DJ tests cover pool creation, empty-index fallback,
   aggregate source availability, phase selection, and reuse prevention; the full backend and
   frontend type-check suites pass.
+- **2026-08-26:** Added a final deterministic recovery guard: semantic DJ pools must contain
+  enough distinct song IDs for every planned phase target, otherwise the handler uses the
+  legacy fallback before sequencing. The fallback also applies compiler-derived mandatory
+  artist inclusions and explicit artist exclusions, preserving those user constraints even
+  when a semantic index is unavailable.
 
 #### Acceptance criteria
 

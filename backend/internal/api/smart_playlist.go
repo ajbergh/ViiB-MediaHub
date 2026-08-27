@@ -1987,7 +1987,10 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		}
 		candidates = make([]db.Song, 0, len(allSongs))
 		for _, song := range allSongs {
-			if recentlyPlayedIDs[song.ID] || !songMatchesYear(song, promptMinYear, promptMaxYear) {
+			if recentlyPlayedIDs[song.ID] || !songMatchesYear(song, promptMinYear, promptMaxYear) || songMatchesAnyArtist(song, intent.ExcludeArtists) {
+				continue
+			}
+			if len(intent.IncludeArtists) > 0 && !songMatchesAnyArtist(song, intent.IncludeArtists) {
 				continue
 			}
 			if len(seedGenres) > 0 && !songMatchesAnyGenre(song, seedGenres) {
