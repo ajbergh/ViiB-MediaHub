@@ -1828,7 +1828,7 @@ because a user's files have incomplete genre or mood metadata.
 
 ## 23. Related follow-up — Plex AI metadata writeback
 
-**Status:** Implementation complete on `feature/plex-ai-metadata-writeback`; local backend and frontend validation passed. Draft PR and CI validation are pending.
+**Status:** Implementation complete on `feature/plex-ai-metadata-writeback`; local backend and frontend validation passed. Draft [PR #27](https://github.com/ajbergh/ViiB-MediaHub/pull/27) is open and [CI run 33081912352](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33081912352) is in progress. Real-PMS manual QA remains before merge.
 
 This is a related Plex-source enhancement, not a change to the Phase 1 semantic-vector design:
 
