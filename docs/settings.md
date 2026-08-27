@@ -54,6 +54,8 @@ Open **Settings → Library Health** to configure Plex as a remote music source.
 
 Plex songs synchronize into the same ViiB catalog used by local files, so they appear in the existing Songs, Albums, Artists, Search, queue, playlists, likes, history, Smart Mixes, AI DJ, and statistics experiences. Plex video libraries are not supported.
 
+The Plex panel also includes an optional **AI Metadata Writeback** workflow. AI enrichment is always local first: preview the per-track genre/year changes, explicitly approve the exact diff, then ViiB writes and locks only those fields in Plex and verifies them. It never writes audio-file tags; mood/energy/tempo/BPM and semantic embeddings remain ViiB-only. The Plex token must have PMS metadata-management permission.
+
 See [Plex Media Server Music Support](plex-music.md) for setup, authentication/security, synchronization behavior, playback details, and troubleshooting.
 
 ### Scan Now
@@ -155,7 +157,7 @@ Runs the configured AI provider over your library to fill in missing or empty ge
 
 - Click **Run Genre Enrichment** to start.
 - Progress is shown in the Activity Log.
-- Genres are written back to the `songs.genre` column in SQLite (not embedded back into the source audio file or written back to Plex).
+- Genres are written to the `songs.genre` column in SQLite. For Plex-backed tracks, a separate explicit AI Metadata Writeback preview can later send approved genre changes to Plex; no source audio file tags are modified.
 
 ### Unified Enrichment
 

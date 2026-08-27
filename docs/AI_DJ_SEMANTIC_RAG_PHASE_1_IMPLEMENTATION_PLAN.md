@@ -1823,3 +1823,19 @@ embedding family later. Phase 1 does not implement it.
 
 The LLM no longer reasons over the whole library, and AI DJ quality no longer collapses
 because a user's files have incomplete genre or mood metadata.
+
+---
+
+## 23. Related follow-up — Plex AI metadata writeback
+
+**Status:** Implementation complete on `feature/plex-ai-metadata-writeback`; local backend and frontend validation passed. Draft PR and CI validation are pending.
+
+This is a related Plex-source enhancement, not a change to the Phase 1 semantic-vector design:
+
+- Unified/genre AI enrichment stages Plex-backed genre and original-year proposals in a local audit queue.
+- The Plex settings panel requires a read-only, per-track preview and an explicit approval checkbox before any PMS write.
+- PMS writes are capped at 100 proposals per preview, capability-gated by Plex's `manage` feature, locked field-by-field, and verified by a fresh PMS read.
+- Only genres and release year currently map to Plex. AI mood/energy/tempo/BPM, user behaviour, and semantic embeddings remain ViiB-local.
+- A failed or stale preview never writes to PMS; failed verified writes remain queued for a later review/retry.
+
+See [Plex Music](plex-music.md#source-media-and-metadata-writeback) and [Settings](settings.md#plex-media-server-music) for the operational contract.

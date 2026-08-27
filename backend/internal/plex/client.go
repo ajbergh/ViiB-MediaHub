@@ -17,13 +17,14 @@ import (
 )
 
 var (
-	ErrAuthenticationRequired = errors.New("plex authentication required")
-	ErrInvalidToken           = errors.New("plex authentication token is invalid or expired")
-	ErrNotPlexServer          = errors.New("endpoint is not a Plex Media Server")
-	ErrDNSFailure             = errors.New("plex server DNS lookup failed")
-	ErrConnectionFailed       = errors.New("plex server connection failed")
-	ErrConnectionTimeout      = errors.New("plex server connection timed out")
-	ErrTLSFailure             = errors.New("plex server TLS validation failed")
+	ErrAuthenticationRequired  = errors.New("plex authentication required")
+	ErrInvalidToken            = errors.New("plex authentication token is invalid or expired")
+	ErrNotPlexServer           = errors.New("endpoint is not a Plex Media Server")
+	ErrDNSFailure              = errors.New("plex server DNS lookup failed")
+	ErrConnectionFailed        = errors.New("plex server connection failed")
+	ErrConnectionTimeout       = errors.New("plex server connection timed out")
+	ErrTLSFailure              = errors.New("plex server TLS validation failed")
+	ErrMetadataWriteNotAllowed = errors.New("plex server does not grant metadata write permission")
 )
 
 // Client communicates with one PMS. Tokens are sent only as X-Plex-Token
@@ -244,6 +245,34 @@ func (c *Client) doJSON(req *http.Request, out any) error {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(out); err != nil {
 		return fmt.Errorf("invalid Plex server response: %w", err)
 	}
+	return nil
+}
+
+// doNoContent executes a request whose successful PMS response need not be
+// JSON. Metadata edit responses are commonly empty, depending on PMS version.
+func (c *Client) doNoContent(req *http.Request) error {
+	resp, err := c.guardedHTTPClient(false).Do(req)
+	if err != nil {
+		var dnsErr *net.DNSError
+		var netErr net.Error
+		var tlsErr *tls.CertificateVerificationError
+		switch {
+		case errors.As(err, &dnsErr):
+			return fmt.Errorf("%w: %v", ErrDNSFailure, dnsErr)
+		case errors.As(err, &tlsErr):
+			return fmt.Errorf("%w: %v", ErrTLSFailure, tlsErr)
+		case errors.As(err, &netErr) && netErr.Timeout():
+			return fmt.Errorf("%w: %v", ErrConnectionTimeout, netErr)
+		default:
+			return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+		}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return classifyHTTPError(resp)
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	return nil
 }
 
@@ -529,6 +558,23 @@ type plexTrack struct {
 	Media            []plexMedia `json:"Media"`
 	Type             string      `json:"type"`
 }
+
+// TrackMetadata is the minimal current PMS state used to build and verify an
+// AI metadata writeback preview. It deliberately excludes media URLs/tokens.
+type TrackMetadata struct {
+	RatingKey string
+	Title     string
+	Genres    []string
+	Year      int
+	UpdatedAt int64
+}
+
+// TrackMetadataEdit is intentionally narrow: AI writeback supports only
+// fields with a proven Plex music mapping and locks each field after writing.
+type TrackMetadataEdit struct {
+	Genres []string
+	Year   int
+}
 type trackEnvelope struct {
 	MediaContainer struct {
 		Size      int         `json:"size"`
@@ -597,6 +643,118 @@ func plexGenres(tags []plexTag) []string {
 		}
 	}
 	return genres
+}
+
+func validRatingKey(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizePlexTags(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || len(value) > 120 {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+// GetTrackMetadata loads one music track from PMS for preview and post-write
+// verification. rating keys are numeric PMS identities, never client URLs.
+func (c *Client) GetTrackMetadata(ctx context.Context, ratingKey string) (TrackMetadata, error) {
+	if !validRatingKey(ratingKey) {
+		return TrackMetadata{}, errors.New("invalid plex track rating key")
+	}
+	var response trackEnvelope
+	req, err := c.newRequest(ctx, http.MethodGet, "", "/library/metadata/"+ratingKey, true)
+	if err != nil {
+		return TrackMetadata{}, err
+	}
+	if err := c.doJSON(req, &response); err != nil {
+		return TrackMetadata{}, err
+	}
+	if len(response.MediaContainer.Metadata) != 1 {
+		return TrackMetadata{}, errors.New("plex track metadata was not found")
+	}
+	track := response.MediaContainer.Metadata[0]
+	if track.RatingKey != ratingKey || (track.Type != "" && !strings.EqualFold(track.Type, "track")) {
+		return TrackMetadata{}, errors.New("plex metadata response is not the requested music track")
+	}
+	return TrackMetadata{RatingKey: track.RatingKey, Title: track.Title, Genres: normalizePlexTags(plexGenres(track.Genre)), Year: track.Year, UpdatedAt: track.UpdatedAt}, nil
+}
+
+// CanManageMetadata checks the capability Plex exposes for management actions.
+// Read-only/shared tokens can still preview metadata, but must never write it.
+func (c *Client) CanManageMetadata(ctx context.Context) (bool, error) {
+	var response providersEnvelope
+	req, err := c.newRequest(ctx, http.MethodGet, "", "/media/providers", true)
+	if err != nil {
+		return false, err
+	}
+	if err := c.doJSON(req, &response); err != nil {
+		return false, err
+	}
+	for _, provider := range response.MediaContainer.MediaProvider {
+		if provider.Identifier != "com.plexapp.plugins.library" {
+			continue
+		}
+		for _, feature := range provider.Feature {
+			if strings.EqualFold(feature.Type, "manage") {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// UpdateTrackMetadata sends a minimal PMS edit. Plex expects metadata edits in
+// query parameters, and field locks preserve approved values across agent
+// refreshes. It does not modify the source audio file.
+func (c *Client) UpdateTrackMetadata(ctx context.Context, ratingKey string, edit TrackMetadataEdit) error {
+	if !validRatingKey(ratingKey) {
+		return errors.New("invalid plex track rating key")
+	}
+	genres := normalizePlexTags(edit.Genres)
+	if len(genres) == 0 && edit.Year <= 0 {
+		return errors.New("plex metadata edit has no supported fields")
+	}
+	if edit.Year < 0 || edit.Year > 3000 {
+		return errors.New("plex metadata edit year is invalid")
+	}
+	req, err := c.newRequest(ctx, http.MethodPut, "", "/library/metadata/"+ratingKey, true)
+	if err != nil {
+		return err
+	}
+	query := req.URL.Query()
+	query.Set("type", "10")
+	if len(genres) > 0 {
+		query.Set("genre.locked", "1")
+		for index, genre := range genres {
+			query.Set(fmt.Sprintf("genre[%d].tag.tag", index), genre)
+		}
+	}
+	if edit.Year > 0 {
+		query.Set("year.value", strconv.Itoa(edit.Year))
+		query.Set("year.locked", "1")
+	}
+	req.URL.RawQuery = query.Encode()
+	return c.doNoContent(req)
 }
 
 func firstNonEmpty(values ...string) string {

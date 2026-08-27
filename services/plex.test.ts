@@ -40,4 +40,23 @@ describe('plexService', () => {
       method: 'POST', body: JSON.stringify({ machineIdentifier: 'shared-server' }),
     }));
   });
+
+  it('uses a separate preview confirmation before metadata writeback', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        confirmation: 'preview-digest', hasMore: false, items: [{ songId: 'song-1', title: 'Track', artist: 'Artist', album: 'Album', changes: [{ field: 'genres', before: ['Rock'], after: ['Dream Pop'] }], status: 'ready' }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ updated: 1, verified: 0, failed: 0 }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    const preview = await plexService.previewAIEnrichmentWriteback();
+    const result = await plexService.syncAIEnrichmentWriteback(preview.confirmation);
+
+    expect(result).toMatchObject({ updated: 1, failed: 0 });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v2/plex/metadata-writeback/preview', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ songIds: [] }),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v2/plex/metadata-writeback/sync', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ confirmation: 'preview-digest', songIds: [] }),
+    }));
+  });
 });

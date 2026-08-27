@@ -253,6 +253,74 @@ func TestMapPlexTrackRetainsPresenceWithoutPlayableMediaPart(t *testing.T) {
 	}
 }
 
+func TestTrackMetadataWritebackUsesLockedPMSFields(t *testing.T) {
+	const token = "metadata-token"
+	genres := []string{"Rock"}
+	year := 1999
+	var sawPut bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Plex-Token") != token {
+			t.Fatalf("Plex token missing for %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/library/metadata/99":
+			plexGenres := make([]any, 0, len(genres))
+			for _, genre := range genres {
+				plexGenres = append(plexGenres, map[string]any{"tag": genre})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"MediaContainer": map[string]any{"Metadata": []any{map[string]any{
+				"ratingKey": "99", "type": "track", "title": "Dream Song", "year": year, "Genre": plexGenres,
+			}}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/media/providers":
+			_ = json.NewEncoder(w).Encode(map[string]any{"MediaContainer": map[string]any{"MediaProvider": []any{map[string]any{
+				"identifier": "com.plexapp.plugins.library", "Feature": []any{map[string]any{"type": "manage"}},
+			}}}})
+		case r.Method == http.MethodPut && r.URL.Path == "/library/metadata/99":
+			query := r.URL.Query()
+			if query.Get("type") != "10" || query.Get("genre.locked") != "1" || query.Get("genre[0].tag.tag") != "Dream Pop" || query.Get("genre[1].tag.tag") != "Indie Rock" || query.Get("year.value") != "1988" || query.Get("year.locked") != "1" {
+				t.Fatalf("unexpected locked metadata edit: %q", r.URL.RawQuery)
+			}
+			genres, year, sawPut = []string{"Dream Pop", "Indie Rock"}, 1988, true
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := NewClientWithHTTP(server.URL, token, "viib-test", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := client.GetTrackMetadata(context.Background(), "99")
+	if err != nil || before.Year != 1999 || !equalStringSlices(before.Genres, []string{"Rock"}) {
+		t.Fatalf("unexpected metadata before write: %#v err=%v", before, err)
+	}
+	allowed, err := client.CanManageMetadata(context.Background())
+	if err != nil || !allowed {
+		t.Fatalf("manage capability=%v err=%v", allowed, err)
+	}
+	if err := client.UpdateTrackMetadata(context.Background(), "99", TrackMetadataEdit{Genres: []string{"Dream Pop", "Indie Rock"}, Year: 1988}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := client.GetTrackMetadata(context.Background(), "99")
+	if err != nil || !sawPut || after.Year != 1988 || !equalStringSlices(after.Genres, []string{"Dream Pop", "Indie Rock"}) {
+		t.Fatalf("writeback was not verifiable: %#v err=%v sawPut=%v", after, err, sawPut)
+	}
+}
+
+func equalStringSlices(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestFetchTracksContinuesWhenServerReturnsShortPageWithTotalRemaining(t *testing.T) {
 	starts := make([]int, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

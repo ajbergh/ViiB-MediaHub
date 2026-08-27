@@ -109,6 +109,21 @@ type PlexTrackSource struct {
 	Available   bool
 }
 
+// PlexAIWritebackCandidate is AI-enriched metadata eligible for an explicit,
+// user-approved write to its Plex track. It is kept apart from the PMS
+// snapshot so a later Plex read cannot erase an unsynchronized proposal.
+type PlexAIWritebackCandidate struct {
+	SongID       string
+	SourceID     string
+	RatingKey    string
+	Title        string
+	Artist       string
+	Album        string
+	Genres       []string
+	OriginalYear int
+	GeneratedAt  int64
+}
+
 // FilterSongsForAIDJ labels songs with their catalog source and keeps only
 // tracks eligible for the requested source. Plex tracks are retained only
 // while their source is available; cached metadata remains in the library but
@@ -281,6 +296,17 @@ func (d *DB) EnsurePlexSchema() error {
 			FOREIGN KEY(source_id) REFERENCES plex_sources(id) ON DELETE CASCADE
 		);
 		CREATE INDEX IF NOT EXISTS idx_plex_artist_artwork_active ON plex_artist_artwork(source_id, artist_name);
+		CREATE TABLE IF NOT EXISTS plex_ai_metadata_writeback (
+			song_id TEXT PRIMARY KEY,
+			genres TEXT NOT NULL DEFAULT '[]',
+			original_year INTEGER NOT NULL DEFAULT 0,
+			generated_at INTEGER NOT NULL,
+			approved_at INTEGER,
+			synced_at INTEGER,
+			last_error TEXT NOT NULL DEFAULT '',
+			FOREIGN KEY(song_id) REFERENCES songs(id) ON DELETE CASCADE
+		);
+		CREATE INDEX IF NOT EXISTS idx_plex_ai_metadata_writeback_pending ON plex_ai_metadata_writeback(synced_at, generated_at);
 	`)
 	if err != nil {
 		return fmt.Errorf("create Plex source schema: %w", err)
@@ -289,6 +315,120 @@ func (d *DB) EnsurePlexSchema() error {
 		return fmt.Errorf("add Plex artist artwork column: %w", err)
 	}
 	return nil
+}
+
+// queuePlexAIWriteback records an AI value only when the song is Plex-backed.
+// It runs within the enrichment transaction, keeping the proposal and the
+// visible ViiB metadata consistent.
+func queuePlexAIWriteback(tx *sql.Tx, songID string, genres []string, updateGenres bool, originalYear int, updateYear bool, generatedAt int64) error {
+	if !updateGenres && !updateYear {
+		return nil
+	}
+	encodedGenres := "[]"
+	if updateGenres {
+		payload, err := json.Marshal(NormalizeGenres(genres))
+		if err != nil {
+			return err
+		}
+		encodedGenres = string(payload)
+	}
+	_, err := tx.Exec(`
+		INSERT INTO plex_ai_metadata_writeback (song_id, genres, original_year, generated_at, approved_at, synced_at, last_error)
+		SELECT song_id, ?, ?, ?, NULL, NULL, '' FROM plex_tracks WHERE song_id = ?
+		ON CONFLICT(song_id) DO UPDATE SET
+			genres = CASE WHEN ? THEN excluded.genres ELSE plex_ai_metadata_writeback.genres END,
+			original_year = CASE WHEN ? THEN excluded.original_year ELSE plex_ai_metadata_writeback.original_year END,
+			generated_at = excluded.generated_at,
+			approved_at = NULL,
+			synced_at = NULL,
+			last_error = ''
+	`, encodedGenres, originalYear, generatedAt, songID, updateGenres, updateYear)
+	return err
+}
+
+// GetPlexAIWritebackCandidates returns pending proposals for one source. A
+// proposal remains pending until PMS accepts it and a new read verifies it.
+func (d *DB) GetPlexAIWritebackCandidates(sourceID string, songIDs []string, limit int) (candidates []PlexAIWritebackCandidate, hasMore bool, err error) {
+	if err = d.EnsurePlexSchema(); err != nil {
+		return nil, false, err
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	args := []any{sourceID}
+	filter := ""
+	if len(songIDs) > 0 {
+		placeholders := make([]string, len(songIDs))
+		for i, id := range songIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		filter = " AND w.song_id IN (" + strings.Join(placeholders, ",") + ")"
+	}
+	args = append(args, limit+1)
+	rows, err := d.conn.Query(`
+		SELECT w.song_id, t.source_id, t.rating_key, s.title, s.artist, s.album,
+		       w.genres, w.original_year, w.generated_at
+		FROM plex_ai_metadata_writeback w
+		JOIN plex_tracks t ON t.song_id = w.song_id
+		JOIN songs s ON s.id = w.song_id
+		WHERE t.source_id = ?
+		  AND (w.synced_at IS NULL OR w.generated_at > w.synced_at)
+		  AND (w.genres <> '[]' OR w.original_year > 0)`+filter+`
+		ORDER BY w.generated_at ASC, w.song_id ASC
+		LIMIT ?
+	`, args...)
+	if err != nil {
+		return nil, false, fmt.Errorf("list Plex AI metadata writeback candidates: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var candidate PlexAIWritebackCandidate
+		var genreJSON string
+		if err := rows.Scan(&candidate.SongID, &candidate.SourceID, &candidate.RatingKey, &candidate.Title, &candidate.Artist, &candidate.Album,
+			&genreJSON, &candidate.OriginalYear, &candidate.GeneratedAt); err != nil {
+			return nil, false, fmt.Errorf("scan Plex AI metadata writeback candidate: %w", err)
+		}
+		if err := json.Unmarshal([]byte(genreJSON), &candidate.Genres); err != nil {
+			return nil, false, fmt.Errorf("decode Plex AI metadata writeback genres: %w", err)
+		}
+		if len(candidates) == limit {
+			hasMore = true
+			break
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("read Plex AI metadata writeback candidates: %w", err)
+	}
+	return candidates, hasMore, nil
+}
+
+// MarkPlexAIWritebackSynced stores an audit trail only after PMS accepts the
+// write and a fresh metadata response verifies the requested values.
+func (d *DB) MarkPlexAIWritebackSynced(songID string, approvedAt, syncedAt int64) error {
+	if err := d.EnsurePlexSchema(); err != nil {
+		return err
+	}
+	_, err := d.conn.Exec(`UPDATE plex_ai_metadata_writeback SET approved_at=?, synced_at=?, last_error='' WHERE song_id=?`, approvedAt, syncedAt, songID)
+	return err
+}
+
+// MarkPlexAIWritebackFailed keeps a proposal pending while retaining a bounded,
+// sanitized diagnostic for a later retry.
+func (d *DB) MarkPlexAIWritebackFailed(songID, message string) error {
+	if err := d.EnsurePlexSchema(); err != nil {
+		return err
+	}
+	message = strings.TrimSpace(message)
+	if len(message) > 500 {
+		message = message[:500]
+	}
+	_, err := d.conn.Exec(`UPDATE plex_ai_metadata_writeback SET last_error=? WHERE song_id=?`, message, songID)
+	return err
 }
 
 func boolInt(value bool) int {

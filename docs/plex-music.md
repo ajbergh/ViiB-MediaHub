@@ -188,11 +188,22 @@ Plex credentials are sensitive application settings.
 - Absolute cross-origin asset requests never carry a Plex token.
 - Cross-origin redirects are allowed only after `X-Plex-Token` has been removed from the redirected request.
 
-## Read-only source behavior
+## Source media and metadata writeback
 
-ViiB does not delete, move, rename, or rewrite Plex media; does not change PMS library configuration; and does not write ViiB metadata edits back to Plex.
+ViiB does not delete, move, rename, or rewrite Plex media; and does not change PMS library configuration. The normal song-metadata editing path remains database-only and never writes source-file tags.
 
-ViiB's existing song metadata editing path is intentionally database-only and does not write source tags. A metadata edit to a Plex track is therefore a ViiB-side override. A later authoritative Plex synchronization may replace synchronized fields with current Plex metadata, but no edit is silently sent to PMS.
+### AI metadata writeback (explicit opt-in)
+
+**Settings → Library Health → Plex Media Server** offers an optional **AI Metadata Writeback** panel for Plex-backed tracks. It is the only path that can modify PMS metadata, and it is deliberately separate from synchronization and enrichment:
+
+- AI enrichment stages a local proposal; it never writes to Plex automatically.
+- **Preview AI metadata** reads the current PMS track metadata and shows a per-track diff. A preview is capped at 100 pending tracks.
+- The user must check an approval box and submit the exact displayed preview. ViiB rejects stale previews if PMS metadata changes before submission.
+- ViiB writes only normalized **genres** and an AI-derived **original release year** (mapped to Plex's track year). Mood, energy, tempo, BPM, instrumental state, listening history, and semantic embeddings remain ViiB-local.
+- PMS must advertise the `manage` capability and accept the configured account token. Each written field is locked in Plex so a later agent refresh does not replace the user-approved override.
+- ViiB re-reads every updated track to verify the PMS value before marking its local audit record successful. Failed writes remain pending with a bounded diagnostic and can be previewed again.
+
+PMS metadata writeback creates Plex-side metadata overrides; it does **not** modify the underlying audio file's embedded tags. A normal authoritative Plex synchronization may subsequently import the approved fields back into ViiB.
 
 ## Troubleshooting discovery
 

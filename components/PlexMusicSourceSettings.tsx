@@ -3,7 +3,7 @@ import { AlertTriangle, ExternalLink, Loader2, Music, RefreshCw, Search, Server,
 import { Button } from './ui/Button';
 import { TextInput } from './ui/TextInput';
 import { useStore } from '../store';
-import { plexService, type PlexAccountServer, type PlexServer } from '../services/plex';
+import { plexService, type PlexAccountServer, type PlexMetadataWritebackPreview, type PlexServer } from '../services/plex';
 import { initialPlexSettingsState, plexSettingsReducer, plexSourceNeedsAuthentication } from '../lib/plexSettingsState';
 
 const busyLabel: Record<string, string> = {
@@ -26,9 +26,18 @@ function serverAddress(server: PlexServer): string {
   return server.url || `${server.scheme || 'http'}://${server.host}:${server.port}`;
 }
 
+function formatWritebackValue(value: string[] | number): string {
+  return Array.isArray(value) ? (value.length > 0 ? value.join(', ') : 'None') : (value > 0 ? String(value) : 'Unknown');
+}
+
 export const PlexMusicSourceSettings: React.FC = () => {
   const [state, dispatch] = useReducer(plexSettingsReducer, initialPlexSettingsState);
   const [editingServer, setEditingServer] = useState(false);
+  const [writebackPreview, setWritebackPreview] = useState<PlexMetadataWritebackPreview | null>(null);
+  const [writebackBusy, setWritebackBusy] = useState(false);
+  const [writebackApproved, setWritebackApproved] = useState(false);
+  const [writebackMessage, setWritebackMessage] = useState('');
+  const [writebackError, setWritebackError] = useState('');
   const authTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const disposed = useRef(false);
@@ -242,6 +251,43 @@ export const PlexMusicSourceSettings: React.FC = () => {
     }
   };
 
+  const previewAIWriteback = async () => {
+    setWritebackBusy(true); setWritebackError(''); setWritebackMessage(''); setWritebackApproved(false);
+    try {
+      const preview = await plexService.previewAIEnrichmentWriteback();
+      setWritebackPreview(preview);
+      if (preview.items.length === 0) {
+        setWritebackMessage('No pending AI-enriched Plex metadata is available to review. Run Unified Enrichment to create new proposals.');
+      }
+    } catch (error) {
+      setWritebackPreview(null);
+      setWritebackError(error instanceof Error ? error.message : 'Unable to preview Plex metadata changes');
+    } finally {
+      setWritebackBusy(false);
+    }
+  };
+
+  const syncAIWriteback = async () => {
+    if (!writebackPreview || !writebackApproved) return;
+    setWritebackBusy(true); setWritebackError(''); setWritebackMessage('');
+    try {
+      const result = await plexService.syncAIEnrichmentWriteback(writebackPreview.confirmation);
+      setWritebackApproved(false);
+      setWritebackPreview(null);
+      const parts = [`${result.updated} updated`, `${result.verified} already matched`];
+      if (result.failed > 0) {
+        setWritebackError(`${result.failed} Plex metadata updates failed. ${result.errors?.join(' ') || 'Review the Plex connection and permissions, then preview again.'}`);
+      } else {
+        setWritebackMessage(`Plex AI metadata writeback complete: ${parts.join(', ')}. Plex fields were locked after verification.`);
+        addLog('success', `[Plex] AI metadata writeback: ${parts.join(', ')}`);
+      }
+    } catch (error) {
+      setWritebackError(error instanceof Error ? error.message : 'Unable to sync approved metadata to Plex');
+    } finally {
+      setWritebackBusy(false);
+    }
+  };
+
   const disconnect = async () => {
     const confirmed = window.confirm('Remove this Plex source from ViiB? This removes only ViiB’s cached catalog and credentials. Nothing is deleted or changed on the Plex server.');
     if (!confirmed) return;
@@ -391,7 +437,54 @@ export const PlexMusicSourceSettings: React.FC = () => {
         </div>
       )}
 
-      <p className="mt-5 text-xs text-text-subtle">Plex is treated as read-only media storage. ViiB does not delete, move, rename, or modify media or library configuration on the Plex server. Plex video libraries are not supported.</p>
+      {state.source && !editingServer && state.source.libraryId && (
+        <div className="mt-6 border-t border-surface-border pt-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-text-main">AI Metadata Writeback</h3>
+              <p className="mt-1 max-w-3xl text-sm text-text-secondary">Review AI-enriched genres and original release years before sending them to Plex. ViiB only writes approved changes, locks those fields in Plex, and verifies each update with a fresh PMS read.</p>
+            </div>
+            <Button variant="secondary" disabled={busy || writebackBusy || sourceNeedsAuth} onClick={() => void previewAIWriteback()} leftIcon={<Eye size={16} />}>{writebackBusy ? 'Loading preview…' : 'Preview AI metadata'}</Button>
+          </div>
+
+          {(writebackMessage || writebackError) && (
+            <div className={`mt-3 rounded-lg border p-3 text-sm ${writebackError ? 'border-error/40 bg-error/10 text-error' : 'border-success/30 bg-success/10 text-text-main'}`} role="status">
+              {writebackError || writebackMessage}
+            </div>
+          )}
+
+          {writebackPreview && writebackPreview.items.length > 0 && (
+            <div className="mt-4 rounded-lg border border-surface-border bg-surface-2 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-text-main">Review {writebackPreview.items.length} Plex track{writebackPreview.items.length === 1 ? '' : 's'}</div>
+                {writebackPreview.hasMore && <span className="text-xs text-warning">Only the first 100 pending proposals are shown. Sync this set, then preview again.</span>}
+              </div>
+              <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+                {writebackPreview.items.map(item => (
+                  <div key={item.songId} className="rounded-md border border-surface-border bg-surface-1 p-3 text-sm">
+                    <div className="font-medium text-text-main">{item.title} <span className="font-normal text-text-secondary">· {item.artist}{item.album ? ` · ${item.album}` : ''}</span></div>
+                    {item.changes.length > 0 ? (
+                      <ul className="mt-2 space-y-1 text-xs text-text-secondary">
+                        {item.changes.map(change => <li key={change.field}><span className="font-semibold text-text-main">{change.field === 'year' ? 'Release year' : 'Genres'}:</span> {formatWritebackValue(change.before)} → {formatWritebackValue(change.after)}</li>)}
+                      </ul>
+                    ) : <div className="mt-1 text-xs text-success">Already matches Plex; ViiB will only mark this proposal as verified.</div>}
+                  </div>
+                ))}
+              </div>
+              <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm text-text-secondary">
+                <input type="checkbox" className="mt-1" checked={writebackApproved} onChange={event => setWritebackApproved(event.target.checked)} />
+                <span>I reviewed these changes and approve writing them to this Plex server. Plex stores them as locked metadata overrides; ViiB does not alter the source audio files.</span>
+              </label>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button variant="primary" accent="brand" disabled={busy || writebackBusy || !writebackApproved} onClick={() => void syncAIWriteback()} leftIcon={<CheckCircle2 size={16} />}>{writebackBusy ? 'Writing to Plex…' : 'Sync approved metadata to Plex'}</Button>
+                <button type="button" className="text-sm text-text-secondary underline hover:text-text-main" disabled={writebackBusy} onClick={() => { setWritebackPreview(null); setWritebackApproved(false); }}>Discard preview</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <p className="mt-5 text-xs text-text-subtle">Plex media storage remains read-only: ViiB never deletes, moves, renames, or modifies source audio files or library configuration. The optional AI Metadata Writeback above is the sole exception: it creates user-approved, locked metadata overrides in Plex. Plex video libraries are not supported.</p>
     </section>
   );
 };
