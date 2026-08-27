@@ -1746,8 +1746,11 @@ sufficient: the wizard launch path did not start scan polling, and polling only
 reloaded the catalog after completion. The wizard now starts polling, and the
 renderer reloads and reindexes visible songs every three seconds while scanning.
 The focused 50 → 100 → 200 track polling regression test passes, as do the full
-frontend typecheck, 31-test suite, and production build. PR CI and another
-packaged fresh-install check remain before merge.
+frontend typecheck, 31-test suite, and production build. CI
+[run 33089476890](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33089476890)
+passed the frontend, backend, five semantic cross-platform, and packaged Windows
+desktop build gates for implementation commit `6a56d70`. Another packaged
+fresh-install behavior check is the remaining gate before merge.
 
 Fresh local-library scans already persist tracks in batches and emit
 `library_updated`, but the renderer ignored that event while waiting solely for
