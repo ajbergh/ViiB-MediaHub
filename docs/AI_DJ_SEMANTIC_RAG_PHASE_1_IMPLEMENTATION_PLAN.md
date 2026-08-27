@@ -1771,9 +1771,8 @@ net for delayed or missed stream events.
 
 ### 20.2 Post-implementation reliability follow-up — enrichment visibility and cloud embeddings
 
-**Status:** Corrective implementation and local automated validation complete on
-`fix/fresh-install-library-live-sync`; the branch-head CI rerun and packaged behavior
-retest are the remaining gates.
+**Status:** Corrective implementation and automated validation complete on
+`fix/fresh-install-library-live-sync`; the packaged behavior retest is the remaining gate.
 
 - Automatic post-scan enrichment now uses the same unified metadata pipeline as the
   Settings action. It writes genre, mood, BPM/energy, and release-year results through
@@ -1808,6 +1807,10 @@ retest are the remaining gates.
   builds, and vulnerability scans), all five semantic cross-compiles, and the packaged
   Windows Wails build/binary scan. PR #28 remains draft only for the packaged behavior
   checks above.
+- First-run provider-alignment CI
+  [run 33123478399](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33123478399)
+  passed frontend validation, full backend validation, all five semantic cross-compiles,
+  and the packaged Windows Wails build/binary scan for implementation commit `db2c814`.
 
 ---
 
