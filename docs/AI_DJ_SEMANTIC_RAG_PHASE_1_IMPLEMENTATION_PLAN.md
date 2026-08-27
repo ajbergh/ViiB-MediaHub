@@ -1738,7 +1738,10 @@ discovery/favorites behaviour; sensible flow in DJ mode.
 
 ### 20.1 Post-implementation reliability follow-up — fresh local library UI
 
-**Status:** Fix in progress on `fix/fresh-install-library-live-sync`.
+**Status:** Implementation complete on `fix/fresh-install-library-live-sync`.
+Draft [PR #28](https://github.com/ajbergh/ViiB-MediaHub/pull/28) is open;
+the full local frontend gate passed, CI is pending, and fresh-install manual QA
+is the remaining behavior check before merge.
 
 Fresh local-library scans already persist tracks in batches and emit
 `library_updated`, but the renderer ignored that event while waiting solely for
