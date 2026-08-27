@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 3 complete — semantic AI DJ retrieval and ranking merged; PR 4 is next
+**Status:** PR 4 in progress — Smart Playlists semantic status, diagnostics, hardening, and quality gates
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1547,8 +1547,8 @@ No new third-party dependency is added in this PR.
 
 #### Tasks
 
-- [ ] Add semantic readiness, indexing, and fallback status to the Smart Playlists UI.
-- [ ] Add retrieval diagnostics only where they aid troubleshooting; do not clutter normal UX.
+- [x] Add semantic readiness, indexing, and fallback status to the Smart Playlists UI.
+- [x] Add retrieval diagnostics only where they aid troubleshooting; do not clutter normal UX.
 - [ ] Add the 20k+ synthetic-library performance fixture and benchmarks.
 - [ ] Add semantic service lifecycle and shutdown tests.
 - [ ] Add exactness tests against a naive reference scan, and dimension-inconsistency recovery tests.
@@ -1560,6 +1560,16 @@ No new third-party dependency is added in this PR.
 - [ ] Run final backend and frontend production builds, plus the five cross-compile targets.
 - [ ] Resolve all static-analysis, lint, and type errors introduced by Phase 1.
 - [ ] Mark completed items in this plan.
+
+#### PR 4 implementation notes
+
+- **2026-08-27:** Smart Playlists now polls the existing semantic status endpoint and shows a
+  compact readiness panel: ready semantic matching, background indexing progress with legacy
+  matching retained, or a configuration/error fallback state with a direct link to Index
+  Settings. Semantic responses expose typed count-only diagnostics in the client; after a
+  semantic request they appear in a collapsed “Semantic retrieval details” disclosure, so
+  troubleshooting data never clutters the normal generation flow. Frontend TypeScript and
+  production-build validation, plus the 30 existing frontend unit tests, pass.
 
 #### Acceptance criteria
 

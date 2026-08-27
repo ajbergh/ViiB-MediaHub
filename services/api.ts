@@ -1763,6 +1763,23 @@ export interface SmartPlaylistResponse {
   filter: SmartPlaylistFilter;
   songs: ApiSong[];
   dj?: DJModeResponse; // Present when mode === 'dj'
+  retrieval?: SemanticRetrievalDiagnostics;
+}
+
+/**
+ * Count-only diagnostics emitted when a Smart Playlist request used semantic
+ * retrieval. Document text and embedding vectors never leave the backend.
+ */
+export interface SemanticRetrievalDiagnostics {
+  mode: string;
+  candidateCount: number;
+  returnedCount?: number;
+  trackMatches?: number;
+  albumMatches?: number;
+  artistMatches?: number;
+  phaseCandidateCounts?: number[];
+  negativeQueryApplied?: boolean;
+  fallbackUsed?: boolean;
 }
 
 /**
