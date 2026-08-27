@@ -1862,7 +1862,6 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	// First, try to match the prompt against genres using existing logic
 	// This extracts seed genres from the user's prompt
 	seedGenres := []string{}
-	seedArtists := []string{}
 
 	// Try local genre matching first
 	promptMinYear, promptMaxYear := extractDecadeFromPrompt(prompt)
@@ -1884,7 +1883,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	if len(seedGenres) == 0 {
 		seedGenres = intent.PreferredGenres
 	}
-	seedArtists = intent.IncludeArtists
+	seedArtists := intent.IncludeArtists
 	if promptMinYear > 0 || promptMaxYear > 0 {
 		intent.MinYear = promptMinYear
 		intent.MaxYear = promptMaxYear
