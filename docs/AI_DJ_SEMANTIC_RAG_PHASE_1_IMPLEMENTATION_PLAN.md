@@ -1736,6 +1736,17 @@ discovery/favorites behaviour; sensible flow in DJ mode.
 - [ ] Documentation is updated.
 - [ ] This plan reflects final implementation status.
 
+### 20.1 Post-implementation reliability follow-up — fresh local library UI
+
+**Status:** Fix in progress on `fix/fresh-install-library-live-sync`.
+
+Fresh local-library scans already persist tracks in batches and emit
+`library_updated`, but the renderer ignored that event while waiting solely for
+the revision stream. The renderer now coalesces each committed batch into an
+incremental revision sync, with a full-refresh fallback only before the
+revision stream is usable. This makes newly indexed local tracks appear during
+the first scan without turning every batch into a full-catalog download.
+
 ---
 
 ## 21. Phase 1 deferred items

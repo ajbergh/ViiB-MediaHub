@@ -45,8 +45,9 @@ function storeRevision(revision: number): void {
 
 /**
  * Maintains the legacy progress stream and the revisioned data stream.
- * Library mutations are applied by song ID; legacy library_updated events no
- * longer trigger repeated full-catalog downloads.
+ * Library mutations are applied by song ID. Legacy `library_updated` events
+ * prompt a coalesced delta sync and use a full refresh only while that stream
+ * is unavailable.
  */
 const LibraryEventListener = () => {
   const backendAvailable = useStore(state => state.backendAvailable);
@@ -65,6 +66,7 @@ const LibraryEventListener = () => {
     let legacySource: EventSource | null = null;
     let revisionSource: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let mutationSyncTimer: ReturnType<typeof setTimeout> | null = null;
     let revisionReconnects = 0;
     const abortController = new AbortController();
 
@@ -102,8 +104,28 @@ const LibraryEventListener = () => {
           if (!disposed && !abortController.signal.aborted) {
             deltaAvailableRef.current = false;
             console.warn('Revisioned library synchronization failed:', error);
+            // Do not wait for another scanner batch to make a first-run
+            // library visible if the revision endpoint is unavailable.
+            void storeRef.current.refreshLibrary();
           }
         });
+    };
+
+    // Scanner batches are the most immediate signal that tracks have been
+    // committed. The revision stream remains the normal efficient path, but a
+    // fresh install must not stay empty while it is establishing or recovering.
+    // Coalescing keeps a fast scan from issuing one sync request per batch.
+    const syncCommittedLibraryMutation = () => {
+      if (mutationSyncTimer) return;
+      mutationSyncTimer = setTimeout(() => {
+        mutationSyncTimer = null;
+        if (disposed) return;
+        if (deltaAvailableRef.current) {
+          enqueueSync();
+        } else {
+          void storeRef.current.refreshLibrary();
+        }
+      }, 100);
     };
 
     const handleLegacyEvent = (event: MessageEvent) => {
@@ -125,8 +147,13 @@ const LibraryEventListener = () => {
             else refreshLibrary();
             break;
           case 'library_updated':
-            // The revision stream carries the durable mutation. Do not reload
-            // all songs for every scanner batch.
+            // A local scan emits this after each committed batch. Prefer a
+            // revision delta, but use the legacy full refresh if its stream is
+            // not connected yet so first-run libraries populate immediately.
+            if (storeRef.current.isScanning && payload.message) {
+              setScanProgress(payload.message);
+            }
+            syncCommittedLibraryMutation();
             break;
           case 'enrichment_started':
           case 'mood_started':
@@ -237,6 +264,7 @@ const LibraryEventListener = () => {
       disposed = true;
       abortController.abort();
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (mutationSyncTimer) clearTimeout(mutationSyncTimer);
       legacySource?.close();
       revisionSource?.close();
     };
