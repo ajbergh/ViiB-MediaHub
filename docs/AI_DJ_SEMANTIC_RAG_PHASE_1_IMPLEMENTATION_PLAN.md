@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 4 in progress — Smart Playlists semantic status, diagnostics, hardening, and quality gates
+**Status:** PR 4 in progress — local quality gates complete; GitHub CI and real-library manual QA remain
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1585,6 +1585,11 @@ No new third-party dependency is added in this PR.
   Ollama/OpenAI privacy and explicit-cost boundary, background indexing, count-only diagnostics,
   local hard filters/ranking, phase-aware DJ retrieval, vector-space consistency, and the
   deterministic metadata fallback.
+- **2026-08-27:** Final local verification is green: `go test ./...`, the focused semantic
+  suite, and `npm run check` (token checks, TypeScript, 30 unit tests, and a production Vite
+  build) pass. Existing non-failing palette and bundle-size warnings remain unchanged. Full
+  GitHub Actions validation is in progress for the current PR head; the real-library manual QA
+  matrix in §19 is the remaining product-level validation.
 
 #### Acceptance criteria
 
