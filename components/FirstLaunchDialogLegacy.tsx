@@ -115,6 +115,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
     addLog,
     setScanning,
     setScanProgress,
+    pollScanStatus,
   } = useStore();
 
   // Load scan folders when dialog opens
@@ -400,6 +401,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
         setScanning(true);
         setScanProgress('Starting initial scan...');
         await api.startScan();
+        void pollScanStatus();
         addLog('success', 'Library scan started in background');
       } catch (e) {
         setScanning(false);
@@ -425,6 +427,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
 
     try {
       await api.startScan();
+      void pollScanStatus();
 
       // Poll for scan status
       const pollInterval = setInterval(async () => {

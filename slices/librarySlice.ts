@@ -33,6 +33,7 @@ import { backendService } from '../services/backendService';
 import { libraryOperationsV2 } from '../services/libraryOperationsV2';
 import api, { ApiAlbumMetadata, ApiArtistMetadata } from '../services/api';
 import { Playlist, Song, AlbumMetadata, ArtistMetadata } from '../types';
+import { libraryIndex } from '../lib/libraryIndex';
 
 function mapCachedArtistMetadata(entries: ApiArtistMetadata[]): Record<string, ArtistMetadata> {
     const artistMetadata: Record<string, ArtistMetadata> = {};
@@ -57,6 +58,7 @@ function mapCachedArtistMetadata(entries: ApiArtistMetadata[]): Record<string, A
 }
 
 let isPollingActive = false;
+const SCAN_LIBRARY_REFRESH_INTERVAL_MS = 3000;
 
 export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = (set, get) => ({
   songs: [],
@@ -128,10 +130,11 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               console.log(`📦 Processing ${cachedArtistMetadata.length} cached artist metadata entries`);
               const artistMetadata = mapCachedArtistMetadata(cachedArtistMetadata);
               
-              const mixes = generateSmartMixes(songs);
+              const indexedSongs = libraryIndex.initialize(songs);
+              const mixes = generateSmartMixes(indexedSongs);
               const likedSongIds = new Set(likedIds);
               const likedAlbumKeys = new Set(likedAlbumKeysList);
-              set({ songs, playlists, smartMixes: mixes, scanFolders, albumMetadata, artistMetadata, likedSongIds, likedAlbumKeys });
+              set({ songs: indexedSongs, playlists, smartMixes: mixes, scanFolders, albumMetadata, artistMetadata, likedSongIds, likedAlbumKeys });
               console.log(`✅ Loaded ${songs.length} songs, ${Object.keys(albumMetadata).length} cached album metadata, ${Object.keys(artistMetadata).length} cached artist metadata, ${likedIds.length} liked songs, ${likedAlbumKeysList.length} liked albums from backend`);
               
               // Note: isScanning is already set to true at the start of initLibrary
@@ -183,8 +186,9 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                   api.getAllArtistMetadata()
               ]);
               
-              const mixes = generateSmartMixes(songs);
-              set({ songs, playlists, smartMixes: mixes, scanFolders, artistMetadata: mapCachedArtistMetadata(cachedArtistMetadata) });
+              const indexedSongs = libraryIndex.initialize(songs);
+              const mixes = generateSmartMixes(indexedSongs);
+              set({ songs: indexedSongs, playlists, smartMixes: mixes, scanFolders, artistMetadata: mapCachedArtistMetadata(cachedArtistMetadata) });
               console.log(`✅ Library refreshed: ${songs.length} songs`);
           } catch (e) {
               console.error("Failed to refresh library from backend", e);
@@ -806,6 +810,22 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 	  // window right after launch (before the startup scan flips its flag).
 	  const pollStartedAt = Date.now();
 	  let everSawScanning = false;
+      let lastLibraryRefreshAt = 0;
+
+      const refreshVisibleSongs = async (force = false) => {
+          const now = Date.now();
+          if (!force && now - lastLibraryRefreshAt < SCAN_LIBRARY_REFRESH_INTERVAL_MS) return;
+          lastLibraryRefreshAt = now;
+
+          try {
+              const songs = libraryIndex.initialize(await backendService.getAllSongs());
+              set({ songs, smartMixes: generateSmartMixes(songs) });
+              console.log(`🔄 Refreshed ${songs.length} visible songs during scan`);
+          } catch (error) {
+              // A transient catalog read must not stop scan-status polling.
+              console.warn('Failed to refresh songs during scan', error);
+          }
+      };
       
       const poll = async () => {
           try {
@@ -822,6 +842,10 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 	          }
               
               if (status.scanning) {
+                  // SSE/revision events are the efficient fast path. This
+                  // periodic read guarantees fresh installs still populate if
+                  // either stream connects late or drops an early batch event.
+                  await refreshVisibleSongs();
                   // Continue polling
                   setTimeout(poll, 1000);
               } else {
@@ -829,6 +853,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 	              // This is especially important on startup when the backend may delay
 	              // the quick scan by a couple seconds.
 	              if (!everSawScanning && Date.now() - pollStartedAt < 8000) {
+	                  await refreshVisibleSongs();
 	                  setTimeout(poll, 500);
 	                  return;
 	              }
@@ -839,11 +864,11 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                   set({ isScanning: false, scanProgress: '' });
                   
                   // Refresh songs from backend
-                  const [songs, folders] = await Promise.all([
+                  const [loadedSongs, folders] = await Promise.all([
                       backendService.getAllSongs(),
                       backendService.getFolders()
                   ]);
-                  
+                  const songs = libraryIndex.initialize(loadedSongs);
                   const mixes = generateSmartMixes(songs);
                   set({ songs, smartMixes: mixes, scanFolders: folders });
                   console.log('✅ Library refreshed after scan completion');

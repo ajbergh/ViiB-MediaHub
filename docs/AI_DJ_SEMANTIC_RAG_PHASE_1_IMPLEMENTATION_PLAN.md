@@ -1738,17 +1738,25 @@ discovery/favorites behaviour; sensible flow in DJ mode.
 
 ### 20.1 Post-implementation reliability follow-up — fresh local library UI
 
-**Status:** Implementation complete on `fix/fresh-install-library-live-sync`.
-Draft [PR #28](https://github.com/ajbergh/ViiB-MediaHub/pull/28) is open;
-the full local frontend gate passed, CI is pending, and fresh-install manual QA
-is the remaining behavior check before merge.
+**Status:** Corrective implementation complete on
+`fix/fresh-install-library-live-sync`. Draft
+[PR #28](https://github.com/ajbergh/ViiB-MediaHub/pull/28) is open. A
+fresh-install retest showed that consuming scanner batch events alone was not
+sufficient: the wizard launch path did not start scan polling, and polling only
+reloaded the catalog after completion. The wizard now starts polling, and the
+renderer reloads and reindexes visible songs every three seconds while scanning.
+The focused 50 → 100 → 200 track polling regression test passes, as do the full
+frontend typecheck, 31-test suite, and production build. PR CI and another
+packaged fresh-install check remain before merge.
 
 Fresh local-library scans already persist tracks in batches and emit
 `library_updated`, but the renderer ignored that event while waiting solely for
 the revision stream. The renderer now coalesces each committed batch into an
 incremental revision sync, with a full-refresh fallback only before the
 revision stream is usable. This makes newly indexed local tracks appear during
-the first scan without turning every batch into a full-catalog download.
+the first scan without turning every batch into a full-catalog download. A
+three-second catalog refresh runs only while scanning as a deterministic safety
+net for delayed or missed stream events.
 
 ---
 
