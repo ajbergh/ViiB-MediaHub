@@ -1771,9 +1771,8 @@ net for delayed or missed stream events.
 
 ### 20.2 Post-implementation reliability follow-up — enrichment visibility and cloud embeddings
 
-**Status:** Corrective implementation and local automated validation complete on
-`fix/fresh-install-library-live-sync`; packaged behavior retest and the corrected PR #28
-CI rerun are the remaining gates.
+**Status:** Corrective implementation and automated validation complete on
+`fix/fresh-install-library-live-sync`; the packaged behavior retest is the remaining gate.
 
 - Automatic post-scan enrichment now uses the same unified metadata pipeline as the
   Settings action. It writes genre, mood, BPM/energy, and release-year results through
@@ -1797,8 +1796,12 @@ CI rerun are the remaining gates.
 - PR #28 CI [run 33117569410](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33117569410)
   passed frontend validation and all five semantic cross-compiles. Backend tests and race
   tests also passed, but Staticcheck rejected six capitalized Gemini transport errors;
-  those messages are corrected and the focused semantic/API tests pass locally. The
-  follow-up CI run is required before the PR can leave draft.
+  those messages were corrected and the focused semantic/API tests passed locally.
+- Corrected CI [run 33117916790](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33117916790)
+  passed frontend checks, complete backend validation (including race, vet, Staticcheck,
+  builds, and vulnerability scans), all five semantic cross-compiles, and the packaged
+  Windows Wails build/binary scan. PR #28 remains draft only for the packaged behavior
+  checks above.
 
 ---
 
