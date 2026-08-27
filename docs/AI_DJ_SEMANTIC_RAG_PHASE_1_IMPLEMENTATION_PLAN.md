@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 4 implementation complete with a CI correction pushed — fresh CI and real-library manual QA remain before merge
+**Status:** PR 4 implementation complete and CI-validated — real-library manual QA remains before merge
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1606,7 +1606,9 @@ No new third-party dependency is added in this PR.
   builds, and all five semantic cross-compiles, but its upgraded Staticcheck reported only
   ST1005 capitalization in Gemini adapter error strings. The messages were corrected; local
   Staticcheck passes for the changed semantic/API packages and the complete Go test suite is
-  green again. A fresh CI run is pending.
+  green again. The replacement CI run [33040594452](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33040594452)
+  is fully green: frontend checks, backend tests/race/vet/Staticcheck/build/vulnerability scans,
+  all five semantic cross-compiles, and the packaged Windows Wails binary scan.
 
 - **2026-08-27:** Smart Playlists now polls the existing semantic status endpoint and shows a
   compact readiness panel: ready semantic matching, background indexing progress with legacy
