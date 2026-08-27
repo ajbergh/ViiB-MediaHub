@@ -1590,10 +1590,11 @@ No new third-party dependency is added in this PR.
   build) pass. Existing non-failing palette and bundle-size warnings remain unchanged. The
   real-library manual QA matrix in §19 is the remaining product-level validation.
 - **2026-08-27:** GitHub Actions [run 33038365158](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33038365158)
-  passed for the current PR head: backend tests with race, vet, Staticcheck and vulnerability
-  checks; frontend checks; all five semantic cross-compiles; and the packaged Windows Wails
-  build plus binary vulnerability scan. The Node 20 deprecation notices are runner-action
-  warnings only. The PR remains a draft solely for the §19 real-library prompt matrix.
+  passed for the complete implementation revision preceding this status-only documentation
+  record: backend tests with race, vet, Staticcheck and vulnerability checks; frontend checks;
+  all five semantic cross-compiles; and the packaged Windows Wails build plus binary
+  vulnerability scan. The Node 20 deprecation notices are runner-action warnings only. The PR
+  remains a draft solely for the §19 real-library prompt matrix.
 
 #### Acceptance criteria
 
