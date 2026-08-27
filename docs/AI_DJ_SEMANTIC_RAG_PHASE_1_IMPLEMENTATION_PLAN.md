@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 4 in progress — local quality gates complete; GitHub CI and real-library manual QA remain
+**Status:** PR 4 implementation complete and CI-validated — real-library manual QA remains before merge
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1557,9 +1557,9 @@ No new third-party dependency is added in this PR.
 - [ ] Run the manual QA prompt matrix (§19).
 - [x] Update `docs/smart-playlists.md`, `docs/dj-mode.md`, and `docs/architecture.md`.
 - [x] Update relevant AI/settings documentation and the README feature summary.
-- [ ] Run final backend and frontend production builds, plus the five cross-compile targets.
-- [ ] Resolve all static-analysis, lint, and type errors introduced by Phase 1.
-- [ ] Mark completed items in this plan.
+- [x] Run final backend and frontend production builds, plus the five cross-compile targets.
+- [x] Resolve all static-analysis, lint, and type errors introduced by Phase 1.
+- [x] Mark completed items in this plan.
 
 #### PR 4 implementation notes
 
@@ -1587,9 +1587,13 @@ No new third-party dependency is added in this PR.
   deterministic metadata fallback.
 - **2026-08-27:** Final local verification is green: `go test ./...`, the focused semantic
   suite, and `npm run check` (token checks, TypeScript, 30 unit tests, and a production Vite
-  build) pass. Existing non-failing palette and bundle-size warnings remain unchanged. Full
-  GitHub Actions validation is in progress for the current PR head; the real-library manual QA
-  matrix in §19 is the remaining product-level validation.
+  build) pass. Existing non-failing palette and bundle-size warnings remain unchanged. The
+  real-library manual QA matrix in §19 is the remaining product-level validation.
+- **2026-08-27:** GitHub Actions [run 33038365158](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33038365158)
+  passed for the current PR head: backend tests with race, vet, Staticcheck and vulnerability
+  checks; frontend checks; all five semantic cross-compiles; and the packaged Windows Wails
+  build plus binary vulnerability scan. The Node 20 deprecation notices are runner-action
+  warnings only. The PR remains a draft solely for the §19 real-library prompt matrix.
 
 #### Acceptance criteria
 
