@@ -7,14 +7,18 @@ import (
 )
 
 const (
-	EmbeddingProviderAuto     = "auto"
-	EmbeddingProviderOllama   = "ollama"
-	EmbeddingProviderOpenAI   = "openai"
-	EmbeddingProviderDisabled = "disabled"
+	EmbeddingProviderAuto       = "auto"
+	EmbeddingProviderOllama     = "ollama"
+	EmbeddingProviderOpenAI     = "openai"
+	EmbeddingProviderOpenRouter = "openrouter"
+	EmbeddingProviderGemini     = "gemini"
+	EmbeddingProviderDisabled   = "disabled"
 
-	DefaultOllamaEmbeddingModel = "nomic-embed-text"
-	OllamaEmbeddingBatchSize    = 32
-	OpenAIEmbeddingBatchSize    = 128
+	DefaultOllamaEmbeddingModel  = "nomic-embed-text"
+	OllamaEmbeddingBatchSize     = 32
+	OpenAIEmbeddingBatchSize     = 128
+	OpenRouterEmbeddingBatchSize = 128
+	GeminiEmbeddingBatchSize     = 32
 )
 
 // EmbeddingProvider keeps provider-specific task prefixes and transport details

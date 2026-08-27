@@ -64,7 +64,7 @@ func TestResolveEmbeddingSettingsAutoProbeAndConfigurationMessage(t *testing.T) 
 }
 
 func TestResolveEmbeddingSettingsDocumentsNonNativeChatProviderFallback(t *testing.T) {
-	providers := []string{llm.ProviderGemini, llm.ProviderAnthropic, llm.ProviderXAI, llm.ProviderOpenRouter}
+	providers := []string{llm.ProviderAnthropic, llm.ProviderXAI}
 	for _, provider := range providers {
 		t.Run(provider, func(t *testing.T) {
 			database := newEmbeddingSettingsTestDB(t)
@@ -81,6 +81,22 @@ func TestResolveEmbeddingSettingsDocumentsNonNativeChatProviderFallback(t *testi
 	}
 }
 
+func TestResolveEmbeddingSettingsDirectsSupportedCloudChatProvidersToExplicitConfirmation(t *testing.T) {
+	providers := []string{llm.ProviderGemini, llm.ProviderOpenRouter}
+	for _, provider := range providers {
+		t.Run(provider, func(t *testing.T) {
+			database := newEmbeddingSettingsTestDB(t)
+			if err := database.SetSettingsBatch(map[string]string{"llm_provider": provider, "llm_api_key": "chat-key"}); err != nil {
+				t.Fatal(err)
+			}
+			resolution, err := resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) { return false, nil })
+			if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || resolution.Settings.Provider != provider || !strings.Contains(resolution.Reason, "embeddings are supported") {
+				t.Fatalf("resolution=%#v err=%v", resolution, err)
+			}
+		})
+	}
+}
+
 func TestResolveEmbeddingSettingsRecognizesLegacyGeminiFallback(t *testing.T) {
 	database := newEmbeddingSettingsTestDB(t)
 	if err := database.SetSetting("gemini_api_key", "legacy-key"); err != nil {
@@ -89,8 +105,33 @@ func TestResolveEmbeddingSettingsRecognizesLegacyGeminiFallback(t *testing.T) {
 	resolution, err := resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) {
 		return false, nil
 	})
-	if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || !strings.Contains(resolution.Reason, "gemini chat has no native Phase 1 embedding adapter") {
+	if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || !strings.Contains(resolution.Reason, "gemini embeddings are supported") {
 		t.Fatalf("resolution=%#v err=%v", resolution, err)
+	}
+}
+
+func TestExplicitOpenRouterAndGeminiReuseMatchingChatCredentials(t *testing.T) {
+	for _, test := range []struct {
+		provider, model string
+		dimensions      int
+	}{
+		{EmbeddingProviderOpenRouter, DefaultOpenRouterEmbeddingModel, DefaultOpenRouterDimensions},
+		{EmbeddingProviderGemini, DefaultGeminiEmbeddingModel, DefaultGeminiEmbeddingDimensions},
+	} {
+		t.Run(test.provider, func(t *testing.T) {
+			database := newEmbeddingSettingsTestDB(t)
+			if err := database.SetSettingsBatch(map[string]string{
+				SemanticEmbeddingProviderSetting: test.provider,
+				"llm_provider":                   test.provider,
+				"llm_api_key":                    "chat-key",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			resolution, err := ResolveEmbeddingSettings(context.Background(), database, nil)
+			if err != nil || !resolution.Ready() || resolution.Settings.APIKey != "chat-key" || resolution.Settings.Model != test.model || resolution.Settings.Dimensions != test.dimensions {
+				t.Fatalf("resolution=%#v err=%v", resolution, err)
+			}
+		})
 	}
 }
 
@@ -113,6 +154,19 @@ func TestNewConfiguredEmbeddingProviderCreatesOpenAIAdapter(t *testing.T) {
 	}, nil)
 	if err != nil || provider.Name() != EmbeddingProviderOpenAI || provider.Model() != DefaultOpenAIEmbeddingModel {
 		t.Fatalf("provider=%T err=%v", provider, err)
+	}
+}
+
+func TestNewConfiguredEmbeddingProviderCreatesSupportedCloudAdapters(t *testing.T) {
+	for _, settings := range []EmbeddingSettings{
+		{Provider: EmbeddingProviderOpenRouter, APIKey: "test-key"},
+		{Provider: EmbeddingProviderGemini, APIKey: "test-key"},
+	} {
+		provider, err := NewConfiguredEmbeddingProvider(settings, nil)
+		if err != nil || provider.Name() != settings.Provider {
+			t.Fatalf("settings=%#v provider=%T err=%v", settings, provider, err)
+		}
+		_ = provider.Close()
 	}
 }
 

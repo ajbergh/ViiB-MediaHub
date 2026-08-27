@@ -14,6 +14,9 @@ import (
 const (
 	DefaultOpenAIEmbeddingModel      = "text-embedding-3-small"
 	DefaultOpenAIEmbeddingDimensions = 512
+	DefaultOpenRouterBaseURL         = "https://openrouter.ai/api/v1"
+	DefaultOpenRouterEmbeddingModel  = "openai/text-embedding-3-small"
+	DefaultOpenRouterDimensions      = 512
 
 	SemanticEmbeddingProviderSetting   = "semantic_embedding_provider"
 	SemanticEmbeddingModelSetting      = "semantic_embedding_model"
@@ -108,10 +111,26 @@ func resolveEmbeddingSettings(ctx context.Context, database *db.DB, client *http
 	case EmbeddingProviderOllama:
 		return readyOllamaResolution(settings, "setting"), nil
 	case EmbeddingProviderOpenAI:
+		settings, err = loadConfiguredCloudCredential(database, settings, llm.ProviderOpenAI)
+		if err != nil {
+			return EmbeddingResolution{}, err
+		}
 		return readyOpenAIResolution(settings, "setting"), nil
+	case EmbeddingProviderOpenRouter:
+		settings, err = loadConfiguredCloudCredential(database, settings, llm.ProviderOpenRouter)
+		if err != nil {
+			return EmbeddingResolution{}, err
+		}
+		return readyOpenRouterResolution(settings, "setting"), nil
+	case EmbeddingProviderGemini:
+		settings, err = loadConfiguredCloudCredential(database, settings, llm.ProviderGemini)
+		if err != nil {
+			return EmbeddingResolution{}, err
+		}
+		return readyGeminiResolution(settings, "setting"), nil
 	case EmbeddingProviderAuto:
 	default:
-		return EmbeddingResolution{Settings: settings, Status: embeddingResolutionNeedsConfiguration, Source: "setting", Reason: "semantic embedding provider must be auto, ollama, openai, or disabled"}, nil
+		return EmbeddingResolution{Settings: settings, Status: embeddingResolutionNeedsConfiguration, Source: "setting", Reason: "semantic embedding provider must be auto, ollama, openai, openrouter, gemini, or disabled"}, nil
 	}
 
 	chatProvider, err := database.GetSetting("llm_provider")
@@ -146,6 +165,18 @@ func resolveEmbeddingSettings(ctx context.Context, database *db.DB, client *http
 		}
 		return readyOpenAIResolution(settings, "chat_provider"), nil
 	}
+	if chatProvider == llm.ProviderOpenRouter || chatProvider == llm.ProviderGemini {
+		settings.Provider = chatProvider
+		if chatProvider == llm.ProviderOpenRouter {
+			settings = readyOpenRouterResolution(settings, "chat_provider").Settings
+		} else {
+			settings = readyGeminiResolution(settings, "chat_provider").Settings
+		}
+		return EmbeddingResolution{
+			Settings: settings, Status: embeddingResolutionNeedsConfiguration, Source: "chat_provider",
+			Reason: fmt.Sprintf("%s embeddings are supported; select %s as the Semantic Retrieval embedding provider and confirm cloud indexing in Settings", chatProvider, chatProvider),
+		}, nil
+	}
 
 	if settings.BaseURL == "" {
 		settings.BaseURL = llm.DefaultOllamaEndpoint
@@ -165,14 +196,16 @@ func resolveEmbeddingSettings(ctx context.Context, database *db.DB, client *http
 }
 
 // autoConfigurationReason is intentionally explicit about chat providers that
-// do not have a native Phase 1 embedding adapter. Their chat credentials must
-// never be sent to an unrelated embedding API; an already-pulled local Ollama
-// model remains the supported automatic fallback.
+// either require an explicit cloud-embedding selection or have no native Phase 1
+// embedding adapter. Chat credentials are never sent to an unrelated API; an
+// already-pulled local Ollama model remains the supported automatic fallback.
 func autoConfigurationReason(chatProvider, ollamaModel string) string {
 	base := fmt.Sprintf("pull %q in Ollama or configure an OpenAI API key for semantic embeddings", ollamaModel)
 	switch chatProvider {
-	case llm.ProviderGemini, llm.ProviderAnthropic, llm.ProviderXAI, llm.ProviderOpenRouter:
+	case llm.ProviderAnthropic, llm.ProviderXAI:
 		return fmt.Sprintf("%s chat has no native Phase 1 embedding adapter; %s", chatProvider, base)
+	case llm.ProviderGemini, llm.ProviderOpenRouter:
+		return fmt.Sprintf("%s embeddings are supported; select %s as the Semantic Retrieval embedding provider in Settings", chatProvider, chatProvider)
 	default:
 		return base
 	}
@@ -203,6 +236,63 @@ func readyOpenAIResolution(settings EmbeddingSettings, source string) EmbeddingR
 	return EmbeddingResolution{Settings: settings, Status: embeddingResolutionReady, Source: source}
 }
 
+func readyOpenRouterResolution(settings EmbeddingSettings, source string) EmbeddingResolution {
+	settings.Provider = EmbeddingProviderOpenRouter
+	if settings.Model == "" {
+		settings.Model = DefaultOpenRouterEmbeddingModel
+	}
+	if settings.Dimensions == 0 {
+		settings.Dimensions = DefaultOpenRouterDimensions
+	}
+	if settings.BaseURL == "" {
+		settings.BaseURL = DefaultOpenRouterBaseURL
+	}
+	if settings.APIKey == "" {
+		return EmbeddingResolution{Settings: settings, Status: embeddingResolutionNeedsConfiguration, Source: source, Reason: "an OpenRouter API key is required for semantic retrieval"}
+	}
+	return EmbeddingResolution{Settings: settings, Status: embeddingResolutionReady, Source: source}
+}
+
+func readyGeminiResolution(settings EmbeddingSettings, source string) EmbeddingResolution {
+	settings.Provider = EmbeddingProviderGemini
+	if settings.Model == "" {
+		settings.Model = DefaultGeminiEmbeddingModel
+	}
+	if settings.Dimensions == 0 {
+		settings.Dimensions = DefaultGeminiEmbeddingDimensions
+	}
+	if settings.BaseURL == "" {
+		settings.BaseURL = DefaultGeminiEmbeddingBaseURL
+	}
+	if settings.APIKey == "" {
+		return EmbeddingResolution{Settings: settings, Status: embeddingResolutionNeedsConfiguration, Source: source, Reason: "a Gemini API key is required for semantic retrieval"}
+	}
+	return EmbeddingResolution{Settings: settings, Status: embeddingResolutionReady, Source: source}
+}
+
+func loadConfiguredCloudCredential(database *db.DB, settings EmbeddingSettings, provider string) (EmbeddingSettings, error) {
+	if settings.APIKey != "" {
+		return settings, nil
+	}
+	chatProvider, err := database.GetSetting("llm_provider")
+	if err != nil {
+		return settings, fmt.Errorf("read chat provider: %w", err)
+	}
+	if strings.EqualFold(strings.TrimSpace(chatProvider), provider) {
+		settings.APIKey, err = database.GetSetting("llm_api_key")
+		if err != nil {
+			return settings, fmt.Errorf("read chat API key: %w", err)
+		}
+	}
+	if provider == llm.ProviderGemini && strings.TrimSpace(settings.APIKey) == "" {
+		settings.APIKey, err = database.GetSetting("gemini_api_key")
+		if err != nil {
+			return settings, fmt.Errorf("read legacy Gemini API key: %w", err)
+		}
+	}
+	return settings, nil
+}
+
 // NewConfiguredEmbeddingProvider constructs the selected semantic embedding
 // adapter without changing the configured chat provider or model.
 func NewConfiguredEmbeddingProvider(settings EmbeddingSettings, client *http.Client) (EmbeddingProvider, error) {
@@ -211,6 +301,10 @@ func NewConfiguredEmbeddingProvider(settings EmbeddingSettings, client *http.Cli
 		return NewOllamaEmbeddingProvider(settings.BaseURL, settings.Model, client), nil
 	case EmbeddingProviderOpenAI:
 		return NewOpenAIEmbeddingProvider(settings.APIKey, settings.Model, settings.Dimensions, client)
+	case EmbeddingProviderOpenRouter:
+		return newOpenRouterEmbeddingProvider(settings.BaseURL, settings.APIKey, settings.Model, settings.Dimensions, client)
+	case EmbeddingProviderGemini:
+		return newGeminiEmbeddingProvider(settings.BaseURL, settings.APIKey, settings.Model, settings.Dimensions, client)
 	default:
 		return nil, fmt.Errorf("unsupported semantic embedding provider %q", settings.Provider)
 	}

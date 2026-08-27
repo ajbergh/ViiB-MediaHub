@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,11 +22,14 @@ const (
 // limits below are deliberately conservative guards: UTF-8 bytes upper-bound
 // tokens, so no request near the documented token limits is sent accidentally.
 type OpenAIEmbeddingProvider struct {
-	baseURL    string
-	apiKey     string
-	model      string
-	dimensions int
-	client     *http.Client
+	providerName string
+	errorLabel   string
+	baseURL      string
+	apiKey       string
+	model        string
+	dimensions   int
+	batchSize    int
+	client       *http.Client
 }
 
 func NewOpenAIEmbeddingProvider(apiKey, model string, dimensions int, client *http.Client) (*OpenAIEmbeddingProvider, error) {
@@ -35,15 +37,33 @@ func NewOpenAIEmbeddingProvider(apiKey, model string, dimensions int, client *ht
 }
 
 func newOpenAIEmbeddingProvider(baseURL, apiKey, model string, dimensions int, client *http.Client) (*OpenAIEmbeddingProvider, error) {
+	return newOpenAICompatibleEmbeddingProvider(EmbeddingProviderOpenAI, "OpenAI", baseURL, apiKey, model, dimensions, OpenAIEmbeddingBatchSize, true, client)
+}
+
+// NewOpenRouterEmbeddingProvider uses OpenRouter's documented OpenAI-compatible
+// embeddings endpoint while retaining a distinct vector identity.
+func NewOpenRouterEmbeddingProvider(apiKey, model string, dimensions int, client *http.Client) (*OpenAIEmbeddingProvider, error) {
+	return newOpenRouterEmbeddingProvider(DefaultOpenRouterBaseURL, apiKey, model, dimensions, client)
+}
+
+func newOpenRouterEmbeddingProvider(baseURL, apiKey, model string, dimensions int, client *http.Client) (*OpenAIEmbeddingProvider, error) {
+	return newOpenAICompatibleEmbeddingProvider(EmbeddingProviderOpenRouter, "OpenRouter", baseURL, apiKey, model, dimensions, OpenRouterEmbeddingBatchSize, false, client)
+}
+
+func newOpenAICompatibleEmbeddingProvider(providerName, errorLabel, baseURL, apiKey, model string, dimensions, batchSize int, requireOpenAIModel bool, client *http.Client) (*OpenAIEmbeddingProvider, error) {
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
-		return nil, errors.New("an OpenAI API key is required for semantic retrieval")
+		return nil, fmt.Errorf("a %s API key is required for semantic retrieval", errorLabel)
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
-		model = DefaultOpenAIEmbeddingModel
+		if providerName == EmbeddingProviderOpenRouter {
+			model = DefaultOpenRouterEmbeddingModel
+		} else {
+			model = DefaultOpenAIEmbeddingModel
+		}
 	}
-	if !strings.HasPrefix(model, "text-embedding-3-") {
+	if requireOpenAIModel && !strings.HasPrefix(model, "text-embedding-3-") {
 		return nil, fmt.Errorf("OpenAI semantic dimensions require a text-embedding-3 model, got %q", model)
 	}
 	if dimensions <= 0 {
@@ -56,15 +76,18 @@ func newOpenAIEmbeddingProvider(baseURL, apiKey, model string, dimensions int, c
 		client = &http.Client{Timeout: openAIEmbeddingTimeout}
 	}
 	return &OpenAIEmbeddingProvider{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKey:     apiKey,
-		model:      model,
-		dimensions: dimensions,
-		client:     client,
+		providerName: providerName,
+		errorLabel:   errorLabel,
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		apiKey:       apiKey,
+		model:        model,
+		dimensions:   dimensions,
+		batchSize:    batchSize,
+		client:       client,
 	}, nil
 }
 
-func (provider *OpenAIEmbeddingProvider) Name() string { return EmbeddingProviderOpenAI }
+func (provider *OpenAIEmbeddingProvider) Name() string { return provider.providerName }
 
 func (provider *OpenAIEmbeddingProvider) Model() string { return provider.model }
 
@@ -72,11 +95,11 @@ func (provider *OpenAIEmbeddingProvider) DocumentPrefix() string { return "" }
 
 func (provider *OpenAIEmbeddingProvider) QueryPrefix() string { return "" }
 
-func (provider *OpenAIEmbeddingProvider) MaxBatchSize() int { return OpenAIEmbeddingBatchSize }
+func (provider *OpenAIEmbeddingProvider) MaxBatchSize() int { return provider.batchSize }
 
 func (provider *OpenAIEmbeddingProvider) EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) > provider.MaxBatchSize() {
-		return nil, fmt.Errorf("OpenAI batch size %d exceeds maximum %d", len(texts), provider.MaxBatchSize())
+		return nil, fmt.Errorf("%s batch size %d exceeds maximum %d", provider.errorLabel, len(texts), provider.MaxBatchSize())
 	}
 	return provider.embed(ctx, texts)
 }
@@ -87,27 +110,27 @@ func (provider *OpenAIEmbeddingProvider) EmbedQuery(ctx context.Context, text st
 		return nil, err
 	}
 	if len(vectors) != 1 {
-		return nil, fmt.Errorf("OpenAI returned %d query embeddings", len(vectors))
+		return nil, fmt.Errorf("%s returned %d query embeddings", provider.errorLabel, len(vectors))
 	}
 	return vectors[0], nil
 }
 
 func (provider *OpenAIEmbeddingProvider) embed(ctx context.Context, inputs []string) ([][]float32, error) {
 	if len(inputs) == 0 {
-		return nil, errors.New("OpenAI embedding input cannot be empty")
+		return nil, fmt.Errorf("%s embedding input cannot be empty", provider.errorLabel)
 	}
 	inputBytes := 0
 	for index, input := range inputs {
 		if strings.TrimSpace(input) == "" {
-			return nil, fmt.Errorf("OpenAI embedding input %d is empty", index)
+			return nil, fmt.Errorf("%s embedding input %d is empty", provider.errorLabel, index)
 		}
 		bytes := len([]byte(input))
 		if bytes > openAIEmbeddingMaxInputBytes {
-			return nil, fmt.Errorf("OpenAI embedding input %d is %d bytes, exceeds conservative %d-byte limit", index, bytes, openAIEmbeddingMaxInputBytes)
+			return nil, fmt.Errorf("%s embedding input %d is %d bytes, exceeds conservative %d-byte limit", provider.errorLabel, index, bytes, openAIEmbeddingMaxInputBytes)
 		}
 		inputBytes += bytes
 		if inputBytes > openAIEmbeddingMaxBatchBytes {
-			return nil, fmt.Errorf("OpenAI embedding request is %d bytes, exceeds conservative %d-byte limit", inputBytes, openAIEmbeddingMaxBatchBytes)
+			return nil, fmt.Errorf("%s embedding request is %d bytes, exceeds conservative %d-byte limit", provider.errorLabel, inputBytes, openAIEmbeddingMaxBatchBytes)
 		}
 	}
 	payload, err := json.Marshal(struct {
@@ -122,7 +145,7 @@ func (provider *OpenAIEmbeddingProvider) embed(ctx context.Context, inputs []str
 		EncodingFormat: "float",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("encode OpenAI embedding request: %w", err)
+		return nil, fmt.Errorf("encode %s embedding request: %w", provider.errorLabel, err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, provider.baseURL+"/embeddings", bytes.NewReader(payload))
 	if err != nil {
@@ -132,12 +155,12 @@ func (provider *OpenAIEmbeddingProvider) embed(ctx context.Context, inputs []str
 	request.Header.Set("Content-Type", "application/json")
 	response, err := provider.client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("request OpenAI embeddings: %w", err)
+		return nil, fmt.Errorf("request %s embeddings: %w", provider.errorLabel, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 8<<10))
-		return nil, fmt.Errorf("OpenAI embeddings returned %s: %s", response.Status, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("%s embeddings returned %s: %s", provider.errorLabel, response.Status, strings.TrimSpace(string(body)))
 	}
 	var result struct {
 		Data []struct {
@@ -146,18 +169,18 @@ func (provider *OpenAIEmbeddingProvider) embed(ctx context.Context, inputs []str
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 64<<20)).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode OpenAI embeddings: %w", err)
+		return nil, fmt.Errorf("decode %s embeddings: %w", provider.errorLabel, err)
 	}
 	if len(result.Data) != len(inputs) {
-		return nil, fmt.Errorf("OpenAI returned %d embeddings for %d inputs", len(result.Data), len(inputs))
+		return nil, fmt.Errorf("%s returned %d embeddings for %d inputs", provider.errorLabel, len(result.Data), len(inputs))
 	}
 	vectors := make([][]float32, len(inputs))
 	for _, datum := range result.Data {
 		if datum.Index < 0 || datum.Index >= len(vectors) {
-			return nil, fmt.Errorf("OpenAI returned embedding index %d for %d inputs", datum.Index, len(vectors))
+			return nil, fmt.Errorf("%s returned embedding index %d for %d inputs", provider.errorLabel, datum.Index, len(vectors))
 		}
 		if vectors[datum.Index] != nil {
-			return nil, fmt.Errorf("OpenAI returned duplicate embedding index %d", datum.Index)
+			return nil, fmt.Errorf("%s returned duplicate embedding index %d", provider.errorLabel, datum.Index)
 		}
 		vectors[datum.Index] = datum.Embedding
 	}

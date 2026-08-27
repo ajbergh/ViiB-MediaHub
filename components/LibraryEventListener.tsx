@@ -166,7 +166,7 @@ const LibraryEventListener = () => {
               totalBatches: payload.data?.totalBatches || 0,
               message: payload.message,
             });
-			addLog('info', `[AI Enhancement] ${payload.message}`, payload.data);
+			addLog('info', `[AI Enrichment] ${payload.message}`, payload.data);
             break;
           case 'enrichment_progress':
           case 'mood_progress':
@@ -181,7 +181,11 @@ const LibraryEventListener = () => {
 			const progressKey = `${payload.type}:${payload.data?.processedSongs || 0}:${payload.data?.totalSongs || 0}`;
 			if (payload.data?.processedSongs && progressKey !== lastEnrichmentProgressRef.current) {
 				lastEnrichmentProgressRef.current = progressKey;
-				addLog('info', `[AI Enhancement] ${payload.message}`, payload.data);
+				addLog('info', `[AI Enrichment] ${payload.message}`, payload.data);
+				// Scanner progress is emitted after each enrichment transaction.
+				// Pull that committed revision now so metadata health, smart mixes,
+				// songs, and AI DJ inputs update while enrichment is still running.
+				syncCommittedLibraryMutation();
 			}
             break;
           case 'enrichment_complete':
@@ -191,7 +195,7 @@ const LibraryEventListener = () => {
               processedSongs: payload.data?.enrichedSongs || payload.data?.processedSongs || 0,
               message: payload.message,
             });
-			addLog('success', `[AI Enhancement] ${payload.message}`, payload.data);
+			addLog('success', `[AI Enrichment] ${payload.message}`, payload.data);
             if (deltaAvailableRef.current) enqueueSync();
             else refreshLibrary();
             window.dispatchEvent(new CustomEvent(payload.type, { detail: payload }));

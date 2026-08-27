@@ -139,8 +139,57 @@ func TestSemanticServiceRequiresOpenAICostConfirmationBeforeStarting(t *testing.
 	api := &API{db: database}
 	api.initSemanticService()
 	resolution, service, _ := api.semanticSnapshot()
-	if service != nil || resolution.Status != "needs_configuration" || !strings.Contains(resolution.Reason, "confirm the one-time OpenAI embedding estimate") {
+	if service != nil || resolution.Status != "needs_configuration" || !strings.Contains(resolution.Reason, "confirm one-time openai cloud embedding") {
 		t.Fatalf("resolution=%#v service=%v", resolution, service)
+	}
+}
+
+func TestSemanticSettingsProviderSwitchReusesOnlyMatchingChatKeyAndPreservesConfirmation(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "semantic-provider-switch.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.SetSettingsBatch(map[string]string{
+		"llm_provider": semantic.EmbeddingProviderOpenRouter,
+		"llm_api_key":  "router-chat-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	api := &API{db: database, semanticClosed: true}
+	routes := api.Routes()
+
+	openAI := httptest.NewRecorder()
+	routes.ServeHTTP(openAI, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"openai","model":"text-embedding-3-small","dimensions":512,"baseURL":"","apiKey":"openai-only-key"}`)))
+	if openAI.Code != http.StatusOK {
+		t.Fatalf("OpenAI update code=%d body=%s", openAI.Code, openAI.Body.String())
+	}
+
+	openRouter := httptest.NewRecorder()
+	routes.ServeHTTP(openRouter, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"openrouter","model":"openai/text-embedding-3-small","dimensions":512,"baseURL":"","confirmCloudCost":true}`)))
+	if openRouter.Code != http.StatusOK {
+		t.Fatalf("OpenRouter update code=%d body=%s", openRouter.Code, openRouter.Body.String())
+	}
+	if storedKey, err := database.GetSetting(semantic.SemanticEmbeddingAPIKeySetting); err != nil || storedKey != "" {
+		t.Fatalf("provider switch retained dedicated key %q err=%v", storedKey, err)
+	}
+	resolution, err := semantic.ResolveEmbeddingSettings(context.Background(), database, nil)
+	if err != nil || !resolution.Ready() || resolution.Settings.APIKey != "router-chat-key" {
+		t.Fatalf("resolution=%#v err=%v", resolution, err)
+	}
+	confirmed, err := semantic.CloudEmbeddingCostConfirmed(context.Background(), database, resolution.Settings)
+	if err != nil || !confirmed.Confirmed {
+		t.Fatalf("confirmed=%#v err=%v", confirmed, err)
+	}
+
+	repeat := httptest.NewRecorder()
+	routes.ServeHTTP(repeat, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"openrouter","model":"openai/text-embedding-3-small","dimensions":512,"baseURL":""}`)))
+	if repeat.Code != http.StatusOK {
+		t.Fatalf("repeat update code=%d body=%s", repeat.Code, repeat.Body.String())
+	}
+	confirmed, err = semantic.CloudEmbeddingCostConfirmed(context.Background(), database, resolution.Settings)
+	if err != nil || !confirmed.Confirmed {
+		t.Fatalf("unchanged provider lost confirmation: confirmed=%#v err=%v", confirmed, err)
 	}
 }
 

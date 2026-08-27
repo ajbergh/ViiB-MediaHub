@@ -193,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
           <div
             role="status"
             aria-live="polite"
-            aria-label="AI metadata enhancement in progress"
+            aria-label="AI metadata enrichment in progress"
             className={`rounded-lg border border-brand/40 bg-brand/10 p-3 shadow-[0_0_18px_rgba(153,232,83,0.12)] ${effectiveCollapsed ? 'p-2' : ''}`}
           >
             <div className={`flex items-center gap-3 text-brand ${effectiveCollapsed ? 'justify-center' : ''}`}>
@@ -204,7 +204,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
               <Sparkles size={19} className="animate-pulse motion-reduce:animate-none" />
               {!effectiveCollapsed && (
                 <div className="min-w-0 flex-1">
-                  <span className="block text-xs font-bold uppercase tracking-wide text-brand">AI enhancement running</span>
+                  <span className="block text-xs font-bold uppercase tracking-wide text-brand">AI enrichment in progress</span>
                   <span className="block truncate text-[11px] text-text-secondary">{enrichmentStatus.message || 'Preparing your library…'}</span>
                 </div>
               )}
@@ -232,7 +232,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
           <div className={`flex flex-col gap-2 text-text-secondary ${effectiveCollapsed ? 'items-center' : ''}`}>
             <div className={`flex items-center gap-3 text-brand ${effectiveCollapsed ? 'justify-center' : ''}`}>
               <Loader2 size={20} className="animate-spin motion-reduce:animate-none" />
-              {!effectiveCollapsed && <span className="text-sm font-semibold">Scanning...</span>}
+              {!effectiveCollapsed && (
+				<span className="text-sm font-semibold">
+				  {scanProgress.toLowerCase().includes('ai enrichment') ? 'AI Enrichment…' : 'Scanning…'}
+				</span>
+			  )}
             </div>
             {!effectiveCollapsed && scanProgress && <span className="text-xs text-text-subtle line-clamp-1">{scanProgress}</span>}
           </div>

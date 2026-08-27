@@ -23,6 +23,7 @@ const (
 // verified against OpenAI's embedding-model documentation on 2026-08-26.
 // ConfirmationID is persisted internally but never returned to the browser.
 type OpenAIEmbeddingCostEstimate struct {
+	Provider                 string  `json:"provider"`
 	Model                    string  `json:"model"`
 	Dimensions               int     `json:"dimensions"`
 	Documents                int     `json:"documents"`
@@ -31,6 +32,7 @@ type OpenAIEmbeddingCostEstimate struct {
 	USDPerMillionInputTokens float64 `json:"usdPerMillionInputTokens"`
 	TypicalUSD               float64 `json:"typicalUSD"`
 	MaximumUSD               float64 `json:"maximumUSD"`
+	PricingKnown             bool    `json:"pricingKnown"`
 	Confirmed                bool    `json:"confirmed"`
 	confirmationID           string
 }
@@ -38,23 +40,55 @@ type OpenAIEmbeddingCostEstimate struct {
 // EstimateOpenAIEmbeddingCost counts the exact Phase 1 document set produced
 // for the current catalog. It contains no API call and does not persist data.
 func EstimateOpenAIEmbeddingCost(ctx context.Context, database *db.DB, settings EmbeddingSettings) (OpenAIEmbeddingCostEstimate, error) {
+	settings.Provider = EmbeddingProviderOpenAI
+	return EstimateCloudEmbeddingCost(ctx, database, settings)
+}
+
+// EstimateCloudEmbeddingCost creates a stable confirmation for every cloud
+// adapter. Direct OpenAI has a pinned price estimate; router/provider pricing
+// remains explicitly unknown rather than presenting a misleading dollar value.
+func EstimateCloudEmbeddingCost(ctx context.Context, database *db.DB, settings EmbeddingSettings) (OpenAIEmbeddingCostEstimate, error) {
 	if database == nil {
 		return OpenAIEmbeddingCostEstimate{}, fmt.Errorf("semantic database is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return OpenAIEmbeddingCostEstimate{}, err
 	}
+	provider := strings.ToLower(strings.TrimSpace(settings.Provider))
 	model := strings.TrimSpace(settings.Model)
-	if model == "" {
-		model = DefaultOpenAIEmbeddingModel
-	}
-	price, err := openAIEmbeddingPrice(model)
-	if err != nil {
-		return OpenAIEmbeddingCostEstimate{}, err
-	}
 	dimensions := settings.Dimensions
-	if dimensions <= 0 {
-		dimensions = DefaultOpenAIEmbeddingDimensions
+	price := 0.0
+	pricingKnown := false
+	switch provider {
+	case EmbeddingProviderOpenAI:
+		if model == "" {
+			model = DefaultOpenAIEmbeddingModel
+		}
+		var priceErr error
+		price, priceErr = openAIEmbeddingPrice(model)
+		if priceErr != nil {
+			return OpenAIEmbeddingCostEstimate{}, priceErr
+		}
+		pricingKnown = true
+		if dimensions <= 0 {
+			dimensions = DefaultOpenAIEmbeddingDimensions
+		}
+	case EmbeddingProviderOpenRouter:
+		if model == "" {
+			model = DefaultOpenRouterEmbeddingModel
+		}
+		if dimensions <= 0 {
+			dimensions = DefaultOpenRouterDimensions
+		}
+	case EmbeddingProviderGemini:
+		if model == "" {
+			model = DefaultGeminiEmbeddingModel
+		}
+		if dimensions <= 0 {
+			dimensions = DefaultGeminiEmbeddingDimensions
+		}
+	default:
+		return OpenAIEmbeddingCostEstimate{}, fmt.Errorf("cloud embedding confirmation does not support provider %q", provider)
 	}
 	songs, err := database.GetAllSongs()
 	if err != nil {
@@ -65,16 +99,18 @@ func EstimateOpenAIEmbeddingCost(ctx context.Context, database *db.DB, settings 
 	}
 	documents := BuildDocuments(songs, DocumentContext{})
 	estimate := OpenAIEmbeddingCostEstimate{
+		Provider:                 provider,
 		Model:                    model,
 		Dimensions:               dimensions,
 		Documents:                len(documents),
 		TypicalInputTokens:       len(documents) * openAIEmbeddingTypicalTokensPerDocument,
 		MaximumInputTokens:       len(documents) * openAIEmbeddingMaximumTokensPerDocument,
 		USDPerMillionInputTokens: price,
+		PricingKnown:             pricingKnown,
 	}
 	estimate.TypicalUSD = float64(estimate.TypicalInputTokens) * price / 1_000_000
 	estimate.MaximumUSD = float64(estimate.MaximumInputTokens) * price / 1_000_000
-	identity := fmt.Sprintf("%s\x00%d\x00%d\x00%d\x00%d\x00%.6f", estimate.Model, estimate.Dimensions, estimate.Documents, estimate.TypicalInputTokens, estimate.MaximumInputTokens, estimate.USDPerMillionInputTokens)
+	identity := fmt.Sprintf("%s\x00%s\x00%d\x00%d\x00%d\x00%d\x00%.6f", estimate.Provider, estimate.Model, estimate.Dimensions, estimate.Documents, estimate.TypicalInputTokens, estimate.MaximumInputTokens, estimate.USDPerMillionInputTokens)
 	sum := sha256.Sum256([]byte(identity))
 	estimate.confirmationID = hex.EncodeToString(sum[:])
 	return estimate, nil
@@ -83,13 +119,18 @@ func EstimateOpenAIEmbeddingCost(ctx context.Context, database *db.DB, settings 
 // OpenAIEmbeddingCostConfirmed validates that the user explicitly accepted a
 // current catalog/model/dimensions estimate before any cloud indexing starts.
 func OpenAIEmbeddingCostConfirmed(ctx context.Context, database *db.DB, settings EmbeddingSettings) (OpenAIEmbeddingCostEstimate, error) {
-	estimate, err := EstimateOpenAIEmbeddingCost(ctx, database, settings)
+	settings.Provider = EmbeddingProviderOpenAI
+	return CloudEmbeddingCostConfirmed(ctx, database, settings)
+}
+
+func CloudEmbeddingCostConfirmed(ctx context.Context, database *db.DB, settings EmbeddingSettings) (OpenAIEmbeddingCostEstimate, error) {
+	estimate, err := EstimateCloudEmbeddingCost(ctx, database, settings)
 	if err != nil {
 		return OpenAIEmbeddingCostEstimate{}, err
 	}
 	confirmed, err := database.GetSetting(SemanticEmbeddingCloudConfirmationSetting)
 	if err != nil {
-		return OpenAIEmbeddingCostEstimate{}, fmt.Errorf("read OpenAI embedding confirmation: %w", err)
+		return OpenAIEmbeddingCostEstimate{}, fmt.Errorf("read cloud embedding confirmation: %w", err)
 	}
 	estimate.Confirmed = strings.TrimSpace(confirmed) == estimate.confirmationID
 	return estimate, nil

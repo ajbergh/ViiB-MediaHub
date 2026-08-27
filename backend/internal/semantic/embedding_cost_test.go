@@ -40,3 +40,23 @@ func TestOpenAIEmbeddingCostEstimateRejectsUnpricedModel(t *testing.T) {
 		t.Fatal("unpriced model accepted")
 	}
 }
+
+func TestCloudEmbeddingConfirmationSupportsOpenRouterAndGeminiWithoutInventingPrices(t *testing.T) {
+	database := newEmbeddingSettingsTestDB(t)
+	for _, settings := range []EmbeddingSettings{
+		{Provider: EmbeddingProviderOpenRouter, Model: DefaultOpenRouterEmbeddingModel, Dimensions: DefaultOpenRouterDimensions},
+		{Provider: EmbeddingProviderGemini, Model: DefaultGeminiEmbeddingModel, Dimensions: DefaultGeminiEmbeddingDimensions},
+	} {
+		estimate, err := EstimateCloudEmbeddingCost(context.Background(), database, settings)
+		if err != nil || estimate.Provider != settings.Provider || estimate.PricingKnown || estimate.Documents != 0 {
+			t.Fatalf("settings=%#v estimate=%#v err=%v", settings, estimate, err)
+		}
+		if err := database.SetSetting(SemanticEmbeddingCloudConfirmationSetting, estimate.ConfirmationID()); err != nil {
+			t.Fatal(err)
+		}
+		confirmed, err := CloudEmbeddingCostConfirmed(context.Background(), database, settings)
+		if err != nil || !confirmed.Confirmed {
+			t.Fatalf("settings=%#v confirmed=%#v err=%v", settings, confirmed, err)
+		}
+	}
+}

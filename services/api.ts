@@ -1861,7 +1861,7 @@ export interface LLMTestResponse {
 // ==================== Semantic Index Types ====================
 
 export interface SemanticSettings {
-  provider: 'auto' | 'ollama' | 'openai' | 'disabled';
+  provider: 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
   model: string;
   dimensions: number;
   baseURL: string;
@@ -1872,7 +1872,7 @@ export interface SemanticSettings {
 }
 
 export interface SemanticSettingsRequest {
-  provider: 'auto' | 'ollama' | 'openai' | 'disabled';
+  provider: 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
   model: string;
   dimensions?: number;
   baseURL: string;
@@ -1881,6 +1881,7 @@ export interface SemanticSettingsRequest {
 }
 
 export interface SemanticCloudCost {
+  provider: 'openai' | 'openrouter' | 'gemini';
   model: string;
   dimensions: number;
   documents: number;
@@ -1889,6 +1890,7 @@ export interface SemanticCloudCost {
   usdPerMillionInputTokens: number;
   typicalUSD: number;
   maximumUSD: number;
+  pricingKnown: boolean;
   confirmed: boolean;
 }
 
