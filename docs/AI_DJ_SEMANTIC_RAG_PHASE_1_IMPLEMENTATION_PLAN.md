@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 3 in progress — semantic AI DJ retrieval and ranking
+**Status:** PR 3 complete — semantic AI DJ retrieval and ranking merged; PR 4 is next
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1304,6 +1304,10 @@ Four ordered PRs. Each must leave `main` buildable and usable after squash merge
   `main` as `4d7256a`. Started PR 3 on `feature/ai-dj-semantic-retrieval` from that merged
   head; this scope connects semantic retrieval to normal AI playlists and DJ sets while
   retaining the tested legacy fallback.
+- **2026-08-27:** PR [#25](https://github.com/ajbergh/ViiB-MediaHub/pull/25) merged to
+  `main` as `825a260`. Its final CI run passed backend validation (tests, race detector,
+  vet, Staticcheck, builds, and vulnerability scans), frontend checks, all five semantic
+  cross-compiles, and the packaged Windows Wails build/binary scan.
 
 #### PR 1 implementation notes (2026-08-26)
 
