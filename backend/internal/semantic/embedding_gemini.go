@@ -83,17 +83,17 @@ func (provider *GeminiEmbeddingProvider) EmbedQuery(ctx context.Context, text st
 		return nil, err
 	}
 	if len(vectors) != 1 {
-		return nil, fmt.Errorf("Gemini returned %d query embeddings", len(vectors))
+		return nil, fmt.Errorf("gemini returned %d query embeddings", len(vectors))
 	}
 	return vectors[0], nil
 }
 
 func (provider *GeminiEmbeddingProvider) embed(ctx context.Context, texts []string, taskType string) ([][]float32, error) {
 	if len(texts) == 0 {
-		return nil, errors.New("Gemini embedding input cannot be empty")
+		return nil, errors.New("gemini embedding input cannot be empty")
 	}
 	if len(texts) > provider.MaxBatchSize() {
-		return nil, fmt.Errorf("Gemini batch size %d exceeds maximum %d", len(texts), provider.MaxBatchSize())
+		return nil, fmt.Errorf("gemini batch size %d exceeds maximum %d", len(texts), provider.MaxBatchSize())
 	}
 	type part struct {
 		Text string `json:"text"`
@@ -112,7 +112,7 @@ func (provider *GeminiEmbeddingProvider) embed(ctx context.Context, texts []stri
 	}{Requests: make([]embedRequest, len(texts))}
 	for index, text := range texts {
 		if strings.TrimSpace(text) == "" {
-			return nil, fmt.Errorf("Gemini embedding input %d is empty", index)
+			return nil, fmt.Errorf("gemini embedding input %d is empty", index)
 		}
 		payload.Requests[index] = embedRequest{
 			Model:                "models/" + provider.model,
@@ -138,7 +138,7 @@ func (provider *GeminiEmbeddingProvider) embed(ctx context.Context, texts []stri
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 8<<10))
-		return nil, fmt.Errorf("Gemini embeddings returned %s: %s", response.Status, strings.TrimSpace(string(responseBody)))
+		return nil, fmt.Errorf("gemini embeddings returned %s: %s", response.Status, strings.TrimSpace(string(responseBody)))
 	}
 	var result struct {
 		Embeddings []struct {
@@ -149,7 +149,7 @@ func (provider *GeminiEmbeddingProvider) embed(ctx context.Context, texts []stri
 		return nil, fmt.Errorf("decode Gemini embeddings: %w", err)
 	}
 	if len(result.Embeddings) != len(texts) {
-		return nil, fmt.Errorf("Gemini returned %d embeddings for %d inputs", len(result.Embeddings), len(texts))
+		return nil, fmt.Errorf("gemini returned %d embeddings for %d inputs", len(result.Embeddings), len(texts))
 	}
 	vectors := make([][]float32, len(result.Embeddings))
 	for index, embedding := range result.Embeddings {

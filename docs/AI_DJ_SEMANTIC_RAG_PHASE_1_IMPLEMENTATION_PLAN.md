@@ -1772,8 +1772,8 @@ net for delayed or missed stream events.
 ### 20.2 Post-implementation reliability follow-up — enrichment visibility and cloud embeddings
 
 **Status:** Corrective implementation and local automated validation complete on
-`fix/fresh-install-library-live-sync`; packaged behavior retest and PR #28 CI are the
-remaining gates.
+`fix/fresh-install-library-live-sync`; packaged behavior retest and the corrected PR #28
+CI rerun are the remaining gates.
 
 - Automatic post-scan enrichment now uses the same unified metadata pipeline as the
   Settings action. It writes genre, mood, BPM/energy, and release-year results through
@@ -1794,6 +1794,11 @@ remaining gates.
   palette/raw-color checks, and the Vite production build. Playwright confirmed the
   OpenRouter/Gemini choices, OpenRouter defaults (`openai/text-embedding-3-small`, 512
   dimensions), matching chat-key reuse copy, and provider-specific cloud confirmation UI.
+- PR #28 CI [run 33117569410](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33117569410)
+  passed frontend validation and all five semantic cross-compiles. Backend tests and race
+  tests also passed, but Staticcheck rejected six capitalized Gemini transport errors;
+  those messages are corrected and the focused semantic/API tests pass locally. The
+  follow-up CI run is required before the PR can leave draft.
 
 ---
 
