@@ -101,7 +101,9 @@ See [Spotify Integration](docs/spotify.md).
 
 ### AI DJ and library intelligence
 
-- Natural-language playlist generation
+- Natural-language playlist generation with semantic track, album, and artist recall when the optional local SQLite index is ready
+- Semantic AI DJ phase retrieval with local source/filter enforcement, behaviour-aware ranking, diversity, BPM flow, and deterministic metadata fallback
+- Separate semantic embedding configuration: local Ollama or explicitly cost-confirmed OpenAI embeddings; chat-provider settings and listening history are never repurposed as embedding content
 - Smart Mixes based on catalog metadata and listening history
 - Multi-provider LLM support including Gemini, OpenAI, Anthropic, OpenRouter, Ollama, and X.AI where configured
 - Genre, mood, energy, tempo, BPM, and year enrichment

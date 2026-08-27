@@ -24,6 +24,20 @@ Spotify browse/stream/download ──> separate Spotify integration
 
 The SQLite `songs` table remains the canonical ViiB catalog for local filesystem tracks and synchronized Plex music.
 
+## Semantic retrieval subsystem
+
+Semantic retrieval is a local, SQLite-backed companion to the canonical catalog. It creates deterministic text documents for tracks, albums, and artists, persists L2-normalized embedding vectors in SQLite, and rebuilds its in-memory exact-search arenas from those durable rows on startup.
+
+```text
+User prompt → intent compiler → query embedding → exact track / album / artist retrieval
+                                               → local filters + behaviour ranking + diversity
+                                               → playlist or phase-aware DJ sequencing
+```
+
+The intent compiler never receives the full song catalog or local taxonomy. Query embeddings are cached in memory only; user listening behaviour, file paths, and internal song IDs are never included in embedding text. Semantic settings are separate from chat-provider settings. Local Ollama indexing stays local; OpenAI indexing requires an explicit one-time cost confirmation before deterministic document text is sent to its embeddings API.
+
+The service indexes in the background, survives provider failures as retryable document errors, and can be reindexed or reloaded through local status endpoints. A model/provider identity or vector-dimension inconsistency cannot mix vector spaces: replacement vectors are checked before persistence, and the existing metadata-based AI DJ path remains a deterministic fallback whenever a searchable semantic index is not available.
+
 ## Local filesystem source
 
 Local folders are configured in Settings and ingested by the Go scanner.

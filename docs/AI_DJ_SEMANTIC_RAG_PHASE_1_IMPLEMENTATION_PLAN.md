@@ -1555,8 +1555,8 @@ No new third-party dependency is added in this PR.
 - [x] Add provider failure and retry tests, including a provider returning zero-magnitude vectors.
 - [x] Add a migration-from-existing-user-library test.
 - [ ] Run the manual QA prompt matrix (§19).
-- [ ] Update `docs/smart-playlists.md`, `docs/dj-mode.md`, and `docs/architecture.md`.
-- [ ] Update relevant AI/settings documentation and the README feature summary.
+- [x] Update `docs/smart-playlists.md`, `docs/dj-mode.md`, and `docs/architecture.md`.
+- [x] Update relevant AI/settings documentation and the README feature summary.
 - [ ] Run final backend and frontend production builds, plus the five cross-compile targets.
 - [ ] Resolve all static-analysis, lint, and type errors introduced by Phase 1.
 - [ ] Mark completed items in this plan.
@@ -1580,6 +1580,11 @@ No new third-party dependency is added in this PR.
   512-dimension exact-scan fixture. One local run measured 13.4 ms per 300-result scan; the
   semantic suite passes. Local race execution is unavailable because CGO is disabled, so GitHub
   Actions remains the race-validation source.
+- **2026-08-27:** Updated Smart Playlists, DJ Mode, architecture, Settings, and README
+  documentation for the semantic retrieval lifecycle: independent embedding configuration,
+  Ollama/OpenAI privacy and explicit-cost boundary, background indexing, count-only diagnostics,
+  local hard filters/ranking, phase-aware DJ retrieval, vector-space consistency, and the
+  deterministic metadata fallback.
 
 #### Acceptance criteria
 
