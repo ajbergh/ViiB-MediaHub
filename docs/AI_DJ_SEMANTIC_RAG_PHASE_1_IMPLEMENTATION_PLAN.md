@@ -1828,7 +1828,7 @@ because a user's files have incomplete genre or mood metadata.
 
 ## 23. Related follow-up — Plex AI metadata writeback
 
-**Status:** Implementation complete on `feature/plex-ai-metadata-writeback`; local backend and frontend validation passed. Draft [PR #27](https://github.com/ajbergh/ViiB-MediaHub/pull/27) is open. The initial CI run caught two missing review-panel icon imports; the correction now passes the full frontend check and a replacement CI run is required. Real-PMS manual QA remains before merge.
+**Status:** Implementation complete on `feature/plex-ai-metadata-writeback`; local backend and frontend validation passed. Draft [PR #27](https://github.com/ajbergh/ViiB-MediaHub/pull/27) is open. The corrected implementation passed [CI run 33082530012](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33082530012), including frontend, backend race validation, semantic cross-compiles, and the Windows Wails package build. Real-PMS manual QA remains before merge.
 
 This is a related Plex-source enhancement, not a change to the Phase 1 semantic-vector design:
 
