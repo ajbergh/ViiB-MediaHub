@@ -1771,8 +1771,9 @@ net for delayed or missed stream events.
 
 ### 20.2 Post-implementation reliability follow-up — enrichment visibility and cloud embeddings
 
-**Status:** Corrective implementation and automated validation complete on
-`fix/fresh-install-library-live-sync`; the packaged behavior retest is the remaining gate.
+**Status:** Corrective implementation and local automated validation complete on
+`fix/fresh-install-library-live-sync`; the branch-head CI rerun and packaged behavior
+retest are the remaining gates.
 
 - Automatic post-scan enrichment now uses the same unified metadata pipeline as the
   Settings action. It writes genre, mood, BPM/energy, and release-year results through
@@ -1789,6 +1790,11 @@ net for delayed or missed stream events.
   until the catalog-specific cloud operation is confirmed. OpenRouter/Gemini pricing is
   intentionally not fabricated: the UI displays deterministic document/token estimates
   and states that actual provider billing applies.
+- First-run AI-provider setup now initializes an unset/`auto` semantic provider to the
+  matching embedding-capable provider (`ollama`, `openai`, `openrouter`, or `gemini`) with
+  its embedding model and dimensions. Configuring OpenRouter in the wizard therefore
+  presents OpenRouter semantic confirmation instead of probing localhost Ollama. A
+  previously explicit semantic-provider choice is never overwritten.
 - Local validation passed `go test ./...`, frontend typechecking, all 31 frontend tests,
   palette/raw-color checks, and the Vite production build. Playwright confirmed the
   OpenRouter/Gemini choices, OpenRouter defaults (`openai/text-embedding-3-small`, 512

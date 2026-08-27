@@ -2114,6 +2114,17 @@ export const Settings: React.FC = () => {
                               const settings = await api.getLLMSettings();
                               setLlmModels(settings.models || {});
                             }
+                            // A new installation links an unset/auto semantic
+                            // provider to the selected embedding-capable chat
+                            // provider. Reflect that backend initialization
+                            // immediately without requiring a page reload.
+                            const semanticSettings = await api.getSemanticSettings();
+                            setSemanticProvider(semanticSettings.provider);
+                            setSemanticModel(semanticSettings.model || '');
+                            setSemanticBaseURL(semanticSettings.baseURL || 'http://localhost:11434');
+                            setSemanticDimensions(semanticSettings.dimensions || (semanticSettings.provider === 'gemini' ? 768 : semanticSettings.provider === 'openai' || semanticSettings.provider === 'openrouter' ? 512 : 0));
+                            setSemanticCloudCost(semanticSettings.cloudCost || null);
+                            setSemanticCloudConfirmed(false);
                             setLlmSaveStatus('saved');
                             setTimeout(() => setLlmSaveStatus('idle'), 3000);
                           } catch (e) {

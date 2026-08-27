@@ -193,6 +193,57 @@ func TestSemanticSettingsProviderSwitchReusesOnlyMatchingChatKeyAndPreservesConf
 	}
 }
 
+func TestLLMSettingsInitializeMatchingSemanticProviderInsteadOfOllamaFallback(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "llm-semantic-bootstrap.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	api := &API{db: database, semanticClosed: true}
+	routes := api.Routes()
+
+	response := httptest.NewRecorder()
+	routes.ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/llm/settings", bytes.NewBufferString(`{"provider":"openrouter","model":"openrouter/auto","apiKey":"router-chat-key","baseURL":"http://localhost:11434"}`)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("LLM update code=%d body=%s", response.Code, response.Body.String())
+	}
+	settings, err := semantic.LoadEmbeddingSettings(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Provider != semantic.EmbeddingProviderOpenRouter || settings.Model != semantic.DefaultOpenRouterEmbeddingModel || settings.Dimensions != semantic.DefaultOpenRouterDimensions || settings.BaseURL != "" || settings.APIKey != "" {
+		t.Fatalf("semantic settings=%#v", settings)
+	}
+	resolution, err := semantic.ResolveEmbeddingSettings(context.Background(), database, nil)
+	if err != nil || !resolution.Ready() || resolution.Settings.APIKey != "router-chat-key" || strings.Contains(strings.ToLower(resolution.Reason), "ollama") {
+		t.Fatalf("resolution=%#v err=%v", resolution, err)
+	}
+}
+
+func TestLLMSettingsDoNotOverrideExplicitSemanticProvider(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "llm-semantic-explicit.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.SetSettingsBatch(map[string]string{
+		semantic.SemanticEmbeddingProviderSetting: semantic.EmbeddingProviderOllama,
+		semantic.SemanticEmbeddingModelSetting:    "custom-local-embedding",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	api := &API{db: database, semanticClosed: true}
+	response := httptest.NewRecorder()
+	api.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/llm/settings", bytes.NewBufferString(`{"provider":"openrouter","model":"openrouter/auto","apiKey":"router-chat-key"}`)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("LLM update code=%d body=%s", response.Code, response.Body.String())
+	}
+	settings, err := semantic.LoadEmbeddingSettings(database)
+	if err != nil || settings.Provider != semantic.EmbeddingProviderOllama || settings.Model != "custom-local-embedding" {
+		t.Fatalf("semantic settings=%#v err=%v", settings, err)
+	}
+}
+
 type apiEmbeddingProvider struct{}
 
 func (apiEmbeddingProvider) Name() string           { return semantic.EmbeddingProviderOllama }
