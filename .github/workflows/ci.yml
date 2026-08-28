@@ -180,6 +180,11 @@ jobs:
         with:
           name: desktop-frontend-dist
           path: backend/cmd/wails/frontend/dist
+      - name: Prepare Wails package assets
+        shell: bash
+        run: |
+          mkdir -p backend/cmd/wails/build
+          cp assets/icons/appicon.png backend/cmd/wails/build/appicon.png
       - name: Build Wails application
         id: wails_build
         continue-on-error: true
