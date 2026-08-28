@@ -55,6 +55,36 @@ export interface PlexConfig {
   authenticated: boolean;
 }
 
+export interface PlexMetadataWritebackField {
+  field: 'genres' | 'year' | string;
+  before: string[] | number;
+  after: string[] | number;
+}
+
+export interface PlexMetadataWritebackItem {
+  songId: string;
+  title: string;
+  artist: string;
+  album: string;
+  proposedGenres?: string[];
+  proposedYear?: number;
+  changes: PlexMetadataWritebackField[];
+  status: 'ready' | 'already_matches' | string;
+}
+
+export interface PlexMetadataWritebackPreview {
+  confirmation: string;
+  items: PlexMetadataWritebackItem[];
+  hasMore: boolean;
+}
+
+export interface PlexMetadataWritebackResult {
+  updated: number;
+  verified: number;
+  failed: number;
+  errors?: string[];
+}
+
 export interface PlexAuthStart {
   authUrl: string;
   expiresAt: number;
@@ -165,6 +195,24 @@ export const plexService = {
     const response = await fetch(`${PLEX_API_BASE}/sync/status`);
     const result = await plexResponse<{ source: PlexSource | null }>(response);
     return result.source;
+  },
+
+  async previewAIEnrichmentWriteback(songIds?: string[]): Promise<PlexMetadataWritebackPreview> {
+    const response = await fetch(`${PLEX_API_BASE}/metadata-writeback/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ songIds: songIds || [] }),
+    });
+    return plexResponse<PlexMetadataWritebackPreview>(response);
+  },
+
+  async syncAIEnrichmentWriteback(confirmation: string, songIds?: string[]): Promise<PlexMetadataWritebackResult> {
+    const response = await fetch(`${PLEX_API_BASE}/metadata-writeback/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation, songIds: songIds || [] }),
+    });
+    return plexResponse<PlexMetadataWritebackResult>(response);
   },
 };
 

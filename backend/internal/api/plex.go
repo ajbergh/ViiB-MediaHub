@@ -37,6 +37,8 @@ func (a *API) PlexRoutes() chi.Router {
 	r.Put("/library", a.selectPlexLibrary)
 	r.Post("/sync", a.startPlexSync)
 	r.Get("/sync/status", a.getPlexSyncStatus)
+	r.Post("/metadata-writeback/preview", a.previewPlexMetadataWriteback)
+	r.Post("/metadata-writeback/sync", a.syncPlexMetadataWriteback)
 	return r
 }
 
@@ -75,6 +77,8 @@ func classifyPlexError(err error) (status int, code, message string, retryable b
 		status, code, message, retryable = http.StatusUnauthorized, "plex_auth_required", "Plex authentication is required or has expired", false
 	case errors.Is(err, plex.ErrNotPlexServer):
 		status, code, message, retryable = http.StatusBadRequest, "not_plex_server", "The configured endpoint is not a Plex Media Server", false
+	case errors.Is(err, plex.ErrMetadataWriteNotAllowed):
+		status, code, message, retryable = http.StatusForbidden, "plex_metadata_write_not_allowed", "This Plex account is not allowed to change library metadata", false
 	case errors.Is(err, plex.ErrDNSFailure):
 		code, message = "plex_dns_failed", "Plex server DNS lookup failed"
 	case errors.Is(err, plex.ErrConnectionTimeout):
