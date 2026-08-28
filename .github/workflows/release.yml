@@ -1,6 +1,10 @@
 name: Release binaries
 
 on:
+  pull_request:
+    paths:
+      - '.release-version'
+      - '.github/workflows/release.yml'
   push:
     branches: [main]
     paths:
@@ -90,7 +94,7 @@ jobs:
       - name: Upload validated frontend bundle
         uses: actions/upload-artifact@v4
         with:
-          name: release-frontend-dist
+          name: validated-frontend-dist
           path: dist
           if-no-files-found: error
           retention-days: 7
@@ -120,7 +124,7 @@ jobs:
       - name: Download validated frontend bundle
         uses: actions/download-artifact@v4
         with:
-          name: release-frontend-dist
+          name: validated-frontend-dist
           path: backend/cmd/wails/frontend/dist
 
       - name: Prepare Wails assets
@@ -227,7 +231,7 @@ jobs:
       - name: Download validated frontend bundle
         uses: actions/download-artifact@v4
         with:
-          name: release-frontend-dist
+          name: validated-frontend-dist
           path: backend/cmd/wails/frontend/dist
 
       - name: Prepare Wails assets
@@ -320,7 +324,7 @@ jobs:
       - name: Download validated frontend bundle
         uses: actions/download-artifact@v4
         with:
-          name: release-frontend-dist
+          name: validated-frontend-dist
           path: backend/cmd/wails/frontend/dist
 
       - name: Prepare Wails assets
@@ -472,7 +476,8 @@ jobs:
           retention-days: 14
 
   publish:
-    name: Publish GitHub prerelease
+    name: Publish GitHub release
+    if: github.event_name != 'pull_request'
     needs: [prepare, linux, macos, windows]
     runs-on: ubuntu-24.04
     env:
@@ -519,13 +524,13 @@ jobs:
           ViiB MediaHub ${VERSION} is the first 1.0 release candidate.
 
           ### Installers
-          - **Windows 10/11 x64:** `ViiB-MediaHub-${VERSION}-windows-x64-setup.exe`
-          - **macOS Apple Silicon:** `ViiB-MediaHub-${VERSION}-macos-arm64.dmg`
-          - **macOS Intel:** `ViiB-MediaHub-${VERSION}-macos-x64.dmg`
-          - **Ubuntu/Debian x64:** `ViiB-MediaHub-${VERSION}-linux-amd64.deb`
-          - **Generic Linux x64:** `ViiB-MediaHub-${VERSION}-linux-amd64.tar.gz`
+          - **Windows 10/11 x64:** ViiB-MediaHub-${VERSION}-windows-x64-setup.exe
+          - **macOS Apple Silicon:** ViiB-MediaHub-${VERSION}-macos-arm64.dmg
+          - **macOS Intel:** ViiB-MediaHub-${VERSION}-macos-x64.dmg
+          - **Ubuntu/Debian x64:** ViiB-MediaHub-${VERSION}-linux-amd64.deb
+          - **Generic Linux x64:** ViiB-MediaHub-${VERSION}-linux-amd64.tar.gz
 
-          `SHA256SUMS.txt` contains checksums for every downloadable binary.
+          SHA256SUMS.txt contains checksums for every downloadable binary.
 
           ### Release-candidate notes
           - macOS packages are ad-hoc signed but not Apple-notarized in this RC, so Gatekeeper may require **Open Anyway** on first launch.
