@@ -1846,8 +1846,8 @@ net for delayed or missed stream events.
 
 ### 20.3 Post-implementation reliability follow-up — AI DJ constraint adherence
 
-**Status:** Implementation and local automated validation complete on
-`fix/fresh-install-library-live-sync`; PR #28 CI and packaged behavior validation are pending.
+**Status:** Implementation and automated validation complete on
+`fix/fresh-install-library-live-sync`; packaged behavior validation is pending.
 
 - The intent contract now separates positive semantic meaning from `requiredStyles` and
   `excludedTerms`. Explicit `no`, `without`, `exclude`, and `avoid` clauses are also parsed
@@ -1878,6 +1878,9 @@ net for delayed or missed stream events.
   K-pop genre drift, negative-query rejection, and weak semantic tail suppression.
 - Local validation passed `go test ./...` and the complete `npm run check` gate: palette/raw-color
   audits, TypeScript, all 31 frontend tests, and the production Vite build.
+- PR #28 CI [run 33139207096](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33139207096)
+  passed frontend validation, full backend validation, all five semantic cross-compiles,
+  and the packaged Windows Wails build/binary scan for implementation commit `78bc284`.
 
 ---
 
