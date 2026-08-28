@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PRs #26 and #27 are squash-merged; PR #28 reliability, live-refresh, and AI DJ constraint work is being reconciled and validated for the final squash merge
+**Status:** Phase 1 and its approved reliability follow-ups are implemented, CI-validated, and squash-merged to `main` through PRs #22–#28; real-library and real-Plex behavior QA remains an operational follow-up
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -1834,9 +1834,8 @@ discovery/favorites behaviour; sensible flow in DJ mode.
 
 ### 20.1 Post-implementation reliability follow-up — fresh local library UI
 
-**Status:** Corrective implementation complete on
-`fix/fresh-install-library-live-sync`. Draft
-[PR #28](https://github.com/ajbergh/ViiB-MediaHub/pull/28) is open. A
+**Status:** Corrective implementation was CI-validated and squash-merged to `main` in
+[PR #28](https://github.com/ajbergh/ViiB-MediaHub/pull/28). A
 fresh-install retest showed that consuming scanner batch events alone was not
 sufficient: the wizard launch path did not start scan polling, and polling only
 reloaded the catalog after completion. The wizard now starts polling, and the
@@ -1845,8 +1844,8 @@ The focused 50 → 100 → 200 track polling regression test passes, as do the f
 frontend typecheck, 31-test suite, and production build. CI
 [run 33089476890](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33089476890)
 passed the frontend, backend, five semantic cross-platform, and packaged Windows
-desktop build gates for implementation commit `6a56d70`. Another packaged
-fresh-install behavior check is the remaining gate before merge.
+desktop build gates for implementation commit `6a56d70`. Real-library
+fresh-install behavior remains part of operational QA after merge.
 
 Fresh local-library scans already persist tracks in batches and emit
 `library_updated`, but the renderer ignored that event while waiting solely for
@@ -1859,8 +1858,8 @@ net for delayed or missed stream events.
 
 ### 20.2 Post-implementation reliability follow-up — enrichment visibility and cloud embeddings
 
-**Status:** Corrective implementation and automated validation complete on
-`fix/fresh-install-library-live-sync`. The packaged behavior retest is the remaining gate.
+**Status:** Corrective implementation and automated validation were completed and
+squash-merged to `main` in [PR #28](https://github.com/ajbergh/ViiB-MediaHub/pull/28).
 
 - Automatic post-scan enrichment now uses the same unified metadata pipeline as the
   Settings action. It writes genre, mood, BPM/energy, and release-year results through
@@ -1905,8 +1904,7 @@ net for delayed or missed stream events.
 - Corrected CI [run 33117916790](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33117916790)
   passed frontend checks, complete backend validation (including race, vet, Staticcheck,
   builds, and vulnerability scans), all five semantic cross-compiles, and the packaged
-  Windows Wails build/binary scan. PR #28 remains draft only for the packaged behavior
-  checks above.
+  Windows Wails build/binary scan.
 - First-run provider-alignment CI
   [run 33123478399](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33123478399)
   passed frontend validation, full backend validation, all five semantic cross-compiles,
@@ -1921,7 +1919,8 @@ net for delayed or missed stream events.
 ### 20.3 Post-implementation reliability follow-up — AI DJ constraint adherence
 
 **Status:** Implementation and automated validation complete on
-`fix/fresh-install-library-live-sync`; packaged behavior validation is pending.
+`main` via squash-merged [PR #28](https://github.com/ajbergh/ViiB-MediaHub/pull/28);
+real-library behavior validation remains an operational follow-up.
 
 - The intent contract now separates positive semantic meaning from `requiredStyles` and
   `excludedTerms`. Explicit `no`, `without`, `exclude`, and `avoid` clauses are also parsed
@@ -1955,6 +1954,10 @@ net for delayed or missed stream events.
 - PR #28 CI [run 33139207096](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33139207096)
   passed frontend validation, full backend validation, all five semantic cross-compiles,
   and the packaged Windows Wails build/binary scan for implementation commit `78bc284`.
+- Final reconciled PR #28 CI [run 33179474122](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33179474122)
+  passed frontend validation, full backend validation, all five semantic cross-compiles,
+  the packaged Windows Wails build, and its binary vulnerability scan before squash merge
+  as `4790ec9`.
 
 ---
 
@@ -2048,7 +2051,7 @@ because a user's files have incomplete genre or mood metadata.
 
 ## 23. Related follow-up — Plex AI metadata writeback
 
-**Status:** Implementation complete on `feature/plex-ai-metadata-writeback`; local backend and frontend validation passed. Draft [PR #27](https://github.com/ajbergh/ViiB-MediaHub/pull/27) is open. The corrected implementation passed [CI run 33082530012](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33082530012), including frontend, backend race validation, semantic cross-compiles, and the Windows Wails package build. Real-PMS manual QA remains before merge.
+**Status:** Implementation and automated validation are complete and were squash-merged to `main` in [PR #27](https://github.com/ajbergh/ViiB-MediaHub/pull/27). The corrected implementation passed [CI run 33082530012](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33082530012), including frontend, backend race validation, semantic cross-compiles, and the Windows Wails package build. Real-PMS manual QA remains an operational follow-up.
 
 This is a related Plex-source enhancement, not a change to the Phase 1 semantic-vector design:
 
