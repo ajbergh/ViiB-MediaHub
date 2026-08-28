@@ -25,11 +25,15 @@ $advisoryIds = @(
         Sort-Object -Unique
 )
 
-# Binary-mode govulncheck currently overmatches GO-2026-5932 in the stripped
-# Windows Wails executable even though the production package graph does not
-# import golang.org/x/crypto/openpgp. Keep this exception fail-closed: it is
-# accepted only when it is the sole advisory and an independent tagged package
-# graph check confirms that no OpenPGP package is linked by application source.
+# Binary-mode govulncheck can overmatch packages in the stripped Windows Wails
+# executable. Keep exceptions fail-closed: every reported advisory must be a
+# specifically known Windows binary overmatch, and an independent production
+# package-graph check must confirm that the affected package is not imported.
+$knownWindowsBinaryOvermatches = @{
+    'GO-2026-5932' = '^golang\.org/x/crypto/openpgp($|/)'
+    'GO-2026-6303' = '^golang\.org/x/crypto/ssh($|/)'
+}
+
 Push-Location $backendRoot
 try {
     $productionDependencies = & go list -tags 'desktop,production' -deps ./cmd/wails 2>&1
@@ -40,20 +44,38 @@ try {
     Pop-Location
 }
 
-$openPgpDependencies = @(
-    $productionDependencies |
-        Where-Object { $_ -match '^golang\.org/x/crypto/openpgp($|/)' }
+$unexpectedAdvisories = @(
+    $advisoryIds |
+        Where-Object { -not $knownWindowsBinaryOvermatches.ContainsKey($_) }
 )
 
-$onlyKnownFalsePositive =
-    $advisoryIds.Count -eq 1 -and
-    $advisoryIds[0] -eq 'GO-2026-5932' -and
-    $openPgpDependencies.Count -eq 0
+if ($unexpectedAdvisories.Count -gt 0) {
+    Write-Error "Windows binary vulnerability scan failed with unexpected advisories: $($unexpectedAdvisories -join ', ')"
+    exit 1
+}
 
-if ($onlyKnownFalsePositive) {
-    Write-Warning 'Allowing GO-2026-5932: production dependency graph confirms golang.org/x/crypto/openpgp is not imported.'
+$linkedKnownAdvisories = @()
+foreach ($advisoryId in $advisoryIds) {
+    $packagePattern = $knownWindowsBinaryOvermatches[$advisoryId]
+    $matchingDependencies = @(
+        $productionDependencies |
+            Where-Object { $_ -match $packagePattern }
+    )
+
+    if ($matchingDependencies.Count -gt 0) {
+        $linkedKnownAdvisories += $advisoryId
+    }
+}
+
+if ($advisoryIds.Count -gt 0 -and $linkedKnownAdvisories.Count -eq 0) {
+    Write-Warning "Allowing known Windows binary-mode overmatch(es): $($advisoryIds -join ', '). Production dependency graph confirms the affected packages are not imported."
     exit 0
 }
 
-Write-Error "Windows binary vulnerability scan failed. Advisories: $($advisoryIds -join ', ')"
+if ($linkedKnownAdvisories.Count -gt 0) {
+    Write-Error "Windows binary vulnerability scan failed. Affected package(s) are present in the production dependency graph for: $($linkedKnownAdvisories -join ', ')"
+    exit 1
+}
+
+Write-Error "Windows binary vulnerability scan failed without a recognized advisory."
 exit 1
