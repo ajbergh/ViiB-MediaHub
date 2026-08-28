@@ -86,14 +86,30 @@ func TestRetrieveSemanticCandidatesAppliesNegativeQueryOnlyToPositiveCandidates(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(retrieval.Candidates) != 1 {
+	if len(retrieval.Candidates) != 0 || retrieval.Diagnostics.NegativeRejected != 1 {
 		t.Fatalf("retrieval=%#v", retrieval)
-	}
-	evidence := retrieval.Candidates[0].Evidence
-	if !evidence.NegativeApplied || evidence.NegativeSimilarity <= 0 || evidence.AdjustedSimilarity >= evidence.BestSimilarity {
-		t.Fatalf("evidence=%#v", evidence)
 	}
 	if provider.queryCallCount() != 2 {
 		t.Fatalf("query calls=%d, want one positive and one negative embedding", provider.queryCallCount())
+	}
+}
+
+func TestFilterSongsByConstraintsRejectsChristmasAndGenreDrift(t *testing.T) {
+	songs := []db.Song{
+		{ID: "good", Title: "Future Steps", Artist: "Modern Quartet", Album: "Nu Jazz", Genre: []string{"Nu Jazz"}},
+		{ID: "christmas-title", Title: "Last Christmas - Jazz Version", Artist: "Quartet", Album: "Jazz", Genre: []string{"Jazz"}},
+		{ID: "christmas-album", Title: "Winter Song", Artist: "Trio", Album: "Christmas Jazz Instrumental Music", Genre: []string{"Jazz"}},
+		{ID: "auld-lang-syne", Title: "Auld Lang Syne", Artist: "Trio", Album: "Standards", Genre: []string{"Jazz"}},
+		{ID: "kpop", Title: "Strategy", Artist: "TWICE", Album: "Soundtrack", Genre: []string{"K-Pop"}},
+	}
+	filtered, diagnostics := FilterSongsByConstraints(songs, SemanticRetrievalOptions{
+		RequiredStyles: []string{"jazz"},
+		ExcludedTerms:  []string{"Christmas music"},
+	})
+	if len(filtered) != 1 || filtered[0].ID != "good" {
+		t.Fatalf("filtered=%#v diagnostics=%#v", filtered, diagnostics)
+	}
+	if diagnostics.HardExcluded != 3 || diagnostics.StyleMismatches != 1 {
+		t.Fatalf("diagnostics=%#v", diagnostics)
 	}
 }

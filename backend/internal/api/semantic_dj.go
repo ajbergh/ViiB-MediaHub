@@ -25,6 +25,8 @@ type semanticDJRetrievalResult struct {
 	Pools               []dj.PhaseCandidatePool
 	CandidateCount      int
 	PhaseCandidateCount []int
+	Diagnostics         semantic.SemanticFilterDiagnostics
+	RankingFiltered     int
 }
 
 // retrieveSemanticDJPhasePools resolves each planned semantic query into a
@@ -63,6 +65,8 @@ func (a *API) retrieveSemanticDJPhasePools(ctx context.Context, plan *dj.DJSetPl
 			YearConstraintHard:    request.Intent.YearConstraintHard,
 			InstrumentalOnly:      request.Intent.InstrumentalOnly,
 			NegativeSemanticQuery: negativeQuery,
+			RequiredStyles:        request.Intent.RequiredStyles,
+			ExcludedTerms:         request.Intent.ExcludedTerms,
 		})
 		if err != nil {
 			if errors.Is(err, semantic.ErrNoSearchableSemanticIndex) {
@@ -70,6 +74,9 @@ func (a *API) retrieveSemanticDJPhasePools(ctx context.Context, plan *dj.DJSetPl
 			}
 			return semanticDJRetrievalResult{}, false, fmt.Errorf("phase %q semantic retrieval: %w", phase.Name, err)
 		}
+		result.Diagnostics.HardExcluded += retrieval.Diagnostics.HardExcluded
+		result.Diagnostics.StyleMismatches += retrieval.Diagnostics.StyleMismatches
+		result.Diagnostics.NegativeRejected += retrieval.Diagnostics.NegativeRejected
 		targetCount := max(phase.TargetCount, 1)
 		targetSongCount += targetCount
 		if len(retrieval.Candidates) < targetCount {
@@ -83,6 +90,7 @@ func (a *API) retrieveSemanticDJPhasePools(ctx context.Context, plan *dj.DJSetPl
 			MinYear:           request.Intent.MinYear,
 			MaxYear:           request.Intent.MaxYear,
 		})
+		result.RankingFiltered += max(0, len(retrieval.Candidates)-len(ranked))
 		poolLimit := min(semanticPlaylistRankingLimit, max(semanticDJMinimumPhasePool, targetCount*5))
 		selected, err := service.ApplyMMRDiversity(ctx, ranked, semantic.DiversityOptions{
 			DiscoverMode: request.DiscoverMode,

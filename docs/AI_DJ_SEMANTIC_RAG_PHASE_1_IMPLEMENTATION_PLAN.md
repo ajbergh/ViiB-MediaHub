@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** PR 3 complete — semantic AI DJ retrieval and ranking merged; PR 4 is next
+**Status:** Phase 1 semantic retrieval is complete; reliability and AI DJ constraint-adherence corrections are in draft PR #28
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -63,6 +63,11 @@ User prompt ──────►│ LLM Intent Compiler     │
                    │ phase / BPM / flow      │
                    └────────────┬────────────┘
                                 ▼
+                   ┌─────────────────────────┐
+                   │ Bounded Final Audit     │
+                   │ contradiction veto only│
+                   └────────────┬────────────┘
+                                ▼
                          Valid ViiB song IDs
 ```
 
@@ -92,6 +97,8 @@ ViiB songs / Last.fm / AI enrichment
 - Semantic query generation from the AI DJ LLM.
 - Semantic retrieval for both normal AI playlist mode and DJ set mode.
 - Hard exclusions and source filters.
+- Deterministic required-style gates, exclusion aliases, and semantic quality floors.
+- A bounded final LLM contradiction audit over retrieved catalog candidates only.
 - Behavioural reranking (likes, skips, plays, recency, discovery/favorites).
 - Diversity control via MMR-style selection.
 - Existing BPM/flow sequencing, updated to consume semantic relevance.
@@ -110,7 +117,7 @@ ViiB songs / Last.fm / AI enrichment
 - A hosted vector database.
 - Metadata scraping outside integrations already present in ViiB.
 - An LLM choosing track names from its training knowledge.
-- A final LLM editorial pass over retrieved tracks.
+- Open-ended LLM playlist rewriting, reordering, or catalog-wide track selection.
 - Cross-user collaborative recommendation.
 - Training a recommender model from listening history.
 
@@ -1704,6 +1711,10 @@ Run against a real large library where possible. Record results in the PR 4 desc
    — source filtering on the unified catalog.
 8. Pick a deliberately poorly tagged track whose artist has good Last.fm context, then use a matching semantic prompt.
    — hierarchical rescue.
+9. `new-school upbeat jazz - no christmas music`
+   — required-style enforcement, Christmas/holiday aliases, weak-tail suppression, and
+   final-list veto in both Playlist and DJ modes. The result may be shorter than requested
+   but must not contain Christmas tracks or unrelated pop/K-pop filler.
 
 Evaluation criteria: coherent theme; exclusions obeyed; no non-existent songs; useful
 inclusion of poorly tagged tracks; reasonable artist diversity; expected
@@ -1732,6 +1743,9 @@ discovery/favorites behaviour; sensible flow in DJ mode.
 - [ ] Both normal playlist mode and DJ mode use semantic retrieval when available.
 - [ ] Track, album, and artist retrieval are combined and deduplicated.
 - [ ] Hard artist, source, and instrumental constraints are deterministic.
+- [x] Explicit negative terms and positive style requirements are enforced deterministically before playback.
+- [x] Weak semantic tail matches are not used merely to fill the requested count.
+- [x] The configured chat LLM performs a bounded, contradiction-only final audit over known catalog IDs.
 - [ ] User behaviour remains a ranking signal, never embedding content.
 - [ ] `dj.PlanCacheKey.String()` no longer encodes integers as Unicode code points and includes time context.
 - [ ] Diversity/MMR prevents obvious semantic clustering, over a bounded working set.
@@ -1830,6 +1844,41 @@ net for delayed or missed stream events.
   passed frontend validation, full backend validation, all five semantic cross-compiles,
   and the packaged Windows Wails build/binary scan for implementation commit `2a809ee`.
 
+### 20.3 Post-implementation reliability follow-up — AI DJ constraint adherence
+
+**Status:** Implementation and local automated validation complete on
+`fix/fresh-install-library-live-sync`; PR #28 CI and packaged behavior validation are pending.
+
+- The intent contract now separates positive semantic meaning from `requiredStyles` and
+  `excludedTerms`. Explicit `no`, `without`, `exclude`, and `avoid` clauses are also parsed
+  deterministically and merged back after LLM compilation, so a model cannot silently drop
+  a user constraint or contaminate the positive embedding query with the excluded concept.
+- Both semantic and legacy candidate paths apply the same deterministic constraint policy.
+  Required styles are checked against track metadata and Last.fm tags; explicit exclusions
+  are checked across title, artist, album, genres, and community tags. Christmas/holiday
+  aliases include Christmas, Xmas, Yuletide, Noel, carols, holidays, and `Auld Lang Syne`.
+- Negative-query similarity is now a rejection signal as well as a score penalty. Required
+  style mismatches cannot enter through broad album/artist expansion unless an untagged track
+  has strong direct-track semantic evidence.
+- Hybrid ranking has absolute and best-result-relative quality floors. MMR receives a bounded
+  reserve pool, but AI DJ returns fewer tracks when it cannot safely satisfy the request rather
+  than filling the requested count with a weak semantic tail.
+- After deterministic filtering and sequencing, the configured chat provider receives only the
+  original request, compiled constraints, and at most 100 compact catalog candidates per batch.
+  Its strict JSON response may veto known IDs for clear contradictions; it cannot invent tracks,
+  reorder the list, or recommend replacements. If the audit provider is unavailable or fails,
+  deterministic safeguards remain active and the response reports that degraded state.
+- The AI DJ page persists and displays **Request safeguards** with required/excluded chips,
+  deterministic removal counts, final-audit reviewed/vetoed counts, degraded-audit warnings,
+  and an explicit notice when quality enforcement shortens the result.
+- Logs now record the compiled positive query, required styles, excluded terms, negative query,
+  each final-audit rejection with its evidence, and the aggregate reviewed/accepted/rejected count.
+- Regression coverage includes the exact reported prompt, proof that LLM intent output cannot
+  erase explicit constraints, strict final-audit ID/schema validation, Christmas/holiday aliases,
+  K-pop genre drift, negative-query rejection, and weak semantic tail suppression.
+- Local validation passed `go test ./...` and the complete `npm run check` gate: palette/raw-color
+  audits, TypeScript, all 31 frontend tests, and the production Vite build.
+
 ---
 
 ## 21. Phase 1 deferred items
@@ -1897,7 +1946,8 @@ per node, i.e. 20–40 MB at 20k nodes.
 - Playlist-vector centroids and playlist continuation as a first-class feature.
 - Semantic global library search outside AI DJ.
 - A `More Like This` context action.
-- An optional LLM final-curator pass over a bounded retrieved candidate set.
+- An optional creative LLM curator that reorders or rewrites a playlist beyond the implemented
+  contradiction-only final veto.
 - Learned user preference vectors.
 - Automatic exploration/exploitation tuning from long-term feedback.
 - Multiple embedding models active simultaneously.
@@ -1911,8 +1961,8 @@ embedding family later. Phase 1 does not implement it.
 ## 22. Guiding principle
 
 > **The LLM understands the user's intent. The semantic index finds music that matches
-> that meaning. ViiB's local ranking and DJ engine decide which valid tracks to play and
-> in what order.**
+> that meaning. ViiB's deterministic policy, local ranking, and DJ engine decide which
+> tracks to play and in what order; a bounded LLM audit may only veto clear contradictions.**
 
 The LLM no longer reasons over the whole library, and AI DJ quality no longer collapses
 because a user's files have incomplete genre or mood metadata.

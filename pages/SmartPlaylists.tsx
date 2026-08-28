@@ -31,7 +31,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import { Sparkles, Play, Save, RefreshCw, Music, Zap, Heart, Clock, Shuffle, User, Compass, Sun, Radio, Mic2, Timer, BarChart3, Server } from 'lucide-react';
+import { Sparkles, Play, Save, RefreshCw, Music, Zap, Heart, Clock, Shuffle, User, Compass, Sun, Radio, Mic2, Timer, BarChart3, Server, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Song } from '../types';
 import { api, MatchedGenre, SmartPlaylistFilter, DJPersonaDefinition } from '../services/api';
 import { apiSongToSong } from '../services/backendService';
@@ -59,6 +59,7 @@ export const SmartPlaylists: React.FC = () => {
     aiDjPrompt,
     aiDjGeneratedSongs,
     aiDjFilter,
+    aiDjValidation,
     aiDjIsLoading,
     aiDjDiscoverMode,
     aiDjAvoidRecentlyHours,
@@ -78,6 +79,7 @@ export const SmartPlaylists: React.FC = () => {
     setAIDJPrompt,
     setAIDJGeneratedSongs,
     setAIDJFilter,
+    setAIDJValidation,
     setAIDJIsLoading,
     setAIDJDiscoverMode,
     setAIDJAvoidRecentlyHours,
@@ -98,6 +100,9 @@ export const SmartPlaylists: React.FC = () => {
 
   // Calculate estimated song count based on duration
   const estimatedSongCount = Math.round(aiDjTargetDurationMinutes / 3.5);
+  const deterministicRejectCount = aiDjValidation
+    ? aiDjValidation.hardExcluded + aiDjValidation.styleMismatches + aiDjValidation.negativeRejected + aiDjValidation.rankingFiltered
+    : 0;
 
   const handleGenerate = async () => {
     if (!aiDjPrompt.trim()) return;
@@ -105,6 +110,7 @@ export const SmartPlaylists: React.FC = () => {
     setAIDJIsLoading(true);
     setAIDJGeneratedSongs([]);
     setAIDJFilter(null);
+    setAIDJValidation(null);
 
     try {
       const result = await api.generateSmartPlaylist(aiDjPrompt, { 
@@ -125,6 +131,8 @@ export const SmartPlaylists: React.FC = () => {
       const apiSongs = result.songs || [];
       // Convert ApiSong[] to Song[] so they have the correct url field for playback
       const songs = apiSongs.map(apiSongToSong);
+      const validation = result.validation || result.retrieval?.validation || null;
+      setAIDJValidation(validation);
       
       if (aiDjMode && result.dj) {
         // Update DJ mode state with full result
@@ -147,6 +155,11 @@ export const SmartPlaylists: React.FC = () => {
           message: aiDjMode 
             ? 'No songs found for your DJ set. Try a different prompt or check your library.' 
             : 'No songs found matching your request. Try different keywords.'
+        });
+      } else if (validation?.shortened) {
+        showToast({
+          type: 'warning',
+          message: `Found ${songs.length} strong matches. AI DJ did not pad the playlist with tracks that conflicted with your request.`
         });
       } else if (aiDjMode) {
         showToast({
@@ -481,6 +494,55 @@ export const SmartPlaylists: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-8 pt-0">
         {aiDjGeneratedSongs.length > 0 && (
           <div className="animate-fade-in">
+            {aiDjValidation && (
+              <div className="mb-4 rounded-xl border border-surface-highlight bg-surface-1 p-4" aria-live="polite">
+                <div className="flex items-start gap-3">
+                  {aiDjValidation.auditStatus === 'passed' ? (
+                    <ShieldCheck size={20} className="mt-0.5 shrink-0 text-success" />
+                  ) : (
+                    <AlertTriangle size={20} className="mt-0.5 shrink-0 text-warning" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-body font-semibold text-text-main">Request safeguards</h3>
+                    <div className="mt-2 flex flex-wrap gap-2 text-meta">
+                      {aiDjValidation.requiredStyles?.map(style => (
+                        <span key={`required-${style}`} className="rounded-full bg-success/10 px-2.5 py-1 text-success">
+                          Required: {style}
+                        </span>
+                      ))}
+                      {aiDjValidation.excludedTerms?.map(term => (
+                        <span key={`excluded-${term}`} className="rounded-full bg-error/10 px-2.5 py-1 text-error">
+                          Excluded: {term}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-meta text-text-secondary">
+                      {deterministicRejectCount > 0 && (
+                        <span>{deterministicRejectCount} weak or conflicting candidate matches removed</span>
+                      )}
+                      {aiDjValidation.auditStatus === 'passed' && (
+                        <span>
+                          Final AI review checked {aiDjValidation.auditReviewed} tracks
+                          {aiDjValidation.auditRejected > 0 ? ` and vetoed ${aiDjValidation.auditRejected}` : ''}
+                        </span>
+                      )}
+                      {aiDjValidation.auditStatus === 'unavailable' && (
+                        <span className="text-warning">Final AI review unavailable; deterministic safeguards were still applied</span>
+                      )}
+                      {aiDjValidation.auditStatus === 'failed' && (
+                        <span className="text-warning">Final AI review failed; deterministic safeguards were still applied</span>
+                      )}
+                    </div>
+                    {aiDjValidation.shortened && (
+                      <p className="mt-2 text-meta text-warning">
+                        The result is shorter than requested because AI DJ found no more tracks that safely matched.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* DJ Mode: Phase Timeline and Plan Info */}
             {aiDjMode && aiDjPlan && (
               <div className="mb-6">

@@ -71,6 +71,7 @@ export const useStore = create<AppState>()(
           aiDjPrompt: state.aiDjPrompt,
           aiDjGeneratedSongs: state.aiDjGeneratedSongs,
           aiDjFilter: state.aiDjFilter,
+          aiDjValidation: state.aiDjValidation,
           aiDjDiscoverMode: state.aiDjDiscoverMode,
           aiDjAvoidRecentlyHours: state.aiDjAvoidRecentlyHours,
           aiDjOnePerArtist: state.aiDjOnePerArtist,

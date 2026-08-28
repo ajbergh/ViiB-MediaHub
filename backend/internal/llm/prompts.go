@@ -132,6 +132,8 @@ OUTPUT FORMAT (output ONLY this JSON, no other text):
   "includeArtists": [],
   "excludeArtists": [],
   "preferredGenres": [],
+  "requiredStyles": [],
+  "excludedTerms": [],
   "minYear": 0,
   "maxYear": 0,
   "yearConstraintHard": false,
@@ -144,6 +146,9 @@ RULES:
 - semanticQuery must be a concise description of musical meaning, not a copy of the request.
 - Use includeArtists only when the user requires an artist; use excludeArtists for explicit exclusions.
 - Use preferredGenres only as soft hints, never as a claim that the local library has those tags.
+- Put explicitly required genres/styles in requiredStyles. These are strong constraints.
+- Put every explicit no/without/exclude/avoid concept in excludedTerms. These are hard constraints.
+- Never include excludedTerms or negated phrases in semanticQuery; put fuzzy avoidance meaning in negativeSemanticQuery.
 - Set yearConstraintHard true only when the user makes the date range mandatory.
 - Clamp discoveryBias and familiarityBias between 0 and 1.
 - Output only valid JSON with exactly these fields.`

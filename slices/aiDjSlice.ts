@@ -37,7 +37,8 @@ import {
   DJSetPlan, 
   DJPhaseResult, 
   DJNarration,
-  SmartPlaylistSource
+  SmartPlaylistSource,
+  SmartPlaylistValidation
 } from '../services/api';
 import { AppState } from './types';
 
@@ -46,6 +47,7 @@ export interface AIDJSlice {
   aiDjPrompt: string;
   aiDjGeneratedSongs: Song[];
   aiDjFilter: SmartPlaylistFilter | null;
+  aiDjValidation: SmartPlaylistValidation | null;
   aiDjIsLoading: boolean;
   
   // User preferences
@@ -69,6 +71,7 @@ export interface AIDJSlice {
   setAIDJPrompt: (prompt: string) => void;
   setAIDJGeneratedSongs: (songs: Song[]) => void;
   setAIDJFilter: (filter: SmartPlaylistFilter | null) => void;
+  setAIDJValidation: (validation: SmartPlaylistValidation | null) => void;
   setAIDJIsLoading: (isLoading: boolean) => void;
   setAIDJDiscoverMode: (mode: 'balanced' | 'discover' | 'favorites') => void;
   setAIDJAvoidRecentlyHours: (hours: number) => void;
@@ -108,6 +111,7 @@ export const createAIDJSlice: StateCreator<AppState, [], [], AIDJSlice> = (set) 
   aiDjPrompt: '',
   aiDjGeneratedSongs: [],
   aiDjFilter: null,
+  aiDjValidation: null,
   aiDjIsLoading: false,
   aiDjDiscoverMode: 'balanced',
   aiDjAvoidRecentlyHours: 0,
@@ -131,6 +135,8 @@ export const createAIDJSlice: StateCreator<AppState, [], [], AIDJSlice> = (set) 
   setAIDJGeneratedSongs: (songs) => set({ aiDjGeneratedSongs: songs }),
   
   setAIDJFilter: (filter) => set({ aiDjFilter: filter }),
+
+  setAIDJValidation: (validation) => set({ aiDjValidation: validation }),
   
   setAIDJIsLoading: (isLoading) => set({ aiDjIsLoading: isLoading }),
   
@@ -182,6 +188,7 @@ export const createAIDJSlice: StateCreator<AppState, [], [], AIDJSlice> = (set) 
     aiDjPrompt: '',
     aiDjGeneratedSongs: [],
     aiDjFilter: null,
+    aiDjValidation: null,
     aiDjIsLoading: false,
     aiDjDiscoverMode: 'balanced',
     aiDjAvoidRecentlyHours: 0,

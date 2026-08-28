@@ -1758,6 +1758,34 @@ export interface DJModeResponse {
   narration?: DJNarration;
 }
 
+/** Constraint enforcement and final-audit details for an AI DJ result. */
+export interface SmartPlaylistValidation {
+  requiredStyles?: string[];
+  excludedTerms?: string[];
+  hardExcluded: number;
+  styleMismatches: number;
+  negativeRejected: number;
+  rankingFiltered: number;
+  auditStatus: 'not_needed' | 'unavailable' | 'failed' | 'passed';
+  auditReviewed: number;
+  auditRejected: number;
+  shortened: boolean;
+}
+
+/** Optional diagnostics returned by the semantic retrieval path. */
+export interface SmartPlaylistRetrieval {
+  mode: string;
+  candidateCount: number;
+  returnedCount?: number;
+  trackMatches?: number;
+  albumMatches?: number;
+  artistMatches?: number;
+  negativeQueryApplied?: boolean;
+  phaseCandidateCounts?: number[];
+  fallbackUsed?: boolean;
+  validation?: SmartPlaylistValidation;
+}
+
 /**
  * Response from the smart playlist API.
  */
@@ -1765,6 +1793,8 @@ export interface SmartPlaylistResponse {
   filter: SmartPlaylistFilter;
   songs: ApiSong[];
   dj?: DJModeResponse; // Present when mode === 'dj'
+  validation?: SmartPlaylistValidation;
+  retrieval?: SmartPlaylistRetrieval;
 }
 
 /**

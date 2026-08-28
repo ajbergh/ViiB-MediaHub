@@ -11,7 +11,18 @@ func TestRankSemanticCandidatesPrioritizesSemanticRelevance(t *testing.T) {
 		{Song: db.Song{ID: "favorite-low", Artist: "Favorite", Liked: true, PlayCount: 100}, Evidence: SemanticEvidence{BestSimilarity: 0.35}},
 		{Song: db.Song{ID: "relevant", Artist: "Discovery"}, Evidence: SemanticEvidence{BestSimilarity: 0.92}},
 	}, HybridRankingOptions{DiscoverMode: "balanced"})
-	if len(ranked) != 2 || ranked[0].Candidate.Song.ID != "relevant" {
+	if len(ranked) != 1 || ranked[0].Candidate.Song.ID != "relevant" {
+		t.Fatalf("ranking=%#v", ranked)
+	}
+}
+
+func TestRankSemanticCandidatesDoesNotFillFromWeakLongTail(t *testing.T) {
+	ranked := RankSemanticCandidates([]SemanticCandidate{
+		{Song: db.Song{ID: "strong", Artist: "Jazz"}, Evidence: SemanticEvidence{BestSimilarity: 0.91}},
+		{Song: db.Song{ID: "borderline", Artist: "Maybe"}, Evidence: SemanticEvidence{BestSimilarity: 0.60}},
+		{Song: db.Song{ID: "drift", Artist: "Unrelated"}, Evidence: SemanticEvidence{BestSimilarity: 0.40}},
+	}, HybridRankingOptions{Limit: 50})
+	if len(ranked) != 2 || ranked[0].Candidate.Song.ID != "strong" || ranked[1].Candidate.Song.ID != "borderline" {
 		t.Fatalf("ranking=%#v", ranked)
 	}
 }

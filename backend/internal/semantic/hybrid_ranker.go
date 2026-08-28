@@ -14,6 +14,8 @@ const (
 
 	artistRepetitionPenalty = 0.03
 	preferencePlayCountCap  = 20.0
+	semanticAbsoluteFloor   = 0.22
+	semanticRelativeWindow  = 0.32
 )
 
 // HybridRankingOptions contains request-scoped policy that is deliberately
@@ -44,11 +46,13 @@ type RankedSemanticCandidate struct {
 // penalty while selecting the final order. The function is deterministic.
 func RankSemanticCandidates(candidates []SemanticCandidate, options HybridRankingOptions) []RankedSemanticCandidate {
 	eligible := make([]RankedSemanticCandidate, 0, len(candidates))
+	bestSemanticScore := 0.0
 	for _, candidate := range candidates {
 		if candidate.Song.ID == "" || options.RecentlyPlayedIDs[candidate.Song.ID] {
 			continue
 		}
 		semanticScore := clampSemanticScore(candidate.Evidence.Relevance())
+		bestSemanticScore = max(bestSemanticScore, semanticScore)
 		behaviorScore := semanticBehaviorScore(candidate.Song, options.DiscoverMode)
 		metadataScore := semanticMetadataFit(candidate.Song, options)
 		eligible = append(eligible, RankedSemanticCandidate{
@@ -59,6 +63,17 @@ func RankSemanticCandidates(candidates []SemanticCandidate, options HybridRankin
 			MetadataScore: metadataScore,
 		})
 	}
+	// Do not fill a requested playlist with the long tail of weak semantic
+	// matches. Provider score scales vary, so combine an absolute guard with a
+	// window relative to the best candidate in this request.
+	qualityFloor := max(semanticAbsoluteFloor, bestSemanticScore-semanticRelativeWindow)
+	qualityEligible := eligible[:0]
+	for _, candidate := range eligible {
+		if candidate.SemanticScore >= qualityFloor {
+			qualityEligible = append(qualityEligible, candidate)
+		}
+	}
+	eligible = qualityEligible
 
 	selected := make([]RankedSemanticCandidate, 0, len(eligible))
 	artistSelections := make(map[string]int)
