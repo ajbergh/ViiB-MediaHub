@@ -1970,6 +1970,9 @@ package validation is running in [PR #29](https://github.com/ajbergh/ViiB-MediaH
   architecture and publishes a checksummed desktop archive plus a retained diagnostic log.
 - Native package jobs reuse the checked-in Wails bindings instead of launching the application
   during binding discovery; the existing Windows package gate continues to regenerate them.
+- The Wails shell's external `getlantern/systray` lifecycle is now limited to Windows and Linux.
+  Wails v2 and that tray library both define the native macOS `AppDelegate`, which prevents a
+  valid macOS link; macOS therefore uses a standard closable Wails application lifecycle.
 - macOS CI artifacts are unsigned validation bundles; signing and notarization remain release
   responsibilities rather than pull-request CI requirements.
 

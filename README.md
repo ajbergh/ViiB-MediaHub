@@ -313,6 +313,10 @@ binary as a `.tar.gz` artifact and the unsigned macOS `.app` bundles as `.zip` a
 the macOS CI bundles are intended for validation and require release signing/notarization
 before distribution.
 
+The Wails v2 desktop shell keeps the external system tray on Windows and Linux. On
+macOS it uses the standard application lifecycle (closing the window exits) because
+the legacy tray library and Wails both install a native macOS application delegate.
+
 Typical Windows desktop build:
 
 ```powershell
