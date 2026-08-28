@@ -1961,7 +1961,8 @@ real-library behavior validation remains an operational follow-up.
 
 ### 20.4 Post-implementation CI follow-up — native desktop packaging
 
-**Status:** Implementation in progress on `ci/macos-linux-desktop-builds`.
+**Status:** Implementation complete on `ci/macos-linux-desktop-builds`; automated native
+package validation is running in [PR #29](https://github.com/ajbergh/ViiB-MediaHub/pull/29).
 
 - CI packages the validated frontend into native Wails builds for Linux x64, macOS Apple
   Silicon, and macOS Intel in addition to the existing Windows x64 package build.
