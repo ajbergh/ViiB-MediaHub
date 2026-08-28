@@ -33,14 +33,15 @@ type semanticRebuildRequest struct {
 }
 
 type semanticSettingsResponse struct {
-	Provider         string                                `json:"provider"`
-	Model            string                                `json:"model"`
-	Dimensions       int                                   `json:"dimensions"`
-	BaseURL          string                                `json:"baseURL"`
-	APIKeyConfigured bool                                  `json:"apiKeyConfigured"`
-	Status           string                                `json:"status"`
-	Reason           string                                `json:"reason,omitempty"`
-	CloudCost        *semantic.OpenAIEmbeddingCostEstimate `json:"cloudCost,omitempty"`
+	Provider          string                                `json:"provider"`
+	Model             string                                `json:"model"`
+	Dimensions        int                                   `json:"dimensions"`
+	BaseURL           string                                `json:"baseURL"`
+	APIKeyConfigured  bool                                  `json:"apiKeyConfigured"`
+	Status            string                                `json:"status"`
+	Reason            string                                `json:"reason,omitempty"`
+	CloudCost         *semantic.OpenAIEmbeddingCostEstimate `json:"cloudCost,omitempty"`
+	CloudConfirmation *semantic.CloudEmbeddingConfirmation  `json:"cloudConfirmation,omitempty"`
 }
 
 type semanticSettingsRequest struct {
@@ -74,15 +75,28 @@ func (a *API) initSemanticServiceGeneration(generation uint64) {
 		a.storeSemanticUnavailable(generation, resolution, "")
 		return
 	}
-	if isCloudSemanticProvider(resolution.Settings.Provider) {
-		estimate, estimateErr := semantic.CloudEmbeddingCostConfirmed(ctx, a.db, resolution.Settings)
+	if resolution.Settings.Provider == semantic.EmbeddingProviderOpenAI {
+		estimate, estimateErr := semantic.OpenAIEmbeddingCostConfirmed(ctx, a.db, resolution.Settings)
 		if estimateErr != nil {
 			a.storeSemanticUnavailable(generation, resolution, estimateErr.Error())
 			return
 		}
 		if !estimate.Confirmed {
 			resolution.Status = "needs_configuration"
-			resolution.Reason = fmt.Sprintf("confirm one-time %s cloud embedding for %d documents in Settings before indexing starts", resolution.Settings.Provider, estimate.Documents)
+			resolution.Reason = fmt.Sprintf("confirm the one-time OpenAI embedding estimate for %d documents in Settings before cloud indexing starts", estimate.Documents)
+			a.storeSemanticUnavailable(generation, resolution, "")
+			return
+		}
+	}
+	if resolution.Settings.Provider == semantic.EmbeddingProviderGemini || resolution.Settings.Provider == semantic.EmbeddingProviderOpenRouter {
+		confirmation, confirmationErr := semantic.CloudEmbeddingConfirmationConfirmed(ctx, a.db, resolution.Settings)
+		if confirmationErr != nil {
+			a.storeSemanticUnavailable(generation, resolution, confirmationErr.Error())
+			return
+		}
+		if !confirmation.Confirmed {
+			resolution.Status = "needs_configuration"
+			resolution.Reason = fmt.Sprintf("confirm the Gemini or OpenRouter cloud embedding data notice for %d documents in Settings before cloud indexing starts", confirmation.Documents)
 			a.storeSemanticUnavailable(generation, resolution, "")
 			return
 		}
@@ -176,12 +190,20 @@ func (a *API) getSemanticSettings(w http.ResponseWriter, _ *http.Request) {
 	if response.Status == "" {
 		response.Status = "initializing"
 	}
-	if isCloudSemanticProvider(provider) {
-		estimate, estimateErr := semantic.CloudEmbeddingCostConfirmed(context.Background(), a.db, settings)
+	if provider == semantic.EmbeddingProviderOpenAI {
+		estimate, estimateErr := semantic.OpenAIEmbeddingCostConfirmed(context.Background(), a.db, settings)
 		if estimateErr == nil {
 			response.CloudCost = &estimate
 		} else if response.Reason == "" {
 			response.Reason = estimateErr.Error()
+		}
+	}
+	if provider == semantic.EmbeddingProviderGemini || provider == semantic.EmbeddingProviderOpenRouter {
+		confirmation, confirmationErr := semantic.CloudEmbeddingConfirmationConfirmed(context.Background(), a.db, settings)
+		if confirmationErr == nil {
+			response.CloudConfirmation = &confirmation
+		} else if response.Reason == "" {
+			response.Reason = confirmationErr.Error()
 		}
 	}
 	respondJSON(w, response)
@@ -203,9 +225,9 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 		provider = semantic.EmbeddingProviderAuto
 	}
 	switch provider {
-	case semantic.EmbeddingProviderAuto, semantic.EmbeddingProviderOllama, semantic.EmbeddingProviderOpenAI, semantic.EmbeddingProviderOpenRouter, semantic.EmbeddingProviderGemini, semantic.EmbeddingProviderDisabled:
+	case semantic.EmbeddingProviderAuto, semantic.EmbeddingProviderOllama, semantic.EmbeddingProviderOpenAI, semantic.EmbeddingProviderGemini, semantic.EmbeddingProviderOpenRouter, semantic.EmbeddingProviderDisabled:
 	default:
-		respondError(w, http.StatusBadRequest, "semantic embedding provider must be auto, ollama, openai, openrouter, gemini, or disabled")
+		respondError(w, http.StatusBadRequest, "semantic embedding provider must be auto, ollama, openai, gemini, openrouter, or disabled")
 		return
 	}
 	dimensions := existing.Dimensions
@@ -230,13 +252,12 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 	candidate.Model = strings.TrimSpace(request.Model)
 	candidate.Dimensions = dimensions
 	candidate.BaseURL = strings.TrimSpace(request.BaseURL)
-	providerChanged := existing.Provider != provider
 	if request.APIKey != nil {
 		candidate.APIKey = strings.TrimSpace(*request.APIKey)
-	} else if providerChanged {
-		// The dedicated key has no provider tag. Never carry one cloud
-		// provider's credential into another; a blank field on a provider
-		// switch deliberately falls back to that provider's saved chat key.
+	} else if existing.Provider != provider {
+		// A dedicated API key has no provider tag in storage. Require an explicit
+		// replacement on provider changes rather than risking key reuse across
+		// cloud services.
 		candidate.APIKey = ""
 	}
 	values := map[string]string{
@@ -245,18 +266,29 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 		semantic.SemanticEmbeddingDimensionsSetting: dimensionsValue,
 		semantic.SemanticEmbeddingBaseURLSetting:    candidate.BaseURL,
 	}
-	if request.APIKey != nil || providerChanged {
+	if request.APIKey != nil || existing.Provider != provider {
 		values[semantic.SemanticEmbeddingAPIKeySetting] = candidate.APIKey
 	}
-	if isCloudSemanticProvider(provider) {
-		estimate, estimateErr := semantic.EstimateCloudEmbeddingCost(r.Context(), a.db, candidate)
+	if provider == semantic.EmbeddingProviderOpenAI {
+		estimate, estimateErr := semantic.EstimateOpenAIEmbeddingCost(r.Context(), a.db, candidate)
 		if estimateErr != nil {
 			respondError(w, http.StatusBadRequest, estimateErr.Error())
 			return
 		}
 		if request.ConfirmCloudCost {
 			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = estimate.ConfirmationID()
-		} else if providerChanged || existing.Model != candidate.Model || existing.Dimensions != candidate.Dimensions {
+		} else if existing.Provider != semantic.EmbeddingProviderOpenAI || existing.Model != candidate.Model || existing.Dimensions != candidate.Dimensions {
+			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = ""
+		}
+	} else if provider == semantic.EmbeddingProviderGemini || provider == semantic.EmbeddingProviderOpenRouter {
+		confirmation, confirmationErr := semantic.EstimateCloudEmbeddingConfirmation(r.Context(), a.db, candidate)
+		if confirmationErr != nil {
+			respondError(w, http.StatusBadRequest, confirmationErr.Error())
+			return
+		}
+		if request.ConfirmCloudCost {
+			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = confirmation.ConfirmationID()
+		} else if existing.Provider != provider || existing.Model != candidate.Model || existing.Dimensions != candidate.Dimensions {
 			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = ""
 		}
 	} else {
@@ -268,10 +300,6 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	go a.restartSemanticService()
 	respondJSON(w, map[string]string{"status": "accepted"})
-}
-
-func isCloudSemanticProvider(provider string) bool {
-	return provider == semantic.EmbeddingProviderOpenAI || provider == semantic.EmbeddingProviderOpenRouter || provider == semantic.EmbeddingProviderGemini
 }
 
 func (a *API) getSemanticStatus(w http.ResponseWriter, r *http.Request) {

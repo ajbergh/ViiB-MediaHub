@@ -37,6 +37,19 @@ type OpenAIEmbeddingCostEstimate struct {
 	confirmationID           string
 }
 
+// CloudEmbeddingConfirmation protects cloud providers for which ViiB cannot
+// derive a reliable local price estimate. It records the exact provider,
+// model, dimensions, and current deterministic document count that the user
+// acknowledged before document text is sent to that provider.
+type CloudEmbeddingConfirmation struct {
+	Provider       string `json:"provider"`
+	Model          string `json:"model"`
+	Dimensions     int    `json:"dimensions"`
+	Documents      int    `json:"documents"`
+	Confirmed      bool   `json:"confirmed"`
+	confirmationID string
+}
+
 // EstimateOpenAIEmbeddingCost counts the exact Phase 1 document set produced
 // for the current catalog. It contains no API call and does not persist data.
 func EstimateOpenAIEmbeddingCost(ctx context.Context, database *db.DB, settings EmbeddingSettings) (OpenAIEmbeddingCostEstimate, error) {
@@ -78,7 +91,7 @@ func EstimateCloudEmbeddingCost(ctx context.Context, database *db.DB, settings E
 			model = DefaultOpenRouterEmbeddingModel
 		}
 		if dimensions <= 0 {
-			dimensions = DefaultOpenRouterDimensions
+			dimensions = DefaultOpenRouterEmbeddingDimensions
 		}
 	case EmbeddingProviderGemini:
 		if model == "" {
@@ -137,6 +150,77 @@ func CloudEmbeddingCostConfirmed(ctx context.Context, database *db.DB, settings 
 }
 
 func (estimate OpenAIEmbeddingCostEstimate) ConfirmationID() string { return estimate.confirmationID }
+
+// EstimateCloudEmbeddingConfirmation counts the current document set without
+// contacting the provider. Gemini and OpenRouter pricing/model availability is
+// account- and route-dependent, so this is intentionally an acknowledgement,
+// not a local currency estimate.
+func EstimateCloudEmbeddingConfirmation(ctx context.Context, database *db.DB, settings EmbeddingSettings) (CloudEmbeddingConfirmation, error) {
+	if database == nil {
+		return CloudEmbeddingConfirmation{}, fmt.Errorf("semantic database is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return CloudEmbeddingConfirmation{}, err
+	}
+	provider := strings.TrimSpace(settings.Provider)
+	if provider != EmbeddingProviderGemini && provider != EmbeddingProviderOpenRouter {
+		return CloudEmbeddingConfirmation{}, fmt.Errorf("cloud embedding confirmation supports Gemini or OpenRouter, got %q", provider)
+	}
+	model := strings.TrimSpace(settings.Model)
+	dimensions := settings.Dimensions
+	if provider == EmbeddingProviderGemini {
+		if model == "" {
+			model = DefaultGeminiEmbeddingModel
+		}
+		if dimensions <= 0 {
+			dimensions = DefaultGeminiEmbeddingDimensions
+		}
+	} else {
+		if model == "" {
+			model = DefaultOpenRouterEmbeddingModel
+		}
+		if dimensions <= 0 {
+			dimensions = DefaultOpenRouterEmbeddingDimensions
+		}
+	}
+	songs, err := database.GetAllSongs()
+	if err != nil {
+		return CloudEmbeddingConfirmation{}, fmt.Errorf("load catalog for %s embedding confirmation: %w", provider, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return CloudEmbeddingConfirmation{}, err
+	}
+	documents := BuildDocuments(songs, DocumentContext{})
+	confirmation := CloudEmbeddingConfirmation{
+		Provider:   provider,
+		Model:      model,
+		Dimensions: dimensions,
+		Documents:  len(documents),
+	}
+	identity := fmt.Sprintf("cloud-embedding\x00%s\x00%s\x00%d\x00%d", confirmation.Provider, confirmation.Model, confirmation.Dimensions, confirmation.Documents)
+	sum := sha256.Sum256([]byte(identity))
+	confirmation.confirmationID = hex.EncodeToString(sum[:])
+	return confirmation, nil
+}
+
+// CloudEmbeddingConfirmationConfirmed reports whether the current Gemini or
+// OpenRouter document set has been explicitly acknowledged.
+func CloudEmbeddingConfirmationConfirmed(ctx context.Context, database *db.DB, settings EmbeddingSettings) (CloudEmbeddingConfirmation, error) {
+	confirmation, err := EstimateCloudEmbeddingConfirmation(ctx, database, settings)
+	if err != nil {
+		return CloudEmbeddingConfirmation{}, err
+	}
+	stored, err := database.GetSetting(SemanticEmbeddingCloudConfirmationSetting)
+	if err != nil {
+		return CloudEmbeddingConfirmation{}, fmt.Errorf("read cloud embedding confirmation: %w", err)
+	}
+	confirmation.Confirmed = strings.TrimSpace(stored) == confirmation.confirmationID
+	return confirmation, nil
+}
+
+func (confirmation CloudEmbeddingConfirmation) ConfirmationID() string {
+	return confirmation.confirmationID
+}
 
 func openAIEmbeddingPrice(model string) (float64, error) {
 	switch model {

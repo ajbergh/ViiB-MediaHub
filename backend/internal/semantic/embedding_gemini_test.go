@@ -5,52 +5,66 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
-func TestGeminiEmbeddingProviderUsesBatchRetrievalTasks(t *testing.T) {
-	taskCalls := 0
+func TestGeminiEmbeddingProviderUsesBatchEndpointAndTaskPrefixes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/models/gemini-embedding-001:batchEmbedContents" || request.Header.Get("x-goog-api-key") != "gemini-key" {
-			t.Fatalf("request=%s key=%q", request.URL.Path, request.Header.Get("x-goog-api-key"))
+		if request.URL.Path != "/models/gemini-embedding-2:batchEmbedContents" || request.Method != http.MethodPost {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		if request.Header.Get("x-goog-api-key") != "test-key" {
+			t.Fatalf("API key = %q", request.Header.Get("x-goog-api-key"))
 		}
 		var payload struct {
 			Requests []struct {
 				Model                string `json:"model"`
-				TaskType             string `json:"taskType"`
 				OutputDimensionality int    `json:"outputDimensionality"`
+				Content              struct {
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
+				} `json:"content"`
 			} `json:"requests"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
 		}
-		expectedTask := geminiDocumentTask
-		if taskCalls == 1 {
-			expectedTask = geminiQueryTask
+		if len(payload.Requests) != 2 || payload.Requests[0].Model != "models/gemini-embedding-2" || payload.Requests[0].OutputDimensionality != DefaultGeminiEmbeddingDimensions || payload.Requests[0].Content.Parts[0].Text != "title: ViiB music catalog | text: first" || payload.Requests[1].Content.Parts[0].Text != "title: ViiB music catalog | text: second" {
+			t.Fatalf("payload=%#v", payload)
 		}
-		for _, item := range payload.Requests {
-			if item.Model != "models/"+DefaultGeminiEmbeddingModel || item.TaskType != expectedTask || item.OutputDimensionality != DefaultGeminiEmbeddingDimensions {
-				t.Fatalf("request=%#v expected task=%s", item, expectedTask)
-			}
-		}
-		taskCalls++
-		embeddings := make([]map[string]any, len(payload.Requests))
-		for index := range embeddings {
-			embeddings[index] = map[string]any{"values": []float32{1, float32(index)}}
-		}
-		_ = json.NewEncoder(writer).Encode(map[string]any{"embeddings": embeddings})
+		_ = json.NewEncoder(writer).Encode(map[string]any{"embeddings": []map[string]any{
+			{"values": []float32{1, 0}},
+			{"values": []float32{0, 1}},
+		}})
 	}))
 	defer server.Close()
-	provider, err := newGeminiEmbeddingProvider(server.URL, "gemini-key", "", 0, server.Client())
+	provider, err := newGeminiEmbeddingProvider(server.URL, "test-key", "", 0, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
-	documents, err := provider.EmbedDocuments(context.Background(), []string{"first", "second"})
-	if err != nil || len(documents) != 2 {
-		t.Fatalf("documents=%v err=%v", documents, err)
+	vectors, err := provider.EmbedDocuments(context.Background(), []string{"first", "second"})
+	if err != nil || len(vectors) != 2 || vectors[0][0] != 1 || vectors[1][1] != 1 || provider.QueryPrefix() != "task: search result | query: " || provider.MaxBatchSize() != GeminiEmbeddingBatchSize {
+		t.Fatalf("vectors=%v err=%v", vectors, err)
 	}
-	query, err := provider.EmbedQuery(context.Background(), "query")
-	if err != nil || len(query) != 2 || taskCalls != 2 {
-		t.Fatalf("query=%v calls=%d err=%v", query, taskCalls, err)
+}
+
+func TestGeminiEmbeddingProviderRejectsUnsafeInputAndDimensions(t *testing.T) {
+	if _, err := NewGeminiEmbeddingProvider("test-key", "gemini-embedding-2", 127, nil); err == nil {
+		t.Fatal("unsupported dimensions accepted")
+	}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
+	defer server.Close()
+	provider, err := newGeminiEmbeddingProvider(server.URL, "test-key", "", 0, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.EmbedDocuments(context.Background(), []string{strings.Repeat("a", geminiEmbeddingMaxInputBytes)}); err == nil {
+		t.Fatal("unsafe input accepted")
+	}
+	if requests != 0 {
+		t.Fatalf("requests=%d", requests)
 	}
 }

@@ -1,7 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
 **Repository:** `ajbergh/ViiB-MediaHub`
-**Status:** Phase 1 semantic retrieval is complete; reliability and AI DJ constraint-adherence corrections are in draft PR #28
+**Status:** PRs #26 and #27 are squash-merged; PR #28 reliability, live-refresh, and AI DJ constraint work is being reconciled and validated for the final squash merge
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
 **Phase 1 scope:** Text-semantic retrieval. Audio-content embeddings are deferred to Phase 2.
 
@@ -550,7 +550,7 @@ Any change to any element invalidates every stored embedding (§7.6). Persist th
 ### 7.2 Settings
 
 ```text
-semantic_embedding_provider = auto | ollama | openai | openrouter | gemini | disabled
+semantic_embedding_provider = auto | ollama | openai | gemini | openrouter | disabled
 semantic_embedding_model
 semantic_embedding_dimensions
 semantic_embedding_base_url
@@ -581,14 +581,10 @@ Order:
 
 1. If `semantic_embedding_provider` is set explicitly, use it.
 2. If the current AI provider is Ollama, use Ollama embeddings at the same base URL with the default embedding model.
-3. If the current AI provider is OpenAI, reuse the existing key.
-4. If an OpenAI key exists from any source (`llm_api_key` where `llm_provider = openai`), use it.
-5. If the current AI provider is OpenRouter or Gemini, report that its native embedding
-   adapter is supported and require the user to select that provider explicitly. This
-   preserves the cloud-cost/data-sharing confirmation gate instead of silently starting
-   cloud indexing from an `auto` chat-provider setting.
-6. If a local Ollama instance is reachable at the configured or default base URL **and** an embedding-capable model is already pulled, use it. Probe with `GET /api/tags`; never pull.
-7. Otherwise `needs_configuration`, with a message naming what would fix it.
+3. If the current AI provider is OpenAI, Gemini, or OpenRouter, reuse that provider's configured key only for its matching embeddings API.
+4. Gemini retains compatibility with the legacy `gemini_api_key` only when Gemini is the active chat provider.
+5. If a local Ollama instance is reachable at the configured or default base URL **and** an embedding-capable model is already pulled, use it. Probe with `GET /api/tags`; never pull.
+6. Otherwise `needs_configuration`, with a message naming what would fix it.
 
 Provider capability, to be stated plainly in the Settings UI:
 
@@ -596,16 +592,16 @@ Provider capability, to be stated plainly in the Settings UI:
 |---|---|---|
 | Ollama | Yes, same instance | Fully local; model must already be pulled |
 | OpenAI | Yes, same key | `text-embedding-3-small` |
-| Gemini | Yes, dedicated Gemini embeddings API | `gemini-embedding-001`; explicit provider selection and cloud confirmation required |
+| Gemini | Yes, same key | `gemini-embedding-2`, 768 dimensions by default; Gemini task prefixes are part of index identity |
 | Anthropic | No native adapter in Phase 1 | Same local-Ollama fallback and explicit configuration message |
 | xAI | No native adapter in Phase 1 | Same local-Ollama fallback and explicit configuration message |
-| OpenRouter | Yes, dedicated OpenRouter embeddings API | `openai/text-embedding-3-small`; explicit provider selection and cloud confirmation required |
+| OpenRouter | Yes, same key | OpenAI-compatible `POST /api/v1/embeddings`; default `openai/text-embedding-3-small` at 512 dimensions |
 
-**2026-08-27 follow-up decision:** Add native OpenRouter and Gemini embedding transports.
-An explicit OpenRouter/Gemini semantic-provider selection may reuse the saved matching chat
-credential, but `auto` never starts a paid cloud build without the catalog-specific
-confirmation. OpenRouter uses its OpenAI-compatible `/embeddings` API; Gemini uses
-`batchEmbedContents` with asymmetric `RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY` tasks.
+**Revised PR 4 decision (2026-08-27):** Gemini and OpenRouter now have native embedding
+transports. The auto resolver sends a credential only to the matching provider: Gemini's
+current or legacy Gemini key is never sent to OpenAI/OpenRouter, and an OpenRouter key is
+never sent to Gemini. Anthropic and xAI retain the local-Ollama fallback and an actionable
+configuration state.
 
 ### 7.4 Ollama provider
 
@@ -668,6 +664,30 @@ near-zero incremental cost afterwards because of the content-hash gate. Compute 
 estimate from the actual catalog size and show it in Settings before a cloud index build
 starts, requiring explicit confirmation. Re-verify pricing at implementation time and
 record the figure used.
+
+### 7.5.1 Gemini provider
+
+- Default model `gemini-embedding-2`, requested at 768 dimensions (configurable from 128 to
+  3,072).
+- Use `POST /v1beta/models/{model}:batchEmbedContents` with `x-goog-api-key` authentication.
+  Each input is its own `Content` request and uses the requested output dimensionality.
+- Use the provider's documented asymmetric text prefixes: `title: ViiB music catalog | text:`
+  for documents and `task: search result | query:` for queries. The prefixes remain in the
+  embedding identity so no index can mix prior vectors.
+- Batch up to 32 documents with conservative 8 KiB-per-input and 250 KiB-total text guards.
+
+### 7.5.2 OpenRouter provider
+
+- Use OpenRouter's documented OpenAI-compatible `POST /api/v1/embeddings` endpoint with
+  `Authorization: Bearer` authentication.
+- Default model `openai/text-embedding-3-small` with `dimensions: 512`; custom models must
+  support the chosen dimensions.
+- Return the indexed OpenAI-style response in source-input order. No task prefixes are added.
+
+Gemini and OpenRouter have account- and route-dependent model availability and pricing. The
+Settings UI counts the deterministic documents, clearly describes the text shared, and requires
+confirmation of the current provider/model/dimensions/catalog fingerprint before indexing. It
+does not present a misleading local currency estimate.
 
 **Implemented price verification (2026-08-26).** OpenAI's current embedding guide lists
 `text-embedding-3-small` at 62,500 roughly-800-token pages per US dollar, equivalent to
@@ -1392,7 +1412,7 @@ No new third-party dependency is added in this PR.
 - [x] Implement the `EmbeddingProvider` abstraction with separate document/query methods and task prefixes.
 - [x] Implement the Ollama provider against `POST /api/embed` with array `input`, explicit `truncate: false`, and `nomic-embed-text` task prefixes.
 - [x] Implement the OpenAI provider (`text-embedding-3-small`, `dimensions: 512`, token-capped batches).
-- [x] Implement native OpenRouter and Gemini embedding adapters with matching saved-chat-key reuse and explicit cloud confirmation (§7.3).
+- [x] Implement native Gemini (`gemini-embedding-2`) and OpenRouter embeddings, with matching-provider-only auto credential reuse (§7.3).
 - [x] Implement `auto` resolution including the `GET /api/tags` reachability probe. Never pull.
 - [x] Implement the provider test/validation endpoint.
 - [x] Implement batching, retries with backoff and jitter, cancellation, and bounded concurrency.
@@ -1418,8 +1438,8 @@ No new third-party dependency is added in this PR.
 - **2026-08-26:** API startup now owns the semantic service asynchronously and shutdown closes it cleanly. Added `/api/semantic/status`, `/rebuild` (`reindex` or `reload` only), `/retry-errors`, and `/test-embedding-provider`; no endpoint exposes embeddings, documents, or keys. This slice activates locally configured Ollama indexing. An OpenAI semantic configuration is reported as needing configuration until the dedicated adapter is completed.
 - **2026-08-26:** Added `GET`/`PUT /api/semantic/settings` and the Settings semantic-index card. Dedicated semantic settings save atomically; API keys remain encrypted and write-only. A settings change retires the previous service and starts a replacement asynchronously, with a monotonic generation guard so a slow prior provider probe cannot overwrite a newer configuration. The UI exposes auto/local Ollama configuration, live status polling, provider test, reindex, and error retry. It deliberately marks OpenAI cloud controls unavailable until the adapter, current price verification, and explicit cost confirmation are implemented.
 - **2026-08-26:** Verified the settings/lifecycle slice with focused backend semantic tests, frontend TypeScript check, 30 frontend unit tests, and a production frontend build. The preceding lifecycle/API checkpoint on PR #24 completed successfully in GitHub Actions: [run 33008542425](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33008542425).
-- **2026-08-26:** Initially deferred Gemini/OpenRouter embedding adapters. `auto` recognized their chat configuration without repurposing either credential for an unrelated API, and retained local Ollama as the automatic fallback.
-- **2026-08-27:** Replaced that deferral with native OpenRouter and Gemini transports after real OpenRouter configuration exposed the limitation. Explicit semantic-provider selection reuses only a matching saved chat key. OpenRouter posts batched OpenAI-compatible embedding requests to `/api/v1/embeddings`; Gemini posts batched retrieval-task requests to `batchEmbedContents`. Both preserve provider-specific vector identities, dimensions, retry behavior, and the existing catalog-fingerprint cloud confirmation. `auto` now directs configured OpenRouter/Gemini users to the supported explicit selection instead of reporting that no adapter exists or surfacing a failed local Ollama probe as the primary remedy.
+- **2026-08-26:** Decided not to add a Gemini embedding adapter in Phase 1. `auto` now recognizes both an explicit Gemini chat provider and the legacy `gemini_api_key` fallback, and never repurposes either for another embeddings API. Gemini, Anthropic, xAI, and OpenRouter instead use an already-pulled local Ollama embedding model when available, or receive a provider-specific `needs_configuration` message. Tests cover all four configured chat providers and legacy Gemini fallback.
+- **2026-08-27:** Superseded the prior Gemini/OpenRouter deferral at the user's request. Added the native Gemini batch embeddings transport (`gemini-embedding-2`, default 768 dimensions, documented document/query prefixes) and OpenRouter's OpenAI-compatible embeddings transport (default `openai/text-embedding-3-small`, 512 dimensions). Auto resolution reuses only matching Gemini/OpenRouter credentials, including the legacy Gemini key only for Gemini. Both provider contracts, invalid-input handling, settings resolution, and provider construction are covered by focused tests. Gemini/OpenRouter indexing is gated on an explicit catalog data-and-cost acknowledgement because their live pricing/model routing cannot be safely estimated offline.
 - **2026-08-26:** Changed normal `library_changes` synchronization from all-arena reloads to incremental updates. SQLite returns IDs whose ready embeddings were invalidated or deleted only after the corresponding transaction commits; the service removes those exact arena rows, then upserts just the successfully persisted replacement vectors. Full reindex, explicit retry, startup recovery, and provider-identity changes retain the complete snapshot-rebuild path, so a changed model can never mix vector identities in one arena. A pre-persistence dimension guard rejects an unexpected same-provider vector shape before it can create a durable/arena mismatch.
 - **2026-08-26:** Corrected the pre-existing Windows-only expectation in `internal/validation.TestSanitizePath` so it compares the cleaned path for the running platform. The sanitization behavior itself is unchanged.
 - **2026-08-26:** Added the OpenAI `POST /v1/embeddings` adapter. It sends the documented `model`, array `input`, `dimensions`, and `encoding_format: float` request fields, uses bearer authorization, preserves response-index ordering, and makes no task-prefix change. Tests cover headers, payload, response ordering, invalid input, and HTTP failures. Conservative byte guards keep inputs below the API's 8,192-token-per-input and 300,000-token-per-request ceilings.
@@ -1560,19 +1580,75 @@ No new third-party dependency is added in this PR.
 
 #### Tasks
 
-- [ ] Add semantic readiness, indexing, and fallback status to the Smart Playlists UI.
-- [ ] Add retrieval diagnostics only where they aid troubleshooting; do not clutter normal UX.
-- [ ] Add the 20k+ synthetic-library performance fixture and benchmarks.
-- [ ] Add semantic service lifecycle and shutdown tests.
-- [ ] Add exactness tests against a naive reference scan, and dimension-inconsistency recovery tests.
-- [ ] Add provider failure and retry tests, including a provider returning zero-magnitude vectors.
-- [ ] Add a migration-from-existing-user-library test.
+- [x] Add semantic readiness, indexing, and fallback status to the Smart Playlists UI.
+- [x] Add retrieval diagnostics only where they aid troubleshooting; do not clutter normal UX.
+- [x] Add the 20k+ synthetic-library performance fixture and benchmarks.
+- [x] Add semantic service lifecycle and shutdown tests.
+- [x] Add exactness tests against a naive reference scan, and dimension-inconsistency recovery tests.
+- [x] Add provider failure and retry tests, including a provider returning zero-magnitude vectors.
+- [x] Add a migration-from-existing-user-library test.
 - [ ] Run the manual QA prompt matrix (§19).
-- [ ] Update `docs/smart-playlists.md`, `docs/dj-mode.md`, and `docs/architecture.md`.
-- [ ] Update relevant AI/settings documentation and the README feature summary.
-- [ ] Run final backend and frontend production builds, plus the five cross-compile targets.
-- [ ] Resolve all static-analysis, lint, and type errors introduced by Phase 1.
-- [ ] Mark completed items in this plan.
+- [x] Update `docs/smart-playlists.md`, `docs/dj-mode.md`, and `docs/architecture.md`.
+- [x] Update relevant AI/settings documentation and the README feature summary.
+- [x] Run final backend and frontend production builds, plus the five cross-compile targets.
+- [x] Resolve all static-analysis, lint, and type errors introduced by Phase 1.
+- [x] Validate native Gemini and OpenRouter embedding configuration, UI, and full quality gates.
+- [x] Mark completed items in this plan.
+
+#### PR 4 implementation notes
+
+- **2026-08-27:** Completed the requested native Gemini and OpenRouter embedding support.
+  Gemini uses the documented batch endpoint, API-key header, task-aware document/query
+  prefixes, and a default 768-dimensional `gemini-embedding-2` space; OpenRouter uses its
+  documented OpenAI-compatible endpoint with a default 512-dimensional
+  `openai/text-embedding-3-small` model. Settings supports both explicit providers and
+  matching-provider-only `auto` resolution. Cloud indexing remains blocked until the user
+  acknowledges the exact provider/model/dimensions/catalog data notice; provider-specific
+  saved keys, models, and dimensions are never reused by `auto` or across an explicit provider
+  change. Focused adapter/API tests and the complete backend suite pass; frontend typecheck,
+  30 unit tests, and production build pass. Windows `go vet ./...` still reports the existing
+  unrelated `internal/scanner/journal_windows.go` unsafe-pointer warning; no new vet warning
+  is introduced by this work. CI remains the final cross-platform quality gate.
+- **2026-08-27:** The first CI run for this slice passed frontend, both Go test modes, vet,
+  builds, and all five semantic cross-compiles, but its upgraded Staticcheck reported only
+  ST1005 capitalization in Gemini adapter error strings. The messages were corrected; local
+  Staticcheck passes for the changed semantic/API packages and the complete Go test suite is
+  green again. The replacement CI run [33040594452](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33040594452)
+  is fully green: frontend checks, backend tests/race/vet/Staticcheck/build/vulnerability scans,
+  all five semantic cross-compiles, and the packaged Windows Wails binary scan.
+
+- **2026-08-27:** Smart Playlists now polls the existing semantic status endpoint and shows a
+  compact readiness panel: ready semantic matching, background indexing progress with legacy
+  matching retained, or a configuration/error fallback state with a direct link to Index
+  Settings. Semantic responses expose typed count-only diagnostics in the client; after a
+  semantic request they appear in a collapsed “Semantic retrieval details” disclosure, so
+  troubleshooting data never clutters the normal generation flow. Frontend TypeScript and
+  production-build validation, plus the 30 existing frontend unit tests, pass.
+- **2026-08-27:** Added semantic service shutdown coverage that cancels a blocked background
+  embedding call, releases arenas and its provider, and rejects restart after closure. Provider
+  tests now prove that zero-magnitude responses and a changed vector dimension become retryable
+  errors without entering an arena; recovery with the expected dimension restores the ready
+  index. The persistence guard now checks every surviving entity state before accepting a batch,
+  preventing a temporarily empty entity from silently changing the shared vector space. The
+  existing-library case is explicit, and `BenchmarkScanIndexExactSearch20K` supplies a 20k-track,
+  512-dimension exact-scan fixture. One local run measured 13.4 ms per 300-result scan; the
+  semantic suite passes. Local race execution is unavailable because CGO is disabled, so GitHub
+  Actions remains the race-validation source.
+- **2026-08-27:** Updated Smart Playlists, DJ Mode, architecture, Settings, and README
+  documentation for the semantic retrieval lifecycle: independent embedding configuration,
+  Ollama/OpenAI privacy and explicit-cost boundary, background indexing, count-only diagnostics,
+  local hard filters/ranking, phase-aware DJ retrieval, vector-space consistency, and the
+  deterministic metadata fallback.
+- **2026-08-27:** Final local verification is green: `go test ./...`, the focused semantic
+  suite, and `npm run check` (token checks, TypeScript, 30 unit tests, and a production Vite
+  build) pass. Existing non-failing palette and bundle-size warnings remain unchanged. The
+  real-library manual QA matrix in §19 is the remaining product-level validation.
+- **2026-08-27:** GitHub Actions [run 33038365158](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33038365158)
+  passed for the complete implementation revision preceding this status-only documentation
+  record: backend tests with race, vet, Staticcheck and vulnerability checks; frontend checks;
+  all five semantic cross-compiles; and the packaged Windows Wails build plus binary
+  vulnerability scan. The Node 20 deprecation notices are runner-action warnings only. The PR
+  remains a draft solely for the §19 real-library prompt matrix.
 
 #### Acceptance criteria
 
@@ -1730,10 +1806,8 @@ discovery/favorites behaviour; sensible flow in DJ mode.
 - [ ] Embeddings persist in SQLite, L2-normalized, and the in-memory arena is fully derivable from them.
 - [ ] Exact top-k is verified against a naive reference implementation.
 - [ ] Ollama embeddings work via batched `/api/embed` with correct task prefixes.
-- [ ] OpenAI embeddings work at 512 dimensions.
-- [ ] OpenRouter embeddings work through its dedicated OpenAI-compatible endpoint.
-- [ ] Gemini embeddings work through `batchEmbedContents` with document/query retrieval tasks.
-- [ ] The `auto` decision for all six chat providers is implemented and documented, including those resolving to `needs_configuration`.
+- [ ] OpenAI and OpenRouter embeddings work at 512 dimensions; Gemini embeddings work at 768 dimensions.
+- [ ] The `auto` decision for all six chat providers is implemented and documented, with native Gemini/OpenRouter resolution and local-Ollama fallbacks for Anthropic/xAI.
 - [ ] `semantic_embedding_api_key` is encrypted at rest, with a test proving it.
 - [ ] Initial indexing is batched, cancellable, resumable, and non-blocking.
 - [ ] Incremental changes update only affected documents, driven by the `library_changes` log including the pruned-log fallback.
@@ -1969,3 +2043,19 @@ embedding family later. Phase 1 does not implement it.
 
 The LLM no longer reasons over the whole library, and AI DJ quality no longer collapses
 because a user's files have incomplete genre or mood metadata.
+
+---
+
+## 23. Related follow-up — Plex AI metadata writeback
+
+**Status:** Implementation complete on `feature/plex-ai-metadata-writeback`; local backend and frontend validation passed. Draft [PR #27](https://github.com/ajbergh/ViiB-MediaHub/pull/27) is open. The corrected implementation passed [CI run 33082530012](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33082530012), including frontend, backend race validation, semantic cross-compiles, and the Windows Wails package build. Real-PMS manual QA remains before merge.
+
+This is a related Plex-source enhancement, not a change to the Phase 1 semantic-vector design:
+
+- Unified/genre AI enrichment stages Plex-backed genre and original-year proposals in a local audit queue.
+- The Plex settings panel requires a read-only, per-track preview and an explicit approval checkbox before any PMS write.
+- PMS writes are capped at 100 proposals per preview, capability-gated by Plex's `manage` feature, locked field-by-field, and verified by a fresh PMS read.
+- Only genres and release year currently map to Plex. AI mood/energy/tempo/BPM, user behaviour, and semantic embeddings remain ViiB-local.
+- A failed or stale preview never writes to PMS; failed verified writes remain queued for a later review/retry.
+
+See [Plex Music](plex-music.md#source-media-and-metadata-writeback) and [Settings](settings.md#plex-media-server-music) for the operational contract.

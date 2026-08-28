@@ -30,10 +30,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { useStore } from '../store';
 import { Sparkles, Play, Save, RefreshCw, Music, Zap, Heart, Clock, Shuffle, User, Compass, Sun, Radio, Mic2, Timer, BarChart3, Server, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Song } from '../types';
-import { api, MatchedGenre, SmartPlaylistFilter, DJPersonaDefinition } from '../services/api';
+import { api, SemanticRetrievalDiagnostics, SemanticStatus } from '../services/api';
 import { apiSongToSong } from '../services/backendService';
 import { formatTime } from '../utils';
 import { Button } from '../components/ui/Button';
@@ -51,6 +52,50 @@ const PERSONA_DESCRIPTIONS: Record<string, { name: string; description: string; 
 };
 
 export const SmartPlaylists: React.FC = () => {
+  const navigate = useNavigate();
+  const [semanticStatus, setSemanticStatus] = useState<SemanticStatus | null>(null);
+  const [retrievalDiagnostics, setRetrievalDiagnostics] = useState<SemanticRetrievalDiagnostics | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const refreshSemanticStatus = async () => {
+      try {
+        const status = await api.getSemanticStatus();
+        if (active) setSemanticStatus(status);
+      } catch {
+        // Smart Playlist generation retains its normal fallback when the
+        // semantic service is unavailable, so an unavailable status endpoint
+        // should not surface as an error toast on this page.
+        if (active) setSemanticStatus(null);
+      }
+    };
+
+    void refreshSemanticStatus();
+    const interval = window.setInterval(() => void refreshSemanticStatus(), 10_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const semanticState = semanticStatus?.state;
+  const semanticReady = semanticState === 'ready';
+  const semanticIndexing = semanticState === 'indexing';
+  const semanticProgress = Math.round((semanticStatus?.progress || 0) * 100);
+  const semanticLabel = semanticReady
+    ? 'Semantic matching ready'
+    : semanticIndexing
+      ? `Semantic index building${semanticProgress > 0 ? ` (${semanticProgress}%)` : ''}`
+      : semanticState === 'error'
+        ? 'Semantic index needs attention'
+        : 'Standard matching active';
+  const semanticDescription = semanticReady
+    ? 'AI DJ will use meaning-based retrieval when indexed tracks are available for the selected source.'
+    : semanticIndexing
+      ? 'Standard matching remains available while the background index finishes.'
+      : 'Semantic matching will be used automatically after the index is configured and ready.';
+  const semanticReason = semanticStatus?.reason || semanticStatus?.lastError;
+
   const { 
     playSong, 
     showToast, 
@@ -111,6 +156,7 @@ export const SmartPlaylists: React.FC = () => {
     setAIDJGeneratedSongs([]);
     setAIDJFilter(null);
     setAIDJValidation(null);
+    setRetrievalDiagnostics(null);
 
     try {
       const result = await api.generateSmartPlaylist(aiDjPrompt, { 
@@ -128,6 +174,7 @@ export const SmartPlaylists: React.FC = () => {
         flowStrictness: aiDjFlowStrictness,
         source: aiDjSource,
       });
+      setRetrievalDiagnostics(result.retrieval || null);
       const apiSongs = result.songs || [];
       // Convert ApiSong[] to Song[] so they have the correct url field for playback
       const songs = apiSongs.map(apiSongToSong);
@@ -243,6 +290,43 @@ export const SmartPlaylists: React.FC = () => {
             : "Describe the vibe, genre, era, or mood you're looking for, and I'll build a custom playlist from your library."
           }
         </p>
+
+        <div
+          className={`mb-4 flex max-w-3xl items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
+            semanticReady
+              ? 'border-success/30 bg-success/10'
+              : semanticIndexing
+                ? 'border-brand/30 bg-brand/10'
+                : 'border-surface-highlight bg-surface-1'
+          }`}
+          aria-live="polite"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            {semanticIndexing ? (
+              <RefreshCw size={18} className="mt-0.5 shrink-0 animate-spin text-brand" />
+            ) : (
+              <Sparkles size={18} className={`mt-0.5 shrink-0 ${semanticReady ? 'text-success' : 'text-text-subtle'}`} />
+            )}
+            <div>
+              <p className={`text-meta font-semibold ${semanticReady ? 'text-success' : semanticIndexing ? 'text-brand' : 'text-text-main'}`}>
+                {semanticLabel}
+              </p>
+              <p className="text-meta text-text-secondary">{semanticDescription}</p>
+              {!semanticReady && semanticReason && (
+                <p className="mt-1 text-meta text-text-subtle">{semanticReason}</p>
+              )}
+            </div>
+          </div>
+          {!semanticReady && (
+            <Button
+              onClick={() => navigate('/settings', { state: { tab: 'ai' } })}
+              variant="secondary"
+              className="shrink-0 rounded-lg px-3 py-1.5 text-meta"
+            >
+              Index settings
+            </Button>
+          )}
+        </div>
 
         <div className="flex gap-4 max-w-3xl">
           <TextInput
@@ -637,6 +721,36 @@ export const SmartPlaylists: React.FC = () => {
                     <Server size={12} />
                     {aiDjFilter.source === 'all' ? 'All available sources' : aiDjFilter.source === 'plex' ? 'Plex music' : 'Local music'}
                   </span>
+                )}
+                {retrievalDiagnostics?.mode === 'semantic' && (
+                  <details className="mb-2 max-w-xl rounded-lg border border-surface-highlight bg-surface-2 px-3 py-2 text-meta text-text-secondary">
+                    <summary className="cursor-pointer select-none font-medium text-text-main">
+                      Semantic retrieval details
+                      <span className="ml-2 font-normal text-text-subtle">
+                        {retrievalDiagnostics.candidateCount} candidates considered
+                      </span>
+                    </summary>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-text-secondary sm:grid-cols-3">
+                      {retrievalDiagnostics.returnedCount !== undefined && (
+                        <div><dt className="text-text-subtle">Returned</dt><dd>{retrievalDiagnostics.returnedCount}</dd></div>
+                      )}
+                      {retrievalDiagnostics.trackMatches !== undefined && (
+                        <div><dt className="text-text-subtle">Track matches</dt><dd>{retrievalDiagnostics.trackMatches}</dd></div>
+                      )}
+                      {retrievalDiagnostics.albumMatches !== undefined && (
+                        <div><dt className="text-text-subtle">Album matches</dt><dd>{retrievalDiagnostics.albumMatches}</dd></div>
+                      )}
+                      {retrievalDiagnostics.artistMatches !== undefined && (
+                        <div><dt className="text-text-subtle">Artist matches</dt><dd>{retrievalDiagnostics.artistMatches}</dd></div>
+                      )}
+                      {retrievalDiagnostics.phaseCandidateCounts && (
+                        <div><dt className="text-text-subtle">Phase pools</dt><dd>{retrievalDiagnostics.phaseCandidateCounts.join(' / ')}</dd></div>
+                      )}
+                      {retrievalDiagnostics.negativeQueryApplied && (
+                        <div><dt className="text-text-subtle">Negative intent</dt><dd>Applied</dd></div>
+                      )}
+                    </dl>
+                  </details>
                 )}
                 {aiDjMode && (aiDjFilter?.minYear || aiDjFilter?.genres?.length) && (
                   <div className="flex flex-wrap gap-2 text-meta text-text-secondary mb-2" aria-label="Applied DJ set filters">

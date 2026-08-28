@@ -10,15 +10,15 @@ const (
 	EmbeddingProviderAuto       = "auto"
 	EmbeddingProviderOllama     = "ollama"
 	EmbeddingProviderOpenAI     = "openai"
-	EmbeddingProviderOpenRouter = "openrouter"
 	EmbeddingProviderGemini     = "gemini"
+	EmbeddingProviderOpenRouter = "openrouter"
 	EmbeddingProviderDisabled   = "disabled"
 
 	DefaultOllamaEmbeddingModel  = "nomic-embed-text"
 	OllamaEmbeddingBatchSize     = 32
 	OpenAIEmbeddingBatchSize     = 128
-	OpenRouterEmbeddingBatchSize = 128
 	GeminiEmbeddingBatchSize     = 32
+	OpenRouterEmbeddingBatchSize = 128
 )
 
 // EmbeddingProvider keeps provider-specific task prefixes and transport details

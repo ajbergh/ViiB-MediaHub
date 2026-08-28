@@ -1798,6 +1798,12 @@ export interface SmartPlaylistResponse {
 }
 
 /**
+ * Count-only diagnostics emitted when a Smart Playlist request used semantic
+ * retrieval. Document text and embedding vectors never leave the backend.
+ */
+export type SemanticRetrievalDiagnostics = SmartPlaylistRetrieval;
+
+/**
  * Cached album metadata from the backend.
  * Used to persist Spotify lookup results and prevent redundant API calls.
  */
@@ -1901,6 +1907,7 @@ export interface SemanticSettings {
   status: string;
   reason?: string;
   cloudCost?: SemanticCloudCost;
+  cloudConfirmation?: SemanticCloudConfirmation;
 }
 
 export interface SemanticSettingsRequest {
@@ -1923,6 +1930,14 @@ export interface SemanticCloudCost {
   typicalUSD: number;
   maximumUSD: number;
   pricingKnown: boolean;
+  confirmed: boolean;
+}
+
+export interface SemanticCloudConfirmation {
+  provider: 'gemini' | 'openrouter';
+  model: string;
+  dimensions: number;
+  documents: number;
   confirmed: boolean;
 }
 

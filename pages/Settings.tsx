@@ -382,6 +382,7 @@ export const Settings: React.FC = () => {
   const [semanticDimensions, setSemanticDimensions] = useState(0);
   const [semanticAPIKey, setSemanticAPIKey] = useState('');
   const [semanticCloudCost, setSemanticCloudCost] = useState<import('../services/api').SemanticCloudCost | null>(null);
+  const [semanticCloudConfirmation, setSemanticCloudConfirmation] = useState<import('../services/api').SemanticCloudConfirmation | null>(null);
   const [semanticCloudConfirmed, setSemanticCloudConfirmed] = useState(false);
   const [semanticStatus, setSemanticStatus] = useState<import('../services/api').SemanticStatus | null>(null);
   const [semanticLoading, setSemanticLoading] = useState(false);
@@ -459,6 +460,7 @@ export const Settings: React.FC = () => {
               setSemanticDimensions(settings.dimensions || (settings.provider === 'gemini' ? 768 : settings.provider === 'openai' || settings.provider === 'openrouter' ? 512 : 0));
               setSemanticAPIKey('');
               setSemanticCloudCost(settings.cloudCost || null);
+              setSemanticCloudConfirmation(settings.cloudConfirmation || null);
               setSemanticCloudConfirmed(false);
               setSemanticStatus(status);
           } catch (e) {
@@ -2203,17 +2205,19 @@ export const Settings: React.FC = () => {
                           onChange={(e) => {
                             const provider = e.target.value as 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
                             setSemanticProvider(provider);
+                            setSemanticCloudCost(null);
+                            setSemanticCloudConfirmation(null);
                             if (provider === 'openai') {
-							  if (!semanticModel || semanticModel === 'nomic-embed-text' || semanticModel.startsWith('gemini-embedding') || semanticModel.includes('/')) setSemanticModel('text-embedding-3-small');
+                              setSemanticModel('text-embedding-3-small');
                               setSemanticDimensions(512);
                             }
-							if (provider === 'openrouter') {
-							  if (!semanticModel || semanticModel === 'nomic-embed-text' || semanticModel.startsWith('gemini-embedding') || semanticModel.startsWith('text-embedding-')) setSemanticModel('openai/text-embedding-3-small');
-							  setSemanticDimensions(512);
-							}
-							if (provider === 'gemini') {
-							  if (!semanticModel || semanticModel === 'nomic-embed-text' || semanticModel.startsWith('text-embedding') || semanticModel.includes('/text-embedding')) setSemanticModel('gemini-embedding-001');
-							  setSemanticDimensions(768);
+                            if (provider === 'gemini') {
+                              setSemanticModel('gemini-embedding-2');
+                              setSemanticDimensions(768);
+                            }
+                            if (provider === 'openrouter') {
+                              setSemanticModel('openai/text-embedding-3-small');
+                              setSemanticDimensions(512);
                             }
                             setSemanticCloudConfirmed(false);
 							setSemanticCloudCost(null);
@@ -2224,8 +2228,8 @@ export const Settings: React.FC = () => {
                           <option value="auto">Auto (configured chat provider, then local Ollama)</option>
                           <option value="ollama">Ollama (local)</option>
                           <option value="openai">OpenAI (cloud embeddings)</option>
-						  <option value="openrouter">OpenRouter (cloud embeddings)</option>
-						  <option value="gemini">Gemini (cloud embeddings)</option>
+                          <option value="gemini">Google Gemini (cloud embeddings)</option>
+                          <option value="openrouter">OpenRouter (cloud embeddings)</option>
                           <option value="disabled">Disabled</option>
                         </select>
                       </div>
@@ -2260,20 +2264,20 @@ export const Settings: React.FC = () => {
                       </div>
                     )}
 
-                    {(semanticProvider === 'openai' || semanticProvider === 'openrouter' || semanticProvider === 'gemini') && (
+                    {(semanticProvider === 'openai' || semanticProvider === 'gemini' || semanticProvider === 'openrouter') && (
                       <div className="space-y-3 rounded-lg border border-surface-border bg-surface-2 p-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">Embedding dimensions</label>
-                            <TextInput type="number" min="1" value={String(semanticDimensions || 512)} onChange={(e) => { setSemanticDimensions(Number(e.target.value) || 0); setSemanticCloudConfirmed(false); setSemanticSaveStatus('idle'); }} className="w-full bg-surface-3" />
+                            <TextInput type="number" min="1" value={String(semanticDimensions || (semanticProvider === 'gemini' ? 768 : 512))} onChange={(e) => { setSemanticDimensions(Number(e.target.value) || 0); setSemanticCloudConfirmed(false); setSemanticSaveStatus('idle'); }} className="w-full bg-surface-3" />
                           </div>
                           <div>
-							<label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">{semanticProvider === 'openai' ? 'OpenAI' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'Gemini'} API key</label>
-							<TextInput type="password" value={semanticAPIKey} onChange={(e) => { setSemanticAPIKey(e.target.value); setSemanticSaveStatus('idle'); }} placeholder={`Leave blank to reuse the saved ${semanticProvider} chat key`} className="w-full bg-surface-3" />
+                            <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">{semanticProvider === 'gemini' ? 'Gemini' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} API key</label>
+                            <TextInput type="password" value={semanticAPIKey} onChange={(e) => { setSemanticAPIKey(e.target.value); setSemanticSaveStatus('idle'); }} placeholder="Leave blank to use this provider's saved chat or embedding key" className="w-full bg-surface-3" />
                           </div>
                         </div>
-						<p className="text-xs text-warning">{semanticProvider === 'openai' ? 'OpenAI receives' : semanticProvider === 'openrouter' ? 'OpenRouter and the selected embedding provider receive' : 'Gemini receives'} deterministic semantic document text, but never file paths, internal song IDs, or listening history.</p>
-                        {semanticCloudCost ? (
+                        <p className="text-xs text-warning">{semanticProvider === 'gemini' ? 'Gemini' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} receives deterministic semantic document text, but never file paths, internal song IDs, or listening history.</p>
+                        {semanticProvider === 'openai' && semanticCloudCost ? (
                           <div className="space-y-2 text-sm text-text-subtle">
 							<p>
 							  Current catalog: {semanticCloudCost.documents.toLocaleString()} semantic documents
@@ -2287,14 +2291,23 @@ export const Settings: React.FC = () => {
                             </label>
                             {semanticCloudCost.confirmed && <p className="text-success text-xs">This current estimate has already been confirmed.</p>}
                           </div>
+                        ) : semanticCloudConfirmation && semanticCloudConfirmation.provider === semanticProvider ? (
+                          <div className="space-y-2 text-sm text-text-subtle">
+                            <p>Current catalog: {semanticCloudConfirmation.documents.toLocaleString()} semantic documents. Provider pricing and supported models can vary by account or route, so ViiB cannot calculate a reliable local estimate.</p>
+                            <label className="flex items-start gap-2 cursor-pointer text-text-main">
+                              <input type="checkbox" checked={semanticCloudConfirmed} onChange={(e) => setSemanticCloudConfirmed(e.target.checked)} className="mt-1" />
+                              <span>I understand this sends semantic document text to {semanticCloudConfirmation.provider === 'gemini' ? 'Gemini' : 'OpenRouter'} and may incur provider charges.</span>
+                            </label>
+                            {semanticCloudConfirmation.confirmed && <p className="text-success text-xs">This current provider, model, dimensions, and catalog have already been confirmed.</p>}
+                          </div>
                         ) : (
-                          <p className="text-xs text-text-subtle">Save the {semanticProvider === 'openai' ? 'OpenAI' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'Gemini'} configuration once to calculate the current catalog estimate before confirming it.</p>
+                          <p className="text-xs text-text-subtle">Save this cloud configuration once to review the current catalog data notice before confirming it.</p>
                         )}
                       </div>
                     )}
 
                     <p className="text-xs text-text-subtle">
-					  Ollama uses <code>POST /api/embed</code> and never downloads a model automatically. OpenAI, OpenRouter, and Gemini use their dedicated embedding APIs and will not index until the displayed cloud operation is explicitly confirmed.
+                      Ollama uses <code>POST /api/embed</code> and never downloads a model automatically. OpenAI, OpenRouter, and Gemini will not index until their displayed estimate or data notice is explicitly confirmed.
                     </p>
 
                     {(semanticStatus?.reason || semanticStatus?.lastError) && (
@@ -2319,13 +2332,14 @@ export const Settings: React.FC = () => {
                             await api.updateSemanticSettings({
                               provider: semanticProvider,
                               model: semanticModel,
-							  dimensions: semanticProvider === 'openai' || semanticProvider === 'openrouter' || semanticProvider === 'gemini' ? semanticDimensions : undefined,
+                              dimensions: semanticProvider === 'openai' || semanticProvider === 'gemini' || semanticProvider === 'openrouter' ? semanticDimensions : undefined,
                               baseURL: semanticProvider === 'ollama' ? semanticBaseURL : '',
-							  apiKey: (semanticProvider === 'openai' || semanticProvider === 'openrouter' || semanticProvider === 'gemini') && semanticAPIKey ? semanticAPIKey : undefined,
-							  confirmCloudCost: (semanticProvider === 'openai' || semanticProvider === 'openrouter' || semanticProvider === 'gemini') && semanticCloudConfirmed,
+                              apiKey: (semanticProvider === 'openai' || semanticProvider === 'gemini' || semanticProvider === 'openrouter') && semanticAPIKey ? semanticAPIKey : undefined,
+                              confirmCloudCost: (semanticProvider === 'openai' || semanticProvider === 'gemini' || semanticProvider === 'openrouter') && semanticCloudConfirmed,
                             });
                             const settings = await api.getSemanticSettings();
                             setSemanticCloudCost(settings.cloudCost || null);
+                            setSemanticCloudConfirmation(settings.cloudConfirmation || null);
                             setSemanticCloudConfirmed(false);
                             setSemanticAPIKey('');
                             setSemanticSaveStatus('saved');

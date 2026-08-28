@@ -3473,6 +3473,9 @@ type AIEnrichmentApplyResult struct{ Songs, Genres, Mood, Years int }
 // that are missing or low-detail unless force is requested.
 func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (AIEnrichmentApplyResult, error) {
 	var result AIEnrichmentApplyResult
+	if err := d.EnsurePlexSchema(); err != nil {
+		return result, err
+	}
 	tx, err := d.conn.Begin()
 	if err != nil {
 		return result, err
@@ -3526,6 +3529,9 @@ func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (A
 			return result, fmt.Errorf("apply enrichment update: %w", err)
 		}
 		result.Songs++
+		if err := queuePlexAIWriteback(tx, update.SongID, update.Genres, applyGenres, update.OriginalYear, applyYear, time.Now().UnixMilli()); err != nil {
+			return result, fmt.Errorf("queue Plex AI metadata writeback: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return result, err
@@ -3542,21 +3548,27 @@ func genreNeedsEnrichment(genreJSON string) bool {
 // UpdateSongGenres updates the genre list for a specific song.
 // Genres are normalized to consistent Title Case capitalization before saving.
 func (d *DB) UpdateSongGenres(songID string, genres []string) error {
-	// Normalize genres for consistent capitalization
+	if err := d.EnsurePlexSchema(); err != nil {
+		return err
+	}
+	// Normalize genres for consistent capitalization.
 	normalized := NormalizeGenres(genres)
-
 	genreJSON, err := json.Marshal(normalized)
 	if err != nil {
 		return fmt.Errorf("failed to marshal genres: %w", err)
 	}
-
-	query := `UPDATE songs SET genre = ? WHERE id = ?`
-	_, err = d.conn.Exec(query, string(genreJSON), songID)
+	tx, err := d.conn.Begin()
 	if err != nil {
+		return fmt.Errorf("begin genre update: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`UPDATE songs SET genre = ? WHERE id = ?`, string(genreJSON), songID); err != nil {
 		return fmt.Errorf("failed to update song genres: %w", err)
 	}
-
-	return nil
+	if err = queuePlexAIWriteback(tx, songID, normalized, true, 0, false, time.Now().UnixMilli()); err != nil {
+		return fmt.Errorf("queue Plex AI genre writeback: %w", err)
+	}
+	return tx.Commit()
 }
 
 // GetSongsWithMissingGenres returns songs that have no genre information.

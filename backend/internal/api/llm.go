@@ -206,7 +206,7 @@ func (a *API) initializeSemanticProviderFromLLM(provider, ollamaBaseURL string) 
 		dimensions = fmt.Sprint(semantic.DefaultOpenAIEmbeddingDimensions)
 	case llm.ProviderOpenRouter:
 		model = semantic.DefaultOpenRouterEmbeddingModel
-		dimensions = fmt.Sprint(semantic.DefaultOpenRouterDimensions)
+		dimensions = fmt.Sprint(semantic.DefaultOpenRouterEmbeddingDimensions)
 	case llm.ProviderGemini:
 		model = semantic.DefaultGeminiEmbeddingModel
 		dimensions = fmt.Sprint(semantic.DefaultGeminiEmbeddingDimensions)

@@ -44,7 +44,7 @@ func TestOpenAIEmbeddingCostEstimateRejectsUnpricedModel(t *testing.T) {
 func TestCloudEmbeddingConfirmationSupportsOpenRouterAndGeminiWithoutInventingPrices(t *testing.T) {
 	database := newEmbeddingSettingsTestDB(t)
 	for _, settings := range []EmbeddingSettings{
-		{Provider: EmbeddingProviderOpenRouter, Model: DefaultOpenRouterEmbeddingModel, Dimensions: DefaultOpenRouterDimensions},
+		{Provider: EmbeddingProviderOpenRouter, Model: DefaultOpenRouterEmbeddingModel, Dimensions: DefaultOpenRouterEmbeddingDimensions},
 		{Provider: EmbeddingProviderGemini, Model: DefaultGeminiEmbeddingModel, Dimensions: DefaultGeminiEmbeddingDimensions},
 	} {
 		estimate, err := EstimateCloudEmbeddingCost(context.Background(), database, settings)

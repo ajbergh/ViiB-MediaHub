@@ -54,6 +54,8 @@ Open **Settings → Library Health** to configure Plex as a remote music source.
 
 Plex songs synchronize into the same ViiB catalog used by local files, so they appear in the existing Songs, Albums, Artists, Search, queue, playlists, likes, history, Smart Mixes, AI DJ, and statistics experiences. Plex video libraries are not supported.
 
+The Plex panel also includes an optional **AI Metadata Writeback** workflow. AI enrichment is always local first: preview the per-track genre/year changes, explicitly approve the exact diff, then ViiB writes and locks only those fields in Plex and verifies them. It never writes audio-file tags; mood/energy/tempo/BPM and semantic embeddings remain ViiB-only. The Plex token must have PMS metadata-management permission.
+
 See [Plex Media Server Music Support](plex-music.md) for setup, authentication/security, synchronization behavior, playback details, and troubleshooting.
 
 ### Scan Now
@@ -138,6 +140,22 @@ Select and configure the LLM backend used for:
 
 Enter the API key (or endpoint for Ollama) and click **Save**.
 
+### Semantic Retrieval Index
+
+The Semantic Retrieval Index is configured independently from the AI chat provider. It powers meaning-based candidate recall for Smart Playlists and AI DJ when it is ready; chat/metadata enrichment settings do not silently change its vector space.
+
+| Setting or control | Description |
+|---|---|
+| Embedding Provider | **Auto**, local **Ollama**, cloud **OpenAI**, **Google Gemini**, **OpenRouter**, or **Disabled**. Auto only reuses a configured key for that same provider. |
+| Embedding Model / dimensions | Identity for the embedding space. Changing it safely rebuilds the index rather than mixing vectors. |
+| Test Embedding Provider | Sends one non-persistent test embedding and reports the detected dimensions. |
+| Reindex | Starts a background rebuild; playback and normal metadata matching remain usable. |
+| Retry Errors | Requeues only documents left in an error state after bounded provider retries. |
+
+Ollama uses its embedding endpoint and ViiB never downloads a model automatically. Gemini uses `gemini-embedding-2` at 768 dimensions by default; OpenRouter uses its embeddings API with `openai/text-embedding-3-small` at 512 dimensions by default. Cloud providers receive deterministic semantic document text but never file paths, internal song IDs, or listening history. Before any cloud indexing starts, ViiB displays either OpenAI's current one-time estimate or a Gemini/OpenRouter data-and-cost notice and requires explicit confirmation.
+
+Status reports ready/indexing/configuration/error state plus ready, pending, and error document counts. If the index is unavailable, Smart Playlists and AI DJ use their normal metadata fallback rather than becoming unavailable.
+
 ### Last.FM Integration
 
 | Setting | Description |
@@ -155,7 +173,7 @@ Runs the configured AI provider over your library to fill in missing or empty ge
 
 - Click **Run Genre Enrichment** to start.
 - Progress is shown in the Activity Log.
-- Genres are written back to the `songs.genre` column in SQLite (not embedded back into the source audio file or written back to Plex).
+- Genres are written to the `songs.genre` column in SQLite. For Plex-backed tracks, a separate explicit AI Metadata Writeback preview can later send approved genre changes to Plex; no source audio file tags are modified.
 
 ### Unified Enrichment
 

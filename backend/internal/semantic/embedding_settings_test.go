@@ -81,57 +81,33 @@ func TestResolveEmbeddingSettingsDocumentsNonNativeChatProviderFallback(t *testi
 	}
 }
 
-func TestResolveEmbeddingSettingsDirectsSupportedCloudChatProvidersToExplicitConfirmation(t *testing.T) {
-	providers := []string{llm.ProviderGemini, llm.ProviderOpenRouter}
-	for _, provider := range providers {
-		t.Run(provider, func(t *testing.T) {
-			database := newEmbeddingSettingsTestDB(t)
-			if err := database.SetSettingsBatch(map[string]string{"llm_provider": provider, "llm_api_key": "chat-key"}); err != nil {
-				t.Fatal(err)
-			}
-			resolution, err := resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) { return false, nil })
-			if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || resolution.Settings.Provider != provider || !strings.Contains(resolution.Reason, "embeddings are supported") {
-				t.Fatalf("resolution=%#v err=%v", resolution, err)
-			}
-		})
-	}
-}
-
-func TestResolveEmbeddingSettingsRecognizesLegacyGeminiFallback(t *testing.T) {
+func TestResolveEmbeddingSettingsUsesMatchingGeminiAndOpenRouterChatCredentials(t *testing.T) {
 	database := newEmbeddingSettingsTestDB(t)
-	if err := database.SetSetting("gemini_api_key", "legacy-key"); err != nil {
+	if err := database.SetSettingsBatch(map[string]string{
+		"gemini_api_key":                   "legacy-key",
+		SemanticEmbeddingAPIKeySetting:     "unrelated-explicit-provider-key",
+		SemanticEmbeddingModelSetting:      "unrelated-explicit-provider-model",
+		SemanticEmbeddingDimensionsSetting: "333",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	resolution, err := resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) {
 		return false, nil
 	})
-	if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || !strings.Contains(resolution.Reason, "gemini embeddings are supported") {
+	if err != nil || !resolution.Ready() || resolution.Source != "chat_provider" || resolution.Settings.Provider != EmbeddingProviderGemini || resolution.Settings.APIKey != "legacy-key" || resolution.Settings.Model != DefaultGeminiEmbeddingModel || resolution.Settings.Dimensions != DefaultGeminiEmbeddingDimensions {
 		t.Fatalf("resolution=%#v err=%v", resolution, err)
 	}
-}
-
-func TestExplicitOpenRouterAndGeminiReuseMatchingChatCredentials(t *testing.T) {
-	for _, test := range []struct {
-		provider, model string
-		dimensions      int
-	}{
-		{EmbeddingProviderOpenRouter, DefaultOpenRouterEmbeddingModel, DefaultOpenRouterDimensions},
-		{EmbeddingProviderGemini, DefaultGeminiEmbeddingModel, DefaultGeminiEmbeddingDimensions},
-	} {
-		t.Run(test.provider, func(t *testing.T) {
-			database := newEmbeddingSettingsTestDB(t)
-			if err := database.SetSettingsBatch(map[string]string{
-				SemanticEmbeddingProviderSetting: test.provider,
-				"llm_provider":                   test.provider,
-				"llm_api_key":                    "chat-key",
-			}); err != nil {
-				t.Fatal(err)
-			}
-			resolution, err := ResolveEmbeddingSettings(context.Background(), database, nil)
-			if err != nil || !resolution.Ready() || resolution.Settings.APIKey != "chat-key" || resolution.Settings.Model != test.model || resolution.Settings.Dimensions != test.dimensions {
-				t.Fatalf("resolution=%#v err=%v", resolution, err)
-			}
-		})
+	if err := database.SetSettingsBatch(map[string]string{
+		"llm_provider": "openrouter",
+		"llm_api_key":  "router-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resolution, err = resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) {
+		return false, nil
+	})
+	if err != nil || !resolution.Ready() || resolution.Source != "chat_provider" || resolution.Settings.Provider != EmbeddingProviderOpenRouter || resolution.Settings.APIKey != "router-key" || resolution.Settings.Model != DefaultOpenRouterEmbeddingModel || resolution.Settings.Dimensions != DefaultOpenRouterEmbeddingDimensions {
+		t.Fatalf("resolution=%#v err=%v", resolution, err)
 	}
 }
 
@@ -145,28 +121,28 @@ func TestLoadEmbeddingSettingsRejectsInvalidDimensions(t *testing.T) {
 	}
 }
 
-func TestNewConfiguredEmbeddingProviderCreatesOpenAIAdapter(t *testing.T) {
-	provider, err := NewConfiguredEmbeddingProvider(EmbeddingSettings{
-		Provider:   EmbeddingProviderOpenAI,
-		Model:      DefaultOpenAIEmbeddingModel,
-		Dimensions: DefaultOpenAIEmbeddingDimensions,
-		APIKey:     "test-key",
-	}, nil)
-	if err != nil || provider.Name() != EmbeddingProviderOpenAI || provider.Model() != DefaultOpenAIEmbeddingModel {
-		t.Fatalf("provider=%T err=%v", provider, err)
+func TestNewConfiguredEmbeddingProviderCreatesCloudAdapters(t *testing.T) {
+	testCases := []struct {
+		provider   string
+		model      string
+		dimensions int
+	}{
+		{EmbeddingProviderOpenAI, DefaultOpenAIEmbeddingModel, DefaultOpenAIEmbeddingDimensions},
+		{EmbeddingProviderGemini, DefaultGeminiEmbeddingModel, DefaultGeminiEmbeddingDimensions},
+		{EmbeddingProviderOpenRouter, DefaultOpenRouterEmbeddingModel, DefaultOpenRouterEmbeddingDimensions},
 	}
-}
-
-func TestNewConfiguredEmbeddingProviderCreatesSupportedCloudAdapters(t *testing.T) {
-	for _, settings := range []EmbeddingSettings{
-		{Provider: EmbeddingProviderOpenRouter, APIKey: "test-key"},
-		{Provider: EmbeddingProviderGemini, APIKey: "test-key"},
-	} {
-		provider, err := NewConfiguredEmbeddingProvider(settings, nil)
-		if err != nil || provider.Name() != settings.Provider {
-			t.Fatalf("settings=%#v provider=%T err=%v", settings, provider, err)
-		}
-		_ = provider.Close()
+	for _, testCase := range testCases {
+		t.Run(testCase.provider, func(t *testing.T) {
+			provider, err := NewConfiguredEmbeddingProvider(EmbeddingSettings{
+				Provider:   testCase.provider,
+				Model:      testCase.model,
+				Dimensions: testCase.dimensions,
+				APIKey:     "test-key",
+			}, nil)
+			if err != nil || provider.Name() != testCase.provider || provider.Model() != testCase.model {
+				t.Fatalf("provider=%T err=%v", provider, err)
+			}
+		})
 	}
 }
 

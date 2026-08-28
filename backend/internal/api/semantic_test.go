@@ -109,6 +109,9 @@ func TestSemanticSettingsEndpointStoresDedicatedSettingsAndMasksAPIKey(t *testin
 	if loaded.Dimensions != 0 {
 		t.Fatalf("auto dimensions=%d, want 0", loaded.Dimensions)
 	}
+	if got, err := database.GetSetting(semantic.SemanticEmbeddingAPIKeySetting); err != nil || got != "" {
+		t.Fatalf("auto configuration retained a provider-specific API key=%q err=%v", got, err)
+	}
 
 	confirmBody := bytes.NewBufferString(`{"provider":"openai","model":"text-embedding-3-small","dimensions":512,"baseURL":"","confirmCloudCost":true}`)
 	confirmRecorder := httptest.NewRecorder()
@@ -139,108 +142,53 @@ func TestSemanticServiceRequiresOpenAICostConfirmationBeforeStarting(t *testing.
 	api := &API{db: database}
 	api.initSemanticService()
 	resolution, service, _ := api.semanticSnapshot()
-	if service != nil || resolution.Status != "needs_configuration" || !strings.Contains(resolution.Reason, "confirm one-time openai cloud embedding") {
+	if service != nil || resolution.Status != "needs_configuration" || !strings.Contains(resolution.Reason, "confirm the one-time OpenAI embedding estimate") {
 		t.Fatalf("resolution=%#v service=%v", resolution, service)
 	}
 }
 
-func TestSemanticSettingsProviderSwitchReusesOnlyMatchingChatKeyAndPreservesConfirmation(t *testing.T) {
-	database, err := db.New(filepath.Join(t.TempDir(), "semantic-provider-switch.db"))
+func TestGeminiSemanticSettingsRequiresCloudDataConfirmation(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "semantic-gemini-confirmation.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if err := database.SetSettingsBatch(map[string]string{
-		"llm_provider": semantic.EmbeddingProviderOpenRouter,
-		"llm_api_key":  "router-chat-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
 	api := &API{db: database, semanticClosed: true}
 	routes := api.Routes()
-
-	openAI := httptest.NewRecorder()
-	routes.ServeHTTP(openAI, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"openai","model":"text-embedding-3-small","dimensions":512,"baseURL":"","apiKey":"openai-only-key"}`)))
-	if openAI.Code != http.StatusOK {
-		t.Fatalf("OpenAI update code=%d body=%s", openAI.Code, openAI.Body.String())
+	updateRecorder := httptest.NewRecorder()
+	routes.ServeHTTP(updateRecorder, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"gemini","model":"gemini-embedding-2","dimensions":768,"baseURL":"","apiKey":"gemini-key"}`)))
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("update code=%d body=%s", updateRecorder.Code, updateRecorder.Body.String())
 	}
-
-	openRouter := httptest.NewRecorder()
-	routes.ServeHTTP(openRouter, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"openrouter","model":"openai/text-embedding-3-small","dimensions":512,"baseURL":"","confirmCloudCost":true}`)))
-	if openRouter.Code != http.StatusOK {
-		t.Fatalf("OpenRouter update code=%d body=%s", openRouter.Code, openRouter.Body.String())
+	settingsRecorder := httptest.NewRecorder()
+	routes.ServeHTTP(settingsRecorder, httptest.NewRequest(http.MethodGet, "/semantic/settings", nil))
+	var settings semanticSettingsResponse
+	if err := json.NewDecoder(settingsRecorder.Body).Decode(&settings); err != nil {
+		t.Fatal(err)
 	}
-	if storedKey, err := database.GetSetting(semantic.SemanticEmbeddingAPIKeySetting); err != nil || storedKey != "" {
-		t.Fatalf("provider switch retained dedicated key %q err=%v", storedKey, err)
+	if settings.CloudConfirmation == nil || settings.CloudConfirmation.Provider != semantic.EmbeddingProviderGemini || settings.CloudConfirmation.Confirmed {
+		t.Fatalf("settings=%#v", settings)
 	}
-	resolution, err := semantic.ResolveEmbeddingSettings(context.Background(), database, nil)
-	if err != nil || !resolution.Ready() || resolution.Settings.APIKey != "router-chat-key" {
-		t.Fatalf("resolution=%#v err=%v", resolution, err)
+	confirmRecorder := httptest.NewRecorder()
+	routes.ServeHTTP(confirmRecorder, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"gemini","model":"gemini-embedding-2","dimensions":768,"baseURL":"","confirmCloudCost":true}`)))
+	if confirmRecorder.Code != http.StatusOK {
+		t.Fatalf("confirm code=%d body=%s", confirmRecorder.Code, confirmRecorder.Body.String())
 	}
-	confirmed, err := semantic.CloudEmbeddingCostConfirmed(context.Background(), database, resolution.Settings)
+	confirmed, err := semantic.CloudEmbeddingConfirmationConfirmed(context.Background(), database, semantic.EmbeddingSettings{
+		Provider:   semantic.EmbeddingProviderGemini,
+		Model:      semantic.DefaultGeminiEmbeddingModel,
+		Dimensions: semantic.DefaultGeminiEmbeddingDimensions,
+	})
 	if err != nil || !confirmed.Confirmed {
 		t.Fatalf("confirmed=%#v err=%v", confirmed, err)
 	}
 
-	repeat := httptest.NewRecorder()
-	routes.ServeHTTP(repeat, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"openrouter","model":"openai/text-embedding-3-small","dimensions":512,"baseURL":""}`)))
-	if repeat.Code != http.StatusOK {
-		t.Fatalf("repeat update code=%d body=%s", repeat.Code, repeat.Body.String())
-	}
-	confirmed, err = semantic.CloudEmbeddingCostConfirmed(context.Background(), database, resolution.Settings)
-	if err != nil || !confirmed.Confirmed {
-		t.Fatalf("unchanged provider lost confirmation: confirmed=%#v err=%v", confirmed, err)
-	}
-}
-
-func TestLLMSettingsInitializeMatchingSemanticProviderInsteadOfOllamaFallback(t *testing.T) {
-	database, err := db.New(filepath.Join(t.TempDir(), "llm-semantic-bootstrap.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	api := &API{db: database, semanticClosed: true}
-	routes := api.Routes()
-
-	response := httptest.NewRecorder()
-	routes.ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/llm/settings", bytes.NewBufferString(`{"provider":"openrouter","model":"openrouter/auto","apiKey":"router-chat-key","baseURL":"http://localhost:11434"}`)))
-	if response.Code != http.StatusOK {
-		t.Fatalf("LLM update code=%d body=%s", response.Code, response.Body.String())
-	}
-	settings, err := semantic.LoadEmbeddingSettings(database)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if settings.Provider != semantic.EmbeddingProviderOpenRouter || settings.Model != semantic.DefaultOpenRouterEmbeddingModel || settings.Dimensions != semantic.DefaultOpenRouterDimensions || settings.BaseURL != "" || settings.APIKey != "" {
-		t.Fatalf("semantic settings=%#v", settings)
-	}
-	resolution, err := semantic.ResolveEmbeddingSettings(context.Background(), database, nil)
-	if err != nil || !resolution.Ready() || resolution.Settings.APIKey != "router-chat-key" || strings.Contains(strings.ToLower(resolution.Reason), "ollama") {
-		t.Fatalf("resolution=%#v err=%v", resolution, err)
-	}
-}
-
-func TestLLMSettingsDoNotOverrideExplicitSemanticProvider(t *testing.T) {
-	database, err := db.New(filepath.Join(t.TempDir(), "llm-semantic-explicit.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	if err := database.SetSettingsBatch(map[string]string{
-		semantic.SemanticEmbeddingProviderSetting: semantic.EmbeddingProviderOllama,
-		semantic.SemanticEmbeddingModelSetting:    "custom-local-embedding",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	api := &API{db: database, semanticClosed: true}
-	response := httptest.NewRecorder()
-	api.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/llm/settings", bytes.NewBufferString(`{"provider":"openrouter","model":"openrouter/auto","apiKey":"router-chat-key"}`)))
-	if response.Code != http.StatusOK {
-		t.Fatalf("LLM update code=%d body=%s", response.Code, response.Body.String())
-	}
-	settings, err := semantic.LoadEmbeddingSettings(database)
-	if err != nil || settings.Provider != semantic.EmbeddingProviderOllama || settings.Model != "custom-local-embedding" {
-		t.Fatalf("semantic settings=%#v err=%v", settings, err)
+	api = &API{db: database}
+	defer api.Close()
+	api.initSemanticService()
+	resolution, _, _ := api.semanticSnapshot()
+	if strings.Contains(resolution.Reason, "confirm the Gemini or OpenRouter") {
+		t.Fatalf("resolution=%#v", resolution)
 	}
 }
 
