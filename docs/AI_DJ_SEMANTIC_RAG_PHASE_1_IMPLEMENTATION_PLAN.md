@@ -1968,6 +1968,8 @@ package validation is running in [PR #29](https://github.com/ajbergh/ViiB-MediaH
   Silicon, and macOS Intel in addition to the existing Windows x64 package build.
 - Linux builds use WebKitGTK 4.1 explicitly on Ubuntu 24.04. Each job verifies the produced
   architecture and publishes a checksummed desktop archive plus a retained diagnostic log.
+- Native package jobs reuse the checked-in Wails bindings instead of launching the application
+  during binding discovery; the existing Windows package gate continues to regenerate them.
 - macOS CI artifacts are unsigned validation bundles; signing and notarization remain release
   responsibilities rather than pull-request CI requirements.
 

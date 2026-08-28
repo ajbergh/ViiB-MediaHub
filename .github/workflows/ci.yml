@@ -173,7 +173,7 @@ jobs:
         if: startsWith(matrix.target, 'linux-')
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config xvfb libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
       - name: Download validated frontend bundle
         uses: actions/download-artifact@v4
@@ -195,9 +195,9 @@ jobs:
         run: |
           set -o pipefail
           if [[ "${{ matrix.target }}" == linux-* ]]; then
-            xvfb-run -a wails build -platform "${{ matrix.platform }}" -tags webkit2_41 -ldflags "-s -w" 2>&1 | tee wails-build.log
+            wails build -skipbindings -platform "${{ matrix.platform }}" -tags webkit2_41 -ldflags "-s -w" 2>&1 | tee wails-build.log
           else
-            wails build -platform "${{ matrix.platform }}" -ldflags "-s -w" 2>&1 | tee wails-build.log
+            wails build -skipbindings -platform "${{ matrix.platform }}" -ldflags "-s -w" 2>&1 | tee wails-build.log
           fi
       - name: Upload Wails build diagnostics
         if: always()
