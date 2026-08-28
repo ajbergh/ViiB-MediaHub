@@ -24,6 +24,8 @@ interface LegacyLibraryEvent {
   data?: {
     totalSongs?: number;
     processedSongs?: number;
+    changedSongs?: number;
+    emptyResults?: number;
     currentBatch?: number;
     totalBatches?: number;
     enrichedSongs?: number;
@@ -91,6 +93,9 @@ const LibraryEventListener = () => {
       if (delta.changes.length > 0) {
         const songs = libraryIndex.apply(delta.changes, delta.songs);
         replaceLibrary(songs);
+        window.dispatchEvent(new CustomEvent('library_updated', {
+          detail: { revision: delta.revision, changedSongs: delta.songs.length },
+        }));
       }
       currentRevisionRef.current = delta.revision;
       storeRevision(delta.revision);
@@ -154,6 +159,7 @@ const LibraryEventListener = () => {
               setScanProgress(payload.message);
             }
             syncCommittedLibraryMutation();
+            window.dispatchEvent(new CustomEvent('library_updated', { detail: payload }));
             break;
           case 'enrichment_started':
           case 'mood_started':

@@ -996,6 +996,8 @@ func (s *Scanner) enrichWithLLM() {
 	})
 
 	processedSongs := 0
+	changedSongs := 0
+	emptyResults := 0
 	genresUpdated := 0
 	moodUpdated := 0
 	yearsUpdated := 0
@@ -1033,14 +1035,21 @@ func (s *Scanner) enrichWithLLM() {
 		}
 
 		updates := make([]db.AIEnrichmentUpdate, 0, len(unified))
-		for songID, metadata := range unified {
-			if metadata != nil {
-				updates = append(updates, db.AIEnrichmentUpdate{
-					SongID: songID, Genres: metadata.Genres, Mood: metadata.Mood,
-					Energy: metadata.Energy, Tempo: metadata.Tempo, BPM: metadata.BPM,
-					Instrumental: metadata.Instrumental, OriginalYear: metadata.OriginalYear,
-				})
+		batchEmptyResults := 0
+		for _, song := range songsToEnrich {
+			metadata := unified[song.ID]
+			if metadata == nil {
+				batchEmptyResults++
+				continue
 			}
+			if !metadata.HasMetadata() {
+				batchEmptyResults++
+			}
+			updates = append(updates, db.AIEnrichmentUpdate{
+				SongID: song.ID, Genres: metadata.Genres, Mood: metadata.Mood,
+				Energy: metadata.Energy, Tempo: metadata.Tempo, BPM: metadata.BPM,
+				Instrumental: metadata.Instrumental, OriginalYear: metadata.OriginalYear,
+			})
 		}
 		applied, applyErr := s.db.ApplyAIEnrichmentBatch(updates, false)
 		if applyErr != nil {
@@ -1050,13 +1059,31 @@ func (s *Scanner) enrichWithLLM() {
 		}
 
 		processedSongs += len(songsToEnrich)
+		changedSongs += applied.Songs
+		emptyResults += batchEmptyResults
 		genresUpdated += applied.Genres
 		moodUpdated += applied.Mood
 		yearsUpdated += applied.Years
 
-		completedMessage := fmt.Sprintf("AI batch %d/%d complete: genres=%d, mood/BPM=%d, years=%d", batch+1, totalBatches, applied.Genres, applied.Mood, applied.Years)
+		if applied.Genres > 0 {
+			if err := s.db.UpdateGenreStats(); err != nil {
+				logger.Scanner("Failed to refresh genre aggregates after AI batch %d: %v", batch+1, err)
+			}
+		}
+
+		completedMessage := fmt.Sprintf("AI batch %d/%d complete: changed=%d, no metadata=%d, genres=%d, mood/BPM=%d, years=%d", batch+1, totalBatches, applied.Songs, batchEmptyResults, applied.Genres, applied.Mood, applied.Years)
 		s.setProgress(completedMessage)
 		logger.Scanner("%s (processed: %d/%d)", completedMessage, processedSongs, totalToEnrich)
+		s.emitEvent(LibraryEvent{
+			Type:         "library_updated",
+			Message:      fmt.Sprintf("AI enrichment batch %d committed", batch+1),
+			UpdatedSongs: applied.Songs,
+			Data: map[string]interface{}{
+				"currentBatch": batch + 1, "totalBatches": totalBatches,
+				"processedSongs": processedSongs, "totalSongs": totalToEnrich,
+				"changedSongs": applied.Songs, "emptyResults": batchEmptyResults,
+			},
+		})
 
 		// Emit progress after the transaction commits so the renderer can safely
 		// reload the newly enriched song rows immediately.
@@ -1068,11 +1095,13 @@ func (s *Scanner) enrichWithLLM() {
 				"totalBatches":   totalBatches,
 				"processedSongs": processedSongs,
 				"totalSongs":     totalToEnrich,
+				"changedSongs":   changedSongs,
+				"emptyResults":   emptyResults,
 			},
 		})
 	}
 
-	completionMessage := fmt.Sprintf("AI enrichment complete: genres=%d, mood/BPM=%d, years=%d", genresUpdated, moodUpdated, yearsUpdated)
+	completionMessage := fmt.Sprintf("AI enrichment complete: changed=%d, no metadata=%d, genres=%d, mood/BPM=%d, years=%d", changedSongs, emptyResults, genresUpdated, moodUpdated, yearsUpdated)
 	if failedBatches > 0 {
 		completionMessage += fmt.Sprintf(" (%d batches failed)", failedBatches)
 	}
@@ -1086,12 +1115,11 @@ func (s *Scanner) enrichWithLLM() {
 			"totalSongs":     totalToEnrich,
 			"currentBatch":   totalBatches,
 			"totalBatches":   totalBatches,
+			"changedSongs":   changedSongs,
+			"emptyResults":   emptyResults,
 		},
 	})
-	logger.Scanner("Unified LLM enrichment complete via %s: genres=%d, mood=%d, years=%d, failed batches=%d", provider.GetProviderName(), genresUpdated, moodUpdated, yearsUpdated, failedBatches)
-	if err := s.db.UpdateGenreStats(); err != nil {
-		logger.Scanner("Failed to update genre stats after unified enrichment: %v", err)
-	}
+	logger.Scanner("Unified LLM enrichment complete via %s: changed=%d, no metadata=%d, genres=%d, mood=%d, years=%d, failed batches=%d", provider.GetProviderName(), changedSongs, emptyResults, genresUpdated, moodUpdated, yearsUpdated, failedBatches)
 }
 
 // SongMetadata holds extracted metadata from an audio file

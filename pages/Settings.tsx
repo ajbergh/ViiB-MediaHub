@@ -344,6 +344,8 @@ export const Settings: React.FC = () => {
       totalSongs: progress.totalSongs || 0,
       currentBatch: progress.currentBatch || 0,
       totalBatches: progress.totalBatches || 0,
+      changedSongs: progress.changedSongs || 0,
+      emptyResults: progress.emptyResults || 0,
     };
     if (progress.status === 'started') {
       addLog('info', `[AI Enrichment] ${progress.message || fallbackMessage}`, details);

@@ -11,6 +11,9 @@ func TestAIEnrichmentSelectsAllNeededFieldsAndPreservesExistingMetadata(t *testi
 		t.Fatalf("open database: %v", err)
 	}
 	defer database.Close()
+	if err := database.EnsureLibrarySyncSchema(); err != nil {
+		t.Fatalf("initialize library synchronization: %v", err)
+	}
 
 	if err := database.SaveSongs([]Song{
 		{ID: "remaster", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "remaster.mp3", FileHash: "one", AddedAt: 1},
@@ -32,6 +35,10 @@ func TestAIEnrichmentSelectsAllNeededFieldsAndPreservesExistingMetadata(t *testi
 	if len(songs) != 2 {
 		t.Fatalf("selected %d songs, want 2", len(songs))
 	}
+	revisionBefore, err := database.LibraryRevision()
+	if err != nil {
+		t.Fatalf("read library revision: %v", err)
+	}
 
 	result, err := database.ApplyAIEnrichmentBatch([]AIEnrichmentUpdate{{
 		SongID: "remaster", Genres: []string{"alternative rock", "indie rock"},
@@ -40,8 +47,8 @@ func TestAIEnrichmentSelectsAllNeededFieldsAndPreservesExistingMetadata(t *testi
 	if err != nil {
 		t.Fatalf("ApplyAIEnrichmentBatch: %v", err)
 	}
-	if result.Genres != 1 || result.Mood != 0 || result.Years != 1 {
-		t.Fatalf("apply result = %#v, want genres=1 mood=0 years=1", result)
+	if result.Songs != 1 || result.Genres != 1 || result.Mood != 0 || result.Years != 1 {
+		t.Fatalf("apply result = %#v, want songs=1 genres=1 mood=0 years=1", result)
 	}
 
 	var genre, mood string
@@ -52,5 +59,31 @@ func TestAIEnrichmentSelectsAllNeededFieldsAndPreservesExistingMetadata(t *testi
 	}
 	if genre != `["Alternative Rock","Indie Rock"]` || mood != "happy" || originalYear != 1994 || uncertain {
 		t.Fatalf("unexpected stored values: genre=%s mood=%s year=%d uncertain=%v", genre, mood, originalYear, uncertain)
+	}
+
+	changes, err := database.GetLibraryChanges(revisionBefore, 10)
+	if err != nil {
+		t.Fatalf("read enrichment delta: %v", err)
+	}
+	if len(changes.Changes) != 1 || len(changes.Songs) != 1 || changes.Songs[0].ID != "remaster" {
+		t.Fatalf("enrichment delta = %#v", changes)
+	}
+	if got := changes.Songs[0]; len(got.Genre) != 2 || got.OriginalYear != 1994 || got.Mood != "happy" {
+		t.Fatalf("enriched delta song = %#v", got)
+	}
+
+	if err := database.UpdateGenreStats(); err != nil {
+		t.Fatalf("refresh genre stats: %v", err)
+	}
+	stats, err := database.GetAllGenreStats()
+	if err != nil {
+		t.Fatalf("read genre stats: %v", err)
+	}
+	counts := make(map[string]int, len(stats))
+	for _, stat := range stats {
+		counts[stat.Name] = stat.Count
+	}
+	if counts["Alternative Rock"] != 1 || counts["Indie Rock"] != 1 || counts["Fusion"] != 1 {
+		t.Fatalf("genre counts = %#v", counts)
 	}
 }

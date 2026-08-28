@@ -1772,7 +1772,8 @@ net for delayed or missed stream events.
 ### 20.2 Post-implementation reliability follow-up — enrichment visibility and cloud embeddings
 
 **Status:** Corrective implementation and automated validation complete on
-`fix/fresh-install-library-live-sync`; the packaged behavior retest is the remaining gate.
+`fix/fresh-install-library-live-sync`. Branch-head CI and the packaged behavior retest
+are the remaining gates.
 
 - Automatic post-scan enrichment now uses the same unified metadata pipeline as the
   Settings action. It writes genre, mood, BPM/energy, and release-year results through
@@ -1784,6 +1785,18 @@ net for delayed or missed stream events.
 - The renderer synchronizes committed enrichment revisions after each completed batch,
   so Library Metadata Health and song metadata can advance while the job is still active;
   it also forces a canonical refresh after Settings batches and completion.
+- Enriched song rows and derived genre aggregates now become one visible UI milestone:
+  each committed batch rebuilds `genre_stats` before broadcasting `library_updated`.
+  The renderer forwards revision and legacy updates to independently queried pages such
+  as Genres, and mutable library/genre reads explicitly bypass HTTP caches. New genre
+  cards, counts, metadata-health coverage, and enriched fields therefore become usable
+  without closing or unloading the application.
+- Unified enrichment logging now records the validated result for every requested track,
+  including returned genres, mood, energy, tempo, BPM, instrumental status, and original
+  year. Missing, omitted, or zero-value model results are logged explicitly as
+  `NO_METADATA`; batch/sidebar progress reports both changed-song and no-metadata totals.
+  Invalid structured responses include a quoted, bounded preview for diagnosis without
+  logging credentials or prompts.
 - Native OpenRouter and Gemini semantic embedding adapters are implemented. Explicit
   provider selection may reuse the matching saved chat key, but indexing remains blocked
   until the catalog-specific cloud operation is confirmed. OpenRouter/Gemini pricing is
@@ -1811,6 +1824,9 @@ net for delayed or missed stream events.
   [run 33123478399](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33123478399)
   passed frontend validation, full backend validation, all five semantic cross-compiles,
   and the packaged Windows Wails build/binary scan for implementation commit `db2c814`.
+- Immediate enrichment visibility and result-logging changes pass `go test ./...` plus
+  the complete `npm run check` gate locally (typecheck, all 31 frontend tests, palette and
+  raw-color audits, and production build). Their branch-head CI run is pending.
 
 ---
 

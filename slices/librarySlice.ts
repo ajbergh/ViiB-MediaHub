@@ -190,6 +190,9 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               const mixes = generateSmartMixes(indexedSongs);
               set({ songs: indexedSongs, playlists, smartMixes: mixes, scanFolders, artistMetadata: mapCachedArtistMetadata(cachedArtistMetadata) });
               console.log(`✅ Library refreshed: ${songs.length} songs`);
+              if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'full_refresh' } }));
+              }
           } catch (e) {
               console.error("Failed to refresh library from backend", e);
           }

@@ -148,6 +148,8 @@ export interface EnrichmentProgress {
   message: string;
   totalSongs: number;
   processedSongs: number;
+  changedSongs?: number;
+  emptyResults?: number;
   currentBatch: number;
   totalBatches: number;
   error?: string;
@@ -213,12 +215,12 @@ export const api = {
 
   // Songs
   async getSongs(): Promise<ApiSong[]> {
-    const response = await fetch(`${API_BASE}/songs`);
+    const response = await fetch(`${API_BASE}/songs`, { cache: 'no-store' });
     return handleResponse(response);
   },
 
   async getGenres(): Promise<GenreStat[]> {
-    const response = await fetch(`${API_BASE}/genres`);
+    const response = await fetch(`${API_BASE}/genres`, { cache: 'no-store' });
     const data = await handleResponse<GenreStat[] | null>(response);
     // Ensure we always return an array, and topArtists is always defined
     return (data || []).map(g => ({

@@ -34,6 +34,26 @@ func TestParseEnrichmentResponseRequiresCompleteKnownValidatedResults(t *testing
 	}
 }
 
+func TestUnifiedMetadataHasMetadataDistinguishesEmptyLLMResults(t *testing.T) {
+	if (&UnifiedMetadata{}).HasMetadata() {
+		t.Fatal("zero-value metadata was treated as usable")
+	}
+	if (&UnifiedMetadata{Instrumental: false}).HasMetadata() {
+		t.Fatal("false instrumental zero value was treated as usable metadata")
+	}
+	for name, metadata := range map[string]*UnifiedMetadata{
+		"genre":        {Genres: []string{"Rock"}},
+		"mood":         {Mood: "happy"},
+		"bpm":          {BPM: 120},
+		"instrumental": {Instrumental: true},
+		"year":         {OriginalYear: 1999},
+	} {
+		if !metadata.HasMetadata() {
+			t.Errorf("%s metadata was treated as empty", name)
+		}
+	}
+}
+
 func TestGetOpenRouterModelsUsesCatalogAndKeepsAutoRouter(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got, want := r.Header.Get("Authorization"), "Bearer test-key"; got != want {
