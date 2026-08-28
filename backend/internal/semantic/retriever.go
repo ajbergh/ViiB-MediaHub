@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -82,13 +83,22 @@ type SemanticRetrievalOptions struct {
 	YearConstraintHard    bool
 	InstrumentalOnly      bool
 	NegativeSemanticQuery string
+	RequiredStyles        []string
+	ExcludedTerms         []string
+}
+
+type SemanticFilterDiagnostics struct {
+	HardExcluded     int
+	StyleMismatches  int
+	NegativeRejected int
 }
 
 // SemanticRetrievalResult is the expanded, deduplicated candidate pool ready
 // for ranking. CandidateCount is capped before hard filters by design.
 type SemanticRetrievalResult struct {
-	Search     SemanticSearchResult
-	Candidates []SemanticCandidate
+	Search      SemanticSearchResult
+	Candidates  []SemanticCandidate
+	Diagnostics SemanticFilterDiagnostics
 }
 
 // SearchSemanticDocuments embeds one query once, then exact-searches each
@@ -184,8 +194,13 @@ func (service *Service) RetrieveSemanticCandidates(ctx context.Context, query st
 	for _, song := range songs {
 		candidate := candidates[song.ID]
 		candidate.Song = song
-		if semanticCandidateAllowed(candidate.Song, options) {
+		allowed, reason := semanticCandidateAllowed(candidate, options)
+		if allowed {
 			result.Candidates = append(result.Candidates, candidate)
+		} else if reason == "hard_exclusion" {
+			result.Diagnostics.HardExcluded++
+		} else if reason == "style_mismatch" {
+			result.Diagnostics.StyleMismatches++
 		}
 	}
 	if strings.TrimSpace(options.NegativeSemanticQuery) != "" {
@@ -193,6 +208,7 @@ func (service *Service) RetrieveSemanticCandidates(ctx context.Context, query st
 		if adjustErr != nil {
 			return SemanticRetrievalResult{}, adjustErr
 		}
+		result.Diagnostics.NegativeRejected += len(result.Candidates) - len(adjusted)
 		result.Candidates = adjusted
 	}
 	sort.Slice(result.Candidates, func(left, right int) bool {
@@ -239,16 +255,22 @@ func (service *Service) ApplyNegativeSemanticPenalty(ctx context.Context, candid
 		}
 		vectors[item.SongID] = vector
 	}
-	adjusted := append([]SemanticCandidate(nil), candidates...)
-	for index := range adjusted {
-		vector, exists := vectors[adjusted[index].Song.ID]
+	adjusted := make([]SemanticCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		vector, exists := vectors[candidate.Song.ID]
 		if !exists {
+			adjusted = append(adjusted, candidate)
 			continue
 		}
 		negativeSimilarity := cosineSimilarity(vector, negativeVector)
-		adjusted[index].Evidence.NegativeSimilarity = negativeSimilarity
-		adjusted[index].Evidence.AdjustedSimilarity = clampSemanticScore(adjusted[index].Evidence.BestSimilarity - 0.25*negativeSimilarity)
-		adjusted[index].Evidence.NegativeApplied = true
+		candidate.Evidence.NegativeSimilarity = negativeSimilarity
+		candidate.Evidence.AdjustedSimilarity = clampSemanticScore(candidate.Evidence.BestSimilarity - 0.65*negativeSimilarity)
+		candidate.Evidence.NegativeApplied = true
+		margin := candidate.Evidence.BestSimilarity - negativeSimilarity
+		if negativeSimilarity >= 0.78 || (negativeSimilarity >= 0.60 && margin <= 0.08) {
+			continue
+		}
+		adjusted = append(adjusted, candidate)
 	}
 	return adjusted, nil
 }
@@ -292,16 +314,17 @@ func (service *Service) addSemanticCandidate(candidates map[string]SemanticCandi
 	candidates[song.ID] = candidate
 }
 
-func semanticCandidateAllowed(song db.Song, options SemanticRetrievalOptions) bool {
+func semanticCandidateAllowed(candidate SemanticCandidate, options SemanticRetrievalOptions) (bool, string) {
+	song := candidate.Song
 	artist := strings.TrimSpace(song.Artist)
 	if semanticArtistListed(artist, options.ExcludeArtists) {
-		return false
+		return false, "artist"
 	}
 	if len(options.IncludeArtists) > 0 && !semanticArtistListed(artist, options.IncludeArtists) {
-		return false
+		return false, "artist"
 	}
 	if options.InstrumentalOnly && !song.Instrumental {
-		return false
+		return false, "instrumental"
 	}
 	if options.YearConstraintHard {
 		year := song.OriginalYear
@@ -309,13 +332,139 @@ func semanticCandidateAllowed(song db.Song, options SemanticRetrievalOptions) bo
 			year = song.Year
 		}
 		if options.MinYear > 0 && year < options.MinYear {
-			return false
+			return false, "year"
 		}
 		if options.MaxYear > 0 && year > options.MaxYear {
-			return false
+			return false, "year"
 		}
 	}
-	return true
+	if songMatchesExcludedTerms(song, options.ExcludedTerms) {
+		return false, "hard_exclusion"
+	}
+	if !songMatchesRequiredStyles(candidate, options.RequiredStyles) {
+		return false, "style_mismatch"
+	}
+	return true, ""
+}
+
+// FilterSongsByConstraints applies the same deterministic AI DJ policy to
+// legacy catalog paths that cannot use semantic candidate evidence.
+func FilterSongsByConstraints(songs []db.Song, options SemanticRetrievalOptions) ([]db.Song, SemanticFilterDiagnostics) {
+	filtered := make([]db.Song, 0, len(songs))
+	diagnostics := SemanticFilterDiagnostics{}
+	for _, song := range songs {
+		allowed, reason := semanticCandidateAllowed(SemanticCandidate{Song: song}, options)
+		if allowed {
+			filtered = append(filtered, song)
+		} else if reason == "hard_exclusion" {
+			diagnostics.HardExcluded++
+		} else if reason == "style_mismatch" {
+			diagnostics.StyleMismatches++
+		}
+	}
+	return filtered, diagnostics
+}
+
+var semanticStyleAliases = map[string][]string{
+	"jazz":       {"jazz", "nu jazz", "acid jazz", "jazz fusion", "electro jazz", "contemporary jazz"},
+	"rock":       {"rock"},
+	"hip hop":    {"hip hop", "hip-hop", "rap"},
+	"electronic": {"electronic", "electronica", "edm", "techno", "house"},
+	"classical":  {"classical"},
+	"country":    {"country"},
+	"metal":      {"metal"},
+	"blues":      {"blues"},
+	"reggae":     {"reggae"},
+	"folk":       {"folk"},
+	"soul":       {"soul"},
+	"funk":       {"funk"},
+	"r&b":        {"r&b", "rnb", "rhythm and blues"},
+	"latin":      {"latin"},
+	"pop":        {"pop"},
+}
+
+var semanticExclusionAliases = map[string][]string{
+	"christmas": {"christmas", "xmas", "yuletide", "noel", "noël", "carol", "carols", "holiday", "holidays", "auld lang syne"},
+	"holiday":   {"christmas", "xmas", "yuletide", "noel", "noël", "carol", "carols", "holiday", "holidays", "auld lang syne"},
+}
+
+func songMatchesExcludedTerms(song db.Song, excludedTerms []string) bool {
+	if len(excludedTerms) == 0 {
+		return false
+	}
+	haystack := normalizedMetadataText(song)
+	for _, term := range excludedTerms {
+		normalizedTerm := normalizeMatchText(term)
+		aliases := semanticExclusionAliases[normalizedTerm]
+		if len(aliases) == 0 {
+			for canonical, family := range semanticExclusionAliases {
+				if containsNormalizedPhrase(" "+normalizedTerm+" ", canonical) {
+					aliases = family
+					break
+				}
+			}
+		}
+		if len(aliases) == 0 {
+			aliases = []string{term}
+		}
+		for _, alias := range aliases {
+			if containsNormalizedPhrase(haystack, alias) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func songMatchesRequiredStyles(candidate SemanticCandidate, requiredStyles []string) bool {
+	if len(requiredStyles) == 0 {
+		return true
+	}
+	metadata := normalizedMetadataText(candidate.Song)
+	for _, required := range requiredStyles {
+		aliases := semanticStyleAliases[normalizeMatchText(required)]
+		if len(aliases) == 0 {
+			aliases = []string{required}
+		}
+		for _, alias := range aliases {
+			if containsNormalizedPhrase(metadata, alias) {
+				return true
+			}
+		}
+	}
+	// Poorly tagged tracks may still be rescued by strong direct track evidence;
+	// album/artist expansion alone is not sufficient to override an explicit style.
+	return len(candidate.Song.Genre) == 0 && strings.TrimSpace(candidate.Song.LastFMTags) == "" && candidate.Evidence.TrackSimilarity >= 0.62
+}
+
+func normalizedMetadataText(song db.Song) string {
+	values := []string{song.Title, song.Artist, song.Album}
+	values = append(values, song.Genre...)
+	var tags []string
+	if json.Unmarshal([]byte(song.LastFMTags), &tags) == nil {
+		values = append(values, tags...)
+	}
+	return " " + normalizeMatchText(strings.Join(values, " ")) + " "
+}
+
+func containsNormalizedPhrase(haystack, phrase string) bool {
+	phrase = normalizeMatchText(phrase)
+	return phrase != "" && strings.Contains(haystack, " "+phrase+" ")
+}
+
+func normalizeMatchText(value string) string {
+	var builder strings.Builder
+	lastSpace := true
+	for _, character := range strings.ToLower(value) {
+		if (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || character == '&' {
+			builder.WriteRune(character)
+			lastSpace = false
+		} else if !lastSpace {
+			builder.WriteByte(' ')
+			lastSpace = true
+		}
+	}
+	return strings.TrimSpace(builder.String())
 }
 
 func semanticArtistListed(artist string, artists []string) bool {

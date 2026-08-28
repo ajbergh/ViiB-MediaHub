@@ -16,6 +16,7 @@ const semanticPlaylistRankingLimit = 120
 // shape retrieval and ranking. It is deliberately internal so the public HTTP
 // request and response contracts remain backward compatible.
 type semanticPlaylistRequest struct {
+	Prompt            string
 	TargetSongs       int
 	DiscoverMode      string
 	RecentlyPlayedIDs map[string]bool
@@ -28,13 +29,14 @@ type semanticPlaylistRequest struct {
 // semanticRetrievalDiagnostics is optional response metadata. It contains
 // counts only: raw documents and embedding vectors never leave the backend.
 type semanticRetrievalDiagnostics struct {
-	Mode                 string `json:"mode"`
-	CandidateCount       int    `json:"candidateCount"`
-	ReturnedCount        int    `json:"returnedCount"`
-	TrackMatches         int    `json:"trackMatches"`
-	AlbumMatches         int    `json:"albumMatches"`
-	ArtistMatches        int    `json:"artistMatches"`
-	NegativeQueryApplied bool   `json:"negativeQueryApplied"`
+	Mode                 string                        `json:"mode"`
+	CandidateCount       int                           `json:"candidateCount"`
+	ReturnedCount        int                           `json:"returnedCount"`
+	TrackMatches         int                           `json:"trackMatches"`
+	AlbumMatches         int                           `json:"albumMatches"`
+	ArtistMatches        int                           `json:"artistMatches"`
+	NegativeQueryApplied bool                          `json:"negativeQueryApplied"`
+	Validation           playlistValidationDiagnostics `json:"validation"`
 }
 
 type semanticPlaylistResult struct {
@@ -85,6 +87,8 @@ func (a *API) retrieveSemanticPlaylist(ctx context.Context, intent llm.PlaylistI
 		YearConstraintHard:    intent.YearConstraintHard,
 		InstrumentalOnly:      intent.InstrumentalOnly,
 		NegativeSemanticQuery: intent.NegativeSemanticQuery,
+		RequiredStyles:        intent.RequiredStyles,
+		ExcludedTerms:         intent.ExcludedTerms,
 	})
 	if err != nil {
 		if errors.Is(err, semantic.ErrNoSearchableSemanticIndex) {
@@ -101,9 +105,17 @@ func (a *API) retrieveSemanticPlaylist(ctx context.Context, intent llm.PlaylistI
 		MinYear:           intent.MinYear,
 		MaxYear:           intent.MaxYear,
 	})
+	validation := playlistValidationDiagnostics{
+		RequiredStyles:   intent.RequiredStyles,
+		ExcludedTerms:    intent.ExcludedTerms,
+		HardExcluded:     retrieval.Diagnostics.HardExcluded,
+		StyleMismatches:  retrieval.Diagnostics.StyleMismatches,
+		NegativeRejected: retrieval.Diagnostics.NegativeRejected,
+		RankingFiltered:  max(0, len(retrieval.Candidates)-len(ranked)),
+	}
 	selected, err := service.ApplyMMRDiversity(ctx, ranked, semantic.DiversityOptions{
 		DiscoverMode: request.DiscoverMode,
-		Limit:        request.TargetSongs,
+		Limit:        auditReserveLimit(request.TargetSongs),
 	})
 	if err != nil {
 		return semanticPlaylistResult{}, false, fmt.Errorf("semantic diversity ranking: %w", err)
@@ -114,6 +126,15 @@ func (a *API) retrieveSemanticPlaylist(ctx context.Context, intent llm.PlaylistI
 		songs[index] = candidate.Candidate.Song
 		negativeApplied = negativeApplied || candidate.Candidate.Evidence.NegativeApplied
 	}
+	auditedSongs, auditDiagnostics := a.auditPlaylistSongs(ctx, request.Prompt, intent, songs)
+	validation.AuditStatus = auditDiagnostics.AuditStatus
+	validation.AuditReviewed = auditDiagnostics.AuditReviewed
+	validation.AuditRejected = auditDiagnostics.AuditRejected
+	if request.TargetSongs > 0 && len(auditedSongs) > request.TargetSongs {
+		auditedSongs = auditedSongs[:request.TargetSongs]
+	}
+	validation.Shortened = request.TargetSongs > 0 && len(auditedSongs) < request.TargetSongs
+	songs = auditedSongs
 	return semanticPlaylistResult{
 		Filter: llm.PlaylistFilter{
 			Genres:       intent.PreferredGenres,
@@ -133,6 +154,7 @@ func (a *API) retrieveSemanticPlaylist(ctx context.Context, intent llm.PlaylistI
 			AlbumMatches:         len(retrieval.Search.Albums),
 			ArtistMatches:        len(retrieval.Search.Artists),
 			NegativeQueryApplied: negativeApplied,
+			Validation:           validation,
 		},
 	}, true, nil
 }

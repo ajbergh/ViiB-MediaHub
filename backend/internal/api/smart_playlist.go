@@ -53,6 +53,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/dj"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/semantic"
 )
 
 // LocalPlaylistFilter represents the filter criteria used to generate a playlist.
@@ -1475,6 +1476,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	// requests such as "90s west coast hip-hop" from being reduced to a genre-only
 	// query and gives deterministic constraints precedence over LLM output.
 	promptMinYear, promptMaxYear := extractDecadeFromPrompt(req.Prompt)
+	deterministicIntent := llm.FallbackPlaylistIntent(enhancePromptWithTimeContext(req.Prompt, req.UseTimeContext))
 
 	// Handle DJ Mode separately
 	if req.Mode == dj.ModeDJ {
@@ -1503,7 +1505,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	if a.currentSemanticService() != nil {
 		semanticPrompt := enhancePromptWithTimeContext(req.Prompt, req.UseTimeContext)
 		intent := a.compileSemanticPlaylistIntent(r.Context(), semanticPrompt)
+		logger.API("AI DJ Intent: query=%q required_styles=%v excluded_terms=%v negative_query=%q", intent.SemanticQuery, intent.RequiredStyles, intent.ExcludedTerms, intent.NegativeSemanticQuery)
 		semanticResult, handled, semanticErr := a.retrieveSemanticPlaylist(r.Context(), intent, semanticPlaylistRequest{
+			Prompt:            req.Prompt,
 			TargetSongs:       req.TargetSongs,
 			DiscoverMode:      req.DiscoverMode,
 			RecentlyPlayedIDs: recentlyPlayedIDs,
@@ -1540,7 +1544,13 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		}
 
 		// Apply filters
-		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, auditReserveLimit(req.TargetSongs))
+		validationSongs, validation, validationErr := a.validateLegacyPlaylistCandidates(r.Context(), req.Prompt, deterministicIntent, songs, req.TargetSongs)
+		if validationErr != nil {
+			http.Error(w, fmt.Sprintf("Failed to validate AI DJ playlist: %v", validationErr), http.StatusInternalServerError)
+			return
+		}
+		songs = validationSongs
 
 		// Transform paths to API URLs for frontend consumption
 		songs = transformSongsForAPI(songs)
@@ -1555,8 +1565,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"filter": filter,
-			"songs":  songs,
+			"filter":     filter,
+			"songs":      songs,
+			"validation": validation,
 		})
 		return
 	}
@@ -1572,7 +1583,13 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		}
 
 		// Apply filters
-		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, auditReserveLimit(req.TargetSongs))
+		validationSongs, validation, validationErr := a.validateLegacyPlaylistCandidates(r.Context(), req.Prompt, deterministicIntent, songs, req.TargetSongs)
+		if validationErr != nil {
+			http.Error(w, fmt.Sprintf("Failed to validate AI DJ playlist: %v", validationErr), http.StatusInternalServerError)
+			return
+		}
+		songs = validationSongs
 
 		// Transform paths to API URLs for frontend consumption
 		songs = transformSongsForAPI(songs)
@@ -1595,8 +1612,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"filter": filter,
-			"songs":  songs,
+			"filter":     filter,
+			"songs":      songs,
+			"validation": validation,
 		})
 		return
 	}
@@ -1615,15 +1633,22 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		moodFilter.Source = req.Source
 
 		// Apply filters
-		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, auditReserveLimit(req.TargetSongs))
+		validationSongs, validation, validationErr := a.validateLegacyPlaylistCandidates(r.Context(), req.Prompt, deterministicIntent, songs, req.TargetSongs)
+		if validationErr != nil {
+			http.Error(w, fmt.Sprintf("Failed to validate AI DJ playlist: %v", validationErr), http.StatusInternalServerError)
+			return
+		}
+		songs = validationSongs
 
 		// Transform paths to API URLs for frontend consumption
 		songs = transformSongsForAPI(songs)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"filter": moodFilter,
-			"songs":  songs,
+			"filter":     moodFilter,
+			"songs":      songs,
+			"validation": validation,
 		})
 		return
 	}
@@ -1690,7 +1715,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 	// Multi-genre blending mode
 	if req.BlendMode == "mixed" {
-		matchedGenres, songs, matched := a.tryMatchMultipleGenres(filter, req.Prompt, 3, req.TargetSongs)
+		matchedGenres, songs, matched := a.tryMatchMultipleGenres(filter, req.Prompt, 3, auditReserveLimit(req.TargetSongs))
 		if matched {
 			logger.API("Multi-genre blend: %d genres, %d songs", len(matchedGenres), len(songs))
 			songs, err = a.filterSongsForAIDJ(songs, req.Source)
@@ -1700,7 +1725,13 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 			}
 
 			// Apply play history filters
-			songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+			songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, auditReserveLimit(req.TargetSongs))
+			validationSongs, validation, validationErr := a.validateLegacyPlaylistCandidates(r.Context(), req.Prompt, deterministicIntent, songs, req.TargetSongs)
+			if validationErr != nil {
+				http.Error(w, fmt.Sprintf("Failed to validate AI DJ playlist: %v", validationErr), http.StatusInternalServerError)
+				return
+			}
+			songs = validationSongs
 
 			// Transform paths to API URLs for frontend consumption
 			songs = transformSongsForAPI(songs)
@@ -1726,8 +1757,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"filter": smartFilter,
-				"songs":  songs,
+				"filter":     smartFilter,
+				"songs":      songs,
+				"validation": validation,
 			})
 			return
 		}
@@ -1745,7 +1777,13 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 		}
 
 		// Apply play history filters
-		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+		songs = a.applyPlayHistoryFilters(songs, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, auditReserveLimit(req.TargetSongs))
+		validationSongs, validation, validationErr := a.validateLegacyPlaylistCandidates(r.Context(), req.Prompt, deterministicIntent, songs, req.TargetSongs)
+		if validationErr != nil {
+			http.Error(w, fmt.Sprintf("Failed to validate AI DJ playlist: %v", validationErr), http.StatusInternalServerError)
+			return
+		}
+		songs = validationSongs
 
 		// Transform paths to API URLs for frontend consumption
 		songs = transformSongsForAPI(songs)
@@ -1771,8 +1809,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"filter": smartFilter,
-			"songs":  songs,
+			"filter":     smartFilter,
+			"songs":      songs,
+			"validation": validation,
 		})
 		return
 	}
@@ -1806,15 +1845,21 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	}
 
 	// Apply play history filters
-	songsAny = a.applyPlayHistoryFilters(songsAny, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, req.TargetSongs)
+	songsAny = a.applyPlayHistoryFilters(songsAny, recentlyPlayedIDs, req.DiscoverMode, req.OnePerArtist, auditReserveLimit(req.TargetSongs))
+	songsAny, validation, validationErr := a.validateLegacyPlaylistCandidates(r.Context(), req.Prompt, deterministicIntent, songsAny, req.TargetSongs)
+	if validationErr != nil {
+		http.Error(w, fmt.Sprintf("Failed to validate AI DJ playlist: %v", validationErr), http.StatusInternalServerError)
+		return
+	}
 
 	// Transform paths to API URLs for frontend consumption
 	songsAny = transformSongsForAPI(songsAny)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"filter": filter,
-		"songs":  songsAny,
+		"filter":     filter,
+		"songs":      songsAny,
+		"validation": validation,
 	})
 }
 
@@ -1880,6 +1925,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	// Compile semantic intent without sending the catalog taxonomy to the LLM.
 	// A raw-prompt fallback still allows local embeddings to serve a DJ request.
 	intent := a.compileSemanticPlaylistIntent(ctx, enhancePromptWithTimeContext(prompt, useTimeContext))
+	logger.API("AI DJ Intent: query=%q required_styles=%v excluded_terms=%v negative_query=%q", intent.SemanticQuery, intent.RequiredStyles, intent.ExcludedTerms, intent.NegativeSemanticQuery)
 	if len(seedGenres) == 0 {
 		seedGenres = intent.PreferredGenres
 	}
@@ -1971,6 +2017,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	// Retain the full-catalog path only when semantic retrieval is unavailable
 	// or cannot supply every phase with a usable bounded pool.
 	var candidates []db.Song
+	var constraintDiagnostics semantic.SemanticFilterDiagnostics
 	if !semanticUsed {
 		allSongs, loadErr := a.db.GetAllSongs()
 		if loadErr != nil {
@@ -2001,8 +2048,20 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			}
 			candidates = append(candidates, song)
 		}
+		candidates, constraintDiagnostics = semantic.FilterSongsByConstraints(candidates, semantic.SemanticRetrievalOptions{
+			IncludeArtists:     intent.IncludeArtists,
+			ExcludeArtists:     intent.ExcludeArtists,
+			MinYear:            intent.MinYear,
+			MaxYear:            intent.MaxYear,
+			YearConstraintHard: intent.YearConstraintHard,
+			InstrumentalOnly:   intent.InstrumentalOnly,
+			RequiredStyles:     intent.RequiredStyles,
+			ExcludedTerms:      intent.ExcludedTerms,
+		})
+		logger.API("DJ Mode deterministic constraints: hard_excluded=%d style_mismatches=%d", constraintDiagnostics.HardExcluded, constraintDiagnostics.StyleMismatches)
 		logger.API("DJ Mode legacy fallback: %d candidate songs after filtering (from %d total)", len(candidates), len(allSongs))
-		hasHardConstraints := promptMinYear > 0 || promptMaxYear > 0 || len(seedGenres) > 0 || len(seedArtists) > 0
+		hasHardConstraints := promptMinYear > 0 || promptMaxYear > 0 || len(seedGenres) > 0 || len(seedArtists) > 0 ||
+			intent.InstrumentalOnly || len(intent.RequiredStyles) > 0 || len(intent.ExcludedTerms) > 0 || len(intent.ExcludeArtists) > 0
 		if len(candidates) < 10 && len(allSongs) > 10 && !hasHardConstraints {
 			logger.API("DJ Mode legacy fallback: too few candidates (%d), broadening unconstrained request", len(candidates))
 			candidates = make([]db.Song, 0, len(allSongs))
@@ -2041,6 +2100,24 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	}
 
 	logger.API("DJ Mode: Built queue with %d songs across %d phases", len(queue), len(phaseResults))
+	queue, validation := a.auditPlaylistSongs(ctx, prompt, intent, queue)
+	if semanticUsed {
+		validation.HardExcluded = semanticDJ.Diagnostics.HardExcluded
+		validation.StyleMismatches = semanticDJ.Diagnostics.StyleMismatches
+		validation.NegativeRejected = semanticDJ.Diagnostics.NegativeRejected
+		validation.RankingFiltered = semanticDJ.RankingFiltered
+	} else {
+		validation.HardExcluded = constraintDiagnostics.HardExcluded
+		validation.StyleMismatches = constraintDiagnostics.StyleMismatches
+	}
+	plannedSongCount := 0
+	for _, phase := range plan.Phases {
+		plannedSongCount += max(phase.TargetCount, 1)
+	}
+	validation.Shortened = len(queue) < plannedSongCount
+	if validation.AuditRejected > 0 {
+		phaseResults = reconcileDJPhaseResults(queue, phaseResults)
+	}
 
 	// Generate narration if talk mode is enabled
 	var narration *dj.DJNarration
@@ -2080,8 +2157,9 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			"maxYear": promptMaxYear,
 			"source":  source,
 		},
-		"songs": songsAny,
-		"dj":    djResponse,
+		"songs":      songsAny,
+		"dj":         djResponse,
+		"validation": validation,
 	}
 	if semanticUsed {
 		response["retrieval"] = map[string]interface{}{

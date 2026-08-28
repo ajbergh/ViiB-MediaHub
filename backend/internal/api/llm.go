@@ -13,10 +13,13 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/semantic"
 )
 
 // LLMSettingsResponse is the API response for LLM settings.
@@ -162,7 +165,66 @@ func (a *API) updateLLMSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	semanticChanged, err := a.initializeSemanticProviderFromLLM(req.Provider, baseURL)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to initialize semantic provider: "+err.Error())
+		return
+	}
+	if semanticChanged {
+		go a.restartSemanticService()
+	}
+
 	respondJSON(w, map[string]string{"status": "ok"})
+}
+
+// initializeSemanticProviderFromLLM gives a new installation a usable semantic
+// configuration that matches its selected AI provider. It only replaces an
+// unset/auto semantic provider, so a later explicit semantic choice remains
+// independent from chat configuration.
+func (a *API) initializeSemanticProviderFromLLM(provider, ollamaBaseURL string) (bool, error) {
+	currentProvider, err := a.db.GetSetting(semantic.SemanticEmbeddingProviderSetting)
+	if err != nil {
+		return false, fmt.Errorf("read semantic provider: %w", err)
+	}
+	currentProvider = strings.ToLower(strings.TrimSpace(currentProvider))
+	if currentProvider != "" && currentProvider != semantic.EmbeddingProviderAuto {
+		return false, nil
+	}
+
+	model := ""
+	dimensions := ""
+	baseURL := ""
+	switch provider {
+	case llm.ProviderOllama:
+		model = semantic.DefaultOllamaEmbeddingModel
+		baseURL = strings.TrimSpace(ollamaBaseURL)
+		if baseURL == "" {
+			baseURL = llm.DefaultOllamaEndpoint
+		}
+	case llm.ProviderOpenAI:
+		model = semantic.DefaultOpenAIEmbeddingModel
+		dimensions = fmt.Sprint(semantic.DefaultOpenAIEmbeddingDimensions)
+	case llm.ProviderOpenRouter:
+		model = semantic.DefaultOpenRouterEmbeddingModel
+		dimensions = fmt.Sprint(semantic.DefaultOpenRouterEmbeddingDimensions)
+	case llm.ProviderGemini:
+		model = semantic.DefaultGeminiEmbeddingModel
+		dimensions = fmt.Sprint(semantic.DefaultGeminiEmbeddingDimensions)
+	default:
+		return false, nil
+	}
+
+	if err := a.db.SetSettingsBatch(map[string]string{
+		semantic.SemanticEmbeddingProviderSetting:          provider,
+		semantic.SemanticEmbeddingModelSetting:             model,
+		semantic.SemanticEmbeddingDimensionsSetting:        dimensions,
+		semantic.SemanticEmbeddingBaseURLSetting:           baseURL,
+		semantic.SemanticEmbeddingAPIKeySetting:            "",
+		semantic.SemanticEmbeddingCloudConfirmationSetting: "",
+	}); err != nil {
+		return false, fmt.Errorf("save matching semantic provider: %w", err)
+	}
+	return true, nil
 }
 
 // ismaskedAPIKey checks if the API key is a masked value (starts with ****)

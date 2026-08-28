@@ -36,3 +36,39 @@ func TestParsePlaylistIntentResponseRejectsUnknownFieldsAndCapsText(t *testing.T
 		t.Fatalf("intent=%#v err=%v", intent, err)
 	}
 }
+
+func TestFallbackPlaylistIntentSeparatesHardExclusionFromPositiveJazzQuery(t *testing.T) {
+	intent := FallbackPlaylistIntent("new-school upbeat jazz - no christmas music")
+	if intent.SemanticQuery != "new-school upbeat jazz" {
+		t.Fatalf("positive query=%q", intent.SemanticQuery)
+	}
+	if len(intent.ExcludedTerms) != 1 || intent.ExcludedTerms[0] != "christmas" || intent.NegativeSemanticQuery != "christmas" {
+		t.Fatalf("exclusions=%#v negative=%q", intent.ExcludedTerms, intent.NegativeSemanticQuery)
+	}
+	if len(intent.RequiredStyles) != 1 || intent.RequiredStyles[0] != "jazz" {
+		t.Fatalf("required styles=%#v", intent.RequiredStyles)
+	}
+}
+
+func TestNormalizePlaylistIntentCannotDropExplicitPromptConstraints(t *testing.T) {
+	intent, err := ParsePlaylistIntentResponse(`{"intentSummary":"modern jazz","semanticQuery":"modern jazz christmas","negativeSemanticQuery":"","requiredStyles":[],"excludedTerms":[]}`, "modern jazz without christmas music")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intent.SemanticQuery != "modern jazz" || len(intent.ExcludedTerms) != 1 || intent.ExcludedTerms[0] != "christmas" || len(intent.RequiredStyles) != 1 || intent.RequiredStyles[0] != "jazz" {
+		t.Fatalf("intent=%#v", intent)
+	}
+}
+
+func TestFallbackPlaylistIntentExtractsMultipleExclusionClauses(t *testing.T) {
+	intent := FallbackPlaylistIntent("upbeat jazz without christmas and no pop music")
+	if intent.SemanticQuery != "upbeat jazz" {
+		t.Fatalf("positive query=%q", intent.SemanticQuery)
+	}
+	if len(intent.ExcludedTerms) != 2 || intent.ExcludedTerms[0] != "christmas" || intent.ExcludedTerms[1] != "pop" {
+		t.Fatalf("exclusions=%#v", intent.ExcludedTerms)
+	}
+	if len(intent.RequiredStyles) != 1 || intent.RequiredStyles[0] != "jazz" {
+		t.Fatalf("required styles=%#v", intent.RequiredStyles)
+	}
+}

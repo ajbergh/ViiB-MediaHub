@@ -1821,6 +1821,8 @@ type EnrichmentProgress struct {
 	Message        string `json:"message"`
 	TotalSongs     int    `json:"totalSongs"`
 	ProcessedSongs int    `json:"processedSongs"`
+	ChangedSongs   int    `json:"changedSongs,omitempty"`
+	EmptyResults   int    `json:"emptyResults,omitempty"`
 	CurrentBatch   int    `json:"currentBatch"`
 	TotalBatches   int    `json:"totalBatches"`
 	Error          string `json:"error,omitempty"`
@@ -2160,6 +2162,8 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	// Thread-safe counters
 	var mu sync.Mutex
 	processedSongs := 0
+	changedSongs := 0
+	emptyResults := 0
 	genresUpdated := 0
 	moodUpdated := 0
 	yearsUpdated := 0
@@ -2203,11 +2207,17 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 			logger.API("enrichAllMetadataStream: Worker %d batch %d returned %d results", workerID, job.batchNum+1, len(unified))
 
 			updates := make([]db.AIEnrichmentUpdate, 0, len(unified))
-			for id, meta := range unified {
+			batchEmptyResults := 0
+			for _, song := range job.songs {
+				meta := unified[song.ID]
 				if meta == nil {
+					batchEmptyResults++
 					continue
 				}
-				updates = append(updates, db.AIEnrichmentUpdate{SongID: id, Genres: meta.Genres, Mood: meta.Mood, Energy: meta.Energy, Tempo: meta.Tempo, BPM: meta.BPM, Instrumental: meta.Instrumental, OriginalYear: meta.OriginalYear})
+				if !meta.HasMetadata() {
+					batchEmptyResults++
+				}
+				updates = append(updates, db.AIEnrichmentUpdate{SongID: song.ID, Genres: meta.Genres, Mood: meta.Mood, Energy: meta.Energy, Tempo: meta.Tempo, BPM: meta.BPM, Instrumental: meta.Instrumental, OriginalYear: meta.OriginalYear})
 			}
 			applied, updateErr := a.db.ApplyAIEnrichmentBatch(updates, force)
 			if updateErr != nil {
@@ -2220,28 +2230,55 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			batchGenres, batchMood, batchYears := applied.Genres, applied.Mood, applied.Years
+			if batchGenres > 0 {
+				if aggregateErr := a.db.UpdateGenreStats(); aggregateErr != nil {
+					logger.API("enrichAllMetadataStream: Batch %d committed but genre aggregate refresh failed: %v", job.batchNum+1, aggregateErr)
+				}
+			}
 
 			// Update totals thread-safely
 			mu.Lock()
 			processedSongs += len(job.songs)
+			changedSongs += applied.Songs
+			emptyResults += batchEmptyResults
 			genresUpdated += batchGenres
 			moodUpdated += batchMood
 			yearsUpdated += batchYears
 			completedBatches++
 			currentCompleted := completedBatches
 			currentProcessed := processedSongs
+			currentChanged := changedSongs
+			currentEmpty := emptyResults
 			mu.Unlock()
 
-			logger.API("enrichAllMetadataStream: Batch %d complete - genres=%d, mood=%d, years=%d (total: %d/%d batches)",
-				job.batchNum+1, batchGenres, batchMood, batchYears, currentCompleted, totalBatches)
+			logger.API("enrichAllMetadataStream: Batch %d complete - changed_songs=%d no_metadata=%d genres=%d mood=%d years=%d (total: %d/%d batches)",
+				job.batchNum+1, applied.Songs, batchEmptyResults, batchGenres, batchMood, batchYears, currentCompleted, totalBatches)
+
+			// Broadcast after both the song transaction and derived genre aggregate
+			// refresh. The revision stream supplies the changed rows; this legacy
+			// event also wakes pages with independent derived-data queries.
+			if a.scanner != nil {
+				a.scanner.EmitEvent(scanner.LibraryEvent{
+					Type:         "library_updated",
+					Message:      fmt.Sprintf("AI enrichment batch %d committed", job.batchNum+1),
+					UpdatedSongs: applied.Songs,
+					Data: map[string]interface{}{
+						"currentBatch": job.batchNum + 1, "totalBatches": totalBatches,
+						"processedSongs": currentProcessed, "totalSongs": totalSongs,
+						"changedSongs": applied.Songs, "emptyResults": batchEmptyResults,
+					},
+				})
+			}
 
 			// Send progress event
 			mu.Lock()
 			sendEvent(EnrichmentProgress{
 				Status:         "batch_complete",
-				Message:        fmt.Sprintf("Batch %d: genres=%d, mood=%d, years=%d (%d/%d batches)", job.batchNum+1, batchGenres, batchMood, batchYears, currentCompleted, totalBatches),
+				Message:        fmt.Sprintf("Batch %d: changed=%d, no metadata=%d, genres=%d, mood=%d, years=%d (%d/%d batches)", job.batchNum+1, applied.Songs, batchEmptyResults, batchGenres, batchMood, batchYears, currentCompleted, totalBatches),
 				TotalSongs:     totalSongs,
 				ProcessedSongs: currentProcessed,
+				ChangedSongs:   currentChanged,
+				EmptyResults:   currentEmpty,
 				CurrentBatch:   currentCompleted,
 				TotalBatches:   totalBatches,
 			})
@@ -2309,17 +2346,19 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	// Build completion message
-	completionMsg := fmt.Sprintf("Enrichment complete! Genres: %d, Mood: %d, Years: %d", genresUpdated, moodUpdated, yearsUpdated)
+	completionMsg := fmt.Sprintf("Enrichment complete! Changed songs: %d, no metadata: %d, Genres: %d, Mood: %d, Years: %d", changedSongs, emptyResults, genresUpdated, moodUpdated, yearsUpdated)
 	if failedBatches > 0 {
 		completionMsg = fmt.Sprintf("%s (%d batches failed)", completionMsg, failedBatches)
 	}
-	logger.API("enrichAllMetadataStream: Complete - genres=%d, mood=%d, years=%d, failedBatches=%d", genresUpdated, moodUpdated, yearsUpdated, failedBatches)
+	logger.API("enrichAllMetadataStream: Complete - changed_songs=%d no_metadata=%d genres=%d mood=%d years=%d failed_batches=%d", changedSongs, emptyResults, genresUpdated, moodUpdated, yearsUpdated, failedBatches)
 
 	sendEvent(EnrichmentProgress{
 		Status:         "complete",
 		Message:        completionMsg,
 		TotalSongs:     totalSongs,
 		ProcessedSongs: processedSongs,
+		ChangedSongs:   changedSongs,
+		EmptyResults:   emptyResults,
 		TotalBatches:   totalBatches,
 		CurrentBatch:   totalBatches,
 	})

@@ -158,6 +158,9 @@ func NormalizeGenres(genres []string) []string {
 // - After each library scan completes (in scanner.Scan)
 // - After individual file additions (in scanner.AddFile)
 func (d *DB) UpdateGenreStats() error {
+	d.genreStatsMu.Lock()
+	defer d.genreStatsMu.Unlock()
+
 	// 1. Fetch all songs with genres, including song IDs for cover URL generation
 	query := `SELECT id, artist, genre, cover_path FROM songs WHERE genre IS NOT NULL AND genre != '' AND genre != '[]'`
 	rows, err := d.conn.Query(query)

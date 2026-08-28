@@ -80,6 +80,7 @@ type DB struct {
 	librarySyncInitErr error
 	semanticOnce       sync.Once
 	semanticInitErr    error
+	genreStatsMu       sync.Mutex
 }
 
 // Song represents a persisted audio track with metadata and file locations
@@ -3463,8 +3464,10 @@ type AIEnrichmentUpdate struct {
 	OriginalYear int
 }
 
-// AIEnrichmentApplyResult reports the number of fields changed in one batch.
-type AIEnrichmentApplyResult struct{ Genres, Mood, Years int }
+// AIEnrichmentApplyResult reports the number of songs and field groups changed
+// in one batch. Songs counts each committed row once even when several field
+// groups changed together.
+type AIEnrichmentApplyResult struct{ Songs, Genres, Mood, Years int }
 
 // ApplyAIEnrichmentBatch applies a batch transactionally and only fills fields
 // that are missing or low-detail unless force is requested.
@@ -3525,6 +3528,7 @@ func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (A
 			newGenre, newMood, newEnergy, newTempo, applyMood, newBPM, applyMood, newInstrumental, applyMood, now, newOriginalYear, newYearUncertain, applyYear, now, update.SongID); err != nil {
 			return result, fmt.Errorf("apply enrichment update: %w", err)
 		}
+		result.Songs++
 		if err := queuePlexAIWriteback(tx, update.SongID, update.Genres, applyGenres, update.OriginalYear, applyYear, time.Now().UnixMilli()); err != nil {
 			return result, fmt.Errorf("queue Plex AI metadata writeback: %w", err)
 		}

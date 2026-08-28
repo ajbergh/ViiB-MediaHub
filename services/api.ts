@@ -148,6 +148,8 @@ export interface EnrichmentProgress {
   message: string;
   totalSongs: number;
   processedSongs: number;
+  changedSongs?: number;
+  emptyResults?: number;
   currentBatch: number;
   totalBatches: number;
   error?: string;
@@ -213,12 +215,12 @@ export const api = {
 
   // Songs
   async getSongs(): Promise<ApiSong[]> {
-    const response = await fetch(`${API_BASE}/songs`);
+    const response = await fetch(`${API_BASE}/songs`, { cache: 'no-store' });
     return handleResponse(response);
   },
 
   async getGenres(): Promise<GenreStat[]> {
-    const response = await fetch(`${API_BASE}/genres`);
+    const response = await fetch(`${API_BASE}/genres`, { cache: 'no-store' });
     const data = await handleResponse<GenreStat[] | null>(response);
     // Ensure we always return an array, and topArtists is always defined
     return (data || []).map(g => ({
@@ -1756,6 +1758,34 @@ export interface DJModeResponse {
   narration?: DJNarration;
 }
 
+/** Constraint enforcement and final-audit details for an AI DJ result. */
+export interface SmartPlaylistValidation {
+  requiredStyles?: string[];
+  excludedTerms?: string[];
+  hardExcluded: number;
+  styleMismatches: number;
+  negativeRejected: number;
+  rankingFiltered: number;
+  auditStatus: 'not_needed' | 'unavailable' | 'failed' | 'passed';
+  auditReviewed: number;
+  auditRejected: number;
+  shortened: boolean;
+}
+
+/** Optional diagnostics returned by the semantic retrieval path. */
+export interface SmartPlaylistRetrieval {
+  mode: string;
+  candidateCount: number;
+  returnedCount?: number;
+  trackMatches?: number;
+  albumMatches?: number;
+  artistMatches?: number;
+  negativeQueryApplied?: boolean;
+  phaseCandidateCounts?: number[];
+  fallbackUsed?: boolean;
+  validation?: SmartPlaylistValidation;
+}
+
 /**
  * Response from the smart playlist API.
  */
@@ -1763,24 +1793,15 @@ export interface SmartPlaylistResponse {
   filter: SmartPlaylistFilter;
   songs: ApiSong[];
   dj?: DJModeResponse; // Present when mode === 'dj'
-  retrieval?: SemanticRetrievalDiagnostics;
+  validation?: SmartPlaylistValidation;
+  retrieval?: SmartPlaylistRetrieval;
 }
 
 /**
  * Count-only diagnostics emitted when a Smart Playlist request used semantic
  * retrieval. Document text and embedding vectors never leave the backend.
  */
-export interface SemanticRetrievalDiagnostics {
-  mode: string;
-  candidateCount: number;
-  returnedCount?: number;
-  trackMatches?: number;
-  albumMatches?: number;
-  artistMatches?: number;
-  phaseCandidateCounts?: number[];
-  negativeQueryApplied?: boolean;
-  fallbackUsed?: boolean;
-}
+export type SemanticRetrievalDiagnostics = SmartPlaylistRetrieval;
 
 /**
  * Cached album metadata from the backend.
@@ -1878,7 +1899,7 @@ export interface LLMTestResponse {
 // ==================== Semantic Index Types ====================
 
 export interface SemanticSettings {
-  provider: 'auto' | 'ollama' | 'openai' | 'gemini' | 'openrouter' | 'disabled';
+  provider: 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
   model: string;
   dimensions: number;
   baseURL: string;
@@ -1890,7 +1911,7 @@ export interface SemanticSettings {
 }
 
 export interface SemanticSettingsRequest {
-  provider: 'auto' | 'ollama' | 'openai' | 'gemini' | 'openrouter' | 'disabled';
+  provider: 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
   model: string;
   dimensions?: number;
   baseURL: string;
@@ -1899,6 +1920,7 @@ export interface SemanticSettingsRequest {
 }
 
 export interface SemanticCloudCost {
+  provider: 'openai' | 'openrouter' | 'gemini';
   model: string;
   dimensions: number;
   documents: number;
@@ -1907,6 +1929,7 @@ export interface SemanticCloudCost {
   usdPerMillionInputTokens: number;
   typicalUSD: number;
   maximumUSD: number;
+  pricingKnown: boolean;
   confirmed: boolean;
 }
 

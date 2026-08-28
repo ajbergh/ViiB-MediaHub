@@ -50,6 +50,15 @@ type UnifiedMetadata struct {
 	OriginalYear int      `json:"original_year"` // Original release year (not remaster date)
 }
 
+// HasMetadata reports whether the validated response contains any usable
+// enrichment value. False is intentionally not treated as evidence for the
+// instrumental field because it is also the JSON zero value for "unknown".
+func (metadata *UnifiedMetadata) HasMetadata() bool {
+	return metadata != nil && (len(metadata.Genres) > 0 || metadata.Mood != "" ||
+		metadata.Energy != "" || metadata.Tempo != "" || metadata.BPM > 0 ||
+		metadata.Instrumental || metadata.OriginalYear > 0)
+}
+
 // MoodAnalysis represents the AI-detected mood, energy, tempo, and BPM for a song.
 // Compatible with gemini.MoodAnalysis for migration.
 type MoodAnalysis struct {
@@ -193,6 +202,11 @@ func (p *Provider) EnrichAllMetadata(ctx context.Context, songs []db.Song) (map[
 		logger.API("LLM EnrichAllMetadata: Response length: %d chars", len(responseText))
 		parsed, err := parseEnrichmentResponse(responseText, allowedIDs)
 		if err != nil {
+			preview := strings.TrimSpace(responseText)
+			if len(preview) > 2000 {
+				preview = preview[:2000] + "..."
+			}
+			logger.API("LLM EnrichAllMetadata: Invalid response preview=%q", preview)
 			return &retriableError{fmt.Errorf("invalid enrichment response: %w", err)}
 		}
 		result = parsed
@@ -205,8 +219,30 @@ func (p *Provider) EnrichAllMetadata(ctx context.Context, songs []db.Song) (map[
 		return nil, err
 	}
 
-	logger.API("LLM EnrichAllMetadata: Complete - returned %d validated results", len(result))
+	withMetadata, withoutMetadata := logValidatedEnrichmentResults(songs, result)
+	logger.API("LLM EnrichAllMetadata: Complete - returned=%d with_metadata=%d no_metadata=%d",
+		len(result), withMetadata, withoutMetadata)
 	return result, nil
+}
+
+// logValidatedEnrichmentResults makes model behavior auditable without dumping
+// credentials or prompts. Values are quoted so control characters in tags
+// cannot forge additional log lines. NO_METADATA is deliberately prominent.
+func logValidatedEnrichmentResults(songs []db.Song, result map[string]*UnifiedMetadata) (withMetadata, withoutMetadata int) {
+	for _, song := range songs {
+		metadata, ok := result[song.ID]
+		if !ok || !metadata.HasMetadata() {
+			withoutMetadata++
+			logger.API("LLM Enrichment Result: NO_METADATA id=%q artist=%q title=%q album=%q",
+				song.ID, song.Artist, song.Title, song.Album)
+			continue
+		}
+		withMetadata++
+		logger.API("LLM Enrichment Result: id=%q artist=%q title=%q album=%q genres=%q mood=%q energy=%q tempo=%q bpm=%d instrumental=%t original_year=%d",
+			song.ID, song.Artist, song.Title, song.Album, metadata.Genres, metadata.Mood,
+			metadata.Energy, metadata.Tempo, metadata.BPM, metadata.Instrumental, metadata.OriginalYear)
+	}
+	return withMetadata, withoutMetadata
 }
 
 // EnrichGenres enriches songs with genre classifications only.

@@ -274,7 +274,7 @@ export const Settings: React.FC = () => {
       logs, clearLogs, addLog, addSongs, resetLibrary,
       isScanning, scanProgress, setScanning, setScanProgress,
       backendAvailable, scanFolders, loadScanFolders, addScanFolder, removeScanFolder, startBackendScan, startQuickScan,
-      setEnrichmentStatus
+      setEnrichmentStatus, refreshLibrary
   } = useStore();
 
   const [tempClientId, setTempClientId] = useState(spotifyClientId);
@@ -344,15 +344,17 @@ export const Settings: React.FC = () => {
       totalSongs: progress.totalSongs || 0,
       currentBatch: progress.currentBatch || 0,
       totalBatches: progress.totalBatches || 0,
+      changedSongs: progress.changedSongs || 0,
+      emptyResults: progress.emptyResults || 0,
     };
     if (progress.status === 'started') {
-      addLog('info', `[AI Enhancement] ${progress.message || fallbackMessage}`, details);
+      addLog('info', `[AI Enrichment] ${progress.message || fallbackMessage}`, details);
     } else if (progress.status === 'batch_complete') {
-      addLog('info', `[AI Enhancement] ${progress.message || fallbackMessage}`, details);
+      addLog('info', `[AI Enrichment] ${progress.message || fallbackMessage}`, details);
     } else if (progress.status === 'complete') {
-      addLog('success', `[AI Enhancement] ${progress.message || 'Completed'}`, details);
+      addLog('success', `[AI Enrichment] ${progress.message || 'Completed'}`, details);
     } else if (progress.status === 'error') {
-      addLog('error', `[AI Enhancement] ${progress.error || progress.message || 'Failed'}`, details);
+      addLog('error', `[AI Enrichment] ${progress.error || progress.message || 'Failed'}`, details);
     }
   };
 
@@ -374,7 +376,7 @@ export const Settings: React.FC = () => {
 
   // Semantic retrieval settings stay separate from the chat provider because
   // changing a chat model must never silently change the vector space.
-  const [semanticProvider, setSemanticProvider] = useState<'auto' | 'ollama' | 'openai' | 'gemini' | 'openrouter' | 'disabled'>('auto');
+  const [semanticProvider, setSemanticProvider] = useState<'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled'>('auto');
   const [semanticModel, setSemanticModel] = useState('');
   const [semanticBaseURL, setSemanticBaseURL] = useState('http://localhost:11434');
   const [semanticDimensions, setSemanticDimensions] = useState(0);
@@ -455,7 +457,7 @@ export const Settings: React.FC = () => {
               setSemanticProvider(settings.provider);
               setSemanticModel(settings.model || '');
               setSemanticBaseURL(settings.baseURL || 'http://localhost:11434');
-              setSemanticDimensions(settings.dimensions || (settings.provider === 'gemini' ? 768 : (settings.provider === 'openai' || settings.provider === 'openrouter' ? 512 : 0)));
+              setSemanticDimensions(settings.dimensions || (settings.provider === 'gemini' ? 768 : settings.provider === 'openai' || settings.provider === 'openrouter' ? 512 : 0));
               setSemanticAPIKey('');
               setSemanticCloudCost(settings.cloudCost || null);
               setSemanticCloudConfirmation(settings.cloudConfirmation || null);
@@ -2116,6 +2118,17 @@ export const Settings: React.FC = () => {
                               const settings = await api.getLLMSettings();
                               setLlmModels(settings.models || {});
                             }
+                            // A new installation links an unset/auto semantic
+                            // provider to the selected embedding-capable chat
+                            // provider. Reflect that backend initialization
+                            // immediately without requiring a page reload.
+                            const semanticSettings = await api.getSemanticSettings();
+                            setSemanticProvider(semanticSettings.provider);
+                            setSemanticModel(semanticSettings.model || '');
+                            setSemanticBaseURL(semanticSettings.baseURL || 'http://localhost:11434');
+                            setSemanticDimensions(semanticSettings.dimensions || (semanticSettings.provider === 'gemini' ? 768 : semanticSettings.provider === 'openai' || semanticSettings.provider === 'openrouter' ? 512 : 0));
+                            setSemanticCloudCost(semanticSettings.cloudCost || null);
+                            setSemanticCloudConfirmed(false);
                             setLlmSaveStatus('saved');
                             setTimeout(() => setLlmSaveStatus('idle'), 3000);
                           } catch (e) {
@@ -2190,7 +2203,7 @@ export const Settings: React.FC = () => {
                         <select
                           value={semanticProvider}
                           onChange={(e) => {
-                            const provider = e.target.value as 'auto' | 'ollama' | 'openai' | 'gemini' | 'openrouter' | 'disabled';
+                            const provider = e.target.value as 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
                             setSemanticProvider(provider);
                             setSemanticCloudCost(null);
                             setSemanticCloudConfirmation(null);
@@ -2207,6 +2220,7 @@ export const Settings: React.FC = () => {
                               setSemanticDimensions(512);
                             }
                             setSemanticCloudConfirmed(false);
+							setSemanticCloudCost(null);
                             setSemanticSaveStatus('idle');
                           }}
                           className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
@@ -2259,16 +2273,21 @@ export const Settings: React.FC = () => {
                           </div>
                           <div>
                             <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">{semanticProvider === 'gemini' ? 'Gemini' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} API key</label>
-                            <TextInput type="password" value={semanticAPIKey} onChange={(e) => { setSemanticAPIKey(e.target.value); setSemanticSaveStatus('idle'); }} placeholder="Leave blank to keep this provider's saved key" className="w-full bg-surface-3" />
+                            <TextInput type="password" value={semanticAPIKey} onChange={(e) => { setSemanticAPIKey(e.target.value); setSemanticSaveStatus('idle'); }} placeholder="Leave blank to use this provider's saved chat or embedding key" className="w-full bg-surface-3" />
                           </div>
                         </div>
                         <p className="text-xs text-warning">{semanticProvider === 'gemini' ? 'Gemini' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} receives deterministic semantic document text, but never file paths, internal song IDs, or listening history.</p>
                         {semanticProvider === 'openai' && semanticCloudCost ? (
                           <div className="space-y-2 text-sm text-text-subtle">
-                            <p>Current catalog: {semanticCloudCost.documents.toLocaleString()} semantic documents. One-time input estimate: about ${semanticCloudCost.typicalUSD.toFixed(2)}, with a conservative maximum of ${semanticCloudCost.maximumUSD.toFixed(2)}.</p>
+							<p>
+							  Current catalog: {semanticCloudCost.documents.toLocaleString()} semantic documents
+							  {semanticCloudCost.pricingKnown
+								? `; one-time input estimate: about $${semanticCloudCost.typicalUSD.toFixed(2)}, with a conservative maximum of $${semanticCloudCost.maximumUSD.toFixed(2)}.`
+								: `. Estimated input: ${semanticCloudCost.typicalInputTokens.toLocaleString()} tokens (up to ${semanticCloudCost.maximumInputTokens.toLocaleString()}); actual ${semanticProvider} billing applies.`}
+							</p>
                             <label className="flex items-start gap-2 cursor-pointer text-text-main">
                               <input type="checkbox" checked={semanticCloudConfirmed} onChange={(e) => setSemanticCloudConfirmed(e.target.checked)} className="mt-1" />
-                              <span>I understand this starts a paid OpenAI embedding build for this catalog.</span>
+                              <span>I understand this starts a paid {semanticProvider === 'openai' ? 'OpenAI' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'Gemini'} embedding build for this catalog.</span>
                             </label>
                             {semanticCloudCost.confirmed && <p className="text-success text-xs">This current estimate has already been confirmed.</p>}
                           </div>
@@ -2288,7 +2307,7 @@ export const Settings: React.FC = () => {
                     )}
 
                     <p className="text-xs text-text-subtle">
-                      Ollama uses <code>POST /api/embed</code> and never downloads a model automatically. Cloud providers will not index until their displayed estimate or data notice is explicitly confirmed.
+                      Ollama uses <code>POST /api/embed</code> and never downloads a model automatically. OpenAI, OpenRouter, and Gemini will not index until their displayed estimate or data notice is explicitly confirmed.
                     </p>
 
                     {(semanticStatus?.reason || semanticStatus?.lastError) && (
@@ -2543,10 +2562,18 @@ export const Settings: React.FC = () => {
                       setIsUnifiedEnriching(true);
                       setUnifiedStatus('Connecting to unified enrichment service...');
                       setUnifiedProgress(null);
+					  setEnrichmentStatus({
+						isEnriching: true,
+						totalSongs: 0,
+						processedSongs: 0,
+						currentBatch: 0,
+						totalBatches: 0,
+						message: 'Connecting to AI enrichment service…',
+					  });
 
                       const eventSource = api.enrichAllMetadataStream(forceUnified, (progress) => {
                         setUnifiedStatus(progress.message);
-                        updateGlobalEnrichmentStatus(progress, 'AI metadata enhancement is running');
+                        updateGlobalEnrichmentStatus(progress, 'AI metadata enrichment is running');
                         
                         if (progress.status === 'started' || progress.status === 'processing' || progress.status === 'batch_complete') {
                           setUnifiedProgress({
@@ -2559,8 +2586,14 @@ export const Settings: React.FC = () => {
                         
                         if (progress.status === 'complete') {
                           setIsUnifiedEnriching(false);
+						  void refreshLibrary();
+						  window.dispatchEvent(new CustomEvent('enrichment_complete', { detail: progress }));
                           setTimeout(() => setUnifiedProgress(null), 5000);
                         }
+
+						if (progress.status === 'batch_complete') {
+						  void refreshLibrary();
+						}
                         
                         if (progress.status === 'error') {
                           setIsUnifiedEnriching(false);

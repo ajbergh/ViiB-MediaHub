@@ -23,7 +23,7 @@
 
 import React from 'react';
 import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType, MilkdropSettings, HomeLayoutVariant, PlaybackContext } from '../types';
-import { SmartPlaylistFilter, SmartPlaylistSource, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
+import { SmartPlaylistFilter, SmartPlaylistSource, SmartPlaylistValidation, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
 
 export interface PlayerSlice {
   isPlaying: boolean;
@@ -338,6 +338,7 @@ export interface AIDJSlice {
   aiDjPrompt: string;
   aiDjGeneratedSongs: Song[];
   aiDjFilter: SmartPlaylistFilter | null;
+  aiDjValidation: SmartPlaylistValidation | null;
   aiDjIsLoading: boolean;
   
   // User preferences
@@ -361,6 +362,7 @@ export interface AIDJSlice {
   setAIDJPrompt: (prompt: string) => void;
   setAIDJGeneratedSongs: (songs: Song[]) => void;
   setAIDJFilter: (filter: SmartPlaylistFilter | null) => void;
+  setAIDJValidation: (validation: SmartPlaylistValidation | null) => void;
   setAIDJIsLoading: (isLoading: boolean) => void;
   setAIDJDiscoverMode: (mode: 'balanced' | 'discover' | 'favorites') => void;
   setAIDJAvoidRecentlyHours: (hours: number) => void;
