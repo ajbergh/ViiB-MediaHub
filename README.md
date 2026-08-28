@@ -307,6 +307,12 @@ The complete versioned contract is [docs/openapi-v2.yaml](docs/openapi-v2.yaml).
 
 Repository build scripts cover Windows, macOS, and Linux browser/Wails targets. See the scripts under `scripts/` and the CI workflows under `.github/workflows/` for the exact supported build commands and toolchain used by automation.
 
+Every pull request and `main` push packages native Wails desktop builds for Linux x64,
+macOS Apple Silicon, macOS Intel, and Windows x64. Successful CI runs expose the Linux
+binary as a `.tar.gz` artifact and the unsigned macOS `.app` bundles as `.zip` artifacts;
+the macOS CI bundles are intended for validation and require release signing/notarization
+before distribution.
+
 Typical Windows desktop build:
 
 ```powershell

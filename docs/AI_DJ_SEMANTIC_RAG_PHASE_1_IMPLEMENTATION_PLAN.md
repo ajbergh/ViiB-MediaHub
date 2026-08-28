@@ -1959,6 +1959,17 @@ real-library behavior validation remains an operational follow-up.
   the packaged Windows Wails build, and its binary vulnerability scan before squash merge
   as `4790ec9`.
 
+### 20.4 Post-implementation CI follow-up — native desktop packaging
+
+**Status:** Implementation in progress on `ci/macos-linux-desktop-builds`.
+
+- CI packages the validated frontend into native Wails builds for Linux x64, macOS Apple
+  Silicon, and macOS Intel in addition to the existing Windows x64 package build.
+- Linux builds use WebKitGTK 4.1 explicitly on Ubuntu 24.04. Each job verifies the produced
+  architecture and publishes a checksummed desktop archive plus a retained diagnostic log.
+- macOS CI artifacts are unsigned validation bundles; signing and notarization remain release
+  responsibilities rather than pull-request CI requirements.
+
 ---
 
 ## 21. Phase 1 deferred items
