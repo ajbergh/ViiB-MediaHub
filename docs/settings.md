@@ -138,6 +138,22 @@ Select and configure the LLM backend used for:
 
 Enter the API key (or endpoint for Ollama) and click **Save**.
 
+### Semantic Retrieval Index
+
+The Semantic Retrieval Index is configured independently from the AI chat provider. It powers meaning-based candidate recall for Smart Playlists and AI DJ when it is ready; chat/metadata enrichment settings do not silently change its vector space.
+
+| Setting or control | Description |
+|---|---|
+| Embedding Provider | **Auto**, local **Ollama**, cloud **OpenAI**, **Google Gemini**, **OpenRouter**, or **Disabled**. Auto only reuses a configured key for that same provider. |
+| Embedding Model / dimensions | Identity for the embedding space. Changing it safely rebuilds the index rather than mixing vectors. |
+| Test Embedding Provider | Sends one non-persistent test embedding and reports the detected dimensions. |
+| Reindex | Starts a background rebuild; playback and normal metadata matching remain usable. |
+| Retry Errors | Requeues only documents left in an error state after bounded provider retries. |
+
+Ollama uses its embedding endpoint and ViiB never downloads a model automatically. Gemini uses `gemini-embedding-2` at 768 dimensions by default; OpenRouter uses its embeddings API with `openai/text-embedding-3-small` at 512 dimensions by default. Cloud providers receive deterministic semantic document text but never file paths, internal song IDs, or listening history. Before any cloud indexing starts, ViiB displays either OpenAI's current one-time estimate or a Gemini/OpenRouter data-and-cost notice and requires explicit confirmation.
+
+Status reports ready/indexing/configuration/error state plus ready, pending, and error document counts. If the index is unavailable, Smart Playlists and AI DJ use their normal metadata fallback rather than becoming unavailable.
+
 ### Last.FM Integration
 
 | Setting | Description |

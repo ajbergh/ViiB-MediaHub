@@ -10,7 +10,7 @@ Spotify's remote catalog is not implicitly searched by this feature; Spotify rem
 
 ## Playlist Mode
 
-Playlist Mode builds a one-shot ViiB playlist from a natural-language request and the metadata/history already available in the ViiB catalog.
+Playlist Mode builds a one-shot ViiB playlist from a natural-language request. When the Semantic Retrieval Index is ready, ViiB retrieves matching tracks, albums, and artists by meaning before applying listening-history, source, year, artist, and diversity rules. When the index is unavailable, the established metadata/history matching path remains available.
 
 Examples:
 
@@ -21,17 +21,32 @@ upbeat morning run
 jazz standards for dinner
 ```
 
-Generation can use artist/album/genre metadata, enriched mood/energy/tempo information, and listening history depending on the active implementation and configured provider.
+Generation can use semantic document context, artist/album/genre metadata, enriched mood/energy/tempo information, and listening history. Listening behaviour stays a ranking signal; it is not added to embedding text.
 
 Generated results use normal ViiB song IDs, so a result can contain both local and Plex-backed catalog tracks without a Plex-specific playback path in the UI.
 
 ---
 
+## Semantic retrieval
+
+Configure the separate **Semantic Retrieval Index** in **Settings → Library Intelligence**. It is independent of the chat/LLM provider and does not modify source-media metadata.
+
+- **Ollama** can build embeddings locally. ViiB never downloads a model automatically.
+- **OpenAI** uses the embeddings API only after showing and receiving confirmation for the one-time catalog estimate.
+- ViiB indexes deterministic track, album, and artist descriptions in SQLite. File paths, internal song IDs, listening history, and embedding vectors are not sent to the cloud provider or returned to the UI.
+- Indexing runs in the background. The Smart Playlists page displays whether semantic matching is ready, indexing, or using the standard fallback, and links to Index Settings when action is needed.
+
+After a semantic result is generated, **Semantic retrieval details** can be expanded for count-only troubleshooting information such as candidate and track/album/artist-match counts. It is collapsed by default and never exposes document text or vectors.
+
+Semantic matching is selected automatically when the chosen source has a searchable index. Explicit artist exclusions, source selection, hard year constraints, instrumental-only requests, recent-play avoidance, and one-per-artist selection are still enforced locally.
+
+---
+
 ## DJ Mode
 
-DJ Mode adds set-building behavior such as persona/selection bias, duration targets, transition/flow constraints, and energy progression where available in the current UI.
+DJ Mode compiles a set plan with semantic intent for every phase, then retrieves bounded candidate pools for those phases before applying persona/selection bias, duration targets, transition/flow constraints, and energy progression.
 
-The resulting set is still built from the ViiB catalog and handed to the normal player/queue.
+The resulting set is still built from the ViiB catalog and handed to the normal player/queue. ViiB does not send the full library or local genre taxonomy to the LLM. If a semantic index is unavailable or cannot fill every planned phase with distinct songs, DJ Mode deterministically uses the legacy full-catalog fallback instead.
 
 ---
 

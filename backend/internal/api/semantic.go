@@ -33,14 +33,15 @@ type semanticRebuildRequest struct {
 }
 
 type semanticSettingsResponse struct {
-	Provider         string                                `json:"provider"`
-	Model            string                                `json:"model"`
-	Dimensions       int                                   `json:"dimensions"`
-	BaseURL          string                                `json:"baseURL"`
-	APIKeyConfigured bool                                  `json:"apiKeyConfigured"`
-	Status           string                                `json:"status"`
-	Reason           string                                `json:"reason,omitempty"`
-	CloudCost        *semantic.OpenAIEmbeddingCostEstimate `json:"cloudCost,omitempty"`
+	Provider          string                                `json:"provider"`
+	Model             string                                `json:"model"`
+	Dimensions        int                                   `json:"dimensions"`
+	BaseURL           string                                `json:"baseURL"`
+	APIKeyConfigured  bool                                  `json:"apiKeyConfigured"`
+	Status            string                                `json:"status"`
+	Reason            string                                `json:"reason,omitempty"`
+	CloudCost         *semantic.OpenAIEmbeddingCostEstimate `json:"cloudCost,omitempty"`
+	CloudConfirmation *semantic.CloudEmbeddingConfirmation  `json:"cloudConfirmation,omitempty"`
 }
 
 type semanticSettingsRequest struct {
@@ -83,6 +84,19 @@ func (a *API) initSemanticServiceGeneration(generation uint64) {
 		if !estimate.Confirmed {
 			resolution.Status = "needs_configuration"
 			resolution.Reason = fmt.Sprintf("confirm the one-time OpenAI embedding estimate for %d documents in Settings before cloud indexing starts", estimate.Documents)
+			a.storeSemanticUnavailable(generation, resolution, "")
+			return
+		}
+	}
+	if resolution.Settings.Provider == semantic.EmbeddingProviderGemini || resolution.Settings.Provider == semantic.EmbeddingProviderOpenRouter {
+		confirmation, confirmationErr := semantic.CloudEmbeddingConfirmationConfirmed(ctx, a.db, resolution.Settings)
+		if confirmationErr != nil {
+			a.storeSemanticUnavailable(generation, resolution, confirmationErr.Error())
+			return
+		}
+		if !confirmation.Confirmed {
+			resolution.Status = "needs_configuration"
+			resolution.Reason = fmt.Sprintf("confirm the Gemini or OpenRouter cloud embedding data notice for %d documents in Settings before cloud indexing starts", confirmation.Documents)
 			a.storeSemanticUnavailable(generation, resolution, "")
 			return
 		}
@@ -184,6 +198,14 @@ func (a *API) getSemanticSettings(w http.ResponseWriter, _ *http.Request) {
 			response.Reason = estimateErr.Error()
 		}
 	}
+	if provider == semantic.EmbeddingProviderGemini || provider == semantic.EmbeddingProviderOpenRouter {
+		confirmation, confirmationErr := semantic.CloudEmbeddingConfirmationConfirmed(context.Background(), a.db, settings)
+		if confirmationErr == nil {
+			response.CloudConfirmation = &confirmation
+		} else if response.Reason == "" {
+			response.Reason = confirmationErr.Error()
+		}
+	}
 	respondJSON(w, response)
 }
 
@@ -203,9 +225,9 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 		provider = semantic.EmbeddingProviderAuto
 	}
 	switch provider {
-	case semantic.EmbeddingProviderAuto, semantic.EmbeddingProviderOllama, semantic.EmbeddingProviderOpenAI, semantic.EmbeddingProviderDisabled:
+	case semantic.EmbeddingProviderAuto, semantic.EmbeddingProviderOllama, semantic.EmbeddingProviderOpenAI, semantic.EmbeddingProviderGemini, semantic.EmbeddingProviderOpenRouter, semantic.EmbeddingProviderDisabled:
 	default:
-		respondError(w, http.StatusBadRequest, "semantic embedding provider must be auto, ollama, openai, or disabled")
+		respondError(w, http.StatusBadRequest, "semantic embedding provider must be auto, ollama, openai, gemini, openrouter, or disabled")
 		return
 	}
 	dimensions := existing.Dimensions
@@ -232,6 +254,11 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 	candidate.BaseURL = strings.TrimSpace(request.BaseURL)
 	if request.APIKey != nil {
 		candidate.APIKey = strings.TrimSpace(*request.APIKey)
+	} else if existing.Provider != provider {
+		// A dedicated API key has no provider tag in storage. Require an explicit
+		// replacement on provider changes rather than risking key reuse across
+		// cloud services.
+		candidate.APIKey = ""
 	}
 	values := map[string]string{
 		semantic.SemanticEmbeddingProviderSetting:   provider,
@@ -239,7 +266,7 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 		semantic.SemanticEmbeddingDimensionsSetting: dimensionsValue,
 		semantic.SemanticEmbeddingBaseURLSetting:    candidate.BaseURL,
 	}
-	if request.APIKey != nil {
+	if request.APIKey != nil || existing.Provider != provider {
 		values[semantic.SemanticEmbeddingAPIKeySetting] = candidate.APIKey
 	}
 	if provider == semantic.EmbeddingProviderOpenAI {
@@ -251,6 +278,17 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 		if request.ConfirmCloudCost {
 			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = estimate.ConfirmationID()
 		} else if existing.Provider != semantic.EmbeddingProviderOpenAI || existing.Model != candidate.Model || existing.Dimensions != candidate.Dimensions {
+			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = ""
+		}
+	} else if provider == semantic.EmbeddingProviderGemini || provider == semantic.EmbeddingProviderOpenRouter {
+		confirmation, confirmationErr := semantic.EstimateCloudEmbeddingConfirmation(r.Context(), a.db, candidate)
+		if confirmationErr != nil {
+			respondError(w, http.StatusBadRequest, confirmationErr.Error())
+			return
+		}
+		if request.ConfirmCloudCost {
+			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = confirmation.ConfirmationID()
+		} else if existing.Provider != provider || existing.Model != candidate.Model || existing.Dimensions != candidate.Dimensions {
 			values[semantic.SemanticEmbeddingCloudConfirmationSetting] = ""
 		}
 	} else {

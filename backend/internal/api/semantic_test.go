@@ -109,6 +109,9 @@ func TestSemanticSettingsEndpointStoresDedicatedSettingsAndMasksAPIKey(t *testin
 	if loaded.Dimensions != 0 {
 		t.Fatalf("auto dimensions=%d, want 0", loaded.Dimensions)
 	}
+	if got, err := database.GetSetting(semantic.SemanticEmbeddingAPIKeySetting); err != nil || got != "" {
+		t.Fatalf("auto configuration retained a provider-specific API key=%q err=%v", got, err)
+	}
 
 	confirmBody := bytes.NewBufferString(`{"provider":"openai","model":"text-embedding-3-small","dimensions":512,"baseURL":"","confirmCloudCost":true}`)
 	confirmRecorder := httptest.NewRecorder()
@@ -141,6 +144,51 @@ func TestSemanticServiceRequiresOpenAICostConfirmationBeforeStarting(t *testing.
 	resolution, service, _ := api.semanticSnapshot()
 	if service != nil || resolution.Status != "needs_configuration" || !strings.Contains(resolution.Reason, "confirm the one-time OpenAI embedding estimate") {
 		t.Fatalf("resolution=%#v service=%v", resolution, service)
+	}
+}
+
+func TestGeminiSemanticSettingsRequiresCloudDataConfirmation(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "semantic-gemini-confirmation.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	api := &API{db: database, semanticClosed: true}
+	routes := api.Routes()
+	updateRecorder := httptest.NewRecorder()
+	routes.ServeHTTP(updateRecorder, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"gemini","model":"gemini-embedding-2","dimensions":768,"baseURL":"","apiKey":"gemini-key"}`)))
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("update code=%d body=%s", updateRecorder.Code, updateRecorder.Body.String())
+	}
+	settingsRecorder := httptest.NewRecorder()
+	routes.ServeHTTP(settingsRecorder, httptest.NewRequest(http.MethodGet, "/semantic/settings", nil))
+	var settings semanticSettingsResponse
+	if err := json.NewDecoder(settingsRecorder.Body).Decode(&settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings.CloudConfirmation == nil || settings.CloudConfirmation.Provider != semantic.EmbeddingProviderGemini || settings.CloudConfirmation.Confirmed {
+		t.Fatalf("settings=%#v", settings)
+	}
+	confirmRecorder := httptest.NewRecorder()
+	routes.ServeHTTP(confirmRecorder, httptest.NewRequest(http.MethodPut, "/semantic/settings", bytes.NewBufferString(`{"provider":"gemini","model":"gemini-embedding-2","dimensions":768,"baseURL":"","confirmCloudCost":true}`)))
+	if confirmRecorder.Code != http.StatusOK {
+		t.Fatalf("confirm code=%d body=%s", confirmRecorder.Code, confirmRecorder.Body.String())
+	}
+	confirmed, err := semantic.CloudEmbeddingConfirmationConfirmed(context.Background(), database, semantic.EmbeddingSettings{
+		Provider:   semantic.EmbeddingProviderGemini,
+		Model:      semantic.DefaultGeminiEmbeddingModel,
+		Dimensions: semantic.DefaultGeminiEmbeddingDimensions,
+	})
+	if err != nil || !confirmed.Confirmed {
+		t.Fatalf("confirmed=%#v err=%v", confirmed, err)
+	}
+
+	api = &API{db: database}
+	defer api.Close()
+	api.initSemanticService()
+	resolution, _, _ := api.semanticSnapshot()
+	if strings.Contains(resolution.Reason, "confirm the Gemini or OpenRouter") {
+		t.Fatalf("resolution=%#v", resolution)
 	}
 }
 
