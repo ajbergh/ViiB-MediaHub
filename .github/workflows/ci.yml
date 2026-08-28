@@ -39,6 +39,13 @@ jobs:
       # Development-only tooling remains pinned by package-lock.json and should
       # be remediated separately without blocking an unrelated runtime change.
       - run: npm audit --omit=dev --audit-level=high
+      - name: Upload desktop frontend bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-frontend-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
 
   backend:
     runs-on: ubuntu-latest
@@ -130,6 +137,111 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: go build ./internal/semantic/...
+
+  unix-desktop-build:
+    name: Desktop build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    needs: [frontend, backend, semantic-cross-compile]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            runner: ubuntu-24.04
+            platform: linux/amd64
+            expected_arch: x86-64
+            archive: ViiB-MediaHub-linux-amd64.tar.gz
+          - target: macos-arm64
+            runner: macos-15
+            platform: darwin/arm64
+            expected_arch: arm64
+            archive: ViiB-MediaHub-macos-arm64.zip
+          - target: macos-amd64
+            runner: macos-15-intel
+            platform: darwin/amd64
+            expected_arch: x86_64
+            archive: ViiB-MediaHub-macos-amd64.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.13'
+          cache-dependency-path: backend/go.sum
+      - name: Install Linux desktop dependencies
+        if: startsWith(matrix.target, 'linux-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Download validated frontend bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-frontend-dist
+          path: backend/cmd/wails/frontend/dist
+      - name: Prepare Wails package assets
+        shell: bash
+        run: |
+          mkdir -p backend/cmd/wails/build
+          cp assets/icons/appicon.png backend/cmd/wails/build/appicon.png
+      - name: Build Wails application
+        id: wails_build
+        continue-on-error: true
+        working-directory: backend/cmd/wails
+        shell: bash
+        env:
+          CGO_ENABLED: 1
+        run: |
+          set -o pipefail
+          if [[ "${{ matrix.target }}" == linux-* ]]; then
+            wails build -skipbindings -platform "${{ matrix.platform }}" -tags webkit2_41 -ldflags "-s -w" 2>&1 | tee wails-build.log
+          else
+            wails build -skipbindings -platform "${{ matrix.platform }}" -ldflags "-s -w" 2>&1 | tee wails-build.log
+          fi
+      - name: Upload Wails build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-wails-build-log
+          path: backend/cmd/wails/wails-build.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Verify and archive desktop build
+        if: steps.wails_build.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.target }}" == linux-* ]]; then
+            binary="backend/cmd/wails/build/bin/ViiB-MediaHub"
+            test -x "$binary"
+            file "$binary" | tee package-details.txt
+            file "$binary" | grep -q "${{ matrix.expected_arch }}"
+            tar -C backend/cmd/wails/build/bin -czf "${{ matrix.archive }}" ViiB-MediaHub
+            sha256sum "${{ matrix.archive }}" | tee -a package-details.txt
+          else
+            app="backend/cmd/wails/build/bin/ViiB-MediaHub.app"
+            binary="$app/Contents/MacOS/ViiB-MediaHub"
+            test -d "$app"
+            test -x "$binary"
+            lipo -archs "$binary" | tee package-details.txt
+            lipo -archs "$binary" | grep -qw "${{ matrix.expected_arch }}"
+            ditto -c -k --sequesterRsrc --keepParent "$app" "${{ matrix.archive }}"
+            shasum -a 256 "${{ matrix.archive }}" | tee -a package-details.txt
+          fi
+      - name: Upload desktop application
+        if: steps.wails_build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-desktop
+          path: |
+            ${{ matrix.archive }}
+            package-details.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Fail unsuccessful Wails build
+        if: steps.wails_build.outcome == 'failure'
+        run: exit 1
 
   windows-build:
     runs-on: windows-latest

@@ -5,12 +5,12 @@
 //   - Embeds the React frontend (built by Vite) into the binary
 //   - Starts an HTTP server for API endpoints
 //   - Creates a native WebView window to display the frontend
-//   - Provides system tray integration
+//   - Provides system tray integration on Windows and Linux
 //   - Handles graceful shutdown
 //
 // Supported platforms:
 //   - Windows (amd64, arm64) — uses WebView2, ICO tray icon
-//   - macOS (amd64, arm64, universal) — uses WebKit, PNG tray icon
+//   - macOS (amd64, arm64, universal) — uses WebKit and a standard app lifecycle
 //   - Linux (amd64, arm64) — uses WebKitGTK, PNG tray icon
 //
 // Command-line flags:
@@ -44,7 +44,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getlantern/systray"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -97,12 +96,14 @@ func (a *App) startup(ctx context.Context) {
 	logger.Main("Wails application started")
 	logger.Main("API server available at %s", a.serverURL)
 
-	// Start listening for quit signal from systray
-	go func() {
-		<-a.quitChan
-		logger.Main("Quit signal received from system tray")
-		runtime.Quit(a.ctx)
-	}()
+	if a.quitChan != nil {
+		// Start listening for quit signals on platforms with an external tray.
+		go func() {
+			<-a.quitChan
+			logger.Main("Quit signal received from system tray")
+			runtime.Quit(a.ctx)
+		}()
+	}
 }
 
 // ShowWindow shows and brings the application window to front.
@@ -256,8 +257,12 @@ func main() {
 		}
 	}()
 
-	// Create quit channel for systray
-	quitChan := make(chan struct{})
+	// macOS does not use the external tray because it conflicts with Wails v2's
+	// native AppDelegate. A nil channel keeps its app lifecycle fully native.
+	var quitChan chan struct{}
+	if hideWindowOnClose() {
+		quitChan = make(chan struct{})
+	}
 
 	// Create app instance for Wails bindings
 	app := NewApp(serverURL, *dataDir, database, quitChan)
@@ -267,47 +272,10 @@ func main() {
 	// the embedded distFS handle all other requests (frontend assets)
 	apiProxyHandler := createAPIProxyHandler(serverURL)
 
-	// Start system tray with external loop for integration with Wails
-	// The tray provides: Show window, Quit application
-	systrayReady := make(chan struct{})
-	go func() {
-		systray.Run(
-			func() {
-				// onReady - set up the systray
-				systray.SetIcon(trayIconData)
-				systray.SetTitle("ViiB MediaHub")
-				systray.SetTooltip("ViiB MediaHub - Local Media Player")
-
-				mShow := systray.AddMenuItem("Show ViiB MediaHub", "Show the application window")
-				systray.AddSeparator()
-				mQuit := systray.AddMenuItem("Quit", "Quit the application")
-
-				logger.Main("System tray initialized")
-				close(systrayReady)
-
-				// Handle menu clicks
-				for {
-					select {
-					case <-mShow.ClickedCh:
-						logger.Main("Systray: Show clicked")
-						app.ShowWindow()
-					case <-mQuit.ClickedCh:
-						logger.Main("Systray: Quit clicked")
-						close(quitChan)
-						return
-					}
-				}
-			},
-			func() {
-				// onExit - cleanup when systray exits
-				logger.Main("Systray exited")
-			},
-		)
-	}()
-
-	// Wait for systray to be ready before starting Wails
-	<-systrayReady
-	logger.Main("System tray ready, starting Wails...")
+	// getlantern/systray and Wails v2 both define the macOS AppDelegate, so the
+	// external tray is compiled only on Windows/Linux. macOS uses the normal app
+	// lifecycle and closes the application when its window closes.
+	stopSystemTray := startSystemTray(app, quitChan)
 
 	// Configure and run Wails application
 	err = wails.Run(&options.App{
@@ -320,7 +288,7 @@ func main() {
 		Fullscreen:        false,
 		Frameless:         true,
 		StartHidden:       false,
-		HideWindowOnClose: true,                                       // Minimize to tray on close
+		HideWindowOnClose: hideWindowOnClose(),
 		BackgroundColour:  &options.RGBA{R: 18, G: 18, B: 18, A: 255}, // Match app background (#121212)
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId:               "viib-mediahub-unique-lock",
@@ -362,8 +330,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Clean up systray
-	systray.Quit()
+	stopSystemTray()
 
 	// Graceful shutdown of HTTP server
 	logger.Main("Shutting down HTTP server...")
