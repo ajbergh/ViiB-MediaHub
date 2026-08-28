@@ -1772,8 +1772,7 @@ net for delayed or missed stream events.
 ### 20.2 Post-implementation reliability follow-up — enrichment visibility and cloud embeddings
 
 **Status:** Corrective implementation and automated validation complete on
-`fix/fresh-install-library-live-sync`. Branch-head CI and the packaged behavior retest
-are the remaining gates.
+`fix/fresh-install-library-live-sync`. The packaged behavior retest is the remaining gate.
 
 - Automatic post-scan enrichment now uses the same unified metadata pipeline as the
   Settings action. It writes genre, mood, BPM/energy, and release-year results through
@@ -1826,7 +1825,10 @@ are the remaining gates.
   and the packaged Windows Wails build/binary scan for implementation commit `db2c814`.
 - Immediate enrichment visibility and result-logging changes pass `go test ./...` plus
   the complete `npm run check` gate locally (typecheck, all 31 frontend tests, palette and
-  raw-color audits, and production build). Their branch-head CI run is pending.
+  raw-color audits, and production build). Branch-head CI
+  [run 33136678247](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/33136678247)
+  passed frontend validation, full backend validation, all five semantic cross-compiles,
+  and the packaged Windows Wails build/binary scan for implementation commit `2a809ee`.
 
 ---
 
