@@ -137,6 +137,7 @@ func encodeVorbisPCM(ctx context.Context, decoder vorbisPCMReader, output io.Wri
 	samplesPerFrame := int(encoder.Mpeg.GranulesPerFrame) * encodermp3.GRANULE_SIZE
 	frame := make([]float32, samplesPerFrame*inputChannels)
 	pcm := make([]int16, samplesPerFrame*outputChannels)
+	decodedSamples := int64(0)
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -156,6 +157,10 @@ func encodeVorbisPCM(ctx context.Context, decoder vorbisPCMReader, output io.Wri
 					reachedEOF = true
 					break
 				}
+				if errors.Is(err, io.ErrUnexpectedEOF) && tolerableVorbisTailEOF(decoder, decodedSamples+int64(read/inputChannels)) {
+					reachedEOF = true
+					break
+				}
 				return fmt.Errorf("decode Ogg/Vorbis audio: %w", err)
 			}
 			if n == 0 {
@@ -172,6 +177,7 @@ func encodeVorbisPCM(ctx context.Context, decoder vorbisPCMReader, output io.Wri
 
 		clear(pcm)
 		samplesRead := read / inputChannels
+		decodedSamples += int64(samplesRead)
 		for sample := 0; sample < samplesRead; sample++ {
 			for channel := 0; channel < outputChannels; channel++ {
 				inputChannel := channel
@@ -192,6 +198,29 @@ func encodeVorbisPCM(ctx context.Context, decoder vorbisPCMReader, output io.Wri
 		}
 	}
 	return nil
+}
+
+type vorbisPositionReader interface {
+	Position() int64
+	Length() int64
+}
+
+// Some otherwise playable Spotify Ogg files end without a complete final
+// Vorbis packet and the decoder reports io.ErrUnexpectedEOF after producing
+// nearly all declared samples. Accept only a tail error within one second of
+// the container's declared end; earlier truncation remains a hard failure.
+func tolerableVorbisTailEOF(decoder vorbisPCMReader, decodedSamples int64) bool {
+	positioned, ok := decoder.(vorbisPositionReader)
+	if !ok || decodedSamples <= 0 {
+		return false
+	}
+	length := positioned.Length()
+	position := positioned.Position()
+	if length <= 0 || position < 0 || position > length {
+		return false
+	}
+	tolerance := int64(decoder.SampleRate())
+	return length-position <= tolerance
 }
 
 func floatToPCM16(value float32) int16 {

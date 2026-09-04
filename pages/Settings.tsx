@@ -527,6 +527,8 @@ export const Settings: React.FC = () => {
   const [autoConvertOggSaving, setAutoConvertOggSaving] = useState(false);
   const [conversionWorkers, setConversionWorkers] = useState(() => Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1)));
   const [conversionWorkersSaved, setConversionWorkersSaved] = useState(false);
+  const [downloadRescanThreshold, setDownloadRescanThreshold] = useState(1);
+  const [downloadRescanThresholdSaved, setDownloadRescanThresholdSaved] = useState(false);
 
   // Settings Tab State
   type SettingsTab = 'library' | 'health' | 'audio' | 'integrations' | 'ai' | 'appearance' | 'system';
@@ -591,6 +593,17 @@ export const Settings: React.FC = () => {
           } catch (e) {
               console.error('Failed to load MP3 conversion worker setting:', e);
           }
+          try {
+              const threshold = await api.getSetting('spotify_download_rescan_threshold');
+              if (threshold) {
+                  const n = parseInt(threshold, 10);
+                  if (Number.isInteger(n) && n >= 0) {
+                      setDownloadRescanThreshold(n);
+                  }
+              }
+          } catch (e) {
+              console.error('Failed to load automatic library scan threshold:', e);
+          }
       };
       if (backendAvailable) {
           loadDownloadSettings();
@@ -631,6 +644,19 @@ export const Settings: React.FC = () => {
           setTimeout(() => setConversionWorkersSaved(false), 3000);
       } catch (e) {
           addLog('error', 'Failed to save MP3 conversion worker setting', e);
+      }
+  };
+
+  const handleSaveDownloadRescanThreshold = async () => {
+      try {
+          await api.setSetting('spotify_download_rescan_threshold', downloadRescanThreshold.toString());
+          addLog('success', downloadRescanThreshold === 0
+              ? 'Automatic library scans after downloads disabled'
+              : `Library quick scan scheduled after every ${downloadRescanThreshold} completed download${downloadRescanThreshold === 1 ? '' : 's'}`);
+          setDownloadRescanThresholdSaved(true);
+          setTimeout(() => setDownloadRescanThresholdSaved(false), 3000);
+      } catch (e) {
+          addLog('error', 'Failed to save automatic library scan threshold', e);
       }
   };
 
@@ -1299,6 +1325,38 @@ export const Settings: React.FC = () => {
                     <p className="text-xs text-text-subtle mt-2">
                         Recommended: 3 for most connections, up to 6-10 for high-speed connections (100+ Mbps).
                     </p>
+                </div>
+            )}
+
+            {/* Automatic library quick scan threshold */}
+            {backendAvailable && (
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Quick Scan After Downloads</label>
+                    <p className="text-xs text-text-subtle mb-3">
+                        Run a quick library scan after this many downloads finish. Use 0 to disable automatic scans. Converted files count after MP3 conversion completes.
+                    </p>
+                    <div className="flex items-center gap-4">
+                        <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={downloadRescanThreshold}
+                            onChange={(e) => setDownloadRescanThreshold(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                            className="w-24 bg-surface-1 border border-surface-3 rounded-lg px-4 py-3 text-text-main"
+                            aria-label="Completed downloads before automatic quick scan"
+                        />
+                        {downloadRescanThresholdSaved && (
+                            <span className="text-success text-sm font-bold">Saved!</span>
+                        )}
+                        <Button
+                            variant="primary"
+                            accent="brand"
+                            onClick={handleSaveDownloadRescanThreshold}
+                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
+                        >
+                            Save
+                        </Button>
+                    </div>
                 </div>
             )}
 

@@ -161,6 +161,7 @@ func TestIsValidSettingKey(t *testing.T) {
 	}{
 		{"concurrent_downloads", true},
 		{"spotify_conversion_workers", true},
+		{"spotify_download_rescan_threshold", true},
 		{"spotify_download_path", true},
 		{"spotify_auto_convert_ogg_to_mp3", true},
 		{"random_key", false},

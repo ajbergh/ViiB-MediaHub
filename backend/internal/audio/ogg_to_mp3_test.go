@@ -21,6 +21,27 @@ type testPCMReader struct {
 	sampleRate int
 }
 
+type unexpectedEOFPCMReader struct {
+	testPCMReader
+	reportedLength int64
+}
+
+func (r *unexpectedEOFPCMReader) Read(buffer []float32) (int, error) {
+	n, err := r.testPCMReader.Read(buffer)
+	if errors.Is(err, io.EOF) {
+		return n, io.ErrUnexpectedEOF
+	}
+	return n, err
+}
+
+func (r *unexpectedEOFPCMReader) Position() int64 {
+	return int64(r.position / r.channels)
+}
+
+func (r *unexpectedEOFPCMReader) Length() int64 {
+	return r.reportedLength
+}
+
 func (r *testPCMReader) Read(buffer []float32) (int, error) {
 	if r.position == len(r.samples) {
 		return 0, io.EOF
@@ -185,6 +206,37 @@ func TestEncodeVorbisPCMHonorsCancellation(t *testing.T) {
 	reader := &testPCMReader{samples: []float32{0, 0}, channels: 2, sampleRate: 44100}
 	if err := encodeVorbisPCM(ctx, reader, io.Discard, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled encoding returned %v", err)
+	}
+}
+
+func TestEncodeVorbisPCMAcceptsUnexpectedEOFAtDeclaredTail(t *testing.T) {
+	const sampleRate = 44100
+	samples := make([]float32, sampleRate/10)
+	reader := &unexpectedEOFPCMReader{
+		testPCMReader:  testPCMReader{samples: samples, channels: 1, sampleRate: sampleRate},
+		reportedLength: int64(len(samples)),
+	}
+	var encoded bytes.Buffer
+	if err := writeID3v24(&encoded, MP3Metadata{}); err != nil {
+		t.Fatalf("write tags: %v", err)
+	}
+	if err := encodeVorbisPCM(context.Background(), reader, &encoded, nil); err != nil {
+		t.Fatalf("tail unexpected EOF should be tolerated: %v", err)
+	}
+	if bitrate := firstMP3BitrateKbps(t, encoded.Bytes()); bitrate != mp3BitrateKbps {
+		t.Fatalf("generated MP3 bitrate = %d kbps, want %d kbps", bitrate, mp3BitrateKbps)
+	}
+}
+
+func TestEncodeVorbisPCMRejectsUnexpectedEOFMidstream(t *testing.T) {
+	const sampleRate = 44100
+	samples := make([]float32, sampleRate/10)
+	reader := &unexpectedEOFPCMReader{
+		testPCMReader:  testPCMReader{samples: samples, channels: 1, sampleRate: sampleRate},
+		reportedLength: int64(sampleRate * 10),
+	}
+	if err := encodeVorbisPCM(context.Background(), reader, io.Discard, nil); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("midstream unexpected EOF returned %v", err)
 	}
 }
 
