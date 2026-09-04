@@ -7,12 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
@@ -26,7 +29,20 @@ const (
 	DefaultConcurrentDownloads = 3
 	MinConcurrentDownloads     = 1
 	MaxConcurrentDownloads     = 10
+	MinConversionWorkers       = 1
+	MaxConversionWorkers       = 4
 )
+
+func defaultConversionWorkers() int {
+	workers := runtime.GOMAXPROCS(0) - 1
+	if workers < MinConversionWorkers {
+		return MinConversionWorkers
+	}
+	if workers > MaxConversionWorkers {
+		return MaxConversionWorkers
+	}
+	return workers
+}
 
 // dmLog is a helper for download manager logging
 func dmLog(format string, v ...interface{}) {
@@ -62,7 +78,7 @@ const (
 //   - A worker pool processes downloads concurrently (configurable 1-10 workers)
 //   - Real-time progress updates are sent via SSE (Server-Sent Events)
 //   - OAuth access tokens are retrieved from database before each download
-//   - Downloaded files are saved as OGG Vorbis in {downloadDir}/{artist}/{track}.ogg
+//   - Downloaded files are saved as Ogg/Vorbis and can be converted to MP3.
 //
 // Reliability Features:
 //   - Rate limiting (1s delay between downloads) to prevent Spotify throttling
@@ -78,6 +94,7 @@ type DownloadManager struct {
 	scanner             *scanner.Scanner              // Scanner for auto-rescan on download complete
 	isRunning           bool                          // Whether the background processor is active
 	activeDownloads     map[string]context.CancelFunc // Map of download ID -> cancel function
+	activeConversions   map[string]context.CancelFunc // Post-processing jobs do not consume download slots
 	restartRequests     map[string]bool               // Active downloads to requeue after their worker exits
 	stallRestarts       map[string]int                // Automatic stall recoveries attempted per download
 	downloadProgress    map[string]downloadTracker    // Tracks last progress update time for stall detection
@@ -92,9 +109,15 @@ type DownloadManager struct {
 	progressSubscribers map[chan DownloadProgress]struct{}
 	progressSubsMu      sync.RWMutex
 	workChan            chan downloadJob // Channel for dispatching work to workers
-	workerWg            sync.WaitGroup   // Wait group for worker goroutines
-	lastDownloadTime    time.Time        // For rate limiting between downloads
-	rateLimitMu         sync.Mutex       // Protects lastDownloadTime
+	oggToMP3Converter   func(context.Context, string, audio.MP3Metadata, audio.ActivityCallback) (string, error)
+	conversionLimit     int
+	conversionsRunning  int
+	conversionChanged   chan struct{}
+	conversionLimitMu   sync.Mutex
+	workerWg            sync.WaitGroup // Wait group for worker goroutines
+	conversionWg        sync.WaitGroup // Wait group for asynchronous audio conversions
+	lastDownloadTime    time.Time      // For rate limiting between downloads
+	rateLimitMu         sync.Mutex     // Protects lastDownloadTime
 }
 
 // downloadTracker tracks the progress of an active download for stall detection
@@ -117,6 +140,7 @@ type downloadJob struct {
 // Status values:
 //   - "queued": Download is waiting in queue
 //   - "downloading": Download is in progress
+//   - "converting": Download finished and Ogg-to-MP3 conversion is in progress
 //   - "completed": Download finished successfully
 //   - "failed": Download failed (see Error field)
 //   - "auth_required": Spotify authentication required (token expired/revoked)
@@ -186,6 +210,23 @@ func NewDownloadManager(database *db.DB, downloadDir string) *DownloadManager {
 		}
 	}
 	dmLog("Max concurrent downloads: %d", maxConcurrent)
+	conversionWorkers := defaultConversionWorkers()
+	conversionSetting, conversionSettingErr := database.GetSetting("spotify_conversion_workers")
+	if conversionSettingErr != nil {
+		dmLog("Warning: failed to load conversion worker count: %v", conversionSettingErr)
+	} else {
+		validSetting := false
+		if n, err := strconv.Atoi(conversionSetting); err == nil && n >= MinConversionWorkers && n <= MaxConversionWorkers {
+			conversionWorkers = n
+			validSetting = true
+		}
+		if !validSetting {
+			if err := database.SetSetting("spotify_conversion_workers", strconv.Itoa(conversionWorkers)); err != nil {
+				dmLog("Warning: failed to persist default conversion worker count: %v", err)
+			}
+		}
+	}
+	dmLog("MP3 conversion workers: %d", conversionWorkers)
 
 	dm := &DownloadManager{
 		db:                  database,
@@ -194,6 +235,7 @@ func NewDownloadManager(database *db.DB, downloadDir string) *DownloadManager {
 		downloader:          downloader,
 		isRunning:           false,
 		activeDownloads:     make(map[string]context.CancelFunc),
+		activeConversions:   make(map[string]context.CancelFunc),
 		restartRequests:     make(map[string]bool),
 		stallRestarts:       make(map[string]int),
 		downloadProgress:    make(map[string]downloadTracker),
@@ -204,6 +246,9 @@ func NewDownloadManager(database *db.DB, downloadDir string) *DownloadManager {
 		progressChan:        make(chan DownloadProgress, 100),
 		progressSubscribers: make(map[chan DownloadProgress]struct{}),
 		workChan:            make(chan downloadJob, 50), // Buffer for queued work
+		oggToMP3Converter:   audio.ConvertOggToMP3,
+		conversionLimit:     conversionWorkers,
+		conversionChanged:   make(chan struct{}),
 	}
 
 	return dm
@@ -287,6 +332,32 @@ func (dm *DownloadManager) SetMaxConcurrent(n int) error {
 // GetMaxConcurrent returns the current max concurrent downloads setting.
 func (dm *DownloadManager) GetMaxConcurrent() int {
 	return int(atomic.LoadInt32(&dm.maxConcurrent))
+}
+
+// SetMaxConversionWorkers changes the independent Ogg-to-MP3 worker limit.
+// Waiting conversions observe the new limit without interrupting active jobs.
+func (dm *DownloadManager) SetMaxConversionWorkers(n int) error {
+	if n < MinConversionWorkers || n > MaxConversionWorkers {
+		return fmt.Errorf("conversion workers must be between %d and %d", MinConversionWorkers, MaxConversionWorkers)
+	}
+
+	dm.conversionLimitMu.Lock()
+	dm.conversionLimit = n
+	close(dm.conversionChanged)
+	dm.conversionChanged = make(chan struct{})
+	dm.conversionLimitMu.Unlock()
+
+	if err := dm.db.SetSetting("spotify_conversion_workers", strconv.Itoa(n)); err != nil {
+		return fmt.Errorf("persist conversion worker count: %w", err)
+	}
+	dmLog("Updated MP3 conversion workers: %d", n)
+	return nil
+}
+
+func (dm *DownloadManager) GetMaxConversionWorkers() int {
+	dm.conversionLimitMu.Lock()
+	defer dm.conversionLimitMu.Unlock()
+	return dm.conversionLimit
 }
 
 // SetDownloadDir updates the download directory for new downloads.
@@ -447,9 +518,13 @@ func (dm *DownloadManager) Stop() {
 		return
 	}
 
-	// Cancel all active downloads
+	// Cancel all active downloads and conversions.
 	for id, cancelFunc := range dm.activeDownloads {
 		dmLog("Cancelling download: %s", id)
+		cancelFunc()
+	}
+	for id, cancelFunc := range dm.activeConversions {
+		dmLog("Cancelling conversion: %s", id)
 		cancelFunc()
 	}
 	dm.mu.Unlock()
@@ -457,10 +532,12 @@ func (dm *DownloadManager) Stop() {
 	// Cancel the context to stop the queue processor and workers
 	dm.cancel()
 
-	// Wait for all workers to finish (with timeout)
+	// Wait for download workers first. A worker can enqueue a conversion as it
+	// exits, so conversionWg must not be waited until every worker is done.
 	done := make(chan struct{})
 	go func() {
 		dm.workerWg.Wait()
+		dm.conversionWg.Wait()
 		close(done)
 	}()
 
@@ -473,6 +550,7 @@ func (dm *DownloadManager) Stop() {
 
 	dm.mu.Lock()
 	dm.activeDownloads = make(map[string]context.CancelFunc)
+	dm.activeConversions = make(map[string]context.CancelFunc)
 	dm.downloadProgress = make(map[string]downloadTracker)
 	dm.restartRequests = make(map[string]bool)
 	dm.stallRestarts = make(map[string]int)
@@ -570,12 +648,16 @@ func (dm *DownloadManager) GetActiveQueueCount() (int, error) {
 
 // DeleteDownload removes a download from the queue
 func (dm *DownloadManager) DeleteDownload(id string) error {
-	// Check if it's an active download
+	// Cancel either phase before deleting the persistent row.
 	dm.mu.Lock()
 	if cancelFunc, exists := dm.activeDownloads[id]; exists {
 		// Cancel the download
 		cancelFunc()
 		dmLog("Cancelled active download: %s", id)
+	}
+	if cancelFunc, exists := dm.activeConversions[id]; exists {
+		cancelFunc()
+		dmLog("Cancelled active conversion: %s", id)
 	}
 	delete(dm.restartRequests, id)
 	delete(dm.stallRestarts, id)
@@ -616,7 +698,7 @@ func (dm *DownloadManager) ForceRestartDownload(id string) error {
 		return fmt.Errorf("download not found: %w", err)
 	}
 
-	// Cancel the download if it's active
+	// Cancel the transfer or conversion if it's active.
 	dm.mu.Lock()
 	delete(dm.stallRestarts, id)
 	active := false
@@ -626,6 +708,12 @@ func (dm *DownloadManager) ForceRestartDownload(id string) error {
 		dm.restartRequests[id] = true
 		cancelFunc()
 		delete(dm.downloadProgress, id)
+	}
+	if cancelFunc, exists := dm.activeConversions[id]; exists {
+		active = true
+		dmLog("Force cancelling active conversion: %s - %s", download.Title, id)
+		dm.restartRequests[id] = true
+		cancelFunc()
 	}
 	dm.mu.Unlock()
 
@@ -1276,7 +1364,17 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 		return fmt.Errorf("failed to download track: %w", err)
 	}
 
-	// Mark as completed
+	shouldConvert, err := dm.shouldConvertDownloadedOgg(filePath)
+	if err != nil {
+		return err
+	}
+	if shouldConvert {
+		return dm.startOggConversion(download, metadata, filePath)
+	}
+	return dm.completeDownload(download, filePath)
+}
+
+func (dm *DownloadManager) completeDownload(download *db.SpotifyDownload, filePath string) error {
 	changed, err := dm.db.MarkDownloadCompleted(download.ID, filePath)
 	if err != nil {
 		dmLog("Error marking download as completed: %v", err)
@@ -1285,7 +1383,6 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 	if !changed {
 		return fmt.Errorf("download state changed before completion")
 	}
-
 	dm.progressChan <- DownloadProgress{
 		DownloadID: download.ID,
 		Status:     "completed",
@@ -1300,6 +1397,165 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 	}
 
 	return nil
+}
+
+func (dm *DownloadManager) shouldConvertDownloadedOgg(filePath string) (bool, error) {
+	if !strings.EqualFold(filepath.Ext(filePath), ".ogg") {
+		return false, nil
+	}
+
+	setting, err := dm.db.GetSetting("spotify_auto_convert_ogg_to_mp3")
+	if err != nil {
+		return false, fmt.Errorf("read automatic Ogg conversion setting: %w", err)
+	}
+	return strings.EqualFold(strings.TrimSpace(setting), "true"), nil
+}
+
+func (dm *DownloadManager) convertDownloadedOggIfEnabled(ctx context.Context, download *db.SpotifyDownload, metadata *spotify.DownloadMetadata, filePath string) (string, error) {
+	shouldConvert, err := dm.shouldConvertDownloadedOgg(filePath)
+	if err != nil {
+		return "", err
+	}
+	if !shouldConvert {
+		return filePath, nil
+	}
+	return dm.convertDownloadedOgg(ctx, download, metadata, filePath)
+}
+
+func (dm *DownloadManager) convertDownloadedOgg(ctx context.Context, download *db.SpotifyDownload, metadata *spotify.DownloadMetadata, filePath string) (string, error) {
+	tags := audio.MP3Metadata{
+		Title:  download.Title,
+		Artist: download.Artist,
+		Album:  download.Album,
+	}
+	if metadata != nil {
+		tags.AlbumArtist = metadata.AlbumArtist
+		tags.TrackNumber = metadata.TrackNumber
+		tags.DiscNumber = metadata.DiscNumber
+		tags.Date = metadata.ReleaseDate
+		tags.Genre = metadata.Genre
+		if metadata.PlaylistName != "" {
+			tags.Album = metadata.PlaylistName
+			tags.AlbumArtist = metadata.PlaylistName
+			tags.TrackNumber = metadata.PlaylistOrder
+			tags.DiscNumber = 1
+		}
+	}
+
+	dmLog("Converting downloaded Ogg to MP3: %s", filePath)
+	convertedPath, err := dm.oggToMP3Converter(ctx, filePath, tags, func() {
+		dm.recordDownloadActivity(download.ID, spotify.DownloadPhaseFinalizing)
+	})
+	if err != nil {
+		return "", fmt.Errorf("convert downloaded Ogg to MP3: %w", err)
+	}
+	return convertedPath, nil
+}
+
+// startOggConversion transfers ownership from a download worker to an
+// independent post-processing goroutine. Once this method returns, the worker's
+// deferred cleanup releases its download slot, allowing the dispatcher to start
+// the next queued transfer while conversion continues.
+func (dm *DownloadManager) startOggConversion(download *db.SpotifyDownload, metadata *spotify.DownloadMetadata, filePath string) error {
+	changed, err := dm.db.MarkDownloadConverting(download.ID, filePath)
+	if err != nil {
+		return fmt.Errorf("mark download as converting: %w", err)
+	}
+	if !changed {
+		return fmt.Errorf("download state changed before conversion")
+	}
+
+	conversionCtx, cancel := context.WithCancel(dm.ctx)
+	dm.mu.Lock()
+	dm.activeConversions[download.ID] = cancel
+	dm.mu.Unlock()
+	dm.conversionWg.Add(1)
+	dm.progressChan <- DownloadProgress{
+		DownloadID: download.ID,
+		Status:     "converting",
+		Progress:   100,
+	}
+
+	go dm.runOggConversion(conversionCtx, download, metadata, filePath)
+	return nil
+}
+
+func (dm *DownloadManager) runOggConversion(ctx context.Context, download *db.SpotifyDownload, metadata *spotify.DownloadMetadata, filePath string) {
+	defer dm.conversionWg.Done()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			message := fmt.Sprintf("Internal conversion error: %v", recovered)
+			dmLog("PANIC converting %s: %v", download.ID, recovered)
+			if changed, _ := dm.db.MarkDownloadFailed(download.ID, message); changed {
+				dm.progressChan <- DownloadProgress{DownloadID: download.ID, Status: "failed", Progress: 100, Error: message}
+			}
+		}
+
+		dm.mu.Lock()
+		restart := dm.restartRequests[download.ID]
+		delete(dm.restartRequests, download.ID)
+		delete(dm.activeConversions, download.ID)
+		dm.mu.Unlock()
+		if restart {
+			if err := dm.db.ResetDownloadForForceRestart(download.ID); err != nil {
+				dmLog("Failed to requeue force-restarted conversion %s: %v", download.ID, err)
+			} else {
+				dm.progressChan <- DownloadProgress{DownloadID: download.ID, Status: "queued", Progress: 0}
+			}
+		}
+	}()
+	if err := dm.acquireConversionWorker(ctx); err != nil {
+		return
+	}
+	defer dm.releaseConversionWorker()
+
+	convertedPath, err := dm.convertDownloadedOgg(ctx, download, metadata, filePath)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		message := err.Error()
+		dmLog("Conversion failed for '%s': %v", download.Title, err)
+		if changed, markErr := dm.db.MarkDownloadFailed(download.ID, message); markErr != nil {
+			dmLog("Failed to mark conversion %s as failed: %v", download.ID, markErr)
+		} else if changed {
+			dm.progressChan <- DownloadProgress{DownloadID: download.ID, Status: "failed", Progress: 100, Error: message}
+		}
+		return
+	}
+
+	if err := dm.completeDownload(download, convertedPath); err != nil {
+		dmLog("Failed to complete converted download %s: %v", download.ID, err)
+	}
+}
+
+func (dm *DownloadManager) acquireConversionWorker(ctx context.Context) error {
+	for {
+		dm.conversionLimitMu.Lock()
+		if dm.conversionsRunning < dm.conversionLimit {
+			dm.conversionsRunning++
+			dm.conversionLimitMu.Unlock()
+			return nil
+		}
+		changed := dm.conversionChanged
+		dm.conversionLimitMu.Unlock()
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-changed:
+		}
+	}
+}
+
+func (dm *DownloadManager) releaseConversionWorker() {
+	dm.conversionLimitMu.Lock()
+	if dm.conversionsRunning > 0 {
+		dm.conversionsRunning--
+	}
+	close(dm.conversionChanged)
+	dm.conversionChanged = make(chan struct{})
+	dm.conversionLimitMu.Unlock()
 }
 
 // GetActiveDownloadCount returns the number of currently active downloads

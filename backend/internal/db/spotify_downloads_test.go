@@ -61,14 +61,14 @@ func TestSpotifyDownloadBatchDeduplicatesActiveEntries(t *testing.T) {
 	}
 }
 
-func TestCountActiveDownloadsIncludesQueuedAndDownloading(t *testing.T) {
+func TestCountActiveDownloadsIncludesQueuedDownloadingAndConverting(t *testing.T) {
 	database, err := New(filepath.Join(t.TempDir(), "downloads.db"))
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
 	defer database.Close()
 
-	statuses := []string{"queued", "downloading", "completed", "failed"}
+	statuses := []string{"queued", "downloading", "converting", "completed", "failed"}
 	for i, status := range statuses {
 		download := &SpotifyDownload{
 			ID:         status,
@@ -88,7 +88,40 @@ func TestCountActiveDownloadsIncludesQueuedAndDownloading(t *testing.T) {
 	if err != nil {
 		t.Fatalf("count active downloads: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("active downloads = %d, want 2", count)
+	if count != 3 {
+		t.Fatalf("active downloads = %d, want 3", count)
+	}
+}
+
+func TestSpotifyDownloadConversionTransitions(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "downloads.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer database.Close()
+
+	download := &SpotifyDownload{
+		ID: "conversion", SpotifyID: "spotify-conversion",
+		SpotifyURI: "spotify:track:conversion", Type: "track",
+		Title: "Track", Status: "queued", AddedAt: 1,
+	}
+	if err := database.AddDownload(download); err != nil {
+		t.Fatalf("add download: %v", err)
+	}
+	if changed, err := database.MarkDownloadStarted(download.ID); err != nil || !changed {
+		t.Fatalf("mark started: changed=%v err=%v", changed, err)
+	}
+	if changed, err := database.MarkDownloadConverting(download.ID, "track.ogg"); err != nil || !changed {
+		t.Fatalf("mark converting: changed=%v err=%v", changed, err)
+	}
+	got, err := database.GetDownload(download.ID)
+	if err != nil {
+		t.Fatalf("get converting download: %v", err)
+	}
+	if got.Status != "converting" || got.Progress != 100 || got.FilePath != "track.ogg" {
+		t.Fatalf("converting download = %#v", got)
+	}
+	if changed, err := database.MarkDownloadCompleted(download.ID, "track.mp3"); err != nil || !changed {
+		t.Fatalf("mark completed: changed=%v err=%v", changed, err)
 	}
 }

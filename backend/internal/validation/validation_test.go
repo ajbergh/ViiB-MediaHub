@@ -160,7 +160,9 @@ func TestIsValidSettingKey(t *testing.T) {
 		expected bool
 	}{
 		{"concurrent_downloads", true},
+		{"spotify_conversion_workers", true},
 		{"spotify_download_path", true},
+		{"spotify_auto_convert_ogg_to_mp3", true},
 		{"random_key", false},
 		{"spotify_credentials", false}, // Sensitive, not in allowed list
 		{"", false},

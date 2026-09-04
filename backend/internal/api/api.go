@@ -1405,6 +1405,26 @@ func (a *API) setSetting(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Conversion workers are independent from download slots and may be changed
+	// while conversions are queued or running.
+	if key == "spotify_conversion_workers" {
+		n, err := strconv.Atoi(body.Value)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid value for spotify_conversion_workers")
+			return
+		}
+		if n < MinConversionWorkers || n > MaxConversionWorkers {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("spotify_conversion_workers must be between %d and %d", MinConversionWorkers, MaxConversionWorkers))
+			return
+		}
+		if a.downloadManager != nil {
+			if err := a.downloadManager.SetMaxConversionWorkers(n); err != nil {
+				respondError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+	}
+
 	// Special handling for spotify_download_path - update download manager and scanner
 	if key == "spotify_download_path" {
 		downloadDir := body.Value

@@ -154,6 +154,7 @@ func IsSensitiveSettingKey(key string) bool {
 func IsValidSettingKey(key string) bool {
 	allowedKeys := map[string]bool{
 		"concurrent_downloads":          true,
+		"spotify_conversion_workers":    true,
 		"spotify_download_path":         true,
 		"gemini_api_key":                true,
 		"theme":                         true,
@@ -184,5 +185,6 @@ func IsValidSettingKey(key string) bool {
 		"enrichment_source":             true,
 		"audio_settings":                true,
 	}
+	allowedKeys["spotify_auto_convert_ogg_to_mp3"] = true
 	return allowedKeys[key]
 }

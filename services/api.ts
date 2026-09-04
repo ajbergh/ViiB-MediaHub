@@ -185,8 +185,9 @@ export interface GenreStat {
  * Download Lifecycle:
  * 1. queued - Added to queue, waiting to be processed
  * 2. downloading - Currently being downloaded from Spotify
- * 3. completed - Successfully downloaded to disk
- * 4. failed - Download failed (see errorMessage)
+ * 3. converting - Download finished; Ogg-to-MP3 conversion is running
+ * 4. completed - Successfully downloaded and post-processed on disk
+ * 5. failed - Download or conversion failed (see errorMessage)
  * 
  * Progress updates are received via SSE (Server-Sent Events) from
  * the /api/spotify/downloads/events endpoint.
@@ -198,7 +199,7 @@ export interface ApiSpotifyDownload {
   title: string;                 // Track/album/playlist title
   artist: string;                // Primary artist
   album: string;                 // Album name
-  status: 'queued' | 'downloading' | 'completed' | 'failed'; // Current status
+  status: 'queued' | 'downloading' | 'converting' | 'completed' | 'failed'; // Current status
   progress: number;              // 0-100 percentage
   errorMessage?: string;         // Error details if status is 'failed'
   filePath?: string;             // Full path to downloaded file (if completed)
@@ -638,7 +639,7 @@ export const api = {
 
   /**
    * Retrieves all downloads from the queue.
-   * Includes queued, downloading, completed, and failed downloads.
+   * Includes queued, downloading, converting, completed, and failed downloads.
    * Use this for initial state load; real-time updates come via SSE.
    * 
    * @returns Promise with array of all downloads
@@ -648,7 +649,7 @@ export const api = {
     return handleResponse<ApiSpotifyDownload[]>(response);
   },
 
-  /** Returns the exact queued + downloading count used by the navigation badge. */
+  /** Returns the exact queued + downloading + converting count used by the navigation badge. */
   async getActiveDownloadCount(): Promise<{ count: number }> {
     const response = await fetch(`${API_BASE}/spotify/downloads/active-count`);
     return handleResponse<{ count: number }>(response);

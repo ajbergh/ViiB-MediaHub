@@ -33,7 +33,7 @@ const DownloadManager = () => {
   const requestSequenceRef = useRef(0);
   const setDownloadCount = useStore(state => state.setDownloadCount);
 
-  // Fetch the exact active count rather than deriving it from the paginated
+  // Fetch the exact queued + downloading + converting count rather than deriving it from the paginated
   // download-history response, which can omit active rows in a large history.
   const fetchActiveDownloadCount = useCallback(async () => {
     const requestSequence = ++requestSequenceRef.current;

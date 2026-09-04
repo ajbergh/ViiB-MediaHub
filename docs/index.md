@@ -94,7 +94,7 @@ Plex does not add duplicate Plex-only Songs, Albums, Artists, Search, or Now Pla
 ## Architecture Summary
 
 - **Frontend:** React 19 + TypeScript + Vite, Zustand state, Tailwind CSS
-- **Backend:** Go **1.25.13+**, chi HTTP router, SQLite/WAL, Wails v2
+- **Backend:** Go **1.26.8+**, chi HTTP router, SQLite/WAL, Wails v2
 - **Catalog:** SQLite `songs` is the canonical catalog for local and synchronized Plex tracks
 - **Local media:** filesystem scanner, platform-aware change detection, metadata extraction, local cover handling
 - **Plex media:** backend GDM discovery, manual PMS configuration, JWT/PIN authentication, metadata sync, authenticated audio/artwork proxying

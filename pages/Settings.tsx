@@ -523,6 +523,10 @@ export const Settings: React.FC = () => {
   // Spotify download location
   const [spotifyDownloadPath, setSpotifyDownloadPath] = useState('');
   const [downloadPathSaved, setDownloadPathSaved] = useState(false);
+  const [autoConvertOggToMp3, setAutoConvertOggToMp3] = useState(false);
+  const [autoConvertOggSaving, setAutoConvertOggSaving] = useState(false);
+  const [conversionWorkers, setConversionWorkers] = useState(() => Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1)));
+  const [conversionWorkersSaved, setConversionWorkersSaved] = useState(false);
 
   // Settings Tab State
   type SettingsTab = 'library' | 'health' | 'audio' | 'integrations' | 'ai' | 'appearance' | 'system';
@@ -570,6 +574,23 @@ export const Settings: React.FC = () => {
           } catch (e) {
               console.error('Failed to load concurrent downloads:', e);
           }
+          try {
+              const autoConvert = await api.getSetting('spotify_auto_convert_ogg_to_mp3');
+              setAutoConvertOggToMp3(autoConvert === 'true');
+          } catch (e) {
+              console.error('Failed to load automatic Ogg conversion setting:', e);
+          }
+          try {
+              const workers = await api.getSetting('spotify_conversion_workers');
+              if (workers) {
+                  const n = parseInt(workers, 10);
+                  if (n >= 1 && n <= 4) {
+                      setConversionWorkers(n);
+                  }
+              }
+          } catch (e) {
+              console.error('Failed to load MP3 conversion worker setting:', e);
+          }
       };
       if (backendAvailable) {
           loadDownloadSettings();
@@ -584,6 +605,32 @@ export const Settings: React.FC = () => {
           setTimeout(() => setConcurrentSaved(false), 3000);
       } catch (e) {
           addLog('error', 'Failed to save concurrent downloads setting', e);
+      }
+  };
+
+  const handleToggleAutoConvertOgg = async () => {
+      const nextValue = !autoConvertOggToMp3;
+      setAutoConvertOggToMp3(nextValue);
+      setAutoConvertOggSaving(true);
+      try {
+          await api.setSetting('spotify_auto_convert_ogg_to_mp3', nextValue.toString());
+          addLog('success', `Automatic Ogg to MP3 conversion ${nextValue ? 'enabled' : 'disabled'}`);
+      } catch (e) {
+          setAutoConvertOggToMp3(!nextValue);
+          addLog('error', 'Failed to save automatic Ogg conversion setting', e);
+      } finally {
+          setAutoConvertOggSaving(false);
+      }
+  };
+
+  const handleSaveConversionWorkers = async () => {
+      try {
+          await api.setSetting('spotify_conversion_workers', conversionWorkers.toString());
+          addLog('success', `MP3 conversion workers set to ${conversionWorkers}`);
+          setConversionWorkersSaved(true);
+          setTimeout(() => setConversionWorkersSaved(false), 3000);
+      } catch (e) {
+          addLog('error', 'Failed to save MP3 conversion worker setting', e);
       }
   };
 
@@ -1251,6 +1298,68 @@ export const Settings: React.FC = () => {
                     </div>
                     <p className="text-xs text-text-subtle mt-2">
                         Recommended: 3 for most connections, up to 6-10 for high-speed connections (100+ Mbps).
+                    </p>
+                </div>
+            )}
+
+            {/* Automatic Ogg to MP3 conversion */}
+            {backendAvailable && (
+                <div className="mb-6 flex items-center justify-between bg-surface-1 p-4 rounded-lg">
+                    <div className="pr-6">
+                        <h3 className="text-sm text-text-main font-medium">Convert downloads to MP3</h3>
+                        <p className="text-xs text-text-subtle">
+                            Automatically convert downloaded Ogg/Vorbis files to 320 kbps MP3 using the built-in converter. The Ogg file is removed only after conversion succeeds.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={autoConvertOggToMp3}
+                        aria-label="Automatically convert downloaded Ogg files to MP3"
+                        onClick={handleToggleAutoConvertOgg}
+                        disabled={autoConvertOggSaving}
+                        className={`relative w-12 h-6 shrink-0 rounded-full transition-colors disabled:opacity-50 ${autoConvertOggToMp3 ? 'bg-brand' : 'bg-surface-3'}`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${autoConvertOggToMp3 ? 'translate-x-7' : 'translate-x-1'}`} />
+                    </button>
+                </div>
+            )}
+
+            {/* MP3 Conversion Workers */}
+            {backendAvailable && (
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">MP3 Conversion Workers</label>
+                    <p className="text-xs text-text-subtle mb-3">
+                        Number of files to convert in parallel. These workers are separate from download slots; when possible, the automatic default leaves one logical CPU core available and is capped at four workers.
+                    </p>
+                    <div className="flex items-center gap-4">
+                        <div className="flex-1 flex items-center gap-4">
+                            <input
+                                type="range"
+                                min={1}
+                                max={4}
+                                value={conversionWorkers}
+                                onChange={(e) => setConversionWorkers(parseInt(e.target.value, 10))}
+                                disabled={!autoConvertOggToMp3}
+                                className="flex-1 h-2 bg-surface-1 rounded-lg appearance-none cursor-pointer accent-brand disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                            <span className="text-text-main font-bold w-8 text-center">{conversionWorkers}</span>
+                        </div>
+                        {conversionWorkersSaved && (
+                            <span className="text-success text-sm font-bold">Saved!</span>
+                        )}
+                        <Button
+                            variant="primary"
+                            accent="brand"
+                            onClick={handleSaveConversionWorkers}
+                            disabled={!autoConvertOggToMp3}
+                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
+                        >
+                            Save
+                        </Button>
+                    </div>
+                    <p className="text-xs text-text-subtle mt-2">
+                        Increase for faster batch conversion; reduce if playback or other CPU-heavy work becomes less responsive.
                     </p>
                 </div>
             )}
