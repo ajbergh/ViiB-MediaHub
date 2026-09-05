@@ -3,6 +3,7 @@
  * retries because creating a retry always means creating a distinct job.
  */
 import { requestJSON } from './httpClient';
+import { getEventStreamURL } from './eventStreamURL';
 
 const JOBS_BASE = '/api/v2/jobs';
 
@@ -59,15 +60,33 @@ export const jobsV2 = {
   // subscribe returns the EventSource cleanup function. It delivers changed
   // job snapshots only; heartbeats are consumed by EventSource internally.
   subscribe(onJobs: (jobs: OperationJob[]) => void): () => void {
-    const source = new EventSource(`${JOBS_BASE}/events`);
-    source.addEventListener('jobs', event => {
+    let source: EventSource | null = null;
+    let disposed = false;
+
+    void (async () => {
       try {
-        const payload = JSON.parse((event as MessageEvent).data) as { jobs: OperationJob[] };
-        onJobs(payload.jobs);
+        const nextSource = new EventSource(await getEventStreamURL(`${JOBS_BASE}/events`));
+        if (disposed) {
+          nextSource.close();
+          return;
+        }
+        source = nextSource;
+        source.addEventListener('jobs', event => {
+          try {
+            const payload = JSON.parse((event as MessageEvent).data) as { jobs: OperationJob[] };
+            onJobs(payload.jobs);
+          } catch (error) {
+            console.warn('Unable to parse jobs event:', error);
+          }
+        });
       } catch (error) {
-        console.warn('Unable to parse jobs event:', error);
+        if (!disposed) console.warn('Unable to open jobs event stream:', error);
       }
-    });
-    return () => source.close();
+    })();
+
+    return () => {
+      disposed = true;
+      source?.close();
+    };
   },
 };

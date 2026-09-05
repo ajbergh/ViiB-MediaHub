@@ -39,6 +39,7 @@
  */
 
 import { AudioSettings } from '../types';
+import { getEventStreamURL } from './eventStreamURL';
 
 const API_BASE = '/api';
 
@@ -153,6 +154,40 @@ export interface EnrichmentProgress {
   currentBatch: number;
   totalBatches: number;
   error?: string;
+}
+
+async function startEnrichmentStream(
+  path: string,
+  onProgress: (progress: EnrichmentProgress) => void,
+): Promise<EventSource> {
+  const eventSource = new EventSource(await getEventStreamURL(path));
+
+  eventSource.onmessage = (event) => {
+    try {
+      const progress = JSON.parse(event.data) as EnrichmentProgress;
+      onProgress(progress);
+      if (progress.status === 'complete' || progress.status === 'error') {
+        eventSource.close();
+      }
+    } catch (error) {
+      console.error('Failed to parse enrichment progress:', error);
+    }
+  };
+
+  eventSource.onerror = () => {
+    onProgress({
+      status: 'error',
+      message: 'Connection lost',
+      error: 'SSE connection failed',
+      totalSongs: 0,
+      processedSongs: 0,
+      currentBatch: 0,
+      totalBatches: 0,
+    });
+    eventSource.close();
+  };
+
+  return eventSource;
 }
 
 export interface FolderEntry {
@@ -1099,38 +1134,8 @@ export const api = {
   enrichGenresStream(
     force: boolean = false,
     onProgress: (progress: EnrichmentProgress) => void
-  ): EventSource {
-    const url = `${API_BASE}/library/enrich-genres/stream?force=${force}`;
-    const eventSource = new EventSource(url);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const progress = JSON.parse(event.data) as EnrichmentProgress;
-        onProgress(progress);
-        
-        // Auto-close on completion or error
-        if (progress.status === 'complete' || progress.status === 'error') {
-          eventSource.close();
-        }
-      } catch (e) {
-        console.error('Failed to parse enrichment progress:', e);
-      }
-    };
-
-    eventSource.onerror = () => {
-      onProgress({
-        status: 'error',
-        message: 'Connection lost',
-        error: 'SSE connection failed',
-        totalSongs: 0,
-        processedSongs: 0,
-        currentBatch: 0,
-        totalBatches: 0,
-      });
-      eventSource.close();
-    };
-
-    return eventSource;
+  ): Promise<EventSource> {
+    return startEnrichmentStream(`/api/library/enrich-genres/stream?force=${force}`, onProgress);
   },
 
   /**
@@ -1160,38 +1165,8 @@ export const api = {
   enrichAllMetadataStream(
     force: boolean = false,
     onProgress: (progress: EnrichmentProgress) => void
-  ): EventSource {
-    const url = `${API_BASE}/library/enrich-all/stream?force=${force}`;
-    const eventSource = new EventSource(url);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const progress = JSON.parse(event.data) as EnrichmentProgress;
-        onProgress(progress);
-        
-        // Auto-close on completion or error
-        if (progress.status === 'complete' || progress.status === 'error') {
-          eventSource.close();
-        }
-      } catch (e) {
-        console.error('Failed to parse enrichment progress:', e);
-      }
-    };
-
-    eventSource.onerror = () => {
-      onProgress({
-        status: 'error',
-        message: 'Connection lost',
-        error: 'SSE connection failed',
-        totalSongs: 0,
-        processedSongs: 0,
-        currentBatch: 0,
-        totalBatches: 0,
-      });
-      eventSource.close();
-    };
-
-    return eventSource;
+  ): Promise<EventSource> {
+    return startEnrichmentStream(`/api/library/enrich-all/stream?force=${force}`, onProgress);
   },
 
   /**
@@ -1212,38 +1187,8 @@ export const api = {
    */
   enrichMoodStream(
     onProgress: (progress: EnrichmentProgress) => void
-  ): EventSource {
-    const url = `${API_BASE}/library/enrich-mood/stream`;
-    const eventSource = new EventSource(url);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const progress = JSON.parse(event.data) as EnrichmentProgress;
-        onProgress(progress);
-        
-        // Auto-close on completion or error
-        if (progress.status === 'complete' || progress.status === 'error') {
-          eventSource.close();
-        }
-      } catch (e) {
-        console.error('Failed to parse mood analysis progress:', e);
-      }
-    };
-
-    eventSource.onerror = () => {
-      onProgress({
-        status: 'error',
-        message: 'Connection lost',
-        error: 'SSE connection failed',
-        totalSongs: 0,
-        processedSongs: 0,
-        currentBatch: 0,
-        totalBatches: 0,
-      });
-      eventSource.close();
-    };
-
-    return eventSource;
+  ): Promise<EventSource> {
+    return startEnrichmentStream('/api/library/enrich-mood/stream', onProgress);
   },
 
   /**
@@ -1285,59 +1230,50 @@ export const api = {
     onError: (error: string) => void
   ): AbortController {
     const controller = new AbortController();
-    
-    fetch(`${API_BASE}/library/enrich-years/stream`, {
-      signal: controller.signal,
-    })
-      .then(response => {
+
+    void (async () => {
+      try {
+        const response = await fetch(await getEventStreamURL('/api/library/enrich-years/stream'), {
+          signal: controller.signal,
+        });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
         const reader = response.body?.getReader();
+        if (!reader) return;
+
         const decoder = new TextDecoder();
-        
-        const readStream = async () => {
-          if (!reader) return;
-          
-          let buffer = '';
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-            
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(6)) as EnrichmentProgress;
-                  if (data.status === 'complete') {
-                    onComplete(data);
-                  } else if (data.status === 'error') {
-                    onError(data.error || data.message);
-                  } else {
-                    onProgress(data);
-                  }
-                } catch (e) {
-                  console.error('Failed to parse SSE data:', e);
-                }
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const data = JSON.parse(line.slice(6)) as EnrichmentProgress;
+              if (data.status === 'complete') {
+                onComplete(data);
+              } else if (data.status === 'error') {
+                onError(data.error || data.message);
+              } else {
+                onProgress(data);
               }
+            } catch (error) {
+              console.error('Failed to parse SSE data:', error);
             }
           }
-        };
-        
-        readStream().catch(err => {
-          if (err.name !== 'AbortError') {
-            onError(err.message);
-          }
-        });
-      })
-      .catch(err => {
-        if (err.name !== 'AbortError') {
-          onError(err.message);
         }
-      });
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          onError((error as Error).message);
+        }
+      }
+    })();
     
     return controller;
   },

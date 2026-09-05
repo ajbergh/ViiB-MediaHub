@@ -2719,7 +2719,7 @@ export const Settings: React.FC = () => {
                   </div>
 
                   <Button
-                    onClick={() => {
+                    onClick={async () => {
                       const hasLLMAccess = llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey);
                       if (!hasLLMAccess) {
                         alert("Please configure an AI Provider in the section above first.");
@@ -2738,7 +2738,8 @@ export const Settings: React.FC = () => {
 						message: 'Connecting to AI enrichment service…',
 					  });
 
-                      const eventSource = api.enrichAllMetadataStream(forceUnified, (progress) => {
+                      try {
+                        await api.enrichAllMetadataStream(forceUnified, (progress) => {
                         setUnifiedStatus(progress.message);
                         updateGlobalEnrichmentStatus(progress, 'AI metadata enrichment is running');
                         
@@ -2767,9 +2768,13 @@ export const Settings: React.FC = () => {
                           setUnifiedProgress(null);
                           setUnifiedStatus(`Error: ${progress.error || progress.message}`);
                         }
-                      });
-
-                      return () => eventSource.close();
+                        });
+                      } catch (error) {
+                        console.error('Failed to open metadata enrichment stream:', error);
+                        setIsUnifiedEnriching(false);
+                        setUnifiedProgress(null);
+                        setUnifiedStatus('Error: Unable to connect to the AI enrichment service');
+                      }
                     }}
                     disabled={isUnifiedEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey))}
                     variant={isUnifiedEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey)) ? 'secondary' : 'primary'}
