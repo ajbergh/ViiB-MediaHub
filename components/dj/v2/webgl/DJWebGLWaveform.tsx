@@ -23,6 +23,7 @@ import { getDJAudioEngine } from '../../../../lib/djAudio';
 import { useDJWebGL, useDJWebGLAnimation } from './useDJWebGL';
 import type { DeckId } from '../../../../slices/djMixerSlice';
 import { DJWaveformRenderState } from './DJWebGLRenderer';
+import { shouldUseAdvancedWebGL } from '../../../../lib/webglSafety';
 
 interface DJWebGLWaveformProps {
   /** Total height of the component */
@@ -41,7 +42,8 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   allowFallback = true,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [useFallback, setUseFallback] = useState(false);
+  const advancedWebGLEnabled = shouldUseAdvancedWebGL();
+  const [useFallback, setUseFallback] = useState(() => !advancedWebGLEnabled);
   
   // Get only what we need from store — granular selectors to avoid re-renders
   const deckAWaveformPeaks = useStore(state => state.djDeckA.waveformPeaks);
@@ -54,15 +56,17 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   const mainHeight = (height - OVERVIEW_HEIGHT - 8) / 2;
   
   // WebGL hooks for each canvas
-  const overviewWebGL = useDJWebGL();
-  const deckAWebGL = useDJWebGL();
-  const deckBWebGL = useDJWebGL();
+  const overviewWebGL = useDJWebGL({ enabled: advancedWebGLEnabled });
+  const deckAWebGL = useDJWebGL({ enabled: advancedWebGLEnabled });
+  const deckBWebGL = useDJWebGL({ enabled: advancedWebGLEnabled });
   
   // Track initialization
   const [isReady, setIsReady] = useState(false);
   
   // Initialize and check WebGL support
   useEffect(() => {
+    if (!advancedWebGLEnabled) return;
+
     // Give canvases time to mount
     const timer = setTimeout(() => {
       const info = deckAWebGL.getInfo();
@@ -76,7 +80,7 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     }, 100);
     
     return () => clearTimeout(timer);
-  }, [allowFallback, deckAWebGL]);
+  }, [advancedWebGLEnabled, allowFallback, deckAWebGL]);
   
   // Update waveform textures when peaks change
   useEffect(() => {

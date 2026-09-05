@@ -9,6 +9,7 @@ require (
 	github.com/braheezy/shine-mp3 v0.2.0
 	github.com/chromedp/chromedp v0.14.2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
+	github.com/fsnotify/fsevents v0.2.0
 	github.com/getlantern/systray v1.2.2
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/cors v1.2.1

@@ -73,6 +73,11 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 512, height: 512 });
+  const canvasSizeRef = useRef(canvasSize);
+
+  useEffect(() => {
+    canvasSizeRef.current = canvasSize;
+  }, [canvasSize]);
   
   // Get resolution from quality setting
   const resolution = useMemo(() => 
@@ -150,6 +155,8 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
     if (!isActive || isLoaded || isLoading) return;
     // Wait for container to have dimensions
     if (canvasSize.width <= 0 || canvasSize.height <= 0) return;
+
+    let disposed = false;
     
     const initButterchurn = async () => {
       setIsLoading(true);
@@ -169,9 +176,12 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
           return;
         }
         
-        // Set canvas dimensions explicitly for WebGL
-        canvas.width = canvasSize.width;
-        canvas.height = canvasSize.height;
+        // Read the latest measurement. A resize must update the renderer, not
+        // tear down and recreate its WebGL context while the native window is
+        // compositing it.
+        const initialSize = canvasSizeRef.current;
+        canvas.width = initialSize.width;
+        canvas.height = initialSize.height;
         
         // Lazy load Butterchurn
         console.log('[Milkdrop] Loading Butterchurn library...');
@@ -179,6 +189,7 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
           import('butterchurn'),
           import('butterchurn-presets')
         ]);
+        if (disposed) return;
         
         // Get audio context (ensure audio engine is initialized)
         const audioContext = audioEngine.getAudioContext();
@@ -196,13 +207,13 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
         const ctx = audioEngine.getAudioContext()!;
         
         // Create visualizer using canvas size
-        console.log('[Milkdrop] Creating visualizer...', canvasSize);
+        console.log('[Milkdrop] Creating visualizer...', initialSize);
         visualizerRef.current = butterchurn.default.createVisualizer(
           ctx,
           canvas,
           {
-            width: canvasSize.width,
-            height: canvasSize.height,
+            width: initialSize.width,
+            height: initialSize.height,
             pixelRatio: 1, // Already accounted for in canvasSize
             textureRatio: 1,
           }
@@ -255,6 +266,7 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
     
     // Cleanup on unmount or when dependencies change
     return () => {
+      disposed = true;
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = 0;
@@ -265,7 +277,7 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
       }
       setIsLoaded(false);
     };
-  }, [isActive, canvasSize.width, canvasSize.height]); // Re-init when activation or size changes
+  }, [isActive]);
   
   // Render loop
   useEffect(() => {

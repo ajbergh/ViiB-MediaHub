@@ -23,7 +23,9 @@ import {
   djHotCueFragmentShader,
   djOverviewFragmentShader,
   djCuePointFragmentShader,
+  toDJWebGL1FragmentShader,
 } from './DJWaveformShaders';
+import { getPreferredWebGLVersion } from '../../../../lib/webglSafety';
 
 export type DeckId = 'A' | 'B';
 
@@ -129,8 +131,10 @@ export class DJWebGLRenderer {
     
     this.canvas = canvas;
     
-    // Try WebGL2 first, fall back to WebGL1
-    let gl: WebGL2RenderingContext | WebGLRenderingContext | null = canvas.getContext('webgl2', {
+    const preferWebGL1 = getPreferredWebGLVersion() === 'webgl1';
+    // Modern WKWebView supports WebGL 2. Older system WebKit installations
+    // fall through to the WebGL 1 shader path.
+    let gl: WebGL2RenderingContext | WebGLRenderingContext | null = preferWebGL1 ? null : canvas.getContext('webgl2', {
       alpha: true,
       antialias: false,
       depth: false,
@@ -365,7 +369,7 @@ export class DJWebGLRenderer {
     
     // Compile fragment shader
     const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!;
-    gl.shaderSource(fragmentShader, fragmentSource);
+    gl.shaderSource(fragmentShader, this.isWebGL2 ? fragmentSource : toDJWebGL1FragmentShader(fragmentSource));
     gl.compileShader(fragmentShader);
     
     if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
@@ -456,7 +460,7 @@ export class DJWebGLRenderer {
   resize(width: number, height: number): void {
     if (width <= 0 || height <= 0) return;
     
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.isWebGL2 ? 2 : 1.5);
     this.width = width;
     this.height = height;
     
@@ -487,7 +491,7 @@ export class DJWebGLRenderer {
     gl.useProgram(prog.program);
     
     // Set uniforms
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.isWebGL2 ? 2 : 1.5);
     const hasPeaks = state.peaks && state.peaks.length > 0 && state.duration > 0;
     const position = hasPeaks ? state.position / state.duration : 0;
     const visibleRange = hasPeaks ? state.visibleSeconds / state.duration : 0.1;
@@ -540,7 +544,7 @@ export class DJWebGLRenderer {
     
     gl.useProgram(prog.program);
     
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.isWebGL2 ? 2 : 1.5);
     
     gl.uniform1f(this.getUniform(prog, 'u_position'), state.position);
     gl.uniform1f(this.getUniform(prog, 'u_bpm'), state.bpm);
@@ -562,7 +566,7 @@ export class DJWebGLRenderer {
     
     gl.useProgram(prog.program);
     
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.isWebGL2 ? 2 : 1.5);
     
     gl.uniform2f(this.getUniform(prog, 'u_resolution'), this.width * dpr, this.height * dpr);
     gl.uniform3fv(this.getUniform(prog, 'u_color'), this.options.playheadColor);
@@ -582,7 +586,7 @@ export class DJWebGLRenderer {
     
     gl.useProgram(prog.program);
     
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.isWebGL2 ? 2 : 1.5);
     const cuePos = state.cuePoint / state.duration;
     const visibleRange = state.visibleSeconds / state.duration;
     const position = state.position / state.duration;
@@ -608,7 +612,7 @@ export class DJWebGLRenderer {
     
     gl.useProgram(prog.program);
     
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.isWebGL2 ? 2 : 1.5);
     const visibleRange = state.visibleSeconds / state.duration;
     const position = state.position / state.duration;
     
@@ -658,7 +662,7 @@ export class DJWebGLRenderer {
     gl.clearColor(0.102, 0.102, 0.102, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.isWebGL2 ? 2 : 1.5);
     const halfWidth = this.width / 2;
     
     // Render Deck A (left half)

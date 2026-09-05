@@ -237,8 +237,14 @@ export class DJAudioEngine {
     if (this.isInitialized) return;
 
     try {
-      // Create AudioContext
-      this.audioContext = new AudioContext({
+      // WebKit historically exposed this as webkitAudioContext. Modern
+      // WKWebView uses AudioContext, but keep the native desktop fallback.
+      const AudioContextCtor = window.AudioContext
+        || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) {
+        throw new Error('Web Audio is not supported by this browser or WebView.');
+      }
+      this.audioContext = new AudioContextCtor({
         sampleRate: this.config.sampleRate,
         latencyHint: 'interactive',
       });

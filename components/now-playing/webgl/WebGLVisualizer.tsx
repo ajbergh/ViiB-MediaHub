@@ -18,6 +18,7 @@ import React, { useCallback, useState } from 'react';
 import { useWebGLVisualizer } from './useWebGLVisualizer';
 import { VisualizerMode } from '../../../types';
 import { VIIB_COLOR_VALUES } from '../../ui/tokens';
+import { shouldUseAdvancedWebGL } from '../../../lib/webglSafety';
 
 // Lazy import Canvas 2D fallback
 const AlbumArtVisualizer = React.lazy(() => import('../AlbumArtVisualizer'));
@@ -79,7 +80,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
     className = '',
     forceCanvas2D = false
 }) => {
-    const [useFallback, setUseFallback] = useState(forceCanvas2D);
+    const [useFallback, setUseFallback] = useState(() => forceCanvas2D || !shouldUseAdvancedWebGL());
     
     const handleFallback = useCallback(() => {
         console.log('[WebGLVisualizer] Falling back to Canvas 2D');

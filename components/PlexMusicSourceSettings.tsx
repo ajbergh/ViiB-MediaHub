@@ -4,6 +4,7 @@ import { Button } from './ui/Button';
 import { TextInput } from './ui/TextInput';
 import { useStore } from '../store';
 import { plexService, type PlexAccountServer, type PlexMetadataWritebackPreview, type PlexServer } from '../services/plex';
+import { openExternalURL, shouldUseSystemBrowser } from '../services/externalNavigation';
 import { initialPlexSettingsState, plexSettingsReducer, plexSourceNeedsAuthentication } from '../lib/plexSettingsState';
 
 const busyLabel: Record<string, string> = {
@@ -177,10 +178,13 @@ export const PlexMusicSourceSettings: React.FC = () => {
     dispatch({ type: 'busy', busy: 'authenticating', message: '' });
     // Open a blank window synchronously while this click still has a user
     // gesture. Opening only after the network request is commonly popup-blocked.
-    const authWindow = window.open('', '_blank', 'noopener,noreferrer');
+    const useSystemBrowser = shouldUseSystemBrowser();
+    const authWindow = useSystemBrowser ? null : window.open('', '_blank', 'noopener,noreferrer');
     try {
       const start = await plexService.startAuth();
-      if (authWindow) {
+      if (useSystemBrowser) {
+        await openExternalURL(start.authUrl);
+      } else if (authWindow) {
         authWindow.location.href = start.authUrl;
       } else {
         const secondAttempt = window.open(start.authUrl, '_blank', 'noopener,noreferrer');

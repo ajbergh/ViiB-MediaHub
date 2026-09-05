@@ -21,6 +21,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2, Copy } from 'lucide-react';
 import { formatTime, getOAuthCallbackUrl, isWailsEnvironment, SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
+import { openExternalURL } from '../services/externalNavigation';
 import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
@@ -431,7 +432,12 @@ export const Spotify: React.FC = () => {
             setIsWaitingForAuth(true);
         }
 
-        // Open popup
+        if (isWailsEnvironment()) {
+            await openExternalURL(url);
+            return;
+        }
+
+        // Browser builds retain popup-based authorization.
         const width = 600;
         const height = 800;
         const left = window.screen.width / 2 - width / 2;

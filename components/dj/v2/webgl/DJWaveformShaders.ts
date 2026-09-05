@@ -49,6 +49,16 @@ void main() {
 }
 `;
 
+/** Converts the shared WebGL 2 fragment sources to WebGL 1 GLSL syntax. */
+export function toDJWebGL1FragmentShader(source: string): string {
+  return source
+    .replace(/^\s*#version\s+300\s+es\s*\n/m, '')
+    .replace(/^\s*in\s+vec2\s+v_uv\s*;\s*$/m, 'varying vec2 v_uv;')
+    .replace(/^\s*out\s+vec4\s+fragColor\s*;\s*$/m, '')
+    .replace(/\bfragColor\b/g, 'gl_FragColor')
+    .replace(/\btexture\s*\(/g, 'texture2D(');
+}
+
 /**
  * Main waveform fragment shader with frequency-based coloring
  * 
