@@ -25,6 +25,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import DirectDownloadDialog from '../components/DirectDownloadDialog';
 import { useStore } from '../store';
 import { Page, PageHeader } from '../components/ui/Page';
+import { getEventStreamURL } from '../services/eventStreamURL';
 
 export const Downloads: React.FC = () => {
   const [downloads, setDownloads] = useState<ApiSpotifyDownload[]>([]);
@@ -97,9 +98,14 @@ export const Downloads: React.FC = () => {
     let eventSource: EventSource | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
     
-    const connect = () => {
+    const connect = async () => {
       try {
-        eventSource = new EventSource('/api/spotify/downloads/events');
+        const source = new EventSource(await getEventStreamURL('/api/spotify/downloads/events'));
+        if (disposed) {
+          source.close();
+          return;
+        }
+        eventSource = source;
         eventSourceRef.current = eventSource;
         eventSource.onopen = () => setSseHealthy(true);
 
@@ -149,16 +155,18 @@ export const Downloads: React.FC = () => {
             eventSource.close();
           }
           // Reconnect after 5 seconds
-          reconnectTimeout = setTimeout(connect, 5000);
+          reconnectTimeout = setTimeout(() => { void connect(); }, 5000);
         };
       } catch (error) {
         console.error('Failed to create SSE connection:', error);
       }
     };
 
-    connect();
+    let disposed = false;
+    void connect();
 
     return () => {
+      disposed = true;
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
       }
@@ -299,6 +307,7 @@ export const Downloads: React.FC = () => {
         <DirectDownloadDialog
           isOpen={showDirectDownload}
           onClose={() => setShowDirectDownload(false)}
+          onQueued={fetchDownloads}
         />
       </div>
     );
@@ -498,6 +507,7 @@ export const Downloads: React.FC = () => {
       <DirectDownloadDialog
         isOpen={showDirectDownload}
         onClose={() => setShowDirectDownload(false)}
+        onQueued={fetchDownloads}
       />
     </Page>
   );

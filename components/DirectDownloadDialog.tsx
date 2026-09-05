@@ -5,6 +5,8 @@ import api from '../services/api';
 interface DirectDownloadDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Called after the backend has persisted the queued downloads. */
+  onQueued?: () => void | Promise<void>;
 }
 
 // Regex patterns for Spotify URL/URI validation
@@ -53,7 +55,7 @@ const getTypeName = (type?: string) => {
   }
 };
 
-export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOpen, onClose }) => {
+export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOpen, onClose, onQueued }) => {
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +83,13 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
         count: result.count,
       });
       setUrl('');
+      // The queue-change event may be missed while a native app reconnects its
+      // SSE stream. Refresh the owning page directly once the queue is saved.
+      try {
+        await onQueued?.();
+      } catch (refreshError) {
+        console.warn('Direct download was queued but the download list could not be refreshed:', refreshError);
+      }
       
       // Auto-close after 2 seconds on success
       setTimeout(() => {
