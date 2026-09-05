@@ -1,11 +1,12 @@
-//go:build darwin
-// +build darwin
+//go:build darwin && cgo
 
 // Package scanner provides media library scanning functionality.
-// This file implements macOS FSEvents for efficient filesystem change detection.
 package scanner
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,134 +14,199 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/fsnotify/fsevents"
 )
 
-// FSEventsDetector implements JournalChangeDetector using macOS FSEvents.
-// Note: FSEvents in Go requires CGO and the FSEvents framework.
-// For a pure-Go solution, we fall back to mtime-based detection with optimization.
-// A full FSEvents implementation would use github.com/fsnotify/fsevents or similar.
+const fseventsHistoryTimeout = 10 * time.Second
+
+var errFSEventsHistoryIncomplete = errors.New("macOS FSEvents history is incomplete; a directory scan is required")
+
+// FSEventsDetector reads macOS's persistent FSEvents journal. It uses file
+// events where available, then resolves the reported paths against the media
+// metadata cache so callers still receive file-level changes.
 type FSEventsDetector struct {
 	scanner      *Scanner
 	lastEventID  uint64
 	lastScanTime time.Time
 }
 
-// newFSEventsDetector creates a new FSEvents detector
 func newFSEventsDetector(s *Scanner) *FSEventsDetector {
-	return &FSEventsDetector{
-		scanner: s,
-	}
+	return &FSEventsDetector{scanner: s}
 }
 
-// Name returns the name of this detector
 func (f *FSEventsDetector) Name() string {
-	return "macOS FSEvents (mtime fallback)"
+	return "macOS FSEvents"
 }
 
-// IsAvailable checks if FSEvents is available
 func (f *FSEventsDetector) IsAvailable() bool {
-	// FSEvents requires CGO and the CoreServices framework.
-	// For this implementation, we provide an optimized mtime-based fallback
-	// that uses the LastModified directory attribute for faster scanning.
+	// FSEvents is part of CoreServices on every supported macOS release. A
+	// stream creation failure is reported by GetChangesSince and triggers the
+	// signature-based fallback.
 	return true
 }
 
-// GetChangesSince returns all filesystem changes since the given timestamp
-// This implementation uses an optimized mtime scan since pure-Go FSEvents
-// would require CGO. It's still much faster than a full scan because:
-// 1. We use directory mtime to skip unchanged directories
-// 2. We only check audio files that match our extensions
+// GetChangesSince replays persistent FSEvents records after the saved cursor.
+// The first run after upgrading from the mtime implementation derives a host
+// event ID from the previous scan timestamp; Apple documents this conversion as
+// conservative, so it may return harmless extra events but must not miss one.
 func (f *FSEventsDetector) GetChangesSince(since time.Time, watchPaths []string) ([]FileChange, error) {
-	var changes []FileChange
-
-	for _, watchPath := range watchPaths {
-		dirChanges, err := f.scanDirectoryForChanges(watchPath, since)
-		if err != nil {
-			logger.Scanner("Error scanning %s for changes: %v", watchPath, err)
-			continue
-		}
-		changes = append(changes, dirChanges...)
+	paths, err := normalizeFSEventsWatchPaths(watchPaths)
+	if err != nil {
+		return nil, err
+	}
+	if len(paths) == 0 {
+		return nil, nil
 	}
 
-	f.lastScanTime = time.Now()
-	logger.Scanner("FSEvents (mtime): found %d changes since %s", len(changes), since.Format(time.RFC3339))
-	return changes, nil
+	startID := f.lastEventID
+	if startID == 0 {
+		startID = fsevents.EventIDForDeviceBeforeTime(0, since)
+	}
+
+	stream := &fsevents.EventStream{
+		Paths:   paths,
+		Flags:   fsevents.FileEvents | fsevents.WatchRoot,
+		Resume:  true,
+		EventID: startID,
+		Latency: 0,
+		Events:  make(chan []fsevents.Event, 16),
+	}
+	if err := stream.Start(); err != nil {
+		return nil, fmt.Errorf("start FSEvents stream: %w", err)
+	}
+	defer stream.Stop()
+
+	changes := make([]FileChange, 0)
+	timer := time.NewTimer(fseventsHistoryTimeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case events := <-stream.Events:
+			historyDone := false
+			for _, event := range events {
+				if event.ID > f.lastEventID {
+					f.lastEventID = event.ID
+				}
+				if fseventsEventRequiresFallback(event.Flags) {
+					return nil, fmt.Errorf("%w (flags %#x for %s)", errFSEventsHistoryIncomplete, event.Flags, event.Path)
+				}
+				if event.Flags&fsevents.HistoryDone != 0 {
+					historyDone = true
+					continue
+				}
+				if event.Flags&fsevents.ItemIsDir != 0 || !pathIsWithinWatchPaths(event.Path, paths) {
+					continue
+				}
+				change, err := f.changeForEvent(event.Path)
+				if err != nil {
+					return nil, err
+				}
+				if change != nil {
+					changes = append(changes, *change)
+				}
+			}
+			if historyDone {
+				f.lastScanTime = time.Now()
+				logger.Scanner("FSEvents: found %d file changes since event %d", len(changes), startID)
+				return changes, nil
+			}
+		case <-timer.C:
+			return nil, fmt.Errorf("timed out waiting for FSEvents history after event %d", startID)
+		}
+	}
 }
 
-// scanDirectoryForChanges efficiently scans a directory tree for changes
-func (f *FSEventsDetector) scanDirectoryForChanges(dirPath string, since time.Time) ([]FileChange, error) {
-	var changes []FileChange
-
-	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+func normalizeFSEventsWatchPaths(watchPaths []string) ([]string, error) {
+	paths := make([]string, 0, len(watchPaths))
+	seen := make(map[string]struct{}, len(watchPaths))
+	for _, watchPath := range watchPaths {
+		absPath, err := filepath.Abs(watchPath)
 		if err != nil {
-			return nil // Skip errors
+			return nil, fmt.Errorf("resolve FSEvents watch path %q: %w", watchPath, err)
 		}
-
-		// For directories, check if we can skip the entire subtree
-		if info.IsDir() {
-			// Check if this directory should be skipped
-			dirName := info.Name()
-			if shouldSkipDirectory(dirName) {
-				return filepath.SkipDir
-			}
-			// If directory hasn't been modified since last scan, we might be able to skip it
-			// Note: Directory mtime only changes when direct children are added/removed
-			// Files modified within maintain the same directory mtime
-			return nil
+		resolvedPath, err := filepath.EvalSymlinks(absPath)
+		if err != nil {
+			return nil, fmt.Errorf("resolve FSEvents symlink %q: %w", absPath, err)
 		}
-
-		// Check if it's an audio file
-		ext := strings.ToLower(filepath.Ext(path))
-		if !supportedExtensions[ext] {
-			return nil
+		resolvedPath = filepath.Clean(resolvedPath)
+		if _, exists := seen[resolvedPath]; exists {
+			continue
 		}
-
-		// Check if file was modified since the given time
-		if info.ModTime().After(since) {
-			// Determine if it's new or modified by checking if we have it in cache
-			cached, err := f.scanner.db.GetFileMetadataCache(path)
-
-			var changeType ChangeType
-			if err != nil || cached == nil {
-				changeType = ChangeTypeCreated
-			} else {
-				changeType = ChangeTypeModified
-			}
-
-			changes = append(changes, FileChange{
-				Path:       path,
-				ChangeType: changeType,
-				NewMtime:   info.ModTime().UnixMilli(),
-				NewSize:    info.Size(),
-			})
-		}
-
-		return nil
-	})
-
-	return changes, err
+		seen[resolvedPath] = struct{}{}
+		paths = append(paths, resolvedPath)
+	}
+	return paths, nil
 }
 
-// SaveState saves the current event ID to the database
+func pathIsWithinWatchPaths(path string, watchPaths []string) bool {
+	cleanPath := filepath.Clean(path)
+	for _, watchPath := range watchPaths {
+		rel, err := filepath.Rel(watchPath, cleanPath)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *FSEventsDetector) changeForEvent(path string) (*FileChange, error) {
+	path = filepath.Clean(path)
+	if !supportedExtensions[strings.ToLower(filepath.Ext(path))] {
+		return nil, nil
+	}
+
+	cached, cacheErr := f.scanner.db.GetFileMetadataCache(path)
+	if cacheErr != nil && !errors.Is(cacheErr, sql.ErrNoRows) {
+		return nil, fmt.Errorf("read metadata cache for %s: %w", path, cacheErr)
+	}
+
+	info, statErr := os.Stat(path)
+	if statErr == nil {
+		changeType := ChangeTypeModified
+		if cached == nil {
+			changeType = ChangeTypeCreated
+		}
+		change := &FileChange{
+			Path:       path,
+			ChangeType: changeType,
+			NewMtime:   info.ModTime().UnixMilli(),
+			NewSize:    info.Size(),
+		}
+		if cached != nil {
+			change.OldMtime = cached.Mtime
+			change.OldSize = cached.FileSize
+		}
+		return change, nil
+	}
+	if !errors.Is(statErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("stat FSEvents path %s: %w", path, statErr)
+	}
+	if cached == nil {
+		return nil, nil
+	}
+	return &FileChange{
+		Path:       path,
+		ChangeType: ChangeTypeDeleted,
+		OldMtime:   cached.Mtime,
+		OldSize:    cached.FileSize,
+	}, nil
+}
+
 func (f *FSEventsDetector) SaveState() error {
 	state, err := f.scanner.db.GetScanState()
 	if err != nil {
-		state = &db.ScanState{
-			LastScanTime: time.Now().UnixMilli(),
-		}
+		state = &db.ScanState{LastScanTime: time.Now().UnixMilli()}
 	}
-
 	state.MacOSEventID = int64(f.lastEventID)
 	return f.scanner.db.SaveScanState(*state)
 }
 
-// LoadState loads the previously saved event ID
 func (f *FSEventsDetector) LoadState() error {
 	state, err := f.scanner.db.GetScanState()
 	if err != nil {
 		return err
 	}
-
 	f.lastEventID = uint64(state.MacOSEventID)
 	f.lastScanTime = time.UnixMilli(state.LastScanTime)
 	return nil

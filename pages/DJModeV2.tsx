@@ -49,6 +49,7 @@ import { DeckTimeDisplay, DeckHasTrack, DeckBpmBadge, DeckHorizontalVU } from '.
 import { DJChannelStrip, DJMasterKnob, DJCrossfaderSelfSub, DJTempoSliderSelfSub, DJDeckEQStrip } from '../components/dj/v2/DJMixerComponents';
 import { useDJShortcuts } from '../components/dj/v2/hooks/useDJShortcuts';
 import { createLogger } from '../services/loggerService';
+import { shouldUseAdvancedWebGL } from '../lib/webglSafety';
 import type { DeckId, DeckEQ, DJLayoutMode } from '../slices/djMixerSlice';
 import { useIsDJReady } from '../hooks/useMediaQuery';
 import { DJUnsupportedWidth } from '../components/dj/DJUnsupportedWidth';
@@ -60,6 +61,9 @@ type ViewMode = 'timeline' | 'scope' | 'racks';
 
 const DJModeV2Inner: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');
+  // WKWebView WebGL failures can take down the entire native macOS window.
+  // Keep the established Canvas waveform there regardless of a persisted toggle.
+  const advancedWebGLEnabled = shouldUseAdvancedWebGL();
   const [isRecording, setIsRecording] = useState(false);
   const [libraryHeight, setLibraryHeight] = useState(200);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -544,19 +548,22 @@ const DJModeV2Inner: React.FC = () => {
         <div className='flex-shrink-0 border-b border-[#2a2a2a] relative' style={{ height: 'var(--dj-waveform-h)', backgroundColor: 'var(--dj-bg)' }}>
           {/* WebGL / Canvas 2D toggle */}
           <button
-            onClick={toggleWebGLWaveform}
+            onClick={advancedWebGLEnabled ? toggleWebGLWaveform : undefined}
+            disabled={!advancedWebGLEnabled}
             className={`absolute top-1 left-1 z-10 px-2 min-h-[28px] flex items-center rounded text-[10px] font-bold uppercase transition-colors ${
-              useWebGLWaveform
+              advancedWebGLEnabled && useWebGLWaveform
                 ? 'bg-green-600/30 text-green-400 border border-green-500/40'
-                : 'bg-neutral-800/80 text-neutral-500 border border-neutral-700 hover:text-neutral-300'
+                : 'bg-neutral-800/80 text-neutral-500 border border-neutral-700'
             }`}
-            title={useWebGLWaveform ? 'WebGL waveform active — click for Canvas 2D' : 'Canvas 2D waveform — click for WebGL'}
-            aria-pressed={useWebGLWaveform}
+            title={advancedWebGLEnabled
+              ? (useWebGLWaveform ? 'WebGL waveform active — click for Canvas 2D' : 'Canvas 2D waveform — click for WebGL')
+              : 'Canvas waveform is used in the macOS desktop app for stability'}
+            aria-pressed={advancedWebGLEnabled && useWebGLWaveform}
           >
-            {useWebGLWaveform ? 'WebGL' : '2D'}
+            {advancedWebGLEnabled && useWebGLWaveform ? 'WebGL' : '2D'}
           </button>
           <DJErrorBoundary componentName='DJWaveform'>
-            {useWebGLWaveform ? (
+            {advancedWebGLEnabled && useWebGLWaveform ? (
               <DJWebGLWaveform height={180} allowFallback />
             ) : (
               <DJDualWaveform height={-1} responsive />

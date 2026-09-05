@@ -37,8 +37,14 @@ func TestSetDownloadRescanThresholdPersistsAndUpdatesScanner(t *testing.T) {
 	if value != "3" {
 		t.Fatalf("persisted threshold = %q, want 3", value)
 	}
-	if sc.NotifyDownloadComplete() || sc.NotifyDownloadComplete() {
-		t.Fatal("runtime scanner reached persisted threshold before three downloads")
+	if sc.NotifyDownloadComplete() {
+		t.Fatal("runtime scanner reached persisted threshold on first download")
+	}
+	if sc.NotifyDownloadComplete() {
+		t.Fatal("runtime scanner reached persisted threshold on second download")
+	}
+	if !sc.NotifyDownloadComplete() {
+		t.Fatal("runtime scanner did not reach persisted threshold on third download")
 	}
 
 	response = setSettingForTest(a, "spotify_download_rescan_threshold", "-1")

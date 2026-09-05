@@ -5,6 +5,8 @@
  * Wails provides the native sizing and always-on-top controls when available.
  */
 
+import { isMacOSWails } from '../lib/webglSafety';
+
 type DesktopWindowSnapshot = {
   width: number;
   height: number;
@@ -45,11 +47,18 @@ export async function toggleNativeWindowMaximise(): Promise<void> {
   }
 }
 
-/** Mirrors the app's existing close-to-tray behaviour for the custom title bar. */
+/**
+ * Closes the macOS app, where no external tray exists; other Wails targets
+ * retain the existing hide-to-tray behavior.
+ */
 export async function hideNativeWindow(): Promise<void> {
   if (!isNativeWindowRuntimeAvailable()) return;
   try {
     const runtime = await import('../backend/cmd/wails/frontend/wailsjs/runtime/runtime');
+    if (isMacOSWails()) {
+      runtime.Quit();
+      return;
+    }
     runtime.WindowHide();
   } catch (error) {
     console.warn('[Window] Unable to hide the native window', error);

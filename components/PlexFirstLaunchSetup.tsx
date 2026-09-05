@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileMusic, Library, Loader2, Music, RefreshCw, Search, Server } from 'lucide-react';
 import { plexService, type PlexAccountServer, type PlexLibrary, type PlexServer, type PlexSource } from '../services/plex';
+import { openExternalURL, shouldUseSystemBrowser } from '../services/externalNavigation';
 import { useStore } from '../store';
 import { Button } from './ui/Button';
 import { TextInput } from './ui/TextInput';
@@ -253,10 +254,13 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     setStatus('authenticating');
     setError('');
     setMessage('Opening the official Plex sign-in page…');
-    const authWindow = window.open('', '_blank', 'noopener,noreferrer');
+    const useSystemBrowser = shouldUseSystemBrowser();
+    const authWindow = useSystemBrowser ? null : window.open('', '_blank', 'noopener,noreferrer');
     try {
       const start = await plexService.startAuth();
-      if (authWindow) {
+      if (useSystemBrowser) {
+        await openExternalURL(start.authUrl);
+      } else if (authWindow) {
         authWindow.location.href = start.authUrl;
       } else {
         const secondAttempt = window.open(start.authUrl, '_blank', 'noopener,noreferrer');

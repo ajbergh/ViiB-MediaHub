@@ -9,10 +9,13 @@
 
 import { useRef, useEffect, useCallback } from 'react';
 import { DJWebGLRenderer, DJWaveformRenderState, DJWebGLRendererOptions, DeckId } from './DJWebGLRenderer';
+import { shouldUseAdvancedWebGL } from '../../../../lib/webglSafety';
 
 export interface UseDJWebGLOptions extends DJWebGLRendererOptions {
   /** Target frame rate (default: 60) */
   targetFPS?: number;
+  /** Prevent context creation when the native runtime is known to be unsafe. */
+  enabled?: boolean;
 }
 
 export interface UseDJWebGLReturn {
@@ -44,6 +47,8 @@ export function useDJWebGL(options: UseDJWebGLOptions = {}): UseDJWebGLReturn {
 
   // Initialize renderer on mount
   useEffect(() => {
+    if (options.enabled === false || !shouldUseAdvancedWebGL()) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 

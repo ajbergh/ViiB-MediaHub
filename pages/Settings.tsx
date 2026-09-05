@@ -86,19 +86,29 @@ const AudioOutputSettings: React.FC = () => {
 
     // Enumerate available audio output devices
     useEffect(() => {
+        const mediaDevices = navigator.mediaDevices;
+        if (!mediaDevices?.enumerateDevices) {
+            setAudioDevices([]);
+            setPermissionDenied(true);
+            setIsLoading(false);
+            return;
+        }
+
         const loadDevices = async () => {
             try {
                 setIsLoading(true);
                 // Request permission to enumerate devices (requires user gesture in some browsers)
-                await navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-                    // Stop the stream immediately - we just needed permission
-                    stream.getTracks().forEach(track => track.stop());
-                }).catch(() => {
-                    // Permission denied or not available - still try to enumerate
-                    console.warn('Could not get audio permission, device list may be limited');
-                });
+                if (mediaDevices.getUserMedia) {
+                    await mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                        // Stop the stream immediately - we just needed permission
+                        stream.getTracks().forEach(track => track.stop());
+                    }).catch(() => {
+                        // Permission denied or not available - still try to enumerate
+                        console.warn('Could not get audio permission, device list may be limited');
+                    });
+                }
 
-                const devices = await navigator.mediaDevices.enumerateDevices();
+                const devices = await mediaDevices.enumerateDevices();
                 const outputDevices = devices.filter(d => d.kind === 'audiooutput');
                 setAudioDevices(outputDevices);
                 setPermissionDenied(false);
@@ -116,9 +126,9 @@ const AudioOutputSettings: React.FC = () => {
         const handleDeviceChange = () => {
             loadDevices();
         };
-        navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+        mediaDevices.addEventListener?.('devicechange', handleDeviceChange);
         return () => {
-            navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+            mediaDevices.removeEventListener?.('devicechange', handleDeviceChange);
         };
     }, []);
 

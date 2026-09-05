@@ -14,10 +14,11 @@
  * @module WebGLVisualizerRenderer
  */
 
-import { ShaderProgram, ShaderCache } from './ShaderProgram';
+import { ShaderProgram, ShaderCache, toWebGL1FragmentShader } from './ShaderProgram';
 import { AudioTextureManager, AudioEnergy } from './AudioTextureManager';
 import { SpriteAtlas } from './SpriteAtlas';
 import { VisualizerMode } from '../../../types';
+import { getPreferredWebGLVersion } from '../../../lib/webglSafety';
 
 // Import all shaders from centralized index
 import {
@@ -103,8 +104,10 @@ export class WebGLVisualizerRenderer {
         
         this.canvas = canvas;
         
-        // Try WebGL2 first, fall back to WebGL1
-        let gl: WebGL2RenderingContext | WebGLRenderingContext | null = canvas.getContext('webgl2', {
+        const preferWebGL1 = getPreferredWebGLVersion() === 'webgl1';
+        // WebGL 2 is available in modern WKWebView. Older macOS versions fall
+        // through to the WebGL 1 shader path below.
+        let gl: WebGL2RenderingContext | WebGLRenderingContext | null = preferWebGL1 ? null : canvas.getContext('webgl2', {
             alpha: true,
             antialias: false,
             depth: false,
@@ -328,6 +331,9 @@ export class WebGLVisualizerRenderer {
         
         // Select vertex shader based on WebGL version
         const vertexSource = this.isWebGL2 ? commonVertexShader : commonVertexShaderWebGL1;
+        if (!this.isWebGL2) {
+            fragmentSource = toWebGL1FragmentShader(fragmentSource);
+        }
         
         try {
             return this.shaderCache.getProgram(mode, {
@@ -402,11 +408,16 @@ export class WebGLVisualizerRenderer {
     }
 
     /**
-     * Checks if WebGL is supported
+     * Checks the profile requested for this platform before allocating a
+     * context. WebGL 2 is preferred and WebGL 1 remains the compatibility
+     * fallback for older system WebKit installations.
      */
     static isSupported(): boolean {
         try {
             const canvas = document.createElement('canvas');
+            if (getPreferredWebGLVersion() === 'webgl1') {
+                return !!canvas.getContext('webgl');
+            }
             return !!(canvas.getContext('webgl2') || canvas.getContext('webgl'));
         } catch {
             return false;

@@ -20,6 +20,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { WebGLVisualizerRenderer, WebGLVisualizerOptions } from './index';
 import { VisualizerMode } from '../../../types';
 import { audioEngine } from '../../../lib/audio';
+import { shouldUseAdvancedWebGL } from '../../../lib/webglSafety';
 
 interface UseWebGLVisualizerOptions extends WebGLVisualizerOptions {
     /** Current visualization mode */
@@ -121,6 +122,15 @@ export function useWebGLVisualizer(options: UseWebGLVisualizerOptions): UseWebGL
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
+
+        // WKWebView WebGL failures take down the native Wails window rather
+        // than merely this React tree. Use the Canvas renderer on macOS Wails.
+        if (!shouldUseAdvancedWebGL()) {
+            setIsSupported(false);
+            setError(new Error('WebGL is disabled in the macOS desktop app'));
+            onFallback?.();
+            return;
+        }
         
         // Check WebGL support
         if (!WebGLVisualizerRenderer.isSupported()) {

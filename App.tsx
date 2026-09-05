@@ -46,6 +46,7 @@ import FirstLaunchDialog from './components/FirstLaunchDialog';
 import { SongInfoDialog } from './components/SongInfoDialog';
 import { useBackgroundEnrichment } from './hooks/useBackgroundEnrichment';
 import { setupGlobalErrorHandlers, createLogger } from './services/loggerService';
+import { openExternalURL, shouldUseSystemBrowser } from './services/externalNavigation';
 
 setupGlobalErrorHandlers();
 const appLogger = createLogger('App');
@@ -121,6 +122,26 @@ const App: React.FC = () => {
 
   const loadAudioSettings = useStore(state => state.loadAudioSettings);
   useEffect(() => { if (backendAvailable) void loadAudioSettings(); }, [backendAvailable, loadAudioSettings]);
+
+  // Wails' system-browser API keeps external links out of the WKWebView. This
+  // avoids transient child windows and retains the application's origin.
+  useEffect(() => {
+    if (!shouldUseSystemBrowser()) return;
+
+    const openLinkExternally = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const link = target.closest('a[target="_blank"]') as HTMLAnchorElement | null;
+      if (!link || !/^https?:$/i.test(link.protocol)) return;
+
+      event.preventDefault();
+      void openExternalURL(link.href);
+    };
+
+    document.addEventListener('click', openLinkExternally);
+    return () => document.removeEventListener('click', openLinkExternally);
+  }, []);
 
   return (
     <ErrorBoundary>

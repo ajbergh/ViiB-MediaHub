@@ -17,6 +17,7 @@
  * @module milkdropSupport
  */
 
+
 /**
  * Check if the browser supports Milkdrop visualizations.
  * Requires WebGL 2 and Web Audio API.
