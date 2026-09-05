@@ -125,7 +125,7 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
       </div>
 
       {/* Center - Track Info + Record. (Times moved to deck headers — single source.) */}
-      <div className="flex items-center gap-6">
+      <div className="flex items-center justify-center gap-3 min-w-0">
         {/* Deck A Info */}
         <div className="flex items-center gap-2">
           {deckATrack && (
@@ -207,7 +207,7 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
       </div>
 
       {/* Right - Fullscreen toggle (zoom is handled via Ctrl+Scroll on the waveform — see help dialog) */}
-      <div className="flex items-center gap-2 text-neutral-500">
+      <div className="flex items-center justify-end gap-2 text-neutral-500 w-44 shrink-0">
         <FullscreenButton />
       </div>
     </div>

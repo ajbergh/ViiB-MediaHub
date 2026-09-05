@@ -361,19 +361,17 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
   const isExpanded = layoutMode === 'fx';
 
   // Count active effects per deck
-  const deckAFX = useStore(state => state.djDeckA.fx);
-  const deckBFX = useStore(state => state.djDeckB.fx);
-
-  const countActive = (fx: typeof deckAFX) =>
-    [fx.filter.enabled, fx.delay.enabled, fx.reverb.enabled, fx.flanger.enabled].filter(Boolean).length;
-
-  const activeA = countActive(deckAFX);
-  const activeB = countActive(deckBFX);
+  const activeA = useStore(state =>
+    Object.values(state.djDeckA.fx).filter(fx => fx.enabled).length);
+  const activeB = useStore(state =>
+    Object.values(state.djDeckB.fx).filter(fx => fx.enabled).length);
 
   return (
     <div className={`bg-[#161616] border-b border-[#2a2a2a] ${className}`}>
       {/* Header */}
       <div
+        role="button" tabIndex={0} aria-label="Toggle effects" aria-expanded={!collapsed}
+        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setCollapsed(value => !value); } }}
         className="flex items-center justify-between px-4 h-6 cursor-pointer select-none hover:bg-white/5 transition-colors"
         onClick={() => setCollapsed(!collapsed)}
       >
@@ -425,7 +423,7 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
               releasing the pad smoothly returns to neutral. */}
           <div className={`flex-shrink-0 flex items-center justify-center bg-[#0e0e0e] rounded-md border border-[#222] px-2 py-1 ${isExpanded ? 'gap-2' : ''}`}>
             {isExpanded && <DJBeatFXPanel />}
-            <DJFXPad size={isExpanded ? 150 : 120} />
+            <DJFXPad size={isExpanded ? 150 : 96} />
           </div>
 
           {/* Deck B FX */}

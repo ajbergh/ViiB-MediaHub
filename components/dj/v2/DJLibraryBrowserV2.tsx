@@ -1,30 +1,30 @@
 /**
  * ViiB MediaHub - DJ Library Browser V2 Component
- * 
- * Enhanced bottom panel library browser with:
+ *
+ * Virtualized library content hosted by DJLibraryDrawer with:
  * - Collapsible playlist/genre sidebar
  * - Enhanced track table with more columns
  * - Visual styling matching PCDJ DEX reference
  * - Load-to-deck indicators
  * - Drag-to-deck support
- * 
+ *
  * @module components/dj/v2/DJLibraryBrowserV2
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
-import { TableVirtuoso } from 'react-virtuoso';
+import { TableVirtuoso, type TableComponents } from 'react-virtuoso';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getKeyCompatibility } from '../../../lib/keyDetection';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
-import { 
-  Search, 
-  ChevronUp, 
-  ChevronDown, 
-  ChevronRight, 
+import {
+  Search,
+  ChevronUp,
+  ChevronDown,
+  ChevronRight,
   ChevronLeft,
-  Folder, 
+  Folder,
   FolderOpen,
   Music2,
   ListMusic,
@@ -158,12 +158,12 @@ const TrackRowCells = memo(({
           </div>
         )}
       </td>
-      
+
       {/* Row number */}
       <td className="px-2 py-1.5 text-neutral-600 font-mono w-10 text-right">
         {index + 1}
       </td>
-      
+
       {/* Load buttons */}
       <td className="px-2 py-1.5 w-20">
         <div className="flex gap-1">
@@ -195,7 +195,7 @@ const TrackRowCells = memo(({
           </button>
         </div>
       </td>
-      
+
       {/* Title */}
       <td className="px-2 py-1.5" style={{ width: columnWidths.title }}>
         <div className="flex items-center gap-1.5">
@@ -209,14 +209,14 @@ const TrackRowCells = memo(({
           </span>
         </div>
       </td>
-      
+
       {/* Artist */}
       <td className="px-2 py-1.5" style={{ width: columnWidths.artist }}>
         <span className="text-neutral-400 truncate block" style={{ maxWidth: columnWidths.artist - 16 }} title={song.artist}>
           {song.artist}
         </span>
       </td>
-      
+
       {/* BPM */}
       {columnVisibility.bpm && (
         <td className="px-2 py-1.5 w-12 text-right">
@@ -225,7 +225,7 @@ const TrackRowCells = memo(({
           </span>
         </td>
       )}
-      
+
       {/* Key with harmonic compatibility */}
       {columnVisibility.key && (
         <td className="px-2 py-1.5 w-14 text-center">
@@ -246,7 +246,7 @@ const TrackRowCells = memo(({
           )}
         </td>
       )}
-      
+
       {/* Album */}
       {columnVisibility.album && (
         <td className="px-2 py-1.5 hidden xl:table-cell" style={{ width: columnWidths.album }}>
@@ -255,7 +255,7 @@ const TrackRowCells = memo(({
           </span>
         </td>
       )}
-      
+
       {/* Time */}
       {columnVisibility.time && (
         <td className="px-2 py-1.5 w-14 text-right">
@@ -264,7 +264,7 @@ const TrackRowCells = memo(({
           </span>
         </td>
       )}
-      
+
       {/* Genre */}
       {columnVisibility.genre && (
         <td className="px-2 py-1.5 w-20 hidden lg:table-cell">
@@ -283,6 +283,84 @@ interface DJLibraryBrowserV2Props {
   autoFocusSearch?: boolean;
 }
 
+interface LibraryTableContext {
+  isLoadedOnDeck: (songId: string) => 'A' | 'B' | null;
+  handleLoadToDeck: (song: Song, deck: DeckId) => Promise<void>;
+}
+
+// Stable component identities preserve rows, focus and scroll across UI updates.
+const libraryTableComponents: TableComponents<Song, LibraryTableContext> = {
+  Table: ({ style, context: _context, ...props }) => (
+    <table {...props} style={{ ...style, width: '100%', borderCollapse: 'collapse' }} />
+  ),
+  TableRow: ({ item, context, ...props }) => {
+    const { isLoadedOnDeck, handleLoadToDeck } = context!;
+    const loadedDeck = item ? isLoadedOnDeck(item.id) : null;
+    const deckIndicatorClass = loadedDeck === 'A'
+      ? 'bg-blue-600/15 border-l-2 border-blue-500 shadow-[inset_0_0_12px_rgba(59,130,246,0.08)]'
+      : loadedDeck === 'B'
+        ? 'bg-purple-600/15 border-l-2 border-purple-500 shadow-[inset_0_0_12px_rgba(139,92,246,0.08)]'
+        : 'border-l-2 border-transparent';
+    return (
+      <tr
+        {...props}
+        draggable={!!item}
+        onDragStart={(e) => {
+          if (!item) return;
+          const payload = JSON.stringify({ type: 'viib-dj-track', songId: item.id });
+          e.dataTransfer.effectAllowed = 'copy';
+          e.dataTransfer.setData(DJ_TRACK_DRAG_MIME, payload);
+          e.dataTransfer.setData('text/plain', item.id);
+        }}
+        className={`hover:bg-white/5 transition-colors text-xs ${deckIndicatorClass}`}
+        onDoubleClick={() => item && handleLoadToDeck(item, 'A')}
+      />
+    );
+  },
+};
+
+const SortHeader: React.FC<{
+    label: string;
+    sortKeyValue: SortKey;
+    className?: string;
+    width?: number;
+    resizable?: ResizableColumn;
+    sortKey: SortKey;
+    sortDirection: SortDirection;
+    handleSort: (key: SortKey) => void;
+    startColumnResize: (event: React.MouseEvent, column: ResizableColumn) => void;
+  }> =
+    ({ label, sortKeyValue, className, width, resizable, sortKey, sortDirection, handleSort, startColumnResize }) => (
+      <th
+        className={`relative px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:text-neutral-300 transition-colors ${className || ''}`}
+        style={width ? { width } : undefined}
+        tabIndex={0}
+        aria-sort={sortKey === sortKeyValue ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handleSort(sortKeyValue); }
+        }}
+        onClick={() => handleSort(sortKeyValue)}
+      >
+        <div className="flex items-center gap-0.5">
+          {label}
+          {sortKey === sortKeyValue && (
+            sortDirection === 'asc' ? <ChevronUp size={10} /> : <ChevronDown size={10} />
+          )}
+        </div>
+        {resizable && (
+          <span
+            role='separator'
+            aria-orientation='vertical'
+            aria-label={`Resize ${label} column`}
+            className='absolute right-0 top-1 bottom-1 w-1 cursor-col-resize rounded bg-transparent hover:bg-brand/50'
+            onClick={event => event.stopPropagation()}
+            onMouseDown={event => startColumnResize(event, resizable)}
+          />
+        )}
+      </th>
+    );
+
+
 export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocusSearch = false }) => {
   const songs = useStore(state => state.songs);
   const playlists = useStore(state => state.playlists);
@@ -292,9 +370,11 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   const djDeckBKey = useStore(state => state.djDeckB.key);
   const djDeckAIsPlaying = useStore(state => state.djDeckA.isPlaying);
   const djDeckBIsPlaying = useStore(state => state.djDeckB.isPlaying);
-  
+
   const { loadTrack } = useDJAudioEngineActions();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => resizeCleanupRef.current?.(), []);
   const resizingColumnRef = useRef<{
     column: ResizableColumn;
     startX: number;
@@ -339,7 +419,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   }, [djDeckATrack?.id, djDeckAKey, djDeckBTrack?.id, djDeckBKey]);
 
   useEffect(() => {
-    if (!autoFocusSearch) return;
+    if (!autoFocusSearch) { resizeCleanupRef.current?.(); return; }
     const frame = requestAnimationFrame(() => {
       searchInputRef.current?.focus({ preventScroll: true });
       searchInputRef.current?.select();
@@ -377,6 +457,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   const startColumnResize = useCallback((event: React.MouseEvent, column: ResizableColumn) => {
     event.preventDefault();
     event.stopPropagation();
+    resizeCleanupRef.current?.();
     resizingColumnRef.current = {
       column,
       startX: event.clientX,
@@ -395,10 +476,12 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
 
     const handleMouseUp = () => {
       resizingColumnRef.current = null;
+      resizeCleanupRef.current = null;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
 
+    resizeCleanupRef.current = handleMouseUp;
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   }, [columnWidths]);
@@ -442,19 +525,20 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   // Filter songs based on selected category
   const categoryFilteredSongs = useMemo(() => {
     if (selectedCategory === 'all') return songs;
-    
+
     if (selectedCategory.startsWith('playlist-')) {
       const playlistId = selectedCategory.replace('playlist-', '');
       const playlist = playlists.find(p => p.id === playlistId);
       if (!playlist) return [];
-      return songs.filter(s => playlist.songIds.includes(s.id));
+      const songIds = new Set(playlist.songIds);
+      return songs.filter(s => songIds.has(s.id));
     }
-    
+
     if (selectedCategory.startsWith('genre-')) {
       const genre = selectedCategory.replace('genre-', '');
       return songs.filter(s => s.genre?.includes(genre));
     }
-    
+
     return songs;
   }, [songs, playlists, selectedCategory]);
 
@@ -465,7 +549,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(song => 
+      result = result.filter(song =>
         song.title.toLowerCase().includes(query) ||
         song.artist.toLowerCase().includes(query) ||
         song.album.toLowerCase().includes(query) ||
@@ -476,7 +560,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     // Sort
     result.sort((a, b) => {
       let comparison = 0;
-      
+
       switch (sortKey) {
         case 'title':
           comparison = a.title.localeCompare(b.title);
@@ -530,6 +614,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     return null;
   }, [djDeckATrack, djDeckBTrack]);
 
+  const tableContext = useMemo(() => ({ isLoadedOnDeck, handleLoadToDeck }), [isLoadedOnDeck, handleLoadToDeck]);
+
   const toggleCategory = useCallback((categoryId: string) => {
     setExpandedCategories(prev => {
       const next = new Set(prev);
@@ -542,42 +628,17 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     });
   }, []);
 
-  const SortHeader: React.FC<{
-    label: string;
-    sortKeyValue: SortKey;
-    className?: string;
-    width?: number;
-    resizable?: ResizableColumn;
-  }> =
-    ({ label, sortKeyValue, className, width, resizable }) => (
-      <th 
-        className={`relative px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:text-neutral-300 transition-colors ${className || ''}`}
-        style={width ? { width } : undefined}
-        onClick={() => handleSort(sortKeyValue)}
-      >
-        <div className="flex items-center gap-0.5">
-          {label}
-          {sortKey === sortKeyValue && (
-            sortDirection === 'asc' ? <ChevronUp size={10} /> : <ChevronDown size={10} />
-          )}
-        </div>
-        {resizable && (
-          <span
-            role='separator'
-            aria-orientation='vertical'
-            aria-label={`Resize ${label} column`}
-            className='absolute right-0 top-1 bottom-1 w-1 cursor-col-resize rounded bg-transparent hover:bg-brand/50'
-            onClick={event => event.stopPropagation()}
-            onMouseDown={event => startColumnResize(event, resizable)}
-          />
-        )}
-      </th>
-    );
 
   return (
-    <div className="h-full flex bg-surface-0">
+    <div className="h-full flex bg-surface-0" onKeyDown={event => {
+      if (event.key === 'Escape' && columnMenuOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        setColumnMenuOpen(false);
+      }
+    }}>
       {/* Sidebar */}
-      <div 
+      <div
         className={`
           flex-shrink-0 border-r border-white/10 bg-[#161616] transition-all duration-200
           ${sidebarCollapsed ? 'w-10' : 'w-48'}
@@ -614,8 +675,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   }}
                   className={`
                     w-full flex items-center gap-2 px-2 py-1.5 text-xs transition-colors
-                    ${selectedCategory === category.id 
-                      ? 'bg-brand/20 text-brand' 
+                    ${selectedCategory === category.id
+                      ? 'bg-brand/20 text-brand'
                       : 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'}
                   `}
                 >
@@ -627,7 +688,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   <span className="text-neutral-500">{category.icon}</span>
                   <span className="truncate">{category.label}</span>
                 </button>
-                
+
                 {/* Children */}
                 {category.expanded && category.children && (
                   <div className="ml-4 border-l border-white/5">
@@ -637,8 +698,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                         onClick={() => setSelectedCategory(child.id)}
                         className={`
                           w-full flex items-center justify-between px-3 py-1 text-[11px] transition-colors
-                          ${selectedCategory === child.id 
-                            ? 'bg-brand/20 text-brand' 
+                          ${selectedCategory === child.id
+                            ? 'bg-brand/20 text-brand'
                             : 'text-neutral-500 hover:bg-white/5 hover:text-neutral-300'}
                         `}
                       >
@@ -733,13 +794,13 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   <th className="w-5 px-1 py-1.5 text-left text-[10px] font-medium text-neutral-500 bg-[#1a1a1a]" title="Color label">🎨</th>
                   <th className="w-10 px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500 bg-[#1a1a1a]">#</th>
                   <th className="w-20 px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500 bg-[#1a1a1a]">LOAD</th>
-                  <SortHeader label="Title" sortKeyValue="title" width={columnWidths.title} resizable="title" />
-                  <SortHeader label="Artist" sortKeyValue="artist" width={columnWidths.artist} resizable="artist" />
-                  {columnVisibility.bpm && <SortHeader label="BPM" sortKeyValue="bpm" className="w-12 text-right" />}
-                  {columnVisibility.key && <SortHeader label="Key" sortKeyValue="key" className="w-14 text-center" />}
-                  {columnVisibility.album && <SortHeader label="Album" sortKeyValue="album" className="hidden xl:table-cell" width={columnWidths.album} resizable="album" />}
-                  {columnVisibility.time && <SortHeader label="Time" sortKeyValue="duration" className="w-14 text-right" />}
-                  {columnVisibility.genre && <SortHeader label="Genre" sortKeyValue="genre" className="w-20 hidden lg:table-cell" />}
+                  <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Title" sortKeyValue="title" width={columnWidths.title} resizable="title" />
+                  <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Artist" sortKeyValue="artist" width={columnWidths.artist} resizable="artist" />
+                  {columnVisibility.bpm && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="BPM" sortKeyValue="bpm" className="w-12 text-right" />}
+                  {columnVisibility.key && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Key" sortKeyValue="key" className="w-14 text-center" />}
+                  {columnVisibility.album && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Album" sortKeyValue="album" className="hidden xl:table-cell" width={columnWidths.album} resizable="album" />}
+                  {columnVisibility.time && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Time" sortKeyValue="duration" className="w-14 text-right" />}
+                  {columnVisibility.genre && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Genre" sortKeyValue="genre" className="w-20 hidden lg:table-cell" />}
                 </tr>
               )}
               itemContent={(index, song) => (
@@ -756,34 +817,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   columnWidths={columnWidths}
                 />
               )}
-              components={{
-                Table: ({ style, ...props }) => (
-                  <table {...props} style={{ ...style, width: '100%', borderCollapse: 'collapse' }} />
-                ),
-                TableRow: ({ item, ...props }) => {
-                  const loadedDeck = item ? isLoadedOnDeck(item.id) : null;
-                  const deckIndicatorClass = loadedDeck === 'A'
-                    ? 'bg-blue-600/15 border-l-2 border-blue-500 shadow-[inset_0_0_12px_rgba(59,130,246,0.08)]'
-                    : loadedDeck === 'B'
-                      ? 'bg-purple-600/15 border-l-2 border-purple-500 shadow-[inset_0_0_12px_rgba(139,92,246,0.08)]'
-                      : 'border-l-2 border-transparent';
-                  return (
-                    <tr
-                      {...props}
-                      draggable={!!item}
-                      onDragStart={(e) => {
-                        if (!item) return;
-                        const payload = JSON.stringify({ type: 'viib-dj-track', songId: item.id });
-                        e.dataTransfer.effectAllowed = 'copy';
-                        e.dataTransfer.setData(DJ_TRACK_DRAG_MIME, payload);
-                        e.dataTransfer.setData('text/plain', item.id);
-                      }}
-                      className={`hover:bg-white/5 transition-colors text-xs ${deckIndicatorClass}`}
-                      onDoubleClick={() => item && handleLoadToDeck(item, 'A')}
-                    />
-                  );
-                },
-              }}
+              components={libraryTableComponents}
+              context={tableContext}
             />
           )}
         </div>

@@ -47,7 +47,6 @@
      Mixer width and waveform height use clamp() so the panel breathes
      at 2K/4K instead of hugging 1920×1080. */
   --dj-waveform-h: clamp(180px, 19vh, 260px);
-  --dj-library-h:  200px;
   --dj-mixer-w:    clamp(380px, 22vw, 480px);
   --dj-topbar-h:   44px;
   --dj-fx-h:       auto;
@@ -73,21 +72,14 @@
 }
 
 /* Layout mode overrides */
-[data-dj-mode="perf"] {
-  --dj-waveform-h: clamp(180px, 18vh, 220px);
-  --dj-library-h:  22vh;
-  --dj-fx-h:       auto;
-}
-
+[data-dj-mode="perf"],
 [data-dj-mode="browse"] {
-  --dj-waveform-h: 170px;
-  --dj-library-h:  45vh;
+  --dj-waveform-h: clamp(180px, 18vh, 220px);
   --dj-fx-h:       auto;
 }
 
 [data-dj-mode="fx"] {
   --dj-waveform-h: 180px;
-  --dj-library-h:  12vh;
   --dj-fx-h:       clamp(230px, 25vh, 300px);
 }
 
@@ -165,3 +157,40 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #24242B;
 }
+
+/* Library is positioned against the DJ viewport, never a flex sizing input. */
+.dj-library-affordance {
+  flex: 0 0 36px;
+  display: flex;
+  justify-content: center;
+  background: var(--dj-surface-1);
+  border-top: 1px solid var(--dj-border-light);
+}
+.dj-library-drawer {
+  position: absolute;
+  inset: auto 0 36px;
+  z-index: 40;
+  height: clamp(280px, 40%, 640px);
+  max-height: calc(100% - 80px);
+  display: flex;
+  flex-direction: column;
+  background: var(--dj-surface-0);
+  border-top: 1px solid var(--dj-border-hover);
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
+  animation: dj-library-enter 150ms ease-out;
+}
+.dj-library-drawer[hidden] { display: none; }
+@keyframes dj-library-enter {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dj-library-drawer { animation: none; }
+}
+
+/* Keep full controls reachable when window chrome or expanded FX constrain height. */
+[data-dj-workspace] > .dj-deck,
+[data-dj-workspace] > .dj-mixer { min-height: 610px; }
+.dj-deck-info { display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 4px; height: 104px; flex-shrink: 0; }
+.dj-deck-info > div { min-height: 0; }
+.dj-deck:last-child .dj-deck-info > div:first-child { order: 2; }

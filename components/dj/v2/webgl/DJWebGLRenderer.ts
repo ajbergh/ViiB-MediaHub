@@ -337,8 +337,13 @@ export class DJWebGLRenderer {
         );
       }
       
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      // R32F is not linearly filterable without this optional capability, even
+      // in WebGL 2. An incomplete sampler silently produces a flat waveform.
+      // Keep older WebViews valid with nearest filtering; WebGL 1 uses bytes.
+      const filter = this.isWebGL2 && !gl.getExtension('OES_texture_float_linear')
+        ? gl.NEAREST : gl.LINEAR;
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       

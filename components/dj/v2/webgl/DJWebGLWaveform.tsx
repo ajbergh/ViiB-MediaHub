@@ -26,7 +26,7 @@ import { DJWaveformRenderState } from './DJWebGLRenderer';
 import { shouldUseAdvancedWebGL } from '../../../../lib/webglSafety';
 
 interface DJWebGLWaveformProps {
-  /** Total height of the component */
+  /** Total height; negative fills the CSS-sized waveform surface. */
   height?: number;
   /** Visible time window in seconds */
   visibleSeconds?: number;
@@ -35,6 +35,7 @@ interface DJWebGLWaveformProps {
 }
 
 const OVERVIEW_HEIGHT = 24;
+const CanvasWaveform = React.lazy(() => import('../DJDualWaveform'));
 
 export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   height = 200,
@@ -53,7 +54,8 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   const { seek } = useDJAudioEngineActions();
   
   // Calculate heights
-  const mainHeight = (height - OVERVIEW_HEIGHT - 8) / 2;
+  const surfaceHeight = height < 0 ? '100%' : height;
+  const mainHeight = height < 0 ? `calc((100% - ${OVERVIEW_HEIGHT + 8}px) / 2)` : (height - OVERVIEW_HEIGHT - 8) / 2;
   
   // WebGL hooks for each canvas
   const overviewWebGL = useDJWebGL({ enabled: advancedWebGLEnabled });
@@ -80,8 +82,10 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     }, 100);
     
     return () => clearTimeout(timer);
-  }, [advancedWebGLEnabled, allowFallback, deckAWebGL]);
+  }, [advancedWebGLEnabled, allowFallback, deckAWebGL.getInfo]);
   
+  // Depend on stable hook methods, not the fresh wrapper object: playback/UI
+  // renders must not re-upload textures or restart the readiness timer.
   // Update waveform textures when peaks change
   useEffect(() => {
     if (!isReady) return;
@@ -90,7 +94,7 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
       deckAWebGL.updatePeaks('A', deckAWaveformPeaks);
       overviewWebGL.updatePeaks('A', deckAWaveformPeaks);
     }
-  }, [deckAWaveformPeaks, isReady, deckAWebGL, overviewWebGL]);
+  }, [deckAWaveformPeaks, isReady, deckAWebGL.updatePeaks, overviewWebGL.updatePeaks]);
   
   useEffect(() => {
     if (!isReady) return;
@@ -99,7 +103,7 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
       deckBWebGL.updatePeaks('B', deckBWaveformPeaks);
       overviewWebGL.updatePeaks('B', deckBWaveformPeaks);
     }
-  }, [deckBWaveformPeaks, isReady, deckBWebGL, overviewWebGL]);
+  }, [deckBWaveformPeaks, isReady, deckBWebGL.updatePeaks, overviewWebGL.updatePeaks]);
   
   // Track last idle state to skip redundant renders
   const lastIdleFrameRef = useRef({
@@ -207,7 +211,7 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
         duration: currentDeckB.duration,
       }
     );
-  }, [isReady, visibleSeconds, deckAWebGL, deckBWebGL, overviewWebGL]);
+  }, [isReady, visibleSeconds, deckAWebGL.renderWaveform, deckBWebGL.renderWaveform, overviewWebGL.renderOverview]);
   
   // Run animation loop — throttle to 4fps when both decks idle
   useDJWebGLAnimation(
@@ -243,17 +247,15 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   
   // Render fallback Canvas 2D if WebGL not available
   if (useFallback) {
-    // Import the original Canvas 2D component as fallback
-    const DJDualWaveform = React.lazy(() => import('../DJDualWaveform'));
     return (
-      <React.Suspense fallback={<div style={{ height }} className="bg-surface-0" />}>
-        <DJDualWaveform height={height} />
+      <React.Suspense fallback={<div style={{ height: surfaceHeight }} className="bg-surface-0" />}>
+        <CanvasWaveform height={height} responsive={height < 0} />
       </React.Suspense>
     );
   }
   
   return (
-    <div ref={containerRef} className="w-full bg-surface-0" style={{ height }}>
+    <div ref={containerRef} className="w-full bg-surface-0" style={{ height: surfaceHeight }}>
       {/* Overview waveforms */}
       <canvas
         ref={overviewWebGL.canvasRef}

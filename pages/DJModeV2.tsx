@@ -16,7 +16,7 @@
  * │ (Jog, Loop, Cue)  │  EQs      Level        EQs      │ (Jog, Loop, Cue)  │
  * │                   │ Fader     CrFader     Fader     │                   │
  * ├───────────────────┴─────────────────────────────────┴───────────────────┤
- * │                         LIBRARY BROWSER                                 │
+ * │                  LIBRARY AFFORDANCE (overlay above workspace)           │
  * └─────────────────────────────────────────────────────────────────────────┘
  * 
  * @module pages/DJModeV2
@@ -44,7 +44,7 @@ import { DJErrorBoundary } from '../components/dj/v2/DJErrorBoundary';
 import { DJScopeView } from '../components/dj/v2/DJScopeView';
 import { DJDeckStatusBar } from '../components/dj/v2/DJDeckStatusBar';
 import { DJStereoVUMeter } from '../components/dj/v2/DJVUMeter';
-import { DJLibraryBrowserV2 } from '../components/dj/v2/DJLibraryBrowserV2';
+import { DJLibraryDrawer, type DJLibraryDrawerHandle } from '../components/dj/v2/DJLibraryDrawer';
 import { DeckTimeDisplay, DeckHasTrack, DeckBpmBadge, DeckHorizontalVU } from '../components/dj/v2/DJDeckComponents';
 import { DJChannelStrip, DJMasterKnob, DJCrossfaderSelfSub, DJTempoSliderSelfSub, DJDeckEQStrip } from '../components/dj/v2/DJMixerComponents';
 import { useDJShortcuts } from '../components/dj/v2/hooks/useDJShortcuts';
@@ -61,21 +61,15 @@ type ViewMode = 'timeline' | 'scope' | 'racks';
 
 const DJModeV2Inner: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');
-  // WKWebView WebGL failures can take down the entire native macOS window.
-  // Keep the established Canvas waveform there regardless of a persisted toggle.
+  // Respect the shared platform policy and renderer fallback chain.
   const advancedWebGLEnabled = shouldUseAdvancedWebGL();
   const [isRecording, setIsRecording] = useState(false);
-  const [libraryHeight, setLibraryHeight] = useState(200);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showMidiMapping, setShowMidiMapping] = useState(false);
   const [showAudioSetup, setShowAudioSetup] = useState(false);
   const [dragOverDeck, setDragOverDeck] = useState<DeckId | null>(null);
-  const [libraryCollapsed, setLibraryCollapsed] = useState(
-    typeof window !== 'undefined' && window.innerHeight < 900
-  );
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const libraryRef = useRef<DJLibraryDrawerHandle>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
@@ -152,36 +146,6 @@ const DJModeV2Inner: React.FC = () => {
       }
     };
   }, [setDJMixerEnabled]);
-
-  // Adjust library height defaults when layout mode changes
-  useEffect(() => {
-    const maxH = Math.floor(window.innerHeight * 0.42);
-    if (djLayoutMode === 'browse') {
-      setLibraryHeight(prev => Math.max(prev, Math.min(350, maxH)));
-    } else if (djLayoutMode === 'perf') {
-      setLibraryHeight(prev => Math.min(prev, Math.min(250, maxH)));
-    } else if (djLayoutMode === 'fx') {
-      setLibraryHeight(prev => Math.min(prev, Math.min(180, maxH)));
-    }
-  }, [djLayoutMode]);
-
-  // Re-clamp library height on any layout shift (sidebar open/close, window resize)
-  // Uses ResizeObserver on the container so it reacts to ALL size changes, not just
-  // window resize (see DJ_MODE_V2_SUGGESTIONS.md §2.3).
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(() => {
-      const baseMax = Math.floor(el.clientHeight * 0.42);
-      let maxH = baseMax;
-      if (djLayoutMode === 'fx') maxH = Math.min(180, baseMax);
-      else if (djLayoutMode === 'perf') maxH = Math.min(350, baseMax);
-      else maxH = Math.min(600, baseMax);
-      setLibraryHeight(prev => Math.max(100, Math.min(prev, maxH)));
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [djLayoutMode]);
 
   // VU meter level getters (stable callbacks for rAF-based meters)
   const getMasterLevels = useCallback(() => {
@@ -313,10 +277,9 @@ const DJModeV2Inner: React.FC = () => {
     setDJLayoutMode(mode);
     if (mode === 'fx') {
       setViewMode('racks');
-    } else if (mode === 'browse') {
-      setLibraryCollapsed(false);
-    } else if (viewMode === 'racks') {
-      setViewMode('timeline');
+    } else {
+      if (viewMode === 'racks') setViewMode('timeline');
+      if (mode === 'browse') libraryRef.current?.open();
     }
   }, [setDJLayoutMode, viewMode]);
 
@@ -332,6 +295,9 @@ const DJModeV2Inner: React.FC = () => {
     handleSync,
     nudgePosition,
     setShowShortcuts,
+    openLibrary: () => libraryRef.current?.open(),
+    closeLibrary: () => libraryRef.current?.close() ?? false,
+    showShortcuts,
   });
 
   // Filter knob handler — coalesce duplicate writes during a drag.
@@ -425,8 +391,7 @@ const DJModeV2Inner: React.FC = () => {
 
   return (
     <div
-      ref={containerRef}
-      className='h-full flex flex-col overflow-hidden transition-[grid-template-rows] duration-200'
+      className='dj-workstation relative h-full flex flex-col overflow-hidden'
       data-dj-mode={djLayoutMode}
       style={{
         backgroundColor: 'var(--dj-bg)',
@@ -472,7 +437,7 @@ const DJModeV2Inner: React.FC = () => {
                 ['Shift+1-8', 'Set Hot Cue'],
                 ['', ''],
                 ['Browser', null],
-                ['/', 'Focus Search Input'],
+                ['/', 'Open Library / Focus Search'],
                 ['', ''],
                 ['View', null],
                 ['F11', 'Toggle Fullscreen'],
@@ -564,7 +529,7 @@ const DJModeV2Inner: React.FC = () => {
           </button>
           <DJErrorBoundary componentName='DJWaveform'>
             {advancedWebGLEnabled && useWebGLWaveform ? (
-              <DJWebGLWaveform height={180} allowFallback />
+              <DJWebGLWaveform height={-1} allowFallback />
             ) : (
               <DJDualWaveform height={-1} responsive />
             )}
@@ -588,11 +553,11 @@ const DJModeV2Inner: React.FC = () => {
       {viewMode !== 'racks' && djLayoutMode !== 'fx' && <DJFXSection />}
 
       {/* 4. MAIN CONTROL DECK (Decks + Mixer) */}
-      <div className='flex-1 flex min-h-0' style={{ backgroundColor: 'var(--dj-bg)' }}>
+      <div data-dj-workspace className='flex-1 flex min-h-0 overflow-auto' style={{ backgroundColor: 'var(--dj-bg)' }}>
         
         {/* === DECK A === */}
         <div
-          className={`flex-1 flex flex-col min-w-0 border-r border-[#2a2a2a] relative ${djActiveDeck === 'A' ? 'ring-1 ring-inset ring-blue-500/40' : ''} ${dragOverDeck === 'A' ? 'ring-2 ring-inset ring-blue-300/80 bg-blue-500/5' : ''}`}
+          className={`dj-deck flex-1 flex flex-col min-w-0 border-r border-[#2a2a2a] relative ${djActiveDeck === 'A' ? 'ring-1 ring-inset ring-blue-500/40' : ''} ${dragOverDeck === 'A' ? 'ring-2 ring-inset ring-blue-300/80 bg-blue-500/5' : ''}`}
           onDragOver={(e) => handleDeckDragOver(e, 'A')}
           onDragLeave={(e) => handleDeckDragLeave(e, 'A')}
           onDrop={(e) => handleDeckDrop(e, 'A')}
@@ -604,7 +569,7 @@ const DJModeV2Inner: React.FC = () => {
                 (CUES moved to footer for performance reach) */}
             <div className='bg-[#161616] border-b border-[#222]'>
                   {/* Track Info Row — 64 px tall to fit jumbo BPM + jumbo time displays */}
-                  <div className='flex items-stretch justify-between px-3 py-2 border-b border-[#1a1a1a] gap-3 min-h-[64px]'>
+                  <div className='dj-deck-info px-3 py-2 border-b border-[#1a1a1a]'>
                       <div className='flex items-center gap-2 min-w-0 flex-1'>
                         <span className='text-[10px] font-bold text-blue-400 uppercase tracking-wider flex-shrink-0 px-1.5 py-0.5 bg-blue-500/15 rounded'>DECK A</span>
                         {deckATrack ? (
@@ -710,7 +675,7 @@ const DJModeV2Inner: React.FC = () => {
         </div>
 
         {/* === MIXER CENTER (Fixed Width) === */}
-        <div className='flex-shrink-0 flex flex-col border-x border-[#333] z-0 relative @container/mixer' style={{ width: 'var(--dj-mixer-w)', backgroundColor: 'var(--dj-surface-1, #181818)' }}>
+        <div className='dj-mixer flex-shrink-0 flex flex-col border-x border-[#333] z-0 relative @container/mixer' style={{ width: 'var(--dj-mixer-w)', backgroundColor: 'var(--dj-surface-1, #181818)' }}>
              {/* Mixer Body */}
              <div className='flex-1 flex w-full relative min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar'>
                  {/* Channel A */}
@@ -842,7 +807,7 @@ const DJModeV2Inner: React.FC = () => {
 
         {/* === DECK B === */}
         <div
-          className={`flex-1 flex flex-col min-w-0 border-l border-[#2a2a2a] relative ${djActiveDeck === 'B' ? 'ring-1 ring-inset ring-purple-500/40' : ''} ${dragOverDeck === 'B' ? 'ring-2 ring-inset ring-purple-300/80 bg-purple-500/5' : ''}`}
+          className={`dj-deck flex-1 flex flex-col min-w-0 border-l border-[#2a2a2a] relative ${djActiveDeck === 'B' ? 'ring-1 ring-inset ring-purple-500/40' : ''} ${dragOverDeck === 'B' ? 'ring-2 ring-inset ring-purple-300/80 bg-purple-500/5' : ''}`}
           onDragOver={(e) => handleDeckDragOver(e, 'B')}
           onDragLeave={(e) => handleDeckDragLeave(e, 'B')}
           onDrop={(e) => handleDeckDrop(e, 'B')}
@@ -853,7 +818,7 @@ const DJModeV2Inner: React.FC = () => {
              {/* Deck Header: mirror of A — jumbo BPM/Time on the LEFT, track info on the RIGHT */}
              <div className='bg-[#161616] border-b border-[#222]'>
                   {/* Track Info Row */}
-                  <div className='flex items-stretch justify-between px-3 py-2 border-b border-[#1a1a1a] gap-3 min-h-[64px]'>
+                  <div className='dj-deck-info px-3 py-2 border-b border-[#1a1a1a]'>
                       <div className='flex items-center gap-3 flex-shrink-0'>
                         <DeckHasTrack deck='B'>
                           <div className='flex flex-col items-start font-mono leading-none'>
@@ -960,85 +925,14 @@ const DJModeV2Inner: React.FC = () => {
 
       </div>
 
-      {/* 5. LIBRARY BROWSER (Resizable Bottom Drawer) */}
-      {/* Drag Handle — D3: keyboard accessible, D4: visible collapse affordance */}
-      <div 
-        role="separator"
-        aria-label={libraryCollapsed ? 'Library panel collapsed — press Enter or Space to expand' : 'Library panel — drag to resize, press Enter or Space to collapse'}
-        tabIndex={0}
-        className='h-[10px] flex-shrink-0 bg-[#222] border-t border-[#333] cursor-row-resize flex items-center justify-center hover:bg-[#2a2a2a] transition-colors group focus:outline-none focus:bg-[#2a2a2a] focus:ring-1 focus:ring-brand/40'
-        onMouseDown={(e) => {
-          e.preventDefault();
-          dragRef.current = { startY: e.clientY, startHeight: libraryHeight };
-          const onMouseMove = (me: MouseEvent) => {
-            if (!dragRef.current) return;
-            const delta = dragRef.current.startY - me.clientY;
-            const baseMax = Math.floor(window.innerHeight * 0.42);
-            let maxH = baseMax;
-            if (djLayoutMode === 'fx') maxH = Math.min(180, baseMax);
-            else if (djLayoutMode === 'perf') maxH = Math.min(350, baseMax);
-            else maxH = Math.min(600, baseMax);
-            
-            const newHeight = Math.max(100, Math.min(maxH, dragRef.current.startHeight + delta));
-            setLibraryHeight(newHeight);
-            if (libraryCollapsed) setLibraryCollapsed(false);
-          };
-          const onMouseUp = () => {
-            dragRef.current = null;
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-          };
-          document.addEventListener('mousemove', onMouseMove);
-          document.addEventListener('mouseup', onMouseUp);
-        }}
-        onDoubleClick={() => setLibraryCollapsed(!libraryCollapsed)}
-        onClick={(e) => {
-          // Single click on the collapse chevron region (right 32px) toggles collapse
-          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          if (e.clientX > rect.right - 40) setLibraryCollapsed(c => !c);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setLibraryCollapsed(c => !c);
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            const baseMax = Math.floor(window.innerHeight * 0.42);
-            setLibraryHeight(h => Math.min(baseMax, h + 20));
-            if (libraryCollapsed) setLibraryCollapsed(false);
-          } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setLibraryHeight(h => Math.max(100, h - 20));
-          }
-        }}
-      >
-        {/* Grip dots */}
-        <div className='flex items-center gap-1'>
-          <div className='w-6 h-[2px] bg-[#444] rounded-full group-hover:bg-[#666] transition-colors' />
-          {/* Collapse/expand affordance */}
-          <div className='ml-2 text-[#444] group-hover:text-[#888] transition-colors'>
-            {libraryCollapsed ? (
-              <svg width="10" height="6" viewBox="0 0 10 6" fill="currentColor" aria-hidden="true"><path d="M5 0L10 6H0L5 0Z"/></svg>
-            ) : (
-              <svg width="10" height="6" viewBox="0 0 10 6" fill="currentColor" aria-hidden="true"><path d="M5 6L0 0H10L5 6Z"/></svg>
-            )}
-          </div>
-          <div className='w-6 h-[2px] bg-[#444] rounded-full group-hover:bg-[#666] transition-colors' />
-        </div>
-      </div>
-      
-      {!libraryCollapsed && (
-        <div className='flex-shrink-0 bg-[#000] flex flex-col' style={{ height: `${libraryHeight}px` }}>
-            <DJErrorBoundary componentName='DJLibraryBrowserV2'>
-               <DJLibraryBrowserV2 autoFocusSearch={djLayoutMode === 'browse' && !libraryCollapsed} />
-            </DJErrorBoundary>
-        </div>
-      )}
+      <DJLibraryDrawer ref={libraryRef} />
     </div>
   );
 };
 
-export const DJModeV2: React.FC = () => {
+// The application shell also renders on playback ticks. Preserve the DJ tree's
+// narrow subscriptions across that parent boundary.
+export const DJModeV2: React.FC = React.memo(() => {
   const ready = useIsDJReady();
   if (!ready) return <DJUnsupportedWidth minWidth={1440} variant="v2" />;
   return (
@@ -1046,6 +940,6 @@ export const DJModeV2: React.FC = () => {
       <DJModeV2Inner />
     </DJFullscreenGate>
   );
-};
+});
 
 export default DJModeV2;

@@ -29,6 +29,9 @@ export interface UseDJShortcutsOptions {
   handleSync: (deck: DeckId) => void;
   nudgePosition: (deck: DeckId, offsetMs: number) => void;
   setShowShortcuts: React.Dispatch<React.SetStateAction<boolean>>;
+  openLibrary?: () => void;
+  closeLibrary?: () => boolean;
+  showShortcuts?: boolean;
 }
 
 /**
@@ -51,8 +54,27 @@ export function useDJShortcuts(options: UseDJShortcutsOptions): void {
   // Attach the listener exactly once (empty dep array)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore when user is typing
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.defaultPrevented) return;
+      const callbacks = callbacksRef.current;
+      // True modals own Escape and all other keys before the non-modal library.
+      if (callbacks.showShortcuts) {
+        if (e.key === 'Escape' || e.key === '?') {
+          e.preventDefault();
+          callbacks.setShowShortcuts(false);
+        }
+        return;
+      }
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if (e.key === 'Escape' && callbacks.closeLibrary?.()) {
+        e.preventDefault();
+        return;
+      }
+      // Preserve native focus traversal and control activation inside the library.
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (target?.closest('#dj-library-drawer') && e.key !== '/') return;
+      if (target?.matches('input, textarea, select') || target?.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey) return;
+      if (target?.closest('button, [role="button"], [role="slider"]') && (e.key === ' ' || e.key === 'Tab')) return;
 
       const {
         togglePlay,
@@ -131,6 +153,10 @@ export function useDJShortcuts(options: UseDJShortcutsOptions): void {
           break;
         case '/': {
           e.preventDefault();
+          if (callbacks.openLibrary) {
+            callbacks.openLibrary();
+            break;
+          }
           const searchInput = document.querySelector(
             '[data-dj-mode] input[type="text"][placeholder*="Search"]',
           ) as HTMLInputElement | null;
