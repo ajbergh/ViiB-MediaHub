@@ -18,6 +18,7 @@
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import api from '../services/api';
+import { getEventStreamURL } from '../services/eventStreamURL';
 import { useStore } from '../store';
 
 interface DownloadProgress {
@@ -65,31 +66,42 @@ const DownloadManager = () => {
 
   // Connect to SSE for real-time updates
   useEffect(() => {
-    const eventSource = new EventSource('/api/spotify/downloads/events');
-    eventSourceRef.current = eventSource;
+    let disposed = false;
 
-    eventSource.onopen = () => {
-      void fetchActiveDownloadCount();
-    };
-
-    eventSource.onmessage = (event) => {
-      try {
-        const progress: DownloadProgress = JSON.parse(event.data);
-        if (progress.status !== 'downloading') {
-          scheduleCountRefresh();
-        }
-      } catch (error) {
-        console.error('Failed to parse SSE message:', error);
+    const connect = async () => {
+      const eventSource = new EventSource(await getEventStreamURL('/api/spotify/downloads/events'));
+      if (disposed) {
+        eventSource.close();
+        return;
       }
+      eventSourceRef.current = eventSource;
+
+      eventSource.onopen = () => {
+        void fetchActiveDownloadCount();
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const progress: DownloadProgress = JSON.parse(event.data);
+          if (progress.status !== 'downloading') {
+            scheduleCountRefresh();
+          }
+        } catch (error) {
+          console.error('Failed to parse SSE message:', error);
+        }
+      };
+
+      eventSource.onerror = () => {
+        console.warn('DownloadManager SSE connection error; EventSource will reconnect');
+        scheduleCountRefresh();
+      };
     };
 
-    eventSource.onerror = () => {
-      console.warn('DownloadManager SSE connection error; EventSource will reconnect');
-      scheduleCountRefresh();
-    };
+    void connect();
 
     return () => {
-      eventSource.close();
+      disposed = true;
+      eventSourceRef.current?.close();
       eventSourceRef.current = null;
       if (refreshTimeoutRef.current !== null) {
         window.clearTimeout(refreshTimeoutRef.current);
