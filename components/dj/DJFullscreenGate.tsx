@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Maximize2, ArrowLeft, Monitor } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { useIsDJ1080p } from '../../hooks/useMediaQuery';
 
 interface DJFullscreenGateProps {
   children: React.ReactNode;
@@ -16,15 +17,15 @@ interface DJFullscreenGateProps {
  */
 export const DJFullscreenGate: React.FC<DJFullscreenGateProps> = ({ children }) => {
   const navigate = useNavigate();
-  const [dismissed, setDismissed] = useState(false);
+  const ready = useIsDJ1080p();
+  const [dismissed, setDismissed] = useState(ready);
+  // Once admitted, resizing must not replace the mounted performance tree.
+  useEffect(() => { if (ready) setDismissed(true); }, [ready]);
 
   // Re-check on every render so the overlay auto-hides when fullscreen is entered
-  const isFullscreen = typeof document !== 'undefined' ? !!document.fullscreenElement : false;
   const viewportW = typeof window !== 'undefined' ? window.innerWidth : 0;
   const viewportH = typeof window !== 'undefined' ? window.innerHeight : 0;
-  const is1080p = viewportW >= 1920 && viewportH >= 1080;
-
-  const showGate = !dismissed && !is1080p && !isFullscreen;
+  const showGate = !dismissed && !ready;
 
   const handleEnterFullscreen = useCallback(async () => {
     try {

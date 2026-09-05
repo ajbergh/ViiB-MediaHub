@@ -154,7 +154,7 @@ export const DJFXPad: React.FC<DJFXPadProps> = React.memo(({ size = 160 }) => {
   return (
     <div className='flex flex-col items-center gap-1 select-none'>
       {/* Header — label + target selector */}
-      <div className='flex items-center justify-between w-full px-1' style={{ width: padPx }}>
+      <div className='flex items-center justify-between w-full px-1' style={{ minWidth: Math.max(170, padPx) }}>
         <span className='text-[10px] font-bold text-[#666] uppercase tracking-widest'>FX Pad</span>
         <div className='flex gap-0.5 bg-[#0d0d0d] rounded p-0.5 border border-[#222]'>
           {(['A', 'B', 'BOTH'] as Target[]).map(t => (
@@ -250,7 +250,7 @@ export const DJFXPad: React.FC<DJFXPadProps> = React.memo(({ size = 160 }) => {
       </div>
 
       {/* Footer readout */}
-      <div className='flex justify-between w-full px-1 text-[9px] font-mono text-[#555]' style={{ width: padPx }}>
+      <div className='flex justify-between w-full px-1 text-[9px] font-mono text-[#555]' style={{ minWidth: Math.max(170, padPx) }}>
         <span>X {((pos.x - 0.5) * 2).toFixed(2)}</span>
         <span>Y {(1 - pos.y).toFixed(2)}</span>
       </div>

@@ -103,7 +103,8 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
     }
   }, [value, onChange]);
 
-  const displayValue = value === 0 ? '0' : value > 0 ? `+${value}` : `${value}`;
+  const roundedValue = Math.round(value * 10) / 10;
+  const displayValue = roundedValue > 0 ? `+${roundedValue}` : `${roundedValue}`;
   
   // Calculate indicator bar width (centered at 0)
   const indicatorPercent = ((value + 24) / 36) * 100;
