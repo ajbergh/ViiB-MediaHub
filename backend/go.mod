@@ -1,11 +1,12 @@
 module github.com/ajbergh/viib-mediahub
 
-go 1.25.13
+go 1.26.8
 
 require (
 	github.com/agentplexus/omnillm v0.9.0
 	github.com/art-media-platform/amp.SDK v0.705.1
 	github.com/art-media-platform/librespot-go v0.0.0-20251013184957-0b9301b09744
+	github.com/braheezy/shine-mp3 v0.2.0
 	github.com/chromedp/chromedp v0.14.2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/getlantern/systray v1.2.2
@@ -13,6 +14,7 @@ require (
 	github.com/go-chi/cors v1.2.1
 	github.com/google/uuid v1.6.0
 	github.com/hajimehoshi/go-mp3 v0.3.4
+	github.com/jfreymuth/oggvorbis v1.0.5
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/twoscott/gobble-fm v1.0.8
 	github.com/wailsapp/wails/v2 v2.11.0
@@ -59,6 +61,7 @@ require (
 	github.com/grokify/mogo v0.72.5 // indirect
 	github.com/grokify/sogo v0.13.0 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
+	github.com/jfreymuth/vorbis v1.0.2 // indirect
 	github.com/labstack/echo/v4 v4.13.3 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/leaanthony/go-ansi-parser v1.6.1 // indirect

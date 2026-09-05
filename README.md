@@ -140,7 +140,7 @@ See [Spotify Integration](docs/spotify.md).
 | Requirement | Minimum | Notes |
 |---|---|---|
 | Node.js | 20 LTS | Frontend tooling |
-| Go | **1.25.13+** | Current security-patched project baseline |
+| Go | **1.26.8+** | Current security-patched Go 1.26 baseline |
 | GCC / Clang | — | Required for CGO/SQLite |
 | Wails CLI | v2 | Desktop builds |
 

@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { generateSmartMixes } from '../lib/smartMix';
 import { libraryIndex } from '../lib/libraryIndex';
 import { libraryV2 } from '../services/libraryV2';
+import { getEventStreamURL } from '../services/eventStreamURL';
 
 const REVISION_STORAGE_KEY = 'viib-library-revision';
 
@@ -212,23 +213,38 @@ const LibraryEventListener = () => {
       }
     };
 
-    const connectLegacy = () => {
+    let legacyConnection = 0;
+    let revisionConnection = 0;
+
+    const connectLegacy = async () => {
       if (disposed) return;
+      const connection = ++legacyConnection;
       legacySource?.close();
-      legacySource = new EventSource('/api/library/events');
-      legacySource.onmessage = handleLegacyEvent;
-      legacySource.onerror = () => {
-        if (legacySource?.readyState === EventSource.CLOSED && !disposed) {
-          reconnectTimer = setTimeout(connectLegacy, 3000);
+      const source = new EventSource(await getEventStreamURL('/api/library/events'));
+      if (disposed || connection !== legacyConnection) {
+        source.close();
+        return;
+      }
+      legacySource = source;
+      source.onmessage = handleLegacyEvent;
+      source.onerror = () => {
+        if (source.readyState === EventSource.CLOSED && !disposed && source === legacySource) {
+          reconnectTimer = setTimeout(() => { void connectLegacy(); }, 3000);
         }
       };
     };
 
-    const connectRevisionStream = () => {
+    const connectRevisionStream = async () => {
       if (disposed) return;
+      const connection = ++revisionConnection;
       revisionSource?.close();
-      revisionSource = new EventSource(libraryV2.eventURL(currentRevisionRef.current));
-      revisionSource.addEventListener('library_revision', event => {
+      const source = new EventSource(await getEventStreamURL(libraryV2.eventURL(currentRevisionRef.current)));
+      if (disposed || connection !== revisionConnection) {
+        source.close();
+        return;
+      }
+      revisionSource = source;
+      source.addEventListener('library_revision', event => {
         try {
           const payload = JSON.parse((event as MessageEvent).data) as RevisionEvent;
           if (payload.revision > currentRevisionRef.current) enqueueSync();
@@ -236,17 +252,17 @@ const LibraryEventListener = () => {
           console.warn('Failed to parse library revision event:', error);
         }
       });
-      revisionSource.onopen = () => {
+      source.onopen = () => {
         revisionReconnects = 0;
         deltaAvailableRef.current = true;
       };
-      revisionSource.onerror = () => {
-        if (revisionSource?.readyState !== EventSource.CLOSED || disposed) return;
+      source.onerror = () => {
+        if (source.readyState !== EventSource.CLOSED || disposed || source !== revisionSource) return;
         deltaAvailableRef.current = false;
-        revisionSource.close();
+        source.close();
         revisionReconnects += 1;
         const delay = Math.min(30_000, 1000 * 2 ** Math.min(revisionReconnects, 5));
-        reconnectTimer = setTimeout(connectRevisionStream, delay);
+        reconnectTimer = setTimeout(() => { void connectRevisionStream(); }, delay);
       };
     };
 
@@ -264,8 +280,8 @@ const LibraryEventListener = () => {
         }
       }
       if (disposed) return;
-      connectLegacy();
-      connectRevisionStream();
+      void connectLegacy();
+      void connectRevisionStream();
     };
 
     void start();

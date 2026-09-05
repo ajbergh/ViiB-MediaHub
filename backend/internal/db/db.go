@@ -2165,7 +2165,7 @@ type SpotifyDownload struct {
 	Title       string `json:"title"`
 	Artist      string `json:"artist,omitempty"`
 	Album       string `json:"album,omitempty"`
-	Status      string `json:"status"` // "queued", "downloading", "completed", "failed"
+	Status      string `json:"status"` // "queued", "downloading", "converting", "completed", "failed"
 	Progress    int    `json:"progress"`
 	Error       string `json:"error,omitempty"`
 	FilePath    string `json:"filePath,omitempty"`
@@ -2218,7 +2218,7 @@ func (d *DB) AddDownloads(downloads []*SpotifyDownload) ([]string, error) {
 		var existingID string
 		err := tx.QueryRow(`
 			SELECT id FROM spotify_downloads
-			WHERE spotify_id = ? AND metadata = ? AND status IN ('queued', 'downloading')
+			WHERE spotify_id = ? AND metadata = ? AND status IN ('queued', 'downloading', 'converting')
 			ORDER BY added_at ASC LIMIT 1
 		`, download.SpotifyID, download.Metadata).Scan(&existingID)
 		if err == nil {
@@ -2361,7 +2361,7 @@ func (d *DB) CountActiveDownloads() (int, error) {
 	err := d.conn.QueryRow(`
 		SELECT COUNT(*)
 		FROM spotify_downloads
-		WHERE status IN ('queued', 'downloading')
+		WHERE status IN ('queued', 'downloading', 'converting')
 	`).Scan(&count)
 	return count, err
 }
@@ -2461,12 +2461,27 @@ func (d *DB) MarkDownloadStarted(id string) (bool, error) {
 	return rows == 1, err
 }
 
+// MarkDownloadConverting moves a completed transfer into asynchronous
+// post-processing while retaining the downloaded Ogg path for recovery and UI.
+func (d *DB) MarkDownloadConverting(id string, filePath string) (bool, error) {
+	result, err := d.conn.Exec(`
+		UPDATE spotify_downloads
+		SET status = 'converting', progress = 100, file_path = ?, error = NULL
+		WHERE id = ? AND status = 'downloading'
+	`, filePath, id)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows == 1, err
+}
+
 // MarkDownloadCompleted marks a download as complete and stores the file path.
 func (d *DB) MarkDownloadCompleted(id string, filePath string) (bool, error) {
 	result, err := d.conn.Exec(`
 		UPDATE spotify_downloads
 		SET status = 'completed', progress = 100, file_path = ?, completed_at = ?
-		WHERE id = ? AND status = 'downloading'
+		WHERE id = ? AND status IN ('downloading', 'converting')
 	`, filePath, time.Now().Unix(), id)
 	if err != nil {
 		return false, err
@@ -2480,7 +2495,7 @@ func (d *DB) MarkDownloadFailed(id string, errorMsg string) (bool, error) {
 	result, err := d.conn.Exec(`
 		UPDATE spotify_downloads
 		SET status = 'failed', error = ?, completed_at = ?
-		WHERE id = ? AND status = 'downloading'
+		WHERE id = ? AND status IN ('downloading', 'converting')
 	`, errorMsg, time.Now().Unix(), id)
 	if err != nil {
 		return false, err
@@ -2553,14 +2568,14 @@ func (d *DB) RequeueDownloading(id string) (bool, error) {
 	return rows == 1, err
 }
 
-// ResetStuckDownloads resets all downloads that are stuck in 'downloading' status
+// ResetStuckDownloads resets all downloads interrupted during transfer or conversion
 // back to 'queued'. This is called on startup to recover downloads that were
 // interrupted by application crashes or restarts.
 func (d *DB) ResetStuckDownloads() (int64, error) {
 	result, err := d.conn.Exec(`
 		UPDATE spotify_downloads
 		SET status = 'queued', progress = 0
-		WHERE status = 'downloading'
+		WHERE status IN ('downloading', 'converting')
 	`)
 	if err != nil {
 		return 0, err

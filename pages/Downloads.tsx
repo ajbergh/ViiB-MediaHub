@@ -12,8 +12,7 @@
  * - Status indicators with progress bars
  * - Auth expiry detection with notification to reconnect
  * 
- * Download statuses: queued, downloading, completed, failed, auth_required
- * Files saved as OGG Vorbis format.
+ * Download statuses: queued, downloading, converting, completed, failed, auth_required
  * 
  * @module Downloads
  */
@@ -26,6 +25,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import DirectDownloadDialog from '../components/DirectDownloadDialog';
 import { useStore } from '../store';
 import { Page, PageHeader } from '../components/ui/Page';
+import { getEventStreamURL } from '../services/eventStreamURL';
 
 export const Downloads: React.FC = () => {
   const [downloads, setDownloads] = useState<ApiSpotifyDownload[]>([]);
@@ -76,7 +76,7 @@ export const Downloads: React.FC = () => {
   // Polling fallback for SSE - ensures UI stays updated even if SSE fails
   useEffect(() => {
     // Poll every 3 seconds when there are active downloads
-    const hasActiveDownloads = downloads.some(d => d.status === 'downloading' || d.status === 'queued');
+    const hasActiveDownloads = downloads.some(d => d.status === 'downloading' || d.status === 'converting' || d.status === 'queued');
     
     if (hasActiveDownloads && !isLoading && !sseHealthy) {
       pollIntervalRef.current = setInterval(fetchDownloads, 3000);
@@ -98,9 +98,14 @@ export const Downloads: React.FC = () => {
     let eventSource: EventSource | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
     
-    const connect = () => {
+    const connect = async () => {
       try {
-        eventSource = new EventSource('/api/spotify/downloads/events');
+        const source = new EventSource(await getEventStreamURL('/api/spotify/downloads/events'));
+        if (disposed) {
+          source.close();
+          return;
+        }
+        eventSource = source;
         eventSourceRef.current = eventSource;
         eventSource.onopen = () => setSseHealthy(true);
 
@@ -150,16 +155,18 @@ export const Downloads: React.FC = () => {
             eventSource.close();
           }
           // Reconnect after 5 seconds
-          reconnectTimeout = setTimeout(connect, 5000);
+          reconnectTimeout = setTimeout(() => { void connect(); }, 5000);
         };
       } catch (error) {
         console.error('Failed to create SSE connection:', error);
       }
     };
 
-    connect();
+    let disposed = false;
+    void connect();
 
     return () => {
+      disposed = true;
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
       }
@@ -229,22 +236,22 @@ export const Downloads: React.FC = () => {
     await Promise.all(failed.map(d => handleRetry(d.id)));
   };
 
-  // Sort: downloading first, then queued, then failed, then completed
+  // Sort: downloading first, then converting, queued, failed, and completed
   // Within each group, sort by addedAt (oldest first for active, newest first for completed)
   const filteredDownloads = downloads.filter(d => {
     if (filter === 'all') return true;
-    if (filter === 'active') return d.status === 'downloading' || d.status === 'queued';
+    if (filter === 'active') return d.status === 'downloading' || d.status === 'converting' || d.status === 'queued';
     if (filter === 'completed') return d.status === 'completed';
     if (filter === 'failed') return d.status === 'failed';
     return true;
   }).sort((a, b) => {
-    // Status priority: downloading > queued > failed > completed
-    const statusOrder = { downloading: 0, queued: 1, failed: 2, completed: 3 };
+    // Status priority: downloading > converting > queued > failed > completed
+    const statusOrder = { downloading: 0, converting: 1, queued: 2, failed: 3, completed: 4 };
     const statusDiff = statusOrder[a.status] - statusOrder[b.status];
     if (statusDiff !== 0) return statusDiff;
     
-    // For active (downloading/queued), oldest first (FIFO)
-    if (a.status === 'downloading' || a.status === 'queued') {
+    // For active work, oldest first (FIFO)
+    if (a.status === 'downloading' || a.status === 'converting' || a.status === 'queued') {
       return a.addedAt - b.addedAt;
     }
     // For completed/failed, newest first
@@ -252,7 +259,7 @@ export const Downloads: React.FC = () => {
   });
 
   const stats = {
-    active: downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length,
+    active: downloads.filter(d => d.status === 'downloading' || d.status === 'converting' || d.status === 'queued').length,
     completed: downloads.filter(d => d.status === 'completed').length,
     failed: downloads.filter(d => d.status === 'failed').length,
   };
@@ -300,6 +307,7 @@ export const Downloads: React.FC = () => {
         <DirectDownloadDialog
           isOpen={showDirectDownload}
           onClose={() => setShowDirectDownload(false)}
+          onQueued={fetchDownloads}
         />
       </div>
     );
@@ -499,6 +507,7 @@ export const Downloads: React.FC = () => {
       <DirectDownloadDialog
         isOpen={showDirectDownload}
         onClose={() => setShowDirectDownload(false)}
+        onQueued={fetchDownloads}
       />
     </Page>
   );
@@ -518,6 +527,8 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
         return <Clock className="text-text-muted" size={20} />;
       case 'downloading':
         return <Loader2 className="text-brand animate-spin" size={20} />;
+      case 'converting':
+        return <RefreshCw className="text-accent-blue animate-spin" size={20} />;
       case 'completed':
         return <CheckCircle className="text-success" size={20} />;
       case 'failed':
@@ -531,6 +542,8 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
         return 'Queued';
       case 'downloading':
         return `Downloading... ${download.progress.toFixed(0)}%`;
+      case 'converting':
+        return 'Converting to MP3...';
       case 'completed':
         return 'Completed';
       case 'failed':
@@ -594,6 +607,12 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
             </div>
           )}
 
+          {download.status === 'converting' && (
+            <div className="h-2 bg-surface-3 rounded-full overflow-hidden" aria-label="Converting to MP3">
+              <div className="h-full w-full bg-accent-blue animate-pulse" />
+            </div>
+          )}
+
           {/* Error Message */}
           {download.status === 'failed' && download.errorMessage && (
             <div className="bg-error/10 border border-error/30 rounded p-2 mt-2">
@@ -611,12 +630,12 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
 
         {/* Action Buttons */}
         <div className="flex items-center gap-1">
-          {/* Force Restart Button - for stuck downloading */}
-          {download.status === 'downloading' && (
+          {/* Force Restart Button - for stuck transfers or conversions */}
+          {(download.status === 'downloading' || download.status === 'converting') && (
             <button
               onClick={() => onForceRestart(download.id)}
               className="p-2 hover:bg-surface-3 rounded-lg transition-colors group"
-              title="Force restart (if stuck)"
+              title={`Force restart ${download.status === 'converting' ? 'conversion' : 'download'} (if stuck)`}
             >
               <RefreshCw className="text-text-muted group-hover:text-brand" size={18} />
             </button>
@@ -637,9 +656,9 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
           <button
             onClick={() => onDelete(download.id)}
             className="p-2 hover:bg-surface-3 rounded-lg transition-colors group"
-            title={download.status === 'downloading' ? "Cancel download" : "Remove from list"}
+            title={download.status === 'downloading' || download.status === 'converting' ? "Cancel processing" : "Remove from list"}
           >
-            <Trash2 className={`text-text-muted group-hover:text-error ${download.status === 'downloading' ? 'text-error' : ''}`} size={18} />
+            <Trash2 className={`text-text-muted group-hover:text-error ${download.status === 'downloading' || download.status === 'converting' ? 'text-error' : ''}`} size={18} />
           </button>
         </div>
       </div>

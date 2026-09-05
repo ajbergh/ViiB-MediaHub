@@ -34,6 +34,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/lastfm"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/google/uuid"
 	taglib "go.senan.xyz/taglib"
 )
 
@@ -160,6 +161,7 @@ type Scanner struct {
 	spotifyDownloadDir     string
 	downloadsSinceLastScan int
 	rescanThreshold        int // Rescan after this many downloads
+	autoScanWorkerRunning  bool
 	rescanMutex            sync.Mutex
 
 	// Event broadcasting to multiple SSE clients
@@ -204,7 +206,7 @@ func New(database *db.DB, dataDir string) *Scanner {
 		coverDir:        coverDir,
 		dataDir:         dataDir,
 		albumCovers:     make(map[string]string),
-		rescanThreshold: 5, // Default: rescan after 5 downloads
+		rescanThreshold: 1, // Default: rescan after every download
 		subscribers:     make(map[chan LibraryEvent]struct{}),
 		enrichmentQueue: make(chan []db.Song, 1000), // Buffer for pending batches
 		ctx:             ctx,
@@ -284,60 +286,171 @@ func (s *Scanner) SetSpotifyDownloadDir(dir string) {
 // SetRescanThreshold sets how many downloads trigger an automatic rescan
 func (s *Scanner) SetRescanThreshold(threshold int) {
 	s.rescanMutex.Lock()
-	defer s.rescanMutex.Unlock()
+	if threshold < 0 {
+		threshold = 0
+	}
 	s.rescanThreshold = threshold
+	if threshold == 0 {
+		s.downloadsSinceLastScan = 0
+	}
+	shouldStart := threshold > 0 &&
+		s.downloadsSinceLastScan >= threshold &&
+		s.spotifyDownloadDir != "" &&
+		!s.autoScanWorkerRunning
+	if shouldStart {
+		s.autoScanWorkerRunning = true
+	}
+	s.rescanMutex.Unlock()
 	logger.Scanner("Rescan threshold set to: %d downloads", threshold)
+	if shouldStart {
+		logger.Scanner("Queueing automatic quick scan after threshold change")
+		go s.performQuickScan()
+	}
 }
 
 // NotifyDownloadComplete is called when a Spotify download completes
 // Returns true if a rescan was triggered
 func (s *Scanner) NotifyDownloadComplete() bool {
 	s.rescanMutex.Lock()
+	threshold := s.rescanThreshold
+	if threshold == 0 {
+		s.rescanMutex.Unlock()
+		logger.ScannerDebug("Download complete notification ignored because automatic quick scans are disabled")
+		return false
+	}
 
 	s.downloadsSinceLastScan++
 	downloads := s.downloadsSinceLastScan
-	threshold := s.rescanThreshold
 	downloadDir := s.spotifyDownloadDir
-
+	shouldStart := downloads >= threshold && downloadDir != "" && !s.autoScanWorkerRunning
+	if shouldStart {
+		s.autoScanWorkerRunning = true
+	}
 	s.rescanMutex.Unlock()
 
 	logger.Scanner("Download complete notification: %d/%d downloads since last scan", downloads, threshold)
-
-	// Check if we need to rescan
-	if downloads >= threshold && downloadDir != "" {
-		// Check if download dir is within a library folder
-		folders, err := s.db.GetScanFolders()
-		if err != nil {
-			logger.Scanner("Error getting scan folders: %v", err)
-			return false
-		}
-
-		for _, folder := range folders {
-			// Check if spotify download dir is inside or is one of the library folders
-			if isSubPath(folder.Path, downloadDir) || isSubPath(downloadDir, folder.Path) {
-				logger.Scanner("Triggering automatic quick scan (download dir %s is within library folder %s)", downloadDir, folder.Path)
-				go s.performQuickScan()
-
-				s.rescanMutex.Lock()
-				s.downloadsSinceLastScan = 0
-				s.rescanMutex.Unlock()
-
-				return true
-			}
-		}
+	if !shouldStart {
+		return false
 	}
 
-	return false
+	logger.Scanner("Queueing automatic quick scan after download in %s", downloadDir)
+	go s.performQuickScan()
+	return true
 }
 
-// performQuickScan runs a quick scan with proper event handling for download completion
+// performQuickScan waits for scan ownership and coalesces downloads completed
+// while another scan or this automatic scan is running. Counts are claimed at
+// the start of a scan so downloads that finish during discovery are never lost.
 func (s *Scanner) performQuickScan() {
-	if !s.TryBeginScan() {
-		logger.Scanner("Quick scan skipped - scan already in progress")
-		return
-	}
-	defer s.EndScan()
+	retry := time.NewTicker(100 * time.Millisecond)
+	defer retry.Stop()
 
+	for {
+		select {
+		case <-s.ctx.Done():
+			s.rescanMutex.Lock()
+			s.autoScanWorkerRunning = false
+			s.rescanMutex.Unlock()
+			return
+		default:
+		}
+
+		s.rescanMutex.Lock()
+		threshold := s.rescanThreshold
+		downloads := s.downloadsSinceLastScan
+		downloadDir := s.spotifyDownloadDir
+		if threshold == 0 || downloads < threshold || downloadDir == "" {
+			s.autoScanWorkerRunning = false
+			s.rescanMutex.Unlock()
+			return
+		}
+		s.rescanMutex.Unlock()
+
+		if err := s.ensureDownloadDirIsScanned(downloadDir); err != nil {
+			logger.Scanner("Unable to prepare automatic quick scan: %v", err)
+			s.emitEvent(LibraryEvent{
+				Type:    "scan_complete",
+				Message: fmt.Sprintf("Automatic quick scan could not start: %v", err),
+			})
+			s.rescanMutex.Lock()
+			s.autoScanWorkerRunning = false
+			s.rescanMutex.Unlock()
+			return
+		}
+
+		if !s.TryBeginScan() {
+			select {
+			case <-s.ctx.Done():
+				s.rescanMutex.Lock()
+				s.autoScanWorkerRunning = false
+				s.rescanMutex.Unlock()
+				return
+			case <-retry.C:
+				continue
+			}
+		}
+
+		// Recheck and claim the notifications only after scan ownership has
+		// been acquired. New completions increment a fresh count while this
+		// scan runs.
+		s.rescanMutex.Lock()
+		threshold = s.rescanThreshold
+		downloads = s.downloadsSinceLastScan
+		currentDownloadDir := s.spotifyDownloadDir
+		if threshold == 0 || downloads < threshold {
+			s.autoScanWorkerRunning = false
+			s.rescanMutex.Unlock()
+			s.EndScan()
+			return
+		}
+		if filepath.Clean(currentDownloadDir) != filepath.Clean(downloadDir) {
+			s.rescanMutex.Unlock()
+			s.EndScan()
+			continue
+		}
+		s.downloadsSinceLastScan = 0
+		s.rescanMutex.Unlock()
+
+		err := s.performOwnedQuickScan()
+		s.EndScan()
+		if err != nil {
+			// Retain the claimed notifications so a later completion can retry.
+			s.rescanMutex.Lock()
+			s.downloadsSinceLastScan += downloads
+			s.autoScanWorkerRunning = false
+			s.rescanMutex.Unlock()
+			return
+		}
+	}
+}
+
+func (s *Scanner) ensureDownloadDirIsScanned(downloadDir string) error {
+	folders, err := s.db.GetScanFolders()
+	if err != nil {
+		return fmt.Errorf("get library scan folders: %w", err)
+	}
+	for _, folder := range folders {
+		// The scan root must contain the download directory. The reverse does
+		// not provide coverage when a configured folder is nested beneath it.
+		if isSubPath(folder.Path, downloadDir) {
+			return nil
+		}
+	}
+
+	logger.Scanner("Auto-adding Spotify download dir to library scan folders: %s", downloadDir)
+	if err := s.db.AddScanFolder(&db.ScanFolder{
+		ID:      uuid.New().String(),
+		Path:    downloadDir,
+		AddedAt: time.Now().UnixMilli(),
+	}); err != nil {
+		return fmt.Errorf("add Spotify download directory to library: %w", err)
+	}
+	return nil
+}
+
+// performOwnedQuickScan runs a quick scan after its caller has acquired scan
+// ownership. It reports failures so the automatic scan counter can be retained.
+func (s *Scanner) performOwnedQuickScan() error {
 	s.emitEvent(LibraryEvent{
 		Type:    "scan_started",
 		Message: "Quick scan after download...",
@@ -350,7 +463,7 @@ func (s *Scanner) performQuickScan() {
 			Type:    "scan_complete",
 			Message: fmt.Sprintf("Quick scan failed: %v", err),
 		})
-		return
+		return err
 	}
 
 	method := "signatures"
@@ -382,6 +495,11 @@ func (s *Scanner) performQuickScan() {
 		result, err := s.ProcessChanges(quickResult.ChangedFiles)
 		if err != nil {
 			logger.Scanner("Error processing changes: %v", err)
+			s.emitEvent(LibraryEvent{
+				Type:    "scan_complete",
+				Message: fmt.Sprintf("Quick scan failed while processing changes: %v", err),
+			})
+			return err
 		} else {
 			logger.Scanner("Quick scan processed: %d added, %d updated, %d deleted",
 				result.NewSongs, result.UpdatedSongs, result.RemovedSongs)
@@ -396,6 +514,7 @@ func (s *Scanner) performQuickScan() {
 	s.emitEvent(LibraryEvent{
 		Type: "library_updated",
 	})
+	return nil
 }
 
 // isSubPath checks if child is a subdirectory of parent

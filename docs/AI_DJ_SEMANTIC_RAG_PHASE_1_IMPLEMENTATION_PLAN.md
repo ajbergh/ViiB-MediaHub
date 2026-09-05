@@ -1800,37 +1800,41 @@ discovery/favorites behaviour; sensible flow in DJ mode.
 
 ## 20. Definition of Done
 
-- [ ] ViiB contains a pure-Go semantic index subsystem backed by SQLite, with no new third-party dependency and no on-disk index artifact.
-- [ ] `go build` passes for `windows/amd64`, `windows/arm64`, `linux/amd64`, `darwin/amd64`, and `darwin/arm64`.
-- [ ] Track, album, and artist semantic documents generate deterministically.
-- [ ] Embeddings persist in SQLite, L2-normalized, and the in-memory arena is fully derivable from them.
-- [ ] Exact top-k is verified against a naive reference implementation.
-- [ ] Ollama embeddings work via batched `/api/embed` with correct task prefixes.
-- [ ] OpenAI and OpenRouter embeddings work at 512 dimensions; Gemini embeddings work at 768 dimensions.
-- [ ] The `auto` decision for all six chat providers is implemented and documented, with native Gemini/OpenRouter resolution and local-Ollama fallbacks for Anthropic/xAI.
-- [ ] `semantic_embedding_api_key` is encrypted at rest, with a test proving it.
-- [ ] Initial indexing is batched, cancellable, resumable, and non-blocking.
-- [ ] Incremental changes update only affected documents, driven by the `library_changes` log including the pruned-log fallback.
-- [ ] Model identity changes perform a safe full reindex with no mixed vector space.
-- [ ] AI DJ LLM output contains semantic retrieval intent.
-- [ ] AI DJ does not rely on exact local genre taxonomy for candidate recall.
-- [ ] Both normal playlist mode and DJ mode use semantic retrieval when available.
-- [ ] Track, album, and artist retrieval are combined and deduplicated.
-- [ ] Hard artist, source, and instrumental constraints are deterministic.
+Automated implementation and CI validation are complete. The real-library and real-Plex
+operational checks remain explicitly tracked in [§19](#19-manual-qa-prompt-matrix) and
+[§23](#23-related-follow-up--plex-ai-metadata-writeback).
+
+- [x] ViiB contains a pure-Go semantic index subsystem backed by SQLite, with no new third-party dependency and no on-disk index artifact.
+- [x] `go build` passes for `windows/amd64`, `windows/arm64`, `linux/amd64`, `darwin/amd64`, and `darwin/arm64`.
+- [x] Track, album, and artist semantic documents generate deterministically.
+- [x] Embeddings persist in SQLite, L2-normalized, and the in-memory arena is fully derivable from them.
+- [x] Exact top-k is verified against a naive reference implementation.
+- [x] Ollama embeddings work via batched `/api/embed` with correct task prefixes.
+- [x] OpenAI and OpenRouter embeddings work at 512 dimensions; Gemini embeddings work at 768 dimensions.
+- [x] The `auto` decision for all six chat providers is implemented and documented, with native Gemini/OpenRouter resolution and local-Ollama fallbacks for Anthropic/xAI.
+- [x] `semantic_embedding_api_key` is encrypted at rest, with a test proving it.
+- [x] Initial indexing is batched, cancellable, resumable, and non-blocking.
+- [x] Incremental changes update only affected documents, driven by the `library_changes` log including the pruned-log fallback.
+- [x] Model identity changes perform a safe full reindex with no mixed vector space.
+- [x] AI DJ LLM output contains semantic retrieval intent.
+- [x] AI DJ does not rely on exact local genre taxonomy for candidate recall.
+- [x] Both normal playlist mode and DJ mode use semantic retrieval when available.
+- [x] Track, album, and artist retrieval are combined and deduplicated.
+- [x] Hard artist, source, and instrumental constraints are deterministic.
 - [x] Explicit negative terms and positive style requirements are enforced deterministically before playback.
 - [x] Weak semantic tail matches are not used merely to fill the requested count.
 - [x] The configured chat LLM performs a bounded, contradiction-only final audit over known catalog IDs.
-- [ ] User behaviour remains a ranking signal, never embedding content.
-- [ ] `dj.PlanCacheKey.String()` no longer encodes integers as Unicode code points and includes time context.
-- [ ] Diversity/MMR prevents obvious semantic clustering, over a bounded working set.
-- [ ] Existing BPM, flow, and persona logic remain integrated.
-- [ ] Legacy fallback remains available and tested.
-- [ ] Semantic status and rebuild controls exist in Settings, using design tokens.
-- [ ] 20k synthetic-library performance guardrails pass (§18.3).
-- [ ] Backend tests pass, including `-race` on the semantic package.
-- [ ] `npm run check` passes.
-- [ ] Documentation is updated.
-- [ ] This plan reflects final implementation status.
+- [x] User behaviour remains a ranking signal, never embedding content.
+- [x] `dj.PlanCacheKey.String()` no longer encodes integers as Unicode code points and includes time context.
+- [x] Diversity/MMR prevents obvious semantic clustering, over a bounded working set.
+- [x] Existing BPM, flow, and persona logic remain integrated.
+- [x] Legacy fallback remains available and tested.
+- [x] Semantic status and rebuild controls exist in Settings, using design tokens.
+- [x] 20k synthetic-library performance guardrails pass (§18.3).
+- [x] Backend tests pass, including `-race` on the semantic package.
+- [x] `npm run check` passes.
+- [x] Documentation is updated.
+- [x] This plan reflects final implementation status.
 
 ### 20.1 Post-implementation reliability follow-up — fresh local library UI
 

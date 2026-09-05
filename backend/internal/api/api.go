@@ -87,6 +87,13 @@ func New(database *db.DB, dataDir string) *API {
 
 	// Set Spotify download directory for auto-rescan feature
 	sc.SetSpotifyDownloadDir(downloadDir)
+	if value, err := database.GetSetting("spotify_download_rescan_threshold"); err == nil && value != "" {
+		if threshold, parseErr := strconv.Atoi(value); parseErr == nil && threshold >= 0 {
+			sc.SetRescanThreshold(threshold)
+		} else {
+			logger.API("Ignoring invalid spotify_download_rescan_threshold setting %q", value)
+		}
+	}
 
 	logger.API("Creating download manager...")
 	// Create download manager - it will get access token from database when needed
@@ -1402,6 +1409,37 @@ func (a *API) setSetting(w http.ResponseWriter, r *http.Request) {
 				respondError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+		}
+	}
+
+	// Conversion workers are independent from download slots and may be changed
+	// while conversions are queued or running.
+	if key == "spotify_conversion_workers" {
+		n, err := strconv.Atoi(body.Value)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid value for spotify_conversion_workers")
+			return
+		}
+		if n < MinConversionWorkers || n > MaxConversionWorkers {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("spotify_conversion_workers must be between %d and %d", MinConversionWorkers, MaxConversionWorkers))
+			return
+		}
+		if a.downloadManager != nil {
+			if err := a.downloadManager.SetMaxConversionWorkers(n); err != nil {
+				respondError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+	}
+
+	if key == "spotify_download_rescan_threshold" {
+		threshold, err := strconv.Atoi(body.Value)
+		if err != nil || threshold < 0 {
+			respondError(w, http.StatusBadRequest, "spotify_download_rescan_threshold must be a non-negative integer")
+			return
+		}
+		if a.scanner != nil {
+			a.scanner.SetRescanThreshold(threshold)
 		}
 	}
 
