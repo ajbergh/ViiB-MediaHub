@@ -34,6 +34,10 @@ The AI DJ page shows index readiness and optional count-only retrieval diagnosti
 
 The interface provides two decks, waveform/analysis surfaces, a central mixer, and a library browser. Depending on the current build and platform, controls include transport, tempo, cue/loop behavior, EQ, crossfader, VU meters, sampler, MIDI mapping, and output routing.
 
+The Deck A → Mixer → Deck B workspace keeps the same geometry when the library opens or closes. The centered **Library** button stays at the bottom of DJ Mode. **Browse** opens the same overlay; it shares Performance's waveform sizing so browsing does not shrink the decks. FX remains a separate layout choice.
+
+1920×1080 is the preferred viewport; the mixer and jog wheels have capped sizes at larger resolutions. At constrained desktop heights, the performance area scrolls to keep controls reachable instead of clipping EQ or collapsing the mixer. Track headers reserve separate rows for titles and performance metadata. Below 1440px wide, the existing unsupported-width screen remains. The fullscreen recommendation is dismissed once the session is admitted, so later resizing above the width floor does not replace the running performance tree.
+
 ---
 
 ## Decks and transport
@@ -74,6 +78,14 @@ See [Settings](settings.md#audio-output-devices).
 
 The DJ library browser filters the ViiB catalog and exposes available metadata such as title, artist, duration, BPM, or key where populated.
 
+- Click **Library** or press **/** to open the bottom overlay and focus search. **Browse** also opens it.
+- Close with **×**, **Library**, or **Escape**. Closing is immediate and restores focus to the opener. A column menu or modal gets Escape before the library. Typing and focus traversal inside the library do not trigger deck shortcuts.
+- The drawer uses 40% of the DJ viewport, bounded by a 280px minimum, 640px maximum, and available height. It is no longer manually resizable. There is no page-level library-height state or library resize observer.
+- Search, categories/playlists, sorting, configurable columns, track colors, BPM/key and harmonic compatibility, load A/B, and drag-to-deck use the existing browser. Drag onto the exposed upper portion of either deck.
+- The `react-virtuoso` table remains virtualized. The browser mounts on first use and stays mounted while hidden, preserving search, category, sorting, and scroll state across open/close. Hidden content is excluded from focus traversal and accessibility navigation.
+
+The drawer is non-modal: exposed deck controls remain usable. Its opaque surface and shadow separate it from the workspace; it sits below audio/MIDI/shortcut dialogs and application notifications. Opening uses a short slide animation that respects reduced-motion preferences.
+
 Local and Plex tracks are not duplicated into separate source tabs merely because their media origin differs. A small source indicator may be useful in the UI, but catalog identity and normal selection behavior remain unified.
 
 ---
@@ -95,3 +107,13 @@ These are ViiB-side performance features. They do not modify Plex Media Server m
 - Removing a Plex source from ViiB never deletes media from PMS.
 
 For full Plex source behavior, see [Plex Media Server Music Support](plex-music.md).
+
+## Performance and validation
+
+Drawer state belongs to `DJLibraryDrawer`, so opening and closing do not rerender the page or write to the audio store. A memo boundary also shields the DJ page from unrelated application-shell playback renders. Existing granular deck/mixer subscriptions, the out-of-React store-to-engine sync, waveform idle throttling, and animation cleanup remain intact. The shared WebGL policy and WebGL 2 → WebGL 1 / Canvas fallback behavior are unchanged; macOS runtime safety must still be validated on WKWebView.
+
+The library's Virtuoso table/row and sort-header component identities are stable across updates, avoiding remounts and lost focus. Playlist filtering uses a membership set instead of scanning every playlist ID for every catalog song. FX header subscriptions select active counts, avoiding parent renders during parameter drags. WebGL fills the CSS waveform surface, retains stable renderer callbacks, and uses capability-checked float-texture filtering with a nearest-filter fallback. Knob readouts round display values to one decimal without changing audio values.
+
+Run `node scripts/dj-overlay-audit.mjs` against a running Vite/backend instance (default `http://localhost:3000/dj`, override with `DJ_AUDIT_URL`). It uses an isolated browser context, a 12,000-track API fixture, and generated WAV audio to check desktop geometry, virtualization, focus/Escape, modal priority, loading, typing, and playback continuity. Artifacts go to `output/playwright/dj-overlay/`.
+
+See [the remediation validation report](dj-overlay-validation.md) for resolution findings, screenshots, commands, and native-platform limitations.
