@@ -32,6 +32,8 @@ $advisoryIds = @(
 $knownWindowsBinaryOvermatches = @{
     'GO-2026-5932' = '^golang\.org/x/crypto/openpgp($|/)'
     'GO-2026-6303' = '^golang\.org/x/crypto/ssh($|/)'
+    'GO-2026-6354' = '^golang\.org/x/crypto/ssh($|/)'
+    'GO-2026-6355' = '^golang\.org/x/crypto/ssh($|/)'
 }
 
 Push-Location $backendRoot
