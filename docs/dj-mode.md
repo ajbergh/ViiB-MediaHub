@@ -117,3 +117,11 @@ The library's Virtuoso table/row and sort-header component identities are stable
 Run `node scripts/dj-overlay-audit.mjs` against a running Vite/backend instance (default `http://localhost:3000/dj`, override with `DJ_AUDIT_URL`). It uses an isolated browser context, a 12,000-track API fixture, and generated WAV audio to check desktop geometry, virtualization, focus/Escape, modal priority, loading, typing, and playback continuity. Artifacts go to `output/playwright/dj-overlay/`.
 
 See [the remediation validation report](dj-overlay-validation.md) for resolution findings, screenshots, commands, and native-platform limitations.
+
+---
+
+## Professional track-analysis roadmap
+
+The planned migration from deck-load/browser analysis to persistent, audio-measured BPM, musical key, Camelot/Open Key, background library analysis, harmonic compatibility, true beatgrids, and later DJ intelligence is specified in the [DJv2 Professional Track Analysis & Harmonic Mixing Roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md).
+
+That roadmap treats the current browser BPM/key detectors and generated beat-grid state as verified implementation baselines, while keeping proposed backend analysis work clearly separate from current behavior.
