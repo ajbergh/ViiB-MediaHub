@@ -6,7 +6,12 @@ import { chromium } from '@playwright/test';
 // A fresh browser context uses synthetic catalog/audio; it never writes library data.
 const output = 'output/playwright/dj-overlay';
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const disableWebGL = process.env.DJ_AUDIT_DISABLE_WEBGL === '1';
+const browser = await chromium.launch({
+  headless: true,
+  // Exercise the Canvas fallback in addition to the normal WebGL path.
+  args: disableWebGL ? ['--disable-webgl'] : [],
+});
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 const results = [];
 const tone = Buffer.alloc(44 + 44100 * 12 * 2);
@@ -125,7 +130,7 @@ try {
   await page.waitForFunction(() => !document.fullscreenElement);
   await page.setViewportSize({ width: 1439, height: 900 });
   await page.getByRole('heading', { name: /needs a wider screen/ }).waitFor();
-  console.log('PASS: 5 desktop geometries, 12,000-track virtualization, focus/Escape/modal priority, typing, sort/playlist/columns, A/B loading + drag, playback continuity, fullscreen, width gate');
+  console.log(`PASS${disableWebGL ? ' (Canvas fallback)' : ''}: 5 desktop geometries, 12,000-track virtualization, focus/Escape/modal priority, typing, sort/playlist/columns, A/B loading + drag, playback continuity, fullscreen, width gate`);
   await writeFile(`${output}/results.json`, JSON.stringify(results, null, 2));
 } catch (error) {
   await page.screenshot({ path: `${output}/failure.png` });

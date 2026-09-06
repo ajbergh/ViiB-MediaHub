@@ -51,11 +51,47 @@ const DECK_COLORS = {
   B: '#8b5cf6',         // Purple
 };
 
+interface OverviewCache {
+  canvas: HTMLCanvasElement;
+  width: number;
+  height: number;
+  dpr: number;
+  peaksA: number[] | null;
+  durationA: number;
+  peaksB: number[] | null;
+  durationB: number;
+}
+
+/** Draw a deck's static peak bars as one canvas fill operation. */
+function drawPeakBars(
+  ctx: CanvasRenderingContext2D,
+  peaks: number[] | null,
+  width: number,
+  height: number,
+  xOffset: number,
+  color: string,
+) {
+  if (!peaks?.length || width <= 0) return;
+
+  const samplesPerPixel = peaks.length / width;
+  const centerY = height / 2;
+  const maxAmplitude = centerY - 2;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let x = 0; x < width; x++) {
+    const peak = peaks[Math.floor(x * samplesPerPixel)] ?? 0;
+    const amplitude = peak * maxAmplitude;
+    if (amplitude > 0) ctx.rect(xOffset + x, centerY - amplitude, 1, amplitude * 2);
+  }
+  ctx.fill();
+}
+
 export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, responsive = false }) => {
   const overviewRef = useRef<HTMLCanvasElement>(null);
   const mainCanvasARef = useRef<HTMLCanvasElement>(null);
   const mainCanvasBRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const overviewCacheRef = useRef<OverviewCache | null>(null);
   const [computedHeight, setComputedHeight] = useState(height > 0 ? height : 160);
   
   // Responsive height calculation
@@ -264,37 +300,33 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
       rgbGradient.addColorStop(1, FREQ_COLORS.bass);
     }
 
-    for (let x = 0; x < width; x++) {
-      const pixelTime = visibleStartTime + (x * secondsPerPixel);
-      if (pixelTime < 0 || pixelTime > duration) continue;
+    if (colorMode === '3band') {
+      // 3-Band varies its paint by amplitude, so it retains separate fills.
+      for (let x = 0; x < width; x++) {
+        const pixelTime = visibleStartTime + (x * secondsPerPixel);
+        if (pixelTime < 0 || pixelTime > duration) continue;
 
-      const sampleIndex = Math.floor(pixelTime * peaksPerSecond);
-      const peak = peaks[sampleIndex] || 0;
-      const amplitude = peak * maxAmplitude;
+        const peak = peaks[Math.floor(pixelTime * peaksPerSecond)] || 0;
+        const amplitude = peak * maxAmplitude;
+        if (amplitude <= 0) continue;
 
-      if (amplitude > 0) {
-        // Color based on selected mode
-        if (colorMode === 'single') {
-          // Single deck color
-          ctx.fillStyle = DECK_COLORS[deck];
-          ctx.fillRect(x, centerY - amplitude, 1, amplitude * 2);
-        } else if (colorMode === '3band') {
-          // 3-Band: color determined by amplitude level (bass=loud, mid=medium, high=quiet)
-          const normalizedAmp = peak;
-          if (normalizedAmp > 0.6) {
-            ctx.fillStyle = BAND_COLORS.bass;
-          } else if (normalizedAmp > 0.3) {
-            ctx.fillStyle = BAND_COLORS.mid;
-          } else {
-            ctx.fillStyle = BAND_COLORS.high;
-          }
-          ctx.fillRect(x, centerY - amplitude, 1, amplitude * 2);
-        } else {
-          // RGB mode: reuse pre-computed gradient (1 per frame vs ~1000 per frame)
-          ctx.fillStyle = rgbGradient!;
-          ctx.fillRect(x, centerY - amplitude, 1, amplitude * 2);
-        }
+        ctx.fillStyle = peak > 0.6 ? BAND_COLORS.bass : peak > 0.3 ? BAND_COLORS.mid : BAND_COLORS.high;
+        ctx.fillRect(x, centerY - amplitude, 1, amplitude * 2);
       }
+    } else {
+      // RGB and single-deck modes have one paint. Batch their bars so the
+      // Canvas fallback submits a single fill per deck per frame.
+      ctx.fillStyle = colorMode === 'single' ? DECK_COLORS[deck] : rgbGradient!;
+      ctx.beginPath();
+      for (let x = 0; x < width; x++) {
+        const pixelTime = visibleStartTime + (x * secondsPerPixel);
+        if (pixelTime < 0 || pixelTime > duration) continue;
+
+        const peak = peaks[Math.floor(pixelTime * peaksPerSecond)] || 0;
+        const amplitude = peak * maxAmplitude;
+        if (amplitude > 0) ctx.rect(x, centerY - amplitude, 1, amplitude * 2);
+      }
+      ctx.fill();
     }
 
     // Draw beat grid markers (with offset applied)
@@ -475,23 +507,46 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
           const dpr = window.devicePixelRatio || 1;
           ctx.scale(dpr, dpr);
           
-          // Clear
-          ctx.fillStyle = '#1a1a1a';
-          ctx.fillRect(0, 0, width, OVERVIEW_HEIGHT);
-          
-          // Draw both deck overviews side by side
           const halfWidth = Math.max(1, width / 2); // Ensure at least 1px to avoid division by zero
+          let cache = overviewCacheRef.current;
+          const cacheNeedsRedraw = !cache
+            || cache.width !== overviewCanvas.width
+            || cache.height !== overviewCanvas.height
+            || cache.dpr !== dpr
+            || cache.peaksA !== currentDeckA.waveformPeaks
+            || cache.durationA !== currentDeckA.duration
+            || cache.peaksB !== currentDeckB.waveformPeaks
+            || cache.durationB !== currentDeckB.duration;
+
+          if (cacheNeedsRedraw) {
+            const cacheCanvas = cache?.canvas ?? document.createElement('canvas');
+            cacheCanvas.width = overviewCanvas.width;
+            cacheCanvas.height = overviewCanvas.height;
+            const cacheCtx = cacheCanvas.getContext('2d');
+            if (cacheCtx) {
+              cacheCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+              cacheCtx.fillStyle = '#1a1a1a';
+              cacheCtx.fillRect(0, 0, width, OVERVIEW_HEIGHT);
+              drawPeakBars(cacheCtx, currentDeckA.waveformPeaks, halfWidth, OVERVIEW_HEIGHT, 0, '#3b82f680');
+              drawPeakBars(cacheCtx, currentDeckB.waveformPeaks, halfWidth, OVERVIEW_HEIGHT, halfWidth, '#8b5cf680');
+              cache = {
+                canvas: cacheCanvas,
+                width: cacheCanvas.width,
+                height: cacheCanvas.height,
+                dpr,
+                peaksA: currentDeckA.waveformPeaks,
+                durationA: currentDeckA.duration,
+                peaksB: currentDeckB.waveformPeaks,
+                durationB: currentDeckB.duration,
+              };
+              overviewCacheRef.current = cache;
+            }
+          }
+
+          if (cache) ctx.drawImage(cache.canvas, 0, 0, width, OVERVIEW_HEIGHT);
           
           // Deck A (left half)
           if (currentDeckA.waveformPeaks && currentDeckA.waveformPeaks.length > 0 && currentDeckA.duration > 0) {
-            const samplesPerPixel = currentDeckA.waveformPeaks.length / halfWidth;
-            ctx.fillStyle = '#3b82f680';
-            for (let x = 0; x < halfWidth; x++) {
-              const sampleIndex = Math.floor(x * samplesPerPixel);
-              const peak = currentDeckA.waveformPeaks[sampleIndex] ?? 0;
-              const amp = peak * (OVERVIEW_HEIGHT / 2 - 2);
-              ctx.fillRect(x, OVERVIEW_HEIGHT / 2 - amp, 1, amp * 2);
-            }
             // Playhead - guard against NaN
             const playheadX = (posA / currentDeckA.duration) * halfWidth;
             if (!isNaN(playheadX) && isFinite(playheadX)) {
@@ -520,14 +575,6 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
           
           // Deck B (right half)
           if (currentDeckB.waveformPeaks && currentDeckB.waveformPeaks.length > 0 && currentDeckB.duration > 0) {
-            const samplesPerPixel = currentDeckB.waveformPeaks.length / halfWidth;
-            ctx.fillStyle = '#8b5cf680';
-            for (let x = 0; x < halfWidth; x++) {
-              const sampleIndex = Math.floor(x * samplesPerPixel);
-              const peak = currentDeckB.waveformPeaks[sampleIndex] ?? 0;
-              const amp = peak * (OVERVIEW_HEIGHT / 2 - 2);
-              ctx.fillRect(halfWidth + x, OVERVIEW_HEIGHT / 2 - amp, 1, amp * 2);
-            }
             // Playhead - guard against NaN
             const playheadX = halfWidth + (posB / currentDeckB.duration) * halfWidth;
             if (!isNaN(playheadX) && isFinite(playheadX)) {
