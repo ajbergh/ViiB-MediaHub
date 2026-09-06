@@ -1,6 +1,6 @@
 # DJv2 Professional Track Analysis & Harmonic Mixing Roadmap
 
-**Status:** Ready to implement — Phase 0 is the first executable unit of work  
+**Status:** In progress — Phase 0, Slice 1 (benchmark harness and codec matrix)
 **Scope:** DJv2 / professional DJ workflow only  
 **Research snapshot:** 2026-09-06  
 **Repository verification snapshot:** commit `3359371`, branch `main`  
@@ -11,6 +11,12 @@
 > This document is a research and implementation plan, not a claim that the described future functionality is already implemented. Sections labeled **Verified current state** describe behavior confirmed in the repository as of the verification snapshot, with `file:line` evidence recorded in §2.0. Sections labeled **Proposed** describe future design.
 
 > **Reader's note on trust.** Every current-state claim in §2 was re-checked against the tree at commit `3359371`. §2.0 is the evidence ledger; §2.3 records the assumptions that survived challenge and the ones that did not. If you are picking this up to implement, read §2.0, §2.3, and Phase 0 first — they contain the corrections that change scope.
+
+### Implementation progress
+
+| Date | Branch | Scope | State | Validation | Notes |
+|---|---|---|---|---|---|
+| 2026-09-06 | `analysis/phase0-benchmarks-and-codec-matrix` | Phase 0, Slice 1 | Complete | `go test ./internal/analysisbench`; `go run ./cmd/analysisbench -format=json` | Added deterministic synthetic fixtures, bounded WAV header validation, and a machine-readable codec matrix. This is harness infrastructure only; it does not claim production analysis or codec support. |
 
 ---
 
