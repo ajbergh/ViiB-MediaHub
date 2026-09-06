@@ -7,11 +7,13 @@
 package scanner
 
 import (
+	"encoding/binary"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -71,6 +73,24 @@ type USN_RECORD_V2 struct {
 	FileNameLength      uint16
 	FileNameOffset      uint16
 	// FileName follows (variable length, UTF-16)
+}
+
+const usnRecordV2HeaderSize = uint32(unsafe.Sizeof(USN_RECORD_V2{}))
+
+// decodeUSNRecordFileName decodes the variable-length UTF-16 name only after
+// checking that its declared byte range is inside the USN record.
+func decodeUSNRecordFileName(record []byte, offset, length uint16) (string, error) {
+	nameOffset := int(offset)
+	nameLength := int(length)
+	if nameLength%2 != 0 || nameOffset < int(usnRecordV2HeaderSize) || nameOffset > len(record) || nameLength > len(record)-nameOffset {
+		return "", fmt.Errorf("invalid USN filename range: offset=%d length=%d record=%d", nameOffset, nameLength, len(record))
+	}
+
+	codeUnits := make([]uint16, nameLength/2)
+	for i := range codeUnits {
+		codeUnits[i] = binary.LittleEndian.Uint16(record[nameOffset+i*2:])
+	}
+	return string(utf16.Decode(codeUnits)), nil
 }
 
 // WindowsUSNDetector implements JournalChangeDetector using Windows USN journal
@@ -295,15 +315,23 @@ func (u *WindowsUSNDetector) readChanges(
 
 		// Parse records
 		offset := uint32(8)
-		for offset < bytesReturned {
+		for offset+usnRecordV2HeaderSize <= bytesReturned {
 			record := (*USN_RECORD_V2)(unsafe.Pointer(&buffer[offset]))
-			if record.RecordLength == 0 {
+			if record.RecordLength < usnRecordV2HeaderSize {
+				break
+			}
+			if record.RecordLength > bytesReturned-offset {
+				logger.Scanner("USN journal: truncated record at offset %d", offset)
 				break
 			}
 
 			// Extract filename
-			fileNamePtr := uintptr(unsafe.Pointer(&buffer[offset])) + uintptr(record.FileNameOffset)
-			fileName := syscall.UTF16ToString((*[256]uint16)(unsafe.Pointer(fileNamePtr))[:record.FileNameLength/2])
+			fileName, err := decodeUSNRecordFileName(buffer[offset:offset+record.RecordLength], record.FileNameOffset, record.FileNameLength)
+			if err != nil {
+				logger.Scanner("USN journal: invalid record at offset %d: %v", offset, err)
+				offset += record.RecordLength
+				continue
+			}
 
 			// Check if this is an audio file
 			ext := strings.ToLower(filepath.Ext(fileName))
