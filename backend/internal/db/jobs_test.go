@@ -87,3 +87,27 @@ func TestJobCancellationAndRetryStates(t *testing.T) {
 		t.Fatalf("running job should enter canceling: %#v err=%v", current, err)
 	}
 }
+
+func TestClaimNextQueuedJobUsesPriorityAndIsSingleFlight(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for _, job := range []Job{{ID: "low", Type: "quick_scan", Priority: 1}, {ID: "high", Type: "quick_scan", Priority: 10}} {
+		if err := database.CreateJob(job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	claimed, err := database.ClaimNextQueuedJob("Worker starting")
+	if err != nil || claimed.ID != "high" || claimed.Status != JobStatusRunning || claimed.Priority != 10 {
+		t.Fatalf("claim = %#v, err=%v", claimed, err)
+	}
+	claimed, err = database.ClaimNextQueuedJob("Worker starting")
+	if err != nil || claimed.ID != "low" {
+		t.Fatalf("second claim = %#v, err=%v", claimed, err)
+	}
+	if _, err := database.ClaimNextQueuedJob("Worker starting"); err != sql.ErrNoRows {
+		t.Fatalf("empty claim error = %v, want sql.ErrNoRows", err)
+	}
+}
