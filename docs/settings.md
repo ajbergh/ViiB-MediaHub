@@ -38,7 +38,11 @@ Lists all local music directories ViiB MediaHub monitors. Each folder has:
 
 To add a folder click **Add Folder** and use the folder browser dialog.
 
-For Plex Media Server music, database diagnostics, repair, validated backups, offline restore staging, and configurable continuous monitoring, use the **Library Health** shortcut. See [Library Operations](library-operations.md) and [Plex Music](plex-music.md).
+For Plex Media Server music, track analysis, database diagnostics, repair, validated backups, offline restore staging, and configurable continuous monitoring, use the **Library Health** shortcut. See [Library Operations](library-operations.md) and [Plex Music](plex-music.md).
+
+### Track analysis
+
+Tempo and musical key measurement for local tracks is configured in the **Track Analysis** panel under Library Health, including the **Analyze new tracks automatically** option, which is off by default. See [Library Operations](library-operations.md#track-analysis).
 
 ### Plex Media Server music
 

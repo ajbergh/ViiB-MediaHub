@@ -4,7 +4,7 @@ info:
   version: 2.1.0
   description: >-
     Local-only API for revisioned library synchronization, indexed search,
-    performance diagnostics, durable jobs, library maintenance, and Plex Media
+    performance diagnostics, durable jobs, track analysis, library maintenance, and Plex Media
     Server music-source configuration. Every response includes `X-Request-ID`.
     Jobs, Library Operations, and Plex configuration return the documented
     machine-readable error envelope; legacy library and performance handlers
@@ -279,8 +279,24 @@ paths:
               type: object
               required: [type]
               properties:
-                type: { type: string, enum: [full_scan, quick_scan, refresh_genre_stats] }
-                parameters: { type: object, additionalProperties: true }
+                type: { type: string, enum: [full_scan, quick_scan, refresh_genre_stats, analyze_tracks] }
+                parameters:
+                  oneOf:
+                    - { $ref: '#/components/schemas/AnalysisSelection' }
+                    - { type: object, additionalProperties: true }
+                  description: >
+                    For analyze_tracks this is the AnalysisSelection, stored verbatim so a
+                    resumed job re-expands the identical selection. An unexpandable
+                    selection is rejected at creation rather than becoming a job that can
+                    only fail.
+                priority:
+                  type: integer
+                  minimum: -100
+                  maximum: 100
+                  default: 0
+                  description: >
+                    Analysis jobs at priority 50 or above are treated as an explicit
+                    "analyze now" request and ignore DJ playback pressure.
       responses:
         '202':
           description: Job accepted
@@ -332,6 +348,72 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Job' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /jobs/pause:
+    post:
+      operationId: pauseJobQueue
+      description: >
+        Stops dispatching queued work. Work already in progress finishes its
+        current item; DSP is never suspended mid-track.
+      responses:
+        '202':
+          description: Queued jobs paused
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [paused]
+                properties:
+                  paused: { type: integer, description: Number of jobs moved to paused. }
+  /jobs/resume:
+    post:
+      operationId: resumeJobQueue
+      description: Returns paused jobs to the priority queue and wakes the dispatcher.
+      responses:
+        '202':
+          description: Paused jobs resumed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resumed]
+                properties:
+                  resumed: { type: integer }
+  /jobs/analysis-pressure:
+    post:
+      operationId: reportAnalysisPressure
+      description: >
+        Reports that DJ playback is active so background track analysis yields its
+        worker. Playback lives in the frontend audio graph, so the backend cannot
+        observe it. The report carries a renewable TTL rather than acting as a sticky
+        flag: if the window closes or crashes mid-set, it expires on its own instead
+        of parking the analysis queue. Clearing it also clears any deferral backoff so
+        deferred work resumes immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+                ttlSeconds:
+                  type: integer
+                  minimum: 1
+                  default: 30
+                  description: Capped at 600 so one request cannot park analysis indefinitely.
+      responses:
+        '202':
+          description: Pressure signal recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [active, remainingSeconds]
+                properties:
+                  active: { type: boolean }
+                  remainingSeconds: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /performance/:
     get:
       operationId: getPerformanceDiagnostics
@@ -744,12 +826,18 @@ components:
       properties:
         id: { type: string, format: uuid }
         type: { type: string }
-        status: { type: string, enum: [queued, running, succeeded, failed, canceling, canceled, interrupted] }
+        status: { type: string, enum: [queued, running, paused, succeeded, failed, canceling, canceled, interrupted] }
+        priority: { type: integer, minimum: -100, maximum: 100, description: Higher priority is claimed first; ties break on creation time. }
         progressCurrent: { type: integer }
         progressTotal: { type: integer }
         message: { type: string }
         parameters: { type: object, additionalProperties: true }
-        result: { type: object, additionalProperties: true }
+        result:
+          type: object
+          additionalProperties: true
+          description: >
+            Shape depends on the job type. For analyze_tracks it matches
+            AnalysisJobResult.
         errorCode: { type: string }
         errorMessage: { type: string }
         attempts: { type: integer }
@@ -757,6 +845,47 @@ components:
         startedAt: { type: integer }
         completedAt: { type: integer }
         updatedAt: { type: integer }
+    AnalysisSelection:
+      type: object
+      description: >
+        Which tracks an analyze_tracks job covers. The work list is derived from the
+        catalog when the job is claimed rather than stored in job state, so an
+        interrupted run resumes by skipping tracks that are already valid. Plex-backed
+        songs are excluded from every mode until their authenticated source adapter
+        exists.
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [all, missing, stale, ids, playlist]
+          description: >
+            all covers every local track (current results are still skipped, not
+            repeated); missing covers tracks with no result; stale covers tracks
+            analyzed by a different analysis or algorithm version; ids and playlist
+            cover an explicit set.
+        songIds:
+          type: array
+          items: { type: string }
+          description: Required for mode ids. Blank and duplicate entries are dropped.
+        playlistId: { type: string, description: Required for mode playlist. }
+    AnalysisJobResult:
+      type: object
+      description: Aggregate counts an analyze_tracks job reports in its result.
+      properties:
+        mode: { type: string }
+        total: { type: integer, description: Tracks the selection expanded to. }
+        analyzed: { type: integer }
+        skipped:
+          type: integer
+          description: >
+            Already current for this analyzer and these source bytes, or claimed by
+            another worker.
+        failed:
+          type: integer
+          description: >
+            Recorded with a stable error code — source_unavailable,
+            unsupported_codec, decode_failed, insufficient_audio — and not retried
+            while the source is unchanged.
     ErrorEnvelope:
       type: object
       required: [error]

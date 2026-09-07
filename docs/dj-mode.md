@@ -60,6 +60,10 @@ Track-specific analysis features depend on media being readable by the active br
 
 DJ Mode can display waveform/position information and use BPM/key/beat metadata or analysis where available. Remote Plex media is not copied to a local music folder merely to enable DJ Mode; access remains through the ViiB/PMS playback path.
 
+Deck-load BPM and key detection still runs in the browser and is what DJ Mode currently reads. A separate backend engine now measures tempo and key durably for local tracks and stores versioned results per song — see **Track Analysis** in [Library Operations](library-operations.md). Those stored values are not yet what the decks use; connecting them is gated on the accuracy work in the roadmap below.
+
+While a deck is playing, DJ Mode tells the backend to hold back background library analysis so preparation work does not compete with a live set. The signal renews on a short timer, so a closed or crashed window cannot leave the analysis queue parked. Analysis you start explicitly from Library Operations is not held back.
+
 If a particular Plex audio codec is not directly supported by the current player/WebView pipeline, ViiB does not silently invoke Plex video/general transcoding. The Plex integration currently favors direct audio play.
 
 ---
@@ -125,3 +129,5 @@ See [the remediation validation report](dj-overlay-validation.md) for resolution
 The planned migration from deck-load/browser analysis to persistent, audio-measured BPM, musical key, Camelot/Open Key, background library analysis, harmonic compatibility, true beatgrids, and later DJ intelligence is specified in the [DJv2 Professional Track Analysis & Harmonic Mixing Roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md).
 
 That roadmap treats the current browser BPM/key detectors and generated beat-grid state as verified implementation baselines, while keeping proposed backend analysis work clearly separate from current behavior.
+
+Phases 0 through 4 are implemented: the benchmark harness, the shared pure-Go decode and DSP foundation, the persistence model, the tempo and key analyzers, and the durable library analysis service with its scheduler. Phase 5 — showing measured BPM, key, Camelot/Open Key, and harmonic compatibility in the DJ library — has not started, and the roadmap records the tempo accuracy findings that must be resolved before those values are presented as reliable.

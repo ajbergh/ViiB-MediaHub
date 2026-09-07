@@ -38,6 +38,45 @@ The intent compiler never receives the full song catalog or local taxonomy. Quer
 
 The service indexes in the background, survives provider failures as retryable document errors, and can be reindexed or reloaded through local status endpoints. A model/provider identity or vector-dimension inconsistency cannot mix vector spaces: replacement vectors are checked before persistence, and the existing metadata-based AI DJ path remains a deterministic fallback whenever a searchable semantic index is not available.
 
+## Durable job scheduler
+
+Long-running library work runs as a persisted job in the `operation_jobs` table rather than as a detached goroutine. The table is the source of truth for job state, so work survives a restart.
+
+```text
+create / retry / resume ──> queued ──> atomic claim ──> running ──> succeeded
+                              ▲                            │            failed
+                         requeue on yield                  └──> canceling ──> canceled
+                              │                            
+                            paused ◄── pause                     restart ──> interrupted
+```
+
+The dispatcher is a bounded worker pool sized `min(2, max(1, NumCPU/4))`. Claiming is a single conditional `UPDATE`, so two workers can never take the same job, and the queue is ordered by `priority` then `created_at`. Three properties matter for correctness:
+
+- **Restart keeps pending work.** Only `running` and `canceling` jobs become `interrupted`; `queued` and `paused` jobs are retained and drained when routes are wired.
+- **A job can yield without failing.** `available_at` lets a running job be requeued with a backoff, which is how analysis steps aside for DJ playback without holding a worker or losing progress.
+- **Pause is dispatch-level.** Pausing stops new work from starting and lets in-flight work finish. Nothing is suspended mid-item.
+
+## Track analysis engine
+
+Track analysis owns audio-derived facts — currently tempo and musical key — for every catalog track ViiB can decode. It is deliberately a shared engine rather than a DJ-only feature.
+
+```text
+song_id → local source resolve → decoder registry → mono downmix ──┬─> onset accumulator → tempo
+          (+ fingerprint)        (wav/mp3/ogg)     (bounded chunks) └─> chroma accumulator → key
+                                                                          │
+                                                          one combined track_analysis row
+```
+
+Design constraints that shaped it:
+
+- **One decode pass feeds every analyzer.** Tempo and key share decoding, downmixing, and chunking. Running them separately would double the I/O and, worse, let each one overwrite the other's status and algorithm version in the shared row.
+- **Facts are versioned and fingerprinted.** Each row records the analysis version, the composite algorithm version, and a fingerprint of the source bytes. A change to any of them makes the row stale, which is what lets a run skip work it has already done and re-analyze only what actually changed.
+- **The work list is derived, never stored.** Because per-track state lives in `track_analysis`, "what is left to do" is always recomputable from the catalog. A resumed job re-expands its recorded selection and skips valid rows, so a multi-day run needs no lease recovery.
+- **Unknown is a result.** An analyzer that finds no reliable evidence records that explicitly with a stable error code. It never substitutes a default tempo or key.
+- **Measured facts stay separate from inferred metadata.** Analysis writes to `track_analysis` and never to `songs.bpm`, which may hold an AI-estimated value. Manual user overrides live in their own table with independent locks and win at read time.
+
+Decoding is bounded and streaming; whole files are never held in memory. Plex-hosted tracks need an authenticated source adapter that does not exist yet and are excluded from analysis rather than queued and failed.
+
 ## Local filesystem source
 
 Local folders are configured in Settings and ingested by the Go scanner.
