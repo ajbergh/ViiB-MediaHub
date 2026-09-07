@@ -1,0 +1,32 @@
+{
+  "version": "phase0-v1",
+  "tracks": [
+    {
+      "id": "click-120",
+      "path": "fixture:click-120",
+      "license": "generated",
+      "genre": "synthetic",
+      "split": "held_out",
+      "expectedBpm": 120.0,
+      "acceptedMetricBpm": [120.0]
+    },
+    {
+      "id": "click-128.5",
+      "path": "fixture:click-128.5",
+      "license": "generated",
+      "genre": "synthetic",
+      "split": "held_out",
+      "expectedBpm": 128.5,
+      "acceptedMetricBpm": [128.5]
+    },
+    {
+      "id": "silence",
+      "path": "fixture:silence",
+      "license": "generated",
+      "genre": "silence",
+      "split": "held_out",
+      "expectedUnknown": true,
+      "notes": "A successful detector must return no BPM and no key."
+    }
+  ]
+}
