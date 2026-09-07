@@ -21,12 +21,12 @@ func (d *DB) CreateJob(job Job) error {
 	_, err := d.conn.Exec(`
 		INSERT INTO operation_jobs(
 			id, type, status, progress_current, progress_total, message,
-			parameters, result, error_code, error_message, attempts,
+			parameters, result, error_code, error_message, attempts, priority,
 			created_at, started_at, completed_at, updated_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
 	`, job.ID, job.Type, job.Status, job.ProgressCurrent, job.ProgressTotal,
 		job.Message, nullableJSON(job.Parameters), nullableJSON(job.Result),
-		job.ErrorCode, job.ErrorMessage, job.Attempts, job.CreatedAt, job.UpdatedAt)
+		job.ErrorCode, job.ErrorMessage, job.Attempts, job.Priority, job.CreatedAt, job.UpdatedAt)
 	return err
 }
 
@@ -59,6 +59,43 @@ func (d *DB) StartJob(id, message string) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// ClaimNextQueuedJob atomically claims the highest-priority queued job. The
+// conditional UPDATE makes concurrent scheduler workers single-flight without
+// an in-memory lock.
+func (d *DB) ClaimNextQueuedJob(message string) (Job, error) {
+	if err := d.EnsureJobSchema(); err != nil {
+		return Job{}, err
+	}
+	row := d.conn.QueryRow(`
+		UPDATE operation_jobs SET status = ?, message = ?, attempts = attempts + 1,
+		started_at = ?, completed_at = NULL, error_code = NULL, error_message = NULL, updated_at = ?
+		WHERE id = (SELECT id FROM operation_jobs WHERE status = ? ORDER BY priority DESC, created_at ASC LIMIT 1)
+		  AND status = ?
+		RETURNING id, type, status, progress_current, progress_total, message, parameters, result,
+		error_code, error_message, attempts, priority, created_at, started_at, completed_at, updated_at`,
+		JobStatusRunning, message, time.Now().UnixMilli(), time.Now().UnixMilli(), JobStatusQueued, JobStatusQueued)
+	return scanJob(row)
+}
+
+// PauseQueuedJobs prevents queued work from being claimed without disrupting
+// a running operation that must cooperate with cancellation separately.
+func (d *DB) PauseQueuedJobs() (int64, error) {
+	result, err := d.conn.Exec(`UPDATE operation_jobs SET status = ?, message = 'Paused', updated_at = ? WHERE status = ?`, JobStatusPaused, time.Now().UnixMilli(), JobStatusQueued)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// ResumePausedJobs returns paused work to the durable queue.
+func (d *DB) ResumePausedJobs() (int64, error) {
+	result, err := d.conn.Exec(`UPDATE operation_jobs SET status = ?, message = 'Queued', updated_at = ? WHERE status = ?`, JobStatusQueued, time.Now().UnixMilli(), JobStatusPaused)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 // UpdateJobProgress records progress only while a job is running.
@@ -140,7 +177,7 @@ func (d *DB) GetJob(id string) (Job, error) {
 	}
 	row := d.conn.QueryRow(`
 		SELECT id, type, status, progress_current, progress_total, message,
-		       parameters, result, error_code, error_message, attempts,
+		       parameters, result, error_code, error_message, attempts, priority,
 		       created_at, started_at, completed_at, updated_at
 		FROM operation_jobs WHERE id = ?`, id)
 	return scanJob(row)
@@ -154,7 +191,7 @@ func scanJob(row jobScanner) (Job, error) {
 	var startedAt, completedAt sql.NullInt64
 	err := row.Scan(&job.ID, &job.Type, &job.Status, &job.ProgressCurrent,
 		&job.ProgressTotal, &message, &parameters, &result, &errorCode,
-		&errorMessage, &job.Attempts, &job.CreatedAt, &startedAt,
+		&errorMessage, &job.Attempts, &job.Priority, &job.CreatedAt, &startedAt,
 		&completedAt, &job.UpdatedAt)
 	if err != nil {
 		return Job{}, err
@@ -192,7 +229,7 @@ func (d *DB) ListJobs(limit int, status string) ([]Job, error) {
 		limit = 100
 	}
 	query := `SELECT id, type, status, progress_current, progress_total, message,
-		parameters, result, error_code, error_message, attempts,
+		parameters, result, error_code, error_message, attempts, priority,
 		created_at, started_at, completed_at, updated_at FROM operation_jobs`
 	args := []any{}
 	if status != "" {

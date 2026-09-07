@@ -3,6 +3,7 @@ package db
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 )
@@ -10,6 +11,7 @@ import (
 const (
 	JobStatusQueued      = "queued"
 	JobStatusRunning     = "running"
+	JobStatusPaused      = "paused"
 	JobStatusSucceeded   = "succeeded"
 	JobStatusFailed      = "failed"
 	JobStatusCanceling   = "canceling"
@@ -24,6 +26,7 @@ type Job struct {
 	Status          string          `json:"status"`
 	ProgressCurrent int64           `json:"progressCurrent"`
 	ProgressTotal   int64           `json:"progressTotal"`
+	Priority        int             `json:"priority"`
 	Message         string          `json:"message,omitempty"`
 	Parameters      json.RawMessage `json:"parameters,omitempty"`
 	Result          json.RawMessage `json:"result,omitempty"`
@@ -36,14 +39,17 @@ type Job struct {
 	UpdatedAt       int64           `json:"updatedAt"`
 }
 
-type jobSchemaResult struct { err error }
+type jobSchemaResult struct{ err error }
+
 var jobSchemas sync.Map // map[*DB]jobSchemaResult
 
 // EnsureJobSchema installs and performs restart recovery exactly once for each
 // live DB handle. A successful initialization is stored as a non-nil result
 // object so sync.Map never receives a nil value.
 func (d *DB) EnsureJobSchema() error {
-	if value, ok := jobSchemas.Load(d); ok { return value.(jobSchemaResult).err }
+	if value, ok := jobSchemas.Load(d); ok {
+		return value.(jobSchemaResult).err
+	}
 
 	_, err := d.conn.Exec(`
 		CREATE TABLE IF NOT EXISTS operation_jobs (
@@ -52,6 +58,7 @@ func (d *DB) EnsureJobSchema() error {
 			status TEXT NOT NULL,
 			progress_current INTEGER NOT NULL DEFAULT 0,
 			progress_total INTEGER NOT NULL DEFAULT 0,
+			priority INTEGER NOT NULL DEFAULT 0,
 			message TEXT,
 			parameters TEXT,
 			result TEXT,
@@ -65,7 +72,14 @@ func (d *DB) EnsureJobSchema() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_operation_jobs_status ON operation_jobs(status, updated_at);
 		CREATE INDEX IF NOT EXISTS idx_operation_jobs_type ON operation_jobs(type, created_at);
+		CREATE INDEX IF NOT EXISTS idx_operation_jobs_queue ON operation_jobs(status, priority DESC, created_at);
 	`)
+	if err == nil {
+		_, alterErr := d.conn.Exec(`ALTER TABLE operation_jobs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0`)
+		if alterErr != nil && !strings.Contains(strings.ToLower(alterErr.Error()), "duplicate column") {
+			err = alterErr
+		}
+	}
 	if err == nil {
 		now := time.Now().UnixMilli()
 		_, err = d.conn.Exec(`
@@ -73,11 +87,13 @@ func (d *DB) EnsureJobSchema() error {
 			SET status = ?, error_code = 'process_restarted',
 			    error_message = 'The application restarted while the job was active',
 			    completed_at = ?, updated_at = ?
-			WHERE status IN (?, ?, ?)
-		`, JobStatusInterrupted, now, now, JobStatusQueued, JobStatusRunning, JobStatusCanceling)
+			WHERE status IN (?, ?)
+		`, JobStatusInterrupted, now, now, JobStatusRunning, JobStatusCanceling)
 	}
 	result := jobSchemaResult{err: err}
 	actual, loaded := jobSchemas.LoadOrStore(d, result)
-	if loaded { return actual.(jobSchemaResult).err }
+	if loaded {
+		return actual.(jobSchemaResult).err
+	}
 	return err
 }

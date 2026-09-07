@@ -2,9 +2,11 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -14,11 +16,27 @@ import (
 	"github.com/google/uuid"
 )
 
-const maxJobRequestBytes = 64 * 1024
+const (
+	maxJobRequestBytes = 64 * 1024
+	minJobPriority     = -100
+	maxJobPriority     = 100
+)
+
+func schedulerWorkerCount(cpuCount int) int {
+	workers := cpuCount / 4
+	if workers < 1 {
+		return 1
+	}
+	if workers > 2 {
+		return 2
+	}
+	return workers
+}
 
 type createJobRequest struct {
 	Type       string          `json:"type"`
 	Parameters json.RawMessage `json:"parameters,omitempty"`
+	Priority   int             `json:"priority,omitempty"`
 }
 
 // V2JobRoutes returns routes for creating, observing, canceling, and retrying jobs.
@@ -26,6 +44,10 @@ func (a *API) V2JobRoutes() chi.Router {
 	r := chi.NewRouter()
 	if err := a.db.EnsureJobSchema(); err != nil {
 		// Individual handlers will return a structured database error.
+	} else {
+		// Recoverable queued work may predate this process. Start the bounded
+		// dispatcher while wiring routes so it is not dependent on a later API call.
+		a.wakeJobScheduler()
 	}
 	r.Get("/", a.listJobsV2)
 	r.Post("/", a.createJobV2)
@@ -33,7 +55,28 @@ func (a *API) V2JobRoutes() chi.Router {
 	r.Get("/{id}", a.getJobV2)
 	r.Post("/{id}/cancel", a.cancelJobV2)
 	r.Post("/{id}/retry", a.retryJobV2)
+	r.Post("/pause", a.pauseJobsV2)
+	r.Post("/resume", a.resumeJobsV2)
 	return r
+}
+
+func (a *API) pauseJobsV2(w http.ResponseWriter, r *http.Request) {
+	count, err := a.db.PauseQueuedJobs()
+	if err != nil {
+		respondV2Error(w, r, http.StatusInternalServerError, "job_pause_failed", "Unable to pause queued jobs", true, nil)
+		return
+	}
+	respondV2JSON(w, http.StatusAccepted, map[string]int64{"paused": count})
+}
+
+func (a *API) resumeJobsV2(w http.ResponseWriter, r *http.Request) {
+	count, err := a.db.ResumePausedJobs()
+	if err != nil {
+		respondV2Error(w, r, http.StatusInternalServerError, "job_resume_failed", "Unable to resume queued jobs", true, nil)
+		return
+	}
+	a.wakeJobScheduler()
+	respondV2JSON(w, http.StatusAccepted, map[string]int64{"resumed": count})
 }
 
 func (a *API) listJobsV2(w http.ResponseWriter, r *http.Request) {
@@ -66,15 +109,21 @@ func (a *API) createJobV2(w http.ResponseWriter, r *http.Request) {
 		respondV2Error(w, r, http.StatusBadRequest, "unsupported_job_type", "Supported job types are full_scan, quick_scan, and refresh_genre_stats", false, map[string]any{"type": request.Type})
 		return
 	}
+	if request.Priority < minJobPriority || request.Priority > maxJobPriority {
+		respondV2Error(w, r, http.StatusBadRequest, "invalid_job_priority", "Job priority must be between -100 and 100", false, nil)
+		return
+	}
 
-	job := db.Job{ID: uuid.NewString(), Type: request.Type, Status: db.JobStatusQueued, Parameters: request.Parameters, Message: "Queued"}
+	job := db.Job{ID: uuid.NewString(), Type: request.Type, Status: db.JobStatusQueued, Parameters: request.Parameters, Priority: request.Priority, Message: "Queued"}
 	if err := a.db.CreateJob(job); err != nil {
 		respondV2Error(w, r, http.StatusInternalServerError, "job_create_failed", "Unable to create the operation job", true, nil)
 		return
 	}
-	go a.runJob(job.ID)
+	a.wakeJobScheduler()
 	created, err := a.db.GetJob(job.ID)
-	if err != nil { created = job }
+	if err != nil {
+		created = job
+	}
 	respondV2JSON(w, http.StatusAccepted, created)
 }
 
@@ -105,23 +154,54 @@ func (a *API) retryJobV2(w http.ResponseWriter, r *http.Request) {
 	}
 	retry := db.Job{
 		ID: uuid.NewString(), Type: original.Type, Status: db.JobStatusQueued,
-		Parameters: original.Parameters, Message: "Queued as retry of " + original.ID,
+		Parameters: original.Parameters, Priority: original.Priority, Message: "Queued as retry of " + original.ID,
 	}
 	if err := a.db.CreateJob(retry); err != nil {
 		respondV2Error(w, r, http.StatusInternalServerError, "job_retry_failed", "Unable to create retry job", true, nil)
 		return
 	}
-	go a.runJob(retry.ID)
+	a.wakeJobScheduler()
 	created, _ := a.db.GetJob(retry.ID)
 	respondV2JSON(w, http.StatusAccepted, created)
 }
 
 // runJob claims a queued job and performs the requested operation. Cancellation
 // is cooperative for running work and terminal immediately for queued work.
-func (a *API) runJob(id string) {
-	job, err := a.db.GetJob(id)
-	if err != nil { return }
-	if err := a.db.StartJob(id, "Starting "+job.Type); err != nil { return }
+func (a *API) wakeJobScheduler() {
+	if a.jobWake == nil {
+		a.jobWake = make(chan struct{}, 1)
+	}
+	workers := schedulerWorkerCount(runtime.NumCPU())
+	a.jobSchedulerOnce.Do(func() {
+		for i := 0; i < workers; i++ {
+			go a.jobWorker()
+		}
+	})
+	for i := 0; i < workers; i++ {
+		select {
+		case a.jobWake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (a *API) jobWorker() {
+	for range a.jobWake {
+		for {
+			job, err := a.db.ClaimNextQueuedJob("Starting job")
+			if err == sql.ErrNoRows {
+				break
+			}
+			if err != nil {
+				break
+			}
+			a.runClaimedJob(job)
+		}
+	}
+}
+
+func (a *API) runClaimedJob(job db.Job) {
+	id := job.ID
 
 	switch job.Type {
 	case "full_scan":
@@ -178,7 +258,9 @@ func (a *API) runQuickScanJob(id string) {
 		return
 	}
 	deleted, deleteErr := a.scanner.DetectDeletedFiles()
-	if deleteErr == nil { quick.ChangedFiles = append(quick.ChangedFiles, deleted...) }
+	if deleteErr == nil {
+		quick.ChangedFiles = append(quick.ChangedFiles, deleted...)
+	}
 	_ = a.db.UpdateJobProgress(id, 0, int64(len(quick.ChangedFiles)), "Processing changed files")
 	result, err := a.scanner.ProcessChanges(quick.ChangedFiles)
 	if err != nil {
@@ -214,17 +296,26 @@ func (a *API) jobEventsV2(w http.ResponseWriter, r *http.Request) {
 	lastPayload := ""
 	for {
 		select {
-		case <-r.Context().Done(): return
+		case <-r.Context().Done():
+			return
 		case <-ticker.C:
 			jobs, err := a.db.ListJobs(100, "")
-			if err != nil { continue }
+			if err != nil {
+				continue
+			}
 			payload, err := json.Marshal(map[string]any{"jobs": jobs})
-			if err != nil || string(payload) == lastPayload { continue }
+			if err != nil || string(payload) == lastPayload {
+				continue
+			}
 			lastPayload = string(payload)
-			if _, err := fmt.Fprintf(w, "event: jobs\ndata: %s\n\n", payload); err != nil { return }
+			if _, err := fmt.Fprintf(w, "event: jobs\ndata: %s\n\n", payload); err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-heartbeat.C:
-			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil { return }
+			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 		}
 	}
