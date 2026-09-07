@@ -40,6 +40,7 @@
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 11 | Complete | `go test ./internal/analysis` | Extended the production WAV stream to IEEE float32 in addition to PCM16, preserving bounded reads and normalized samples. Tests prove float32 decode behavior; other sample widths, Plex, and non-WAV codecs remain explicit future work. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 12 | Complete | `go test ./internal/analysis` | Registered the existing Apache-2.0 pure-Go `go-mp3` decoder behind the common PCM stream, including cancellation checks, stereo PCM16 normalization, and malformed-input rejection. Vorbis/FLAC/Plex/resampling composition remain. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 13 | Complete | `go test ./internal/analysis` | Registered the existing MIT pure-Go Ogg/Vorbis decoder behind the common PCM stream with source-owned closure and geometry validation. Tests retain the hard `.opus` unsupported boundary; FLAC/Plex/resampling composition remain. |
+| 2026-09-07 | `analysis/tempo-v1` | Phase 2, Slice 1 | Complete | `go test ./internal/analysis/tempo` | Promoted the Phase 0 onset-interval baseline into a versioned backend tempo-candidate package. It returns fractional BPM or explicit unknown, preserves a future alternate-candidate field, and passes fractional synthetic/silence tests. Corpus accuracy, confidence calibration, and job integration remain. |
 
 ---
 
