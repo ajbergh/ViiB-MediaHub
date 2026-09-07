@@ -20,6 +20,19 @@ func TestGenerateWaveformDefersFormatsHandledByTheBrowser(t *testing.T) {
 	}
 }
 
+func TestGenerateWaveformReportsOpusSeparatelyFromVorbis(t *testing.T) {
+	t.Parallel()
+
+	_, opusErr := generateWaveform(filepath.Join(t.TempDir(), "track.opus"))
+	if !errors.Is(opusErr, errClientWaveformRequired) || !strings.Contains(opusErr.Error(), "opus format") {
+		t.Fatalf("Opus error = %v, want distinct opus client-generation marker", opusErr)
+	}
+	_, vorbisErr := generateWaveform(filepath.Join(t.TempDir(), "track.ogg"))
+	if !errors.Is(vorbisErr, errClientWaveformRequired) || !strings.Contains(vorbisErr.Error(), "ogg/vorbis format") {
+		t.Fatalf("Vorbis error = %v, want distinct Ogg/Vorbis client-generation marker", vorbisErr)
+	}
+}
+
 func TestGenerateWaveformNormalizesMP3Extension(t *testing.T) {
 	t.Parallel()
 

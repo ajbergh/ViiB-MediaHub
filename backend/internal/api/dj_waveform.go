@@ -188,10 +188,14 @@ func generateWaveform(filePath string) (*db.DJWaveform, error) {
 	switch ext {
 	case ".mp3":
 		return generateMP3Waveform(filePath)
-	case ".ogg", ".oga", ".opus":
-		// OGG Vorbis/Opus not yet supported server-side
+	case ".ogg", ".oga":
+		// Ogg Vorbis is not yet supported server-side.
 		// Client will use Web Audio API for waveform generation
 		return nil, fmt.Errorf("%w: ogg/vorbis format", errClientWaveformRequired)
+	case ".opus":
+		// Opus is a distinct codec; do not imply that the Vorbis path can decode it.
+		// Client will use Web Audio API for waveform generation.
+		return nil, fmt.Errorf("%w: opus format", errClientWaveformRequired)
 	case ".flac":
 		// FLAC not yet supported server-side
 		return nil, fmt.Errorf("%w: flac format", errClientWaveformRequired)
