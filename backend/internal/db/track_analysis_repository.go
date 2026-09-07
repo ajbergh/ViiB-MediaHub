@@ -4,7 +4,34 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 )
+
+// TrackAnalysisArtifact stores a versioned opaque payload such as a beat grid.
+type TrackAnalysisArtifact struct {
+	ID               string
+	SongID           string
+	Kind             string
+	FormatVersion    int
+	AlgorithmVersion string
+	Encoding         string
+	Data             []byte
+	CreatedAt        int64
+}
+
+// TrackAnalysisOverride records explicit user choices independently of
+// measured facts, so re-analysis never overwrites a locked value.
+type TrackAnalysisOverride struct {
+	SongID             string
+	BPM                *float64
+	KeyTonic           *int
+	KeyMode            *string
+	BeatgridArtifactID *string
+	BPMLocked          bool
+	KeyLocked          bool
+	BeatgridLocked     bool
+	UpdatedAt          int64
+}
 
 const (
 	TrackAnalysisPending     = "pending"
@@ -110,6 +137,90 @@ func (d *DB) TrackAnalysisStale(songID, sourceFingerprint string) (bool, error) 
 	return analysis.SourceFingerprint != sourceFingerprint, nil
 }
 
+// UpsertTrackAnalysisArtifact stores a compact versioned artifact. Its unique
+// key replaces only the same kind/format/algorithm representation.
+func (d *DB) UpsertTrackAnalysisArtifact(artifact TrackAnalysisArtifact) error {
+	if artifact.ID == "" || artifact.SongID == "" || artifact.Kind == "" || artifact.FormatVersion <= 0 || artifact.AlgorithmVersion == "" || artifact.Encoding == "" || len(artifact.Data) == 0 {
+		return errors.New("track analysis artifact requires identity, version, encoding, and data")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	if artifact.CreatedAt == 0 {
+		artifact.CreatedAt = time.Now().UnixMilli()
+	}
+	_, err := d.conn.Exec(`INSERT INTO track_analysis_artifacts(id, song_id, kind, format_version, algorithm_version, encoding, data, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(song_id, kind, format_version, algorithm_version) DO UPDATE SET
+			id=excluded.id, encoding=excluded.encoding, data=excluded.data, created_at=excluded.created_at`,
+		artifact.ID, artifact.SongID, artifact.Kind, artifact.FormatVersion, artifact.AlgorithmVersion, artifact.Encoding, artifact.Data, artifact.CreatedAt)
+	return err
+}
+
+// GetTrackAnalysisArtifact returns the requested persisted representation.
+func (d *DB) GetTrackAnalysisArtifact(songID, kind string, formatVersion int, algorithmVersion string) (TrackAnalysisArtifact, error) {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return TrackAnalysisArtifact{}, err
+	}
+	var artifact TrackAnalysisArtifact
+	err := d.conn.QueryRow(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, data, created_at
+		FROM track_analysis_artifacts WHERE song_id = ? AND kind = ? AND format_version = ? AND algorithm_version = ?`, songID, kind, formatVersion, algorithmVersion).
+		Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Data, &artifact.CreatedAt)
+	return artifact, err
+}
+
+// UpsertTrackAnalysisOverride persists manual values and their independent
+// locks. Supplying a zero UpdatedAt assigns the write time.
+func (d *DB) UpsertTrackAnalysisOverride(override TrackAnalysisOverride) error {
+	if override.SongID == "" {
+		return errors.New("track analysis override requires song ID")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	if override.UpdatedAt == 0 {
+		override.UpdatedAt = time.Now().UnixMilli()
+	}
+	_, err := d.conn.Exec(`INSERT INTO track_analysis_overrides(song_id, bpm, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(song_id) DO UPDATE SET bpm=excluded.bpm, key_tonic=excluded.key_tonic,
+			key_mode=excluded.key_mode, beatgrid_artifact_id=excluded.beatgrid_artifact_id,
+			bpm_locked=excluded.bpm_locked, key_locked=excluded.key_locked,
+			beatgrid_locked=excluded.beatgrid_locked, updated_at=excluded.updated_at`,
+		override.SongID, override.BPM, override.KeyTonic, override.KeyMode, override.BeatgridArtifactID,
+		boolToInt(override.BPMLocked), boolToInt(override.KeyLocked), boolToInt(override.BeatgridLocked), override.UpdatedAt)
+	return err
+}
+
+// GetTrackAnalysisOverride returns a song's manual analysis choices.
+func (d *DB) GetTrackAnalysisOverride(songID string) (TrackAnalysisOverride, error) {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return TrackAnalysisOverride{}, err
+	}
+	var result TrackAnalysisOverride
+	var bpm sql.NullFloat64
+	var keyTonic sql.NullInt64
+	var keyMode, artifactID sql.NullString
+	var bpmLocked, keyLocked, gridLocked int
+	err := d.conn.QueryRow(`SELECT song_id, bpm, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
+		FROM track_analysis_overrides WHERE song_id = ?`, songID).
+		Scan(&result.SongID, &bpm, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt)
+	if err != nil {
+		return TrackAnalysisOverride{}, err
+	}
+	result.BPM = optionalFloat64(bpm)
+	if keyTonic.Valid {
+		value := int(keyTonic.Int64)
+		result.KeyTonic = &value
+	}
+	result.KeyMode = optionalString(keyMode)
+	result.BeatgridArtifactID = optionalString(artifactID)
+	result.BPMLocked = bpmLocked != 0
+	result.KeyLocked = keyLocked != 0
+	result.BeatgridLocked = gridLocked != 0
+	return result, nil
+}
+
 type trackAnalysisScanner interface{ Scan(dest ...any) error }
 
 func scanTrackAnalysis(row trackAnalysisScanner) (TrackAnalysis, error) {
@@ -171,6 +282,13 @@ func optionalFloat64(value sql.NullFloat64) *float64 {
 	}
 	result := value.Float64
 	return &result
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func validateTrackAnalysis(analysis TrackAnalysis) error {

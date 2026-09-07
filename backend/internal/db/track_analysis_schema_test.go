@@ -103,3 +103,30 @@ func TestTrackAnalysisRepositoryPersistsAndDetectsSourceChanges(t *testing.T) {
 		t.Fatalf("missing analysis stale = %t, %v; want true, nil", missing, err)
 	}
 }
+
+func TestTrackAnalysisArtifactAndOverrideRepositories(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.conn.Exec(`INSERT INTO songs(id, title, artist, album, file_path, added_at) VALUES ('song', 'Song', 'Artist', 'Album', 'song.mp3', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysisArtifact(TrackAnalysisArtifact{ID: "grid-v1", SongID: "song", Kind: "beatgrid", FormatVersion: 1, AlgorithmVersion: "grid-v1", Encoding: "binary-v1", Data: []byte{1, 2, 3}}); err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := database.GetTrackAnalysisArtifact("song", "beatgrid", 1, "grid-v1")
+	if err != nil || artifact.ID != "grid-v1" || string(artifact.Data) != string([]byte{1, 2, 3}) {
+		t.Fatalf("artifact = %#v, %v", artifact, err)
+	}
+	bpm, tonic := 127.5, 2
+	mode := "minor"
+	if err := database.UpsertTrackAnalysisOverride(TrackAnalysisOverride{SongID: "song", BPM: &bpm, KeyTonic: &tonic, KeyMode: &mode, BeatgridArtifactID: &artifact.ID, BPMLocked: true, KeyLocked: true, BeatgridLocked: true}); err != nil {
+		t.Fatal(err)
+	}
+	override, err := database.GetTrackAnalysisOverride("song")
+	if err != nil || override.BPM == nil || *override.BPM != bpm || override.KeyTonic == nil || *override.KeyTonic != tonic || !override.BPMLocked || !override.KeyLocked || !override.BeatgridLocked {
+		t.Fatalf("override = %#v, %v", override, err)
+	}
+}
