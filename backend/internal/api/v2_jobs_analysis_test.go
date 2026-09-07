@@ -269,8 +269,11 @@ func TestAnalyzeTracksJobsStayWithinWorkerBound(t *testing.T) {
 				t.Fatalf("%d jobs running at once, want at most %d", len(running), bound)
 			}
 		}
-		queued, err := database.ListJobs(500, db.JobStatusQueued)
-		if err == nil && len(queued) == 0 && len(running) == 0 {
+		// Do not combine independent queued/running snapshots as a completion
+		// signal. A worker can claim a job between those reads, yielding an
+		// impossible-looking zero/zero observation while that job is running.
+		succeeded, err := database.ListJobs(500, db.JobStatusSucceeded)
+		if err == nil && len(succeeded) == submitted {
 			break
 		}
 		time.Sleep(2 * time.Millisecond)
