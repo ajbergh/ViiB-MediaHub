@@ -23,6 +23,8 @@ type PCMFixture struct {
 type ExpectedAnalysis struct {
 	BPM       *float64 `json:"bpm,omitempty"`
 	TonicHz   *float64 `json:"tonicHz,omitempty"`
+	Key       string   `json:"key,omitempty"`
+	IsDynamic bool     `json:"isDynamic,omitempty"`
 	IsUnknown bool     `json:"isUnknown"`
 }
 

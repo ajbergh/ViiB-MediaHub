@@ -38,6 +38,58 @@ func TestNewClickTrackRejectsInvalidParameters(t *testing.T) {
 	}
 }
 
+func TestPhase0SyntheticFixturesCoverRoadmapScenariosDeterministically(t *testing.T) {
+	fixtures, err := Phase0SyntheticFixtures()
+	if err != nil {
+		t.Fatalf("Phase0SyntheticFixtures() error = %v", err)
+	}
+	if len(fixtures) != 35 {
+		t.Fatalf("fixture count = %d, want 35", len(fixtures))
+	}
+	byName := make(map[string]PCMFixture, len(fixtures))
+	triads := 0
+	for _, fixture := range fixtures {
+		byName[fixture.Name] = fixture
+		if fixture.Kind == "additive-triad" {
+			triads++
+			if fixture.Expected.Key == "" {
+				t.Fatalf("triad %q has no expected key", fixture.Name)
+			}
+		}
+	}
+	if triads != 24 {
+		t.Fatalf("triad count = %d, want all 24 major/minor keys", triads)
+	}
+	if !byName["tempo-ramp-110-130"].Expected.IsDynamic || byName["tempo-ramp-110-130"].Expected.BPM != nil {
+		t.Fatal("tempo ramp must not claim one static BPM")
+	}
+	quiet := byName["quiet-intro-122"]
+	for _, sample := range quiet.Samples[:2*quiet.SampleRate*quiet.Channels] {
+		if sample != 0 {
+			t.Fatal("quiet intro contains non-silent PCM")
+		}
+	}
+	noisyAgain, err := NewNoisyClickTrack("noisy-126", 126, 8, 44100, 2, 0.06)
+	if err != nil {
+		t.Fatalf("regenerate noisy fixture: %v", err)
+	}
+	if !bytes.Equal(float32Bytes(t, byName["noisy-126"].Samples), float32Bytes(t, noisyAgain.Samples)) {
+		t.Fatal("noisy fixture is not deterministic")
+	}
+}
+
+func TestExtendedFixtureConstructorsValidateArguments(t *testing.T) {
+	if _, err := NewMissingBeatClickTrack("bad", 120, 1, 44100, 2, 1); err == nil {
+		t.Fatal("NewMissingBeatClickTrack accepted missingEvery=1")
+	}
+	if _, err := NewTempoRampClickTrack("bad", 0, 120, 1, 44100, 2); err == nil {
+		t.Fatal("NewTempoRampClickTrack accepted zero start BPM")
+	}
+	if _, err := NewTriad("bad", 12, false, 1, 44100, 2, 440); err == nil {
+		t.Fatal("NewTriad accepted out-of-range tonic")
+	}
+}
+
 func TestInspectWAVReadsPCMGeometryWithoutReadingPayload(t *testing.T) {
 	payload := make([]byte, 16) // four stereo 16-bit frames
 	wav := makeWAV(t, 1, 2, 44100, 16, payload)

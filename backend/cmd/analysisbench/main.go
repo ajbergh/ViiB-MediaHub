@@ -44,7 +44,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	fixtures, err := analysisbench.DefaultFixtures()
+	fixtures, err := analysisbench.Phase0SyntheticFixtures()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysisbench: build fixtures: %v\n", err)
 		os.Exit(1)
