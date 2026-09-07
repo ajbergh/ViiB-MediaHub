@@ -15,6 +15,7 @@ func TestCompareSeparatesStrictMetricalHalfDoubleAndUnknownTempo(t *testing.T) {
 			track("strict", SplitHeldOut, 128, []float64{64, 128}, "C major"),
 			track("half-double", SplitHeldOut, 140, []float64{140}, "A minor"),
 			track("unknown", SplitHeldOut, 100, nil, "D minor"),
+			{ID: "must-be-unknown", Path: "fixture:must-be-unknown", License: "generated", Genre: "silence", Split: SplitHeldOut, ExpectedUnknown: true},
 			track("tuning-only", SplitTuning, 120, nil, "F major"),
 		},
 	}
@@ -37,7 +38,10 @@ func TestCompareSeparatesStrictMetricalHalfDoubleAndUnknownTempo(t *testing.T) {
 	if report.Key.Labeled != 3 || report.Key.Reported != 2 || report.Key.Exact != 1 || report.Key.CamelotCompatible != 2 || report.Key.Unknown != 1 {
 		t.Fatalf("key report = %+v", report.Key)
 	}
-	if report.Corpus.Phase0Ready || report.Corpus.Tracks != 4 || report.Corpus.HeldOutTracks != 3 {
+	if report.Unknown.Labeled != 1 || report.Unknown.Correct != 1 || report.Unknown.Incorrect != 0 {
+		t.Fatalf("unknown report = %+v", report.Unknown)
+	}
+	if report.Corpus.Phase0Ready || report.Corpus.Tracks != 5 || report.Corpus.HeldOutTracks != 4 {
 		t.Fatalf("corpus coverage = %+v, want a visible non-ready small corpus", report.Corpus)
 	}
 }

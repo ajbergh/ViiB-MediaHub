@@ -35,6 +35,7 @@ type CorpusTrack struct {
 	ExpectedBPM       *float64  `json:"expectedBpm,omitempty"`
 	AcceptedMetricBPM []float64 `json:"acceptedMetricBpm,omitempty"`
 	ExpectedKey       string    `json:"expectedKey,omitempty"`
+	ExpectedUnknown   bool      `json:"expectedUnknown,omitempty"`
 	Notes             string    `json:"notes,omitempty"`
 }
 
@@ -62,6 +63,17 @@ type ComparisonReport struct {
 	Corpus    CorpusCoverage `json:"corpus"`
 	Tempo     TempoMetrics   `json:"tempo"`
 	Key       KeyMetrics     `json:"key"`
+	Unknown   UnknownMetrics `json:"unknown"`
+}
+
+// UnknownMetrics evaluates fixtures that must not produce a credible-looking
+// result, such as silence. This is distinct from the unknown rate on labeled
+// music, where an unknown output is a missed result rather than success.
+type UnknownMetrics struct {
+	Labeled   int      `json:"labeled"`
+	Correct   int      `json:"correct"`
+	Incorrect int      `json:"incorrect"`
+	Accuracy  *float64 `json:"accuracy,omitempty"`
 }
 
 // CorpusCoverage makes it impossible for a tiny smoke-test manifest to look
@@ -169,8 +181,11 @@ func (manifest CorpusManifest) Validate() error {
 				return fmt.Errorf("%s has invalid accepted metric BPM", context)
 			}
 		}
-		if track.ExpectedBPM == nil && strings.TrimSpace(track.ExpectedKey) == "" {
-			return fmt.Errorf("%s requires an expected BPM or key", context)
+		if track.ExpectedUnknown && (track.ExpectedBPM != nil || strings.TrimSpace(track.ExpectedKey) != "") {
+			return fmt.Errorf("%s cannot combine expected unknown with BPM or key labels", context)
+		}
+		if !track.ExpectedUnknown && track.ExpectedBPM == nil && strings.TrimSpace(track.ExpectedKey) == "" {
+			return fmt.Errorf("%s requires an expected BPM, key, or unknown label", context)
 		}
 		if strings.TrimSpace(track.ExpectedKey) != "" {
 			if _, err := parseKey(track.ExpectedKey); err != nil {
@@ -233,6 +248,14 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 			continue
 		}
 		result, present := results[track.ID]
+		if track.ExpectedUnknown {
+			report.Unknown.Labeled++
+			if !present || (result.BPM == nil && (strings.TrimSpace(result.Key) == "" || strings.EqualFold(strings.TrimSpace(result.Key), "unknown"))) {
+				report.Unknown.Correct++
+			} else {
+				report.Unknown.Incorrect++
+			}
+		}
 		if track.ExpectedBPM != nil {
 			report.Tempo.Labeled++
 			if !present || result.BPM == nil {
@@ -273,6 +296,7 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 	report.Key.ExactAccuracy = percentage(report.Key.Exact, report.Key.Labeled)
 	report.Key.CompatibleRate = percentage(report.Key.CamelotCompatible, report.Key.Labeled)
 	report.Key.UnknownRate = percentage(report.Key.Unknown, report.Key.Labeled)
+	report.Unknown.Accuracy = percentage(report.Unknown.Correct, report.Unknown.Labeled)
 	return report, nil
 }
 

@@ -1,0 +1,8 @@
+{
+  "algorithm": "synthetic-reference",
+  "results": [
+    {"id": "click-120", "bpm": 120.0, "confidence": 1.0},
+    {"id": "click-128.5", "bpm": 128.5, "confidence": 1.0},
+    {"id": "silence"}
+  ]
+}
