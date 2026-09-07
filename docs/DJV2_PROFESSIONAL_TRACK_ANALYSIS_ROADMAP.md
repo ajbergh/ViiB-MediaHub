@@ -38,6 +38,7 @@
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 9 | Complete | `go test ./internal/analysis` | Connected canonical local source resolution, decoder selection, and stereo-aware downmix in one bounded `StreamLocalMono` service path. An integration test proves a catalog song reaches a mono PCM consumer without retaining the entire file. Resampling composition, STFT, Plex, and additional codecs remain. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 10 | Complete | `go test ./internal/analysis` | Added a deterministic Hann-window, radix-2 STFT adapter using the Phase 0 internal FFT baseline. It validates power-of-two geometry and exposes overlapping non-redundant spectra to future tempo/key consumers; streaming overlap composition, Plex, and additional codecs remain. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 11 | Complete | `go test ./internal/analysis` | Extended the production WAV stream to IEEE float32 in addition to PCM16, preserving bounded reads and normalized samples. Tests prove float32 decode behavior; other sample widths, Plex, and non-WAV codecs remain explicit future work. |
+| 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 12 | Complete | `go test ./internal/analysis` | Registered the existing Apache-2.0 pure-Go `go-mp3` decoder behind the common PCM stream, including cancellation checks, stereo PCM16 normalization, and malformed-input rejection. Vorbis/FLAC/Plex/resampling composition remain. |
 
 ---
 

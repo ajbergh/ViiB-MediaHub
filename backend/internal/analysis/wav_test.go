@@ -43,6 +43,13 @@ func TestDefaultDecoderRegistrySupportsOnlyWAVPCM16(t *testing.T) {
 	}
 }
 
+func TestMP3DecoderRejectsMalformedInput(t *testing.T) {
+	_, err := MP3Decoder{}.Open(context.Background(), io.NopCloser(bytes.NewReader([]byte("not an mp3"))))
+	if err == nil {
+		t.Fatal("malformed MP3 accepted")
+	}
+}
+
 func TestWAVPCM16DecoderAlsoStreamsIEEEFloat32(t *testing.T) {
 	decoder := WAVPCM16Decoder{}
 	stream, err := decoder.Open(context.Background(), io.NopCloser(bytes.NewReader(makeFloat32WAV(t, 1, 22050, []float32{-.5, .25}))))

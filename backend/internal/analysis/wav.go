@@ -32,6 +32,7 @@ func (WAVPCM16Decoder) Open(ctx context.Context, source io.ReadCloser) (PCMStrea
 func NewDefaultDecoderRegistry() *DecoderRegistry {
 	registry := NewDecoderRegistry()
 	_ = registry.Register([]string{".wav", ".wave"}, WAVPCM16Decoder{})
+	_ = registry.Register([]string{".mp3"}, MP3Decoder{})
 	return registry
 }
 
