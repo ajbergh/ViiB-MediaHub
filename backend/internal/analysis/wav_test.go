@@ -1,0 +1,71 @@
+package analysis
+
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"io"
+	"math"
+	"testing"
+)
+
+func TestWAVPCM16DecoderStreamsNormalizedSamples(t *testing.T) {
+	samples := []int16{math.MinInt16, 0, math.MaxInt16, 16384}
+	decoder := WAVPCM16Decoder{}
+	stream, err := decoder.Open(context.Background(), io.NopCloser(bytes.NewReader(makePCM16WAV(t, 1, 44100, samples))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if stream.Info() != (PCMInfo{SampleRate: 44100, Channels: 1}) {
+		t.Fatalf("info = %#v", stream.Info())
+	}
+	out := make([]float32, 3)
+	n, err := stream.Read(context.Background(), out)
+	if n != 3 || err != nil || out[0] != -1 || out[1] != 0 || out[2] <= .9999 {
+		t.Fatalf("first read = %d, %v, %#v", n, err, out)
+	}
+	n, err = stream.Read(context.Background(), out)
+	if n != 1 || err != io.EOF || math.Abs(float64(out[0]-.5)) > .0001 {
+		t.Fatalf("last read = %d, %v, %#v", n, err, out)
+	}
+}
+
+func TestDefaultDecoderRegistrySupportsOnlyWAVPCM16(t *testing.T) {
+	registry := NewDefaultDecoderRegistry()
+	stream, err := registry.Open(context.Background(), "track.WAVE", io.NopCloser(bytes.NewReader(makePCM16WAV(t, 2, 48000, []int16{0, 0}))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream.Close()
+	if _, err := registry.Open(context.Background(), "track.flac", io.NopCloser(bytes.NewReader(nil))); err != ErrUnsupportedCodec {
+		t.Fatalf("flac open error = %v", err)
+	}
+}
+
+func makePCM16WAV(t *testing.T, channels, sampleRate int, samples []int16) []byte {
+	t.Helper()
+	var payload bytes.Buffer
+	for _, sample := range samples {
+		if err := binary.Write(&payload, binary.LittleEndian, sample); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var result bytes.Buffer
+	result.WriteString("RIFF")
+	if err := binary.Write(&result, binary.LittleEndian, uint32(36+payload.Len())); err != nil {
+		t.Fatal(err)
+	}
+	result.WriteString("WAVEfmt ")
+	for _, value := range []any{uint32(16), uint16(1), uint16(channels), uint32(sampleRate), uint32(sampleRate * channels * 2), uint16(channels * 2), uint16(16)} {
+		if err := binary.Write(&result, binary.LittleEndian, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result.WriteString("data")
+	if err := binary.Write(&result, binary.LittleEndian, uint32(payload.Len())); err != nil {
+		t.Fatal(err)
+	}
+	result.Write(payload.Bytes())
+	return result.Bytes()
+}
