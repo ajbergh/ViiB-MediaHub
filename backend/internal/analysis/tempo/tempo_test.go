@@ -79,3 +79,77 @@ func TestEstimateLocalSongStreamsCanonicalWAV(t *testing.T) {
 		t.Fatalf("estimate=%#v source=%#v err=%v", estimate, source, err)
 	}
 }
+
+func TestAnalyzeAndPersistLocalSongKeepsMeasuredTempoSeparateFromLegacyBPM(t *testing.T) {
+	fixture, err := analysisbench.NewClickTrack("song", 126, 8, 22050, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wav bytes.Buffer
+	if err := analysisbench.WriteWAVPCM16(&wav, fixture); err != nil {
+		t.Fatal(err)
+	}
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	path := filepath.Join(t.TempDir(), "song.wav")
+	if err := os.WriteFile(path, wav.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: path, AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdateSongMood("song", "", "", "", 120, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AnalyzeAndPersistLocalSong(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "song", 1); err != nil {
+		t.Fatal(err)
+	}
+	record, err := database.GetTrackAnalysis("song")
+	if err != nil || record.Status != db.TrackAnalysisComplete || record.BPM == nil || math.Abs(*record.BPM-126) > .5 || record.BPMSource == nil || *record.BPMSource != "measured" {
+		t.Fatalf("record=%#v err=%v", record, err)
+	}
+	songs, err := database.GetSongsByIDs([]string{"song"})
+	if err != nil || len(songs) != 1 || songs[0].BPM != 120 {
+		t.Fatalf("legacy songs=%#v err=%v", songs, err)
+	}
+}
+
+func TestAnalyzeAndPersistLocalSongRecordsPartialStatusForSilence(t *testing.T) {
+	fixture, err := analysisbench.NewSilence("silent", 4, 22050, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wav bytes.Buffer
+	if err := analysisbench.WriteWAVPCM16(&wav, fixture); err != nil {
+		t.Fatal(err)
+	}
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	path := filepath.Join(t.TempDir(), "silent.wav")
+	if err := os.WriteFile(path, wav.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSong(&db.Song{ID: "silent", Title: "Silence", Artist: "Artist", Album: "Album", FilePath: path, AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	estimate, err := AnalyzeAndPersistLocalSong(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "silent", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if estimate.Known {
+		t.Fatalf("expected unknown estimate for silence, got %#v", estimate)
+	}
+	record, err := database.GetTrackAnalysis("silent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Status != db.TrackAnalysisPartial || record.BPM != nil || record.TempoKind == nil || *record.TempoKind != "unknown" {
+		t.Fatalf("record=%#v", record)
+	}
+}
