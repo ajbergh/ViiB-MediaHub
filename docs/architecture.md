@@ -46,7 +46,7 @@ Long-running library work runs as a persisted job in the `operation_jobs` table 
 create / retry / resume ──> queued ──> atomic claim ──> running ──> succeeded
                               ▲                            │            failed
                          requeue on yield                  └──> canceling ──> canceled
-                              │                            
+                              │
                             paused ◄── pause                     restart ──> interrupted
 ```
 
