@@ -1,6 +1,6 @@
 # DJv2 Professional Track Analysis & Harmonic Mixing Roadmap
 
-**Status:** In progress — Phase 0 (benchmark harness, comparator, and synthetic corpus)
+**Status:** Implementation stack landed through Phase 4b; Phase 0 corpus/codec acceptance gate remains open before Phase 5
 **Scope:** DJv2 / professional DJ workflow only  
 **Research snapshot:** 2026-09-06  
 **Repository verification snapshot:** commit `3359371`, branch `main`  
@@ -11,6 +11,8 @@
 > This document is a research and implementation plan, not a claim that the described future functionality is already implemented. Sections labeled **Verified current state** describe behavior confirmed in the repository as of the verification snapshot, with `file:line` evidence recorded in §2.0. Sections labeled **Proposed** describe future design.
 
 > **Reader's note on trust.** Every current-state claim in §2 was re-checked against the tree at commit `3359371`. §2.0 is the evidence ledger; §2.3 records the assumptions that survived challenge and the ones that did not. If you are picking this up to implement, read §2.0, §2.3, and Phase 0 first — they contain the corrections that change scope.
+
+> **Delivery status (2026-09-07).** The reviewed implementation stack — Phase 0 harness ([#36](https://github.com/ajbergh/ViiB-MediaHub/pull/36)), Phase 1 foundation ([#38](https://github.com/ajbergh/ViiB-MediaHub/pull/38)), Phase 2 tempo ([#39](https://github.com/ajbergh/ViiB-MediaHub/pull/39)), Phase 3 key ([#40](https://github.com/ajbergh/ViiB-MediaHub/pull/40)), Phase 4a scheduler ([#37](https://github.com/ajbergh/ViiB-MediaHub/pull/37)), and Phase 4b analysis lifecycle ([#41](https://github.com/ajbergh/ViiB-MediaHub/pull/41)) — is squash-merged. This does **not** close the Phase 0 professional-quality gate: a lawful labeled corpus, external/browser baseline comparison, codec spikes, and held-out accuracy/confidence results remain required before user-visible Phase 5 work.
 
 ### Implementation progress
 
@@ -47,6 +49,7 @@
 | 2026-09-07 | `analysis/tempo-v1` | Phase 2, Slice 5 | Complete | `go test ./internal/analysis/tempo` | Added configurable BPM range presets (`RangeAutomatic`, `Range60to120`, `Range70to140`, `Range80to160`, `Range100to200`, `RangeCustom`), runner-up metrical alternate candidate selection, and cluster-based tempo stability scoring. Steady tracks persist as `static` with `bpm_alt_candidate` and high stability; tempo ramps classify as `dynamic-candidate`. Corpus accuracy and job integration remain. |
 | 2026-09-07 | `analysis/key-v1` | Phase 3, Slice 1 | Complete | `go test ./internal/analysis/key` | Implemented production musical key analysis package using Hann-windowed STFT chromagram extraction and 24-key Krumhansl-Schmuckler profile correlation. Added canonical tonic/mode modeling, closed-form Camelot and Open Key mappings, and harmonic compatibility classification. All 24 synthetic triads pass with exact key detection, and silence returns explicit unknown. Benchmark measured 3.2 ms per 1.5s triad (~470× real-time) on AMD Ryzen 5 3600. |
 | 2026-09-07 | `analysis/key-v1` | Phase 3, Slice 2 | Complete | `go test ./internal/analysis/key` | Added canonical local-song key estimation and durable `track_analysis` persistence. Populates tonic, mode, confidence, Camelot, and Open Key without mutating legacy metadata, preserves pre-existing tempo analysis on matching source fingerprints, and records partial status for silent/unanalyzable audio. Opened dependent draft PR [#40](https://github.com/ajbergh/ViiB-MediaHub/pull/40). Job integration remains. |
+| 2026-09-07 | `main` | Squash-merge delivery | Complete | Reviewed CI matrices green before merge; final integration rebased onto the landed stack | Squash-merged [#36](https://github.com/ajbergh/ViiB-MediaHub/pull/36), [#38](https://github.com/ajbergh/ViiB-MediaHub/pull/38), [#37](https://github.com/ajbergh/ViiB-MediaHub/pull/37), [#39](https://github.com/ajbergh/ViiB-MediaHub/pull/39), [#40](https://github.com/ajbergh/ViiB-MediaHub/pull/40), and [#41](https://github.com/ajbergh/ViiB-MediaHub/pull/41) in dependency order. The next delivery is Phase 0 evidence, not Phase 5 UX. |
 
 ---
 
@@ -2803,22 +2806,28 @@ Existing dependencies confirmed present in [`backend/go.mod`](../backend/go.mod)
 
 Keep implementation PRs reviewable. Suggested sequence after this roadmap:
 
-| # | Branch | Phase | Notes |
+| # | Branch | Phase | Status / notes |
 |---|---|---|---|
-| 1 | `analysis/phase0-benchmarks-and-codec-matrix` | 0 | Includes the wazero/WASM decode spike alongside the pure-Go AAC spike |
-| 2 | `analysis/foundation-pcm-dsp-persistence` | 1 | Greenfield `backend/internal/analysis/`; schema + decoder registry + resolver |
-| 3 | `jobs/durable-scheduler` | 4a | **Split out and land early.** General `operation_jobs` dispatcher: dequeue loop, worker pool, `priority`, single-flight claim, pause. Migrates existing scan jobs. Independent of any analyzer, so it can proceed in parallel with PRs 4–5 and de-risks the critical path |
-| 4 | `analysis/tempo-v1` | 2 | Parallelizable with PR 5 |
-| 5 | `analysis/key-v1` | 3 | Parallelizable with PR 4 |
-| 6 | `analysis/library-jobs` | 4b | Analysis job types, selection expansion, auto-analyze hooks, throttle. Depends on PR 3 |
-| 7 | `djv2/persistent-analysis-library-ux` | 5 | First user-visible value. Includes the `setDeckAnalysis` split (§2.3-F) |
+| 1 | `analysis/phase0-benchmarks-and-codec-matrix` | 0 | **Merged as [#36](https://github.com/ajbergh/ViiB-MediaHub/pull/36).** Harness infrastructure landed; corpus, browser-baseline, and codec acceptance evidence remain open. |
+| 2 | `analysis/foundation-pcm-dsp-persistence` | 1 | **Merged as [#38](https://github.com/ajbergh/ViiB-MediaHub/pull/38).** Greenfield `backend/internal/analysis/`; schema, decoder registry, and resolver landed. |
+| 3 | `jobs/durable-scheduler` | 4a | **Merged as [#37](https://github.com/ajbergh/ViiB-MediaHub/pull/37).** General `operation_jobs` dispatcher, bounded workers, priority, single-flight claim, pause, and migrated scan jobs. |
+| 4 | `analysis/tempo-v1` | 2 | **Merged as [#39](https://github.com/ajbergh/ViiB-MediaHub/pull/39).** Implementation landed; held-out corpus accuracy and confidence calibration remain open. |
+| 5 | `analysis/key-v1` | 3 | **Merged as [#40](https://github.com/ajbergh/ViiB-MediaHub/pull/40).** Implementation landed; held-out corpus/profile and confidence work remain open. |
+| 6 | `analysis/library-jobs` | 4b | **Merged as [#41](https://github.com/ajbergh/ViiB-MediaHub/pull/41).** Analysis job types, selection expansion, auto-analyze hooks, playback throttle, scale test, and library controls landed. |
+| 7 | `djv2/persistent-analysis-library-ux` | 5 | **Not started; blocked by Phase 0 evidence.** First user-visible value, including the `setDeckAnalysis` split (§2.3-F). Do not begin until the corpus/accuracy gate is recorded. |
 | 8 | `analysis/beatgrid-downbeat-v1` | 6 | |
 | 9 | `djv2/beatgrid-editor-sync-integration` | 6 | |
 | 10 | `analysis/energy-structure-v1` | 7 | |
 | 11 | `djv2/transition-recommendations` | 7 | |
 | 12 | `ai-dj/measured-track-features` | 7 | |
 
-Splitting the scheduler (PR 3) out of Phase 4 and landing it early is the single highest-leverage sequencing change available: it is the newly discovered scope, it blocks the first phase that delivers user value, it has no dependency on either analyzer, and it pays for itself by fixing the existing scan jobs.
+### Next steps before Phase 5
+
+1. Build or obtain the lawful private/licensed corpus described in §14.2, including a held-out split and authoritative BPM/key labels.
+2. Run `analysisbench` against the browser baseline and the landed Go analyzers; record strict/accepted BPM, half/double, unknown, exact key, conservative Camelot-compatible key, and confidence-calibration results against §14.6.
+3. Complete the remaining codec decisions/spikes (AAC/M4A, Opus, FLAC, and AIFF ingestion scope), then amend this roadmap with the Phase 0 go/no-go decision. Only then open `djv2/persistent-analysis-library-ux` for persisted DJv2 BPM/key display, filtering, compatibility highlighting, manual corrections, and the `setDeckAnalysis` race fix.
+
+The scheduler split was the critical-path sequencing decision, and it has now landed. The next critical path is evidence rather than feature code: obtain the lawful corpus, measure baseline/detector/codec outcomes on the held-out split, calibrate confidence, and record a go/no-go decision before opening Phase 5.
 
 Each phase PR should update this roadmap's status table and include benchmark deltas. PRs that add a dependency must also update §21 with the exact version and classification.
 

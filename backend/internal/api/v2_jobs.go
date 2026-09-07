@@ -4,6 +4,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -18,8 +19,11 @@ import (
 
 const (
 	maxJobRequestBytes = 64 * 1024
-	minJobPriority     = -100
-	maxJobPriority     = 100
+	// schedulerIdlePollInterval bounds how long durable queued work can wait
+	// when no explicit wake signal arrives.
+	schedulerIdlePollInterval = 30 * time.Second
+	minJobPriority            = -100
+	maxJobPriority            = 100
 )
 
 func schedulerWorkerCount(cpuCount int) int {
@@ -32,6 +36,17 @@ func schedulerWorkerCount(cpuCount int) int {
 	}
 	return workers
 }
+
+// supportedJobTypes is the create allowlist. The dispatch switch in
+// runClaimedJob must stay in step with it.
+var supportedJobTypes = map[string]bool{
+	"full_scan":           true,
+	"quick_scan":          true,
+	"refresh_genre_stats": true,
+	JobTypeAnalyzeTracks:  true,
+}
+
+const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, and " + JobTypeAnalyzeTracks
 
 type createJobRequest struct {
 	Type       string          `json:"type"`
@@ -57,6 +72,7 @@ func (a *API) V2JobRoutes() chi.Router {
 	r.Post("/{id}/retry", a.retryJobV2)
 	r.Post("/pause", a.pauseJobsV2)
 	r.Post("/resume", a.resumeJobsV2)
+	r.Post("/analysis-pressure", a.analysisPressureV2)
 	return r
 }
 
@@ -105,9 +121,17 @@ func (a *API) createJobV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.Type = strings.ToLower(strings.TrimSpace(request.Type))
-	if request.Type != "full_scan" && request.Type != "quick_scan" && request.Type != "refresh_genre_stats" {
-		respondV2Error(w, r, http.StatusBadRequest, "unsupported_job_type", "Supported job types are full_scan, quick_scan, and refresh_genre_stats", false, map[string]any{"type": request.Type})
+	if !supportedJobTypes[request.Type] {
+		respondV2Error(w, r, http.StatusBadRequest, "unsupported_job_type", "Supported job types are "+supportedJobTypeList, false, map[string]any{"type": request.Type})
 		return
+	}
+	if request.Type == JobTypeAnalyzeTracks {
+		// Reject an unexpandable selection before it becomes a durable job row
+		// that can only ever fail.
+		if _, err := db.ParseAnalysisSelection(request.Parameters); err != nil {
+			respondV2Error(w, r, http.StatusBadRequest, "invalid_analysis_selection", err.Error(), false, nil)
+			return
+		}
 	}
 	if request.Priority < minJobPriority || request.Priority > maxJobPriority {
 		respondV2Error(w, r, http.StatusBadRequest, "invalid_job_priority", "Job priority must be between -100 and 100", false, nil)
@@ -165,31 +189,52 @@ func (a *API) retryJobV2(w http.ResponseWriter, r *http.Request) {
 	respondV2JSON(w, http.StatusAccepted, created)
 }
 
-// runJob claims a queued job and performs the requested operation. Cancellation
-// is cooperative for running work and terminal immediately for queued work.
+// wakeJobScheduler starts the bounded worker pool on first use and signals it
+// that claimable work may exist. It is called from concurrent HTTP handlers, so
+// channel creation and pool startup are serialized under jobSchedulerMu and the
+// channel is passed to workers rather than read from the struct.
 func (a *API) wakeJobScheduler() {
-	if a.jobWake == nil {
-		a.jobWake = make(chan struct{}, 1)
-	}
 	workers := schedulerWorkerCount(runtime.NumCPU())
-	a.jobSchedulerOnce.Do(func() {
+	a.jobSchedulerMu.Lock()
+	if a.jobWake == nil {
+		// One slot per worker so a single wake can fan out to the whole pool.
+		a.jobWake = make(chan struct{}, workers)
+	}
+	wake := a.jobWake
+	if !a.jobSchedulerOn {
+		a.jobSchedulerOn = true
 		for i := 0; i < workers; i++ {
-			go a.jobWorker()
+			go a.jobWorker(wake)
 		}
-	})
+		go a.jobSchedulerHeartbeat(wake)
+	}
+	a.jobSchedulerMu.Unlock()
 	for i := 0; i < workers; i++ {
 		select {
-		case a.jobWake <- struct{}{}:
+		case wake <- struct{}{}:
 		default:
 		}
 	}
 }
 
-func (a *API) jobWorker() {
-	for range a.jobWake {
+// jobSchedulerHeartbeat re-polls the durable queue so work is not stranded when
+// a transient database error ends a drain pass between explicit wake signals.
+func (a *API) jobSchedulerHeartbeat(wake chan struct{}) {
+	ticker := time.NewTicker(schedulerIdlePollInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (a *API) jobWorker(wake <-chan struct{}) {
+	for range wake {
 		for {
 			job, err := a.db.ClaimNextQueuedJob("Starting job")
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				break
 			}
 			if err != nil {
@@ -208,6 +253,8 @@ func (a *API) runClaimedJob(job db.Job) {
 		a.runFullScanJob(id)
 	case "quick_scan":
 		a.runQuickScanJob(id)
+	case JobTypeAnalyzeTracks:
+		a.runAnalyzeTracksJob(job)
 	case "refresh_genre_stats":
 		if err := a.db.UpdateGenreStats(); err != nil {
 			_ = a.db.FailJob(id, "genre_stats_failed", err.Error())
@@ -243,6 +290,7 @@ func (a *API) runFullScanJob(id string) {
 		return
 	}
 	_ = a.db.CompleteJob(id, result, fmt.Sprintf("Scan complete: %d new, %d updated, %d removed", result.NewSongs, result.UpdatedSongs, result.RemovedSongs))
+	a.queueAutoAnalysis("a full scan")
 }
 
 func (a *API) runQuickScanJob(id string) {
@@ -272,6 +320,7 @@ func (a *API) runQuickScanJob(id string) {
 		return
 	}
 	_ = a.db.CompleteJob(id, map[string]any{"detection": quick, "result": result}, fmt.Sprintf("Quick scan complete: %d changes", len(quick.ChangedFiles)))
+	a.queueAutoAnalysis("a quick scan")
 }
 
 func (a *API) jobCancellationRequested(id string) bool {

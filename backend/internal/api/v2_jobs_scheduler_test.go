@@ -36,7 +36,7 @@ func TestCreateJobV2PersistsPriority(t *testing.T) {
 	}
 	defer database.Close()
 	api := &API{db: database, jobWake: make(chan struct{}, 2)}
-	api.jobSchedulerOnce.Do(func() {}) // Keep the test request queued for inspection.
+	api.jobSchedulerOn = true // Keep the test request queued for inspection.
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"type":"refresh_genre_stats","priority":25}`))
 	api.createJobV2(recorder, request)

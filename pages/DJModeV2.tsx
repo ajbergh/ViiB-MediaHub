@@ -54,6 +54,7 @@ import type { DeckId, DeckEQ, DJLayoutMode } from '../slices/djMixerSlice';
 import { useIsDJReady } from '../hooks/useMediaQuery';
 import { DJUnsupportedWidth } from '../components/dj/DJUnsupportedWidth';
 import { DJFullscreenGate } from '../components/dj/DJFullscreenGate';
+import { useAnalysisPlaybackPressure } from '../hooks/useAnalysisPlaybackPressure';
 
 const logger = createLogger('DJModeV2');
 
@@ -74,6 +75,10 @@ const DJModeV2Inner: React.FC = () => {
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
   
+  // While a deck is playing, tell the backend to yield background track
+  // analysis so library preparation does not compete with the set.
+  useAnalysisPlaybackPressure();
+
   // Actions — stable Zustand references, never trigger re-renders
   const setDJMixerEnabled = useStore(s => s.setDJMixerEnabled);
   const toggleActiveDeck = useStore(s => s.toggleActiveDeck);

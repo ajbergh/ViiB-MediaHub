@@ -44,6 +44,17 @@ type Estimate struct {
 
 const AlgorithmVersion = "tempo-v1-onset-interval"
 
+// minOnsetCrestFactor is the least impulsive an onset envelope may be before
+// tempo is refused. A sustained source — a drone, pad, sine tone, or spoken
+// word — has a nearly uniform rectified energy difference, so its largest
+// "onset" is only a few times the average and any peak picking degenerates
+// into reading floating-point noise. Measured on the Phase 0 synthetic
+// fixtures, percussive material lands between 102 and 574 while sustained
+// material lands between 3.1 and 9.5, so this bound has roughly a fourfold
+// margin on both sides. Reporting a confident BPM for audio that has no beats
+// is worse than reporting none.
+const minOnsetCrestFactor = 25
+
 // EstimatePCM estimates a static tempo from a mono normalized PCM segment.
 // It is deliberately fractional and conservative; Phase 0 corpus gates still
 // determine whether its algorithm is adequate for professional release.
@@ -108,6 +119,14 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 		onsets[i] = maxFloat(0, a.envelope[i]-a.envelope[i-1])
 	}
 	mean, deviation := meanDeviation(onsets)
+	// Require transient evidence before picking peaks. Without this, a purely
+	// sustained source has no beats to find and the relative threshold below
+	// adapts down onto its numerical noise floor, inventing a tempo. A
+	// non-positive mean means the envelope never rose, which is the same
+	// no-evidence case.
+	if mean <= 0 || maxValue(onsets) < minOnsetCrestFactor*mean {
+		return Estimate{AlgorithmVersion: AlgorithmVersion}
+	}
 	threshold := mean + 1.5*deviation
 	minDistance := max(1, int(math.Round(.1*float64(a.sampleRate)/float64(a.hop))))
 	peaks := make([]int, 0)

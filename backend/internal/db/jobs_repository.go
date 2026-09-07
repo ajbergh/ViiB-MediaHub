@@ -68,14 +68,18 @@ func (d *DB) ClaimNextQueuedJob(message string) (Job, error) {
 	if err := d.EnsureJobSchema(); err != nil {
 		return Job{}, err
 	}
+	now := time.Now().UnixMilli()
+	// available_at lets a job be deferred without a spin: a requeued job is not
+	// claimable again until its backoff elapses.
 	row := d.conn.QueryRow(`
 		UPDATE operation_jobs SET status = ?, message = ?, attempts = attempts + 1,
 		started_at = ?, completed_at = NULL, error_code = NULL, error_message = NULL, updated_at = ?
-		WHERE id = (SELECT id FROM operation_jobs WHERE status = ? ORDER BY priority DESC, created_at ASC LIMIT 1)
+		WHERE id = (SELECT id FROM operation_jobs WHERE status = ? AND available_at <= ?
+		            ORDER BY priority DESC, created_at ASC LIMIT 1)
 		  AND status = ?
 		RETURNING id, type, status, progress_current, progress_total, message, parameters, result,
 		error_code, error_message, attempts, priority, created_at, started_at, completed_at, updated_at`,
-		JobStatusRunning, message, time.Now().UnixMilli(), time.Now().UnixMilli(), JobStatusQueued, JobStatusQueued)
+		JobStatusRunning, message, now, now, JobStatusQueued, now, JobStatusQueued)
 	return scanJob(row)
 }
 
@@ -91,11 +95,54 @@ func (d *DB) PauseQueuedJobs() (int64, error) {
 
 // ResumePausedJobs returns paused work to the durable queue.
 func (d *DB) ResumePausedJobs() (int64, error) {
-	result, err := d.conn.Exec(`UPDATE operation_jobs SET status = ?, message = 'Queued', updated_at = ? WHERE status = ?`, JobStatusQueued, time.Now().UnixMilli(), JobStatusPaused)
+	result, err := d.conn.Exec(`UPDATE operation_jobs SET status = ?, message = 'Queued', available_at = 0, updated_at = ? WHERE status = ?`, JobStatusQueued, time.Now().UnixMilli(), JobStatusPaused)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+// RequeueJob returns a running job to the durable queue without recording a
+// failure. It exists so a job that must yield — to DJ playback, for example —
+// releases its worker instead of occupying one while it waits. The work list is
+// re-derived when it is claimed again, so nothing is lost.
+func (d *DB) RequeueJob(id, message string, notBefore time.Duration) (bool, error) {
+	now := time.Now().UnixMilli()
+	result, err := d.conn.Exec(`
+		UPDATE operation_jobs SET status = ?, message = ?, started_at = NULL,
+		available_at = ?, updated_at = ?
+		WHERE id = ? AND status = ?
+	`, JobStatusQueued, message, now+notBefore.Milliseconds(), now, id, JobStatusRunning)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows > 0, err
+}
+
+// ClearJobBackoff makes every deferred queued job claimable immediately. It is
+// called when the condition a job was waiting on has demonstrably passed, so
+// resume latency is not the full backoff window.
+func (d *DB) ClearJobBackoff() (int64, error) {
+	result, err := d.conn.Exec(`UPDATE operation_jobs SET available_at = 0, updated_at = ?
+		WHERE status = ? AND available_at > 0`, time.Now().UnixMilli(), JobStatusQueued)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// CountPendingJobsByType counts jobs of one type that are not yet settled. It
+// exists so an automatic trigger can avoid stacking duplicate work behind a run
+// that already covers it.
+func (d *DB) CountPendingJobsByType(jobType string) (int, error) {
+	if err := d.EnsureJobSchema(); err != nil {
+		return 0, err
+	}
+	var count int
+	err := d.conn.QueryRow(`SELECT COUNT(*) FROM operation_jobs WHERE type = ? AND status IN (?, ?, ?, ?)`,
+		jobType, JobStatusQueued, JobStatusRunning, JobStatusPaused, JobStatusCanceling).Scan(&count)
+	return count, err
 }
 
 // UpdateJobProgress records progress only while a job is running.
