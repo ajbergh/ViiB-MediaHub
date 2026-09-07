@@ -10,6 +10,23 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/db"
 )
 
+func TestSchedulerWorkerCountIsConservativeAndBounded(t *testing.T) {
+	for _, test := range []struct {
+		cpuCount int
+		want     int
+	}{
+		{cpuCount: 0, want: 1},
+		{cpuCount: 1, want: 1},
+		{cpuCount: 4, want: 1},
+		{cpuCount: 8, want: 2},
+		{cpuCount: 64, want: 2},
+	} {
+		if got := schedulerWorkerCount(test.cpuCount); got != test.want {
+			t.Errorf("schedulerWorkerCount(%d) = %d, want %d", test.cpuCount, got, test.want)
+		}
+	}
+}
+
 func TestJobSchedulerDrainsQueuedJob(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -16,6 +17,17 @@ import (
 )
 
 const maxJobRequestBytes = 64 * 1024
+
+func schedulerWorkerCount(cpuCount int) int {
+	workers := cpuCount / 4
+	if workers < 1 {
+		return 1
+	}
+	if workers > 2 {
+		return 2
+	}
+	return workers
+}
 
 type createJobRequest struct {
 	Type       string          `json:"type"`
@@ -150,12 +162,13 @@ func (a *API) wakeJobScheduler() {
 	if a.jobWake == nil {
 		a.jobWake = make(chan struct{}, 1)
 	}
+	workers := schedulerWorkerCount(runtime.NumCPU())
 	a.jobSchedulerOnce.Do(func() {
-		for i := 0; i < 2; i++ {
+		for i := 0; i < workers; i++ {
 			go a.jobWorker()
 		}
 	})
-	for i := 0; i < 2; i++ {
+	for i := 0; i < workers; i++ {
 		select {
 		case a.jobWake <- struct{}{}:
 		default:
