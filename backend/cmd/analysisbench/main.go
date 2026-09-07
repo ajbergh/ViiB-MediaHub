@@ -16,6 +16,7 @@ type report struct {
 	Codecs     []analysisbench.CodecCapability `json:"codecs"`
 	WAV        *analysisbench.WAVInfo          `json:"wav,omitempty"`
 	Comparison *analysisbench.ComparisonReport `json:"comparison,omitempty"`
+	WrittenWAV []string                        `json:"writtenWav,omitempty"`
 }
 
 type fixtureReport struct {
@@ -34,6 +35,7 @@ func main() {
 	manifestPath := flag.String("manifest", "", "optional label-only corpus manifest JSON")
 	resultsPath := flag.String("results", "", "detector result JSON; requires -manifest")
 	split := flag.String("split", analysisbench.SplitHeldOut, "corpus split to compare: held_out or tuning")
+	writeWAVDir := flag.String("write-wav-dir", "", "optional empty directory for generated synthetic PCM16 WAV artifacts")
 	flag.Parse()
 	if *format != "json" {
 		fmt.Fprintln(os.Stderr, "analysisbench: only -format=json is supported")
@@ -56,6 +58,14 @@ func main() {
 			Channels: fixture.Channels, Frames: fixture.Frames(),
 			DurationSeconds: fixture.DurationSeconds(), Expected: fixture.Expected,
 		})
+	}
+	if *writeWAVDir != "" {
+		paths, err := analysisbench.WriteFixturesWAV(*writeWAVDir, fixtures)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: write WAV fixtures: %v\n", err)
+			os.Exit(1)
+		}
+		result.WrittenWAV = paths
 	}
 	if *wavPath != "" {
 		file, err := os.Open(*wavPath)

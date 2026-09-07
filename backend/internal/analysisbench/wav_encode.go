@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
+	"path/filepath"
 )
 
 // WriteWAVPCM16 serializes a generated fixture as standard RIFF/WAVE PCM. It
@@ -61,6 +63,39 @@ func WriteWAVPCM16(writer io.Writer, fixture PCMFixture) error {
 		start += sampleCount
 	}
 	return nil
+}
+
+// WriteFixturesWAV writes one generated PCM16 WAV per fixture. Existing files
+// are never overwritten: callers must choose a fresh artifact directory, which
+// keeps benchmark inputs reproducible and avoids clobbering user media.
+func WriteFixturesWAV(directory string, fixtures []PCMFixture) ([]string, error) {
+	if directory == "" {
+		return nil, fmt.Errorf("artifact directory is required")
+	}
+	if err := os.MkdirAll(directory, 0750); err != nil {
+		return nil, fmt.Errorf("create artifact directory: %w", err)
+	}
+	paths := make([]string, 0, len(fixtures))
+	for _, fixture := range fixtures {
+		if fixture.Name == "" {
+			return nil, fmt.Errorf("fixture name is required for WAV artifact")
+		}
+		path := filepath.Join(directory, fixture.Name+".wav")
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return nil, fmt.Errorf("create WAV artifact %q: %w", path, err)
+		}
+		writeErr := WriteWAVPCM16(file, fixture)
+		closeErr := file.Close()
+		if writeErr != nil {
+			return nil, fmt.Errorf("write WAV artifact %q: %w", path, writeErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close WAV artifact %q: %w", path, closeErr)
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
 }
 
 func floatToPCM16(sample float32) int16 {

@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"io"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -133,6 +135,34 @@ func TestWriteWAVPCM16ClampsSampleRange(t *testing.T) {
 	}
 	if got := int16(binary.LittleEndian.Uint16(payload[2:4])); got != math.MaxInt16 {
 		t.Fatalf("positive clipped sample = %d, want %d", got, math.MaxInt16)
+	}
+}
+
+func TestWriteFixturesWAVCreatesInspectableArtifactsWithoutOverwrite(t *testing.T) {
+	fixtures, err := DefaultFixtures()
+	if err != nil {
+		t.Fatalf("DefaultFixtures() error = %v", err)
+	}
+	paths, err := WriteFixturesWAV(t.TempDir(), fixtures)
+	if err != nil {
+		t.Fatalf("WriteFixturesWAV() error = %v", err)
+	}
+	if len(paths) != len(fixtures) {
+		t.Fatalf("written artifacts = %d, want %d", len(paths), len(fixtures))
+	}
+	for index, path := range paths {
+		file, err := os.Open(path)
+		if err != nil {
+			t.Fatalf("open artifact: %v", err)
+		}
+		info, inspectErr := InspectWAV(file)
+		file.Close()
+		if inspectErr != nil || int(info.Frames) != fixtures[index].Frames() {
+			t.Fatalf("artifact %q info = %+v, error = %v", path, info, inspectErr)
+		}
+	}
+	if _, err := WriteFixturesWAV(filepath.Dir(paths[0]), fixtures); err == nil {
+		t.Fatal("WriteFixturesWAV overwrote existing artifact")
 	}
 }
 
