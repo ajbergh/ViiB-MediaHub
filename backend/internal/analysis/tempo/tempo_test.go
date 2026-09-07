@@ -1,9 +1,16 @@
 package tempo
 
 import (
+	"bytes"
+	"context"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/db"
 )
 
 func TestEstimatePCMRecognizesFractionalSyntheticTempo(t *testing.T) {
@@ -44,4 +51,31 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func TestEstimateLocalSongStreamsCanonicalWAV(t *testing.T) {
+	fixture, err := analysisbench.NewClickTrack("song", 126, 8, 22050, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wav bytes.Buffer
+	if err := analysisbench.WriteWAVPCM16(&wav, fixture); err != nil {
+		t.Fatal(err)
+	}
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	path := filepath.Join(t.TempDir(), "song.wav")
+	if err := os.WriteFile(path, wav.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: path, AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	estimate, source, err := EstimateLocalSong(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "song")
+	if err != nil || !estimate.Known || math.Abs(estimate.BPM-126) > .5 || source.SongID != "song" {
+		t.Fatalf("estimate=%#v source=%#v err=%v", estimate, source, err)
+	}
 }
