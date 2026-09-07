@@ -65,6 +65,7 @@ type API struct {
 	jobSchedulerMu     sync.Mutex
 	jobSchedulerOn     bool
 	jobWake            chan struct{}
+	analysisPressure   playbackPressure
 }
 
 // New constructs a new API instance using the given database and

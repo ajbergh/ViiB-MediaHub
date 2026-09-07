@@ -19,10 +19,20 @@ import (
 // JobTypeAnalyzeTracks is the durable job type for library track analysis.
 const JobTypeAnalyzeTracks = "analyze_tracks"
 
+// errAnalysisDeferred signals that a run must yield its worker rather than
+// fail. It never reaches the caller of a route; the job returns to the queue.
+var errAnalysisDeferred = errors.New("analysis deferred to reduce pressure during playback")
+
 // analysisProgressInterval throttles job-row writes. Progress is persisted at
 // track granularity, but a 50,000-track run must not issue 50,000 UPDATEs
 // faster than the SSE stream can report them.
 const analysisProgressInterval = 500 * time.Millisecond
+
+// analysisDeferBackoff keeps a deferred job out of the queue long enough that
+// the dispatcher does not immediately re-claim it and spin. Clearing playback
+// pressure wakes the scheduler, so this is an upper bound on resume latency
+// only when the frontend stops reporting without saying so.
+const analysisDeferBackoff = 15 * time.Second
 
 var analysisRegistryOnce sync.Once
 var analysisRegistry *analysis.DecoderRegistry
@@ -54,6 +64,11 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 			"No tracks matched the analysis selection")
 		return
 	}
+	// Yield before starting rather than holding a worker while playback runs.
+	if a.analysisThrottled(job.Priority) {
+		a.deferAnalysisJob(job.ID)
+		return
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -63,6 +78,14 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 
 	progress, runErr := track.Run(ctx, a.db, decoderRegistry(), songIDs, track.RunOptions{
 		Canceled: func() bool { return a.jobCancellationRequested(job.ID) },
+		Throttle: func(context.Context) error {
+			// Consulted between tracks. Yielding releases the worker so scans
+			// and foreground analysis are not stuck behind a paused run.
+			if a.analysisThrottled(job.Priority) {
+				return errAnalysisDeferred
+			}
+			return nil
+		},
 		Progress: func(current track.RunProgress) {
 			// Always persist the final track so the last update is not dropped.
 			if current.Processed < current.Total && time.Since(lastWrite) < analysisProgressInterval {
@@ -82,6 +105,12 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 		"failed":   progress.Failed,
 	}
 	if runErr != nil {
+		if errors.Is(runErr, errAnalysisDeferred) {
+			// Outstanding tracks stay outstanding; the settled ones are skipped
+			// when this job is claimed again.
+			a.deferAnalysisJob(job.ID)
+			return
+		}
 		if errors.Is(runErr, context.Canceled) {
 			// Outstanding tracks stay outstanding. Re-running the same
 			// selection re-dispatches only what is still invalid.
@@ -93,4 +122,11 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 	}
 	_ = a.db.CompleteJob(job.ID, result,
 		fmt.Sprintf("Analysis complete: %d analyzed, %d skipped, %d failed", progress.Analyzed, progress.Skipped, progress.Failed))
+}
+
+// deferAnalysisJob returns a job to the durable queue so it resumes once
+// playback pressure clears. If the transition is refused the job is no longer
+// running — it was canceled or completed concurrently — and needs no action.
+func (a *API) deferAnalysisJob(id string) {
+	_, _ = a.db.RequeueJob(id, "Waiting for DJ playback to finish before analyzing", analysisDeferBackoff)
 }

@@ -72,6 +72,7 @@ func (a *API) V2JobRoutes() chi.Router {
 	r.Post("/{id}/retry", a.retryJobV2)
 	r.Post("/pause", a.pauseJobsV2)
 	r.Post("/resume", a.resumeJobsV2)
+	r.Post("/analysis-pressure", a.analysisPressureV2)
 	return r
 }
 

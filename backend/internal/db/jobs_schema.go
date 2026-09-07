@@ -59,6 +59,7 @@ func (d *DB) EnsureJobSchema() error {
 			progress_current INTEGER NOT NULL DEFAULT 0,
 			progress_total INTEGER NOT NULL DEFAULT 0,
 			priority INTEGER NOT NULL DEFAULT 0,
+			available_at INTEGER NOT NULL DEFAULT 0,
 			message TEXT,
 			parameters TEXT,
 			result TEXT,
@@ -73,14 +74,15 @@ func (d *DB) EnsureJobSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_operation_jobs_status ON operation_jobs(status, updated_at);
 		CREATE INDEX IF NOT EXISTS idx_operation_jobs_type ON operation_jobs(type, created_at);
 	`)
-	// A database created before the scheduler existed has no priority column.
-	// The column must be added before any index or query references it, so the
-	// queue index is created only after this migration succeeds.
+	// A database created before the scheduler existed has neither the priority
+	// nor the available_at column. Both must be added before any index or query
+	// references them, so the queue index is created only after the migrations
+	// succeed.
 	if err == nil {
-		_, alterErr := d.conn.Exec(`ALTER TABLE operation_jobs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0`)
-		if alterErr != nil && !strings.Contains(strings.ToLower(alterErr.Error()), "duplicate column") {
-			err = alterErr
-		}
+		err = addJobColumns(d,
+			`ALTER TABLE operation_jobs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE operation_jobs ADD COLUMN available_at INTEGER NOT NULL DEFAULT 0`,
+		)
 	}
 	if err == nil {
 		_, err = d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_operation_jobs_queue ON operation_jobs(status, priority DESC, created_at)`)
@@ -101,4 +103,17 @@ func (d *DB) EnsureJobSchema() error {
 		return actual.(jobSchemaResult).err
 	}
 	return err
+}
+
+// addJobColumns applies additive column migrations, treating an existing column
+// as success so the migration is idempotent on a current database.
+func addJobColumns(d *DB, statements ...string) error {
+	for _, statement := range statements {
+		if _, err := d.conn.Exec(statement); err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+				return err
+			}
+		}
+	}
+	return nil
 }
