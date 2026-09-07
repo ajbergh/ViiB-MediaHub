@@ -102,6 +102,39 @@ func TestInspectWAVReadsPCMGeometryWithoutReadingPayload(t *testing.T) {
 	}
 }
 
+func TestWriteWAVPCM16ProducesInspectableGeometry(t *testing.T) {
+	fixture, err := NewClickTrack("fixture", 128, 1, 22050, 2)
+	if err != nil {
+		t.Fatalf("NewClickTrack() error = %v", err)
+	}
+	var encoded bytes.Buffer
+	if err := WriteWAVPCM16(&encoded, fixture); err != nil {
+		t.Fatalf("WriteWAVPCM16() error = %v", err)
+	}
+	info, err := InspectWAV(bytes.NewReader(encoded.Bytes()))
+	if err != nil {
+		t.Fatalf("InspectWAV() error = %v", err)
+	}
+	if info.AudioFormat != 1 || int(info.Channels) != fixture.Channels || int(info.SampleRate) != fixture.SampleRate || int(info.Frames) != fixture.Frames() {
+		t.Fatalf("WAV info = %+v, want PCM fixture geometry", info)
+	}
+}
+
+func TestWriteWAVPCM16ClampsSampleRange(t *testing.T) {
+	fixture := PCMFixture{Name: "clamped", SampleRate: 44100, Channels: 1, Samples: []float32{-2, 2}}
+	var encoded bytes.Buffer
+	if err := WriteWAVPCM16(&encoded, fixture); err != nil {
+		t.Fatalf("WriteWAVPCM16() error = %v", err)
+	}
+	payload := encoded.Bytes()[44:]
+	if got := int16(binary.LittleEndian.Uint16(payload[:2])); got != math.MinInt16 {
+		t.Fatalf("negative clipped sample = %d, want %d", got, math.MinInt16)
+	}
+	if got := int16(binary.LittleEndian.Uint16(payload[2:4])); got != math.MaxInt16 {
+		t.Fatalf("positive clipped sample = %d, want %d", got, math.MaxInt16)
+	}
+}
+
 func TestInspectWAVRejectsUnsupportedAndMisalignedData(t *testing.T) {
 	unsupported := makeWAV(t, 6, 2, 44100, 16, make([]byte, 16))
 	if _, err := InspectWAV(bytes.NewReader(unsupported)); err == nil {
