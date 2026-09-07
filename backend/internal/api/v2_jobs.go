@@ -34,7 +34,28 @@ func (a *API) V2JobRoutes() chi.Router {
 	r.Get("/{id}", a.getJobV2)
 	r.Post("/{id}/cancel", a.cancelJobV2)
 	r.Post("/{id}/retry", a.retryJobV2)
+	r.Post("/pause", a.pauseJobsV2)
+	r.Post("/resume", a.resumeJobsV2)
 	return r
+}
+
+func (a *API) pauseJobsV2(w http.ResponseWriter, r *http.Request) {
+	count, err := a.db.PauseQueuedJobs()
+	if err != nil {
+		respondV2Error(w, r, http.StatusInternalServerError, "job_pause_failed", "Unable to pause queued jobs", true, nil)
+		return
+	}
+	respondV2JSON(w, http.StatusAccepted, map[string]int64{"paused": count})
+}
+
+func (a *API) resumeJobsV2(w http.ResponseWriter, r *http.Request) {
+	count, err := a.db.ResumePausedJobs()
+	if err != nil {
+		respondV2Error(w, r, http.StatusInternalServerError, "job_resume_failed", "Unable to resume queued jobs", true, nil)
+		return
+	}
+	a.wakeJobScheduler()
+	respondV2JSON(w, http.StatusAccepted, map[string]int64{"resumed": count})
 }
 
 func (a *API) listJobsV2(w http.ResponseWriter, r *http.Request) {
