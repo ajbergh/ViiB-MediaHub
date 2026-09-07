@@ -61,6 +61,14 @@ func AnalyzeAndPersistLocalSongWithOptions(ctx context.Context, database *db.DB,
 		SourceMtime:       &source.Mtime,
 		AnalyzedAt:        ptr(time.Now().UnixMilli()),
 	}
+	if existing, err := database.GetTrackAnalysis(songID); err == nil && existing.SourceFingerprint == source.Fingerprint {
+		record.KeyTonic = existing.KeyTonic
+		record.KeyMode = existing.KeyMode
+		record.KeyConfidence = existing.KeyConfidence
+		record.KeySource = existing.KeySource
+		record.CamelotKey = existing.CamelotKey
+		record.OpenKey = existing.OpenKey
+	}
 	if estimate.Known {
 		record.Status = db.TrackAnalysisComplete
 		record.BPM = &estimate.BPM
