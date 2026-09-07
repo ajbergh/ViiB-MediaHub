@@ -79,6 +79,25 @@ func (d *DB) ClaimNextQueuedJob(message string) (Job, error) {
 	return scanJob(row)
 }
 
+// PauseQueuedJobs prevents queued work from being claimed without disrupting
+// a running operation that must cooperate with cancellation separately.
+func (d *DB) PauseQueuedJobs() (int64, error) {
+	result, err := d.conn.Exec(`UPDATE operation_jobs SET status = ?, message = 'Paused', updated_at = ? WHERE status = ?`, JobStatusPaused, time.Now().UnixMilli(), JobStatusQueued)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// ResumePausedJobs returns paused work to the durable queue.
+func (d *DB) ResumePausedJobs() (int64, error) {
+	result, err := d.conn.Exec(`UPDATE operation_jobs SET status = ?, message = 'Queued', updated_at = ? WHERE status = ?`, JobStatusQueued, time.Now().UnixMilli(), JobStatusPaused)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 // UpdateJobProgress records progress only while a job is running.
 func (d *DB) UpdateJobProgress(id string, current, total int64, message string) error {
 	_, err := d.conn.Exec(`

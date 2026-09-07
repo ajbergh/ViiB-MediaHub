@@ -111,3 +111,26 @@ func TestClaimNextQueuedJobUsesPriorityAndIsSingleFlight(t *testing.T) {
 		t.Fatalf("empty claim error = %v, want sql.ErrNoRows", err)
 	}
 }
+
+func TestPauseAndResumeQueuedJobs(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.CreateJob(Job{ID: "queued", Type: "quick_scan"}); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := database.PauseQueuedJobs(); err != nil || count != 1 {
+		t.Fatalf("pause = %d, %v", count, err)
+	}
+	if _, err := database.ClaimNextQueuedJob("start"); err != sql.ErrNoRows {
+		t.Fatalf("paused job claimed: %v", err)
+	}
+	if count, err := database.ResumePausedJobs(); err != nil || count != 1 {
+		t.Fatalf("resume = %d, %v", count, err)
+	}
+	if job, err := database.ClaimNextQueuedJob("start"); err != nil || job.ID != "queued" {
+		t.Fatalf("resumed claim = %#v, %v", job, err)
+	}
+}

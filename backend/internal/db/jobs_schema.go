@@ -11,6 +11,7 @@ import (
 const (
 	JobStatusQueued      = "queued"
 	JobStatusRunning     = "running"
+	JobStatusPaused      = "paused"
 	JobStatusSucceeded   = "succeeded"
 	JobStatusFailed      = "failed"
 	JobStatusCanceling   = "canceling"
