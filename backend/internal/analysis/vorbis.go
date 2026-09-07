@@ -22,7 +22,7 @@ func (VorbisDecoder) Open(ctx context.Context, source io.ReadCloser) (PCMStream,
 		return nil, fmt.Errorf("open Ogg/Vorbis decoder: %w", err)
 	}
 	if decoder.SampleRate() <= 0 || decoder.Channels() <= 0 {
-		return nil, fmt.Errorf("Vorbis stream has invalid PCM geometry")
+		return nil, fmt.Errorf("vorbis stream has invalid PCM geometry")
 	}
 	return &vorbisStream{source: source, decoder: decoder, info: PCMInfo{SampleRate: decoder.SampleRate(), Channels: decoder.Channels()}}, nil
 }
