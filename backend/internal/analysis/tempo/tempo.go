@@ -17,29 +17,51 @@ const AlgorithmVersion = "tempo-v1-onset-interval"
 // It is deliberately fractional and conservative; Phase 0 corpus gates still
 // determine whether its algorithm is adequate for professional release.
 func EstimatePCM(samples []float32, sampleRate int) Estimate {
-	if sampleRate <= 0 || len(samples) < sampleRate/2 {
-		return Estimate{AlgorithmVersion: AlgorithmVersion}
+	accumulator := NewOnsetAccumulator(sampleRate)
+	accumulator.Feed(samples)
+	return accumulator.Estimate()
+}
+
+// OnsetAccumulator retains only a low-rate onset envelope; Feed may be called
+// with bounded decoded PCM chunks from the shared analysis service.
+type OnsetAccumulator struct {
+	sampleRate, window, hop, nextStart int
+	pending                            []float32
+	envelope                           []float64
+	positions                          []int
+}
+
+func NewOnsetAccumulator(sampleRate int) *OnsetAccumulator {
+	return &OnsetAccumulator{sampleRate: sampleRate, window: max(1, sampleRate/200), hop: max(1, sampleRate/1000)}
+}
+func (a *OnsetAccumulator) Feed(samples []float32) {
+	if a.sampleRate <= 0 {
+		return
 	}
-	window, hop := max(1, sampleRate/200), max(1, sampleRate/1000)
-	envelope, positions := make([]float64, 0, len(samples)/hop), make([]int, 0, len(samples)/hop)
-	for start := 0; start+window <= len(samples); start += hop {
-		energy := 0.0
-		for i := start; i < start+window; i++ {
-			value := float64(samples[i])
-			energy += value * value
+	a.pending = append(a.pending, samples...)
+	for len(a.pending) >= a.window {
+		energy := 0.
+		for _, sample := range a.pending[:a.window] {
+			v := float64(sample)
+			energy += v * v
 		}
-		envelope, positions = append(envelope, math.Sqrt(energy/float64(window))), append(positions, start)
+		a.envelope = append(a.envelope, math.Sqrt(energy/float64(a.window)))
+		a.positions = append(a.positions, a.nextStart)
+		a.pending = a.pending[a.hop:]
+		a.nextStart += a.hop
 	}
-	if len(envelope) < 3 || maxValue(envelope) < 1e-7 {
+}
+func (a *OnsetAccumulator) Estimate() Estimate {
+	if a.sampleRate <= 0 || len(a.envelope) < 3 || maxValue(a.envelope) < 1e-7 {
 		return Estimate{AlgorithmVersion: AlgorithmVersion}
 	}
-	onsets := make([]float64, len(envelope))
-	for i := 1; i < len(envelope); i++ {
-		onsets[i] = maxFloat(0, envelope[i]-envelope[i-1])
+	onsets := make([]float64, len(a.envelope))
+	for i := 1; i < len(a.envelope); i++ {
+		onsets[i] = maxFloat(0, a.envelope[i]-a.envelope[i-1])
 	}
 	mean, deviation := meanDeviation(onsets)
 	threshold := mean + 1.5*deviation
-	minDistance := max(1, int(math.Round(.1*float64(sampleRate)/float64(hop))))
+	minDistance := max(1, int(math.Round(.1*float64(a.sampleRate)/float64(a.hop))))
 	peaks := make([]int, 0)
 	for i := 1; i+1 < len(onsets); i++ {
 		if onsets[i] < threshold || onsets[i] < onsets[i-1] || onsets[i] < onsets[i+1] {
@@ -63,11 +85,11 @@ func EstimatePCM(samples []float32, sampleRate int) Estimate {
 	candidates := map[int]candidate{}
 	total := 0
 	for i := 1; i < len(peaks); i++ {
-		delta := positions[peaks[i]] - positions[peaks[i-1]]
+		delta := a.positions[peaks[i]] - a.positions[peaks[i-1]]
 		if delta <= 0 {
 			continue
 		}
-		bpm := normalize(60 * float64(sampleRate) / float64(delta))
+		bpm := normalize(60 * float64(a.sampleRate) / float64(delta))
 		if bpm == 0 {
 			continue
 		}
