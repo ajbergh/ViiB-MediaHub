@@ -43,6 +43,20 @@ func TestDefaultDecoderRegistrySupportsOnlyWAVPCM16(t *testing.T) {
 	}
 }
 
+func TestWAVPCM16DecoderAlsoStreamsIEEEFloat32(t *testing.T) {
+	decoder := WAVPCM16Decoder{}
+	stream, err := decoder.Open(context.Background(), io.NopCloser(bytes.NewReader(makeFloat32WAV(t, 1, 22050, []float32{-.5, .25}))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	out := make([]float32, 2)
+	n, err := stream.Read(context.Background(), out)
+	if n != 2 || err != io.EOF || out[0] != -.5 || out[1] != .25 {
+		t.Fatalf("float read = %d, %v, %#v", n, err, out)
+	}
+}
+
 func makePCM16WAV(t *testing.T, channels, sampleRate int, samples []int16) []byte {
 	t.Helper()
 	var payload bytes.Buffer
@@ -58,6 +72,33 @@ func makePCM16WAV(t *testing.T, channels, sampleRate int, samples []int16) []byt
 	}
 	result.WriteString("WAVEfmt ")
 	for _, value := range []any{uint32(16), uint16(1), uint16(channels), uint32(sampleRate), uint32(sampleRate * channels * 2), uint16(channels * 2), uint16(16)} {
+		if err := binary.Write(&result, binary.LittleEndian, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result.WriteString("data")
+	if err := binary.Write(&result, binary.LittleEndian, uint32(payload.Len())); err != nil {
+		t.Fatal(err)
+	}
+	result.Write(payload.Bytes())
+	return result.Bytes()
+}
+
+func makeFloat32WAV(t *testing.T, channels, sampleRate int, samples []float32) []byte {
+	t.Helper()
+	var payload bytes.Buffer
+	for _, sample := range samples {
+		if err := binary.Write(&payload, binary.LittleEndian, sample); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var result bytes.Buffer
+	result.WriteString("RIFF")
+	if err := binary.Write(&result, binary.LittleEndian, uint32(36+payload.Len())); err != nil {
+		t.Fatal(err)
+	}
+	result.WriteString("WAVEfmt ")
+	for _, value := range []any{uint32(16), uint16(3), uint16(channels), uint32(sampleRate), uint32(sampleRate * channels * 4), uint16(channels * 4), uint16(32)} {
 		if err := binary.Write(&result, binary.LittleEndian, value); err != nil {
 			t.Fatal(err)
 		}
