@@ -12,9 +12,10 @@ import (
 )
 
 type report struct {
-	Fixtures []fixtureReport                 `json:"fixtures"`
-	Codecs   []analysisbench.CodecCapability `json:"codecs"`
-	WAV      *analysisbench.WAVInfo          `json:"wav,omitempty"`
+	Fixtures   []fixtureReport                 `json:"fixtures"`
+	Codecs     []analysisbench.CodecCapability `json:"codecs"`
+	WAV        *analysisbench.WAVInfo          `json:"wav,omitempty"`
+	Comparison *analysisbench.ComparisonReport `json:"comparison,omitempty"`
 }
 
 type fixtureReport struct {
@@ -30,9 +31,16 @@ type fixtureReport struct {
 func main() {
 	format := flag.String("format", "json", "output format: json")
 	wavPath := flag.String("wav", "", "optional WAV file to inspect without decoding its data chunk")
+	manifestPath := flag.String("manifest", "", "optional label-only corpus manifest JSON")
+	resultsPath := flag.String("results", "", "detector result JSON; requires -manifest")
+	split := flag.String("split", analysisbench.SplitHeldOut, "corpus split to compare: held_out or tuning")
 	flag.Parse()
 	if *format != "json" {
 		fmt.Fprintln(os.Stderr, "analysisbench: only -format=json is supported")
+		os.Exit(2)
+	}
+	if (*manifestPath == "") != (*resultsPath == "") {
+		fmt.Fprintln(os.Stderr, "analysisbench: -manifest and -results must be provided together")
 		os.Exit(2)
 	}
 
@@ -66,6 +74,24 @@ func main() {
 			os.Exit(1)
 		}
 		result.WAV = &info
+	}
+	if *manifestPath != "" {
+		manifest, err := analysisbench.LoadManifest(*manifestPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: load manifest: %v\n", err)
+			os.Exit(1)
+		}
+		results, err := analysisbench.LoadResultSet(*resultsPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: load results: %v\n", err)
+			os.Exit(1)
+		}
+		comparison, err := analysisbench.Compare(manifest, results, *split)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: compare results: %v\n", err)
+			os.Exit(1)
+		}
+		result.Comparison = &comparison
 	}
 
 	encoder := json.NewEncoder(os.Stdout)

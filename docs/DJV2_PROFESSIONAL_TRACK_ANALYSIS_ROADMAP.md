@@ -17,6 +17,7 @@
 | Date | Branch | Scope | State | Validation | Notes |
 |---|---|---|---|---|---|
 | 2026-09-06 | `analysis/phase0-benchmarks-and-codec-matrix` | Phase 0, Slice 1 | Complete | `go test ./internal/analysisbench`; `go run ./cmd/analysisbench -format=json` | Added deterministic synthetic fixtures, bounded WAV header validation, and a machine-readable codec matrix. This is harness infrastructure only; it does not claim production analysis or codec support. |
+| 2026-09-07 | `analysis/phase0-benchmarks-and-codec-matrix` | Phase 0, Slice 2 | Complete | `go test -count=1 ./internal/analysisbench`; `go run ./cmd/analysisbench -format=json` | Added a label-only corpus manifest/result schema and held-out comparison report. It measures strict and accepted-metrical BPM accuracy, half/double and unknown rates, plus exact and conservative Camelot-compatible key accuracy. Browser output remains an external JSON export; no Web Audio code is imported into Go. |
 
 ---
 
