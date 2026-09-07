@@ -68,3 +68,38 @@ func TestTrackAnalysisSchemaCascadesArtifactsAndOverrides(t *testing.T) {
 		}
 	}
 }
+
+func TestTrackAnalysisRepositoryPersistsAndDetectsSourceChanges(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.conn.Exec(`INSERT INTO songs(id, title, artist, album, file_path, added_at) VALUES ('song', 'Song', 'Artist', 'Album', 'song.mp3', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	bpm, confidence, tonic := 128.375, 0.82, 9
+	if err := database.UpsertTrackAnalysis(TrackAnalysis{
+		SongID: "song", Status: TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "tempo-v1",
+		SourceFingerprint: "source-v1", BPM: &bpm, BPMConfidence: &confidence, KeyTonic: &tonic,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := database.GetTrackAnalysis("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.BPM == nil || *loaded.BPM != bpm || loaded.KeyTonic == nil || *loaded.KeyTonic != tonic || loaded.BPMConfidence == nil || *loaded.BPMConfidence != confidence {
+		t.Fatalf("loaded analysis = %#v", loaded)
+	}
+	for fingerprint, want := range map[string]bool{"source-v1": false, "source-v2": true} {
+		stale, err := database.TrackAnalysisStale("song", fingerprint)
+		if err != nil || stale != want {
+			t.Fatalf("stale(%q) = %t, %v; want %t", fingerprint, stale, err, want)
+		}
+	}
+	missing, err := database.TrackAnalysisStale("missing", "source-v1")
+	if err != nil || !missing {
+		t.Fatalf("missing analysis stale = %t, %v; want true, nil", missing, err)
+	}
+}
