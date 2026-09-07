@@ -86,8 +86,8 @@ func (d *DB) EnsureJobSchema() error {
 			SET status = ?, error_code = 'process_restarted',
 			    error_message = 'The application restarted while the job was active',
 			    completed_at = ?, updated_at = ?
-			WHERE status IN (?, ?, ?)
-		`, JobStatusInterrupted, now, now, JobStatusQueued, JobStatusRunning, JobStatusCanceling)
+			WHERE status IN (?, ?)
+		`, JobStatusInterrupted, now, now, JobStatusRunning, JobStatusCanceling)
 	}
 	result := jobSchemaResult{err: err}
 	actual, loaded := jobSchemas.LoadOrStore(d, result)

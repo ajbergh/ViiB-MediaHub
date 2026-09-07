@@ -134,3 +134,34 @@ func TestPauseAndResumeQueuedJobs(t *testing.T) {
 		t.Fatalf("resumed claim = %#v, %v", job, err)
 	}
 }
+
+func TestRestartRecoveryPreservesQueuedWork(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "library.db")
+	database, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.CreateJob(Job{ID: "queued", Type: "quick_scan"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.CreateJob(Job{ID: "running", Type: "quick_scan"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.StartJob("running", "working"); err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	queued, err := reopened.GetJob("queued")
+	if err != nil || queued.Status != JobStatusQueued {
+		t.Fatalf("queued after restart = %#v, %v", queued, err)
+	}
+	running, err := reopened.GetJob("running")
+	if err != nil || running.Status != JobStatusInterrupted {
+		t.Fatalf("running after restart = %#v, %v", running, err)
+	}
+}
