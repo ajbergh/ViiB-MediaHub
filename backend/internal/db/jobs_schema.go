@@ -72,6 +72,7 @@ func (d *DB) EnsureJobSchema() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_operation_jobs_status ON operation_jobs(status, updated_at);
 		CREATE INDEX IF NOT EXISTS idx_operation_jobs_type ON operation_jobs(type, created_at);
+		CREATE INDEX IF NOT EXISTS idx_operation_jobs_queue ON operation_jobs(status, priority DESC, created_at);
 	`)
 	if err == nil {
 		_, alterErr := d.conn.Exec(`ALTER TABLE operation_jobs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0`)

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -163,5 +164,24 @@ func TestRestartRecoveryPreservesQueuedWork(t *testing.T) {
 	running, err := reopened.GetJob("running")
 	if err != nil || running.Status != JobStatusInterrupted {
 		t.Fatalf("running after restart = %#v, %v", running, err)
+	}
+}
+
+func TestJobSchemaCreatesPriorityQueueIndex(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.EnsureJobSchema(); err != nil {
+		t.Fatal(err)
+	}
+
+	var sqlText string
+	if err := database.conn.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_operation_jobs_queue'`).Scan(&sqlText); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sqlText, "priority DESC") {
+		t.Fatalf("queue index = %q, want priority ordering", sqlText)
 	}
 }
