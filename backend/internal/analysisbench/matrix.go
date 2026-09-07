@@ -17,7 +17,7 @@ func CodecMatrix() []CodecCapability {
 	return []CodecCapability{
 		{Format: "MP3", Extensions: []string{".mp3"}, Path: "existing go-mp3", LicenseClass: "Apache-2.0 / pure Go", Phase0State: "ready-to-benchmark", Notes: "Existing waveform decoder."},
 		{Format: "Ogg Vorbis", Extensions: []string{".ogg", ".oga"}, Path: "existing oggvorbis", LicenseClass: "MIT / pure Go", Phase0State: "ready-to-benchmark", Notes: "Existing conversion decoder; Opus is excluded."},
-		{Format: "WAV PCM/float", Extensions: []string{".wav", ".wave"}, Path: "Phase 0 header validator", LicenseClass: "in-house / pure Go", Phase0State: "header-validation-ready", Notes: "Streaming PCM decoder remains a Phase 1 decision."},
+		{Format: "WAV PCM16", Extensions: []string{".wav", ".wave"}, Path: "Phase 0 streaming PCM16 spike", LicenseClass: "in-house / pure Go", Phase0State: "decode-spike-ready", Notes: "Header plus PCM16 round trip is covered; broader PCM/float support remains a Phase 1 decision."},
 		{Format: "FLAC", Extensions: []string{".flac"}, Path: "mewkiz/flac candidate", LicenseClass: "Unlicense / pure Go", Phase0State: "candidate", Notes: "No dependency added until malformed-input and throughput checks pass."},
 		{Format: "AAC ADTS", Extensions: []string{".aac"}, Path: "pure-Go or WASM candidate", LicenseClass: "LGPL or artifact-specific", Phase0State: "legal-and-throughput-gated", Notes: "Do not treat technical decoding as shipping approval."},
 		{Format: "M4A/AAC", Extensions: []string{".m4a"}, Path: "MP4 demux plus AAC candidate", LicenseClass: "mixed", Phase0State: "legal-and-throughput-gated", Notes: "Container and codec decisions are independent."},

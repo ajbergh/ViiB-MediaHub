@@ -3,6 +3,7 @@ package analysisbench
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"math"
 	"testing"
 )
@@ -132,6 +133,38 @@ func TestWriteWAVPCM16ClampsSampleRange(t *testing.T) {
 	}
 	if got := int16(binary.LittleEndian.Uint16(payload[2:4])); got != math.MaxInt16 {
 		t.Fatalf("positive clipped sample = %d, want %d", got, math.MaxInt16)
+	}
+}
+
+func TestWAVPCM16ReaderRoundTripsInBoundedChunks(t *testing.T) {
+	fixture := PCMFixture{Name: "roundtrip", SampleRate: 44100, Channels: 1, Samples: []float32{-1, -0.5, 0, 0.5, 1}}
+	var encoded bytes.Buffer
+	if err := WriteWAVPCM16(&encoded, fixture); err != nil {
+		t.Fatalf("WriteWAVPCM16() error = %v", err)
+	}
+	reader, err := OpenWAVPCM16(bytes.NewReader(encoded.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenWAVPCM16() error = %v", err)
+	}
+	var decoded []float32
+	for {
+		chunk := make([]float32, 2)
+		n, readErr := reader.Read(chunk)
+		decoded = append(decoded, chunk[:n]...)
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			t.Fatalf("Read() error = %v", readErr)
+		}
+	}
+	if len(decoded) != len(fixture.Samples) {
+		t.Fatalf("decoded samples = %d, want %d", len(decoded), len(fixture.Samples))
+	}
+	for index, sample := range decoded {
+		if math.Abs(float64(sample-fixture.Samples[index])) > 1.0/32768 {
+			t.Fatalf("sample %d = %f, want %f within PCM16 precision", index, sample, fixture.Samples[index])
+		}
 	}
 }
 

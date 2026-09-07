@@ -21,6 +21,10 @@ type WAVInfo struct {
 // geometry. It is deliberately Phase 0-only: it verifies codec assumptions but
 // does not yet expose decoded samples to production analysis code.
 func InspectWAV(reader io.Reader) (WAVInfo, error) {
+	return readWAVHeader(reader)
+}
+
+func readWAVHeader(reader io.Reader) (WAVInfo, error) {
 	var header [12]byte
 	if _, err := io.ReadFull(reader, header[:]); err != nil {
 		return WAVInfo{}, fmt.Errorf("read RIFF header: %w", err)
