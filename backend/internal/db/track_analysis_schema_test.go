@@ -130,3 +130,29 @@ func TestTrackAnalysisArtifactAndOverrideRepositories(t *testing.T) {
 		t.Fatalf("override = %#v, %v", override, err)
 	}
 }
+
+func TestResolveEffectiveBPMKeepsLegacyValuesOutOfSync(t *testing.T) {
+	legacy := 128
+	measured := 128.25
+	measuredSource := "measured"
+	manual := 127.5
+	cases := []struct {
+		name     string
+		override *TrackAnalysisOverride
+		analysis *TrackAnalysis
+		legacy   *int
+		want     string
+		sync     bool
+	}{
+		{"unknown", nil, nil, nil, EffectiveBPMUnknown, false},
+		{"legacy", nil, nil, &legacy, EffectiveBPMLegacyAI, false},
+		{"measured", nil, &TrackAnalysis{Status: TrackAnalysisComplete, BPM: &measured, BPMSource: &measuredSource}, &legacy, EffectiveBPMMeasured, true},
+		{"manual", &TrackAnalysisOverride{BPM: &manual, BPMLocked: true}, &TrackAnalysis{Status: TrackAnalysisComplete, BPM: &measured, BPMSource: &measuredSource}, &legacy, EffectiveBPMManual, true},
+	}
+	for _, test := range cases {
+		result := ResolveEffectiveBPM(test.override, test.analysis, test.legacy)
+		if result.Source != test.want || result.SyncAllowed != test.sync {
+			t.Fatalf("%s: result = %#v", test.name, result)
+		}
+	}
+}

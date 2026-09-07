@@ -42,6 +42,38 @@ const (
 	TrackAnalysisUnsupported = "unsupported"
 )
 
+const (
+	EffectiveBPMUnknown  = "unknown"
+	EffectiveBPMManual   = "manual"
+	EffectiveBPMMeasured = "measured"
+	EffectiveBPMLegacyAI = "legacy-ai"
+)
+
+// EffectiveBPM always carries provenance and whether it is safe for DJ timing
+// operations. Legacy inferred values may help non-critical ordering but never
+// enable Sync.
+type EffectiveBPM struct {
+	Value       *float64
+	Source      string
+	SyncAllowed bool
+}
+
+// ResolveEffectiveBPM applies the documented precedence ladder without
+// mutating either measured analysis or legacy song metadata.
+func ResolveEffectiveBPM(override *TrackAnalysisOverride, analysis *TrackAnalysis, legacyBPM *int) EffectiveBPM {
+	if override != nil && override.BPMLocked && override.BPM != nil {
+		return EffectiveBPM{Value: override.BPM, Source: EffectiveBPMManual, SyncAllowed: true}
+	}
+	if analysis != nil && analysis.Status == TrackAnalysisComplete && analysis.BPM != nil && analysis.BPMSource != nil && (*analysis.BPMSource == "measured" || *analysis.BPMSource == "imported") {
+		return EffectiveBPM{Value: analysis.BPM, Source: EffectiveBPMMeasured, SyncAllowed: true}
+	}
+	if legacyBPM != nil && *legacyBPM > 0 {
+		value := float64(*legacyBPM)
+		return EffectiveBPM{Value: &value, Source: EffectiveBPMLegacyAI}
+	}
+	return EffectiveBPM{Source: EffectiveBPMUnknown}
+}
+
 // TrackAnalysis is the durable scalar result for one canonical song. Nullable
 // measured values use pointers so zero is never confused with unknown.
 type TrackAnalysis struct {
