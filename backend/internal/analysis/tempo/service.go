@@ -13,10 +13,15 @@ import (
 // decoder, and downmix path. Raw PCM is never retained beyond accumulator
 // overlap, while the returned source fingerprint can be persisted with result.
 func EstimateLocalSong(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string) (Estimate, analysis.ResolvedSource, error) {
+	return EstimateLocalSongWithOptions(ctx, database, registry, songID, DefaultOptions())
+}
+
+// EstimateLocalSongWithOptions streams a local song with explicit candidate range priors.
+func EstimateLocalSongWithOptions(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options) (Estimate, analysis.ResolvedSource, error) {
 	var accumulator *OnsetAccumulator
 	source, err := analysis.StreamLocalMono(ctx, database, registry, songID, func(chunk analysis.MonoChunk) error {
 		if accumulator == nil {
-			accumulator = NewOnsetAccumulator(chunk.SampleRate)
+			accumulator = NewOnsetAccumulatorWithOptions(chunk.SampleRate, opts)
 		}
 		if accumulator.sampleRate != chunk.SampleRate {
 			return fmt.Errorf("analysis stream sample rate changed")
@@ -37,15 +42,40 @@ func EstimateLocalSong(ctx context.Context, database *db.DB, registry *analysis.
 // legacy song metadata. Unknown output is durable and explicit, so callers do
 // not retry forever or convert a lack of evidence into a default BPM.
 func AnalyzeAndPersistLocalSong(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, analysisVersion int) (Estimate, error) {
-	estimate, source, err := EstimateLocalSong(ctx, database, registry, songID)
+	return AnalyzeAndPersistLocalSongWithOptions(ctx, database, registry, songID, analysisVersion, DefaultOptions())
+}
+
+// AnalyzeAndPersistLocalSongWithOptions estimates tempo with range priors and persists
+// measured scalar facts, alternate metrical candidate, stability, and provenance.
+func AnalyzeAndPersistLocalSongWithOptions(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, analysisVersion int, opts Options) (Estimate, error) {
+	estimate, source, err := EstimateLocalSongWithOptions(ctx, database, registry, songID, opts)
 	if err != nil {
 		return estimate, err
 	}
-	record := db.TrackAnalysis{SongID: songID, AnalysisVersion: analysisVersion, AlgorithmVersion: estimate.AlgorithmVersion, SourceFingerprint: source.Fingerprint, SourceSize: &source.Size, SourceMtime: &source.Mtime, AnalyzedAt: ptr(time.Now().UnixMilli())}
+	record := db.TrackAnalysis{
+		SongID:            songID,
+		AnalysisVersion:   analysisVersion,
+		AlgorithmVersion:  estimate.AlgorithmVersion,
+		SourceFingerprint: source.Fingerprint,
+		SourceSize:        &source.Size,
+		SourceMtime:       &source.Mtime,
+		AnalyzedAt:        ptr(time.Now().UnixMilli()),
+	}
 	if estimate.Known {
-		record.Status, record.BPM, record.BPMConfidence = db.TrackAnalysisComplete, &estimate.BPM, &estimate.Confidence
-		sourceName, tempoKind := "measured", "static"
-		record.BPMSource, record.TempoKind = &sourceName, &tempoKind
+		record.Status = db.TrackAnalysisComplete
+		record.BPM = &estimate.BPM
+		record.BPMConfidence = &estimate.Confidence
+		if estimate.Alternate > 0 {
+			record.BPMAltCandidate = &estimate.Alternate
+		}
+		record.TempoStability = &estimate.Stability
+		sourceName := "measured"
+		record.BPMSource = &sourceName
+		tempoKind := "static"
+		if estimate.Stability < 0.85 {
+			tempoKind = "dynamic-candidate"
+		}
+		record.TempoKind = &tempoKind
 	} else {
 		record.Status = db.TrackAnalysisPartial
 		tempoKind := "unknown"
