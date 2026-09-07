@@ -46,8 +46,8 @@ func TestPhase0SyntheticFixturesCoverRoadmapScenariosDeterministically(t *testin
 	if err != nil {
 		t.Fatalf("Phase0SyntheticFixtures() error = %v", err)
 	}
-	if len(fixtures) != 35 {
-		t.Fatalf("fixture count = %d, want 35", len(fixtures))
+	if len(fixtures) != 37 {
+		t.Fatalf("fixture count = %d, want 37", len(fixtures))
 	}
 	byName := make(map[string]PCMFixture, len(fixtures))
 	triads := 0
@@ -65,6 +65,20 @@ func TestPhase0SyntheticFixturesCoverRoadmapScenariosDeterministically(t *testin
 	}
 	if !byName["tempo-ramp-110-130"].Expected.IsDynamic || byName["tempo-ramp-110-130"].Expected.BPM != nil {
 		t.Fatal("tempo ramp must not claim one static BPM")
+	}
+	for _, name := range []string{"metered-3-4-120", "metered-6-8-120-eighth"} {
+		fixture, ok := byName[name]
+		if !ok || fixture.Kind != "metered-click-track" || fixture.Expected.BPM == nil || math.Abs(*fixture.Expected.BPM-120) > 1e-9 {
+			t.Fatalf("metered fixture %q = %#v, want a known 120 BPM metered click track", name, fixture)
+		}
+	}
+	metered, err := NewMeteredClickTrack("metered", 120, 2, 44100, 1, 3)
+	if err != nil {
+		t.Fatalf("NewMeteredClickTrack() error = %v", err)
+	}
+	beatFrames := metered.SampleRate / 2
+	if metered.Samples[1] <= metered.Samples[beatFrames+1] {
+		t.Fatal("metered fixture downbeat is not louder than the following beat")
 	}
 	quiet := byName["quiet-intro-122"]
 	for _, sample := range quiet.Samples[:2*quiet.SampleRate*quiet.Channels] {
@@ -84,6 +98,9 @@ func TestPhase0SyntheticFixturesCoverRoadmapScenariosDeterministically(t *testin
 func TestExtendedFixtureConstructorsValidateArguments(t *testing.T) {
 	if _, err := NewMissingBeatClickTrack("bad", 120, 1, 44100, 2, 1); err == nil {
 		t.Fatal("NewMissingBeatClickTrack accepted missingEvery=1")
+	}
+	if _, err := NewMeteredClickTrack("bad", 120, 1, 44100, 2, 1); err == nil {
+		t.Fatal("NewMeteredClickTrack accepted beatsPerBar=1")
 	}
 	if _, err := NewTempoRampClickTrack("bad", 0, 120, 1, 44100, 2); err == nil {
 		t.Fatal("NewTempoRampClickTrack accepted zero start BPM")
