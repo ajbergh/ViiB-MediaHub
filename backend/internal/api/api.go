@@ -62,6 +62,8 @@ type API struct {
 	semanticError      string
 	semanticClosed     bool
 	semanticGeneration uint64
+	jobSchedulerOnce   sync.Once
+	jobWake            chan struct{}
 }
 
 // New constructs a new API instance using the given database and
@@ -112,6 +114,7 @@ func New(database *db.DB, dataDir string) *API {
 		coverDir:        coverDir,
 		downloadManager: dm,
 		scanner:         sc,
+		jobWake:         make(chan struct{}, 1),
 	}
 
 	// Initialize Last.FM client if configured
