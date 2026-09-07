@@ -27,6 +27,10 @@ func (a *API) V2JobRoutes() chi.Router {
 	r := chi.NewRouter()
 	if err := a.db.EnsureJobSchema(); err != nil {
 		// Individual handlers will return a structured database error.
+	} else {
+		// Recoverable queued work may predate this process. Start the bounded
+		// dispatcher while wiring routes so it is not dependent on a later API call.
+		a.wakeJobScheduler()
 	}
 	r.Get("/", a.listJobsV2)
 	r.Post("/", a.createJobV2)
