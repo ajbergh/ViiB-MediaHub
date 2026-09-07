@@ -37,6 +37,17 @@ func schedulerWorkerCount(cpuCount int) int {
 	return workers
 }
 
+// supportedJobTypes is the create allowlist. The dispatch switch in
+// runClaimedJob must stay in step with it.
+var supportedJobTypes = map[string]bool{
+	"full_scan":           true,
+	"quick_scan":          true,
+	"refresh_genre_stats": true,
+	JobTypeAnalyzeTracks:  true,
+}
+
+const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, and " + JobTypeAnalyzeTracks
+
 type createJobRequest struct {
 	Type       string          `json:"type"`
 	Parameters json.RawMessage `json:"parameters,omitempty"`
@@ -109,9 +120,17 @@ func (a *API) createJobV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.Type = strings.ToLower(strings.TrimSpace(request.Type))
-	if request.Type != "full_scan" && request.Type != "quick_scan" && request.Type != "refresh_genre_stats" {
-		respondV2Error(w, r, http.StatusBadRequest, "unsupported_job_type", "Supported job types are full_scan, quick_scan, and refresh_genre_stats", false, map[string]any{"type": request.Type})
+	if !supportedJobTypes[request.Type] {
+		respondV2Error(w, r, http.StatusBadRequest, "unsupported_job_type", "Supported job types are "+supportedJobTypeList, false, map[string]any{"type": request.Type})
 		return
+	}
+	if request.Type == JobTypeAnalyzeTracks {
+		// Reject an unexpandable selection before it becomes a durable job row
+		// that can only ever fail.
+		if _, err := db.ParseAnalysisSelection(request.Parameters); err != nil {
+			respondV2Error(w, r, http.StatusBadRequest, "invalid_analysis_selection", err.Error(), false, nil)
+			return
+		}
 	}
 	if request.Priority < minJobPriority || request.Priority > maxJobPriority {
 		respondV2Error(w, r, http.StatusBadRequest, "invalid_job_priority", "Job priority must be between -100 and 100", false, nil)
@@ -233,6 +252,8 @@ func (a *API) runClaimedJob(job db.Job) {
 		a.runFullScanJob(id)
 	case "quick_scan":
 		a.runQuickScanJob(id)
+	case JobTypeAnalyzeTracks:
+		a.runAnalyzeTracksJob(job)
 	case "refresh_genre_stats":
 		if err := a.db.UpdateGenreStats(); err != nil {
 			_ = a.db.FailJob(id, "genre_stats_failed", err.Error())
