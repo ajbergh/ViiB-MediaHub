@@ -6,14 +6,17 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/track"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/google/uuid"
 )
 
 // JobTypeAnalyzeTracks is the durable job type for library track analysis.
@@ -129,4 +132,49 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 // running — it was canceled or completed concurrently — and needs no action.
 func (a *API) deferAnalysisJob(id string) {
 	_, _ = a.db.RequeueJob(id, "Waiting for DJ playback to finish before analyzing", analysisDeferBackoff)
+}
+
+// SettingAutoAnalyzeNewTracks enables queueing analysis for tracks a scan just
+// added. It defaults to off: analysis is expensive and, until the Phase 5
+// integration gate, nothing in the product depends on the result.
+const SettingAutoAnalyzeNewTracks = "analysis_auto_analyze_new"
+
+// autoAnalyzePriority keeps scan-triggered analysis below anything a user asked
+// for directly, including the default priority of a manually created job.
+const autoAnalyzePriority = -10
+
+// queueAutoAnalysis enqueues background analysis for newly scanned tracks when
+// the setting is enabled. It is a best-effort convenience: a failure to queue
+// must never turn a successful scan into a failed one.
+func (a *API) queueAutoAnalysis(trigger string) {
+	value, err := a.db.GetSetting(SettingAutoAnalyzeNewTracks)
+	if err != nil || !isEnabledSetting(value) {
+		return
+	}
+	// A run that has not started yet already covers whatever the scan added,
+	// because the work list is expanded at claim time rather than now.
+	pending, err := a.db.CountPendingJobsByType(JobTypeAnalyzeTracks)
+	if err != nil || pending > 0 {
+		return
+	}
+	job := db.Job{
+		ID: uuid.NewString(), Type: JobTypeAnalyzeTracks, Status: db.JobStatusQueued,
+		Parameters: json.RawMessage(`{"mode":"missing"}`), Priority: autoAnalyzePriority,
+		Message: "Queued automatically after " + trigger,
+	}
+	if err := a.db.CreateJob(job); err != nil {
+		return
+	}
+	a.wakeJobScheduler()
+}
+
+// isEnabledSetting accepts the several truthy spellings the settings store has
+// accumulated rather than assuming one.
+func isEnabledSetting(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on", "enabled":
+		return true
+	default:
+		return false
+	}
 }

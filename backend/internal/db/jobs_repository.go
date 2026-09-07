@@ -132,6 +132,19 @@ func (d *DB) ClearJobBackoff() (int64, error) {
 	return result.RowsAffected()
 }
 
+// CountPendingJobsByType counts jobs of one type that are not yet settled. It
+// exists so an automatic trigger can avoid stacking duplicate work behind a run
+// that already covers it.
+func (d *DB) CountPendingJobsByType(jobType string) (int, error) {
+	if err := d.EnsureJobSchema(); err != nil {
+		return 0, err
+	}
+	var count int
+	err := d.conn.QueryRow(`SELECT COUNT(*) FROM operation_jobs WHERE type = ? AND status IN (?, ?, ?, ?)`,
+		jobType, JobStatusQueued, JobStatusRunning, JobStatusPaused, JobStatusCanceling).Scan(&count)
+	return count, err
+}
+
 // UpdateJobProgress records progress only while a job is running.
 func (d *DB) UpdateJobProgress(id string, current, total int64, message string) error {
 	_, err := d.conn.Exec(`

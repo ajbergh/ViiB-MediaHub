@@ -290,6 +290,7 @@ func (a *API) runFullScanJob(id string) {
 		return
 	}
 	_ = a.db.CompleteJob(id, result, fmt.Sprintf("Scan complete: %d new, %d updated, %d removed", result.NewSongs, result.UpdatedSongs, result.RemovedSongs))
+	a.queueAutoAnalysis("a full scan")
 }
 
 func (a *API) runQuickScanJob(id string) {
@@ -319,6 +320,7 @@ func (a *API) runQuickScanJob(id string) {
 		return
 	}
 	_ = a.db.CompleteJob(id, map[string]any{"detection": quick, "result": result}, fmt.Sprintf("Quick scan complete: %d changes", len(quick.ChangedFiles)))
+	a.queueAutoAnalysis("a quick scan")
 }
 
 func (a *API) jobCancellationRequested(id string) bool {
