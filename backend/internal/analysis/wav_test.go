@@ -50,6 +50,15 @@ func TestMP3DecoderRejectsMalformedInput(t *testing.T) {
 	}
 }
 
+func TestVorbisDecoderRejectsMalformedInputAndOpusStaysUnsupported(t *testing.T) {
+	if _, err := (VorbisDecoder{}).Open(context.Background(), io.NopCloser(bytes.NewReader([]byte("not ogg")))); err == nil {
+		t.Fatal("malformed Vorbis accepted")
+	}
+	if _, err := NewDefaultDecoderRegistry().Open(context.Background(), "track.opus", io.NopCloser(bytes.NewReader(nil))); err != ErrUnsupportedCodec {
+		t.Fatalf("opus open error = %v", err)
+	}
+}
+
 func TestWAVPCM16DecoderAlsoStreamsIEEEFloat32(t *testing.T) {
 	decoder := WAVPCM16Decoder{}
 	stream, err := decoder.Open(context.Background(), io.NopCloser(bytes.NewReader(makeFloat32WAV(t, 1, 22050, []float32{-.5, .25}))))
