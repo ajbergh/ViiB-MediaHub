@@ -43,3 +43,4 @@ backend/cmd/viib/dist/
 .*/*
 /output/*
 /docs_internal/*
+sample_media/*
