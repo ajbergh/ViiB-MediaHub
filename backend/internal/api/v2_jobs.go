@@ -16,7 +16,11 @@ import (
 	"github.com/google/uuid"
 )
 
-const maxJobRequestBytes = 64 * 1024
+const (
+	maxJobRequestBytes = 64 * 1024
+	minJobPriority     = -100
+	maxJobPriority     = 100
+)
 
 func schedulerWorkerCount(cpuCount int) int {
 	workers := cpuCount / 4
@@ -32,6 +36,7 @@ func schedulerWorkerCount(cpuCount int) int {
 type createJobRequest struct {
 	Type       string          `json:"type"`
 	Parameters json.RawMessage `json:"parameters,omitempty"`
+	Priority   int             `json:"priority,omitempty"`
 }
 
 // V2JobRoutes returns routes for creating, observing, canceling, and retrying jobs.
@@ -104,8 +109,12 @@ func (a *API) createJobV2(w http.ResponseWriter, r *http.Request) {
 		respondV2Error(w, r, http.StatusBadRequest, "unsupported_job_type", "Supported job types are full_scan, quick_scan, and refresh_genre_stats", false, map[string]any{"type": request.Type})
 		return
 	}
+	if request.Priority < minJobPriority || request.Priority > maxJobPriority {
+		respondV2Error(w, r, http.StatusBadRequest, "invalid_job_priority", "Job priority must be between -100 and 100", false, nil)
+		return
+	}
 
-	job := db.Job{ID: uuid.NewString(), Type: request.Type, Status: db.JobStatusQueued, Parameters: request.Parameters, Message: "Queued"}
+	job := db.Job{ID: uuid.NewString(), Type: request.Type, Status: db.JobStatusQueued, Parameters: request.Parameters, Priority: request.Priority, Message: "Queued"}
 	if err := a.db.CreateJob(job); err != nil {
 		respondV2Error(w, r, http.StatusInternalServerError, "job_create_failed", "Unable to create the operation job", true, nil)
 		return
@@ -145,7 +154,7 @@ func (a *API) retryJobV2(w http.ResponseWriter, r *http.Request) {
 	}
 	retry := db.Job{
 		ID: uuid.NewString(), Type: original.Type, Status: db.JobStatusQueued,
-		Parameters: original.Parameters, Message: "Queued as retry of " + original.ID,
+		Parameters: original.Parameters, Priority: original.Priority, Message: "Queued as retry of " + original.ID,
 	}
 	if err := a.db.CreateJob(retry); err != nil {
 		respondV2Error(w, r, http.StatusInternalServerError, "job_retry_failed", "Unable to create retry job", true, nil)

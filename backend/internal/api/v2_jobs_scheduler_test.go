@@ -1,9 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +26,44 @@ func TestSchedulerWorkerCountIsConservativeAndBounded(t *testing.T) {
 		if got := schedulerWorkerCount(test.cpuCount); got != test.want {
 			t.Errorf("schedulerWorkerCount(%d) = %d, want %d", test.cpuCount, got, test.want)
 		}
+	}
+}
+
+func TestCreateJobV2PersistsPriority(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	api := &API{db: database, jobWake: make(chan struct{}, 2)}
+	api.jobSchedulerOnce.Do(func() {}) // Keep the test request queued for inspection.
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"type":"refresh_genre_stats","priority":25}`))
+	api.createJobV2(recorder, request)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("POST jobs = %d, want %d", recorder.Code, http.StatusAccepted)
+	}
+	var created db.Job
+	if err := json.NewDecoder(recorder.Result().Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Status != db.JobStatusQueued || created.Priority != 25 {
+		t.Fatalf("created job = %#v, want queued priority 25", created)
+	}
+}
+
+func TestCreateJobV2RejectsOutOfRangePriority(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	api := &API{db: database, jobWake: make(chan struct{}, 2)}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"type":"refresh_genre_stats","priority":101}`))
+	api.createJobV2(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("POST jobs = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
 
