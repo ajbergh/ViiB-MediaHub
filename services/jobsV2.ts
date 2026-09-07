@@ -7,8 +7,34 @@ import { getEventStreamURL } from './eventStreamURL';
 
 const JOBS_BASE = '/api/v2/jobs';
 
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceling' | 'canceled' | 'interrupted';
-export type JobType = 'full_scan' | 'quick_scan' | 'refresh_genre_stats';
+export type JobStatus = 'queued' | 'running' | 'paused' | 'succeeded' | 'failed' | 'canceling' | 'canceled' | 'interrupted';
+export type JobType = 'full_scan' | 'quick_scan' | 'refresh_genre_stats' | 'analyze_tracks';
+
+/** Which tracks an analysis job covers. Recorded in the job's parameters so a
+ * resumed job re-expands the identical selection. */
+export type AnalysisSelectionMode = 'all' | 'missing' | 'stale' | 'ids' | 'playlist';
+
+export interface AnalysisSelection {
+  mode: AnalysisSelectionMode;
+  songIds?: string[];
+  playlistId?: string;
+}
+
+/** Aggregate counts an analysis job reports when it completes. */
+export interface AnalysisJobResult {
+  mode?: string;
+  total?: number;
+  analyzed?: number;
+  skipped?: number;
+  failed?: number;
+}
+
+/** Priority at or above which the backend treats analysis as an explicit
+ * "analyze this now" request that ignores DJ playback pressure. */
+export const ANALYSIS_FOREGROUND_PRIORITY = 50;
+
+/** Setting key for queueing analysis of tracks a scan just added. */
+export const SETTING_AUTO_ANALYZE_NEW_TRACKS = 'analysis_auto_analyze_new';
 
 export interface OperationJob {
   id: string;
@@ -39,13 +65,43 @@ export const jobsV2 = {
     return requestJSON(`${JOBS_BASE}/${encodeURIComponent(id)}`, { signal });
   },
 
-  create(type: JobType, parameters?: Record<string, unknown>, signal?: AbortSignal): Promise<OperationJob> {
+  create(type: JobType, parameters?: Record<string, unknown>, priority?: number, signal?: AbortSignal): Promise<OperationJob> {
     return requestJSON(`${JOBS_BASE}/`, {
       method: 'POST',
       signal,
       retry: false,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, parameters }),
+      body: JSON.stringify(priority === undefined ? { type, parameters } : { type, parameters, priority }),
+    });
+  },
+
+  // analyze queues a durable analysis run. The work list is derived from the
+  // catalog when the job is claimed, so queueing the same selection twice does
+  // not analyze anything twice.
+  analyze(selection: AnalysisSelection, priority?: number, signal?: AbortSignal): Promise<OperationJob> {
+    return jobsV2.create('analyze_tracks', selection as unknown as Record<string, unknown>, priority, signal);
+  },
+
+  // pause and resume act on the whole durable queue, not one job: pausing stops
+  // dispatching new work and lets in-flight work finish.
+  pauseQueue(signal?: AbortSignal): Promise<{ paused: number }> {
+    return requestJSON(`${JOBS_BASE}/pause`, { method: 'POST', signal, retry: false });
+  },
+
+  resumeQueue(signal?: AbortSignal): Promise<{ resumed: number }> {
+    return requestJSON(`${JOBS_BASE}/resume`, { method: 'POST', signal, retry: false });
+  },
+
+  // reportPlaybackPressure tells the backend that DJ playback is active so
+  // background analysis yields its worker. The signal carries a TTL and must be
+  // renewed while playback continues, so a closed tab cannot park the queue.
+  reportPlaybackPressure(active: boolean, ttlSeconds?: number, signal?: AbortSignal): Promise<{ active: boolean; remainingSeconds: number }> {
+    return requestJSON(`${JOBS_BASE}/analysis-pressure`, {
+      method: 'POST',
+      signal,
+      retry: false,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ttlSeconds === undefined ? { active } : { active, ttlSeconds }),
     });
   },
 
