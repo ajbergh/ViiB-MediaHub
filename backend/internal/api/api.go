@@ -62,7 +62,8 @@ type API struct {
 	semanticError      string
 	semanticClosed     bool
 	semanticGeneration uint64
-	jobSchedulerOnce   sync.Once
+	jobSchedulerMu     sync.Mutex
+	jobSchedulerOn     bool
 	jobWake            chan struct{}
 }
 
@@ -114,7 +115,6 @@ func New(database *db.DB, dataDir string) *API {
 		coverDir:        coverDir,
 		downloadManager: dm,
 		scanner:         sc,
-		jobWake:         make(chan struct{}, 1),
 	}
 
 	// Initialize Last.FM client if configured

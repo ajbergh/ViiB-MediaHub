@@ -4,6 +4,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -18,8 +19,11 @@ import (
 
 const (
 	maxJobRequestBytes = 64 * 1024
-	minJobPriority     = -100
-	maxJobPriority     = 100
+	// schedulerIdlePollInterval bounds how long durable queued work can wait
+	// when no explicit wake signal arrives.
+	schedulerIdlePollInterval = 30 * time.Second
+	minJobPriority            = -100
+	maxJobPriority            = 100
 )
 
 func schedulerWorkerCount(cpuCount int) int {
@@ -165,31 +169,52 @@ func (a *API) retryJobV2(w http.ResponseWriter, r *http.Request) {
 	respondV2JSON(w, http.StatusAccepted, created)
 }
 
-// runJob claims a queued job and performs the requested operation. Cancellation
-// is cooperative for running work and terminal immediately for queued work.
+// wakeJobScheduler starts the bounded worker pool on first use and signals it
+// that claimable work may exist. It is called from concurrent HTTP handlers, so
+// channel creation and pool startup are serialized under jobSchedulerMu and the
+// channel is passed to workers rather than read from the struct.
 func (a *API) wakeJobScheduler() {
-	if a.jobWake == nil {
-		a.jobWake = make(chan struct{}, 1)
-	}
 	workers := schedulerWorkerCount(runtime.NumCPU())
-	a.jobSchedulerOnce.Do(func() {
+	a.jobSchedulerMu.Lock()
+	if a.jobWake == nil {
+		// One slot per worker so a single wake can fan out to the whole pool.
+		a.jobWake = make(chan struct{}, workers)
+	}
+	wake := a.jobWake
+	if !a.jobSchedulerOn {
+		a.jobSchedulerOn = true
 		for i := 0; i < workers; i++ {
-			go a.jobWorker()
+			go a.jobWorker(wake)
 		}
-	})
+		go a.jobSchedulerHeartbeat(wake)
+	}
+	a.jobSchedulerMu.Unlock()
 	for i := 0; i < workers; i++ {
 		select {
-		case a.jobWake <- struct{}{}:
+		case wake <- struct{}{}:
 		default:
 		}
 	}
 }
 
-func (a *API) jobWorker() {
-	for range a.jobWake {
+// jobSchedulerHeartbeat re-polls the durable queue so work is not stranded when
+// a transient database error ends a drain pass between explicit wake signals.
+func (a *API) jobSchedulerHeartbeat(wake chan struct{}) {
+	ticker := time.NewTicker(schedulerIdlePollInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (a *API) jobWorker(wake <-chan struct{}) {
+	for range wake {
 		for {
 			job, err := a.db.ClaimNextQueuedJob("Starting job")
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				break
 			}
 			if err != nil {
