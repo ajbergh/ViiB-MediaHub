@@ -131,28 +131,54 @@ func TestTrackAnalysisArtifactAndOverrideRepositories(t *testing.T) {
 	}
 }
 
-func TestResolveEffectiveBPMKeepsLegacyValuesOutOfSync(t *testing.T) {
+func TestResolveEffectiveBPMKeepsInferredValuesOutOfSync(t *testing.T) {
 	legacy := 128
+	descriptor := 120
 	measured := 128.25
 	measuredSource := "measured"
+	importedSource := "imported"
 	manual := 127.5
+
+	complete := &TrackAnalysis{Status: TrackAnalysisComplete, BPM: &measured, BPMSource: &measuredSource}
+	// Key failed, tempo succeeded. The measurement is still authoritative.
+	partial := &TrackAnalysis{Status: TrackAnalysisPartial, BPM: &measured, BPMSource: &measuredSource}
+	imported := &TrackAnalysis{Status: TrackAnalysisComplete, BPM: &measured, BPMSource: &importedSource}
+	// A claimed row carries the new fingerprint with the old scalars.
+	running := &TrackAnalysis{Status: TrackAnalysisRunning, BPM: &measured, BPMSource: &measuredSource}
+	failed := &TrackAnalysis{Status: TrackAnalysisFailed}
+
 	cases := []struct {
-		name     string
-		override *TrackAnalysisOverride
-		analysis *TrackAnalysis
-		legacy   *int
-		want     string
-		sync     bool
+		name   string
+		inputs EffectiveBPMInputs
+		want   string
+		sync   bool
+		value  *float64
 	}{
-		{"unknown", nil, nil, nil, EffectiveBPMUnknown, false},
-		{"legacy", nil, nil, &legacy, EffectiveBPMLegacyAI, false},
-		{"measured", nil, &TrackAnalysis{Status: TrackAnalysisComplete, BPM: &measured, BPMSource: &measuredSource}, &legacy, EffectiveBPMMeasured, true},
-		{"manual", &TrackAnalysisOverride{BPM: &manual, BPMLocked: true}, &TrackAnalysis{Status: TrackAnalysisComplete, BPM: &measured, BPMSource: &measuredSource}, &legacy, EffectiveBPMManual, true},
+		{"unknown", EffectiveBPMInputs{}, EffectiveBPMUnknown, false, nil},
+		{"descriptor only", EffectiveBPMInputs{TempoDescriptorBPM: &descriptor}, EffectiveBPMTempoDescriptor, false, nil},
+		{"legacy outranks descriptor", EffectiveBPMInputs{LegacyBPM: &legacy, TempoDescriptorBPM: &descriptor}, EffectiveBPMLegacyAI, false, nil},
+		{"measured outranks legacy", EffectiveBPMInputs{Analysis: complete, LegacyBPM: &legacy}, EffectiveBPMMeasured, true, &measured},
+		{"partial tempo is still measured", EffectiveBPMInputs{Analysis: partial, LegacyBPM: &legacy}, EffectiveBPMMeasured, true, &measured},
+		{"imported tag is measured tier", EffectiveBPMInputs{Analysis: imported, LegacyBPM: &legacy}, EffectiveBPMMeasured, true, &measured},
+		{"running row is not trusted", EffectiveBPMInputs{Analysis: running, LegacyBPM: &legacy}, EffectiveBPMLegacyAI, false, nil},
+		{"failed row falls back", EffectiveBPMInputs{Analysis: failed, LegacyBPM: &legacy}, EffectiveBPMLegacyAI, false, nil},
+		{"failed row with no legacy is unknown", EffectiveBPMInputs{Analysis: failed}, EffectiveBPMUnknown, false, nil},
+		{"manual lock wins", EffectiveBPMInputs{Override: &TrackAnalysisOverride{BPM: &manual, BPMLocked: true}, Analysis: complete, LegacyBPM: &legacy}, EffectiveBPMManual, true, &manual},
+		{"unlocked override does not win", EffectiveBPMInputs{Override: &TrackAnalysisOverride{BPM: &manual}, Analysis: complete}, EffectiveBPMMeasured, true, &measured},
 	}
 	for _, test := range cases {
-		result := ResolveEffectiveBPM(test.override, test.analysis, test.legacy)
-		if result.Source != test.want || result.SyncAllowed != test.sync {
-			t.Fatalf("%s: result = %#v", test.name, result)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			result := ResolveEffectiveBPM(test.inputs)
+			if result.Source != test.want || result.SyncAllowed != test.sync {
+				t.Fatalf("result = %#v, want source %q sync %v", result, test.want, test.sync)
+			}
+			if test.value != nil && (result.Value == nil || *result.Value != *test.value) {
+				t.Fatalf("result.Value = %v, want %v", result.Value, *test.value)
+			}
+			// Only measured and manual tiers may drive Sync.
+			if result.SyncAllowed && result.Inferred() {
+				t.Fatalf("inferred tier %q must not allow Sync", result.Source)
+			}
+		})
 	}
 }
