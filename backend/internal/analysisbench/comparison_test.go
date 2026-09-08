@@ -2,6 +2,7 @@ package analysisbench
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -10,12 +11,12 @@ import (
 
 func TestCompareSeparatesStrictMetricalHalfDoubleAndUnknownTempo(t *testing.T) {
 	manifest := CorpusManifest{
-		Version: "phase0-v1",
+		Version: "phase0-v1", EvidenceClass: EvidenceSyntheticCI,
 		Tracks: []CorpusTrack{
 			track("strict", SplitHeldOut, 128, []float64{64, 128}, "C major"),
 			track("half-double", SplitHeldOut, 140, []float64{140}, "A minor"),
 			track("unknown", SplitHeldOut, 100, nil, "D minor"),
-			{ID: "must-be-unknown", Path: "fixture:must-be-unknown", License: "generated", Genre: "silence", Split: SplitHeldOut, ExpectedUnknown: true},
+			{ID: "must-be-unknown", Path: "fixture:must-be-unknown", License: "generated", LabelSource: "fixture generator", Genre: "silence", Split: SplitHeldOut, ExpectedUnknown: true},
 			track("tuning-only", SplitTuning, 120, nil, "F major"),
 		},
 	}
@@ -48,7 +49,7 @@ func TestCompareSeparatesStrictMetricalHalfDoubleAndUnknownTempo(t *testing.T) {
 
 func TestManifestAndResultsValidationRejectSilentBenchmarkCorruption(t *testing.T) {
 	validTrack := track("same", SplitHeldOut, 128, nil, "Db major")
-	manifest := CorpusManifest{Version: "phase0-v1", Tracks: []CorpusTrack{validTrack, validTrack}}
+	manifest := CorpusManifest{Version: "phase0-v1", EvidenceClass: EvidenceSyntheticCI, Tracks: []CorpusTrack{validTrack, validTrack}}
 	if err := manifest.Validate(); err == nil {
 		t.Fatal("duplicate manifest ID was accepted")
 	}
@@ -80,7 +81,7 @@ func TestLoadManifestAndResultSetRoundTripJSON(t *testing.T) {
 	directory := t.TempDir()
 	manifestPath := filepath.Join(directory, "manifest.json")
 	resultsPath := filepath.Join(directory, "results.json")
-	manifest := CorpusManifest{Version: "phase0-v1", Tracks: []CorpusTrack{track("fixture", SplitHeldOut, 128, nil, "F# minor")}}
+	manifest := CorpusManifest{Version: "phase0-v1", EvidenceClass: EvidenceSyntheticCI, Tracks: []CorpusTrack{track("fixture", SplitHeldOut, 128, nil, "F# minor")}}
 	results := ResultSet{Algorithm: "current-js-export", Results: []DetectorResult{{ID: "fixture", BPM: float64Ptr(128), Key: "Gb minor"}}}
 	writeJSON(t, manifestPath, manifest)
 	writeJSON(t, resultsPath, results)
@@ -102,9 +103,66 @@ func TestLoadManifestAndResultSetRoundTripJSON(t *testing.T) {
 	}
 }
 
+func TestCompareReportsDimensionSpecificConfidenceCalibration(t *testing.T) {
+	manifest := CorpusManifest{Version: "phase0-v1", EvidenceClass: EvidenceSyntheticCI, Tracks: []CorpusTrack{
+		track("low", SplitHeldOut, 100, nil, "C major"),
+		track("medium", SplitHeldOut, 110, nil, "D major"),
+		track("high", SplitHeldOut, 120, nil, "E major"),
+	}}
+	results := ResultSet{Algorithm: "candidate", Results: []DetectorResult{
+		{ID: "low", BPM: float64Ptr(80), Key: "C major", TempoConfidence: float64Ptr(.2), KeyConfidence: float64Ptr(.2)},
+		{ID: "medium", BPM: float64Ptr(110), Key: "D major", TempoConfidence: float64Ptr(.5), KeyConfidence: float64Ptr(.5)},
+		{ID: "high", BPM: float64Ptr(120), Key: "E major", TempoConfidence: float64Ptr(.9), KeyConfidence: float64Ptr(.9)},
+	}}
+	report, err := Compare(manifest, results, SplitHeldOut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Calibration.Tempo.Monotonic || !report.Calibration.Key.Monotonic {
+		t.Fatalf("calibration = %#v, want three populated monotonic buckets", report.Calibration)
+	}
+	if report.Calibration.Tempo.Buckets[0].Correct != 0 || report.Calibration.Tempo.Buckets[2].Correct != 1 {
+		t.Fatalf("tempo buckets = %#v", report.Calibration.Tempo.Buckets)
+	}
+}
+
+func TestCoverageRequiresEveryRoadmapCorpusCase(t *testing.T) {
+	manifest := readyCorpusManifest()
+	coverage := Coverage(manifest, SplitHeldOut)
+	if !coverage.Phase0Ready || len(coverage.MissingRequiredCoverage) != 0 {
+		t.Fatalf("coverage = %#v, want Phase 0 ready corpus", coverage)
+	}
+	for index := range manifest.Tracks {
+		if len(manifest.Tracks[index].Coverage) == 1 && manifest.Tracks[index].Coverage[0] == RequiredCorpusCoverage()[0] {
+			manifest.Tracks[index].Coverage = nil
+		}
+	}
+	coverage = Coverage(manifest, SplitHeldOut)
+	if coverage.Phase0Ready || len(coverage.MissingRequiredCoverage) != 1 || coverage.MissingRequiredCoverage[0] != RequiredCorpusCoverage()[0] {
+		t.Fatalf("coverage = %#v, want the missing required category visible", coverage)
+	}
+}
+
+func readyCorpusManifest() CorpusManifest {
+	required := RequiredCorpusCoverage()
+	manifest := CorpusManifest{Version: "phase0-v1", EvidenceClass: EvidenceLawfulRealAudio, Tracks: make([]CorpusTrack, 0, 200)}
+	for index := 0; index < 200; index++ {
+		split := SplitTuning
+		if index < 67 {
+			split = SplitHeldOut
+		}
+		manifest.Tracks = append(manifest.Tracks, CorpusTrack{
+			ID: fmt.Sprintf("track-%03d", index), Path: fmt.Sprintf("local-%03d.mp3", index), License: "private-local",
+			LabelSource: "authoritative label", Genre: "benchmark", Coverage: []string{required[index%len(required)]},
+			Split: split, ExpectedBPM: float64Ptr(120),
+		})
+	}
+	return manifest
+}
+
 func track(id, split string, bpm float64, accepted []float64, key string) CorpusTrack {
 	return CorpusTrack{
-		ID: id, Path: "fixture:" + id, License: "generated", Genre: "electronic", Split: split,
+		ID: id, Path: "fixture:" + id, License: "generated", LabelSource: "fixture generator", Genre: "electronic", Split: split,
 		ExpectedBPM: float64Ptr(bpm), AcceptedMetricBPM: accepted, ExpectedKey: key,
 	}
 }

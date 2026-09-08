@@ -26,6 +26,6 @@ describe('browser analysis baseline export', () => {
       'track',
       { bpm: 128.5, confidence: 0.8, peaks: [] },
       { key: 'Am', keyFull: 'A minor', isMinor: true, tonic: 9, confidence: 0.7, camelot: '8A', openKey: '6m' },
-    )).toEqual({ id: 'track', bpm: 128.5, confidence: 0.8, key: 'A minor' });
+    )).toEqual({ id: 'track', bpm: 128.5, confidence: 0.8, tempoConfidence: 0.8, key: 'A minor', keyConfidence: 0.7 });
   });
 });

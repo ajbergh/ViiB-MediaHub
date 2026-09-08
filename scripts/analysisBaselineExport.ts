@@ -16,6 +16,8 @@ export type BrowserBaselineResult = {
   bpm?: number;
   key?: string;
   confidence?: number;
+  tempoConfidence?: number;
+  keyConfidence?: number;
 };
 
 export type BrowserBaselineResultSet = {
@@ -56,9 +58,11 @@ export const browserBaselineResult = (
   if (bpm && Number.isFinite(bpm.bpm) && bpm.bpm > 0 && Number.isFinite(bpm.confidence) && bpm.confidence > 0) {
     result.bpm = bpm.bpm;
     result.confidence = Math.min(1, bpm.confidence);
+    result.tempoConfidence = Math.min(1, bpm.confidence);
   }
   if (key && key.keyFull && Number.isFinite(key.confidence) && key.confidence > 0) {
     result.key = key.keyFull;
+    result.keyConfidence = Math.min(1, key.confidence);
   }
   return result;
 };

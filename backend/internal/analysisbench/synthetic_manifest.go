@@ -16,7 +16,7 @@ func SyntheticCorpusManifest(fixtures []PCMFixture, audioDirectory string) (Corp
 	if audioDirectory == "" {
 		return CorpusManifest{}, fmt.Errorf("synthetic audio directory is required")
 	}
-	manifest := CorpusManifest{Version: "phase0-synthetic-v1"}
+	manifest := CorpusManifest{Version: "phase0-synthetic-v1", EvidenceClass: EvidenceSyntheticCI}
 	for _, fixture := range fixtures {
 		if fixture.Name == "" {
 			return CorpusManifest{}, fmt.Errorf("synthetic fixture name is required")
@@ -25,11 +25,12 @@ func SyntheticCorpusManifest(fixtures []PCMFixture, audioDirectory string) (Corp
 			continue
 		}
 		track := CorpusTrack{
-			ID:      fixture.Name,
-			Path:    filepath.Join(audioDirectory, fixture.Name+".wav"),
-			License: "generated",
-			Genre:   "synthetic",
-			Notes:   "Generated regression fixture; not Phase 0 real-audio corpus evidence.",
+			ID:          fixture.Name,
+			Path:        filepath.Join(audioDirectory, fixture.Name+".wav"),
+			License:     "generated",
+			LabelSource: "deterministic fixture generator",
+			Genre:       "synthetic",
+			Notes:       "Generated regression fixture; not Phase 0 real-audio corpus evidence.",
 		}
 		if len(manifest.Tracks)%3 == 0 {
 			track.Split = SplitHeldOut

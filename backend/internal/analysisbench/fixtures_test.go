@@ -227,10 +227,20 @@ func TestInspectWAVRejectsUnsupportedAndMisalignedData(t *testing.T) {
 }
 
 func TestCodecMatrixDoesNotClaimOpusIsVorbis(t *testing.T) {
+	oggFound := false
 	for _, codec := range CodecMatrix() {
+		if codec.Format == "Ogg Vorbis" {
+			oggFound = true
+			if codec.Phase0State != "benchmark-enabled" {
+				t.Fatalf("Ogg/Vorbis Phase 0 state = %q, want benchmark-enabled", codec.Phase0State)
+			}
+		}
 		if codec.Format == "Opus in Ogg" && codec.Phase0State != "unsupported-pending-spike" {
 			t.Fatalf("Opus Phase 0 state = %q, want unsupported-pending-spike", codec.Phase0State)
 		}
+	}
+	if !oggFound {
+		t.Fatal("Ogg/Vorbis codec row is missing")
 	}
 }
 

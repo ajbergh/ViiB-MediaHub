@@ -9,6 +9,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -54,6 +57,18 @@ type Options struct {
 	Tempo tempo.Options
 }
 
+// FileTiming separates decoder/streaming work from DSP work for a Phase 0
+// benchmark run. It is measurement metadata, not a product performance claim.
+type FileTiming struct {
+	AudioSeconds           float64
+	DeclaredAudioSeconds   float64
+	WallSeconds            float64
+	DecodeAndStreamSeconds float64
+	DSPSeconds             float64
+	SampleRate             int
+	SourceChannels         int
+}
+
 // DefaultOptions uses the standard DJ tempo priors.
 func DefaultOptions() Options { return Options{Tempo: tempo.DefaultOptions()} }
 
@@ -61,28 +76,59 @@ func DefaultOptions() Options { return Options{Tempo: tempo.DefaultOptions()} }
 // the same borrowed PCM chunks, and returns the combined result without
 // persisting it.
 func Analyze(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options) (Result, error) {
+	source, err := analysis.ResolveLocalSource(database, songID)
+	if err != nil {
+		return Result{SongID: songID}, err
+	}
+	result, _, err := analyzeSource(ctx, registry, source.Name, source.Open, songID, opts)
+	result.Source = source
+	return result, err
+}
+
+// AnalyzeFile runs the same combined track analyzer as Analyze without a
+// catalog or persistence side effect. Phase 0 uses it for local
+// manifest-referenced corpora, which must never be copied into the library.
+func AnalyzeFile(ctx context.Context, registry *analysis.DecoderRegistry, path string, opts Options) (Result, FileTiming, error) {
+	return analyzeSource(ctx, registry, filepath.Base(path), func() (io.ReadCloser, error) { return os.Open(path) }, filepath.Base(path), opts)
+}
+
+type sourceOpener func() (io.ReadCloser, error)
+
+func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name string, open sourceOpener, songID string, opts Options) (Result, FileTiming, error) {
+	started := time.Now()
+	var timing FileTiming
 	var onsets *tempo.OnsetAccumulator
 	var chroma *key.ChromaAccumulator
 	sampleRate := 0
 
-	source, err := analysis.StreamLocalMono(ctx, database, registry, songID, func(chunk analysis.MonoChunk) error {
+	err := analysis.StreamMonoFileWithOpener(ctx, registry, name, open, func(chunk analysis.MonoChunk) error {
 		if sampleRate == 0 {
 			sampleRate = chunk.SampleRate
+			timing.SampleRate = chunk.SampleRate
+			timing.SourceChannels = chunk.SourceChannels
+			if chunk.DeclaredFrames > 0 {
+				timing.DeclaredAudioSeconds = float64(chunk.DeclaredFrames) / float64(chunk.SampleRate)
+			}
 			onsets = tempo.NewOnsetAccumulatorWithOptions(chunk.SampleRate, opts.Tempo)
 			chroma = key.NewChromaAccumulator(chunk.SampleRate)
 		}
 		if sampleRate != chunk.SampleRate {
 			return fmt.Errorf("analysis stream sample rate changed")
 		}
+		timing.AudioSeconds += float64(len(chunk.Samples)) / float64(chunk.SampleRate)
+		dspStarted := time.Now()
 		onsets.Feed(chunk.Samples)
 		chroma.Feed(chunk.Samples)
+		timing.DSPSeconds += time.Since(dspStarted).Seconds()
 		return nil
 	})
 	if err != nil {
-		return Result{SongID: songID}, err
+		finishTiming(&timing, started)
+		return Result{SongID: songID}, timing, err
 	}
 
-	result := Result{SongID: songID, Source: source}
+	result := Result{SongID: songID}
+	dspStarted := time.Now()
 	if onsets == nil {
 		// A decodable source that yielded no PCM at all.
 		result.Tempo = tempo.Estimate{AlgorithmVersion: tempo.AlgorithmVersion}
@@ -91,8 +137,18 @@ func Analyze(ctx context.Context, database *db.DB, registry *analysis.DecoderReg
 		result.Tempo = onsets.Estimate()
 		result.Key = chroma.Estimate()
 	}
+	timing.DSPSeconds += time.Since(dspStarted).Seconds()
 	result.Status = combinedStatus(result.Tempo.Known, result.Key.Known)
-	return result, nil
+	finishTiming(&timing, started)
+	return result, timing, nil
+}
+
+func finishTiming(timing *FileTiming, started time.Time) {
+	timing.WallSeconds = time.Since(started).Seconds()
+	timing.DecodeAndStreamSeconds = timing.WallSeconds - timing.DSPSeconds
+	if timing.DecodeAndStreamSeconds < 0 {
+		timing.DecodeAndStreamSeconds = 0
+	}
 }
 
 // combinedStatus reports what the pass actually measured. Only a pass that

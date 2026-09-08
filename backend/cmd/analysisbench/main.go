@@ -3,11 +3,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis/track"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 )
 
@@ -16,6 +19,8 @@ type report struct {
 	Codecs            []analysisbench.CodecCapability `json:"codecs"`
 	WAV               *analysisbench.WAVInfo          `json:"wav,omitempty"`
 	Comparison        *analysisbench.ComparisonReport `json:"comparison,omitempty"`
+	Gate              *analysisbench.Phase0GateReport `json:"gate,omitempty"`
+	Probes            []analysisbench.CodecProbe      `json:"probes,omitempty"`
 	WrittenWAV        []string                        `json:"writtenWav,omitempty"`
 	SyntheticManifest string                          `json:"syntheticManifest,omitempty"`
 }
@@ -35,6 +40,13 @@ func main() {
 	wavPath := flag.String("wav", "", "optional WAV file to inspect without decoding its data chunk")
 	manifestPath := flag.String("manifest", "", "optional label-only corpus manifest JSON")
 	resultsPath := flag.String("results", "", "detector result JSON; requires -manifest")
+	gateManifestPath := flag.String("gate-manifest", "", "corpus manifest for a held-out Phase 0 go/no-go evaluation")
+	candidateResultsPath := flag.String("candidate-results", "", "Go analyzer result JSON; requires -gate-manifest and -browser-results")
+	browserResultsPath := flag.String("browser-results", "", "browser baseline result JSON; requires -gate-manifest and -candidate-results")
+	determinismResultsPaths := flag.String("determinism-results", "", "comma-separated additional Go result JSON files from macOS/Linux/Windows for the determinism tripwire")
+	probePaths := flag.String("probe", "", "comma-separated local .mp3/.ogg paths for unlabeled decoder/analyzer smoke measurements")
+	analyzeManifestPath := flag.String("analyze", "", "local .mp3/.ogg corpus manifest to run through the Go analyzers")
+	outputPath := flag.String("out", "", "non-overwriting Go analyzer result JSON; requires -analyze")
 	split := flag.String("split", analysisbench.SplitHeldOut, "corpus split to compare: held_out or tuning")
 	writeWAVDir := flag.String("write-wav-dir", "", "optional empty directory for generated synthetic PCM16 WAV artifacts")
 	writeSyntheticManifest := flag.String("write-synthetic-manifest", "", "optional output path for a generated-fixture comparison manifest; requires -write-wav-dir")
@@ -45,6 +57,22 @@ func main() {
 	}
 	if (*manifestPath == "") != (*resultsPath == "") {
 		fmt.Fprintln(os.Stderr, "analysisbench: -manifest and -results must be provided together")
+		os.Exit(2)
+	}
+	if (*gateManifestPath == "") != (*candidateResultsPath == "") || (*gateManifestPath == "") != (*browserResultsPath == "") {
+		fmt.Fprintln(os.Stderr, "analysisbench: -gate-manifest, -candidate-results, and -browser-results must be provided together")
+		os.Exit(2)
+	}
+	if *gateManifestPath != "" && *manifestPath != "" {
+		fmt.Fprintln(os.Stderr, "analysisbench: use either -manifest/-results for one comparison or the -gate-* inputs for Phase 0 evaluation")
+		os.Exit(2)
+	}
+	if (*analyzeManifestPath == "") != (*outputPath == "") {
+		fmt.Fprintln(os.Stderr, "analysisbench: -analyze and -out must be provided together")
+		os.Exit(2)
+	}
+	if *analyzeManifestPath != "" && *manifestPath != "" {
+		fmt.Fprintln(os.Stderr, "analysisbench: use -analyze/-out to produce results, then -manifest/-results to compare them")
 		os.Exit(2)
 	}
 	if *writeSyntheticManifest != "" && *writeWAVDir == "" {
@@ -115,6 +143,70 @@ func main() {
 			os.Exit(1)
 		}
 		result.Comparison = &comparison
+	}
+	if *analyzeManifestPath != "" {
+		manifest, err := analysisbench.LoadManifest(*analyzeManifestPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: load analysis manifest: %v\n", err)
+			os.Exit(1)
+		}
+		produced, err := track.ProduceBenchmarkResults(context.Background(), manifest)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: run Go analyzers: %v\n", err)
+			os.Exit(1)
+		}
+		if err := analysisbench.WriteResultSet(*outputPath, produced); err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: write Go results: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if *probePaths != "" {
+		for _, path := range strings.Split(*probePaths, ",") {
+			if strings.TrimSpace(path) == "" {
+				continue
+			}
+			probe, err := track.ProbeBenchmarkFile(context.Background(), strings.TrimSpace(path))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "analysisbench: probe media: %v\n", err)
+				os.Exit(1)
+			}
+			result.Probes = append(result.Probes, probe)
+		}
+	}
+	if *gateManifestPath != "" {
+		manifest, err := analysisbench.LoadManifest(*gateManifestPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: load gate manifest: %v\n", err)
+			os.Exit(1)
+		}
+		candidate, err := analysisbench.LoadResultSet(*candidateResultsPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: load candidate results: %v\n", err)
+			os.Exit(1)
+		}
+		browserBaseline, err := analysisbench.LoadResultSet(*browserResultsPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: load browser results: %v\n", err)
+			os.Exit(1)
+		}
+		determinismSets := []analysisbench.ResultSet{candidate}
+		for _, path := range strings.Split(*determinismResultsPaths, ",") {
+			if strings.TrimSpace(path) == "" {
+				continue
+			}
+			additional, err := analysisbench.LoadResultSet(strings.TrimSpace(path))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "analysisbench: load determinism result %q: %v\n", path, err)
+				os.Exit(1)
+			}
+			determinismSets = append(determinismSets, additional)
+		}
+		gate, err := analysisbench.EvaluatePhase0Gate(manifest, candidate, browserBaseline, analysisbench.EvaluateDeterminism(determinismSets))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: evaluate Phase 0 gate: %v\n", err)
+			os.Exit(1)
+		}
+		result.Gate = &gate
 	}
 
 	encoder := json.NewEncoder(os.Stdout)

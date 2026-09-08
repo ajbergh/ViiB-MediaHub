@@ -12,8 +12,10 @@ import (
 // MonoChunk is a borrowed PCM view valid only for the duration of the callback.
 // It prevents whole-track retention in the shared analysis pipeline.
 type MonoChunk struct {
-	SampleRate int
-	Samples    []float32
+	SampleRate     int
+	SourceChannels int
+	DeclaredFrames int64
+	Samples        []float32
 }
 
 // decodeChunkFrames bounds one decode/downmix step so memory stays
@@ -41,6 +43,13 @@ func StreamLocalMono(ctx context.Context, database *db.DB, registry *DecoderRegi
 func StreamMonoFile(ctx context.Context, registry *DecoderRegistry, path string, consume func(MonoChunk) error) error {
 	source := ResolvedSource{Name: filepath.Base(path), Path: path}
 	return streamMono(ctx, registry, source.Name, source.Open, consume)
+}
+
+// StreamMonoFileWithOpener is the file-independent form of StreamMonoFile.
+// Benchmark callers use it to retain the standard decoder/downmix loop while
+// supplying their own audited local-file opener.
+func StreamMonoFileWithOpener(ctx context.Context, registry *DecoderRegistry, name string, open func() (io.ReadCloser, error), consume func(MonoChunk) error) error {
+	return streamMono(ctx, registry, name, open, consume)
 }
 
 // streamMono is the single decode loop shared by every entry point. Callers
@@ -84,7 +93,7 @@ func streamMono(ctx context.Context, registry *DecoderRegistry, name string, ope
 			if err != nil {
 				return err
 			}
-			if err := consume(MonoChunk{SampleRate: info.SampleRate, Samples: mono}); err != nil {
+			if err := consume(MonoChunk{SampleRate: info.SampleRate, SourceChannels: info.Channels, DeclaredFrames: info.DeclaredFrames, Samples: mono}); err != nil {
 				return err
 			}
 		}

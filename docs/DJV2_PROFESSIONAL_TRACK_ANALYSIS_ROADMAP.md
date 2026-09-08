@@ -36,6 +36,11 @@
 | 2026-09-07 | `analysis/library-jobs` | Phase 0, Slice 12 | Complete | `go test -count=1 ./internal/analysisbench` | Added deterministic accented 3/4 and 6/8 click tracks (37 synthetic fixtures total). The expected tempo is explicitly the written-beat rate, avoiding a bar-level ambiguity. This closes the synthetic meter-coverage gap in §14.5; it is still not a substitute for the lawful labeled corpus or held-out accuracy gate. |
 | 2026-09-07 | `analysis/phase0-metered-fixtures` | Phase 0, Slice 13 | Complete | `go test -count=1 ./internal/analysisbench`; `analysisbench -write-wav-dir <empty-dir> -write-synthetic-manifest <manifest.json>` | Added an auditable, non-overwriting label-only manifest export for generated WAV artifacts. It contains only fixtures with comparable BPM/key/unknown labels, a deterministic tuning/held-out split, and explicit synthetic-only provenance; dynamic and bare-tone fixtures are intentionally excluded rather than mislabeled. This streamlines browser/Go comparator experiments without conflating synthetic CI with the 200-track real-audio gate. |
 | 2026-09-07 | `analysis/phase0-metered-fixtures` | Phase 0, Slice 14 | Complete | `npm run typecheck`; `npx vitest run scripts/analysisBaselineExport.test.ts`; `npm run build` | Added the developer-only [`analysis-benchmark.html`](../analysis-benchmark.html) browser baseline exporter. It maps selected local files to manifest IDs, uses the existing browser BPM/key detectors, exports the exact `analysisbench` result JSON, and treats the historical `120 BPM / confidence 0` fallback as unknown. It is intentionally outside DJv2 product UI and must be used with a lawful corpus/manifest to produce real Phase 0 evidence. |
+| 2026-09-08 | `main` | Phase 0, Slice 15 | Complete — focused `.mp3`/`.ogg` measurement tooling | `go test -count=1 ./internal/analysisbench ./internal/analysis/track ./cmd/analysisbench` | Added `analysisbench -analyze <manifest> -out <results.json>` for the production Go track analyzer, with non-overwriting output, separate decode-and-stream/DSP timing, environment and decoded-geometry evidence, and dimension-specific tempo/key confidence calibration. The runner accepts only `.mp3` and `.ogg`; all other codec work is explicitly deferred. Refreshed the MP3/Ogg codec matrix states to `benchmark-enabled`. |
+| 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 0, Slice 16 | Complete — corpus evidence audit | `go test -count=1 ./internal/analysisbench ./internal/analysis/track ./cmd/analysisbench`; `go vet ./internal/analysis/... ./internal/analysisbench ./cmd/analysisbench` | Corpus manifests now require a `labelSource` in addition to the declared license. Coverage reports all §14.2 genre/case deficits alongside the 200-track and held-out-split deficits, and cannot mark a corpus ready until each required case is tagged. Synthetic fixtures remain explicitly non-exit evidence. |
+| 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 0, Slice 17 | Complete — formal go/no-go evaluator | `go test -count=1 ./internal/analysisbench ./cmd/analysisbench` | Added a held-out Phase 0 tripwire report (`analysisbench -gate-manifest ... -candidate-results ... -browser-results ...`). It evaluates strict BPM/key, browser improvements, half/double, unknown, confidence, throughput, corpus readiness, and Windows/macOS/Linux determinism without treating absent evidence as a pass. The developer browser exporter now deliberately accepts only `.mp3` and `.ogg`. |
+| 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 0, Slice 18 | Complete — real-media codec smoke evidence | `analysisbench -probe <local-mp3>,<local-ogg>`; temporary deterministic Vorbis encode + probe; `go test -count=1 ./internal/analysis/... ./internal/analysisbench ./cmd/analysisbench` | The local MP3 smoke source decoded through 238.32 s. The local Ogg/Vorbis source decoded 198.43 s, then returned `unexpected EOF` despite an EOS-marked Ogg final page. A separate temporary deterministic Ogg/Vorbis fixture decoded its full 8.00 s, narrowing this to that source or an encoding variation rather than a general Ogg failure. No labels were supplied, so neither local source contributes accuracy or Phase 0 exit evidence. |
+| 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 0, Slice 19 | Complete — Ogg terminal-EOF compatibility | `go test -count=1 ./internal/analysis/... ./internal/analysisbench ./cmd/analysisbench`; `analysisbench -probe <local-ogg>` | The playable local Ogg/Vorbis source’s decoded duration (198.42530612245017 s) matched its seekable-container declared duration (198.42530612244897 s). The `oggvorbis` adapter now normalizes a wrapped terminal `unexpected EOF` to EOF only after every declared PCM value has been emitted; early and unknown-length EOF failures remain failures. The follow-up probe has no decoder error. Its scalar result remains unknown/unreliable under current tempo/key confidence rules, which is separate from codec compatibility. |
 | 2026-09-07 | `analysis/phase0-metered-fixtures` | Phase 4b CI repair | Complete | `go test -race ./internal/api -run '^TestAnalyzeTracksJobsStayWithinWorkerBound$'` | Fixed a flaky scheduler-bound test exposed by PR #42 CI. The assertion now waits for the authoritative succeeded count instead of treating separate queued/running snapshots as a terminal condition; a worker can claim between those reads. Production scheduler behavior is unchanged. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 1 | Complete | `go test ./internal/db -run '^TestTrackAnalysisSchema'` | Added additive song-keyed `track_analysis`, `track_analysis_artifacts`, and `track_analysis_overrides` tables with version, provenance, fingerprint, scalar confidence, artifact, and lock fields. Tests prove fractional measured BPM remains separate from `songs.bpm` and related records cascade on song removal. Opened dependent draft PR [#38](https://github.com/ajbergh/ViiB-MediaHub/pull/38). Decoder/DSP/service work remains. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 2 | Complete | `go test ./internal/db -run '^TestTrackAnalysis'` | Added validated scalar-analysis upsert/load operations and an explicit source-fingerprint staleness query. Regression coverage proves fractional BPM/key/confidence survive persistence, source changes invalidate a result, and missing analysis is stale. Artifact/override repositories and the PCM pipeline remain. |
@@ -1630,18 +1635,28 @@ Manifest fields:
 
 ```json
 {
-  "id": "fixture-id",
-  "path": "...",
-  "license": "CC0/CC-BY/private-local/etc",
-  "genre": "house",
-  "expectedBpm": 128.0,
-  "acceptedMetricBpm": [64.0, 128.0],
-  "expectedKey": "F minor",
-  "notes": "steady electronic track"
+  "version": "phase0-v1",
+  "evidenceClass": "lawful-real-audio",
+  "tracks": [{
+    "id": "fixture-id",
+    "path": "...",
+    "license": "CC0/CC-BY/private-local/etc",
+    "labelSource": "manual beatgrid / licensed dataset / commercial software comparison",
+    "genre": "house",
+    "coverage": ["house", "tempo-70-140-ambiguity"],
+    "expectedBpm": 128.0,
+    "acceptedMetricBpm": [64.0, 128.0],
+    "expectedKey": "F minor",
+    "notes": "steady electronic track"
+  }]
 }
 ```
 
 Never commit copyrighted commercial audio merely because it was used locally for comparison.
+
+`evidenceClass` is mandatory: use `lawful-real-audio` only for the reviewed local corpus, and `synthetic-ci` for regression fixtures (which can never close the gate). `labelSource` is mandatory in a Phase 0 manifest: it documents why the BPM/key label is authoritative instead of allowing an unverifiable number to pass as ground truth. `coverage` is optional per entry but is how the corpus audit records the non-genre §14.2 cases (meter, tempo change, and the two half/double ambiguities). The readiness report requires lawful-real-audio and every §14.2 genre/case before it can describe a 200-track corpus as Phase 0-ready.
+
+Use these exact coverage tags when the genre field alone does not prove the case: `stable-electronic`, `drum-and-bass`, `rock-live-drums`, `sparse-no-percussion`, `meter-3-4-or-6-8`, `tempo-ramp-or-switch`, `tempo-70-140-ambiguity`, and `tempo-85-170-ambiguity`. The other required genre tags are `house`, `techno`, `hip-hop`, `breakbeat`, `disco`, `ambient`, and `acoustic`.
 
 ### 14.2 BPM corpus
 
@@ -1873,14 +1888,15 @@ Two smaller harness gaps sit beside it:
 
 | # | Work | Blocked by |
 |---|---|---|
-| 1 | **Go result-producer** — run `analysis/track` over a manifest and emit `ResultSet` JSON (e.g. `analysisbench -analyze <manifest> -out results.json`) | nothing; buildable now |
-| 2 | **Confidence-calibration buckets** in `ComparisonReport` — per-bucket correctness plus a monotonicity verdict | nothing |
-| 3 | **Throughput timing**, decode measured separately from DSP, recording the §13.1 environment fields | nothing |
-| 4 | **Acquire and label the corpus** — ≥ 200 tracks, genre-stratified per §14.2, authoritative BPM/key labels, held-out third | lawful audio access and labeling effort |
-| 5 | **Run and record** browser baseline and Go detectors on the held-out split against §14.6 | 1–4 |
-| 6 | **Codec spikes** — FLAC; AAC/M4A pure-Go-LGPL vs wazero-WASM head-to-head; Opus | legal review for the AAC path |
+| 1 | **Complete — Go result-producer.** `analysisbench -analyze <manifest> -out results.json` runs `analysis/track` over a local `.mp3`/`.ogg` manifest and writes a non-overwriting `ResultSet` JSON. It records decoder failures explicitly rather than converting them into detector output. | no longer blocked; acquire a lawful `.mp3`/`.ogg` corpus |
+| 2 | **Complete — confidence-calibration buckets** in `ComparisonReport`: per-bucket strict-BPM/exact-key correctness plus a three-bucket monotonicity verdict. New outputs carry independent tempo/key confidence; legacy browser `confidence` remains a fallback for backward compatibility. | no longer blocked; calibration needs held-out corpus results |
+| 3 | **Complete — throughput timing.** The Go producer records per-track codec/decoded geometry, audio duration, wall time, decode-and-stream time excluding DSP, DSP time, real-time multiples, OS/architecture/CPU count/Go version, and the host CPU identifier where the OS exposes it. | no longer blocked; run against representative corpus |
+| 4 | **Acquire and label the corpus** — ≥ 200 local `.mp3`/`.ogg` tracks, genre-stratified per §14.2, authoritative BPM/key labels, held-out third. The corpus manifest must declare `evidenceClass: "lawful-real-audio"`; every entry must include a declared license and `labelSource`; the readiness report rejects synthetic evidence and missing required genres/cases. | lawful audio access and labeling effort |
+| 5 | **Run and record** browser baseline and Go detectors on the held-out split against §14.6. Use `analysisbench -gate-manifest <manifest> -candidate-results <go.json> -browser-results <browser.json> -determinism-results <mac.json>,<linux.json>`; its report makes every tripwire pass, fail, or remain unproven. | 1–4 |
+| 6 | **Deferred by current scope.** FLAC; AAC/M4A pure-Go-LGPL vs wazero-WASM head-to-head; Opus; AIFF ingestion. The active Phase 0 measurement slice supports `.mp3` and `.ogg` only. | later codec decision and, for AAC, legal review |
 | 7 | **Cross-platform determinism** — same committed fixtures on Windows/macOS/Linux, compared within tolerance | 1 |
-| 8 | **Refresh the codec matrix**, which is stale after [#43](https://github.com/ajbergh/ViiB-MediaHub/pull/43): WAV still reads `decode-spike-ready` and MP3/Ogg `ready-to-benchmark`, but all three now have production decoders driving tempo, key, and server-side waveforms | nothing |
+| 8 | **Complete for the focused scope.** MP3 and Ogg/Vorbis read `benchmark-enabled`, reflecting production decoder use by tempo, key, waveform, and the focused corpus runner. The Vorbis adapter accepts a terminal wrapped EOF only when all frames declared by the seekable container were emitted; WAV and every other codec retain their prior deferred state. | no blocker; corpus failures remain individually visible |
+| 9 | **Complete — unlabeled codec probe.** `analysisbench -probe <mp3-or-ogg>[,<mp3-or-ogg>...]` measures the shared decoder/analyzer path without permitting unlabeled media to enter corpus accuracy metrics. It records a stable failure code and the raw decoder message when a source fails. Probe timing includes decoded and declared duration, so terminal-container compatibility is evidence rather than an assumption. | no blocker; corpus failures remain individually visible |
 
 Items 1–3 are unblocked and are prerequisites for the corpus being useful at all, so they should not wait on item 4.
 
