@@ -1,6 +1,6 @@
 # DJv2 Professional Track Analysis & Harmonic Mixing Roadmap
 
-**Status:** Implementation stack landed through Phase 4b, plus the Phase 1 waveform-decoder bridge and a post-merge correctness pass (§2.4); Phase 0 corpus/codec acceptance gate remains open before Phase 5
+**Status:** Phases 0–4b landed and merged (through [#43](https://github.com/ajbergh/ViiB-MediaHub/pull/43)); Phase 1 complete; **the Phase 0 corpus/codec acceptance gate is the sole remaining blocker before Phase 5**, and the next deliverable is evidence rather than code
 **Scope:** DJv2 / professional DJ workflow only  
 **Research snapshot:** 2026-09-06  
 **Repository verification snapshot:** commit `3359371`, branch `main`  
@@ -14,7 +14,9 @@
 
 > **Delivery status (2026-09-07).** The reviewed implementation stack — Phase 0 harness ([#36](https://github.com/ajbergh/ViiB-MediaHub/pull/36)), Phase 1 foundation ([#38](https://github.com/ajbergh/ViiB-MediaHub/pull/38)), Phase 2 tempo ([#39](https://github.com/ajbergh/ViiB-MediaHub/pull/39)), Phase 3 key ([#40](https://github.com/ajbergh/ViiB-MediaHub/pull/40)), Phase 4a scheduler ([#37](https://github.com/ajbergh/ViiB-MediaHub/pull/37)), and Phase 4b analysis lifecycle ([#41](https://github.com/ajbergh/ViiB-MediaHub/pull/41)) — is squash-merged. This does **not** close the Phase 0 professional-quality gate: a lawful labeled corpus, external/browser baseline comparison, codec spikes, and held-out accuracy/confidence results remain required before user-visible Phase 5 work.
 >
-> [#42](https://github.com/ajbergh/ViiB-MediaHub/pull/42) — additional metered Phase 0 fixtures and the developer-only browser baseline exporter — is also squash-merged. Work since then is on `analysis/wav-waveform-bridge`: the Phase 1 waveform-decoder bridge, and a correctness review of the merged stack that found and fixed four defects (§2.4). Both are infrastructure and review; neither adds a user-visible BPM/key claim, so the Phase 0 gate is still the thing standing between here and Phase 5.
+> Two further PRs are now squash-merged: [#42](https://github.com/ajbergh/ViiB-MediaHub/pull/42) (additional metered Phase 0 fixtures and the developer-only browser baseline exporter) and [#43](https://github.com/ajbergh/ViiB-MediaHub/pull/43) (the Phase 1 waveform-decoder bridge, plus a correctness review of the merged stack that found and fixed four defects — §2.4). Both are infrastructure and review; neither adds a user-visible BPM/key claim, so the Phase 0 gate is still the only thing standing between here and Phase 5.
+>
+> **Phase 1 is now complete.** Every phase from 0 through 4b has landed. There is no remaining implementation work that is not either gated on Phase 0 evidence (Phase 5) or dependent on a later phase. The next unit of work is measurement, not code.
 
 ### Implementation progress
 
@@ -2847,7 +2849,7 @@ Keep implementation PRs reviewable. Suggested sequence after this roadmap:
 | 4 | `analysis/tempo-v1` | 2 | **Merged as [#39](https://github.com/ajbergh/ViiB-MediaHub/pull/39).** Implementation landed; held-out corpus accuracy and confidence calibration remain open. |
 | 5 | `analysis/key-v1` | 3 | **Merged as [#40](https://github.com/ajbergh/ViiB-MediaHub/pull/40).** Implementation landed; held-out corpus/profile and confidence work remain open. |
 | 6 | `analysis/library-jobs` | 4b | **Merged as [#41](https://github.com/ajbergh/ViiB-MediaHub/pull/41).** Analysis job types, selection expansion, auto-analyze hooks, playback throttle, scale test, and library controls landed. |
-| 6b | `analysis/wav-waveform-bridge` | 1 (completion) + review | **In progress, 2026-09-07.** Waveform generation moved onto the shared decoder registry; four correctness defects in the merged stack fixed (§2.4). Not gated by Phase 0 — it adds no user-visible BPM/key claim. |
+| 6b | `analysis/wav-waveform-bridge` | 1 (completion) + review | **Merged as [#43](https://github.com/ajbergh/ViiB-MediaHub/pull/43).** Waveform generation moved onto the shared decoder registry, closing the last Phase 1 backend item; four correctness defects in the merged stack fixed (§2.4). Not gated by Phase 0 — it added no user-visible BPM/key claim. |
 | 7 | `djv2/persistent-analysis-library-ux` | 5 | **Not started; blocked by Phase 0 evidence.** First user-visible value, including the `setDeckAnalysis` split (§2.3-F) and migrating `getSongBPM` onto the effective-BPM resolver (§2.4 finding 3). Do not begin until the corpus/accuracy gate is recorded. |
 | 8 | `analysis/beatgrid-downbeat-v1` | 6 | |
 | 9 | `djv2/beatgrid-editor-sync-integration` | 6 | |
