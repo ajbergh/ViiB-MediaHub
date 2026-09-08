@@ -38,9 +38,25 @@ const maxTonalChromaFlatness = 0.70
 // its tuning split before evaluating the reserved held-out split.
 type Options struct {
 	MaxChromaFlatness float64
+	Profile           Profile
 }
 
-func DefaultOptions() Options { return Options{MaxChromaFlatness: maxTonalChromaFlatness} }
+// Profile selects a key-profile family for Phase 0 comparison. Krumhansl is
+// the existing default; Temperley is evaluated only through explicit tuning
+// configuration until held-out evidence selects a production profile.
+type Profile string
+
+const (
+	ProfileKrumhansl Profile = "krumhansl"
+	ProfileTemperley Profile = "temperley"
+)
+
+func DefaultOptions() Options {
+	return Options{
+		MaxChromaFlatness: maxTonalChromaFlatness,
+		Profile:           ProfileKrumhansl,
+	}
+}
 
 // Estimate holds the detected musical key, mode, confidence, and DJ notations.
 // Known is false when tonal evidence is insufficient; callers must not invent a key.
@@ -183,13 +199,14 @@ func (a *ChromaAccumulator) Estimate() Estimate {
 		return Estimate{Chroma: a.chroma, Flatness: flatness, AlgorithmVersion: AlgorithmVersion}
 	}
 
+	majorProfile, minorProfile := tonalProfiles(a.options.Profile)
 	bestScore := -math.MaxFloat64
 	runnerUpScore := -math.MaxFloat64
 	bestTonic := 0
 	bestMode := ModeMajor
 
 	for tonic := 0; tonic < 12; tonic++ {
-		majRot := rotateProfile(krumhanslMajor, tonic)
+		majRot := rotateProfile(majorProfile, tonic)
 		majCorr := pearsonCorrelation(normChroma, majRot)
 		if majCorr > bestScore {
 			runnerUpScore = bestScore
@@ -200,7 +217,7 @@ func (a *ChromaAccumulator) Estimate() Estimate {
 			runnerUpScore = majCorr
 		}
 
-		minRot := rotateProfile(krumhanslMinor, tonic)
+		minRot := rotateProfile(minorProfile, tonic)
 		minCorr := pearsonCorrelation(normChroma, minRot)
 		if minCorr > bestScore {
 			runnerUpScore = bestScore

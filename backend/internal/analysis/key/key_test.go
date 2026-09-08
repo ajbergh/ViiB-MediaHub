@@ -91,6 +91,27 @@ func TestEstimatePCMRecognizesAllSyntheticTriads(t *testing.T) {
 	}
 }
 
+func TestTemperleyProfileRecognizesAllSyntheticTriads(t *testing.T) {
+	options := DefaultOptions()
+	options.Profile = ProfileTemperley
+	for tonic := 0; tonic < 12; tonic++ {
+		for _, minor := range []bool{false, true} {
+			fixture, err := analysisbench.NewTriad("triad", tonic, minor, 1.5, 22050, 1, 440)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
+			mode := ModeMajor
+			if minor {
+				mode = ModeMinor
+			}
+			if !actual.Known || actual.Tonic != tonic || actual.Mode != mode {
+				t.Fatalf("tonic=%d minor=%v: Temperley estimate = %#v", tonic, minor, actual)
+			}
+		}
+	}
+}
+
 func TestEstimatePCMReturnsUnknownForSilence(t *testing.T) {
 	actual := EstimatePCM(make([]float32, 22050), 22050)
 	if actual.Known {
