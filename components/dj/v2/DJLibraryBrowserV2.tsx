@@ -16,6 +16,7 @@ import { TableVirtuoso, type TableComponents } from 'react-virtuoso';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getKeyCompatibility } from '../../../lib/keyDetection';
+import { api, type TrackAnalysisFeature } from '../../../services/api';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
 import {
@@ -60,9 +61,6 @@ const DEFAULT_COLUMN_WIDTHS: Record<ResizableColumn, number> = {
 const TRACK_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#ffffff'] as const;
 const trackColorMap = new Map<string, string>();
 
-// Session cache for analyzed musical keys (populated when tracks are loaded into decks)
-const analyzedKeyCache = new Map<string, string>();
-
 function loadColumnVisibility(): Record<OptionalColumn, boolean> {
   if (typeof window === 'undefined') return DEFAULT_COLUMN_VISIBILITY;
   try {
@@ -106,7 +104,7 @@ const TrackRowCells = memo(({
   onLoadToDeck,
   trackColor,
   onSetTrackColor,
-  songKey,
+  analysis,
   keyCompatibility,
   columnVisibility,
   columnWidths,
@@ -117,12 +115,15 @@ const TrackRowCells = memo(({
   onLoadToDeck: (song: Song, deck: DeckId) => void;
   trackColor: string | undefined;
   onSetTrackColor: (songId: string, color: string | null) => void;
-  songKey: string | null;           // Musical key from analysis cache
+  analysis?: TrackAnalysisFeature;  // Durable resolved analysis from the backend
   keyCompatibility: number | null;  // 0-1 score, null if no key data
   columnVisibility: Record<OptionalColumn, boolean>;
   columnWidths: Record<ResizableColumn, number>;
 }) => {
   const [showColorPicker, setShowColorPicker] = React.useState(false);
+  const displayBPM = analysis?.bpm ?? song.bpm;
+  const songKey = analysis?.key;
+  const displayKey = analysis?.camelotKey ?? songKey;
 
   return (
     <>
@@ -220,8 +221,11 @@ const TrackRowCells = memo(({
       {/* BPM */}
       {columnVisibility.bpm && (
         <td className="px-2 py-1.5 w-12 text-right">
-          <span className={`font-mono ${song.bpm ? 'text-green-400' : 'text-neutral-600'}`}>
-            {song.bpm || '-'}
+          <span
+            className={`font-mono ${displayBPM ? 'text-green-400' : 'text-neutral-600'}`}
+            title={analysis ? `${analysis.bpmSource} BPM${analysis.bpmConfidence !== undefined ? ` (${Math.round(analysis.bpmConfidence * 100)}% confidence)` : ''}` : song.bpm ? 'Legacy AI BPM estimate' : undefined}
+          >
+            {displayBPM ? displayBPM.toFixed(1).replace(/\.0$/, '') : '-'}
           </span>
         </td>
       )}
@@ -229,7 +233,7 @@ const TrackRowCells = memo(({
       {/* Key with harmonic compatibility */}
       {columnVisibility.key && (
         <td className="px-2 py-1.5 w-14 text-center">
-          {songKey ? (
+          {displayKey ? (
             <span className={`font-mono text-[10px] px-1 py-0.5 rounded ${
               keyCompatibility === null ? 'text-emerald-400'
               : keyCompatibility >= 0.85 ? 'text-green-300 bg-green-500/20 font-bold'
@@ -237,9 +241,9 @@ const TrackRowCells = memo(({
               : keyCompatibility >= 0.5 ? 'text-orange-400 bg-orange-500/10'
               : 'text-neutral-600'
             }`}
-              title={keyCompatibility !== null ? `Harmonic compatibility: ${Math.round(keyCompatibility * 100)}%` : undefined}
+              title={`${songKey || displayKey}${analysis ? ` — ${analysis.keySource}${analysis.keyConfidence !== undefined ? ` (${Math.round(analysis.keyConfidence * 100)}% confidence)` : ''}` : ''}${keyCompatibility !== null ? `; harmonic compatibility: ${Math.round(keyCompatibility * 100)}%` : ''}`}
             >
-              {songKey}
+              {displayKey}
             </span>
           ) : (
             <span className="text-neutral-600">-</span>
@@ -388,6 +392,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [columnVisibility, setColumnVisibility] = useState<Record<OptionalColumn, boolean>>(loadColumnVisibility);
   const [columnWidths, setColumnWidths] = useState<Record<ResizableColumn, number>>(loadColumnWidths);
+  const [analysisBySongID, setAnalysisBySongID] = useState<Record<string, TrackAnalysisFeature>>({});
 
   // Determine active deck key for harmonic compatibility
   // Prefer playing deck, fall back to whichever has a track loaded
@@ -403,20 +408,21 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     return getKeyCompatibility(activeKey, songKey);
   }, [activeKey]);
 
-  // Populate analyzed key cache when decks have tracks with detected keys
-  const [keyCacheVersion, setKeyCacheVersion] = useState(0);
+  // Library key/BPM data is durable and available before any deck is loaded;
+  // do not rebuild it from session-only deck state.
   useEffect(() => {
-    let changed = false;
-    if (djDeckATrack?.id && djDeckAKey && analyzedKeyCache.get(djDeckATrack.id) !== djDeckAKey) {
-      analyzedKeyCache.set(djDeckATrack.id, djDeckAKey);
-      changed = true;
-    }
-    if (djDeckBTrack?.id && djDeckBKey && analyzedKeyCache.get(djDeckBTrack.id) !== djDeckBKey) {
-      analyzedKeyCache.set(djDeckBTrack.id, djDeckBKey);
-      changed = true;
-    }
-    if (changed) setKeyCacheVersion(v => v + 1);
-  }, [djDeckATrack?.id, djDeckAKey, djDeckBTrack?.id, djDeckBKey]);
+    let active = true;
+    api.getTrackAnalysisFeatures()
+      .then(features => {
+        if (!active) return;
+        setAnalysisBySongID(Object.fromEntries(features.map(feature => [feature.songId, feature])));
+      })
+      .catch(() => {
+        // Analysis is additive; legacy library rendering remains available.
+        if (active) setAnalysisBySongID({});
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!autoFocusSearch) { resizeCleanupRef.current?.(); return; }
@@ -575,10 +581,10 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
           comparison = (a.duration || 0) - (b.duration || 0);
           break;
         case 'bpm':
-          comparison = (a.bpm || 0) - (b.bpm || 0);
+          comparison = (analysisBySongID[a.id]?.bpm ?? a.bpm ?? 0) - (analysisBySongID[b.id]?.bpm ?? b.bpm ?? 0);
           break;
         case 'key':
-          comparison = (analyzedKeyCache.get(a.id) || '').localeCompare(analyzedKeyCache.get(b.id) || '');
+          comparison = (analysisBySongID[a.id]?.camelotKey || analysisBySongID[a.id]?.key || '').localeCompare(analysisBySongID[b.id]?.camelotKey || analysisBySongID[b.id]?.key || '');
           break;
         case 'genre':
           comparison = (a.genre?.[0] || '').localeCompare(b.genre?.[0] || '');
@@ -589,7 +595,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     });
 
     return result;
-  }, [categoryFilteredSongs, searchQuery, sortKey, sortDirection, keyCacheVersion]);
+  }, [categoryFilteredSongs, searchQuery, sortKey, sortDirection, analysisBySongID]);
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -811,8 +817,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   onLoadToDeck={handleLoadToDeck}
                   trackColor={trackColorMap.get(song.id)}
                   onSetTrackColor={handleSetTrackColor}
-                  songKey={analyzedKeyCache.get(song.id) || null}
-                  keyCompatibility={computeKeyCompat(analyzedKeyCache.get(song.id))}
+                  analysis={analysisBySongID[song.id]}
+                  keyCompatibility={computeKeyCompat(analysisBySongID[song.id]?.key)}
                   columnVisibility={columnVisibility}
                   columnWidths={columnWidths}
                 />

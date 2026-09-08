@@ -110,6 +110,23 @@ export interface ApiSong {
   sourceName?: string;
 }
 
+// Resolved server-side analysis for DJ display and timing. `bpm` deliberately
+// excludes legacy AI estimates, and `syncAllowed` is true only for manual or
+// audio-measured tempo.
+export interface TrackAnalysisFeature {
+  songId: string;
+  status: 'pending' | 'running' | 'complete' | 'partial' | 'failed' | 'unsupported';
+  bpm?: number;
+  bpmConfidence?: number;
+  bpmSource: 'unknown' | 'manual' | 'measured';
+  syncAllowed: boolean;
+  key?: string;
+  camelotKey?: string;
+  openKey?: string;
+  keyConfidence?: number;
+  keySource: 'unknown' | 'manual' | 'measured';
+}
+
 export interface DuplicateSong extends ApiSong {
   sourcePath?: string;
 }
@@ -1371,6 +1388,20 @@ export const api = {
   async getDJWaveform(trackId: string): Promise<DJWaveformResponse> {
     const response = await fetch(`${API_BASE}/dj/waveform/${trackId}`);
     return handleResponse<DJWaveformResponse>(response);
+  },
+
+  /**
+   * Get the persisted, precedence-resolved analysis for one track. A 404 is
+   * expected for tracks that have not completed local analysis yet.
+   */
+  async getTrackAnalysisFeature(trackId: string): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}`, { cache: 'no-store' });
+    return handleResponse<TrackAnalysisFeature>(response);
+  },
+
+  async getTrackAnalysisFeatures(): Promise<TrackAnalysisFeature[]> {
+    const response = await fetch(`${API_BASE}/v2/analysis`, { cache: 'no-store' });
+    return handleResponse<TrackAnalysisFeature[]>(response);
   },
 
   /**

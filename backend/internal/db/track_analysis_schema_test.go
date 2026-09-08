@@ -182,3 +182,32 @@ func TestResolveEffectiveBPMKeepsInferredValuesOutOfSync(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveEffectiveKeyPrefersLockedManualThenMeasured(t *testing.T) {
+	manualTonic, measuredTonic := 9, 0
+	manualMode, measuredMode := "minor", "major"
+	measuredSource, inferredSource := "measured", "inferred"
+	complete := &TrackAnalysis{Status: TrackAnalysisComplete, KeyTonic: &measuredTonic, KeyMode: &measuredMode, KeySource: &measuredSource}
+	partial := &TrackAnalysis{Status: TrackAnalysisPartial, KeyTonic: &measuredTonic, KeyMode: &measuredMode, KeySource: &measuredSource}
+
+	tests := []struct {
+		name   string
+		inputs EffectiveKeyInputs
+		source string
+		tonic  *int
+		mode   *string
+	}{
+		{"locked manual wins", EffectiveKeyInputs{Override: &TrackAnalysisOverride{KeyTonic: &manualTonic, KeyMode: &manualMode, KeyLocked: true}, Analysis: complete}, EffectiveKeyManual, &manualTonic, &manualMode},
+		{"unlocked override does not win", EffectiveKeyInputs{Override: &TrackAnalysisOverride{KeyTonic: &manualTonic, KeyMode: &manualMode}, Analysis: complete}, EffectiveKeyMeasured, &measuredTonic, &measuredMode},
+		{"partial measured key is usable", EffectiveKeyInputs{Analysis: partial}, EffectiveKeyMeasured, &measuredTonic, &measuredMode},
+		{"untrusted source is unknown", EffectiveKeyInputs{Analysis: &TrackAnalysis{Status: TrackAnalysisComplete, KeyTonic: &measuredTonic, KeyMode: &measuredMode, KeySource: &inferredSource}}, EffectiveKeyUnknown, nil, nil},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := ResolveEffectiveKey(test.inputs)
+			if got.Source != test.source || got.Tonic != test.tonic || got.Mode != test.mode {
+				t.Fatalf("ResolveEffectiveKey() = %#v, want source=%q tonic=%#v mode=%#v", got, test.source, test.tonic, test.mode)
+			}
+		})
+	}
+}

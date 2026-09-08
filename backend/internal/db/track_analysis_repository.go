@@ -62,6 +62,16 @@ const (
 	EffectiveBPMTempoDescriptor = "tempo-descriptor"
 )
 
+// EffectiveKeyUnknown, EffectiveKeyManual, and EffectiveKeyMeasured mirror the
+// BPM provenance ladder.  A key has no legacy fallback: a missing tonal
+// measurement is deliberately represented as unknown instead of guessing from
+// tags or genre metadata.
+const (
+	EffectiveKeyUnknown  = "unknown"
+	EffectiveKeyManual   = "manual"
+	EffectiveKeyMeasured = "measured"
+)
+
 // EffectiveBPMInputs collects every BPM tier a caller may hold. It is a struct
 // rather than positional pointers because three of the tiers are numerically
 // identical types; swapping two at a call site would silently promote an
@@ -83,6 +93,23 @@ type EffectiveBPM struct {
 	Value       *float64
 	Source      string
 	SyncAllowed bool
+}
+
+// EffectiveKeyInputs collects the two sources that may authoritatively name a
+// track's key. Keeping this separate from EffectiveBPM prevents a future
+// caller from accidentally treating an inferred tempo tier as tonal evidence.
+type EffectiveKeyInputs struct {
+	Override *TrackAnalysisOverride
+	Analysis *TrackAnalysis
+}
+
+// EffectiveKey carries the pitch-class representation rather than a display
+// string. Notation is a presentation concern, so callers can choose Camelot,
+// Open Key, or a traditional key name without changing the persisted fact.
+type EffectiveKey struct {
+	Tonic  *int
+	Mode   *string
+	Source string
 }
 
 // Inferred reports whether the value came from a tier that did not measure the
@@ -111,6 +138,18 @@ func ResolveEffectiveBPM(inputs EffectiveBPMInputs) EffectiveBPM {
 	return EffectiveBPM{Source: EffectiveBPMUnknown}
 }
 
+// ResolveEffectiveKey applies the same manual-over-measured precedence as
+// BPM. A partial analysis is sufficient when its key dimension is present.
+func ResolveEffectiveKey(inputs EffectiveKeyInputs) EffectiveKey {
+	if inputs.Override != nil && inputs.Override.KeyLocked && inputs.Override.KeyTonic != nil && inputs.Override.KeyMode != nil {
+		return EffectiveKey{Tonic: inputs.Override.KeyTonic, Mode: inputs.Override.KeyMode, Source: EffectiveKeyManual}
+	}
+	if tonic, mode := measuredKey(inputs.Analysis); tonic != nil && mode != nil {
+		return EffectiveKey{Tonic: tonic, Mode: mode, Source: EffectiveKeyMeasured}
+	}
+	return EffectiveKey{Source: EffectiveKeyUnknown}
+}
+
 // measuredBPM returns an audio-derived tempo only when the record actually
 // carries one.
 //
@@ -137,6 +176,23 @@ func measuredBPM(analysis *TrackAnalysis) *float64 {
 		return analysis.BPM
 	default:
 		return nil
+	}
+}
+
+func measuredKey(analysis *TrackAnalysis) (*int, *string) {
+	if analysis == nil || analysis.KeyTonic == nil || analysis.KeyMode == nil || analysis.KeySource == nil {
+		return nil, nil
+	}
+	switch analysis.Status {
+	case TrackAnalysisComplete, TrackAnalysisPartial:
+	default:
+		return nil, nil
+	}
+	switch *analysis.KeySource {
+	case "measured", "imported":
+		return analysis.KeyTonic, analysis.KeyMode
+	default:
+		return nil, nil
 	}
 }
 
@@ -220,6 +276,33 @@ func (d *DB) GetTrackAnalysis(songID string) (TrackAnalysis, error) {
 		key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
 		analyzed_at, error_code, error_message FROM track_analysis WHERE song_id = ?`, songID)
 	return scanTrackAnalysis(row)
+}
+
+// ListTrackAnalysis returns the current scalar record for every analyzed
+// song. It is intentionally one ordered query so library consumers do not
+// issue one database read per visible row.
+func (d *DB) ListTrackAnalysis() ([]TrackAnalysis, error) {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return nil, err
+	}
+	rows, err := d.conn.Query(`SELECT song_id, status, analysis_version, algorithm_version, decoder_id,
+		source_fingerprint, source_size, source_mtime, source_revision,
+		bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
+		key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
+		analyzed_at, error_code, error_message FROM track_analysis ORDER BY song_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := make([]TrackAnalysis, 0)
+	for rows.Next() {
+		analysis, err := scanTrackAnalysis(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, analysis)
+	}
+	return results, rows.Err()
 }
 
 // TrackAnalysisStale reports whether a completed result was made from a
@@ -317,6 +400,43 @@ func (d *DB) GetTrackAnalysisOverride(songID string) (TrackAnalysisOverride, err
 	result.KeyLocked = keyLocked != 0
 	result.BeatgridLocked = gridLocked != 0
 	return result, nil
+}
+
+// ListTrackAnalysisOverrides returns every manual override keyed by song ID.
+// Pair it with ListTrackAnalysis when rendering a library-wide feature map.
+func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, error) {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return nil, err
+	}
+	rows, err := d.conn.Query(`SELECT song_id, bpm, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
+		FROM track_analysis_overrides`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := make(map[string]TrackAnalysisOverride)
+	for rows.Next() {
+		var result TrackAnalysisOverride
+		var bpm sql.NullFloat64
+		var keyTonic sql.NullInt64
+		var keyMode, artifactID sql.NullString
+		var bpmLocked, keyLocked, gridLocked int
+		if err := rows.Scan(&result.SongID, &bpm, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt); err != nil {
+			return nil, err
+		}
+		result.BPM = optionalFloat64(bpm)
+		if keyTonic.Valid {
+			value := int(keyTonic.Int64)
+			result.KeyTonic = &value
+		}
+		result.KeyMode = optionalString(keyMode)
+		result.BeatgridArtifactID = optionalString(artifactID)
+		result.BPMLocked = bpmLocked != 0
+		result.KeyLocked = keyLocked != 0
+		result.BeatgridLocked = gridLocked != 0
+		results[result.SongID] = result
+	}
+	return results, rows.Err()
 }
 
 type trackAnalysisScanner interface{ Scan(dest ...any) error }
