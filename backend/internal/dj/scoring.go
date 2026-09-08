@@ -46,7 +46,7 @@ func ScoreSongForPhase(song db.Song, phase DJPhase, ctx *ScoreContext, persona P
 	breakdown.MoodMatchScore = moodScore
 
 	// BPM range match
-	bpmScore := scoreBPMRange(getSongBPM(song), phase.MinBPM, phase.MaxBPM)
+	bpmScore := scoreBPMRange(getSongBPM(song, ctx), phase.MinBPM, phase.MaxBPM)
 	breakdown.BPMMatchScore = bpmScore
 
 	// Combine phase fit (weighted average)
@@ -59,7 +59,7 @@ func ScoreSongForPhase(song db.Song, phase DJPhase, ctx *ScoreContext, persona P
 	// ========================================================================
 
 	if ctx.LastSongBPM > 0 {
-		songBPM := getSongBPM(song)
+		songBPM := getSongBPM(song, ctx)
 		bpmDiff := songBPM - ctx.LastSongBPM
 		if bpmDiff < 0 {
 			bpmDiff = -bpmDiff
@@ -322,8 +322,14 @@ func scoreBPMRange(songBPM, minBPM, maxBPM int) float64 {
 // Helper Functions
 // ============================================================================
 
-// getSongBPM returns the song's BPM, estimating from tempo if unknown.
-func getSongBPM(song db.Song) int {
+// getSongBPM uses manual/audio-measured tempo when the caller supplied it,
+// then preserves the legacy metadata/descriptor fallback for unmeasured songs.
+func getSongBPM(song db.Song, ctx *ScoreContext) int {
+	if ctx != nil && ctx.EffectiveBPM != nil {
+		if bpm, ok := ctx.EffectiveBPM[song.ID]; ok && bpm > 0 {
+			return bpm
+		}
+	}
 	if song.BPM > 0 {
 		return song.BPM
 	}
@@ -413,7 +419,7 @@ func (ctx *ScoreContext) MarkArtistSeen(artist string) {
 
 // UpdateLastSong updates the context with the last selected song's properties.
 func (ctx *ScoreContext) UpdateLastSong(song db.Song) {
-	ctx.LastSongBPM = getSongBPM(song)
+	ctx.LastSongBPM = getSongBPM(song, ctx)
 	ctx.LastSongMood = song.Mood
 	ctx.LastSongEnergy = song.Energy
 	ctx.LastSongTempo = song.Tempo

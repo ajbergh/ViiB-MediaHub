@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -437,6 +438,36 @@ func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, err
 		results[result.SongID] = result
 	}
 	return results, rows.Err()
+}
+
+// ListEffectiveBPM returns only manual or audio-measured tempo rounded for
+// AI-DJ scoring. It intentionally omits legacy and descriptor values: callers
+// retain their existing song metadata fallback when this map has no entry.
+func (d *DB) ListEffectiveBPM() (map[string]int, error) {
+	analyses, err := d.ListTrackAnalysis()
+	if err != nil {
+		return nil, err
+	}
+	overrides, err := d.ListTrackAnalysisOverrides()
+	if err != nil {
+		return nil, err
+	}
+	results := make(map[string]int, len(analyses))
+	for _, analysis := range analyses {
+		effective := ResolveEffectiveBPM(EffectiveBPMInputs{Override: ptrTrackAnalysisOverride(overrides, analysis.SongID), Analysis: &analysis})
+		if effective.Value != nil && effective.SyncAllowed {
+			results[analysis.SongID] = int(math.Round(*effective.Value))
+		}
+	}
+	return results, nil
+}
+
+func ptrTrackAnalysisOverride(overrides map[string]TrackAnalysisOverride, songID string) *TrackAnalysisOverride {
+	override, ok := overrides[songID]
+	if !ok {
+		return nil
+	}
+	return &override
 }
 
 type trackAnalysisScanner interface{ Scan(dest ...any) error }

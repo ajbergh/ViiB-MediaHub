@@ -2080,6 +2080,11 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	scoreCtx.DiscoverMode = discoverMode
 	scoreCtx.FlowStrictness = flowStrictness
 	scoreCtx.RecentlyPlayedIDs = recentlyPlayedIDs
+	if measuredBPM, measuredErr := a.db.ListEffectiveBPM(); measuredErr != nil {
+		logger.API("DJ Mode: failed to load effective BPM; using legacy fallback: %v", measuredErr)
+	} else {
+		scoreCtx.EffectiveBPM = measuredBPM
+	}
 
 	// Create the sequencer
 	sequencer := dj.NewSequencer()

@@ -204,10 +204,10 @@ func (s *Sequencer) selectForPhase(
 	selected := s.selectWithStochasticity(scored, targetCount, persona.Weights.OnePerArtistStrictness, ctx)
 
 	// Sort selected by BPM for smooth transitions within phase
-	s.sortByBPM(selected)
+	s.sortByBPM(selected, ctx)
 
 	// Build phase result
-	result := s.buildPhaseResult(phase, selected)
+	result := s.buildPhaseResult(phase, selected, ctx)
 
 	return result, selected
 }
@@ -379,10 +379,10 @@ func (s *Sequencer) selectWithStochasticity(
 }
 
 // sortByBPM sorts songs by BPM for smooth transitions.
-func (s *Sequencer) sortByBPM(songs []db.Song) {
+func (s *Sequencer) sortByBPM(songs []db.Song, ctx *ScoreContext) {
 	sort.Slice(songs, func(i, j int) bool {
-		bpmI := getSongBPM(songs[i])
-		bpmJ := getSongBPM(songs[j])
+		bpmI := getSongBPM(songs[i], ctx)
+		bpmJ := getSongBPM(songs[j], ctx)
 		return bpmI < bpmJ
 	})
 }
@@ -414,7 +414,7 @@ func (s *Sequencer) microShuffle(songs []db.Song, windowSize int) []db.Song {
 }
 
 // buildPhaseResult creates a PhaseResult from selected songs.
-func (s *Sequencer) buildPhaseResult(phase DJPhase, songs []db.Song) PhaseResult {
+func (s *Sequencer) buildPhaseResult(phase DJPhase, songs []db.Song, ctx *ScoreContext) PhaseResult {
 	result := PhaseResult{
 		Name:      phase.Name,
 		SongIDs:   make([]string, 0, len(songs)),
@@ -434,7 +434,7 @@ func (s *Sequencer) buildPhaseResult(phase DJPhase, songs []db.Song) PhaseResult
 	for _, song := range songs {
 		result.SongIDs = append(result.SongIDs, song.ID)
 
-		bpm := getSongBPM(song)
+		bpm := getSongBPM(song, ctx)
 		if bpm > 0 {
 			totalBPM += bpm
 			if bpm < minBPM {
