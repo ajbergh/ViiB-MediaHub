@@ -28,6 +28,11 @@ const (
 	MethodPeakInterval          Method = "peak-interval"
 	MethodOnsetAutocorrelation  Method = "onset-autocorrelation"
 	MethodMultiFeatureConsensus Method = "multifeature-consensus"
+	// MethodMultiFeatureHalfBPM preserves the multi-feature estimator's
+	// continuous periodicity measurement but reports on a half-BPM grid.  It
+	// is a Phase 0 calibration candidate for integer-reference corpora, not a
+	// replacement for the continuous production representation.
+	MethodMultiFeatureHalfBPM Method = "multifeature-half-bpm"
 )
 
 // Options configure candidate bounds and metrical range priors.
@@ -197,7 +202,7 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
 	}
 	minBPM, maxBPM := resolveBounds(a.options)
-	if a.options.Method == MethodMultiFeatureConsensus {
+	if a.options.Method == MethodMultiFeatureConsensus || a.options.Method == MethodMultiFeatureHalfBPM {
 		return estimateMultiFeatureConsensus(
 			onsets,
 			a.fluxEnvelope,
@@ -206,6 +211,7 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 			minBPM,
 			maxBPM,
 			crestFactor,
+			a.options.Method == MethodMultiFeatureHalfBPM,
 		)
 	}
 	if a.options.Method == MethodOnsetAutocorrelation {

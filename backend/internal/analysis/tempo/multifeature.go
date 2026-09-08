@@ -11,7 +11,7 @@ type periodicityCandidate struct {
 // representations. Each representation supplies whole-track periodicity
 // evidence; sixteen-second sections then vote only for their strongest tempo,
 // limiting the influence of intros, breakdowns, and isolated transients.
-func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate, minBPM, maxBPM, crestFactor float64) Estimate {
+func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate, minBPM, maxBPM, crestFactor float64, halfBPMGrid bool) Estimate {
 	energyCandidates := periodicityCandidates(energy, energyRate, minBPM, maxBPM)
 	fluxCandidates := periodicityCandidates(flux, fluxRate, minBPM, maxBPM)
 	if len(energyCandidates) == 0 || len(fluxCandidates) == 0 {
@@ -54,6 +54,9 @@ func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate,
 	}
 
 	primary := float64(bestBucket) / 10
+	if halfBPMGrid {
+		primary = math.Round(primary*2) / 2
+	}
 	alternate := 0.0
 	for bucket, vote := range votes {
 		if bucket == bestBucket || math.Abs(float64(bucket-bestBucket)) < 2 {
@@ -70,6 +73,9 @@ func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate,
 		} else {
 			alternate = primary * 2
 		}
+	}
+	if halfBPMGrid {
+		alternate = math.Round(alternate*2) / 2
 	}
 	margin := bestVote - math.Max(0, runnerUpVote)
 	confidence := math.Max(0, math.Min(1, margin/math.Max(0.05, bestVote)))
