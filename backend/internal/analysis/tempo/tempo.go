@@ -6,6 +6,11 @@ import "math"
 // RangePreset constrains tempo candidates to an expected DJ operating range.
 type RangePreset string
 
+// Method identifies the candidate-selection strategy after onset extraction.
+// The established method remains the default while Phase 0 evaluates the
+// periodicity candidate on the reserved tuning split.
+type Method string
+
 const (
 	RangeAutomatic RangePreset = "auto"
 	Range60to120   RangePreset = "60-120"
@@ -15,9 +20,15 @@ const (
 	RangeCustom    RangePreset = "custom"
 )
 
+const (
+	MethodPeakInterval         Method = "peak-interval"
+	MethodOnsetAutocorrelation Method = "onset-autocorrelation"
+)
+
 // Options configure candidate bounds and metrical range priors.
 type Options struct {
 	Range               RangePreset
+	Method              Method
 	MinBPM              float64
 	MaxBPM              float64
 	MinOnsetCrestFactor float64
@@ -27,6 +38,7 @@ type Options struct {
 func DefaultOptions() Options {
 	return Options{
 		Range:               RangeAutomatic,
+		Method:              MethodPeakInterval,
 		MinBPM:              90,
 		MaxBPM:              180,
 		MinOnsetCrestFactor: minOnsetCrestFactor,
@@ -122,7 +134,7 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 		onsets[i] = maxFloat(0, a.envelope[i]-a.envelope[i-1])
 	}
 	mean, deviation := meanDeviation(onsets)
-	// Require transient evidence before picking peaks. Without this, a purely
+	// Require transient evidence before selecting a periodic candidate. Without this, a purely
 	// sustained source has no beats to find and the relative threshold below
 	// adapts down onto its numerical noise floor, inventing a tempo. A
 	// non-positive mean means the envelope never rose, which is the same
@@ -137,6 +149,10 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 	}
 	if mean <= 0 || crestFactor < minimumCrestFactor {
 		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
+	}
+	minBPM, maxBPM := resolveBounds(a.options)
+	if a.options.Method == MethodOnsetAutocorrelation {
+		return estimateOnsetAutocorrelation(onsets, float64(a.sampleRate)/float64(a.hop), minBPM, maxBPM, crestFactor)
 	}
 	threshold := mean + 1.5*deviation
 	minDistance := max(1, int(math.Round(.1*float64(a.sampleRate)/float64(a.hop))))
@@ -156,8 +172,6 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 	if len(peaks) < 3 {
 		return Estimate{AlgorithmVersion: AlgorithmVersion}
 	}
-
-	minBPM, maxBPM := resolveBounds(a.options)
 
 	type candidate struct {
 		count int
@@ -249,6 +263,96 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 		Known:            true,
 		AlgorithmVersion: AlgorithmVersion,
 	}
+}
+
+// estimateOnsetAutocorrelation scores repeating patterns across the complete
+// onset envelope. It is less sensitive to a single off-beat transient than
+// consecutive-peak voting, but remains a Phase 0 candidate until it passes
+// tuning and held-out evaluation.
+func estimateOnsetAutocorrelation(onsets []float64, envelopeRate, minBPM, maxBPM, crestFactor float64) Estimate {
+	const stride = 4
+	if envelopeRate <= 0 || minBPM <= 0 || maxBPM < minBPM {
+		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
+	}
+	values := make([]float64, 0, (len(onsets)+stride-1)/stride)
+	for start := 0; start < len(onsets); start += stride {
+		end := min(start+stride, len(onsets))
+		sum := 0.0
+		for _, value := range onsets[start:end] {
+			sum += value
+		}
+		values = append(values, sum/float64(end-start))
+	}
+	if len(values) < 8 {
+		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
+	}
+
+	rate := envelopeRate / stride
+	minLag := max(1, int(math.Ceil(60*rate/maxBPM)))
+	maxLag := min(len(values)-1, int(math.Floor(60*rate/minBPM)))
+	if minLag > maxLag {
+		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
+	}
+	mean := 0.0
+	for _, value := range values {
+		mean += value
+	}
+	mean /= float64(len(values))
+	for i := range values {
+		values[i] -= mean
+	}
+
+	type candidate struct {
+		lag   int
+		score float64
+	}
+	best := candidate{score: -math.MaxFloat64}
+	runnerUp := candidate{score: -math.MaxFloat64}
+	for lag := minLag; lag <= maxLag; lag++ {
+		score := normalizedAutocorrelation(values, lag)
+		if 2*lag < len(values) {
+			score += 0.45 * normalizedAutocorrelation(values, 2*lag)
+		}
+		if 3*lag < len(values) {
+			score += 0.20 * normalizedAutocorrelation(values, 3*lag)
+		}
+		current := candidate{lag: lag, score: score}
+		if current.score > best.score {
+			runnerUp = best
+			best = current
+		} else if current.score > runnerUp.score {
+			runnerUp = current
+		}
+	}
+	if best.lag == 0 || best.score <= 0 {
+		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
+	}
+	margin := best.score - runnerUp.score
+	confidence := math.Max(0, math.Min(1, margin/math.Max(0.05, math.Abs(best.score))))
+	return Estimate{
+		BPM:              60 * rate / float64(best.lag),
+		Confidence:       confidence,
+		OnsetCrestFactor: crestFactor,
+		Known:            true,
+		AlgorithmVersion: AlgorithmVersion,
+	}
+}
+
+func normalizedAutocorrelation(values []float64, lag int) float64 {
+	if lag <= 0 || lag >= len(values) {
+		return 0
+	}
+	product, leftEnergy, rightEnergy := 0.0, 0.0, 0.0
+	for index := lag; index < len(values); index++ {
+		left, right := values[index], values[index-lag]
+		product += left * right
+		leftEnergy += left * left
+		rightEnergy += right * right
+	}
+	if leftEnergy <= 0 || rightEnergy <= 0 {
+		return 0
+	}
+	return product / math.Sqrt(leftEnergy*rightEnergy)
 }
 
 func resolveBounds(opts Options) (float64, float64) {

@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis/tempo"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/track"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 )
@@ -51,6 +52,7 @@ func main() {
 	outputPath := flag.String("out", "", "non-overwriting Go analyzer result JSON; requires -analyze")
 	analyzeSplit := flag.String("analyze-split", "", "optional reserved corpus split to analyze: tuning or held_out; requires -analyze")
 	tempoMinOnsetCrest := flag.Float64("tempo-min-onset-crest", 0, "optional Phase 0 tempo refusal threshold; requires -analyze and must be tuned only on the tuning split")
+	tempoMethod := flag.String("tempo-method", "", "optional Phase 0 tempo candidate method: peak-interval or onset-autocorrelation; requires -analyze")
 	keyMaxChromaFlatness := flag.Float64("key-max-chroma-flatness", 0, "optional Phase 0 key refusal threshold; requires -analyze and must be tuned only on the tuning split")
 	spotifyCorpusRoot := flag.String("import-spotify-corpus", "", "directory tree containing per-folder Spotify BPM/key CSV files and local .mp3/.ogg media")
 	spotifyCorpusOutput := flag.String("import-spotify-out", "", "non-overwriting analysisbench manifest JSON; requires -import-spotify-corpus")
@@ -85,7 +87,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "analysisbench: -analyze and -out must be provided together")
 		os.Exit(2)
 	}
-	if (*tempoMinOnsetCrest != 0 || *keyMaxChromaFlatness != 0) && *analyzeManifestPath == "" {
+	if (*tempoMinOnsetCrest != 0 || *tempoMethod != "" || *keyMaxChromaFlatness != 0) && *analyzeManifestPath == "" {
 		fmt.Fprintln(os.Stderr, "analysisbench: Phase 0 calibration flags require -analyze")
 		os.Exit(2)
 	}
@@ -95,6 +97,10 @@ func main() {
 	}
 	if *tempoMinOnsetCrest < 0 || *keyMaxChromaFlatness < 0 || *keyMaxChromaFlatness > 1 {
 		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 calibration threshold")
+		os.Exit(2)
+	}
+	if *tempoMethod != "" && *tempoMethod != string(tempo.MethodPeakInterval) && *tempoMethod != string(tempo.MethodOnsetAutocorrelation) {
+		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 tempo method")
 		os.Exit(2)
 	}
 	if (*spotifyCorpusRoot == "") != (*spotifyCorpusOutput == "") {
@@ -194,6 +200,9 @@ func main() {
 		options := track.DefaultOptions()
 		if *tempoMinOnsetCrest > 0 {
 			options.Tempo.MinOnsetCrestFactor = *tempoMinOnsetCrest
+		}
+		if *tempoMethod != "" {
+			options.Tempo.Method = tempo.Method(*tempoMethod)
 		}
 		if *keyMaxChromaFlatness > 0 {
 			options.Key.MaxChromaFlatness = *keyMaxChromaFlatness

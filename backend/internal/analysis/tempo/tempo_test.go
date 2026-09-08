@@ -23,6 +23,19 @@ func TestEstimatePCMRecognizesFractionalSyntheticTempo(t *testing.T) {
 		t.Fatalf("estimate = %#v", actual)
 	}
 }
+
+func TestOnsetAutocorrelationRecognizesSyntheticTempo(t *testing.T) {
+	fixture, err := analysisbench.NewClickTrack("autocorrelation", 128, 12, 44100, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := DefaultOptions()
+	options.Method = MethodOnsetAutocorrelation
+	actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
+	if !actual.Known || math.Abs(actual.BPM-128) > .5 {
+		t.Fatalf("autocorrelation estimate = %#v, want ~128 BPM", actual)
+	}
+}
 func TestEstimatePCMReturnsUnknownForSilence(t *testing.T) {
 	if actual := EstimatePCM(make([]float32, 44100), 44100); actual.Known {
 		t.Fatalf("silence = %#v", actual)
@@ -136,4 +149,3 @@ func TestEstimatePCMTempoRampStability(t *testing.T) {
 		t.Fatalf("expected ramp stability < 0.85, got %v", actual.Stability)
 	}
 }
-
