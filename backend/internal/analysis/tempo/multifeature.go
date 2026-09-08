@@ -18,6 +18,11 @@ func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate,
 		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
 	}
 
+	// Preserve a tenth-BPM grid through voting.  The 125 Hz periodicity
+	// representation has integer lags roughly 2 BPM apart around 128 BPM;
+	// rounding those lags to 0.5 BPM systematically misses otherwise stable
+	// real-world tempos.  Candidate lag interpolation below supplies the
+	// resolution, while this finer grid prevents the voter from discarding it.
 	votes := map[int]float64{}
 	addCandidates := func(candidates []periodicityCandidate, weight float64) {
 		best := 1e-12
@@ -25,7 +30,7 @@ func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate,
 			best = math.Max(best, candidate.score)
 		}
 		for _, candidate := range candidates {
-			bucket := int(math.Round(candidate.bpm * 2))
+			bucket := int(math.Round(candidate.bpm * 10))
 			votes[bucket] += weight * candidate.score / best
 		}
 	}
@@ -48,14 +53,14 @@ func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate,
 		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
 	}
 
-	primary := float64(bestBucket) / 2
+	primary := float64(bestBucket) / 10
 	alternate := 0.0
 	for bucket, vote := range votes {
 		if bucket == bestBucket || math.Abs(float64(bucket-bestBucket)) < 2 {
 			continue
 		}
 		if alternate == 0 || vote > runnerUpVote {
-			alternate = float64(bucket) / 2
+			alternate = float64(bucket) / 10
 			runnerUpVote = vote
 		}
 	}
@@ -110,7 +115,7 @@ func periodicityCandidates(values []float64, rate, minBPM, maxBPM float64) []per
 	if minLag > maxLag {
 		return nil
 	}
-	candidates := make([]periodicityCandidate, 0, maxLag-minLag+1)
+	scores := make([]float64, maxLag-minLag+1)
 	for lag := minLag; lag <= maxLag; lag++ {
 		score := normalizedAutocorrelation(collapsed, lag)
 		if 2*lag < len(collapsed) {
@@ -119,9 +124,27 @@ func periodicityCandidates(values []float64, rate, minBPM, maxBPM float64) []per
 		if 3*lag < len(collapsed) {
 			score += 0.20 * normalizedAutocorrelation(collapsed, 3*lag)
 		}
-		if score > 0 {
-			candidates = append(candidates, periodicityCandidate{bpm: 60 * rate / float64(lag), score: score})
+		scores[lag-minLag] = score
+	}
+
+	// Retain only local maxima and refine each one with a quadratic fit.  A
+	// peak between two discrete lags is common at this frame rate, especially
+	// around club tempos.  The fit is bounded to its neighbouring samples so
+	// it cannot invent a tempo outside measured evidence.
+	candidates := make([]periodicityCandidate, 0, len(scores)/3)
+	for index := 1; index+1 < len(scores); index++ {
+		current := scores[index]
+		if current <= 0 || current < scores[index-1] || current < scores[index+1] {
+			continue
 		}
+		denominator := scores[index-1] - 2*current + scores[index+1]
+		offset := 0.0
+		if denominator < -1e-12 {
+			offset = 0.5 * (scores[index-1] - scores[index+1]) / denominator
+			offset = math.Max(-0.5, math.Min(0.5, offset))
+		}
+		lag := float64(minLag+index) + offset
+		candidates = append(candidates, periodicityCandidate{bpm: 60 * rate / lag, score: current})
 	}
 	return candidates
 }
@@ -141,7 +164,7 @@ func addSectionVotes(votes map[int]float64, values []float64, rate, minBPM, maxB
 				best = candidate
 			}
 		}
-		votes[int(math.Round(best.bpm*2))] += weight
+		votes[int(math.Round(best.bpm*10))] += weight
 		sections++
 	}
 	if sections == 0 {
