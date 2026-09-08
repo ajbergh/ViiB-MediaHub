@@ -53,7 +53,7 @@ func main() {
 	outputPath := flag.String("out", "", "non-overwriting Go analyzer result JSON; requires -analyze")
 	analyzeSplit := flag.String("analyze-split", "", "optional reserved corpus split to analyze: tuning or held_out; requires -analyze")
 	tempoMinOnsetCrest := flag.Float64("tempo-min-onset-crest", 0, "optional Phase 0 tempo refusal threshold; requires -analyze and must be tuned only on the tuning split")
-	tempoMethod := flag.String("tempo-method", "", "optional Phase 0 tempo candidate method: peak-interval or onset-autocorrelation; requires -analyze")
+	tempoMethod := flag.String("tempo-method", "", "optional Phase 0 tempo candidate method: peak-interval, onset-autocorrelation, or multifeature-consensus; requires -analyze")
 	keyMaxChromaFlatness := flag.Float64("key-max-chroma-flatness", 0, "optional Phase 0 key refusal threshold; requires -analyze and must be tuned only on the tuning split")
 	keyMaxFrequency := flag.Float64("key-max-frequency", 0, "optional Phase 0 chroma upper frequency in Hz; requires -analyze and must be tuned only on the tuning split")
 	keyExtraction := flag.String("key-extraction", "", "optional Phase 0 key extraction: direct-chroma or hpcp-peaks; requires -analyze")
@@ -103,7 +103,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 calibration threshold")
 		os.Exit(2)
 	}
-	if *tempoMethod != "" && *tempoMethod != string(tempo.MethodPeakInterval) && *tempoMethod != string(tempo.MethodOnsetAutocorrelation) {
+	if *tempoMethod != "" && *tempoMethod != string(tempo.MethodPeakInterval) && *tempoMethod != string(tempo.MethodOnsetAutocorrelation) && *tempoMethod != string(tempo.MethodMultiFeatureConsensus) {
 		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 tempo method")
 		os.Exit(2)
 	}

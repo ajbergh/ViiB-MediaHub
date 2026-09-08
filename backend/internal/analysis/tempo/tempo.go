@@ -1,7 +1,11 @@
 // Package tempo provides the first backend-owned tempo candidate estimator.
 package tempo
 
-import "math"
+import (
+	"math"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis"
+)
 
 // RangePreset constrains tempo candidates to an expected DJ operating range.
 type RangePreset string
@@ -21,8 +25,9 @@ const (
 )
 
 const (
-	MethodPeakInterval         Method = "peak-interval"
-	MethodOnsetAutocorrelation Method = "onset-autocorrelation"
+	MethodPeakInterval          Method = "peak-interval"
+	MethodOnsetAutocorrelation  Method = "onset-autocorrelation"
+	MethodMultiFeatureConsensus Method = "multifeature-consensus"
 )
 
 // Options configure candidate bounds and metrical range priors.
@@ -92,6 +97,10 @@ type OnsetAccumulator struct {
 	pending                            []float32
 	envelope                           []float64
 	positions                          []int
+	fluxSTFT                           *analysis.STFT
+	fluxPending                        []float32
+	previousFluxSpectrum               []float64
+	fluxEnvelope                       []float64
 }
 
 func NewOnsetAccumulator(sampleRate int) *OnsetAccumulator {
@@ -99,11 +108,17 @@ func NewOnsetAccumulator(sampleRate int) *OnsetAccumulator {
 }
 
 func NewOnsetAccumulatorWithOptions(sampleRate int, opts Options) *OnsetAccumulator {
+	fluxWindow := 1024
+	if sampleRate > 0 && sampleRate < 16000 {
+		fluxWindow = 512
+	}
+	fluxSTFT, _ := analysis.NewSTFT(fluxWindow, fluxWindow/2)
 	return &OnsetAccumulator{
 		sampleRate: sampleRate,
 		window:     max(1, sampleRate/200),
 		hop:        max(1, sampleRate/1000),
 		options:    opts,
+		fluxSTFT:   fluxSTFT,
 	}
 }
 
@@ -111,6 +126,7 @@ func (a *OnsetAccumulator) Feed(samples []float32) {
 	if a.sampleRate <= 0 {
 		return
 	}
+	a.feedSpectralFlux(samples)
 	a.pending = append(a.pending, samples...)
 	for len(a.pending) >= a.window {
 		energy := 0.
@@ -123,6 +139,36 @@ func (a *OnsetAccumulator) Feed(samples []float32) {
 		a.pending = a.pending[a.hop:]
 		a.nextStart += a.hop
 	}
+}
+
+// feedSpectralFlux retains a second, independent onset representation. Its
+// positive spectral-magnitude changes complement amplitude-envelope changes,
+// which are easily dominated by vocals, drops, and mastering dynamics.
+func (a *OnsetAccumulator) feedSpectralFlux(samples []float32) {
+	if a.fluxSTFT == nil || len(samples) == 0 {
+		return
+	}
+	a.fluxPending = append(a.fluxPending, samples...)
+	if len(a.fluxPending) < a.fluxSTFT.WindowSize {
+		return
+	}
+	frames := (len(a.fluxPending)-a.fluxSTFT.WindowSize)/a.fluxSTFT.HopSize + 1
+	consumed := (frames-1)*a.fluxSTFT.HopSize + a.fluxSTFT.WindowSize
+	_ = a.fluxSTFT.Frames(a.fluxPending[:consumed], func(spectrum []complex128) error {
+		magnitudes := make([]float64, len(spectrum))
+		flux := 0.0
+		for index := 1; index < len(spectrum); index++ {
+			magnitude := math.Hypot(real(spectrum[index]), imag(spectrum[index]))
+			magnitudes[index] = magnitude
+			if index < len(a.previousFluxSpectrum) && magnitude > a.previousFluxSpectrum[index] {
+				flux += magnitude - a.previousFluxSpectrum[index]
+			}
+		}
+		a.previousFluxSpectrum = magnitudes
+		a.fluxEnvelope = append(a.fluxEnvelope, flux)
+		return nil
+	})
+	a.fluxPending = a.fluxPending[frames*a.fluxSTFT.HopSize:]
 }
 
 func (a *OnsetAccumulator) Estimate() Estimate {
@@ -151,6 +197,17 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
 	}
 	minBPM, maxBPM := resolveBounds(a.options)
+	if a.options.Method == MethodMultiFeatureConsensus {
+		return estimateMultiFeatureConsensus(
+			onsets,
+			a.fluxEnvelope,
+			float64(a.sampleRate)/float64(a.hop),
+			float64(a.sampleRate)/float64(a.fluxSTFT.HopSize),
+			minBPM,
+			maxBPM,
+			crestFactor,
+		)
+	}
 	if a.options.Method == MethodOnsetAutocorrelation {
 		return estimateOnsetAutocorrelation(onsets, float64(a.sampleRate)/float64(a.hop), minBPM, maxBPM, crestFactor)
 	}

@@ -36,6 +36,19 @@ func TestOnsetAutocorrelationRecognizesSyntheticTempo(t *testing.T) {
 		t.Fatalf("autocorrelation estimate = %#v, want ~128 BPM", actual)
 	}
 }
+
+func TestMultiFeatureConsensusRecognizesSyntheticTempo(t *testing.T) {
+	fixture, err := analysisbench.NewNoisyClickTrack("multifeature", 128, 12, 44100, 1, 0.2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := DefaultOptions()
+	options.Method = MethodMultiFeatureConsensus
+	actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
+	if !actual.Known || math.Abs(actual.BPM-128) > .5 || actual.Stability < .5 {
+		t.Fatalf("multifeature estimate = %#v, want stable ~128 BPM", actual)
+	}
+}
 func TestEstimatePCMReturnsUnknownForSilence(t *testing.T) {
 	if actual := EstimatePCM(make([]float32, 44100), 44100); actual.Known {
 		t.Fatalf("silence = %#v", actual)
