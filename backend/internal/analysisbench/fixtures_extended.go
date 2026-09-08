@@ -51,6 +51,36 @@ func NewMissingBeatClickTrack(name string, bpm, durationSeconds float64, sampleR
 	}, nil
 }
 
+// NewMeteredClickTrack creates a known-tempo click track with an accented
+// downbeat. bpm is the rate of each written beat, not a bar-level tempo; this
+// makes the expected tempo unambiguous for 3/4 and 6/8 regression inputs.
+func NewMeteredClickTrack(name string, bpm, durationSeconds float64, sampleRate, channels, beatsPerBar int) (PCMFixture, error) {
+	if beatsPerBar < 2 {
+		return PCMFixture{}, fmt.Errorf("beatsPerBar must be at least 2")
+	}
+	if name == "" || bpm <= 0 || durationSeconds <= 0 || sampleRate <= 0 || channels <= 0 {
+		return PCMFixture{}, fmt.Errorf("name, bpm, duration, sample rate, and channels must be positive")
+	}
+	frames := int(math.Round(durationSeconds * float64(sampleRate)))
+	samples := make([]float32, frames*channels)
+	period := float64(sampleRate) * 60 / bpm
+	for beat := 0; ; beat++ {
+		start := int(math.Round(float64(beat) * period))
+		if start >= frames {
+			break
+		}
+		amplitude := 0.45
+		if beat%beatsPerBar == 0 {
+			amplitude = 1
+		}
+		addPulse(samples, start, sampleRate, channels, amplitude)
+	}
+	return PCMFixture{
+		Name: name, Kind: "metered-click-track", SampleRate: sampleRate, Channels: channels,
+		Samples: samples, Expected: ExpectedAnalysis{BPM: &bpm},
+	}, nil
+}
+
 // NewTempoRampClickTrack creates a linearly changing tempo. It deliberately
 // has no single expected BPM, allowing tests to assert that static analyzers do
 // not present one as a reliable catalog fact.
@@ -162,6 +192,12 @@ func Phase0SyntheticFixtures() ([]PCMFixture, error) {
 		return nil, err
 	}
 	if err := add(NewMissingBeatClickTrack("missing-every-fourth-124", 124, 8, 44100, 2, 4)); err != nil {
+		return nil, err
+	}
+	if err := add(NewMeteredClickTrack("metered-3-4-120", 120, 8, 44100, 2, 3)); err != nil {
+		return nil, err
+	}
+	if err := add(NewMeteredClickTrack("metered-6-8-120-eighth", 120, 8, 44100, 2, 6)); err != nil {
 		return nil, err
 	}
 	if err := add(NewTempoRampClickTrack("tempo-ramp-110-130", 110, 130, 8, 44100, 2)); err != nil {

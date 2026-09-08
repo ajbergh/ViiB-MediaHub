@@ -12,11 +12,12 @@ import (
 )
 
 type report struct {
-	Fixtures   []fixtureReport                 `json:"fixtures"`
-	Codecs     []analysisbench.CodecCapability `json:"codecs"`
-	WAV        *analysisbench.WAVInfo          `json:"wav,omitempty"`
-	Comparison *analysisbench.ComparisonReport `json:"comparison,omitempty"`
-	WrittenWAV []string                        `json:"writtenWav,omitempty"`
+	Fixtures          []fixtureReport                 `json:"fixtures"`
+	Codecs            []analysisbench.CodecCapability `json:"codecs"`
+	WAV               *analysisbench.WAVInfo          `json:"wav,omitempty"`
+	Comparison        *analysisbench.ComparisonReport `json:"comparison,omitempty"`
+	WrittenWAV        []string                        `json:"writtenWav,omitempty"`
+	SyntheticManifest string                          `json:"syntheticManifest,omitempty"`
 }
 
 type fixtureReport struct {
@@ -36,6 +37,7 @@ func main() {
 	resultsPath := flag.String("results", "", "detector result JSON; requires -manifest")
 	split := flag.String("split", analysisbench.SplitHeldOut, "corpus split to compare: held_out or tuning")
 	writeWAVDir := flag.String("write-wav-dir", "", "optional empty directory for generated synthetic PCM16 WAV artifacts")
+	writeSyntheticManifest := flag.String("write-synthetic-manifest", "", "optional output path for a generated-fixture comparison manifest; requires -write-wav-dir")
 	flag.Parse()
 	if *format != "json" {
 		fmt.Fprintln(os.Stderr, "analysisbench: only -format=json is supported")
@@ -43,6 +45,10 @@ func main() {
 	}
 	if (*manifestPath == "") != (*resultsPath == "") {
 		fmt.Fprintln(os.Stderr, "analysisbench: -manifest and -results must be provided together")
+		os.Exit(2)
+	}
+	if *writeSyntheticManifest != "" && *writeWAVDir == "" {
+		fmt.Fprintln(os.Stderr, "analysisbench: -write-synthetic-manifest requires -write-wav-dir")
 		os.Exit(2)
 	}
 
@@ -66,6 +72,13 @@ func main() {
 			os.Exit(1)
 		}
 		result.WrittenWAV = paths
+	}
+	if *writeSyntheticManifest != "" {
+		if _, err := analysisbench.WriteSyntheticCorpusManifest(*writeSyntheticManifest, *writeWAVDir, fixtures); err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: write synthetic manifest: %v\n", err)
+			os.Exit(1)
+		}
+		result.SyntheticManifest = *writeSyntheticManifest
 	}
 	if *wavPath != "" {
 		file, err := os.Open(*wavPath)
