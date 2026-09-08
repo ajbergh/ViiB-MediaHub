@@ -305,11 +305,8 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           const duration = deckState.duration || track.duration || 0;
           const beatGrid = duration > 0 ? generateBeatGrid(normalizedBpm, duration) : [];
           
-          // Get current key (may be set by key detection)
-          const currentKey = deckState.key;
-          
-          // Update store with analysis results
-          setDeckAnalysis(deck, normalizedBpm, currentKey, beatGrid);
+          // Tempo must not overwrite a key resolved by the independent task.
+          setDeckAnalysis(deck, { bpm: normalizedBpm, beatGrid });
           logger.info(`BPM detected for Deck ${deck}: ${normalizedBpm.toFixed(1)} (confidence: ${(bpmResult.confidence * 100).toFixed(0)}%)`);
         } catch (bpmErr) {
           logger.warn(`BPM detection failed for Deck ${deck}`, bpmErr);
@@ -328,12 +325,8 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           
           if (!isTrackStillLoaded()) return;
           
-          // Get current BPM (may be set by BPM detection)
-          const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-          const currentBpm = deckState.effectiveBpm || deckState.originalBpm;
-          
-          // Update store with key
-          setDeckAnalysis(deck, currentBpm, keyResult.key, deckState.beatGrid || []);
+          // Key must not overwrite tempo/grid resolved by the independent task.
+          setDeckAnalysis(deck, { key: keyResult.key });
           logger.info(`Key detected for Deck ${deck}: ${keyResult.key} (${keyResult.camelot}) - confidence: ${(keyResult.confidence * 100).toFixed(0)}%`);
         } catch (keyErr) {
           logger.warn(`Key detection failed for Deck ${deck}`, keyErr);
@@ -1064,7 +1057,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
         const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
         const duration = ds.duration || track.duration || 0;
         const beatGrid = duration > 0 ? generateBeatGrid(bpm, duration) : [];
-        useStore.getState().setDeckAnalysis(deck, bpm, ds.key, beatGrid);
+        useStore.getState().setDeckAnalysis(deck, { bpm, beatGrid });
       } catch { /* non-critical */ }
     })();
 
@@ -1073,8 +1066,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
       try {
         const keyResult = await detectKey(`/api/audio/${track.id}`, { duration: 30 });
         if (!isTrackStillLoaded()) return;
-        const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-        useStore.getState().setDeckAnalysis(deck, ds.effectiveBpm || ds.originalBpm, keyResult.key, ds.beatGrid || []);
+        useStore.getState().setDeckAnalysis(deck, { key: keyResult.key });
       } catch { /* non-critical */ }
     })();
 
