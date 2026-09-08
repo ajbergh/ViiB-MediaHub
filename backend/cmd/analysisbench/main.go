@@ -55,6 +55,8 @@ func main() {
 	tempoMinOnsetCrest := flag.Float64("tempo-min-onset-crest", 0, "optional Phase 0 tempo refusal threshold; requires -analyze and must be tuned only on the tuning split")
 	tempoMethod := flag.String("tempo-method", "", "optional Phase 0 tempo candidate method: peak-interval or onset-autocorrelation; requires -analyze")
 	keyMaxChromaFlatness := flag.Float64("key-max-chroma-flatness", 0, "optional Phase 0 key refusal threshold; requires -analyze and must be tuned only on the tuning split")
+	keyMaxFrequency := flag.Float64("key-max-frequency", 0, "optional Phase 0 chroma upper frequency in Hz; requires -analyze and must be tuned only on the tuning split")
+	keyExtraction := flag.String("key-extraction", "", "optional Phase 0 key extraction: direct-chroma or hpcp-peaks; requires -analyze")
 	keyProfile := flag.String("key-profile", "", "optional Phase 0 key profile: krumhansl or temperley; requires -analyze")
 	spotifyCorpusRoot := flag.String("import-spotify-corpus", "", "directory tree containing per-folder Spotify BPM/key CSV files and local .mp3/.ogg media")
 	spotifyCorpusOutput := flag.String("import-spotify-out", "", "non-overwriting analysisbench manifest JSON; requires -import-spotify-corpus")
@@ -89,7 +91,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "analysisbench: -analyze and -out must be provided together")
 		os.Exit(2)
 	}
-	if (*tempoMinOnsetCrest != 0 || *tempoMethod != "" || *keyMaxChromaFlatness != 0 || *keyProfile != "") && *analyzeManifestPath == "" {
+	if (*tempoMinOnsetCrest != 0 || *tempoMethod != "" || *keyMaxChromaFlatness != 0 || *keyMaxFrequency != 0 || *keyProfile != "" || *keyExtraction != "") && *analyzeManifestPath == "" {
 		fmt.Fprintln(os.Stderr, "analysisbench: Phase 0 calibration flags require -analyze")
 		os.Exit(2)
 	}
@@ -97,7 +99,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "analysisbench: -analyze-split requires -analyze")
 		os.Exit(2)
 	}
-	if *tempoMinOnsetCrest < 0 || *keyMaxChromaFlatness < 0 || *keyMaxChromaFlatness > 1 {
+	if *tempoMinOnsetCrest < 0 || *keyMaxChromaFlatness < 0 || *keyMaxChromaFlatness > 1 || (*keyMaxFrequency != 0 && (*keyMaxFrequency < 25 || *keyMaxFrequency > 3500)) {
 		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 calibration threshold")
 		os.Exit(2)
 	}
@@ -107,6 +109,10 @@ func main() {
 	}
 	if *keyProfile != "" && *keyProfile != string(key.ProfileKrumhansl) && *keyProfile != string(key.ProfileTemperley) {
 		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 key profile")
+		os.Exit(2)
+	}
+	if *keyExtraction != "" && *keyExtraction != string(key.ExtractionDirectChroma) && *keyExtraction != string(key.ExtractionHPCPPeaks) {
+		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 key extraction")
 		os.Exit(2)
 	}
 	if (*spotifyCorpusRoot == "") != (*spotifyCorpusOutput == "") {
@@ -213,8 +219,14 @@ func main() {
 		if *keyMaxChromaFlatness > 0 {
 			options.Key.MaxChromaFlatness = *keyMaxChromaFlatness
 		}
+		if *keyMaxFrequency > 0 {
+			options.Key.MaxFrequency = *keyMaxFrequency
+		}
 		if *keyProfile != "" {
 			options.Key.Profile = key.Profile(*keyProfile)
+		}
+		if *keyExtraction != "" {
+			options.Key.Extraction = key.Extraction(*keyExtraction)
 		}
 		produced, err := track.ProduceBenchmarkResultsWithOptions(context.Background(), manifest, options)
 		if err != nil {

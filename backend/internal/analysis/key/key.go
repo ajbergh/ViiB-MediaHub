@@ -33,13 +33,35 @@ const AlgorithmVersion = "key-v1-chroma-ks"
 // recalibrated against the Phase 0 labeled corpus.
 const maxTonalChromaFlatness = 0.70
 
+const (
+	minChromaFrequency = 65.0   // C2
+	maxChromaFrequency = 2093.0 // C7
+	maxHPCPFrequency   = 3500.0
+)
+
 // Options provides an explicit tonality-refusal threshold. The default remains
 // deliberately conservative; Phase 0 may sweep an alternate value only on
 // its tuning split before evaluating the reserved held-out split.
 type Options struct {
 	MaxChromaFlatness float64
-	Profile           Profile
+	// MaxFrequency bounds chroma accumulation. Zero uses the established C7
+	// maximum; Phase 0 may test a lower value on tuning data to reduce bright
+	// overtone and percussion influence.
+	MaxFrequency float64
+	Profile      Profile
+	Extraction   Extraction
 }
+
+// Extraction selects the pitch-class representation. DirectChroma preserves
+// the current product path. HPCPPeaks is a Phase 0 candidate independently
+// implementing the published spectral-peaks/HPCP design used by established
+// offline analysis pipelines; it is not linked to their GPL/AGPL code.
+type Extraction string
+
+const (
+	ExtractionDirectChroma Extraction = "direct-chroma"
+	ExtractionHPCPPeaks    Extraction = "hpcp-peaks"
+)
 
 // Profile selects a key-profile family for Phase 0 comparison. Krumhansl is
 // the existing default; Temperley is evaluated only through explicit tuning
@@ -54,7 +76,9 @@ const (
 func DefaultOptions() Options {
 	return Options{
 		MaxChromaFlatness: maxTonalChromaFlatness,
+		MaxFrequency:      maxChromaFrequency,
 		Profile:           ProfileKrumhansl,
+		Extraction:        ExtractionDirectChroma,
 	}
 }
 
@@ -100,6 +124,8 @@ type ChromaAccumulator struct {
 	pending     []float32
 	chroma      [12]float64
 	totalEnergy float64
+	hpcp        [36]float64
+	hpcpEnergy  float64
 	windows     int
 }
 
@@ -154,13 +180,19 @@ func (a *ChromaAccumulator) Feed(samples []float32) {
 }
 
 func (a *ChromaAccumulator) accumulateSpectrum(spectrum []complex128) {
-	minFreq := 65.0   // C2 (~65.4 Hz)
-	maxFreq := 2093.0 // C7 (~2093 Hz)
+	if a.options.Extraction == ExtractionHPCPPeaks {
+		a.accumulateHPCP(spectrum)
+		return
+	}
+	maxFreq := a.options.MaxFrequency
+	if maxFreq <= 0 || maxFreq > maxChromaFrequency {
+		maxFreq = maxChromaFrequency
+	}
 	binHz := float64(a.sampleRate) / float64(a.windowSize)
 
 	for bin, val := range spectrum {
 		freq := float64(bin) * binHz
-		if freq < minFreq || freq > maxFreq {
+		if freq < minChromaFrequency || freq > maxFreq {
 			continue
 		}
 		mag := math.Hypot(real(val), imag(val))
@@ -175,16 +207,110 @@ func (a *ChromaAccumulator) accumulateSpectrum(spectrum []complex128) {
 	}
 }
 
+type spectralPeak struct {
+	frequency float64
+	magnitude float64
+}
+
+// accumulateHPCP independently follows the high-level design of established
+// offline key pipelines: retain interpolated local spectral peaks, project
+// them into a high-resolution harmonic pitch-class profile using cosine
+// weights, normalize per frame, then aggregate. This is deliberately not a
+// port of any external implementation.
+func (a *ChromaAccumulator) accumulateHPCP(spectrum []complex128) {
+	maxFrequency := a.options.MaxFrequency
+	if maxFrequency <= 0 || maxFrequency > maxHPCPFrequency {
+		maxFrequency = maxHPCPFrequency
+	}
+	binHz := float64(a.sampleRate) / float64(a.windowSize)
+	var peaks [60]spectralPeak
+	count := 0
+
+	for bin := 1; bin+1 < len(spectrum); bin++ {
+		frequency := float64(bin) * binHz
+		if frequency < 25 || frequency > maxFrequency {
+			continue
+		}
+		left := math.Hypot(real(spectrum[bin-1]), imag(spectrum[bin-1]))
+		center := math.Hypot(real(spectrum[bin]), imag(spectrum[bin]))
+		right := math.Hypot(real(spectrum[bin+1]), imag(spectrum[bin+1]))
+		if center < 1e-4 || center < left || center < right {
+			continue
+		}
+		denominator := left - 2*center + right
+		offset := 0.0
+		if math.Abs(denominator) > 1e-12 {
+			offset = math.Max(-0.5, math.Min(0.5, 0.5*(left-right)/denominator))
+		}
+		peak := spectralPeak{frequency: (float64(bin) + offset) * binHz, magnitude: center}
+		if count < len(peaks) {
+			peaks[count] = peak
+			count++
+			continue
+		}
+		lowest := 0
+		for index := 1; index < len(peaks); index++ {
+			if peaks[index].magnitude < peaks[lowest].magnitude {
+				lowest = index
+			}
+		}
+		if peak.magnitude > peaks[lowest].magnitude {
+			peaks[lowest] = peak
+		}
+	}
+
+	var frame [36]float64
+	for index := 0; index < count; index++ {
+		peak := peaks[index]
+		midi := 12*math.Log2(peak.frequency/440) + 69
+		centre := midi * 3
+		nearest := int(math.Round(centre))
+		for delta := -1; delta <= 1; delta++ {
+			bin := nearest + delta
+			distance := math.Abs(float64(bin)-centre) / 3
+			if distance > 0.5 {
+				continue
+			}
+			weight := math.Cos(math.Pi * distance)
+			if weight > 0 {
+				frame[(bin%36+36)%36] += peak.magnitude * weight
+			}
+		}
+	}
+
+	frameEnergy := 0.0
+	for _, value := range frame {
+		frameEnergy += value
+	}
+	if frameEnergy <= 1e-7 {
+		return
+	}
+	for index, value := range frame {
+		a.hpcp[index] += value / frameEnergy
+	}
+	a.hpcpEnergy += 1
+}
+
 // Estimate correlates accumulated chromagram against 24 major/minor profiles.
 func (a *ChromaAccumulator) Estimate() Estimate {
 	if a.windows == 0 || a.totalEnergy < 1e-7 {
+		if a.options.Extraction != ExtractionHPCPPeaks || a.hpcpEnergy < 1e-7 {
+			return Estimate{AlgorithmVersion: AlgorithmVersion}
+		}
+	}
+	chroma := a.chroma
+	totalEnergy := a.totalEnergy
+	if a.options.Extraction == ExtractionHPCPPeaks {
+		chroma, totalEnergy = collapseHPCP(a.hpcp)
+	}
+	if totalEnergy < 1e-7 {
 		return Estimate{AlgorithmVersion: AlgorithmVersion}
 	}
 
 	// Normalize chroma vector to unit sum for profile correlation
 	var normChroma [12]float64
 	for i := 0; i < 12; i++ {
-		normChroma[i] = a.chroma[i] / a.totalEnergy
+		normChroma[i] = chroma[i] / totalEnergy
 	}
 
 	// Refuse material with no tonal centre before correlating. A near-uniform
@@ -196,7 +322,7 @@ func (a *ChromaAccumulator) Estimate() Estimate {
 		maximumFlatness = maxTonalChromaFlatness
 	}
 	if flatness > maximumFlatness {
-		return Estimate{Chroma: a.chroma, Flatness: flatness, AlgorithmVersion: AlgorithmVersion}
+		return Estimate{Chroma: chroma, Flatness: flatness, AlgorithmVersion: AlgorithmVersion}
 	}
 
 	majorProfile, minorProfile := tonalProfiles(a.options.Profile)
@@ -245,11 +371,39 @@ func (a *ChromaAccumulator) Estimate() Estimate {
 		Camelot:          Camelot(bestTonic, bestMode),
 		OpenKey:          OpenKey(bestTonic, bestMode),
 		Confidence:       confidence,
-		Chroma:           a.chroma,
+		Chroma:           chroma,
 		Flatness:         flatness,
 		Known:            true,
 		AlgorithmVersion: AlgorithmVersion,
 	}
+}
+
+// collapseHPCP estimates the common tuning-bin offset then folds 36
+// high-resolution bins into a 12-bin PCP. A shared offset makes a slightly
+// sharp or flat recording contribute to its nearest tempered pitch class.
+func collapseHPCP(hpcp [36]float64) ([12]float64, float64) {
+	offsetEnergy := [3]float64{}
+	for index, value := range hpcp {
+		offsetEnergy[index%3] += value
+	}
+	offset := 0
+	if offsetEnergy[1] > offsetEnergy[offset] {
+		offset = 1
+	}
+	if offsetEnergy[2] > offsetEnergy[offset] {
+		offset = 2
+	}
+
+	var chroma [12]float64
+	for index, value := range hpcp {
+		midi := int(math.Round(float64(index-offset) / 3))
+		chroma[(midi%12+12)%12] += value
+	}
+	total := 0.0
+	for _, value := range chroma {
+		total += value
+	}
+	return chroma, total
 }
 
 // chromaFlatness returns the geometric/arithmetic mean ratio of a normalized
