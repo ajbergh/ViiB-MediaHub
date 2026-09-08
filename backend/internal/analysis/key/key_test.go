@@ -1,16 +1,11 @@
 package key
 
 import (
-	"bytes"
-	"context"
 	"math"
-	"os"
-	"path/filepath"
+	"math/rand"
 	"testing"
 
-	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
-	"github.com/ajbergh/viib-mediahub/internal/db"
 )
 
 func TestNotationMappingsAll24Keys(t *testing.T) {
@@ -129,115 +124,6 @@ func TestChromaAccumulatorMatchesOneShotAcrossChunks(t *testing.T) {
 	}
 }
 
-func TestAnalyzeAndPersistLocalSongKeepsMeasuredKeyAndPreservesTempo(t *testing.T) {
-	fixture, err := analysisbench.NewTriad("song", 9, true, 1.5, 22050, 1, 440) // A minor (8A)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var wav bytes.Buffer
-	if err := analysisbench.WriteWAVPCM16(&wav, fixture); err != nil {
-		t.Fatal(err)
-	}
-	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	path := filepath.Join(t.TempDir(), "song.wav")
-	if err := os.WriteFile(path, wav.Bytes(), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: path, AddedAt: 1}); err != nil {
-		t.Fatal(err)
-	}
-	source, err := analysis.ResolveLocalSource(database, "song")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Pre-seed an existing tempo analysis on the same source
-	bpmVal := 124.0
-	bpmConf := 0.95
-	bpmSource := "measured"
-	tempoKind := "static"
-	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{
-		SongID:            "song",
-		Status:            db.TrackAnalysisComplete,
-		AnalysisVersion:   1,
-		AlgorithmVersion:  "tempo-v1",
-		SourceFingerprint: source.Fingerprint,
-		BPM:               &bpmVal,
-		BPMConfidence:     &bpmConf,
-		BPMSource:         &bpmSource,
-		TempoKind:         &tempoKind,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	estimate, err := AnalyzeAndPersistLocalSong(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "song", 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !estimate.Known || estimate.Tonic != 9 || estimate.Mode != ModeMinor {
-		t.Fatalf("estimate = %#v, want A minor", estimate)
-	}
-
-	record, err := database.GetTrackAnalysis("song")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Key fields must be populated
-	if record.KeyTonic == nil || *record.KeyTonic != 9 || record.KeyMode == nil || *record.KeyMode != ModeMinor {
-		t.Fatalf("record key = %#v, want A minor", record)
-	}
-	if record.CamelotKey == nil || *record.CamelotKey != "8A" {
-		t.Fatalf("record Camelot = %#v, want 8A", record.CamelotKey)
-	}
-	if record.OpenKey == nil || *record.OpenKey != "1m" {
-		t.Fatalf("record OpenKey = %#v, want 1m", record.OpenKey)
-	}
-	// Pre-existing tempo fields must be preserved
-	if record.BPM == nil || *record.BPM != 124.0 || record.BPMSource == nil || *record.BPMSource != "measured" {
-		t.Fatalf("pre-existing tempo was lost: %#v", record)
-	}
-}
-
-func TestAnalyzeAndPersistLocalSongRecordsPartialForSilence(t *testing.T) {
-	fixture, err := analysisbench.NewSilence("silent", 2, 22050, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var wav bytes.Buffer
-	if err := analysisbench.WriteWAVPCM16(&wav, fixture); err != nil {
-		t.Fatal(err)
-	}
-	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	path := filepath.Join(t.TempDir(), "silent.wav")
-	if err := os.WriteFile(path, wav.Bytes(), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := database.SaveSong(&db.Song{ID: "silent", Title: "Silent", Artist: "Artist", Album: "Album", FilePath: path, AddedAt: 1}); err != nil {
-		t.Fatal(err)
-	}
-	estimate, err := AnalyzeAndPersistLocalSong(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "silent", 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if estimate.Known {
-		t.Fatalf("expected unknown estimate for silence, got %#v", estimate)
-	}
-	record, err := database.GetTrackAnalysis("silent")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if record.Status != db.TrackAnalysisPartial || record.KeyTonic != nil {
-		t.Fatalf("expected partial status and nil key for silence, got %#v", record)
-	}
-}
-
 func BenchmarkEstimateKeyTriad(b *testing.B) {
 	fixture, err := analysisbench.NewTriad("benchmark", 0, false, 1.5, 22050, 1, 440)
 	if err != nil {
@@ -249,5 +135,74 @@ func BenchmarkEstimateKeyTriad(b *testing.B) {
 		if result := EstimatePCM(fixture.Samples, fixture.SampleRate); !result.Known {
 			b.Fatal("key unexpectedly returned unknown")
 		}
+	}
+}
+
+// Refusing to answer is a feature. Broadband material has no tonal centre, so
+// the 24-profile correlation is ranking noise; whichever key "wins" is an
+// artifact. Before the tonality gate, white noise reported A minor at
+// confidence 0.377 — higher than every correctly identified triad below.
+func TestEstimateRefusesAtonalMaterial(t *testing.T) {
+	const sampleRate = 22050
+
+	clicks, err := analysisbench.NewClickTrack("clicks", 128, 12, sampleRate, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rng := rand.New(rand.NewSource(7))
+	noise := make([]float32, sampleRate*6)
+	for i := range noise {
+		noise[i] = float32(rng.Float64()*2 - 1)
+	}
+
+	for _, test := range []struct {
+		name    string
+		samples []float32
+	}{
+		{"percussive clicks", clicks.Samples},
+		{"white noise", noise},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			estimate := EstimatePCM(test.samples, sampleRate)
+			if estimate.Known {
+				t.Fatalf("reported %q at confidence %.3f for atonal material; want unknown", estimate.Key, estimate.Confidence)
+			}
+			if estimate.Confidence != 0 {
+				t.Fatalf("confidence = %v, want 0 when no key is claimed", estimate.Confidence)
+			}
+			if estimate.Camelot != "" || estimate.OpenKey != "" {
+				t.Fatalf("refused estimate must not carry notations, got %q/%q", estimate.Camelot, estimate.OpenKey)
+			}
+			// The diagnostic is retained on refusal so Phase 0 calibration can
+			// see how far a rejected track sat from the bound.
+			if estimate.Flatness <= maxTonalChromaFlatness {
+				t.Fatalf("flatness = %v, want > %v", estimate.Flatness, maxTonalChromaFlatness)
+			}
+		})
+	}
+}
+
+// The gate must not cost real detections: every synthetic triad has to stay
+// comfortably inside the tonal side of the bound.
+func TestTonalMaterialStaysWellInsideTheTonalityBound(t *testing.T) {
+	const sampleRate = 22050
+	worst := 0.0
+	for tonic := 0; tonic < 12; tonic++ {
+		for _, minor := range []bool{false, true} {
+			fixture, err := analysisbench.NewTriad("t", tonic, minor, 4, sampleRate, 1, 440)
+			if err != nil {
+				t.Fatal(err)
+			}
+			estimate := EstimatePCM(fixture.Samples, sampleRate)
+			if !estimate.Known {
+				t.Fatalf("tonic %d minor=%v was refused at flatness %v", tonic, minor, estimate.Flatness)
+			}
+			worst = math.Max(worst, estimate.Flatness)
+		}
+	}
+	// Keep a wide margin so a small profile or geometry change cannot silently
+	// push real triads over the bound.
+	if worst > maxTonalChromaFlatness/2 {
+		t.Fatalf("worst tonal flatness %v is uncomfortably close to the %v bound", worst, maxTonalChromaFlatness)
 	}
 }

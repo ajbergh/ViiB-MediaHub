@@ -9,21 +9,19 @@
 package api
 
 import (
-	"encoding/binary"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"math"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/go-chi/chi/v5"
-	"github.com/hajimehoshi/go-mp3"
 )
 
 // errClientWaveformRequired marks formats which the browser can decode but the
@@ -180,100 +178,39 @@ func (a *API) saveDJHotCues(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]bool{"success": true})
 }
 
+// waveformDecoders is the shared analysis decoder registry. Server-side
+// waveform support is therefore exactly the backend codec capability matrix,
+// not a second hand-maintained switch that can drift from it.
+var waveformDecoders = sync.OnceValue(analysis.NewDefaultDecoderRegistry)
+
 // generateWaveform generates peak data from an audio file.
 // Returns normalized peak values (0-1) at specified resolution.
+//
+// Decoding, downmixing, and chunk bounds are owned by internal/analysis, so
+// the waveform overview, tempo, and key all read one PCM implementation.
+// Formats with no backend decoder return errClientWaveformRequired and are
+// deferred to Web Audio in the renderer.
 func generateWaveform(filePath string) (*db.DJWaveform, error) {
-	ext := strings.ToLower(filepath.Ext(filePath))
-
-	switch ext {
-	case ".mp3":
-		return generateMP3Waveform(filePath)
-	case ".ogg", ".oga":
-		// Ogg Vorbis is not yet supported server-side.
-		// Client will use Web Audio API for waveform generation
-		return nil, fmt.Errorf("%w: ogg/vorbis format", errClientWaveformRequired)
-	case ".opus":
-		// Opus is a distinct codec; do not imply that the Vorbis path can decode it.
-		// Client will use Web Audio API for waveform generation.
-		return nil, fmt.Errorf("%w: opus format", errClientWaveformRequired)
-	case ".flac":
-		// FLAC not yet supported server-side
-		return nil, fmt.Errorf("%w: flac format", errClientWaveformRequired)
-	case ".wav", ".wave":
-		// WAV not yet supported server-side
-		return nil, fmt.Errorf("%w: wav format", errClientWaveformRequired)
-	case ".m4a", ".aac":
-		// AAC not yet supported server-side
-		return nil, fmt.Errorf("%w: aac format", errClientWaveformRequired)
-	default:
-		// Let the browser attempt formats the server does not know how to decode.
-		return nil, fmt.Errorf("%w: unsupported audio format: %s", errClientWaveformRequired, ext)
-	}
+	return generateWaveformWith(context.Background(), waveformDecoders(), filePath)
 }
 
-// generateMP3Waveform generates waveform peaks from an MP3 file.
-func generateMP3Waveform(filePath string) (*db.DJWaveform, error) {
-	file, err := os.Open(filePath)
+func generateWaveformWith(ctx context.Context, registry *analysis.DecoderRegistry, filePath string) (*db.DJWaveform, error) {
+	overview, err := analysis.GenerateWaveformOverview(ctx, registry, filePath, analysis.DefaultWaveformResolution)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	// Decode MP3
-	decoder, err := mp3.NewDecoder(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create MP3 decoder: %w", err)
-	}
-
-	sampleRate := decoder.SampleRate()
-
-	// Calculate total samples from file length
-	// MP3 is 2 channels * 2 bytes per sample
-	totalBytes := decoder.Length()
-	totalSamples := totalBytes / 4 // stereo, 16-bit
-	duration := float64(totalSamples) / float64(sampleRate)
-
-	// Resolution: samples per peak (256 = ~8ms at 44.1kHz = ~125 peaks/second)
-	resolution := 256
-	peakCount := int(totalSamples) / resolution
-	if peakCount < 1 {
-		peakCount = 1
-	}
-
-	peaks := make([]float64, 0, peakCount)
-
-	// Read and process audio in chunks
-	buf := make([]byte, resolution*4) // stereo 16-bit
-
-	for {
-		n, err := decoder.Read(buf)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to read audio data: %w", err)
-		}
-		if n == 0 {
-			break
-		}
-
-		// Find peak in this chunk
-		var maxAbs float64
-		for i := 0; i < n-1; i += 2 {
-			// Read 16-bit sample (little-endian)
-			sample := int16(binary.LittleEndian.Uint16(buf[i : i+2]))
-			abs := math.Abs(float64(sample)) / 32768.0
-			if abs > maxAbs {
-				maxAbs = abs
+		if errors.Is(err, analysis.ErrUnsupportedCodec) {
+			// Report the format that was refused so the fallback is auditable.
+			extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), ".")
+			if extension == "" {
+				extension = "unknown"
 			}
+			return nil, fmt.Errorf("%w: %s format", errClientWaveformRequired, extension)
 		}
-		peaks = append(peaks, maxAbs)
+		return nil, err
 	}
-
 	return &db.DJWaveform{
-		Duration:   duration,
-		SampleRate: sampleRate,
-		Resolution: resolution,
-		Peaks:      peaks,
+		Duration:   overview.Duration(),
+		SampleRate: overview.SampleRate,
+		Resolution: overview.Resolution,
+		Peaks:      overview.Peaks,
 	}, nil
 }

@@ -65,6 +65,13 @@ func (r *DecoderRegistry) Open(ctx context.Context, name string, source io.ReadC
 	return decoder.Open(ctx, source)
 }
 
+// Supports reports whether a backend decoder exists for a filename, without
+// opening it. Callers that must distinguish "no decoder" from "cannot read
+// this file" need the answer before touching the source.
+func (r *DecoderRegistry) Supports(name string) bool {
+	return r.byExtension[normalizeExtension(filepath.Ext(name))] != nil
+}
+
 func normalizeExtension(extension string) string {
 	extension = strings.TrimSpace(strings.ToLower(extension))
 	if extension == "" {

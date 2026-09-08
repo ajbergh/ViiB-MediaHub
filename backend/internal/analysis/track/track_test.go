@@ -3,12 +3,14 @@ package track
 import (
 	"bytes"
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/key"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/tempo"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 )
@@ -37,6 +39,19 @@ func catalogSong(t *testing.T, fixture analysisbench.PCMFixture, songID string) 
 	return database
 }
 
+// tonalTriadMixLevel is the amplitude of the sustained triad relative to the
+// clicks it is mixed with.
+//
+// It is deliberately low. An additive sine triad amplitude-modulates at the
+// interval difference frequencies, and once that beating approaches the click
+// level it dominates the rectified energy envelope: at 0.6 this fixture
+// measured 113 BPM for both a 126 and a 128 BPM click track — the same wrong
+// answer regardless of the real tempo, because the clicks were no longer what
+// the onset detector was following. At 0.2 the triad is still loud enough for
+// chroma to identify the key, so the fixture is valid for both dimensions.
+// Raising it turns every tempo assertion here into a test of the beating.
+const tonalTriadMixLevel = 0.2
+
 // tonalClickTrack sums a click track and a sustained triad so one pass has both
 // percussive onsets and tonal content.
 func tonalClickTrack(t *testing.T, name string, bpm float64, tonic int, minor bool, seconds float64, sampleRate int) analysisbench.PCMFixture {
@@ -54,7 +69,7 @@ func tonalClickTrack(t *testing.T, name string, bpm float64, tonic int, minor bo
 	for i := range clicks.Samples {
 		value := clicks.Samples[i]
 		if i < len(triad.Samples) {
-			value += triad.Samples[i] * 0.6
+			value += triad.Samples[i] * tonalTriadMixLevel
 		}
 		if value > 1 {
 			value = 1
@@ -91,8 +106,16 @@ func TestAnalyzeAndPersistRecordsBothDimensionsInOneRecord(t *testing.T) {
 	if record.BPM == nil || record.BPMSource == nil || *record.BPMSource != "measured" {
 		t.Fatalf("record tempo = %#v, want measured BPM", record)
 	}
+	// Assert the value, not just its presence. Checking only for non-nil let a
+	// fixture whose measured tempo was wrong by 13 BPM pass as a happy path.
+	if math.Abs(*record.BPM-128) > 0.5 {
+		t.Fatalf("measured BPM = %v, want 128 +/- 0.5", *record.BPM)
+	}
 	if record.KeyTonic == nil || record.KeySource == nil || *record.KeySource != "measured" {
 		t.Fatalf("record key = %#v, want measured key", record)
+	}
+	if *record.KeyTonic != 9 || record.KeyMode == nil || *record.KeyMode != "minor" {
+		t.Fatalf("measured key = tonic %d mode %v, want 9/minor", *record.KeyTonic, record.KeyMode)
 	}
 	if record.AlgorithmVersion != AlgorithmVersion {
 		t.Fatalf("algorithm version = %q, want %q", record.AlgorithmVersion, AlgorithmVersion)
@@ -123,13 +146,11 @@ func TestAnalyzeAndPersistRecordsPartialWhenOnlyTempoIsMeasured(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A percussive-only source may or may not expose tonal evidence, but the
-	// persisted status must never claim more than was measured.
+	// A percussive-only source has no tonal centre, so key must be refused
+	// rather than guessed. This used to be a branch that accepted either
+	// outcome, which let a fabricated key pass as valid.
 	if result.Key.Known {
-		if record.Status != db.TrackAnalysisComplete {
-			t.Fatalf("status = %q, want %q when both dimensions are known", record.Status, db.TrackAnalysisComplete)
-		}
-		return
+		t.Fatalf("click track reported key %q; a percussive source has no tonal centre", result.Key.Key)
 	}
 	if record.Status != db.TrackAnalysisPartial {
 		t.Fatalf("status = %q, want %q when key is unknown", record.Status, db.TrackAnalysisPartial)
@@ -291,5 +312,128 @@ func TestClassifyErrorReportsMissingSourceAndCancellation(t *testing.T) {
 	cancel()
 	if code, _ := ClassifyError(canceled.Err()); code != ErrorCanceled {
 		t.Fatalf("code = %q, want %q", code, ErrorCanceled)
+	}
+}
+
+// Measured tempo must never be written back into the legacy songs.bpm column.
+// That column is INTEGER and is also written by AI enrichment from genre
+// conventions, so writing to it would round the fractional value and destroy
+// the provenance distinction the separate table exists to create.
+func TestAnalyzeAndPersistLeavesLegacySongBPMUntouched(t *testing.T) {
+	fixture := tonalClickTrack(t, "song", 126, 9, true, 12, 22050)
+	database := catalogSong(t, fixture, "song")
+	if err := database.UpdateSongMood("song", "", "", "", 120, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := AnalyzeAndPersist(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "song", DefaultOptions()); err != nil {
+		t.Fatal(err)
+	}
+
+	record, err := database.GetTrackAnalysis("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.BPM == nil || math.Abs(*record.BPM-126) > 0.5 {
+		t.Fatalf("measured BPM = %v, want ~126", *record.BPM)
+	}
+	// Fractional precision has to survive persistence; an integer round-trip
+	// would accumulate into audible beatmatch drift.
+	if *record.BPM == math.Trunc(*record.BPM) && math.Abs(*record.BPM-126) > 0 {
+		t.Fatalf("measured BPM %v lost fractional precision", *record.BPM)
+	}
+	songs, err := database.GetSongsByIDs([]string{"song"})
+	if err != nil || len(songs) != 1 {
+		t.Fatalf("songs = %#v, err = %v", songs, err)
+	}
+	if songs[0].BPM != 120 {
+		t.Fatalf("legacy songs.bpm = %d, want the untouched AI-inferred 120", songs[0].BPM)
+	}
+
+	// The resolver must prefer the measurement over the legacy value and allow Sync.
+	effective := db.ResolveEffectiveBPM(db.EffectiveBPMInputs{Analysis: &record, LegacyBPM: &songs[0].BPM})
+	if effective.Source != db.EffectiveBPMMeasured || !effective.SyncAllowed {
+		t.Fatalf("effective BPM = %#v, want measured and Sync-eligible", effective)
+	}
+}
+
+// A steady track must persist its alternate metrical candidate, stability, and
+// static classification, and derive both DJ notations from the canonical key.
+func TestAnalyzeAndPersistRecordsMetricalAlternateStabilityAndNotations(t *testing.T) {
+	fixture := tonalClickTrack(t, "song", 128, 9, true, 12, 22050)
+	database := catalogSong(t, fixture, "song")
+
+	opts := Options{Tempo: tempo.Options{Range: tempo.Range70to140}}
+	result, err := AnalyzeAndPersist(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "song", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Tempo.Known || !result.Key.Known {
+		t.Fatalf("expected both dimensions measured, got %#v", result)
+	}
+
+	record, err := database.GetTrackAnalysis("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Retaining the half-tempo reading is what makes a user-facing x2 / ÷2
+	// correction possible instead of a blind re-analysis.
+	if record.BPMAltCandidate == nil || math.Abs(*record.BPMAltCandidate-64) > 0.5 {
+		t.Fatalf("BPMAltCandidate = %v (bpm %v), want ~64", *record.BPMAltCandidate, *record.BPM)
+	}
+	if record.TempoStability == nil || *record.TempoStability < 0.85 {
+		t.Fatalf("TempoStability = %#v, want >= 0.85 for a steady click track", record.TempoStability)
+	}
+	if record.TempoKind == nil || *record.TempoKind != "static" {
+		t.Fatalf("TempoKind = %#v, want static", record.TempoKind)
+	}
+	// One canonical tonic/mode, two derived notations — never three editable truths.
+	if record.CamelotKey == nil || *record.CamelotKey != key.Camelot(*record.KeyTonic, *record.KeyMode) {
+		t.Fatalf("CamelotKey = %#v, inconsistent with tonic/mode", record.CamelotKey)
+	}
+	if record.OpenKey == nil || *record.OpenKey != key.OpenKey(*record.KeyTonic, *record.KeyMode) {
+		t.Fatalf("OpenKey = %#v, inconsistent with tonic/mode", record.OpenKey)
+	}
+}
+
+// A percussion-only track has a real measured tempo and no determinable key,
+// so its record is `partial`. That record must still drive Sync: requiring
+// `complete` would throw away a good measurement and silently fall back to an
+// AI-estimated tempo for every drum tool in the library.
+func TestPartialRecordStillYieldsMeasuredBPMForSync(t *testing.T) {
+	fixture, err := analysisbench.NewClickTrack("clicks", 126, 12, 22050, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	database := catalogSong(t, fixture, "clicks")
+	legacy := 120
+	if err := database.UpdateSongMood("clicks", "", "", "", legacy, false); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := AnalyzeAndPersist(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "clicks", DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != db.TrackAnalysisPartial {
+		t.Fatalf("status = %q, want %q for a track with no key", result.Status, db.TrackAnalysisPartial)
+	}
+
+	record, err := database.GetTrackAnalysis("clicks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective := db.ResolveEffectiveBPM(db.EffectiveBPMInputs{Analysis: &record, LegacyBPM: &legacy})
+	if effective.Source != db.EffectiveBPMMeasured {
+		t.Fatalf("effective source = %q, want %q — a partial record's measured tempo was discarded", effective.Source, db.EffectiveBPMMeasured)
+	}
+	if !effective.SyncAllowed {
+		t.Fatal("measured tempo from a partial record must be Sync-eligible")
+	}
+	if effective.Value == nil || math.Abs(*effective.Value-126) > 0.5 {
+		t.Fatalf("effective BPM = %v, want ~126", effective.Value)
+	}
+	if effective.Inferred() {
+		t.Fatal("a measured tempo must not report as inferred")
 	}
 }

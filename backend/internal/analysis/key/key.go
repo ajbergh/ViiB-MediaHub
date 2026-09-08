@@ -10,6 +10,29 @@ import (
 
 const AlgorithmVersion = "key-v1-chroma-ks"
 
+// maxTonalChromaFlatness is the flattest a chromagram may be before a key is
+// refused.
+//
+// Flatness is the geometric/arithmetic mean ratio of the normalized 12-bin
+// chroma vector: 1.0 is perfectly uniform, and approaches 0 as energy
+// concentrates into a few pitch classes. Broadband material — percussion,
+// noise, applause — spreads energy near-uniformly across all twelve pitch
+// classes, so its chromagram carries no tonal information and the 24-profile
+// correlation degenerates into ranking numerical noise. Refusing that is not a
+// tuned musical judgement; it is declining to read a signal that is not there.
+//
+// Measured on the Phase 0 synthetic fixtures: additive major/minor triads land
+// between 0.0003 and 0.0040, a click track mixed with a quiet triad lands at
+// 0.513, while a bare click track lands at 0.848 and white noise at 0.979.
+// This bound sits between the loudest genuinely tonal case and the least flat
+// atonal one.
+//
+// Without this gate white noise reported "A minor" at confidence 0.377 —
+// higher than every correctly identified triad in the same fixture set, which
+// inverts the meaning of confidence. This threshold is provisional and must be
+// recalibrated against the Phase 0 labeled corpus.
+const maxTonalChromaFlatness = 0.70
+
 // Estimate holds the detected musical key, mode, confidence, and DJ notations.
 // Known is false when tonal evidence is insufficient; callers must not invent a key.
 type Estimate struct {
@@ -20,7 +43,11 @@ type Estimate struct {
 	OpenKey          string      `json:"openKey"`
 	Confidence       float64     `json:"confidence"`
 	Chroma           [12]float64 `json:"chroma"`
-	Known            bool        `json:"known"`
+	// Flatness is the chroma uniformity diagnostic that gates Known. It is
+	// retained on refusal too, so Phase 0 calibration can see how far a
+	// rejected track sat from the tonality bound.
+	Flatness         float64 `json:"flatness"`
+	Known            bool    `json:"known"`
 	AlgorithmVersion string      `json:"algorithmVersion"`
 }
 
@@ -121,6 +148,14 @@ func (a *ChromaAccumulator) Estimate() Estimate {
 		normChroma[i] = a.chroma[i] / a.totalEnergy
 	}
 
+	// Refuse material with no tonal centre before correlating. A near-uniform
+	// chromagram fits every profile about equally badly, so whichever of the 24
+	// wins is an artifact rather than a reading of the music.
+	flatness := chromaFlatness(normChroma)
+	if flatness > maxTonalChromaFlatness {
+		return Estimate{Chroma: a.chroma, Flatness: flatness, AlgorithmVersion: AlgorithmVersion}
+	}
+
 	bestScore := -math.MaxFloat64
 	runnerUpScore := -math.MaxFloat64
 	bestTonic := 0
@@ -167,7 +202,24 @@ func (a *ChromaAccumulator) Estimate() Estimate {
 		OpenKey:          OpenKey(bestTonic, bestMode),
 		Confidence:       confidence,
 		Chroma:           a.chroma,
+		Flatness:         flatness,
 		Known:            true,
 		AlgorithmVersion: AlgorithmVersion,
 	}
+}
+
+// chromaFlatness returns the geometric/arithmetic mean ratio of a normalized
+// chroma vector. It is the standard spectral-flatness measure applied to pitch
+// classes: 1.0 for a uniform distribution, approaching 0 as energy concentrates.
+func chromaFlatness(norm [12]float64) float64 {
+	logSum, sum := 0.0, 0.0
+	for _, value := range norm {
+		// Clamp before the log so an empty pitch class cannot produce -Inf.
+		logSum += math.Log(math.Max(value, 1e-12))
+		sum += value
+	}
+	if sum <= 0 {
+		return 1
+	}
+	return math.Exp(logSum/12) / (sum / 12)
 }

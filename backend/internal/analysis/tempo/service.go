@@ -3,7 +3,6 @@ package tempo
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -38,61 +37,8 @@ func EstimateLocalSongWithOptions(ctx context.Context, database *db.DB, registry
 	return accumulator.Estimate(), source, nil
 }
 
-// AnalyzeAndPersistLocalSong records the measured result separately from
-// legacy song metadata. Unknown output is durable and explicit, so callers do
-// not retry forever or convert a lack of evidence into a default BPM.
-func AnalyzeAndPersistLocalSong(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, analysisVersion int) (Estimate, error) {
-	return AnalyzeAndPersistLocalSongWithOptions(ctx, database, registry, songID, analysisVersion, DefaultOptions())
-}
-
-// AnalyzeAndPersistLocalSongWithOptions estimates tempo with range priors and persists
-// measured scalar facts, alternate metrical candidate, stability, and provenance.
-func AnalyzeAndPersistLocalSongWithOptions(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, analysisVersion int, opts Options) (Estimate, error) {
-	estimate, source, err := EstimateLocalSongWithOptions(ctx, database, registry, songID, opts)
-	if err != nil {
-		return estimate, err
-	}
-	record := db.TrackAnalysis{
-		SongID:            songID,
-		AnalysisVersion:   analysisVersion,
-		AlgorithmVersion:  estimate.AlgorithmVersion,
-		SourceFingerprint: source.Fingerprint,
-		SourceSize:        &source.Size,
-		SourceMtime:       &source.Mtime,
-		AnalyzedAt:        ptr(time.Now().UnixMilli()),
-	}
-	if existing, err := database.GetTrackAnalysis(songID); err == nil && existing.SourceFingerprint == source.Fingerprint {
-		record.KeyTonic = existing.KeyTonic
-		record.KeyMode = existing.KeyMode
-		record.KeyConfidence = existing.KeyConfidence
-		record.KeySource = existing.KeySource
-		record.CamelotKey = existing.CamelotKey
-		record.OpenKey = existing.OpenKey
-	}
-	if estimate.Known {
-		record.Status = db.TrackAnalysisComplete
-		record.BPM = &estimate.BPM
-		record.BPMConfidence = &estimate.Confidence
-		if estimate.Alternate > 0 {
-			record.BPMAltCandidate = &estimate.Alternate
-		}
-		record.TempoStability = &estimate.Stability
-		sourceName := "measured"
-		record.BPMSource = &sourceName
-		tempoKind := "static"
-		if estimate.Stability < 0.85 {
-			tempoKind = "dynamic-candidate"
-		}
-		record.TempoKind = &tempoKind
-	} else {
-		record.Status = db.TrackAnalysisPartial
-		tempoKind := "unknown"
-		record.TempoKind = &tempoKind
-	}
-	if err := database.UpsertTrackAnalysis(record); err != nil {
-		return estimate, err
-	}
-	return estimate, nil
-}
-
-func ptr[T any](value T) *T { return &value }
+// Persistence deliberately does not live here. One track_analysis row carries
+// both tempo and key, so a tempo-only writer has to read-modify-write the key
+// columns to avoid destroying them — which races another analyzer and leaves
+// algorithm_version naming only one of the two analyzers that produced the row.
+// analysis/track owns the combined single-pass write instead.
