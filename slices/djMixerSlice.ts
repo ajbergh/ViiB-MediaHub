@@ -138,6 +138,15 @@ export interface DeckState {
   cueEnabled: boolean;
 }
 
+// Deck analysis arrives asynchronously from independent tempo, key, and later
+// beatgrid pipelines. A patch prevents one result from overwriting fields a
+// different pipeline has already completed.
+export interface DeckAnalysisPatch {
+  bpm?: number | null;
+  key?: string | null;
+  beatGrid?: number[] | null;
+}
+
 // ============================================================================
 // Sampler Types
 // ============================================================================
@@ -270,7 +279,7 @@ export interface DJMixerSlice {
   
   // Analysis data (from backend)
   setDeckWaveform: (deck: DeckId, peaks: number[]) => void;
-  setDeckAnalysis: (deck: DeckId, bpm: number | null, key: string | null, beatGrid?: number[]) => void;
+  setDeckAnalysis: (deck: DeckId, patch: DeckAnalysisPatch) => void;
   
   // Beat grid editing (Phase 3)
   shiftBeatGrid: (deck: DeckId, offsetDelta: number) => void;  // Shift by ±ms
@@ -662,18 +671,26 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
     }));
   },
   
-  setDeckAnalysis: (deck, bpm, key, beatGrid) => {
+  setDeckAnalysis: (deck, patch) => {
     const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
-    set((state) => ({
-      [deckKey]: { 
-        ...state[deckKey], 
-        originalBpm: bpm,
-        effectiveBpm: bpm ? Math.round(bpm * state[deckKey].tempo * 10) / 10 : null,
-        key,
-        beatGrid: beatGrid || null,
-        beatGridOffset: 0  // Reset offset when new analysis arrives
-      }
-    }));
+    set((state) => {
+      const current = state[deckKey];
+      const hasBPM = Object.hasOwn(patch, 'bpm');
+      const hasKey = Object.hasOwn(patch, 'key');
+      const hasBeatGrid = Object.hasOwn(patch, 'beatGrid');
+      const bpm = hasBPM ? patch.bpm ?? null : current.originalBpm;
+      return {
+        [deckKey]: {
+          ...current,
+          originalBpm: bpm,
+          effectiveBpm: hasBPM ? (bpm ? Math.round(bpm * current.tempo * 10) / 10 : null) : current.effectiveBpm,
+          key: hasKey ? patch.key ?? null : current.key,
+          beatGrid: hasBeatGrid ? patch.beatGrid ?? null : current.beatGrid,
+          // A new grid invalidates its manual offset; tempo/key-only updates do not.
+          beatGridOffset: hasBeatGrid ? 0 : current.beatGridOffset,
+        },
+      };
+    });
   },
   
   // Beat grid editing

@@ -135,6 +135,10 @@ type ScoreContext struct {
 	LastSongEnergy string
 	LastSongTempo  string
 
+	// EffectiveBPM carries manual or audio-measured values by song ID. Missing
+	// entries deliberately fall back to the legacy metadata score path.
+	EffectiveBPM map[string]int
+
 	// User preference settings
 	DiscoverMode   string // "balanced", "discover", "favorites"
 	FlowStrictness int    // 0-100
@@ -160,6 +164,7 @@ func NewScoreContext() *ScoreContext {
 		SongSkipRates:       make(map[string]float64),
 		GenreCompletionRate: make(map[string]float64),
 		SemanticScores:      make(map[string]float64),
+		EffectiveBPM:        make(map[string]int),
 		CurrentTime:         time.Now(),
 		DiscoverMode:        "balanced",
 		FlowStrictness:      60,

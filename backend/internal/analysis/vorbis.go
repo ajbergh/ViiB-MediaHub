@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -24,13 +25,19 @@ func (VorbisDecoder) Open(ctx context.Context, source io.ReadCloser) (PCMStream,
 	if decoder.SampleRate() <= 0 || decoder.Channels() <= 0 {
 		return nil, fmt.Errorf("vorbis stream has invalid PCM geometry")
 	}
-	return &vorbisStream{source: source, decoder: decoder, info: PCMInfo{SampleRate: decoder.SampleRate(), Channels: decoder.Channels()}}, nil
+	declaredFrames := decoder.Length()
+	return &vorbisStream{
+		source: source, decoder: decoder, info: PCMInfo{SampleRate: decoder.SampleRate(), Channels: decoder.Channels(), DeclaredFrames: declaredFrames},
+		expectedValues: declaredFrames * int64(decoder.Channels()),
+	}, nil
 }
 
 type vorbisStream struct {
-	source  io.ReadCloser
-	decoder *oggvorbis.Reader
-	info    PCMInfo
+	source         io.ReadCloser
+	decoder        *oggvorbis.Reader
+	info           PCMInfo
+	expectedValues int64
+	emittedValues  int64
 }
 
 func (s *vorbisStream) Info() PCMInfo { return s.info }
@@ -39,5 +46,18 @@ func (s *vorbisStream) Read(ctx context.Context, out []float32) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	return s.decoder.Read(out)
+	n, err := s.decoder.Read(out)
+	s.emittedValues += int64(n)
+	return n, normalizeTerminalVorbisEOF(err, s.emittedValues, s.expectedValues)
+}
+
+// normalizeTerminalVorbisEOF preserves an unexpected EOF unless a seekable
+// source has already yielded every sample declared by its final Ogg granule.
+// Some playable Ogg/Vorbis files trigger that library error after the complete
+// stream has been emitted; treating it as EOF is safe only in that exact case.
+func normalizeTerminalVorbisEOF(err error, emittedValues, expectedValues int64) error {
+	if errors.Is(err, io.ErrUnexpectedEOF) && expectedValues > 0 && emittedValues >= expectedValues {
+		return io.EOF
+	}
+	return err
 }

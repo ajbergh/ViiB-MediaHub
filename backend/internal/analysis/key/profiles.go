@@ -7,6 +7,19 @@ import "math"
 var krumhanslMajor = [12]float64{6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88}
 var krumhanslMinor = [12]float64{6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17}
 
+// Temperley profiles are a second tonal hierarchy used for Phase 0 profile
+// comparison. Indexing follows the same tonic-relative pitch-class order as
+// the Krumhansl profiles above.
+var temperleyMajor = [12]float64{.748, .060, .488, .082, .670, .460, .096, .715, .104, .366, .057, .400}
+var temperleyMinor = [12]float64{.712, .084, .474, .618, .049, .460, .105, .747, .404, .067, .133, .330}
+
+func tonalProfiles(profile Profile) ([12]float64, [12]float64) {
+	if profile == ProfileTemperley {
+		return temperleyMajor, temperleyMinor
+	}
+	return krumhanslMajor, krumhanslMinor
+}
+
 // rotateProfile shifts a 12-element profile by the specified pitch class offset.
 func rotateProfile(profile [12]float64, shift int) [12]float64 {
 	var result [12]float64

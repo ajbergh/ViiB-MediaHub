@@ -91,6 +91,70 @@ func TestEstimatePCMRecognizesAllSyntheticTriads(t *testing.T) {
 	}
 }
 
+func TestTemperleyProfileRecognizesAllSyntheticTriads(t *testing.T) {
+	options := DefaultOptions()
+	options.Profile = ProfileTemperley
+	for tonic := 0; tonic < 12; tonic++ {
+		for _, minor := range []bool{false, true} {
+			fixture, err := analysisbench.NewTriad("triad", tonic, minor, 1.5, 22050, 1, 440)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
+			mode := ModeMajor
+			if minor {
+				mode = ModeMinor
+			}
+			if !actual.Known || actual.Tonic != tonic || actual.Mode != mode {
+				t.Fatalf("tonic=%d minor=%v: Temperley estimate = %#v", tonic, minor, actual)
+			}
+		}
+	}
+}
+
+func TestFundamentalFocusedBandRecognizesAllSyntheticTriads(t *testing.T) {
+	options := DefaultOptions()
+	options.MaxFrequency = 1046 // C6
+	for tonic := 0; tonic < 12; tonic++ {
+		for _, minor := range []bool{false, true} {
+			fixture, err := analysisbench.NewTriad("triad", tonic, minor, 1.5, 22050, 1, 440)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
+			mode := ModeMajor
+			if minor {
+				mode = ModeMinor
+			}
+			if !actual.Known || actual.Tonic != tonic || actual.Mode != mode {
+				t.Fatalf("tonic=%d minor=%v: fundamental-band estimate = %#v", tonic, minor, actual)
+			}
+		}
+	}
+}
+
+func TestHPCPPeaksRecognizeAllSyntheticTriads(t *testing.T) {
+	options := DefaultOptions()
+	options.Extraction = ExtractionHPCPPeaks
+	options.MaxFrequency = 3500
+	for tonic := 0; tonic < 12; tonic++ {
+		for _, minor := range []bool{false, true} {
+			fixture, err := analysisbench.NewTriad("triad", tonic, minor, 1.5, 22050, 1, 440)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
+			mode := ModeMajor
+			if minor {
+				mode = ModeMinor
+			}
+			if !actual.Known || actual.Tonic != tonic || actual.Mode != mode {
+				t.Fatalf("tonic=%d minor=%v: HPCP estimate = %#v", tonic, minor, actual)
+			}
+		}
+	}
+}
+
 func TestEstimatePCMReturnsUnknownForSilence(t *testing.T) {
 	actual := EstimatePCM(make([]float32, 22050), 22050)
 	if actual.Known {
@@ -204,5 +268,15 @@ func TestTonalMaterialStaysWellInsideTheTonalityBound(t *testing.T) {
 	// push real triads over the bound.
 	if worst > maxTonalChromaFlatness/2 {
 		t.Fatalf("worst tonal flatness %v is uncomfortably close to the %v bound", worst, maxTonalChromaFlatness)
+	}
+}
+
+func TestEstimatePCMWithOptionsCanMakeTonalityGateStricter(t *testing.T) {
+	fixture, err := analysisbench.NewTriad("triad", 0, false, 4, 22050, 1, 440)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if estimate := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, Options{MaxChromaFlatness: 1e-8}); estimate.Known {
+		t.Fatalf("strict tonality estimate = %#v, want unknown", estimate)
 	}
 }

@@ -28,6 +28,8 @@ func (a *API) V2Routes() chi.Router {
 	r.Get("/library/events", a.libraryRevisionEventsV2)
 	r.Get("/library/stats", a.getLibrarySyncStatsV2)
 	r.Get("/search", a.searchLibraryV2)
+	r.Get("/analysis", a.listTrackAnalysisFeaturesV2)
+	r.Get("/analysis/{songID}", a.getTrackAnalysisFeatureV2)
 	return r
 }
 

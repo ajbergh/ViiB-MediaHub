@@ -23,6 +23,48 @@ func TestEstimatePCMRecognizesFractionalSyntheticTempo(t *testing.T) {
 		t.Fatalf("estimate = %#v", actual)
 	}
 }
+
+func TestOnsetAutocorrelationRecognizesSyntheticTempo(t *testing.T) {
+	fixture, err := analysisbench.NewClickTrack("autocorrelation", 128, 12, 44100, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := DefaultOptions()
+	options.Method = MethodOnsetAutocorrelation
+	actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
+	if !actual.Known || math.Abs(actual.BPM-128) > .5 {
+		t.Fatalf("autocorrelation estimate = %#v, want ~128 BPM", actual)
+	}
+}
+
+func TestMultiFeatureConsensusRecognizesSyntheticTempo(t *testing.T) {
+	fixture, err := analysisbench.NewNoisyClickTrack("multifeature", 128, 12, 44100, 1, 0.2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := DefaultOptions()
+	options.Method = MethodMultiFeatureConsensus
+	actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
+	if !actual.Known || math.Abs(actual.BPM-128) > .5 || actual.Stability < .5 {
+		t.Fatalf("multifeature estimate = %#v, want stable ~128 BPM", actual)
+	}
+}
+
+func TestMultiFeatureHalfBPMReportsHalfBPMGrid(t *testing.T) {
+	fixture, err := analysisbench.NewNoisyClickTrack("multifeature-half-grid", 128.3, 12, 44100, 1, 0.2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := DefaultOptions()
+	options.Method = MethodMultiFeatureHalfBPM
+	actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
+	if !actual.Known || math.Abs(actual.BPM-128.3) > .5 {
+		t.Fatalf("half-grid estimate = %#v, want ~128.3 BPM", actual)
+	}
+	if math.Abs(actual.BPM*2-math.Round(actual.BPM*2)) > 1e-9 {
+		t.Fatalf("half-grid BPM = %v, want a half-BPM increment", actual.BPM)
+	}
+}
 func TestEstimatePCMReturnsUnknownForSilence(t *testing.T) {
 	if actual := EstimatePCM(make([]float32, 44100), 44100); actual.Known {
 		t.Fatalf("silence = %#v", actual)
@@ -136,4 +178,3 @@ func TestEstimatePCMTempoRampStability(t *testing.T) {
 		t.Fatalf("expected ramp stability < 0.85, got %v", actual.Stability)
 	}
 }
-

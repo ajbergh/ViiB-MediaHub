@@ -73,3 +73,15 @@ func TestEstimatePCMStillMeasuresPercussiveFixtures(t *testing.T) {
 		}
 	}
 }
+
+func TestEstimatePCMWithOptionsCanMakeTheRefusalGateStricter(t *testing.T) {
+	fixture, err := analysisbench.NewClickTrack("clicks", 128, 12, 22050, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := DefaultOptions()
+	options.MinOnsetCrestFactor = 1e6
+	if estimate := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options); estimate.Known {
+		t.Fatalf("strict refusal estimate = %#v, want unknown", estimate)
+	}
+}

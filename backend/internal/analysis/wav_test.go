@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"testing"
@@ -56,6 +57,21 @@ func TestVorbisDecoderRejectsMalformedInputAndOpusStaysUnsupported(t *testing.T)
 	}
 	if _, err := NewDefaultDecoderRegistry().Open(context.Background(), "track.opus", io.NopCloser(bytes.NewReader(nil))); err != ErrUnsupportedCodec {
 		t.Fatalf("opus open error = %v", err)
+	}
+}
+
+func TestNormalizeTerminalVorbisEOFPreservesEarlyFailure(t *testing.T) {
+	if err := normalizeTerminalVorbisEOF(io.ErrUnexpectedEOF, 100, 100); err != io.EOF {
+		t.Fatalf("complete stream error = %v, want EOF", err)
+	}
+	if err := normalizeTerminalVorbisEOF(io.ErrUnexpectedEOF, 99, 100); err != io.ErrUnexpectedEOF {
+		t.Fatalf("early stream error = %v, want unexpected EOF", err)
+	}
+	if err := normalizeTerminalVorbisEOF(io.ErrUnexpectedEOF, 100, 0); err != io.ErrUnexpectedEOF {
+		t.Fatalf("unknown-length error = %v, want unexpected EOF", err)
+	}
+	if err := normalizeTerminalVorbisEOF(fmt.Errorf("decoder: %w", io.ErrUnexpectedEOF), 100, 100); err != io.EOF {
+		t.Fatalf("wrapped complete stream error = %v, want EOF", err)
 	}
 }
 

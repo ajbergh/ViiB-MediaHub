@@ -14,8 +14,9 @@ var ErrUnsupportedCodec = errors.New("analysis decoder is not available for this
 // PCMInfo describes normalized interleaved float32 PCM. Samples must be in
 // [-1, 1], with bounded reads supplied by PCMStream.Read.
 type PCMInfo struct {
-	SampleRate int
-	Channels   int
+	SampleRate     int
+	Channels       int
+	DeclaredFrames int64 // Zero when the container cannot declare a trustworthy total.
 }
 
 // PCMStream is the shared decoder output used by tempo, key, waveform, and

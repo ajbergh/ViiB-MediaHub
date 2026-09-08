@@ -15,14 +15,22 @@ const (
 	SplitTuning = "tuning"
 	// SplitHeldOut is reserved before tuning and used for Phase 0 tripwires.
 	SplitHeldOut = "held_out"
+	// EvidenceSyntheticCI identifies generated fixtures that are useful for
+	// regression but cannot close the professional-quality gate.
+	EvidenceSyntheticCI = "synthetic-ci"
+	// EvidenceLawfulRealAudio identifies a local corpus whose audio and labels
+	// have been reviewed for Phase 0 measurement. The declaration is retained
+	// in raw evidence for human audit; it is not a license verdict by itself.
+	EvidenceLawfulRealAudio = "lawful-real-audio"
 )
 
 // CorpusManifest is a local, label-only benchmark inventory. Audio files are
 // intentionally referenced, not vendored, so copyright restrictions remain
 // explicit and CI can use synthetic fixtures separately.
 type CorpusManifest struct {
-	Version string        `json:"version"`
-	Tracks  []CorpusTrack `json:"tracks"`
+	Version       string        `json:"version"`
+	EvidenceClass string        `json:"evidenceClass"`
+	Tracks        []CorpusTrack `json:"tracks"`
 }
 
 // CorpusTrack mirrors roadmap §14.1 while adding the required split field.
@@ -30,7 +38,9 @@ type CorpusTrack struct {
 	ID                string    `json:"id"`
 	Path              string    `json:"path"`
 	License           string    `json:"license"`
+	LabelSource       string    `json:"labelSource"`
 	Genre             string    `json:"genre"`
+	Coverage          []string  `json:"coverage,omitempty"`
 	Split             string    `json:"split"`
 	ExpectedBPM       *float64  `json:"expectedBpm,omitempty"`
 	AcceptedMetricBPM []float64 `json:"acceptedMetricBpm,omitempty"`
@@ -39,31 +49,90 @@ type CorpusTrack struct {
 	Notes             string    `json:"notes,omitempty"`
 }
 
+// ManifestForSplit returns a validated, label-preserving subset for Phase 0
+// tuning. It prevents a calibration run from consuming held-out material while
+// retaining the original evidence declaration and track IDs.
+func ManifestForSplit(manifest CorpusManifest, split string) (CorpusManifest, error) {
+	if err := manifest.Validate(); err != nil {
+		return CorpusManifest{}, err
+	}
+	if split != SplitTuning && split != SplitHeldOut {
+		return CorpusManifest{}, fmt.Errorf("unsupported corpus split %q", split)
+	}
+	filtered := CorpusManifest{Version: manifest.Version, EvidenceClass: manifest.EvidenceClass}
+	for _, track := range manifest.Tracks {
+		if track.Split == split {
+			filtered.Tracks = append(filtered.Tracks, track)
+		}
+	}
+	if len(filtered.Tracks) == 0 {
+		return CorpusManifest{}, fmt.Errorf("corpus contains no %q tracks", split)
+	}
+	return filtered, nil
+}
+
 // ResultSet is an exported detector result, including the current browser
 // implementation. Keeping it JSON-only prevents a benchmark from importing
 // Web Audio code into the Go process.
 type ResultSet struct {
-	Algorithm string           `json:"algorithm"`
-	Results   []DetectorResult `json:"results"`
+	Algorithm  string             `json:"algorithm"`
+	Results    []DetectorResult   `json:"results"`
+	Throughput *ThroughputMetrics `json:"throughput,omitempty"`
 }
 
 // DetectorResult intentionally permits unknown BPM/key values. A missing
 // result must be counted, not converted into a plausible default.
 type DetectorResult struct {
-	ID         string   `json:"id"`
-	BPM        *float64 `json:"bpm,omitempty"`
-	Key        string   `json:"key,omitempty"`
-	Confidence *float64 `json:"confidence,omitempty"`
+	ID  string   `json:"id"`
+	BPM *float64 `json:"bpm,omitempty"`
+	Key string   `json:"key,omitempty"`
+	// Confidence remains the legacy/browser confidence field. New producers
+	// should use the dimension-specific fields so tempo and key calibration
+	// cannot accidentally share an unrelated score.
+	Confidence       *float64 `json:"confidence,omitempty"`
+	TempoConfidence  *float64 `json:"tempoConfidence,omitempty"`
+	KeyConfidence    *float64 `json:"keyConfidence,omitempty"`
+	TempoCrestFactor *float64 `json:"tempoCrestFactor,omitempty"`
+	TempoStability   *float64 `json:"tempoStability,omitempty"`
+	KeyFlatness      *float64 `json:"keyFlatness,omitempty"`
+	Status           string   `json:"status,omitempty"`
+	Error            string   `json:"error,omitempty"`
+	ErrorMessage     string   `json:"errorMessage,omitempty"`
 }
 
 // ComparisonReport contains metrics for exactly one manifest split.
 type ComparisonReport struct {
-	Algorithm string         `json:"algorithm"`
-	Split     string         `json:"split"`
-	Corpus    CorpusCoverage `json:"corpus"`
-	Tempo     TempoMetrics   `json:"tempo"`
-	Key       KeyMetrics     `json:"key"`
-	Unknown   UnknownMetrics `json:"unknown"`
+	Algorithm   string                `json:"algorithm"`
+	Split       string                `json:"split"`
+	Corpus      CorpusCoverage        `json:"corpus"`
+	Tempo       TempoMetrics          `json:"tempo"`
+	Key         KeyMetrics            `json:"key"`
+	Unknown     UnknownMetrics        `json:"unknown"`
+	Calibration ConfidenceCalibration `json:"calibration"`
+	Throughput  *ThroughputMetrics    `json:"throughput,omitempty"`
+}
+
+// ConfidenceCalibration shows whether reported confidence predicts actual
+// correctness. The gate requires all three fixed buckets to be populated and
+// non-decreasing; a sparse corpus is therefore visibly inconclusive.
+type ConfidenceCalibration struct {
+	Tempo ConfidenceCalibrationDimension `json:"tempo"`
+	Key   ConfidenceCalibrationDimension `json:"key"`
+}
+
+type ConfidenceCalibrationDimension struct {
+	Buckets   []ConfidenceBucket `json:"buckets"`
+	Monotonic bool               `json:"monotonic"`
+	Verdict   string             `json:"verdict"`
+}
+
+type ConfidenceBucket struct {
+	Label    string   `json:"label"`
+	Minimum  float64  `json:"minimum"`
+	Maximum  float64  `json:"maximum"`
+	Labeled  int      `json:"labeled"`
+	Correct  int      `json:"correct"`
+	Accuracy *float64 `json:"accuracy,omitempty"`
 }
 
 // UnknownMetrics evaluates fixtures that must not produce a credible-looking
@@ -80,12 +149,14 @@ type UnknownMetrics struct {
 // like a Phase 0 exit-gate result. The 200-track, one-third held-out rule comes
 // directly from the roadmap and remains visible in every comparison report.
 type CorpusCoverage struct {
-	Tracks           int      `json:"tracks"`
-	TracksInSplit    int      `json:"tracksInSplit"`
-	HeldOutTracks    int      `json:"heldOutTracks"`
-	DistinctGenres   []string `json:"distinctGenres"`
-	Phase0Ready      bool     `json:"phase0Ready"`
-	ReadinessMessage string   `json:"readinessMessage"`
+	Tracks                  int      `json:"tracks"`
+	TracksInSplit           int      `json:"tracksInSplit"`
+	HeldOutTracks           int      `json:"heldOutTracks"`
+	DistinctGenres          []string `json:"distinctGenres"`
+	EvidenceClass           string   `json:"evidenceClass"`
+	MissingRequiredCoverage []string `json:"missingRequiredCoverage"`
+	Phase0Ready             bool     `json:"phase0Ready"`
+	ReadinessMessage        string   `json:"readinessMessage"`
 }
 
 // TempoMetrics keeps raw counts beside percentages so a small corpus cannot
@@ -157,14 +228,17 @@ func (manifest CorpusManifest) Validate() error {
 	if strings.TrimSpace(manifest.Version) == "" {
 		return fmt.Errorf("manifest version is required")
 	}
+	if manifest.EvidenceClass != EvidenceSyntheticCI && manifest.EvidenceClass != EvidenceLawfulRealAudio {
+		return fmt.Errorf("manifest evidence class must be %q or %q", EvidenceSyntheticCI, EvidenceLawfulRealAudio)
+	}
 	if len(manifest.Tracks) == 0 {
 		return fmt.Errorf("manifest must contain at least one track")
 	}
 	seen := make(map[string]struct{}, len(manifest.Tracks))
 	for index, track := range manifest.Tracks {
 		context := fmt.Sprintf("manifest track %d", index)
-		if strings.TrimSpace(track.ID) == "" || strings.TrimSpace(track.Path) == "" || strings.TrimSpace(track.License) == "" || strings.TrimSpace(track.Genre) == "" {
-			return fmt.Errorf("%s requires id, path, license, and genre", context)
+		if strings.TrimSpace(track.ID) == "" || strings.TrimSpace(track.Path) == "" || strings.TrimSpace(track.License) == "" || strings.TrimSpace(track.LabelSource) == "" || strings.TrimSpace(track.Genre) == "" {
+			return fmt.Errorf("%s requires id, path, license, label source, and genre", context)
 		}
 		if track.Split != SplitTuning && track.Split != SplitHeldOut {
 			return fmt.Errorf("%s has invalid split %q", context, track.Split)
@@ -192,6 +266,11 @@ func (manifest CorpusManifest) Validate() error {
 				return fmt.Errorf("%s expected key: %w", context, err)
 			}
 		}
+		for _, tag := range track.Coverage {
+			if normalizeCoverageTag(tag) == "" {
+				return fmt.Errorf("%s has an empty coverage tag", context)
+			}
+		}
 	}
 	return nil
 }
@@ -214,8 +293,10 @@ func (resultSet ResultSet) Validate() error {
 		if result.BPM != nil && (*result.BPM <= 0 || math.IsNaN(*result.BPM) || math.IsInf(*result.BPM, 0)) {
 			return fmt.Errorf("result %q has invalid BPM", result.ID)
 		}
-		if result.Confidence != nil && (*result.Confidence < 0 || *result.Confidence > 1 || math.IsNaN(*result.Confidence)) {
-			return fmt.Errorf("result %q has invalid confidence", result.ID)
+		for label, confidence := range map[string]*float64{"confidence": result.Confidence, "tempo confidence": result.TempoConfidence, "key confidence": result.KeyConfidence} {
+			if confidence != nil && (*confidence < 0 || *confidence > 1 || math.IsNaN(*confidence) || math.IsInf(*confidence, 0)) {
+				return fmt.Errorf("result %q has invalid %s", result.ID, label)
+			}
 		}
 		if strings.TrimSpace(result.Key) != "" && !strings.EqualFold(strings.TrimSpace(result.Key), "unknown") {
 			if _, err := parseKey(result.Key); err != nil {
@@ -242,7 +323,7 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 	for _, result := range resultSet.Results {
 		results[result.ID] = result
 	}
-	report := ComparisonReport{Algorithm: resultSet.Algorithm, Split: split, Corpus: Coverage(manifest, split)}
+	report := ComparisonReport{Algorithm: resultSet.Algorithm, Split: split, Corpus: Coverage(manifest, split), Throughput: resultSet.Throughput}
 	for _, track := range manifest.Tracks {
 		if track.Split != split {
 			continue
@@ -297,13 +378,89 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 	report.Key.CompatibleRate = percentage(report.Key.CamelotCompatible, report.Key.Labeled)
 	report.Key.UnknownRate = percentage(report.Key.Unknown, report.Key.Labeled)
 	report.Unknown.Accuracy = percentage(report.Unknown.Correct, report.Unknown.Labeled)
+	report.Calibration.Tempo = calibrateConfidence(manifest, results, split, false)
+	report.Calibration.Key = calibrateConfidence(manifest, results, split, true)
 	return report, nil
+}
+
+func calibrateConfidence(manifest CorpusManifest, results map[string]DetectorResult, split string, keyDimension bool) ConfidenceCalibrationDimension {
+	buckets := []ConfidenceBucket{
+		{Label: "low", Minimum: 0, Maximum: 1.0 / 3.0},
+		{Label: "medium", Minimum: 1.0 / 3.0, Maximum: 2.0 / 3.0},
+		{Label: "high", Minimum: 2.0 / 3.0, Maximum: 1},
+	}
+	for _, track := range manifest.Tracks {
+		if track.Split != split {
+			continue
+		}
+		result, present := results[track.ID]
+		if !present {
+			continue
+		}
+		confidence := result.TempoConfidence
+		if keyDimension {
+			confidence = result.KeyConfidence
+		}
+		if confidence == nil {
+			confidence = result.Confidence
+		}
+		if confidence == nil {
+			continue
+		}
+		correct := false
+		if keyDimension {
+			if strings.TrimSpace(track.ExpectedKey) == "" || strings.TrimSpace(result.Key) == "" || strings.EqualFold(strings.TrimSpace(result.Key), "unknown") {
+				continue
+			}
+			expected, _ := parseKey(track.ExpectedKey)
+			actual, _ := parseKey(result.Key)
+			correct = expected == actual
+		} else {
+			if track.ExpectedBPM == nil || result.BPM == nil {
+				continue
+			}
+			correct = math.Abs(*result.BPM-*track.ExpectedBPM) <= 0.5
+		}
+		index := 0
+		if *confidence >= 2.0/3.0 {
+			index = 2
+		} else if *confidence >= 1.0/3.0 {
+			index = 1
+		}
+		buckets[index].Labeled++
+		if correct {
+			buckets[index].Correct++
+		}
+	}
+	allPopulated := true
+	monotonic := true
+	previous := -1.0
+	for index := range buckets {
+		buckets[index].Accuracy = percentage(buckets[index].Correct, buckets[index].Labeled)
+		if buckets[index].Accuracy == nil {
+			allPopulated = false
+			continue
+		}
+		if previous > *buckets[index].Accuracy {
+			monotonic = false
+		}
+		previous = *buckets[index].Accuracy
+	}
+	verdict := "requires observations in all three confidence buckets"
+	if allPopulated {
+		verdict = "confidence decreases between one or more buckets"
+		if monotonic {
+			verdict = "monotonic across all three confidence buckets"
+		}
+	}
+	return ConfidenceCalibrationDimension{Buckets: buckets, Monotonic: allPopulated && monotonic, Verdict: verdict}
 }
 
 // Coverage reports whether a manifest can support the Phase 0 exit gate. It
 // does not check audio file existence because corpora are intentionally local.
 func Coverage(manifest CorpusManifest, split string) CorpusCoverage {
-	coverage := CorpusCoverage{Tracks: len(manifest.Tracks), DistinctGenres: RequiredGenres(manifest, split)}
+	coverage := CorpusCoverage{Tracks: len(manifest.Tracks), EvidenceClass: manifest.EvidenceClass, DistinctGenres: RequiredGenres(manifest, split)}
+	covered := make(map[string]struct{})
 	for _, track := range manifest.Tracks {
 		if track.Split == split {
 			coverage.TracksInSplit++
@@ -311,19 +468,52 @@ func Coverage(manifest CorpusManifest, split string) CorpusCoverage {
 		if track.Split == SplitHeldOut {
 			coverage.HeldOutTracks++
 		}
+		covered[normalizeCoverageTag(track.Genre)] = struct{}{}
+		for _, tag := range track.Coverage {
+			covered[normalizeCoverageTag(tag)] = struct{}{}
+		}
+	}
+	for _, required := range RequiredCorpusCoverage() {
+		if _, ok := covered[required]; !ok {
+			coverage.MissingRequiredCoverage = append(coverage.MissingRequiredCoverage, required)
+		}
 	}
 	minimumHeldOut := (coverage.Tracks + 2) / 3
+	deficits := make([]string, 0, 4)
+	if manifest.EvidenceClass != EvidenceLawfulRealAudio {
+		deficits = append(deficits, fmt.Sprintf("evidence class must be %q; %q is regression evidence only", EvidenceLawfulRealAudio, manifest.EvidenceClass))
+	}
 	if coverage.Tracks < 200 {
-		coverage.ReadinessMessage = fmt.Sprintf("needs %d additional tracks to meet the 200-track Phase 0 minimum", 200-coverage.Tracks)
-		return coverage
+		deficits = append(deficits, fmt.Sprintf("needs %d additional tracks to meet the 200-track Phase 0 minimum", 200-coverage.Tracks))
 	}
 	if coverage.HeldOutTracks < minimumHeldOut {
-		coverage.ReadinessMessage = fmt.Sprintf("needs %d additional held-out tracks to reserve one third of the corpus", minimumHeldOut-coverage.HeldOutTracks)
+		deficits = append(deficits, fmt.Sprintf("needs %d additional held-out tracks to reserve one third of the corpus", minimumHeldOut-coverage.HeldOutTracks))
+	}
+	if len(coverage.MissingRequiredCoverage) > 0 {
+		deficits = append(deficits, fmt.Sprintf("missing required Phase 0 coverage: %s", strings.Join(coverage.MissingRequiredCoverage, ", ")))
+	}
+	if len(deficits) > 0 {
+		coverage.ReadinessMessage = strings.Join(deficits, "; ")
 		return coverage
 	}
 	coverage.Phase0Ready = true
-	coverage.ReadinessMessage = "meets the Phase 0 corpus-size and held-out-split minimum; genre balance still requires review"
+	coverage.ReadinessMessage = "meets the Phase 0 corpus-size, held-out-split, and required-coverage minimum"
 	return coverage
+}
+
+// RequiredCorpusCoverage names the §14.2 cases that must be represented by a
+// lawful local corpus before Phase 0 can close. Genres remain free-form; the
+// coverage tags make cross-cutting cases (meter and tempo ambiguity) auditable.
+func RequiredCorpusCoverage() []string {
+	return []string{
+		"house", "techno", "drum-and-bass", "hip-hop", "breakbeat",
+		"rock-live-drums", "disco", "ambient", "acoustic", "sparse-no-percussion",
+		"meter-3-4-or-6-8", "tempo-ramp-or-switch", "tempo-70-140-ambiguity", "tempo-85-170-ambiguity",
+	}
+}
+
+func normalizeCoverageTag(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), "-"))
 }
 
 func isHalfDouble(actual, expected float64) bool {

@@ -20,10 +20,10 @@ require (
 	github.com/twoscott/gobble-fm v1.0.8
 	github.com/wailsapp/wails/v2 v2.11.0
 	go.senan.xyz/taglib v0.11.1
-	gonum.org/v1/gonum v0.17.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.14.0
+	gonum.org/v1/gonum v0.17.0
 	modernc.org/sqlite v1.56.0
 )
 
