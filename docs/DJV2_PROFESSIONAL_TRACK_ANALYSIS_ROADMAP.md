@@ -60,6 +60,7 @@
 | 2026-09-07 | `main` | Squash-merge delivery | Complete | Reviewed CI matrices green before merge; final integration rebased onto the landed stack | Squash-merged [#36](https://github.com/ajbergh/ViiB-MediaHub/pull/36), [#38](https://github.com/ajbergh/ViiB-MediaHub/pull/38), [#37](https://github.com/ajbergh/ViiB-MediaHub/pull/37), [#39](https://github.com/ajbergh/ViiB-MediaHub/pull/39), [#40](https://github.com/ajbergh/ViiB-MediaHub/pull/40), and [#41](https://github.com/ajbergh/ViiB-MediaHub/pull/41) in dependency order. The next delivery is Phase 0 evidence, not Phase 5 UX. |
 | 2026-09-07 | `analysis/wav-waveform-bridge` | Phase 1 completion, Slice 14 | Complete | `go test -count=1 ./internal/analysis/... ./internal/api -run 'TestGenerateWaveform\|Waveform\|Decoder'`; `go build -buildvcs=false ./...`; `go vet ./...` | Bridged server-side waveform generation onto the shared decoder registry, closing the last Phase 1 backend item ("extend/generalize waveform accumulation"). `dj_waveform.go` no longer owns a private MP3-only decode loop; WAV (PCM16/float32) and Ogg/Vorbis now generate server-side, and the deferred set shrank to the formats that genuinely lack a backend decoder. Answers open question #11: share the decoder, keep `dj_waveform_cache` specialized. |
 | 2026-09-07 | `analysis/wav-waveform-bridge` | Correctness review of merged Phases 1–4b | Complete | `go test -count=1 ./...` (17 packages green) | Reviewed the landed stack against this document and fixed four defects it had introduced or left open. See §2.4 for the findings, evidence, and remaining calibration risk. No user-visible BPM/key surface was added, so the Phase 0 gate is untouched. |
+| 2026-09-08 | `main` | Phase 0 evidence audit | Documentation only | Audited `internal/analysisbench` and `cmd/analysisbench` against the Phase 0 acceptance criteria | Recorded what the harness can already do versus what the gate needs, in Phase 0 → "Evidence status and execution plan". Found that `analysisbench` never imports `internal/analysis`, so no path runs the landed Go analyzers over a corpus — the browser baseline is measurable today and the gated detectors are not. Also missing: confidence-calibration buckets and any throughput timing. Items 1–3 of the new work list are unblocked and do not wait on the corpus. |
 
 ---
 
@@ -1844,6 +1845,62 @@ Provisional tripwires — measured on the held-out split:
 
 If a metric cannot be met, the recorded outcome must be one of: change the algorithm, change the target with a written justification, or descope the feature. "Ship it anyway" is not an option for the half/double and `unknown` rows — those two govern whether a DJ can trust the display at all.
 
+### Evidence status and execution plan (audited 2026-09-08)
+
+With Phases 1–4b merged, Phase 0 is the only thing between the codebase and Phase 5. This subsection records what the harness can actually do today versus what the gate requires, so the remaining work is a task list rather than a re-derivation.
+
+#### What already exists — do not rebuild it
+
+The measurement plumbing is further along than the phase description implies. Present and tested in [`internal/analysisbench`](../backend/internal/analysisbench/):
+
+- **Corpus manifest and result schemas with validation** — `CorpusManifest`/`CorpusTrack` (id, path, license, genre, split, expected BPM, accepted metrical levels, expected key, expected-unknown) and `ResultSet`/`DetectorResult` (id, bpm, key, confidence).
+- **Every accuracy metric the tripwire table names**, in `Compare()`: tempo strict ±0.5, accepted-metrical, half/double error rate, unknown rate; key exact and Camelot-compatible; expected-unknown correctness.
+- **A corpus readiness gate** — `Coverage()` refuses `Phase0Ready` until the manifest holds ≥ 200 tracks *and* reserves a held-out third, and reports the exact deficit. A smoke fixture cannot be mistaken for exit evidence.
+- **35 committed synthetic fixtures**, WAV export, and a generated label-only manifest that deliberately excludes fixtures with no comparable label.
+- **A developer-only browser baseline exporter** (`analysis-benchmark.html`) that emits the exact result JSON and treats the historical `120 BPM / confidence 0` fallback as unknown.
+- **A machine-readable codec matrix.**
+
+#### The gap that blocks everything else
+
+**Nothing runs the landed Go analyzers over a corpus.** `analysisbench` does not import `internal/analysis` at all; the CLI only consumes a *pre-existing* results JSON via `-manifest` + `-results`. The browser baseline can therefore be measured today, and the production detectors cannot. Every Go-side accuracy number in the tripwire table is unobtainable until a result-producer exists.
+
+Two smaller harness gaps sit beside it:
+
+- **No confidence calibration.** The tripwire requires monotonicity across ≥ 3 buckets. `DetectorResult.Confidence` is already carried end to end, but `ComparisonReport` has no calibration section — nothing buckets confidence and measures per-bucket correctness.
+- **No throughput measurement.** The ≥ 5× real-time target and open question #18 both require decode timed *separately* from DSP. The harness measures no wall time at all.
+
+#### Ordered work list
+
+| # | Work | Blocked by |
+|---|---|---|
+| 1 | **Go result-producer** — run `analysis/track` over a manifest and emit `ResultSet` JSON (e.g. `analysisbench -analyze <manifest> -out results.json`) | nothing; buildable now |
+| 2 | **Confidence-calibration buckets** in `ComparisonReport` — per-bucket correctness plus a monotonicity verdict | nothing |
+| 3 | **Throughput timing**, decode measured separately from DSP, recording the §13.1 environment fields | nothing |
+| 4 | **Acquire and label the corpus** — ≥ 200 tracks, genre-stratified per §14.2, authoritative BPM/key labels, held-out third | lawful audio access and labeling effort |
+| 5 | **Run and record** browser baseline and Go detectors on the held-out split against §14.6 | 1–4 |
+| 6 | **Codec spikes** — FLAC; AAC/M4A pure-Go-LGPL vs wazero-WASM head-to-head; Opus | legal review for the AAC path |
+| 7 | **Cross-platform determinism** — same committed fixtures on Windows/macOS/Linux, compared within tolerance | 1 |
+| 8 | **Refresh the codec matrix**, which is stale after [#43](https://github.com/ajbergh/ViiB-MediaHub/pull/43): WAV still reads `decode-spike-ready` and MP3/Ogg `ready-to-benchmark`, but all three now have production decoders driving tempo, key, and server-side waveforms | nothing |
+
+Items 1–3 are unblocked and are prerequisites for the corpus being useful at all, so they should not wait on item 4.
+
+#### Run the synthetic manifest through item 1 as soon as it exists
+
+Once the result-producer lands, the Go analyzers can immediately be run against the generated synthetic manifest. **This is not Phase 0 exit evidence** — synthetic audio cannot prove musical accuracy, and §14.5 says so — but it is a real regression signal, and the §2.4 review is the argument for expecting it to find things: three of four defects there were confidently-wrong outputs that a green CI was blind to, because the tests asserted values were present rather than correct.
+
+#### Two calibration items this measurement must settle
+
+Both are inherited from §2.4 and neither can be resolved by inspection:
+
+1. **The two refusal gates are provisional.** `tempo.minOnsetCrestFactor` and `key.maxTonalChromaFlatness` are justified only by synthetic-fixture margins. They are precisely what produces `unknown` rather than a fabricated answer, so they govern the "≥ 90% unknown" row directly — and a threshold tuned on clicks and sine triads is not evidence about music. Report the unknown rate on real material separately from the synthetic rate. A gate that refuses genuine tracks fails as badly as one that accepts noise.
+2. **The major/minor confidence asymmetry** — major triads score roughly a quarter of the confidence of minor triads on identical synthetic material. That will distort any bucketing done before it is understood, so it should be characterized before item 2's thresholds are fixed. This is open question #5 territory: compare profile variants on the corpus, do not adjust a constant.
+
+#### Decisions that are not engineering's to make
+
+- **Corpus provenance.** The audio must be lawfully held and the labels authoritative. §14.4 forbids vendoring Beatport previews; §14.1 forbids committing commercial audio used for local comparison.
+- **`.aiff` ingestion scope** (open question #17) — a scanner change with its own metadata and duplicate-detection implications, not a pure analysis change.
+- **The AAC license verdict** (open question #8) — both paths can be spiked and measured, but accepting LGPL static-linking obligations versus reviewing a WASM artifact's license is a distribution decision.
+
 ### Dependencies
 
 None.
@@ -2858,6 +2915,10 @@ Keep implementation PRs reviewable. Suggested sequence after this roadmap:
 | 12 | `ai-dj/measured-track-features` | 7 | |
 
 ### Next steps before Phase 5
+
+> **The detailed, audited task list lives in Phase 0 → "Evidence status and execution plan."** It records what the harness can already do, the three harness gaps that block measurement (no Go result-producer, no confidence calibration, no throughput timing), and an ordered work list. The summary below is the shape; that subsection is the plan.
+>
+> The single most important finding: `analysisbench` does not import `internal/analysis`, so **nothing currently runs the landed Go analyzers over a corpus**. The browser baseline is measurable today; the detectors being gated are not. That runner is item 1 and it is unblocked.
 
 1. Build or obtain the lawful private/licensed corpus described in §14.2, including a held-out split and authoritative BPM/key labels.
 2. Run `analysisbench` against the browser baseline and the landed Go analyzers; record strict/accepted BPM, half/double, unknown, exact key, conservative Camelot-compatible key, and confidence-calibration results against §14.6.
