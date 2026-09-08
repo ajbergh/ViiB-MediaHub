@@ -17,17 +17,19 @@ const (
 
 // Options configure candidate bounds and metrical range priors.
 type Options struct {
-	Range  RangePreset
-	MinBPM float64
-	MaxBPM float64
+	Range               RangePreset
+	MinBPM              float64
+	MaxBPM              float64
+	MinOnsetCrestFactor float64
 }
 
 // DefaultOptions selects Automatic mode with standard DJ tempo priors.
 func DefaultOptions() Options {
 	return Options{
-		Range:  RangeAutomatic,
-		MinBPM: 90,
-		MaxBPM: 180,
+		Range:               RangeAutomatic,
+		MinBPM:              90,
+		MaxBPM:              180,
+		MinOnsetCrestFactor: minOnsetCrestFactor,
 	}
 }
 
@@ -38,6 +40,7 @@ type Estimate struct {
 	Confidence       float64
 	Alternate        float64
 	Stability        float64
+	OnsetCrestFactor float64
 	Known            bool
 	AlgorithmVersion string
 }
@@ -124,8 +127,16 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 	// adapts down onto its numerical noise floor, inventing a tempo. A
 	// non-positive mean means the envelope never rose, which is the same
 	// no-evidence case.
-	if mean <= 0 || maxValue(onsets) < minOnsetCrestFactor*mean {
-		return Estimate{AlgorithmVersion: AlgorithmVersion}
+	crestFactor := 0.0
+	if mean > 0 {
+		crestFactor = maxValue(onsets) / mean
+	}
+	minimumCrestFactor := a.options.MinOnsetCrestFactor
+	if minimumCrestFactor <= 0 {
+		minimumCrestFactor = minOnsetCrestFactor
+	}
+	if mean <= 0 || crestFactor < minimumCrestFactor {
+		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
 	}
 	threshold := mean + 1.5*deviation
 	minDistance := max(1, int(math.Round(.1*float64(a.sampleRate)/float64(a.hop))))
@@ -234,6 +245,7 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 		Confidence:       confidence,
 		Alternate:        alternate,
 		Stability:        stability,
+		OnsetCrestFactor: crestFactor,
 		Known:            true,
 		AlgorithmVersion: AlgorithmVersion,
 	}

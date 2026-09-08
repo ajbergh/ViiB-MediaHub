@@ -1,8 +1,10 @@
 package analysisbench
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strings"
 )
@@ -49,6 +51,28 @@ type DeterminismDifference struct {
 	Field     string `json:"field"`
 	Expected  string `json:"expected"`
 	Actual    string `json:"actual"`
+}
+
+// WritePhase0GateReport persists a gate decision without replacing prior
+// evidence.
+func WritePhase0GateReport(path string, report Phase0GateReport) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("gate report output path is required")
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("create gate report: %w", err)
+	}
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(report); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("encode gate report: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close gate report: %w", err)
+	}
+	return nil
 }
 
 // EvaluatePhase0Gate measures the candidate against the held-out corpus and

@@ -47,6 +47,23 @@ func TestCompareSeparatesStrictMetricalHalfDoubleAndUnknownTempo(t *testing.T) {
 	}
 }
 
+func TestManifestForSplitRetainsOnlyReservedTracks(t *testing.T) {
+	manifest := CorpusManifest{Version: "phase0-v1", EvidenceClass: EvidenceSyntheticCI, Tracks: []CorpusTrack{
+		track("tuning", SplitTuning, 128, nil, "C major"),
+		track("held-out", SplitHeldOut, 126, nil, "A minor"),
+	}}
+	filtered, err := ManifestForSplit(manifest, SplitTuning)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered.Tracks) != 1 || filtered.Tracks[0].ID != "tuning" || filtered.EvidenceClass != manifest.EvidenceClass {
+		t.Fatalf("filtered manifest = %#v", filtered)
+	}
+	if _, err := ManifestForSplit(manifest, "all"); err == nil {
+		t.Fatal("unsupported split was accepted")
+	}
+}
+
 func TestManifestAndResultsValidationRejectSilentBenchmarkCorruption(t *testing.T) {
 	validTrack := track("same", SplitHeldOut, 128, nil, "Db major")
 	manifest := CorpusManifest{Version: "phase0-v1", EvidenceClass: EvidenceSyntheticCI, Tracks: []CorpusTrack{validTrack, validTrack}}

@@ -206,3 +206,13 @@ func TestTonalMaterialStaysWellInsideTheTonalityBound(t *testing.T) {
 		t.Fatalf("worst tonal flatness %v is uncomfortably close to the %v bound", worst, maxTonalChromaFlatness)
 	}
 }
+
+func TestEstimatePCMWithOptionsCanMakeTonalityGateStricter(t *testing.T) {
+	fixture, err := analysisbench.NewTriad("triad", 0, false, 4, 22050, 1, 440)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if estimate := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, Options{MaxChromaFlatness: 1e-8}); estimate.Known {
+		t.Fatalf("strict tonality estimate = %#v, want unknown", estimate)
+	}
+}

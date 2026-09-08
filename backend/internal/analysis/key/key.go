@@ -33,27 +33,42 @@ const AlgorithmVersion = "key-v1-chroma-ks"
 // recalibrated against the Phase 0 labeled corpus.
 const maxTonalChromaFlatness = 0.70
 
+// Options provides an explicit tonality-refusal threshold. The default remains
+// deliberately conservative; Phase 0 may sweep an alternate value only on
+// its tuning split before evaluating the reserved held-out split.
+type Options struct {
+	MaxChromaFlatness float64
+}
+
+func DefaultOptions() Options { return Options{MaxChromaFlatness: maxTonalChromaFlatness} }
+
 // Estimate holds the detected musical key, mode, confidence, and DJ notations.
 // Known is false when tonal evidence is insufficient; callers must not invent a key.
 type Estimate struct {
-	Tonic            int         `json:"tonic"`
-	Mode             string      `json:"mode"`
-	Key              string      `json:"key"`
-	Camelot          string      `json:"camelot"`
-	OpenKey          string      `json:"openKey"`
-	Confidence       float64     `json:"confidence"`
-	Chroma           [12]float64 `json:"chroma"`
+	Tonic      int         `json:"tonic"`
+	Mode       string      `json:"mode"`
+	Key        string      `json:"key"`
+	Camelot    string      `json:"camelot"`
+	OpenKey    string      `json:"openKey"`
+	Confidence float64     `json:"confidence"`
+	Chroma     [12]float64 `json:"chroma"`
 	// Flatness is the chroma uniformity diagnostic that gates Known. It is
 	// retained on refusal too, so Phase 0 calibration can see how far a
 	// rejected track sat from the tonality bound.
 	Flatness         float64 `json:"flatness"`
 	Known            bool    `json:"known"`
-	AlgorithmVersion string      `json:"algorithmVersion"`
+	AlgorithmVersion string  `json:"algorithmVersion"`
 }
 
 // EstimatePCM estimates musical key from a normalized mono PCM buffer.
 func EstimatePCM(samples []float32, sampleRate int) Estimate {
-	acc := NewChromaAccumulator(sampleRate)
+	return EstimatePCMWithOptions(samples, sampleRate, DefaultOptions())
+}
+
+// EstimatePCMWithOptions evaluates PCM using an explicit Phase 0 tonality
+// setting. Product callers use EstimatePCM and therefore retain the default.
+func EstimatePCMWithOptions(samples []float32, sampleRate int, options Options) Estimate {
+	acc := NewChromaAccumulatorWithOptions(sampleRate, options)
 	acc.Feed(samples)
 	return acc.Estimate()
 }
@@ -65,6 +80,7 @@ type ChromaAccumulator struct {
 	windowSize  int
 	hopSize     int
 	stft        *analysis.STFT
+	options     Options
 	pending     []float32
 	chroma      [12]float64
 	totalEnergy float64
@@ -73,6 +89,12 @@ type ChromaAccumulator struct {
 
 // NewChromaAccumulator constructs a streaming chroma accumulator.
 func NewChromaAccumulator(sampleRate int) *ChromaAccumulator {
+	return NewChromaAccumulatorWithOptions(sampleRate, DefaultOptions())
+}
+
+// NewChromaAccumulatorWithOptions constructs a streaming chroma accumulator
+// with an explicit Phase 0 calibration setting.
+func NewChromaAccumulatorWithOptions(sampleRate int, options Options) *ChromaAccumulator {
 	if sampleRate <= 0 {
 		return &ChromaAccumulator{}
 	}
@@ -87,6 +109,7 @@ func NewChromaAccumulator(sampleRate int) *ChromaAccumulator {
 		windowSize: windowSize,
 		hopSize:    hopSize,
 		stft:       stft,
+		options:    options,
 	}
 }
 
@@ -101,8 +124,8 @@ func (a *ChromaAccumulator) Feed(samples []float32) {
 	}
 
 	// Process available complete STFT frames from pending buffer
-	numFrames := (len(a.pending) - a.windowSize) / a.hopSize + 1
-	consumedSamples := (numFrames - 1) * a.hopSize + a.windowSize
+	numFrames := (len(a.pending)-a.windowSize)/a.hopSize + 1
+	consumedSamples := (numFrames-1)*a.hopSize + a.windowSize
 	toProcess := a.pending[:consumedSamples]
 
 	_ = a.stft.Frames(toProcess, func(spectrum []complex128) error {
@@ -152,7 +175,11 @@ func (a *ChromaAccumulator) Estimate() Estimate {
 	// chromagram fits every profile about equally badly, so whichever of the 24
 	// wins is an artifact rather than a reading of the music.
 	flatness := chromaFlatness(normChroma)
-	if flatness > maxTonalChromaFlatness {
+	maximumFlatness := a.options.MaxChromaFlatness
+	if maximumFlatness <= 0 {
+		maximumFlatness = maxTonalChromaFlatness
+	}
+	if flatness > maximumFlatness {
 		return Estimate{Chroma: a.chroma, Flatness: flatness, AlgorithmVersion: AlgorithmVersion}
 	}
 

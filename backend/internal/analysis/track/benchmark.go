@@ -16,7 +16,13 @@ import (
 // .mp3 and .ogg manifest entries. Other codecs remain deliberately outside
 // this focused Phase 0 slice.
 func ProduceBenchmarkResults(ctx context.Context, manifest analysisbench.CorpusManifest) (analysisbench.ResultSet, error) {
-	return ProduceBenchmarkResultsWithRegistry(ctx, manifest, analysis.NewDefaultDecoderRegistry())
+	return ProduceBenchmarkResultsWithOptions(ctx, manifest, DefaultOptions())
+}
+
+// ProduceBenchmarkResultsWithOptions runs a declared Phase 0 calibration
+// setting while preserving the default producer for ordinary measurements.
+func ProduceBenchmarkResultsWithOptions(ctx context.Context, manifest analysisbench.CorpusManifest, options Options) (analysisbench.ResultSet, error) {
+	return ProduceBenchmarkResultsWithRegistryAndOptions(ctx, manifest, analysis.NewDefaultDecoderRegistry(), options)
 }
 
 // ProbeBenchmarkFile runs a focused MP3/Ogg decoder smoke measurement without
@@ -63,6 +69,12 @@ func ProbeBenchmarkFileWithRegistry(ctx context.Context, path string, registry *
 // ProduceBenchmarkResultsWithRegistry allows deterministic decoder
 // substitution in tests while the CLI uses the production registry.
 func ProduceBenchmarkResultsWithRegistry(ctx context.Context, manifest analysisbench.CorpusManifest, registry *analysis.DecoderRegistry) (analysisbench.ResultSet, error) {
+	return ProduceBenchmarkResultsWithRegistryAndOptions(ctx, manifest, registry, DefaultOptions())
+}
+
+// ProduceBenchmarkResultsWithRegistryAndOptions permits deterministic tests
+// and tuning-split benchmark sweeps without changing the production default.
+func ProduceBenchmarkResultsWithRegistryAndOptions(ctx context.Context, manifest analysisbench.CorpusManifest, registry *analysis.DecoderRegistry, options Options) (analysisbench.ResultSet, error) {
 	if err := manifest.Validate(); err != nil {
 		return analysisbench.ResultSet{}, err
 	}
@@ -81,20 +93,24 @@ func ProduceBenchmarkResultsWithRegistry(ctx context.Context, manifest analysisb
 		if err := ctx.Err(); err != nil {
 			return analysisbench.ResultSet{}, err
 		}
-		result, timing, err := AnalyzeFile(ctx, registry, corpusTrack.Path, DefaultOptions())
+		result, timing, err := AnalyzeFile(ctx, registry, corpusTrack.Path, options)
 		measurement := analysisbench.TrackTiming{
 			ID: corpusTrack.ID, Codec: strings.TrimPrefix(strings.ToLower(filepath.Ext(corpusTrack.Path)), "."),
 			SampleRate: timing.SampleRate, SourceChannels: timing.SourceChannels,
 			AudioSeconds: timing.AudioSeconds, DeclaredAudioSeconds: timing.DeclaredAudioSeconds, WallSeconds: timing.WallSeconds,
 			DecodeAndStreamSeconds: timing.DecodeAndStreamSeconds, DSPSeconds: timing.DSPSeconds,
 		}
-		detectorResult := analysisbench.DetectorResult{ID: corpusTrack.ID}
+		detectorResult := analysisbench.DetectorResult{ID: corpusTrack.ID, Status: result.Status}
 		if err != nil {
 			code, _ := ClassifyError(err)
+			detectorResult.Status = "failed"
 			detectorResult.Error = code
 			detectorResult.ErrorMessage = err.Error()
 			measurement.Error = code
 		} else {
+			detectorResult.TempoCrestFactor = benchmarkFloat64Pointer(result.Tempo.OnsetCrestFactor)
+			detectorResult.TempoStability = benchmarkFloat64Pointer(result.Tempo.Stability)
+			detectorResult.KeyFlatness = benchmarkFloat64Pointer(result.Key.Flatness)
 			if result.Tempo.Known {
 				detectorResult.BPM = benchmarkFloat64Pointer(result.Tempo.BPM)
 				detectorResult.TempoConfidence = benchmarkFloat64Pointer(result.Tempo.Confidence)

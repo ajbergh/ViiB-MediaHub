@@ -49,6 +49,28 @@ type CorpusTrack struct {
 	Notes             string    `json:"notes,omitempty"`
 }
 
+// ManifestForSplit returns a validated, label-preserving subset for Phase 0
+// tuning. It prevents a calibration run from consuming held-out material while
+// retaining the original evidence declaration and track IDs.
+func ManifestForSplit(manifest CorpusManifest, split string) (CorpusManifest, error) {
+	if err := manifest.Validate(); err != nil {
+		return CorpusManifest{}, err
+	}
+	if split != SplitTuning && split != SplitHeldOut {
+		return CorpusManifest{}, fmt.Errorf("unsupported corpus split %q", split)
+	}
+	filtered := CorpusManifest{Version: manifest.Version, EvidenceClass: manifest.EvidenceClass}
+	for _, track := range manifest.Tracks {
+		if track.Split == split {
+			filtered.Tracks = append(filtered.Tracks, track)
+		}
+	}
+	if len(filtered.Tracks) == 0 {
+		return CorpusManifest{}, fmt.Errorf("corpus contains no %q tracks", split)
+	}
+	return filtered, nil
+}
+
 // ResultSet is an exported detector result, including the current browser
 // implementation. Keeping it JSON-only prevents a benchmark from importing
 // Web Audio code into the Go process.
@@ -67,11 +89,15 @@ type DetectorResult struct {
 	// Confidence remains the legacy/browser confidence field. New producers
 	// should use the dimension-specific fields so tempo and key calibration
 	// cannot accidentally share an unrelated score.
-	Confidence      *float64 `json:"confidence,omitempty"`
-	TempoConfidence *float64 `json:"tempoConfidence,omitempty"`
-	KeyConfidence   *float64 `json:"keyConfidence,omitempty"`
-	Error           string   `json:"error,omitempty"`
-	ErrorMessage    string   `json:"errorMessage,omitempty"`
+	Confidence       *float64 `json:"confidence,omitempty"`
+	TempoConfidence  *float64 `json:"tempoConfidence,omitempty"`
+	KeyConfidence    *float64 `json:"keyConfidence,omitempty"`
+	TempoCrestFactor *float64 `json:"tempoCrestFactor,omitempty"`
+	TempoStability   *float64 `json:"tempoStability,omitempty"`
+	KeyFlatness      *float64 `json:"keyFlatness,omitempty"`
+	Status           string   `json:"status,omitempty"`
+	Error            string   `json:"error,omitempty"`
+	ErrorMessage     string   `json:"errorMessage,omitempty"`
 }
 
 // ComparisonReport contains metrics for exactly one manifest split.

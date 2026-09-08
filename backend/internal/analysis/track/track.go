@@ -55,6 +55,7 @@ type Result struct {
 // Options selects analyzer priors for a pass.
 type Options struct {
 	Tempo tempo.Options
+	Key   key.Options
 }
 
 // FileTiming separates decoder/streaming work from DSP work for a Phase 0
@@ -70,7 +71,9 @@ type FileTiming struct {
 }
 
 // DefaultOptions uses the standard DJ tempo priors.
-func DefaultOptions() Options { return Options{Tempo: tempo.DefaultOptions()} }
+func DefaultOptions() Options {
+	return Options{Tempo: tempo.DefaultOptions(), Key: key.DefaultOptions()}
+}
 
 // Analyze streams a canonical local song once, feeding both accumulators from
 // the same borrowed PCM chunks, and returns the combined result without
@@ -110,7 +113,7 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 				timing.DeclaredAudioSeconds = float64(chunk.DeclaredFrames) / float64(chunk.SampleRate)
 			}
 			onsets = tempo.NewOnsetAccumulatorWithOptions(chunk.SampleRate, opts.Tempo)
-			chroma = key.NewChromaAccumulator(chunk.SampleRate)
+			chroma = key.NewChromaAccumulatorWithOptions(chunk.SampleRate, opts.Key)
 		}
 		if sampleRate != chunk.SampleRate {
 			return fmt.Errorf("analysis stream sample rate changed")

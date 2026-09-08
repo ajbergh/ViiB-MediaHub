@@ -15,14 +15,15 @@ import (
 )
 
 type report struct {
-	Fixtures          []fixtureReport                 `json:"fixtures"`
-	Codecs            []analysisbench.CodecCapability `json:"codecs"`
-	WAV               *analysisbench.WAVInfo          `json:"wav,omitempty"`
-	Comparison        *analysisbench.ComparisonReport `json:"comparison,omitempty"`
-	Gate              *analysisbench.Phase0GateReport `json:"gate,omitempty"`
-	Probes            []analysisbench.CodecProbe      `json:"probes,omitempty"`
-	WrittenWAV        []string                        `json:"writtenWav,omitempty"`
-	SyntheticManifest string                          `json:"syntheticManifest,omitempty"`
+	Fixtures          []fixtureReport                   `json:"fixtures"`
+	Codecs            []analysisbench.CodecCapability   `json:"codecs"`
+	WAV               *analysisbench.WAVInfo            `json:"wav,omitempty"`
+	Comparison        *analysisbench.ComparisonReport   `json:"comparison,omitempty"`
+	Gate              *analysisbench.Phase0GateReport   `json:"gate,omitempty"`
+	Probes            []analysisbench.CodecProbe        `json:"probes,omitempty"`
+	SpotifyImport     *analysisbench.CorpusImportReport `json:"spotifyImport,omitempty"`
+	WrittenWAV        []string                          `json:"writtenWav,omitempty"`
+	SyntheticManifest string                            `json:"syntheticManifest,omitempty"`
 }
 
 type fixtureReport struct {
@@ -44,9 +45,18 @@ func main() {
 	candidateResultsPath := flag.String("candidate-results", "", "Go analyzer result JSON; requires -gate-manifest and -browser-results")
 	browserResultsPath := flag.String("browser-results", "", "browser baseline result JSON; requires -gate-manifest and -candidate-results")
 	determinismResultsPaths := flag.String("determinism-results", "", "comma-separated additional Go result JSON files from macOS/Linux/Windows for the determinism tripwire")
+	gateOutputPath := flag.String("gate-out", "", "non-overwriting Phase 0 gate report JSON; requires -gate-manifest")
 	probePaths := flag.String("probe", "", "comma-separated local .mp3/.ogg paths for unlabeled decoder/analyzer smoke measurements")
 	analyzeManifestPath := flag.String("analyze", "", "local .mp3/.ogg corpus manifest to run through the Go analyzers")
 	outputPath := flag.String("out", "", "non-overwriting Go analyzer result JSON; requires -analyze")
+	analyzeSplit := flag.String("analyze-split", "", "optional reserved corpus split to analyze: tuning or held_out; requires -analyze")
+	tempoMinOnsetCrest := flag.Float64("tempo-min-onset-crest", 0, "optional Phase 0 tempo refusal threshold; requires -analyze and must be tuned only on the tuning split")
+	keyMaxChromaFlatness := flag.Float64("key-max-chroma-flatness", 0, "optional Phase 0 key refusal threshold; requires -analyze and must be tuned only on the tuning split")
+	spotifyCorpusRoot := flag.String("import-spotify-corpus", "", "directory tree containing per-folder Spotify BPM/key CSV files and local .mp3/.ogg media")
+	spotifyCorpusOutput := flag.String("import-spotify-out", "", "non-overwriting analysisbench manifest JSON; requires -import-spotify-corpus")
+	spotifyEvidenceClass := flag.String("import-spotify-evidence-class", "", "required evidence class declaration: lawful-real-audio or synthetic-ci")
+	spotifyLicense := flag.String("import-spotify-license", "", "required local-audio license declaration, for example private-local")
+	spotifyLabelSource := flag.String("import-spotify-label-source", "Spotify confirmed BPM/key data", "label-source text recorded in imported manifest entries")
 	split := flag.String("split", analysisbench.SplitHeldOut, "corpus split to compare: held_out or tuning")
 	writeWAVDir := flag.String("write-wav-dir", "", "optional empty directory for generated synthetic PCM16 WAV artifacts")
 	writeSyntheticManifest := flag.String("write-synthetic-manifest", "", "optional output path for a generated-fixture comparison manifest; requires -write-wav-dir")
@@ -67,8 +77,32 @@ func main() {
 		fmt.Fprintln(os.Stderr, "analysisbench: use either -manifest/-results for one comparison or the -gate-* inputs for Phase 0 evaluation")
 		os.Exit(2)
 	}
+	if *gateOutputPath != "" && *gateManifestPath == "" {
+		fmt.Fprintln(os.Stderr, "analysisbench: -gate-out requires -gate-manifest")
+		os.Exit(2)
+	}
 	if (*analyzeManifestPath == "") != (*outputPath == "") {
 		fmt.Fprintln(os.Stderr, "analysisbench: -analyze and -out must be provided together")
+		os.Exit(2)
+	}
+	if (*tempoMinOnsetCrest != 0 || *keyMaxChromaFlatness != 0) && *analyzeManifestPath == "" {
+		fmt.Fprintln(os.Stderr, "analysisbench: Phase 0 calibration flags require -analyze")
+		os.Exit(2)
+	}
+	if *analyzeSplit != "" && *analyzeManifestPath == "" {
+		fmt.Fprintln(os.Stderr, "analysisbench: -analyze-split requires -analyze")
+		os.Exit(2)
+	}
+	if *tempoMinOnsetCrest < 0 || *keyMaxChromaFlatness < 0 || *keyMaxChromaFlatness > 1 {
+		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 calibration threshold")
+		os.Exit(2)
+	}
+	if (*spotifyCorpusRoot == "") != (*spotifyCorpusOutput == "") {
+		fmt.Fprintln(os.Stderr, "analysisbench: -import-spotify-corpus and -import-spotify-out must be provided together")
+		os.Exit(2)
+	}
+	if *spotifyCorpusRoot != "" && (strings.TrimSpace(*spotifyEvidenceClass) == "" || strings.TrimSpace(*spotifyLicense) == "") {
+		fmt.Fprintln(os.Stderr, "analysisbench: -import-spotify-evidence-class and -import-spotify-license are required for a Spotify corpus import")
 		os.Exit(2)
 	}
 	if *analyzeManifestPath != "" && *manifestPath != "" {
@@ -150,7 +184,21 @@ func main() {
 			fmt.Fprintf(os.Stderr, "analysisbench: load analysis manifest: %v\n", err)
 			os.Exit(1)
 		}
-		produced, err := track.ProduceBenchmarkResults(context.Background(), manifest)
+		if *analyzeSplit != "" {
+			manifest, err = analysisbench.ManifestForSplit(manifest, *analyzeSplit)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "analysisbench: select analysis split: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		options := track.DefaultOptions()
+		if *tempoMinOnsetCrest > 0 {
+			options.Tempo.MinOnsetCrestFactor = *tempoMinOnsetCrest
+		}
+		if *keyMaxChromaFlatness > 0 {
+			options.Key.MaxChromaFlatness = *keyMaxChromaFlatness
+		}
+		produced, err := track.ProduceBenchmarkResultsWithOptions(context.Background(), manifest, options)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "analysisbench: run Go analyzers: %v\n", err)
 			os.Exit(1)
@@ -159,6 +207,21 @@ func main() {
 			fmt.Fprintf(os.Stderr, "analysisbench: write Go results: %v\n", err)
 			os.Exit(1)
 		}
+	}
+	if *spotifyCorpusRoot != "" {
+		imported, err := analysisbench.ImportSpotifyCorpus(*spotifyCorpusRoot, analysisbench.SpotifyCorpusOptions{
+			EvidenceClass: *spotifyEvidenceClass, License: *spotifyLicense, LabelSource: *spotifyLabelSource,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: import Spotify corpus: %v\n", err)
+			os.Exit(1)
+		}
+		if err := analysisbench.WriteSpotifyCorpusManifest(*spotifyCorpusOutput, imported.Manifest); err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: write Spotify corpus manifest: %v\n", err)
+			os.Exit(1)
+		}
+		imported.ManifestOutput = *spotifyCorpusOutput
+		result.SpotifyImport = &imported
 	}
 	if *probePaths != "" {
 		for _, path := range strings.Split(*probePaths, ",") {
@@ -205,6 +268,12 @@ func main() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "analysisbench: evaluate Phase 0 gate: %v\n", err)
 			os.Exit(1)
+		}
+		if *gateOutputPath != "" {
+			if err := analysisbench.WritePhase0GateReport(*gateOutputPath, gate); err != nil {
+				fmt.Fprintf(os.Stderr, "analysisbench: write Phase 0 gate report: %v\n", err)
+				os.Exit(1)
+			}
 		}
 		result.Gate = &gate
 	}

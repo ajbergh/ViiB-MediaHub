@@ -1,6 +1,9 @@
 package analysisbench
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestEvaluatePhase0GateDoesNotPassIncompleteEvidence(t *testing.T) {
 	manifest := CorpusManifest{Version: "phase0-v1", EvidenceClass: EvidenceSyntheticCI, Tracks: []CorpusTrack{{
@@ -38,6 +41,17 @@ func TestEvaluateDeterminismRequiresThreeMatchingPlatforms(t *testing.T) {
 	}
 	if report := EvaluateDeterminism([]ResultSet{base, matchingMac}); report.Status != "unproven" {
 		t.Fatalf("two platforms = %#v, want unproven", report)
+	}
+}
+
+func TestWritePhase0GateReportDoesNotOverwrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gate.json")
+	report := Phase0GateReport{Decision: "do not open Phase 5"}
+	if err := WritePhase0GateReport(path, report); err != nil {
+		t.Fatalf("WritePhase0GateReport() error = %v", err)
+	}
+	if err := WritePhase0GateReport(path, report); err == nil {
+		t.Fatal("WritePhase0GateReport() unexpectedly overwrote an existing report")
 	}
 }
 

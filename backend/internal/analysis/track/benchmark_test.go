@@ -65,7 +65,7 @@ func TestProduceBenchmarkResultsRunsProductionPathForMP3AndOgg(t *testing.T) {
 	if resultSet.Algorithm == "" || len(resultSet.Results) != 2 || resultSet.Throughput == nil {
 		t.Fatalf("result set = %#v", resultSet)
 	}
-	if resultSet.Results[0].Error != "" || resultSet.Results[0].BPM == nil {
+	if resultSet.Results[0].Error != "" || resultSet.Results[0].BPM == nil || resultSet.Results[0].Status == "" || resultSet.Results[0].TempoCrestFactor == nil || resultSet.Results[0].KeyFlatness == nil {
 		t.Fatalf("MP3 result = %#v, want measured BPM", resultSet.Results[0])
 	}
 	if resultSet.Throughput.AudioSeconds < 23.9 || resultSet.Throughput.DSPSeconds <= 0 || resultSet.Throughput.DecodeAndStreamSeconds < 0 {
