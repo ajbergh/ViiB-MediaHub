@@ -58,14 +58,14 @@ type spotifyCSVRow struct {
 func ImportSpotifyCorpus(root string, options SpotifyCorpusOptions) (CorpusImportReport, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
-		return CorpusImportReport{}, fmt.Errorf("Spotify corpus root is required")
+		return CorpusImportReport{}, fmt.Errorf("spotify corpus root is required")
 	}
 	root = filepath.Clean(root)
 	if options.EvidenceClass != EvidenceSyntheticCI && options.EvidenceClass != EvidenceLawfulRealAudio {
-		return CorpusImportReport{}, fmt.Errorf("Spotify corpus evidence class must be %q or %q", EvidenceSyntheticCI, EvidenceLawfulRealAudio)
+		return CorpusImportReport{}, fmt.Errorf("spotify corpus evidence class must be %q or %q", EvidenceSyntheticCI, EvidenceLawfulRealAudio)
 	}
 	if strings.TrimSpace(options.License) == "" || strings.TrimSpace(options.LabelSource) == "" {
-		return CorpusImportReport{}, fmt.Errorf("Spotify corpus import requires license and label source")
+		return CorpusImportReport{}, fmt.Errorf("spotify corpus import requires license and label source")
 	}
 
 	report := CorpusImportReport{Root: root, Manifest: CorpusManifest{Version: "phase0-spotify-corpus-v1", EvidenceClass: options.EvidenceClass}}
@@ -140,7 +140,7 @@ func ImportSpotifyCorpus(root string, options SpotifyCorpusOptions) (CorpusImpor
 // unmatched/ambiguous report separately in CLI output for reviewer follow-up.
 func WriteSpotifyCorpusManifest(path string, manifest CorpusManifest) error {
 	if strings.TrimSpace(path) == "" {
-		return fmt.Errorf("Spotify corpus manifest output path is required")
+		return fmt.Errorf("spotify corpus manifest output path is required")
 	}
 	if err := manifest.Validate(); err != nil {
 		return err
@@ -184,7 +184,7 @@ func readSpotifyCSV(path string) ([]spotifyCSVRow, error) {
 	}
 	for _, required := range []string{"title", "artist", "bpm", "key"} {
 		if _, exists := columns[required]; !exists {
-			return nil, fmt.Errorf("Spotify CSV %q has no %q column", path, required)
+			return nil, fmt.Errorf("spotify CSV %q has no %q column", path, required)
 		}
 	}
 	var rows []spotifyCSVRow
@@ -205,10 +205,10 @@ func readSpotifyCSV(path string) ([]spotifyCSVRow, error) {
 		}
 		bpm, err := strconv.ParseFloat(get("bpm"), 64)
 		if err != nil || bpm <= 0 {
-			return nil, fmt.Errorf("Spotify CSV %q line %d has invalid BPM %q", path, line, get("bpm"))
+			return nil, fmt.Errorf("spotify CSV %q line %d has invalid BPM %q", path, line, get("bpm"))
 		}
 		if get("title") == "" || get("artist") == "" || get("key") == "" {
-			return nil, fmt.Errorf("Spotify CSV %q line %d requires title, artist, BPM, and key", path, line)
+			return nil, fmt.Errorf("spotify CSV %q line %d requires title, artist, BPM, and key", path, line)
 		}
 		rows = append(rows, spotifyCSVRow{Title: get("title"), Artist: get("artist"), BPM: bpm, Key: get("key"), Path: path, Line: line})
 	}
