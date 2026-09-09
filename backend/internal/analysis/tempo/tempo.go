@@ -44,14 +44,17 @@ type Options struct {
 	MinOnsetCrestFactor float64
 }
 
-// DefaultOptions selects Automatic mode with standard DJ tempo priors.
+// DefaultOptions selects the real-corpus candidate that generalized best in
+// the Phase 0 held-out evaluation. The original peak-interval prototype was
+// useful for synthetic click tracks, but rejected most mastered music and is
+// retained only as an explicitly selectable benchmark method.
 func DefaultOptions() Options {
 	return Options{
 		Range:               RangeAutomatic,
-		Method:              MethodPeakInterval,
+		Method:              MethodMultiFeatureHalfBPM,
 		MinBPM:              90,
 		MaxBPM:              180,
-		MinOnsetCrestFactor: minOnsetCrestFactor,
+		MinOnsetCrestFactor: 15,
 	}
 }
 
@@ -67,7 +70,7 @@ type Estimate struct {
 	AlgorithmVersion string
 }
 
-const AlgorithmVersion = "tempo-v1-onset-interval"
+const AlgorithmVersion = "tempo-v2-multifeature-half-bpm"
 
 // minOnsetCrestFactor is the least impulsive an onset envelope may be before
 // tempo is refused. A sustained source — a drone, pad, sine tone, or spoken

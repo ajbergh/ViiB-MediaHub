@@ -131,19 +131,15 @@ func TestTrackAnalysisArtifactAndOverrideRepositories(t *testing.T) {
 	}
 }
 
-func TestResolveEffectiveBPMKeepsInferredValuesOutOfSync(t *testing.T) {
-	legacy := 128
-	descriptor := 120
+func TestResolveEffectiveBPMUsesOnlyManualOrLocalAnalysis(t *testing.T) {
 	measured := 128.25
 	measuredSource := "measured"
 	importedSource := "imported"
 	manual := 127.5
 
 	complete := &TrackAnalysis{Status: TrackAnalysisComplete, BPM: &measured, BPMSource: &measuredSource}
-	// Key failed, tempo succeeded. The measurement is still authoritative.
 	partial := &TrackAnalysis{Status: TrackAnalysisPartial, BPM: &measured, BPMSource: &measuredSource}
 	imported := &TrackAnalysis{Status: TrackAnalysisComplete, BPM: &measured, BPMSource: &importedSource}
-	// A claimed row carries the new fingerprint with the old scalars.
 	running := &TrackAnalysis{Status: TrackAnalysisRunning, BPM: &measured, BPMSource: &measuredSource}
 	failed := &TrackAnalysis{Status: TrackAnalysisFailed}
 
@@ -155,15 +151,12 @@ func TestResolveEffectiveBPMKeepsInferredValuesOutOfSync(t *testing.T) {
 		value  *float64
 	}{
 		{"unknown", EffectiveBPMInputs{}, EffectiveBPMUnknown, false, nil},
-		{"descriptor only", EffectiveBPMInputs{TempoDescriptorBPM: &descriptor}, EffectiveBPMTempoDescriptor, false, nil},
-		{"legacy outranks descriptor", EffectiveBPMInputs{LegacyBPM: &legacy, TempoDescriptorBPM: &descriptor}, EffectiveBPMLegacyAI, false, nil},
-		{"measured outranks legacy", EffectiveBPMInputs{Analysis: complete, LegacyBPM: &legacy}, EffectiveBPMMeasured, true, &measured},
-		{"partial tempo is still measured", EffectiveBPMInputs{Analysis: partial, LegacyBPM: &legacy}, EffectiveBPMMeasured, true, &measured},
-		{"imported tag is measured tier", EffectiveBPMInputs{Analysis: imported, LegacyBPM: &legacy}, EffectiveBPMMeasured, true, &measured},
-		{"running row is not trusted", EffectiveBPMInputs{Analysis: running, LegacyBPM: &legacy}, EffectiveBPMLegacyAI, false, nil},
-		{"failed row falls back", EffectiveBPMInputs{Analysis: failed, LegacyBPM: &legacy}, EffectiveBPMLegacyAI, false, nil},
-		{"failed row with no legacy is unknown", EffectiveBPMInputs{Analysis: failed}, EffectiveBPMUnknown, false, nil},
-		{"manual lock wins", EffectiveBPMInputs{Override: &TrackAnalysisOverride{BPM: &manual, BPMLocked: true}, Analysis: complete, LegacyBPM: &legacy}, EffectiveBPMManual, true, &manual},
+		{"measured analysis", EffectiveBPMInputs{Analysis: complete}, EffectiveBPMMeasured, true, &measured},
+		{"partial tempo is still measured", EffectiveBPMInputs{Analysis: partial}, EffectiveBPMMeasured, true, &measured},
+		{"imported tag is rejected", EffectiveBPMInputs{Analysis: imported}, EffectiveBPMUnknown, false, nil},
+		{"running row is not trusted", EffectiveBPMInputs{Analysis: running}, EffectiveBPMUnknown, false, nil},
+		{"failed row is unknown", EffectiveBPMInputs{Analysis: failed}, EffectiveBPMUnknown, false, nil},
+		{"manual lock wins", EffectiveBPMInputs{Override: &TrackAnalysisOverride{BPM: &manual, BPMLocked: true}, Analysis: complete}, EffectiveBPMManual, true, &manual},
 		{"unlocked override does not win", EffectiveBPMInputs{Override: &TrackAnalysisOverride{BPM: &manual}, Analysis: complete}, EffectiveBPMMeasured, true, &measured},
 	}
 	for _, test := range cases {
@@ -175,9 +168,8 @@ func TestResolveEffectiveBPMKeepsInferredValuesOutOfSync(t *testing.T) {
 			if test.value != nil && (result.Value == nil || *result.Value != *test.value) {
 				t.Fatalf("result.Value = %v, want %v", result.Value, *test.value)
 			}
-			// Only measured and manual tiers may drive Sync.
-			if result.SyncAllowed && result.Inferred() {
-				t.Fatalf("inferred tier %q must not allow Sync", result.Source)
+			if test.value == nil && result.Value != nil {
+				t.Fatalf("result.Value = %v, want nil", *result.Value)
 			}
 		})
 	}
@@ -186,7 +178,7 @@ func TestResolveEffectiveBPMKeepsInferredValuesOutOfSync(t *testing.T) {
 func TestResolveEffectiveKeyPrefersLockedManualThenMeasured(t *testing.T) {
 	manualTonic, measuredTonic := 9, 0
 	manualMode, measuredMode := "minor", "major"
-	measuredSource, inferredSource := "measured", "inferred"
+	measuredSource, importedSource, inferredSource := "measured", "imported", "inferred"
 	complete := &TrackAnalysis{Status: TrackAnalysisComplete, KeyTonic: &measuredTonic, KeyMode: &measuredMode, KeySource: &measuredSource}
 	partial := &TrackAnalysis{Status: TrackAnalysisPartial, KeyTonic: &measuredTonic, KeyMode: &measuredMode, KeySource: &measuredSource}
 
@@ -200,6 +192,7 @@ func TestResolveEffectiveKeyPrefersLockedManualThenMeasured(t *testing.T) {
 		{"locked manual wins", EffectiveKeyInputs{Override: &TrackAnalysisOverride{KeyTonic: &manualTonic, KeyMode: &manualMode, KeyLocked: true}, Analysis: complete}, EffectiveKeyManual, &manualTonic, &manualMode},
 		{"unlocked override does not win", EffectiveKeyInputs{Override: &TrackAnalysisOverride{KeyTonic: &manualTonic, KeyMode: &manualMode}, Analysis: complete}, EffectiveKeyMeasured, &measuredTonic, &measuredMode},
 		{"partial measured key is usable", EffectiveKeyInputs{Analysis: partial}, EffectiveKeyMeasured, &measuredTonic, &measuredMode},
+		{"imported key is rejected", EffectiveKeyInputs{Analysis: &TrackAnalysis{Status: TrackAnalysisComplete, KeyTonic: &measuredTonic, KeyMode: &measuredMode, KeySource: &importedSource}}, EffectiveKeyUnknown, nil, nil},
 		{"untrusted source is unknown", EffectiveKeyInputs{Analysis: &TrackAnalysis{Status: TrackAnalysisComplete, KeyTonic: &measuredTonic, KeyMode: &measuredMode, KeySource: &inferredSource}}, EffectiveKeyUnknown, nil, nil},
 	}
 	for _, test := range tests {

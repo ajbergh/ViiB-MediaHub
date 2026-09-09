@@ -5,11 +5,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
 
 // runnerCatalog registers count click-track songs and returns their IDs.
@@ -168,6 +170,10 @@ func TestRunCanceledContextDoesNotRecordTrackFailure(t *testing.T) {
 // re-decode it forever, and it is counted as failed rather than analyzed.
 func TestRunRecordsFailureForUndecodableSource(t *testing.T) {
 	directory := t.TempDir()
+	if err := logger.Init(directory); err != nil {
+		t.Fatal(err)
+	}
+	defer logger.Close()
 	database, err := db.New(filepath.Join(directory, "library.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -205,6 +211,21 @@ func TestRunRecordsFailureForUndecodableSource(t *testing.T) {
 	}
 	if unavailable.ErrorCode == nil || *unavailable.ErrorCode != ErrorSourceUnavailable {
 		t.Fatalf("missing record = %#v, want source_unavailable", unavailable)
+	}
+	logBytes, err := os.ReadFile(filepath.Join(directory, "viib.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logText := string(logBytes)
+	for _, expected := range []string{
+		`[Analysis] track failed song_id="corrupt"`,
+		`code="decode_failed"`,
+		`[Analysis] track failed song_id="missing"`,
+		`code="source_unavailable"`,
+	} {
+		if !strings.Contains(logText, expected) {
+			t.Fatalf("analysis log missing %q:\n%s", expected, logText)
+		}
 	}
 
 	// A settled failure against unchanged bytes is skipped on the next pass.

@@ -335,18 +335,15 @@ func scoreBPMRange(songBPM, minBPM, maxBPM int) float64 {
 // Helper Functions
 // ============================================================================
 
-// getSongBPM uses manual/audio-measured tempo when the caller supplied it,
-// then preserves the legacy metadata/descriptor fallback for unmeasured songs.
+// getSongBPM uses only manual or locally measured tempo supplied by the caller.
+// Missing analysis remains unknown instead of falling back to AI metadata.
 func getSongBPM(song db.Song, ctx *ScoreContext) int {
 	if ctx != nil && ctx.EffectiveBPM != nil {
 		if bpm, ok := ctx.EffectiveBPM[song.ID]; ok && bpm > 0 {
 			return bpm
 		}
 	}
-	if song.BPM > 0 {
-		return song.BPM
-	}
-	return TempoToBPM(song.Tempo)
+	return 0
 }
 
 // calculateCompletionRate estimates the completion rate for a song.

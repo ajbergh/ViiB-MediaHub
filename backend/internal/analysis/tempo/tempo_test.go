@@ -24,6 +24,16 @@ func TestEstimatePCMRecognizesFractionalSyntheticTempo(t *testing.T) {
 	}
 }
 
+func TestDefaultOptionsSelectRealCorpusCandidate(t *testing.T) {
+	options := DefaultOptions()
+	if options.Method != MethodMultiFeatureHalfBPM || options.MinOnsetCrestFactor != 15 {
+		t.Fatalf("DefaultOptions() = %#v, want held-out real-corpus selection", options)
+	}
+	if AlgorithmVersion != "tempo-v2-multifeature-half-bpm" {
+		t.Fatalf("AlgorithmVersion = %q, want promoted candidate version", AlgorithmVersion)
+	}
+}
+
 func TestOnsetAutocorrelationRecognizesSyntheticTempo(t *testing.T) {
 	fixture, err := analysisbench.NewClickTrack("autocorrelation", 128, 12, 44100, 1)
 	if err != nil {
@@ -155,7 +165,9 @@ func TestEstimatePCMAlternateCandidateAndStability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actual := EstimatePCM(fixture.Samples, fixture.SampleRate)
+	options := DefaultOptions()
+	options.Method = MethodPeakInterval
+	actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
 	if !actual.Known {
 		t.Fatal("expected known tempo")
 	}
@@ -172,7 +184,9 @@ func TestEstimatePCMTempoRampStability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actual := EstimatePCM(fixture.Samples, fixture.SampleRate)
+	options := DefaultOptions()
+	options.Method = MethodPeakInterval
+	actual := EstimatePCMWithOptions(fixture.Samples, fixture.SampleRate, options)
 	// For a tempo ramp, stability should be below 0.85 (dynamic candidate).
 	if actual.Stability >= 0.85 {
 		t.Fatalf("expected ramp stability < 0.85, got %v", actual.Stability)

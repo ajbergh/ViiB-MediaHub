@@ -63,8 +63,9 @@ func InitWithDebug(dataDir string, debug bool) error {
 	}
 
 	logPath := filepath.Join(dataDir, "viib.log")
-	// Use O_TRUNC to start fresh each run
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	// Append so operational diagnostics survive process restarts. A fresh
+	// initialization header below separates sessions in the same durable log.
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return err
 	}
@@ -194,6 +195,16 @@ func Scanner(format string, v ...interface{}) {
 // ScannerDebug logs a debug message with [Scanner] prefix
 func ScannerDebug(format string, v ...interface{}) {
 	Debug("Scanner", format, v...)
+}
+
+// Analysis logs durable local BPM/key analysis diagnostics.
+func Analysis(format string, v ...interface{}) {
+	Log("Analysis", format, v...)
+}
+
+// AnalysisDebug logs verbose local BPM/key analysis diagnostics.
+func AnalysisDebug(format string, v ...interface{}) {
+	Debug("Analysis", format, v...)
 }
 
 // Gemini logs a message with [Gemini] prefix

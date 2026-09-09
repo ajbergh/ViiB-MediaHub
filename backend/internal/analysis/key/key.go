@@ -8,7 +8,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 )
 
-const AlgorithmVersion = "key-v1-chroma-ks"
+const AlgorithmVersion = "key-v2-hpcp-ks"
 
 // maxTonalChromaFlatness is the flattest a chromagram may be before a key is
 // refused.
@@ -32,6 +32,12 @@ const AlgorithmVersion = "key-v1-chroma-ks"
 // inverts the meaning of confidence. This threshold is provisional and must be
 // recalibrated against the Phase 0 labeled corpus.
 const maxTonalChromaFlatness = 0.70
+
+// minTonalConfidence rejects profile matches whose winning margin is so small
+// that the selected key is effectively arbitrary. It complements flatness:
+// isolated clicks can form a concentrated but non-musical HPCP, while their
+// competing key profiles remain essentially tied.
+const minTonalConfidence = 0.01
 
 const (
 	minChromaFrequency = 65.0   // C2
@@ -75,10 +81,13 @@ const (
 
 func DefaultOptions() Options {
 	return Options{
-		MaxChromaFlatness: maxTonalChromaFlatness,
-		MaxFrequency:      maxChromaFrequency,
+		// These settings are based on the measured real-corpus candidate. Direct
+		// chroma with the synthetic-only 0.70 refusal threshold rejected nearly
+		// every mastered track despite decoding the complete source successfully.
+		MaxChromaFlatness: 0.98,
+		MaxFrequency:      maxHPCPFrequency,
 		Profile:           ProfileKrumhansl,
-		Extraction:        ExtractionDirectChroma,
+		Extraction:        ExtractionHPCPPeaks,
 	}
 }
 
@@ -363,6 +372,9 @@ func (a *ChromaAccumulator) Estimate() Estimate {
 	}
 	quality := math.Max(0, math.Min(1, (bestScore+1)/2))
 	confidence := math.Max(0, math.Min(1, margin*quality))
+	if confidence < minTonalConfidence {
+		return Estimate{Chroma: chroma, Flatness: flatness, AlgorithmVersion: AlgorithmVersion}
+	}
 
 	return Estimate{
 		Tonic:            bestTonic,

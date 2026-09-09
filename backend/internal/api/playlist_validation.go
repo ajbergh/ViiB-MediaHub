@@ -112,7 +112,7 @@ func auditReserveLimit(target int) int {
 	return min(maximumPlaylistAuditCandidates, max(target*2, target+12))
 }
 
-func reconcileDJPhaseResults(queue []db.Song, phases []dj.PhaseResult) []dj.PhaseResult {
+func reconcileDJPhaseResults(queue []db.Song, phases []dj.PhaseResult, effectiveBPM map[string]int) []dj.PhaseResult {
 	byID := make(map[string]db.Song, len(queue))
 	for _, song := range queue {
 		byID[song.ID] = song
@@ -123,19 +123,19 @@ func reconcileDJPhaseResults(queue []db.Song, phases []dj.PhaseResult) []dj.Phas
 		ids := make([]string, 0, len(phase.SongIDs))
 		totalBPM, bpmCount, minimumBPM, maximumBPM := 0, 0, 0, 0
 		for _, id := range phase.SongIDs {
-			song, exists := byID[id]
+			_, exists := byID[id]
 			if !exists {
 				continue
 			}
 			ids = append(ids, id)
-			if song.BPM > 0 {
-				totalBPM += song.BPM
+			if bpm := effectiveBPM[id]; bpm > 0 {
+				totalBPM += bpm
 				bpmCount++
-				if minimumBPM == 0 || song.BPM < minimumBPM {
-					minimumBPM = song.BPM
+				if minimumBPM == 0 || bpm < minimumBPM {
+					minimumBPM = bpm
 				}
-				if song.BPM > maximumBPM {
-					maximumBPM = song.BPM
+				if bpm > maximumBPM {
+					maximumBPM = bpm
 				}
 			}
 		}

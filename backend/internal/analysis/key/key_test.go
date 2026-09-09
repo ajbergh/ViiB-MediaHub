@@ -36,6 +36,16 @@ func TestNotationMappingsAll24Keys(t *testing.T) {
 	}
 }
 
+func TestDefaultOptionsSelectRealCorpusCandidate(t *testing.T) {
+	options := DefaultOptions()
+	if options.Extraction != ExtractionHPCPPeaks || options.MaxChromaFlatness != 0.98 || options.MaxFrequency != 3500 || options.Profile != ProfileKrumhansl {
+		t.Fatalf("DefaultOptions() = %#v, want held-out real-corpus selection", options)
+	}
+	if AlgorithmVersion != "key-v2-hpcp-ks" {
+		t.Fatalf("AlgorithmVersion = %q, want promoted candidate version", AlgorithmVersion)
+	}
+}
+
 func TestHarmonicRelations(t *testing.T) {
 	cases := []struct {
 		keyA, keyB string
@@ -204,8 +214,8 @@ func BenchmarkEstimateKeyTriad(b *testing.B) {
 
 // Refusing to answer is a feature. Broadband material has no tonal centre, so
 // the 24-profile correlation is ranking noise; whichever key "wins" is an
-// artifact. Before the tonality gate, white noise reported A minor at
-// confidence 0.377 — higher than every correctly identified triad below.
+// artifact. The production HPCP defaults must preserve this behavior while
+// accepting the much flatter chromagrams found in mastered music.
 func TestEstimateRefusesAtonalMaterial(t *testing.T) {
 	const sampleRate = 22050
 
@@ -229,7 +239,7 @@ func TestEstimateRefusesAtonalMaterial(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			estimate := EstimatePCM(test.samples, sampleRate)
 			if estimate.Known {
-				t.Fatalf("reported %q at confidence %.3f for atonal material; want unknown", estimate.Key, estimate.Confidence)
+				t.Fatalf("reported %q at confidence %.3f and flatness %.6f for atonal material; want unknown", estimate.Key, estimate.Confidence, estimate.Flatness)
 			}
 			if estimate.Confidence != 0 {
 				t.Fatalf("confidence = %v, want 0 when no key is claimed", estimate.Confidence)
@@ -237,10 +247,10 @@ func TestEstimateRefusesAtonalMaterial(t *testing.T) {
 			if estimate.Camelot != "" || estimate.OpenKey != "" {
 				t.Fatalf("refused estimate must not carry notations, got %q/%q", estimate.Camelot, estimate.OpenKey)
 			}
-			// The diagnostic is retained on refusal so Phase 0 calibration can
-			// see how far a rejected track sat from the bound.
-			if estimate.Flatness <= maxTonalChromaFlatness {
-				t.Fatalf("flatness = %v, want > %v", estimate.Flatness, maxTonalChromaFlatness)
+			// Flatness is retained even when the confidence gate is what refused
+			// the estimate, so calibration still has a useful diagnostic.
+			if math.IsNaN(estimate.Flatness) || math.IsInf(estimate.Flatness, 0) {
+				t.Fatalf("refused estimate has invalid flatness: %#v", estimate)
 			}
 		})
 	}

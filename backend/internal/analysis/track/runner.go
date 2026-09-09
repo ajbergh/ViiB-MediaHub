@@ -5,6 +5,7 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
 
 // RunProgress is the aggregate state of one analysis run. Counts are derived
@@ -95,18 +96,26 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 	source, err := analysis.ResolveLocalSource(database, songID)
 	if err != nil {
 		code, message := ClassifyError(err)
-		_ = PersistFailure(database, songID, analysis.ResolvedSource{}, code, message)
+		if persistErr := PersistFailure(database, songID, analysis.ResolvedSource{}, code, message); persistErr != nil {
+			logger.Analysis("track failed song_id=%q code=%q error=%q persist_error=%q", songID, code, message, persistErr)
+		} else {
+			logger.Analysis("track failed song_id=%q code=%q error=%q", songID, code, message)
+		}
 		return outcomeFailed
 	}
 	valid, err := database.TrackAnalysisValid(songID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
 	if err == nil && valid {
 		return outcomeSkipped
 	}
+	if err != nil {
+		logger.Analysis("validity check failed song_id=%q path=%q error=%q", songID, source.Path, err)
+	}
 	// Two overlapping jobs can expand the same selection. The claim ensures only
 	// one of them decodes the file; the loser treats the track as another
 	// worker's responsibility rather than duplicating the work.
 	claimed, err := database.ClaimTrackAnalysis(songID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
 	if err != nil {
+		logger.Analysis("track claim failed song_id=%q path=%q error=%q", songID, source.Path, err)
 		return outcomeFailed
 	}
 	if !claimed {
@@ -123,12 +132,21 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 			return outcomeFailed
 		}
 		code, message := ClassifyError(err)
-		_ = PersistFailure(database, songID, source, code, message)
+		if persistErr := PersistFailure(database, songID, source, code, message); persistErr != nil {
+			logger.Analysis("track failed song_id=%q path=%q code=%q error=%q persist_error=%q", songID, source.Path, code, message, persistErr)
+		} else {
+			logger.Analysis("track failed song_id=%q path=%q code=%q error=%q", songID, source.Path, code, message)
+		}
 		return outcomeFailed
 	}
 	if err := Persist(database, result); err != nil {
 		_ = database.ReleaseTrackAnalysis(songID)
+		logger.Analysis("track persistence failed song_id=%q path=%q status=%q error=%q", songID, source.Path, result.Status, err)
 		return outcomeFailed
+	}
+	if code, message := resultIssue(result); code != "" {
+		logger.Analysis("track incomplete song_id=%q path=%q status=%q code=%q error=%q tempo_known=%t tempo_crest=%.3f key_known=%t key_flatness=%.6f",
+			songID, source.Path, result.Status, code, message, result.Tempo.Known, result.Tempo.OnsetCrestFactor, result.Key.Known, result.Key.Flatness)
 	}
 	if result.Status == db.TrackAnalysisFailed {
 		return outcomeFailed

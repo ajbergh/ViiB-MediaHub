@@ -21,7 +21,7 @@ func TestAIEnrichmentSelectsAllNeededFieldsAndPreservesExistingMetadata(t *testi
 	}); err != nil {
 		t.Fatalf("save songs: %v", err)
 	}
-	if _, err := database.conn.Exec(`UPDATE songs SET genre = '["Rock"]', mood = 'happy', year_uncertain = 1 WHERE id = 'remaster'`); err != nil {
+	if _, err := database.conn.Exec(`UPDATE songs SET genre = '["Rock"]', mood = 'happy', bpm = 111, year_uncertain = 1 WHERE id = 'remaster'`); err != nil {
 		t.Fatalf("seed remaster: %v", err)
 	}
 	if _, err := database.conn.Exec(`UPDATE songs SET genre = '["Jazz","Fusion"]' WHERE id = 'mood'`); err != nil {
@@ -42,7 +42,7 @@ func TestAIEnrichmentSelectsAllNeededFieldsAndPreservesExistingMetadata(t *testi
 
 	result, err := database.ApplyAIEnrichmentBatch([]AIEnrichmentUpdate{{
 		SongID: "remaster", Genres: []string{"alternative rock", "indie rock"},
-		Mood: "peaceful", Energy: "low", Tempo: "slow", BPM: 70, OriginalYear: 1994,
+		Mood: "peaceful", Energy: "low", Tempo: "slow", OriginalYear: 1994,
 	}}, false)
 	if err != nil {
 		t.Fatalf("ApplyAIEnrichmentBatch: %v", err)
@@ -52,13 +52,16 @@ func TestAIEnrichmentSelectsAllNeededFieldsAndPreservesExistingMetadata(t *testi
 	}
 
 	var genre, mood string
-	var originalYear int
+	var originalYear, legacyBPM int
 	var uncertain bool
-	if err := database.conn.QueryRow(`SELECT genre, mood, original_year, year_uncertain FROM songs WHERE id = 'remaster'`).Scan(&genre, &mood, &originalYear, &uncertain); err != nil {
+	if err := database.conn.QueryRow(`SELECT genre, mood, bpm, original_year, year_uncertain FROM songs WHERE id = 'remaster'`).Scan(&genre, &mood, &legacyBPM, &originalYear, &uncertain); err != nil {
 		t.Fatalf("read enriched song: %v", err)
 	}
 	if genre != `["Alternative Rock","Indie Rock"]` || mood != "happy" || originalYear != 1994 || uncertain {
 		t.Fatalf("unexpected stored values: genre=%s mood=%s year=%d uncertain=%v", genre, mood, originalYear, uncertain)
+	}
+	if legacyBPM != 111 {
+		t.Fatalf("AI enrichment changed legacy BPM to %d, want untouched 111", legacyBPM)
 	}
 
 	changes, err := database.GetLibraryChanges(revisionBefore, 10)
@@ -68,7 +71,7 @@ func TestAIEnrichmentSelectsAllNeededFieldsAndPreservesExistingMetadata(t *testi
 	if len(changes.Changes) != 1 || len(changes.Songs) != 1 || changes.Songs[0].ID != "remaster" {
 		t.Fatalf("enrichment delta = %#v", changes)
 	}
-	if got := changes.Songs[0]; len(got.Genre) != 2 || got.OriginalYear != 1994 || got.Mood != "happy" {
+	if got := changes.Songs[0]; len(got.Genre) != 2 || got.OriginalYear != 1994 || got.Mood != "happy" || got.BPM != 0 {
 		t.Fatalf("enriched delta song = %#v", got)
 	}
 

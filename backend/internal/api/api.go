@@ -2259,7 +2259,7 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 				if !meta.HasMetadata() {
 					batchEmptyResults++
 				}
-				updates = append(updates, db.AIEnrichmentUpdate{SongID: song.ID, Genres: meta.Genres, Mood: meta.Mood, Energy: meta.Energy, Tempo: meta.Tempo, BPM: meta.BPM, Instrumental: meta.Instrumental, OriginalYear: meta.OriginalYear})
+				updates = append(updates, db.AIEnrichmentUpdate{SongID: song.ID, Genres: meta.Genres, Mood: meta.Mood, Energy: meta.Energy, Tempo: meta.Tempo, Instrumental: meta.Instrumental, OriginalYear: meta.OriginalYear})
 			}
 			applied, updateErr := a.db.ApplyAIEnrichmentBatch(updates, force)
 			if updateErr != nil {
@@ -2760,7 +2760,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 
 			batchUpdated := 0
 			for id, analysis := range moodMap {
-				if err := a.db.UpdateSongMood(id, analysis.Mood, analysis.Energy, analysis.Tempo, analysis.BPM, analysis.Instrumental); err != nil {
+				if err := a.db.UpdateSongMood(id, analysis.Mood, analysis.Energy, analysis.Tempo, analysis.Instrumental); err != nil {
 					logger.API("enrichMoodStream: Failed to update mood for song %s: %v", id, err)
 					continue
 				}

@@ -43,24 +43,12 @@ const (
 	TrackAnalysisUnsupported = "unsupported"
 )
 
-// Provenance tiers for a resolved BPM, strongest first. Every tier below
-// measured is inferred rather than measured and must never reach Sync.
+// Provenance tiers for a resolved BPM. Only explicit manual overrides and
+// results produced by the local audio analyzer are eligible.
 const (
-	EffectiveBPMUnknown = "unknown"
-	EffectiveBPMManual  = "manual"
-	// EffectiveBPMMeasured covers audio-measured analysis and trustworthy
-	// imported tags, both of which describe the audio itself.
+	EffectiveBPMUnknown  = "unknown"
+	EffectiveBPMManual   = "manual"
 	EffectiveBPMMeasured = "measured"
-	// EffectiveBPMLegacyAI is songs.bpm, which the AI enrichment path may have
-	// estimated from genre conventions rather than from audio.
-	EffectiveBPMLegacyAI = "legacy-ai"
-	// EffectiveBPMTempoDescriptor is a BPM synthesized from a free-text tempo
-	// word ("fast"/"medium"/"slow") that was itself AI-inferred. It is the
-	// weakest signal in the system: a coarse bucket wearing the costume of a
-	// measurement. It is acceptable for soft AI DJ flow ordering, where being
-	// wrong by 20 BPM degrades gracefully, and unacceptable anywhere a DJ could
-	// read it as a tempo.
-	EffectiveBPMTempoDescriptor = "tempo-descriptor"
 )
 
 // EffectiveKeyUnknown, EffectiveKeyManual, and EffectiveKeyMeasured mirror the
@@ -73,23 +61,13 @@ const (
 	EffectiveKeyMeasured = "measured"
 )
 
-// EffectiveBPMInputs collects every BPM tier a caller may hold. It is a struct
-// rather than positional pointers because three of the tiers are numerically
-// identical types; swapping two at a call site would silently promote an
-// inferred value into Sync.
+// EffectiveBPMInputs collects the only BPM tiers accepted by the application.
 type EffectiveBPMInputs struct {
-	Override  *TrackAnalysisOverride
-	Analysis  *TrackAnalysis
-	LegacyBPM *int
-	// TempoDescriptorBPM must be supplied only by callers that have already
-	// decided a coarse inferred ordering hint is acceptable.
-	TempoDescriptorBPM *int
+	Override *TrackAnalysisOverride
+	Analysis *TrackAnalysis
 }
 
-// EffectiveBPM always carries provenance and whether it is safe for DJ timing
-// operations. Inferred values may help non-critical ordering but never enable
-// Sync, and callers are expected to branch on Source rather than to re-derive
-// this ladder.
+// EffectiveBPM always carries provenance and whether it is safe for DJ timing.
 type EffectiveBPM struct {
 	Value       *float64
 	Source      string
@@ -113,28 +91,13 @@ type EffectiveKey struct {
 	Source string
 }
 
-// Inferred reports whether the value came from a tier that did not measure the
-// audio. Anything inferred must be labeled as an estimate wherever it is shown.
-func (b EffectiveBPM) Inferred() bool {
-	return b.Source == EffectiveBPMLegacyAI || b.Source == EffectiveBPMTempoDescriptor
-}
-
-// ResolveEffectiveBPM applies the documented precedence ladder without
-// mutating either measured analysis or legacy song metadata.
+// ResolveEffectiveBPM applies manual-over-local-measurement precedence.
 func ResolveEffectiveBPM(inputs EffectiveBPMInputs) EffectiveBPM {
 	if inputs.Override != nil && inputs.Override.BPMLocked && inputs.Override.BPM != nil {
 		return EffectiveBPM{Value: inputs.Override.BPM, Source: EffectiveBPMManual, SyncAllowed: true}
 	}
 	if measured := measuredBPM(inputs.Analysis); measured != nil {
 		return EffectiveBPM{Value: measured, Source: EffectiveBPMMeasured, SyncAllowed: true}
-	}
-	if inputs.LegacyBPM != nil && *inputs.LegacyBPM > 0 {
-		value := float64(*inputs.LegacyBPM)
-		return EffectiveBPM{Value: &value, Source: EffectiveBPMLegacyAI}
-	}
-	if inputs.TempoDescriptorBPM != nil && *inputs.TempoDescriptorBPM > 0 {
-		value := float64(*inputs.TempoDescriptorBPM)
-		return EffectiveBPM{Value: &value, Source: EffectiveBPMTempoDescriptor}
 	}
 	return EffectiveBPM{Source: EffectiveBPMUnknown}
 }
@@ -151,14 +114,13 @@ func ResolveEffectiveKey(inputs EffectiveKeyInputs) EffectiveKey {
 	return EffectiveKey{Source: EffectiveKeyUnknown}
 }
 
-// measuredBPM returns an audio-derived tempo only when the record actually
-// carries one.
+// measuredBPM returns a local audio-derived tempo only when the record actually
+// carries one. Imported tags and inferred values are deliberately rejected.
 //
 // A `partial` record is as authoritative for tempo as a `complete` one: partial
 // means one dimension was not measured, and a track whose key could not be
 // determined — a drum loop, a percussion tool — still has a perfectly good
-// measured BPM. Requiring `complete` here would discard that measurement and
-// silently fall back to an AI-estimated tempo.
+// measured BPM.
 //
 // `pending` and `running` are excluded because a claimed row keeps the previous
 // pass's scalar values while already carrying the new source fingerprint, so its
@@ -173,7 +135,7 @@ func measuredBPM(analysis *TrackAnalysis) *float64 {
 		return nil
 	}
 	switch *analysis.BPMSource {
-	case "measured", "imported":
+	case "measured":
 		return analysis.BPM
 	default:
 		return nil
@@ -190,7 +152,7 @@ func measuredKey(analysis *TrackAnalysis) (*int, *string) {
 		return nil, nil
 	}
 	switch *analysis.KeySource {
-	case "measured", "imported":
+	case "measured":
 		return analysis.KeyTonic, analysis.KeyMode
 	default:
 		return nil, nil
@@ -475,9 +437,8 @@ func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, err
 	return results, rows.Err()
 }
 
-// ListEffectiveBPM returns only manual or audio-measured tempo rounded for
-// AI-DJ scoring. It intentionally omits legacy and descriptor values: callers
-// retain their existing song metadata fallback when this map has no entry.
+// ListEffectiveBPM returns only manual or locally measured tempo rounded for
+// AI-DJ scoring. A missing entry deliberately remains unknown.
 func (d *DB) ListEffectiveBPM() (map[string]int, error) {
 	analyses, err := d.ListTrackAnalysis()
 	if err != nil {

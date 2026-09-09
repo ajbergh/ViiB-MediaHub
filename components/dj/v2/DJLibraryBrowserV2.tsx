@@ -121,7 +121,7 @@ const TrackRowCells = memo(({
   columnWidths: Record<ResizableColumn, number>;
 }) => {
   const [showColorPicker, setShowColorPicker] = React.useState(false);
-  const displayBPM = analysis?.bpm ?? song.bpm;
+  const displayBPM = analysis?.bpm;
   const songKey = analysis?.key;
   const displayKey = analysis?.camelotKey ?? songKey;
 
@@ -223,7 +223,7 @@ const TrackRowCells = memo(({
         <td className="px-2 py-1.5 w-12 text-right">
           <span
             className={`font-mono ${displayBPM ? 'text-green-400' : 'text-neutral-600'}`}
-            title={analysis ? `${analysis.bpmSource} BPM${analysis.bpmConfidence !== undefined ? ` (${Math.round(analysis.bpmConfidence * 100)}% confidence)` : ''}` : song.bpm ? 'Legacy AI BPM estimate' : undefined}
+            title={analysis ? `${analysis.bpmSource} BPM${analysis.bpmConfidence !== undefined ? ` (${Math.round(analysis.bpmConfidence * 100)}% confidence)` : ''}` : undefined}
           >
             {displayBPM ? displayBPM.toFixed(1).replace(/\.0$/, '') : '-'}
           </span>

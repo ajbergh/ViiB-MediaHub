@@ -1,7 +1,7 @@
 // Package llm - Library enrichment using unified LLM provider.
 //
 // This file contains functions for enriching song metadata (genres, mood,
-// energy, tempo, BPM, instrumental detection, original year) using any
+// energy, tempo, instrumental detection, original year) using any
 // supported LLM provider via the omnillm SDK.
 //
 // Enrichment uses a validated JSON request/response contract so arbitrary song
@@ -10,7 +10,7 @@
 // Key functions:
 //   - EnrichAllMetadata: Unified enrichment for all metadata fields
 //   - EnrichGenres: Wrapper that returns only genre classifications
-//   - AnalyzeSongMood: Wrapper that returns mood/energy/tempo/BPM
+//   - AnalyzeSongMood: Wrapper that returns mood/energy/tempo
 //   - AnalyzeOriginalYear: Wrapper that returns original release year
 //
 // This replaces the Gemini-specific implementation in internal/gemini
@@ -45,7 +45,6 @@ type UnifiedMetadata struct {
 	Mood         string   `json:"mood"`          // Emotional quality: happy, sad, energetic, calm, melancholic, etc.
 	Energy       string   `json:"energy"`        // Energy level: high, medium, low
 	Tempo        string   `json:"tempo"`         // Perceived tempo: fast, medium, slow
-	BPM          int      `json:"bpm"`           // Estimated beats per minute (0 if unknown)
 	Instrumental bool     `json:"instrumental"`  // true if song has no vocals
 	OriginalYear int      `json:"original_year"` // Original release year (not remaster date)
 }
@@ -55,17 +54,16 @@ type UnifiedMetadata struct {
 // instrumental field because it is also the JSON zero value for "unknown".
 func (metadata *UnifiedMetadata) HasMetadata() bool {
 	return metadata != nil && (len(metadata.Genres) > 0 || metadata.Mood != "" ||
-		metadata.Energy != "" || metadata.Tempo != "" || metadata.BPM > 0 ||
+		metadata.Energy != "" || metadata.Tempo != "" ||
 		metadata.Instrumental || metadata.OriginalYear > 0)
 }
 
-// MoodAnalysis represents the AI-detected mood, energy, tempo, and BPM for a song.
+// MoodAnalysis represents the AI-detected mood, energy, and tempo for a song.
 // Compatible with gemini.MoodAnalysis for migration.
 type MoodAnalysis struct {
 	Mood         string `json:"mood"`         // Emotional quality
 	Energy       string `json:"energy"`       // Energy level: high, medium, low
 	Tempo        string `json:"tempo"`        // Perceived tempo: fast, medium, slow
-	BPM          int    `json:"bpm"`          // Estimated beats per minute (0 if unknown)
 	Instrumental bool   `json:"instrumental"` // true if song has no vocals
 }
 
@@ -238,9 +236,9 @@ func logValidatedEnrichmentResults(songs []db.Song, result map[string]*UnifiedMe
 			continue
 		}
 		withMetadata++
-		logger.API("LLM Enrichment Result: id=%q artist=%q title=%q album=%q genres=%q mood=%q energy=%q tempo=%q bpm=%d instrumental=%t original_year=%d",
+		logger.API("LLM Enrichment Result: id=%q artist=%q title=%q album=%q genres=%q mood=%q energy=%q tempo=%q instrumental=%t original_year=%d",
 			song.ID, song.Artist, song.Title, song.Album, metadata.Genres, metadata.Mood,
-			metadata.Energy, metadata.Tempo, metadata.BPM, metadata.Instrumental, metadata.OriginalYear)
+			metadata.Energy, metadata.Tempo, metadata.Instrumental, metadata.OriginalYear)
 	}
 	return withMetadata, withoutMetadata
 }
@@ -270,7 +268,7 @@ func (p *Provider) EnrichGenres(ctx context.Context, songs []db.Song) (map[strin
 	return result, nil
 }
 
-// AnalyzeSongMood analyzes songs for mood, energy, tempo, and BPM.
+// AnalyzeSongMood analyzes songs for mood, energy, and tempo.
 // This is a convenience wrapper around EnrichAllMetadata that extracts mood-related fields.
 // Compatible with gemini.Client.AnalyzeSongMood for migration.
 func (p *Provider) AnalyzeSongMood(ctx context.Context, songs []db.Song) (map[string]*MoodAnalysis, error) {
@@ -292,7 +290,6 @@ func (p *Provider) AnalyzeSongMood(ctx context.Context, songs []db.Song) (map[st
 				Mood:         meta.Mood,
 				Energy:       meta.Energy,
 				Tempo:        meta.Tempo,
-				BPM:          meta.BPM,
 				Instrumental: meta.Instrumental,
 			}
 		}
@@ -413,7 +410,6 @@ type enrichmentResponse struct {
 	Mood         string   `json:"mood"`
 	Energy       string   `json:"energy"`
 	Tempo        string   `json:"tempo"`
-	BPM          int      `json:"bpm"`
 	Instrumental bool     `json:"instrumental"`
 	OriginalYear int      `json:"original_year"`
 }
@@ -429,7 +425,9 @@ func parseEnrichmentResponse(responseText string, allowedIDs map[string]struct{}
 	}
 
 	var records []enrichmentResponse
-	if err := json.Unmarshal([]byte(responseText), &records); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(responseText))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&records); err != nil {
 		return nil, fmt.Errorf("expected JSON array: %w", err)
 	}
 	if len(records) != len(allowedIDs) {
@@ -478,13 +476,10 @@ func validateEnrichmentMetadata(record enrichmentResponse) (*UnifiedMetadata, er
 	if err != nil {
 		return nil, fmt.Errorf("invalid tempo: %w", err)
 	}
-	if record.BPM != 0 && (record.BPM < 20 || record.BPM > 300) {
-		return nil, fmt.Errorf("BPM must be 0 or between 20 and 300")
-	}
 	if record.OriginalYear != 0 && (record.OriginalYear < 1900 || record.OriginalYear > time.Now().Year()+1) {
 		return nil, fmt.Errorf("original_year is outside the accepted range")
 	}
-	return &UnifiedMetadata{Genres: genres, Mood: mood, Energy: energy, Tempo: tempo, BPM: record.BPM, Instrumental: record.Instrumental, OriginalYear: record.OriginalYear}, nil
+	return &UnifiedMetadata{Genres: genres, Mood: mood, Energy: energy, Tempo: tempo, Instrumental: record.Instrumental, OriginalYear: record.OriginalYear}, nil
 }
 
 func normalizeChoice(value string, allowed map[string]string) (string, error) {
@@ -499,9 +494,8 @@ func normalizeChoice(value string, allowed map[string]string) (string, error) {
 }
 
 // parseTOONLine parses a single line of TOON (Token-Oriented Object Notation) format.
-// Format: ID|Genre1;Genre2;Genre3|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear (8 fields)
-// Also handles 7-field format when LLM skips Tempo: ID|Genres|Mood|Energy|BPM|Instrumental|OriginalYear
-// Example: abc123|Rock;Alternative;90s Rock|energetic|high|fast|140|false|1994
+// Format: ID|Genre1;Genre2;Genre3|Mood|Energy|Tempo|Instrumental|OriginalYear (7 fields)
+// Example: abc123|Rock;Alternative;90s Rock|energetic|high|fast|false|1994
 func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error) {
 	line = strings.TrimSpace(line)
 	if line == "" {
@@ -510,9 +504,8 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 
 	parts := strings.Split(line, "|")
 
-	// Handle both 7-field (LLM skipped Tempo) and 8-field formats
-	if len(parts) < 7 {
-		return "", nil, fmt.Errorf("invalid TOON format: expected at least 7 fields, got %d", len(parts))
+	if len(parts) != 7 {
+		return "", nil, fmt.Errorf("invalid TOON format: expected 7 fields, got %d", len(parts))
 	}
 
 	id = strings.TrimSpace(parts[0])
@@ -545,63 +538,21 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 		metadata.Energy = "medium"
 	}
 
-	// Determine if this is 7-field or 8-field format by checking if parts[4] is a tempo word or a number
-	is8FieldFormat := len(parts) >= 8
-	tempoIdx, bpmIdx, instrIdx, yearIdx := 4, 5, 6, 7
-
-	if !is8FieldFormat {
-		// 7-field format: LLM skipped Tempo, parts[4] is BPM
-		// Try to detect by checking if parts[4] looks like a number (BPM) or tempo word
-		potentialTempo := strings.ToLower(strings.TrimSpace(parts[4]))
-		if potentialTempo != "slow" && potentialTempo != "medium" && potentialTempo != "fast" {
-			// It's a number (BPM), so LLM skipped Tempo
-			bpmIdx = 4
-			instrIdx = 5
-			yearIdx = 6
-			metadata.Tempo = "medium" // Default tempo when skipped
-		}
-	}
-
-	// Parse tempo (only if 8-field format or it was actually a tempo word)
-	if len(parts) >= 8 || (len(parts) == 7 && bpmIdx == 5) {
-		metadata.Tempo = strings.TrimSpace(parts[tempoIdx])
-		if metadata.Tempo == "" {
-			metadata.Tempo = "medium"
-		}
-	}
-
-	// Parse BPM (integer, valid range 20-300)
-	if bpmIdx < len(parts) {
-		bpmStr := strings.TrimSpace(parts[bpmIdx])
-		if bpmStr != "" && bpmStr != "0" {
-			if bpm, parseErr := strconv.Atoi(bpmStr); parseErr == nil && bpm >= 20 && bpm <= 300 {
-				metadata.BPM = bpm
-				// Infer tempo from BPM if we defaulted earlier
-				if metadata.Tempo == "medium" && bpmIdx == 4 {
-					if bpm >= 140 {
-						metadata.Tempo = "fast"
-					} else if bpm <= 80 {
-						metadata.Tempo = "slow"
-					}
-				}
-			}
-		}
+	metadata.Tempo = strings.TrimSpace(parts[4])
+	if metadata.Tempo == "" {
+		metadata.Tempo = "medium"
 	}
 
 	// Parse instrumental (boolean)
-	if instrIdx < len(parts) {
-		instrStr := strings.ToLower(strings.TrimSpace(parts[instrIdx]))
-		metadata.Instrumental = instrStr == "true" || instrStr == "1" || instrStr == "yes"
-	}
+	instrStr := strings.ToLower(strings.TrimSpace(parts[5]))
+	metadata.Instrumental = instrStr == "true" || instrStr == "1" || instrStr == "yes"
 
 	// Parse original year (integer, valid range 1900-current+1)
 	currentYear := time.Now().Year()
-	if yearIdx < len(parts) {
-		yearStr := strings.TrimSpace(parts[yearIdx])
-		if yearStr != "" && yearStr != "0" {
-			if year, parseErr := strconv.Atoi(yearStr); parseErr == nil && year >= 1900 && year <= currentYear+1 {
-				metadata.OriginalYear = year
-			}
+	yearStr := strings.TrimSpace(parts[6])
+	if yearStr != "" && yearStr != "0" {
+		if year, parseErr := strconv.Atoi(yearStr); parseErr == nil && year >= 1900 && year <= currentYear+1 {
+			metadata.OriginalYear = year
 		}
 	}
 
@@ -611,7 +562,6 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 		Mood:         metadata.Mood,
 		Energy:       metadata.Energy,
 		Tempo:        metadata.Tempo,
-		BPM:          metadata.BPM,
 		Instrumental: metadata.Instrumental,
 		OriginalYear: metadata.OriginalYear,
 	})

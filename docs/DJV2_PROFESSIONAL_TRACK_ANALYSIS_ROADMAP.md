@@ -19,11 +19,15 @@
 > **Phase 1 is now complete.** Every phase from 0 through 4b has landed. There is no remaining implementation work that is not either gated on Phase 0 evidence (Phase 5) or dependent on a later phase. The next unit of work is measurement, not code.
 >
 > **Delivery update (2026-09-09).** Under the previously recorded project-owner override, the Phase 5–7 engineering slices have also landed: [#46](https://github.com/ajbergh/ViiB-MediaHub/pull/46) adds persisted beatgrid, shared energy/structure artifacts, and measured-feature AI-DJ inputs; [#47](https://github.com/ajbergh/ViiB-MediaHub/pull/47) persists beatgrid editor adjustments; [#48](https://github.com/ajbergh/ViiB-MediaHub/pull/48) adds downbeat-aligned advisory cues; [#49](https://github.com/ajbergh/ViiB-MediaHub/pull/49) exposes the typed DJ client contract; and [#50](https://github.com/ajbergh/ViiB-MediaHub/pull/50) adds deck energy views, opt-in cue acceptance, and explainable local transition recommendations. These delivered slices do **not** close the Phase 0 quality gate or authorize a professional-accuracy claim: lawful-corpus expansion, tempo accuracy, calibration, and native macOS/Linux evidence remain open below.
+>
+> **Operational repair (2026-09-09).** The user-visible analysis job was found to still select the original peak-interval/direct-chroma synthetic prototypes, producing `insufficient_audio` for nearly all fully decoded mastered tracks. Production defaults now select the measured half-BPM multi-feature tempo and HPCP/Krumhansl key paths with new algorithm versions. This is a usability repair under the existing owner override, not a declaration that the Phase 0 professional-quality gate has passed. Analysis failures and lifecycle summaries are now written to a restart-persistent `viib.log`.
 
 ### Implementation progress
 
 | Date | Branch | Scope | State | Validation | Notes |
 |---|---|---|---|---|---|
+| 2026-09-09 | working tree | Production default repair and durable analysis diagnostics | Implemented | `go test -count=1 ./...`; `go vet ./...`; 33-track held-out default run | Promoted the measured multi-feature half-BPM and HPCP/Krumhansl paths with new algorithm versions. On the current local held-out slice, 30/33 tracks completed, two were partial, and one was refused, versus the live database's 58 `insufficient_audio` failures under the prototype defaults. Added append-across-restarts logging with structured job and per-track analysis diagnostics. This operational repair does not close the professional-quality gate. |
+| 2026-09-09 | working tree | Production analyzer default repair and diagnostics | Complete | 33-track local held-out replay; `go test -count=1 ./...`; `go vet ./...` | Promoted the best measured tempo/key candidates, advanced composite algorithm versions so rejected rows become outdated, preserved atonal refusal coverage, and added append-across-restarts per-track/job logging. The local replay projects 30 complete, 2 partial, and 1 failed result versus the old run's near-total refusal; the professional-quality gate remains open. |
 | 2026-09-09 | `analysis/beatgrid-downbeat-v1` | Phases 5–7 shared analysis foundation | Merged as [#46](https://github.com/ajbergh/ViiB-MediaHub/pull/46) | Focused Go analysis/API/DJ tests; frontend build | Added a versioned beatgrid artifact, shared energy/structure artifact, advisory cues, persistence, effective-feature hydration, and AI-DJ measured-energy fallback. This is an explicit override delivery and not Phase 0 exit evidence. |
 | 2026-09-09 | `analysis/beatgrid-editor-sync-integration` | Phase 6 editor persistence | Merged as [#47](https://github.com/ajbergh/ViiB-MediaHub/pull/47) | Focused Go and frontend validation | Downbeat/lock/shift/reset edits persist and reload into deck Sync. |
 | 2026-09-09 | `analysis/energy-structure-v1` | Phase 7 advisory cue suggestions | Merged as [#48](https://github.com/ajbergh/ViiB-MediaHub/pull/48) | Focused Go feature/API tests | Cues are derived from measured sections and detected downbeats; they never silently change a DJ hot cue. |
@@ -60,6 +64,7 @@
 | 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 5, Slice 1 | Complete — race-safe deck-analysis patches | `npm run typecheck`; `npx vitest run slices/djMixerSlice.test.ts` | Project owner explicitly opened Phase 5 while keeping the Phase 0 accuracy/corpus gate open for later optimization. Replaced the all-fields `setDeckAnalysis(deck, bpm, key, beatGrid)` setter with a partial patch. Independent async tempo, key, and future grid results now update only their own fields; tempo/key updates retain any user grid offset, while a replacement grid alone resets that offset. Regression coverage proves independently arriving results cannot clobber another result. |
 | 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 5, Slice 2 | Complete — durable analysis hydration and library feature map | Focused `go test ./internal/db ./internal/api -run 'Test(ResolveEffectiveKey\|V2TrackAnalysisFeature)' -count=1`; `npm run typecheck`; `npx vitest run slices/djMixerSlice.test.ts` | Added explicit manual-over-measured key resolution alongside the existing effective-BPM resolver. `/api/v2/analysis` returns a two-query, library-wide resolved feature map (not an N+1 row lookup), and `/api/v2/analysis/{songID}` serves deck hydration. Both DJ load paths use durable manual/measured BPM and key before browser scanning; legacy inferred BPM is excluded, so it cannot enable Sync. The V2 library removes its session key cache, displays Camelot by default, includes source/confidence tooltips, and sorts using persisted analysis. The Phase 0 accuracy/corpus gate remains deferred rather than complete. |
 | 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 5, Slice 3 | Complete — AI DJ measured-BPM preference | Focused `go test ./internal/db ./internal/dj ./internal/api -run 'Test(ResolveEffectiveKey\|V2TrackAnalysisFeature\|EffectiveBPM)' -count=1` | AI DJ scoring now receives a one-time, two-query map of resolved manual/measured BPM keyed by song ID. It overrides legacy `songs.bpm` only where a durable performance-safe value exists; otherwise the existing tag/tempo-descriptor fallback remains unchanged. Sequencing, phase statistics, continuity scoring, and last-song state use the same context map. |
+| 2026-09-09 | local-only BPM/key boundary | Phase 5, Slice 4 | Complete — removed AI/imported BPM and key paths | `go test -count=1 ./...`; `go vet ./...`; `npm run build` | Removed BPM from both LLM enrichment contracts, response models, validation, logs, scanner/API writes, playlist audit payloads, semantic documents, and UI fallbacks. AI enrichment never had a key field and now explicitly forbids both fields. Effective BPM/key accepts only locked manual overrides or locally measured analysis; imported tags, legacy `songs.bpm`, and tempo descriptors resolve to unknown. The legacy integer column is preserved but inert and hidden for database compatibility. |
 | 2026-09-07 | `analysis/phase0-metered-fixtures` | Phase 4b CI repair | Complete | `go test -race ./internal/api -run '^TestAnalyzeTracksJobsStayWithinWorkerBound$'` | Fixed a flaky scheduler-bound test exposed by PR #42 CI. The assertion now waits for the authoritative succeeded count instead of treating separate queued/running snapshots as a terminal condition; a worker can claim between those reads. Production scheduler behavior is unchanged. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 1 | Complete | `go test ./internal/db -run '^TestTrackAnalysisSchema'` | Added additive song-keyed `track_analysis`, `track_analysis_artifacts`, and `track_analysis_overrides` tables with version, provenance, fingerprint, scalar confidence, artifact, and lock fields. Tests prove fractional measured BPM remains separate from `songs.bpm` and related records cascade on song removal. Opened dependent draft PR [#38](https://github.com/ajbergh/ViiB-MediaHub/pull/38). Decoder/DSP/service work remains. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 2 | Complete | `go test ./internal/db -run '^TestTrackAnalysis'` | Added validated scalar-analysis upsert/load operations and an explicit source-fingerprint staleness query. Regression coverage proves fractional BPM/key/confidence survive persistence, source changes invalidate a result, and missing analysis is stale. Artifact/override repositories and the PCM pipeline remain. |
@@ -331,7 +336,7 @@ The local scanner already has bounded worker behavior, incremental file-change d
 | `getKeyCompatibility()` | Active UX helper | Replace arbitrary scalar scoring with explicit compatibility classes first |
 | backend MP3 waveform cache | Active; **decoder generalized 2026-09-07** | Done for the decoder: waveform now streams the shared registry (MP3/WAV/Ogg). The `dj_waveform_cache` table stays specialized — see resolved question #11 |
 | legacy `DJLibraryBrowser.tsx` | Legacy relative to DJv2 | Do not target for new DJv2 work |
-| AI DJ BPM continuity scoring | Active | Feed measured effective BPM when available; retain metadata fallback |
+| AI DJ BPM continuity scoring | Active | Use manual/local measured BPM only; missing analysis remains unknown |
 | Semantic library | Active adjacent system | Reuse measured track features as structured ranking features, not embedding text by default |
 
 ### 2.3 Assumptions challenged
@@ -1119,20 +1124,17 @@ Effective values are resolved as:
 
 ```text
 manual locked override
-    > valid measured analysis
-    > trustworthy imported tag where policy permits
-    > legacy numeric AI/inferred songs.bpm      -- non-performance ranking only
-    > tempo-descriptor-derived BPM               -- TempoToBPM(song.Tempo); weakest tier
+    > valid locally measured analysis
     > unknown
 ```
 
-The fifth tier is easy to miss and must be named explicitly. `getSongBPM` in the AI DJ scorer already falls back past `songs.bpm` to `TempoToBPM(song.Tempo)`, synthesizing a number from a free-text descriptor (`"fast"`, `"medium"`, `"slow"`) that was itself AI-inferred ([scoring.go:326-331](../backend/internal/dj/scoring.go#L326-L331)). It is a coarse bucket wearing the costume of a measurement. Keeping it is defensible for soft AI DJ flow ordering, where a wrong-by-20-BPM guess degrades gracefully; surfacing it anywhere a DJ might read it as tempo is not.
+Legacy `songs.bpm`, imported tags, and tempo-descriptor-derived numbers are deliberately excluded. They remain representable in the compatibility schema but never resolve to an effective BPM/key.
 
 **Hard rules:**
 
-- Do not use AI-estimated BPM for beat-phase Sync when measured/manual tempo is absent.
-- Never use the tempo-descriptor tier for anything a user sees as a BPM value, or for any Sync, loop, or beat-jump decision.
-- The resolver must return the tier alongside the value, so callers can refuse low tiers rather than having to know this ladder by heart. A resolver that returns a bare `float64` will be misused.
+- Do not request, parse, persist, surface, or consume AI-estimated BPM/key.
+- Do not use imported BPM/key or synthesize BPM from a tempo descriptor while local-only mode is active.
+- The resolver must return explicit provenance and `unknown` when local analysis is absent.
 
 The same laddering applies to key, minus the inferred tiers: there is no AI-inferred key today, and none should be introduced — an unmeasured key must resolve to `unknown`, never to a guess.
 
@@ -1165,13 +1167,13 @@ Do not immediately delete or overwrite it.
 Migration sequence:
 
 1. introduce `track_analysis` with `bpm REAL`;
-2. classify existing `songs.bpm` as legacy/inferred unless another verified source is available;
+2. classify existing `songs.bpm` as inert legacy data;
 3. update AI DJ and DJv2 to call an effective-feature resolver that returns value **and** provenance tier;
-4. measured BPM wins for DJ workflows;
-5. legacy BPM remains a fallback for non-critical sequencing until sufficient library coverage exists;
-6. later decide whether to add a *new* denormalized `REAL` effective-BPM cache column on `songs` or to deprecate `songs.bpm`. The existing integer column cannot itself become the effective cache.
+4. accept locked manual overrides or local measurements only;
+5. leave tracks without local analysis explicitly unknown;
+6. later decide whether to remove `songs.bpm` in a destructive schema migration. The existing integer column cannot become the effective cache.
 
-**Do not write measured BPM back into `songs.bpm`.** It would round the value, destroy the provenance distinction the whole migration exists to create, and collide with the AI enrichment path that still writes that column via `UpdateSongMood`.
+**Do not write measured or enriched BPM back into `songs.bpm`.** It would round the value and destroy the provenance distinction the separate analysis table exists to preserve.
 
 ### 8.6 Plex fingerprinting
 

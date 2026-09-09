@@ -27,7 +27,6 @@ import {
   ExternalLink,
   Clock,
   Calendar,
-  Activity,
   Headphones,
   Copy,
   Check,
@@ -299,16 +298,6 @@ export const SongInfoDialog: React.FC = () => {
                   <Clock size={11} />
                   {formatTime(song.duration)}
                 </span>
-                {song.bpm && (
-                  <span
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-accent-pink/15 text-accent-pink ring-1 ring-accent-pink/30 cursor-pointer hover:bg-accent-pink/25 transition-colors"
-                    onClick={() => handleSearchFilter(`${song.bpm} BPM`)}
-                    title="Beats Per Minute"
-                  >
-                    <Activity size={11} />
-                    {song.bpm} BPM
-                  </span>
-                )}
               </div>
 
               {/* Action Buttons */}
@@ -650,13 +639,8 @@ export const SongInfoDialog: React.FC = () => {
 
                   <div className="p-2.5 rounded-lg bg-surface-3/60 text-center">
                     <span className="text-[10px] uppercase text-text-subtle font-semibold block mb-1">BPM</span>
-                    <span
-                      onClick={() => song.bpm && handleSearchFilter(`${song.bpm} BPM`)}
-                      className={`text-xs font-bold font-mono ${
-                        song.bpm ? 'text-accent-green cursor-pointer hover:underline' : 'text-text-subtle'
-                      }`}
-                    >
-                      {song.bpm ? `${song.bpm} BPM` : 'N/A'}
+                    <span className="text-xs font-bold font-mono text-text-subtle" title="BPM is available after local track analysis">
+                      N/A
                     </span>
                   </div>
                 </div>

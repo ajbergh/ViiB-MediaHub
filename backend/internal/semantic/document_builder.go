@@ -271,9 +271,6 @@ func buildTrackDocument(song db.Song, artist artistAggregate, album albumAggrega
 			lines = append(lines, sentence(attribute.label, value))
 		}
 	}
-	if song.BPM > 0 {
-		lines = append(lines, sentence("BPM", strconv.Itoa(song.BPM)))
-	}
 	voice := "vocal"
 	if song.Instrumental {
 		voice = "instrumental"

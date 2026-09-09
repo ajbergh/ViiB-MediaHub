@@ -315,16 +315,10 @@ func TestClassifyErrorReportsMissingSourceAndCancellation(t *testing.T) {
 	}
 }
 
-// Measured tempo must never be written back into the legacy songs.bpm column.
-// That column is INTEGER and is also written by AI enrichment from genre
-// conventions, so writing to it would round the fractional value and destroy
-// the provenance distinction the separate table exists to create.
-func TestAnalyzeAndPersistLeavesLegacySongBPMUntouched(t *testing.T) {
+// Local analysis persists tempo in track_analysis without using songs.bpm.
+func TestAnalyzeAndPersistUsesTrackAnalysisBPM(t *testing.T) {
 	fixture := tonalClickTrack(t, "song", 126, 9, true, 12, 22050)
 	database := catalogSong(t, fixture, "song")
-	if err := database.UpdateSongMood("song", "", "", "", 120, false); err != nil {
-		t.Fatal(err)
-	}
 
 	if _, err := AnalyzeAndPersist(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "song", DefaultOptions()); err != nil {
 		t.Fatal(err)
@@ -346,12 +340,11 @@ func TestAnalyzeAndPersistLeavesLegacySongBPMUntouched(t *testing.T) {
 	if err != nil || len(songs) != 1 {
 		t.Fatalf("songs = %#v, err = %v", songs, err)
 	}
-	if songs[0].BPM != 120 {
-		t.Fatalf("legacy songs.bpm = %d, want the untouched AI-inferred 120", songs[0].BPM)
+	if songs[0].BPM != 0 {
+		t.Fatalf("surfaced song BPM = %d, want legacy AI value hidden", songs[0].BPM)
 	}
 
-	// The resolver must prefer the measurement over the legacy value and allow Sync.
-	effective := db.ResolveEffectiveBPM(db.EffectiveBPMInputs{Analysis: &record, LegacyBPM: &songs[0].BPM})
+	effective := db.ResolveEffectiveBPM(db.EffectiveBPMInputs{Analysis: &record})
 	if effective.Source != db.EffectiveBPMMeasured || !effective.SyncAllowed {
 		t.Fatalf("effective BPM = %#v, want measured and Sync-eligible", effective)
 	}
@@ -398,19 +391,13 @@ func TestAnalyzeAndPersistRecordsMetricalAlternateStabilityAndNotations(t *testi
 
 // A percussion-only track has a real measured tempo and no determinable key,
 // so its record is `partial`. That record must still drive Sync: requiring
-// `complete` would throw away a good measurement and silently fall back to an
-// AI-estimated tempo for every drum tool in the library.
+// `complete` would throw away a good local measurement for every drum tool.
 func TestPartialRecordStillYieldsMeasuredBPMForSync(t *testing.T) {
 	fixture, err := analysisbench.NewClickTrack("clicks", 126, 12, 22050, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	database := catalogSong(t, fixture, "clicks")
-	legacy := 120
-	if err := database.UpdateSongMood("clicks", "", "", "", legacy, false); err != nil {
-		t.Fatal(err)
-	}
-
 	result, err := AnalyzeAndPersist(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "clicks", DefaultOptions())
 	if err != nil {
 		t.Fatal(err)
@@ -423,7 +410,7 @@ func TestPartialRecordStillYieldsMeasuredBPMForSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	effective := db.ResolveEffectiveBPM(db.EffectiveBPMInputs{Analysis: &record, LegacyBPM: &legacy})
+	effective := db.ResolveEffectiveBPM(db.EffectiveBPMInputs{Analysis: &record})
 	if effective.Source != db.EffectiveBPMMeasured {
 		t.Fatalf("effective source = %q, want %q — a partial record's measured tempo was discarded", effective.Source, db.EffectiveBPMMeasured)
 	}
@@ -432,8 +419,5 @@ func TestPartialRecordStillYieldsMeasuredBPMForSync(t *testing.T) {
 	}
 	if effective.Value == nil || math.Abs(*effective.Value-126) > 0.5 {
 		t.Fatalf("effective BPM = %v, want ~126", effective.Value)
-	}
-	if effective.Inferred() {
-		t.Fatal("a measured tempo must not report as inferred")
 	}
 }

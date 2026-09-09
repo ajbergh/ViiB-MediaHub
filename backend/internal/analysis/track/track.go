@@ -240,16 +240,9 @@ func Persist(database *db.DB, result Result) error {
 		record.OpenKey = &result.Key.OpenKey
 		record.KeySource = ptr("measured")
 	}
-	switch {
-	case !result.Tempo.Known && !result.Key.Known:
-		record.ErrorCode = ptr(ErrorInsufficientAudio)
-		record.ErrorMessage = ptr("No reliable tempo or key evidence in the decoded audio")
-	case !result.Tempo.Known:
-		record.ErrorCode = ptr(ErrorNoReliableTempo)
-		record.ErrorMessage = ptr("No reliable tempo evidence in the decoded audio")
-	case !result.Key.Known:
-		record.ErrorCode = ptr(ErrorNoReliableKey)
-		record.ErrorMessage = ptr("No reliable tonal evidence in the decoded audio")
+	if code, message := resultIssue(result); code != "" {
+		record.ErrorCode = &code
+		record.ErrorMessage = &message
 	}
 	if err := database.UpsertTrackAnalysis(record); err != nil {
 		return err
@@ -258,6 +251,22 @@ func Persist(database *db.DB, result Result) error {
 		return err
 	}
 	return persistFeatures(database, result)
+}
+
+// resultIssue returns the same stable diagnostics Persist writes, allowing
+// the runner to mirror an incomplete result into the durable application log
+// without duplicating or drifting from the database contract.
+func resultIssue(result Result) (string, string) {
+	switch {
+	case !result.Tempo.Known && !result.Key.Known:
+		return ErrorInsufficientAudio, "No reliable tempo or key evidence in the decoded audio"
+	case !result.Tempo.Known:
+		return ErrorNoReliableTempo, "No reliable tempo evidence in the decoded audio"
+	case !result.Key.Known:
+		return ErrorNoReliableKey, "No reliable tonal evidence in the decoded audio"
+	default:
+		return "", ""
+	}
 }
 
 func persistBeatGrid(database *db.DB, result Result) error {
