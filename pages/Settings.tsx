@@ -6,7 +6,8 @@
  * Sections:
  * - Backend Status: Connection status indicator
  * - Library: Scan folders management, library reset
- * - Audio: Crossfade, gapless, normalization, visualizer, EQ
+ * - Playback: Crossfade, gapless, normalization, and EQ
+ * - Appearance: Home layout and Now Playing visualizer presentation
  * - Spotify: OAuth credentials, download location, concurrent downloads
  * - Library Intelligence: AI-powered features
  *   - AI Provider: Configure LLM provider (Gemini, OpenAI, Anthropic, Ollama, X.AI)
@@ -36,7 +37,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router';
-import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker, Copy, ShieldCheck } from 'lucide-react';
+import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker, Copy, ShieldCheck, Wrench } from 'lucide-react';
 import { useStore } from '../store';
 import { HomeLayoutVariant, VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
@@ -45,7 +46,7 @@ import { Button } from '../components/ui/Button';
 import { Page } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
 import { SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
-import { LibraryOperationsPanel } from './LibraryOperations';
+import { LibraryMonitoringPanel, LibraryOperationsPanel } from './LibraryOperations';
 
 const HOME_LAYOUT_OPTIONS: Array<{
   value: HomeLayoutVariant;
@@ -545,6 +546,7 @@ export const Settings: React.FC = () => {
   const location = useLocation();
   const initialTab = (location.state as { tab?: SettingsTab } | null)?.tab || 'library';
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+  const isBrowserRuntime = typeof window !== 'undefined' && /^https?:$/.test(window.location.protocol);
 
   useEffect(() => {
     const tabFromState = (location.state as { tab?: SettingsTab } | null)?.tab;
@@ -1049,7 +1051,7 @@ export const Settings: React.FC = () => {
           }`}
         >
           <FolderOpen size={16} />
-          Library & Storage
+          Library Sources & Downloads
         </button>
 
         <button
@@ -1062,7 +1064,7 @@ export const Settings: React.FC = () => {
           }`}
         >
           <ShieldCheck size={16} />
-          Library Health
+          Library Operations
         </button>
 
         <button
@@ -1075,7 +1077,7 @@ export const Settings: React.FC = () => {
           }`}
         >
           <Volume2 size={16} />
-          Audio & Playback
+          Playback & Audio
         </button>
 
         <button
@@ -1101,7 +1103,7 @@ export const Settings: React.FC = () => {
           }`}
         >
           <Sparkles size={16} />
-          AI & Intelligence
+          AI & Enrichment
         </button>
 
         <button
@@ -1114,7 +1116,7 @@ export const Settings: React.FC = () => {
           }`}
         >
           <SlidersHorizontal size={16} />
-          Appearance
+          Appearance & Now Playing
         </button>
 
         <button
@@ -1220,6 +1222,7 @@ export const Settings: React.FC = () => {
                         </Button>
                     </div>
                     {isScanning && <div className="text-sm text-brand font-mono mt-2">{scanProgress}</div>}
+                    <LibraryMonitoringPanel />
                 </div>
             )}
 
@@ -1250,11 +1253,11 @@ export const Settings: React.FC = () => {
             )}
           </section>
 
-          {/* Storage & Downloads */}
+          {/* Downloads & Conversion */}
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-6 text-brand">
                 <HardDrive size={20} />
-                <h2 className="text-lg font-bold text-text-main">Storage & Downloads</h2>
+                <h2 className="text-lg font-bold text-text-main">Downloads &amp; Conversion</h2>
             </div>
 
             {/* Spotify Download Location */}
@@ -1427,11 +1430,21 @@ export const Settings: React.FC = () => {
                         </Button>
                     </div>
                     <p className="text-xs text-text-subtle mt-2">
-                        Increase for faster batch conversion; reduce if playback or other CPU-heavy work becomes less responsive.
+                        {!autoConvertOggToMp3
+                          ? 'Enable MP3 conversion above to adjust this setting.'
+                          : 'Increase for faster batch conversion; reduce if playback or other CPU-heavy work becomes less responsive.'}
                     </p>
                 </div>
             )}
 
+          </section>
+
+          {/* Library Maintenance */}
+          <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
+            <div className="flex items-center gap-3 mb-4 text-brand">
+                <Wrench size={20} />
+                <h2 className="text-lg font-bold text-text-main">Library Maintenance</h2>
+            </div>
             {/* Genre Normalization */}
             <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg">
                 <div>
@@ -1476,29 +1489,31 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB: LIBRARY HEALTH & OPERATIONS */}
+      {/* TAB: LIBRARY OPERATIONS */}
       {activeTab === 'health' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-6 text-brand">
               <ShieldCheck size={20} />
-              <h2 className="text-lg font-bold text-text-main">Library Health & Operations</h2>
+              <h2 className="text-lg font-bold text-text-main">Library Operations</h2>
             </div>
             <LibraryOperationsPanel />
           </section>
         </div>
       )}
 
-      {/* TAB 2: AUDIO & PLAYBACK */}
-      {activeTab === 'audio' && (
+      {/* TAB 2: PLAYBACK & AUDIO */}
+      {(activeTab === 'audio' || activeTab === 'appearance') && (
         <div className="space-y-6 animate-in fade-in duration-200">
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-6 text-brand">
                 <Volume2 size={20} />
-                <h2 className="text-lg font-bold text-text-main">Audio & Playback</h2>
+                <h2 className="text-lg font-bold text-text-main">{activeTab === 'appearance' ? 'Now Playing Visuals' : 'Playback & Audio'}</h2>
             </div>
 
             <div className="space-y-6">
+              {activeTab === 'audio' && (
+                <>
                 {/* Equalizer */}
                 <div className="flex items-center justify-between pb-4 border-b border-surface-hover">
                     <div className="flex items-center gap-4">
@@ -1525,7 +1540,11 @@ export const Settings: React.FC = () => {
                         </div>
                     </div>
                 </div>
+                </>
+              )}
 
+              {activeTab === 'appearance' && (
+                <>
                 {/* Visualizer Mode */}
                 <div className="flex items-center justify-between pb-4 border-b border-surface-hover">
                      <div className="flex items-center gap-4">
@@ -1718,7 +1737,11 @@ export const Settings: React.FC = () => {
                         )}
                     </div>
                 )}
+                </>
+              )}
 
+              {activeTab === 'audio' && (
+                <>
                 {/* Crossfade */}
                 <div>
                     <div className="flex items-center justify-between mb-2">
@@ -1773,6 +1796,8 @@ export const Settings: React.FC = () => {
 
                 {/* DJ Audio Output Devices */}
                 <AudioOutputSettings />
+                </>
+              )}
             </div>
           </section>
         </div>
@@ -1833,7 +1858,7 @@ export const Settings: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between mt-2">
-                    <p className="text-xs text-text-subtle">Save both values, then return to the Spotify page and select Connect Spotify.</p>
+                    <p className="text-xs text-text-subtle">{tempClientId && tempClientSecret ? 'Ready to save credentials. Then return to the Spotify page and select Connect Spotify.' : 'Not configured yet. Enter both values to enable Spotify connection.'}</p>
                     <div className="flex items-center gap-3">
                         {saveSuccess && (
                             <span className="text-success text-sm font-bold animate-in fade-in slide-in-from-right-4">
@@ -1844,6 +1869,7 @@ export const Settings: React.FC = () => {
                             variant="primary"
                             accent="brand"
                             onClick={handleSaveCredentials}
+                            disabled={!tempClientId.trim() || !tempClientSecret.trim()}
                             className="rounded-full px-6 py-2 text-sm font-bold"
                         >
                             Save Credentials
@@ -2145,21 +2171,22 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 4: AI & INTELLIGENCE */}
-      {activeTab === 'ai' && (
+      {/* TAB 4: AI & ENRICHMENT */}
+      {(activeTab === 'ai' || activeTab === 'health') && (
         <div className="space-y-6 animate-in fade-in duration-200">
+          {activeTab === 'ai' && (
           <div className="bg-surface-2 rounded-xl p-6 border border-surface-border">
             <div className="flex items-center gap-3 mb-6">
               <Sparkles className="text-brand" size={24} />
-              <h2 className="text-xl font-bold text-text-main">Library Intelligence & AI</h2>
+              <h2 className="text-xl font-bold text-text-main">AI & Metadata Enrichment</h2>
             </div>
 
             <div className="space-y-6">
-              {/* AI DJ Provider Settings */}
+              {/* Chat and metadata provider settings */}
               <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
-                <h3 className="text-lg font-bold text-text-main mb-2">AI DJ Provider</h3>
+                <h3 className="text-lg font-bold text-text-main mb-2">AI Provider & Model</h3>
                 <p className="text-text-subtle text-sm mb-4">
-                  Choose which AI provider powers the AI DJ feature for natural language playlist generation.
+                  Choose the chat model used for AI DJ playlist generation and AI metadata enrichment.
                   Ollama runs locally (free, no API key), or use cloud providers for more powerful models.
                 </p>
                 
@@ -2612,7 +2639,7 @@ export const Settings: React.FC = () => {
                 <h3 className="text-lg font-bold text-text-main mb-2">Metadata Enrichment Source</h3>
                 <p className="text-text-subtle text-sm mb-4">
                   Choose which system to use for automatic metadata enrichment during library scans.
-                  AI DJ features will still use the configured AI provider regardless of this setting.
+                  AI DJ features will still use the configured AI provider regardless of this setting. Configure Last.FM credentials in Integrations &amp; Spotify before selecting a Last.FM option.
                 </p>
                 
                 <div className="space-y-3">
@@ -2701,6 +2728,18 @@ export const Settings: React.FC = () => {
                   </label>
                 </div>
               </div>
+			  </div>
+			</div>
+          )}
+
+          {activeTab === 'health' && (
+            <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5">
+              <div className="mb-2 flex items-center gap-3">
+                <Sparkles className="text-brand" />
+                <h2 className="text-xl font-semibold">Metadata &amp; Enrichment Operations</h2>
+              </div>
+              <p className="mb-4 text-sm text-text-secondary">Run library-changing enrichment and year maintenance here. Configure AI providers and enrichment sources in AI &amp; Enrichment.</p>
+              <div className="space-y-4">
 
               {/* Unified AI Enrichment */}
               <div className="bg-surface-1 rounded-lg p-4 border-2 border-brand">
@@ -2732,7 +2771,7 @@ export const Settings: React.FC = () => {
                     onClick={async () => {
                       const hasLLMAccess = llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey);
                       if (!hasLLMAccess) {
-                        alert("Please configure an AI Provider in the section above first.");
+                        alert("Please configure an AI Provider & Model in the AI & Enrichment tab first.");
                         return;
                       }
 
@@ -2889,18 +2928,19 @@ export const Settings: React.FC = () => {
                   )}
                 </div>
               </div>
-            </div>
-          </div>
+              </div>
+            </section>
+          )}
         </div>
       )}
 
-      {/* TAB 5: APPEARANCE & PERSONALIZATION */}
+      {/* TAB 5: APPEARANCE & NOW PLAYING */}
       {activeTab === 'appearance' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-6 text-brand">
                 <Sparkles size={20} />
-                <h2 className="text-lg font-bold text-text-main">Personalization & Layout</h2>
+                <h2 className="text-lg font-bold text-text-main">Home & Now Playing Appearance</h2>
             </div>
             
             <div className="space-y-6">
@@ -2966,13 +3006,21 @@ export const Settings: React.FC = () => {
               <div className="p-4 rounded-lg bg-surface-1 border border-surface-border flex items-center justify-between">
                 <div>
                   <span className="text-text-subtle uppercase font-bold block mb-1">Architecture</span>
-                  <span className="font-mono text-sm text-text-main">{backendAvailable ? 'Native Wails (Go Backend)' : 'Browser Standalone'}</span>
+                  <span className="font-mono text-sm text-text-main">{isBrowserRuntime ? (backendAvailable ? 'Browser UI + Go API' : 'Browser Standalone') : 'Native Wails (Go Backend)'}</span>
                 </div>
                 {backendAvailable ? (
                   <span className="p-2 rounded-full bg-success/20 text-success"><Server size={18} /></span>
                 ) : (
                   <span className="p-2 rounded-full bg-warning/20 text-warning"><MonitorOff size={18} /></span>
                 )}
+              </div>
+
+              <div className="p-4 rounded-lg bg-surface-1 border border-surface-border flex items-center justify-between">
+                <div>
+                  <span className="text-text-subtle uppercase font-bold block mb-1">API Connection</span>
+                  <span className={`font-mono text-sm ${backendAvailable ? 'text-success' : 'text-warning'}`}>{backendAvailable ? 'Connected' : 'Unavailable'}</span>
+                </div>
+                {backendAvailable ? <Server size={18} className="text-success" /> : <MonitorOff size={18} className="text-warning" />}
               </div>
 
               <div className="p-4 rounded-lg bg-surface-1 border border-surface-border flex items-center justify-between">
@@ -3004,7 +3052,7 @@ export const Settings: React.FC = () => {
               
               <div className="bg-surface-1 border border-surface-border rounded-lg p-4 h-64 overflow-y-auto font-mono text-xs">
                   {logs.length === 0 ? (
-                      <div className="text-surface-slider text-center italic mt-10">No logs generated yet.</div>
+                      <div className="text-surface-slider text-center italic mt-10">No in-app events recorded yet. Backend connection and request failures are shown where they occur.</div>
                   ) : (
                       logs.map((log) => (
                           <div key={log.id} className="mb-2 last:mb-0 border-b border-surface-3 pb-2 last:border-0 last:pb-0">
@@ -3022,7 +3070,7 @@ export const Settings: React.FC = () => {
                       ))
                   )}
               </div>
-              <p className="text-[10px] text-surface-slider mt-2">Logs capture AI enhancement progress, Spotify API activity, and internal errors.</p>
+              <p className="text-[10px] text-surface-slider mt-2">Logs capture in-app enrichment progress, Spotify activity, and app events. Connection failures are shown where they occur.</p>
           </section>
         </div>
       )}

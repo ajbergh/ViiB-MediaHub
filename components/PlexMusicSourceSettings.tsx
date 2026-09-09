@@ -488,7 +488,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
         </div>
       )}
 
-      <p className="mt-5 text-xs text-text-subtle">Plex media storage remains read-only: ViiB never deletes, moves, renames, or modifies source audio files or library configuration. The optional AI Metadata Writeback above is the sole exception: it creates user-approved, locked metadata overrides in Plex. Plex video libraries are not supported.</p>
+      <p className="mt-5 text-xs text-text-subtle">Plex media storage remains read-only: ViiB never deletes, moves, renames, or modifies source audio files or library configuration. When configured, AI Metadata Writeback creates only user-approved, locked metadata overrides in Plex. Plex video libraries are not supported.</p>
     </section>
   );
 };
