@@ -157,6 +157,37 @@ export interface TrackEnergyFeatures {
   algorithmVersion: string;
 }
 
+export interface TransitionVector {
+  outgoingTailEnergy: number;
+  incomingHeadEnergy: number;
+  energyDelta: number;
+  loudnessDeltaLu: number;
+  outgoingMixOutConfidence: number;
+  incomingMixInConfidence: number;
+}
+
+export interface TransitionComponent {
+  name: string;
+  score: number;
+  weight: number;
+  rationale: string;
+}
+
+export interface TransitionRecommendation {
+  songId: string;
+  title: string;
+  artist: string;
+  score: number;
+  vector: TransitionVector;
+  components: TransitionComponent[];
+}
+
+export interface TrackTransitionRecommendations {
+  songId: string;
+  algorithmVersion: string;
+  recommendations: TransitionRecommendation[];
+}
+
 export interface DuplicateSong extends ApiSong {
   sourcePath?: string;
 }
@@ -1456,6 +1487,11 @@ export const api = {
   async getTrackEnergyFeatures(trackId: string): Promise<TrackEnergyFeatures> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/energy`, { cache: 'no-store' });
     return handleResponse<TrackEnergyFeatures>(response);
+  },
+
+  async getTrackTransitionRecommendations(trackId: string, limit = 3): Promise<TrackTransitionRecommendations> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/recommendations?limit=${Math.max(1, Math.min(50, limit))}`, { cache: 'no-store' });
+    return handleResponse<TrackTransitionRecommendations>(response);
   },
 
   /**

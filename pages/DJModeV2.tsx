@@ -616,7 +616,7 @@ const DJModeV2Inner: React.FC = () => {
                       <DJBeatJump deck='A' compact />
                       <DJBeatGridEdit deck='A' />
                   </div>
-                  <DJEnergyInsights trackID={deckATrack?.id} />
+                  <DJEnergyInsights trackID={deckATrack?.id} deck='A' />
             </div>
 
             {/* Deck Jog Area — EQ strip left of jog, jog right */}
@@ -865,7 +865,7 @@ const DJModeV2Inner: React.FC = () => {
                       <DJBeatJump deck='B' compact />
                       <DJLoopSection deck='B' />
                   </div>
-                  <DJEnergyInsights trackID={deckBTrack?.id} />
+                  <DJEnergyInsights trackID={deckBTrack?.id} deck='B' />
             </div>
 
             {/* Deck Jog Area — jog left, EQ strip right of jog (deck B mirrored) */}
