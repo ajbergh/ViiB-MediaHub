@@ -199,6 +199,35 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, BeatGridResponse{SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion})
 }
 
+// resetBeatGridV2 clears an explicit grid edit and its lock.  A later normal
+// analysis pass can then write a new detected grid; BPM/key overrides are
+// preserved exactly as the user set them.
+func (a *API) resetBeatGridV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	if songID == "" {
+		respondError(w, http.StatusBadRequest, "song ID is required")
+		return
+	}
+	override, err := a.db.GetTrackAnalysisOverride(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		override = db.TrackAnalysisOverride{SongID: songID}
+	} else if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override.BeatgridArtifactID = nil
+	override.BeatgridLocked = false
+	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := a.db.DeleteTrackAnalysisArtifact(songID, beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 	songID := chi.URLParam(r, "songID")
 	artifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)

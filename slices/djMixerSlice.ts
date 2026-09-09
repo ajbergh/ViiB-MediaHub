@@ -123,6 +123,8 @@ export interface DeckState {
   key: string | null;      // e.g., "Am", "C#m"
   waveformPeaks: number[] | null;
   beatGrid: number[] | null;
+  downbeatIndices: number[] | null;
+  beatGridLocked: boolean;
   beatGridOffset: number;  // Manual beat grid offset in seconds (for alignment editing)
   
   // Loop (Phase 3+)
@@ -145,6 +147,8 @@ export interface DeckAnalysisPatch {
   bpm?: number | null;
   key?: string | null;
   beatGrid?: number[] | null;
+  downbeatIndices?: number[] | null;
+  beatGridLocked?: boolean;
 }
 
 // ============================================================================
@@ -391,6 +395,8 @@ const createDefaultDeckState = (): DeckState => ({
   key: null,
   waveformPeaks: null,
   beatGrid: null,
+  downbeatIndices: null,
+  beatGridLocked: false,
   beatGridOffset: 0,     // No offset by default
   loop: { enabled: false, start: 0, end: 0 },
   hotCues: [],
@@ -678,6 +684,8 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
       const hasBPM = Object.hasOwn(patch, 'bpm');
       const hasKey = Object.hasOwn(patch, 'key');
       const hasBeatGrid = Object.hasOwn(patch, 'beatGrid');
+      const hasDownbeats = Object.hasOwn(patch, 'downbeatIndices');
+      const hasBeatGridLock = Object.hasOwn(patch, 'beatGridLocked');
       const bpm = hasBPM ? patch.bpm ?? null : current.originalBpm;
       return {
         [deckKey]: {
@@ -686,6 +694,8 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
           effectiveBpm: hasBPM ? (bpm ? Math.round(bpm * current.tempo * 10) / 10 : null) : current.effectiveBpm,
           key: hasKey ? patch.key ?? null : current.key,
           beatGrid: hasBeatGrid ? patch.beatGrid ?? null : current.beatGrid,
+          downbeatIndices: hasDownbeats ? patch.downbeatIndices ?? null : current.downbeatIndices,
+          beatGridLocked: hasBeatGridLock ? Boolean(patch.beatGridLocked) : current.beatGridLocked,
           // A new grid invalidates its manual offset; tempo/key-only updates do not.
           beatGridOffset: hasBeatGrid ? 0 : current.beatGridOffset,
         },

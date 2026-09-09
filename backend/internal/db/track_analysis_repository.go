@@ -375,6 +375,17 @@ func (d *DB) ListTrackAnalysisArtifacts(kind string, formatVersion int, algorith
 	return artifacts, rows.Err()
 }
 
+// DeleteTrackAnalysisArtifact removes only one versioned representation.  It
+// is used by explicit editor reset; scalar BPM/key records and other feature
+// artifacts remain intact.
+func (d *DB) DeleteTrackAnalysisArtifact(songID, kind string, formatVersion int, algorithmVersion string) error {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	_, err := d.conn.Exec(`DELETE FROM track_analysis_artifacts WHERE song_id = ? AND kind = ? AND format_version = ? AND algorithm_version = ?`, songID, kind, formatVersion, algorithmVersion)
+	return err
+}
+
 // UpsertTrackAnalysisOverride persists manual values and their independent
 // locks. Supplying a zero UpdatedAt assigns the write time.
 func (d *DB) UpsertTrackAnalysisOverride(override TrackAnalysisOverride) error {

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -134,6 +136,40 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 	}
 	override, err := database.GetTrackAnalysisOverride("song")
 	if err != nil || override.BPM == nil || *override.BPM != manual || !override.BPMLocked {
+		t.Fatalf("override = %#v, err = %v", override, err)
+	}
+}
+
+func TestV2BeatGridResetClearsOnlyGridOverride(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	manual := 126.0
+	if err := database.UpsertTrackAnalysisOverride(db.TrackAnalysisOverride{SongID: "song", BPM: &manual, BPMLocked: true}); err != nil {
+		t.Fatal(err)
+	}
+	handler := (&API{db: database}).V2Routes()
+	body := `{"beats":[0.125,0.625,1.125,1.625],"downbeatIndices":[0],"locked":true}`
+	put := httptest.NewRecorder()
+	handler.ServeHTTP(put, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(body)))
+	if put.Code != http.StatusOK {
+		t.Fatalf("PUT beatgrid = %d: %s", put.Code, put.Body.String())
+	}
+	reset := httptest.NewRecorder()
+	handler.ServeHTTP(reset, httptest.NewRequest(http.MethodDelete, "/analysis/song/beatgrid", nil))
+	if reset.Code != http.StatusNoContent {
+		t.Fatalf("DELETE beatgrid = %d: %s", reset.Code, reset.Body.String())
+	}
+	if _, err := database.GetTrackAnalysisArtifact("song", "beatgrid", 1, "beatgrid-v1-phase-v1"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("artifact err = %v, want sql.ErrNoRows", err)
+	}
+	override, err := database.GetTrackAnalysisOverride("song")
+	if err != nil || override.BeatgridLocked || override.BeatgridArtifactID != nil || override.BPM == nil || *override.BPM != manual || !override.BPMLocked {
 		t.Fatalf("override = %#v, err = %v", override, err)
 	}
 }

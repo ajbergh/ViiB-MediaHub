@@ -138,6 +138,12 @@ export interface TrackBeatGrid {
   algorithmVersion: string;
 }
 
+export interface TrackBeatGridUpdate {
+  beats: number[];
+  downbeatIndices: number[];
+  locked: boolean;
+}
+
 export interface DuplicateSong extends ApiSong {
   sourcePath?: string;
 }
@@ -1418,6 +1424,20 @@ export const api = {
   async getTrackBeatGrid(trackId: string): Promise<TrackBeatGrid> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { cache: 'no-store' });
     return handleResponse<TrackBeatGrid>(response);
+  },
+
+  async updateTrackBeatGrid(trackId: string, update: TrackBeatGridUpdate): Promise<TrackBeatGrid> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(update),
+    });
+    return handleResponse<TrackBeatGrid>(response);
+  },
+
+  async resetTrackBeatGrid(trackId: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { method: 'DELETE' });
+    if (!response.ok) await handleResponse(response);
   },
 
   /**
