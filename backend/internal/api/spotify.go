@@ -109,7 +109,12 @@ func (a *API) saveSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 	val, err := a.db.GetSetting("spotify_credentials")
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to retrieve credentials")
+		// This endpoint is an auth-state probe. If a legacy encrypted value or
+		// unavailable credential store cannot be read, callers should treat the
+		// account as disconnected and let the user sign in again—not fail the
+		// entire Settings screen with a 500.
+		log.Printf("[Spotify] Credentials unavailable; reporting unconfigured state: %v", err)
+		respondJSON(w, map[string]interface{}{})
 		return
 	}
 
@@ -120,7 +125,12 @@ func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 
 	var creds SpotifyCredentials
 	if err := json.Unmarshal([]byte(val), &creds); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to parse credentials")
+		// Older builds could leave an incomplete credential payload behind. That
+		// means Spotify is not configured, not that opening Settings failed. Keep
+		// the credential endpoint safe for callers that merely check auth state;
+		// a fresh sign-in overwrites the unusable value atomically.
+		log.Printf("[Spotify] Ignoring malformed stored credentials: %v", err)
+		respondJSON(w, map[string]interface{}{})
 		return
 	}
 

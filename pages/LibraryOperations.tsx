@@ -24,10 +24,57 @@ const formatBytes = (bytes: number) => {
 const actionClass = 'inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-black hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryClass = 'inline-flex items-center gap-2 rounded-lg bg-surface-2 px-4 py-2 text-sm font-semibold text-text-main hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50';
 
+/** Continuous folder monitoring belongs beside scan configuration, not repair. */
+export const LibraryMonitoringPanel: React.FC = () => {
+  const [watcher, setWatcher] = useState<WatcherStatus>({ running: false, intervalMs: 15000, lastChanges: 0, checks: 0 });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      setWatcher(await libraryOperationsV2.watcherStatus());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load monitoring status');
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const toggleWatcher = async () => {
+    setBusy(true); setError('');
+    try {
+      const status = watcher.running
+        ? await libraryOperationsV2.stopWatcher()
+        : await libraryOperationsV2.startWatcher(watcher.intervalMs || 15000);
+      setWatcher(status);
+    } catch (operationError) {
+      setError(operationError instanceof Error ? operationError.message : 'Unable to update monitoring');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <section className="mt-6 rounded-xl border border-surface-highlight bg-surface-1 p-5">
+      <div className="mb-2 flex items-center gap-3"><Activity className="text-brand" /><h2 className="text-xl font-semibold">Continuous Monitoring</h2></div>
+      <p className="mb-4 text-sm text-text-secondary">Check configured music folders for changes between manual scans.</p>
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="text-sm text-text-secondary">Interval
+          <select className="ml-2 rounded-lg bg-surface-2 px-3 py-2 text-text-main" value={watcher.intervalMs || 15000} disabled={watcher.running || busy} onChange={event => setWatcher(current => ({ ...current, intervalMs: Number(event.target.value) }))}>
+            <option value={5000}>5 seconds</option><option value={15000}>15 seconds</option><option value={30000}>30 seconds</option><option value={60000}>1 minute</option><option value={300000}>5 minutes</option>
+          </select>
+        </label>
+        <button className={watcher.running ? secondaryClass : actionClass} disabled={busy} onClick={() => void toggleWatcher()}>
+          {watcher.running ? <><Square size={16} />Stop watcher</> : <><Play size={16} />Start watcher</>}
+        </button>
+        <span className="text-sm text-text-secondary">Checks: {watcher.checks} · Last changes: {watcher.lastChanges}{watcher.lastError ? ` · Error: ${watcher.lastError}` : ''}</span>
+      </div>
+      {error && <p className="mt-3 text-sm text-error" role="status">{error}</p>}
+    </section>
+  );
+};
+
 export const LibraryOperationsPanel: React.FC = () => {
   const [diagnostics, setDiagnostics] = useState<LibraryDiagnostics | null>(null);
   const [backups, setBackups] = useState<BackupInfo[]>([]);
-  const [watcher, setWatcher] = useState<WatcherStatus>({ running: false, intervalMs: 15000, lastChanges: 0, checks: 0 });
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -35,12 +82,8 @@ export const LibraryOperationsPanel: React.FC = () => {
   const load = useCallback(async () => {
     const controller = new AbortController();
     try {
-      const [backupResult, watcherResult] = await Promise.all([
-        libraryOperationsV2.listBackups(controller.signal),
-        libraryOperationsV2.watcherStatus(controller.signal),
-      ]);
+      const backupResult = await libraryOperationsV2.listBackups(controller.signal);
       setBackups(backupResult.backups);
-      setWatcher(watcherResult);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load library operations');
     }
@@ -89,17 +132,9 @@ export const LibraryOperationsPanel: React.FC = () => {
     setMessage(`Restore staged in ${result.path}. Close ViiB before applying the staged database. A restart is required.`);
   });
 
-  const toggleWatcher = () => run('watcher', async () => {
-    const status = watcher.running
-      ? await libraryOperationsV2.stopWatcher()
-      : await libraryOperationsV2.startWatcher(watcher.intervalMs || 15000);
-    setWatcher(status);
-    setMessage(status.running ? 'Continuous library monitoring started.' : 'Continuous library monitoring stopped.');
-  });
-
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-text-secondary text-sm">Configure music sources, prepare tracks for DJ features, diagnose and repair library consistency, create validated backups, stage recovery, and continuously monitor configured folders.</p>
+      <p className="max-w-3xl text-text-secondary text-sm">Configure library sources, prepare tracks for DJ features, diagnose and repair library consistency, and create validated backups or stage recovery.</p>
 
       <PlexMusicSourceSettings />
 
@@ -150,21 +185,6 @@ export const LibraryOperationsPanel: React.FC = () => {
                 </div>
               </div>
             ))}
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5 xl:col-span-2">
-          <div className="mb-4 flex items-center gap-3"><Activity className="text-brand" /><h2 className="text-xl font-semibold">Continuous Monitoring</h2></div>
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="text-sm text-text-secondary">Interval
-              <select className="ml-2 rounded-lg bg-surface-2 px-3 py-2 text-text-main" value={watcher.intervalMs || 15000} disabled={watcher.running} onChange={event => setWatcher(current => ({ ...current, intervalMs: Number(event.target.value) }))}>
-                <option value={5000}>5 seconds</option><option value={15000}>15 seconds</option><option value={30000}>30 seconds</option><option value={60000}>1 minute</option><option value={300000}>5 minutes</option>
-              </select>
-            </label>
-            <button className={watcher.running ? secondaryClass : actionClass} disabled={busy !== null} onClick={toggleWatcher}>
-              {watcher.running ? <><Square size={16} />Stop watcher</> : <><Play size={16} />Start watcher</>}
-            </button>
-            <span className="text-sm text-text-secondary">Checks: {watcher.checks} · Last changes: {watcher.lastChanges}{watcher.lastError ? ` · Error: ${watcher.lastError}` : ''}</span>
           </div>
         </section>
       </div>
