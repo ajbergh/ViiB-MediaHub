@@ -164,6 +164,7 @@ func TestIsValidSettingKey(t *testing.T) {
 		{"spotify_download_rescan_threshold", true},
 		{"spotify_download_path", true},
 		{"spotify_auto_convert_ogg_to_mp3", true},
+		{"analysis_auto_analyze_new", true},
 		{"random_key", false},
 		{"spotify_credentials", false}, // Sensitive, not in allowed list
 		{"", false},

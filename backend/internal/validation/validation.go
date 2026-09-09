@@ -185,6 +185,7 @@ func IsValidSettingKey(key string) bool {
 		"lastfm_last_sync":                  true,
 		"enrichment_source":                 true,
 		"audio_settings":                    true,
+		"analysis_auto_analyze_new":         true,
 	}
 	allowedKeys["spotify_auto_convert_ogg_to_mp3"] = true
 	return allowedKeys[key]

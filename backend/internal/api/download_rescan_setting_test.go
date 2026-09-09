@@ -60,6 +60,31 @@ func TestSetDownloadRescanThresholdPersistsAndUpdatesScanner(t *testing.T) {
 	}
 }
 
+// The analysis toggle is a regular persisted setting. Keep this at the HTTP
+// boundary because a missing validation allowlist entry otherwise makes the UI
+// checkbox appear to change briefly while the POST is rejected with a 400.
+func TestSetAutoAnalyzeNewTracksPersists(t *testing.T) {
+	tempDir := t.TempDir()
+	database, err := db.New(filepath.Join(tempDir, "test.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	a := &API{db: database, dataDir: tempDir}
+
+	response := setSettingForTest(a, SettingAutoAnalyzeNewTracks, "true")
+	if response.Code != http.StatusOK {
+		t.Fatalf("set auto-analyze returned %d: %s", response.Code, response.Body.String())
+	}
+	value, err := database.GetSetting(SettingAutoAnalyzeNewTracks)
+	if err != nil {
+		t.Fatalf("get persisted auto-analyze setting: %v", err)
+	}
+	if value != "true" {
+		t.Fatalf("persisted auto-analyze setting = %q, want true", value)
+	}
+}
+
 func setSettingForTest(a *API, key, value string) *httptest.ResponseRecorder {
 	routeContext := chi.NewRouteContext()
 	routeContext.URLParams.Add("key", key)
