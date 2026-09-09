@@ -45,7 +45,6 @@ type playlistAuditCandidate struct {
 	Mood         string   `json:"mood,omitempty"`
 	Energy       string   `json:"energy,omitempty"`
 	Tempo        string   `json:"tempo,omitempty"`
-	BPM          int      `json:"bpm,omitempty"`
 	Instrumental bool     `json:"instrumental,omitempty"`
 }
 
@@ -63,7 +62,7 @@ func (p *Provider) AuditPlaylistCandidates(ctx context.Context, prompt string, i
 		candidates = append(candidates, playlistAuditCandidate{
 			ID: song.ID, Title: song.Title, Artist: song.Artist, Album: song.Album,
 			Genres: song.Genre, Tags: song.LastFMTags, Mood: song.Mood,
-			Energy: song.Energy, Tempo: song.Tempo, BPM: song.BPM, Instrumental: song.Instrumental,
+			Energy: song.Energy, Tempo: song.Tempo, Instrumental: song.Instrumental,
 		})
 	}
 	payload, err := json.Marshal(map[string]interface{}{

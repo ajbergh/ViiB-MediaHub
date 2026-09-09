@@ -2081,7 +2081,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	scoreCtx.FlowStrictness = flowStrictness
 	scoreCtx.RecentlyPlayedIDs = recentlyPlayedIDs
 	if measuredBPM, measuredErr := a.db.ListEffectiveBPM(); measuredErr != nil {
-		logger.API("DJ Mode: failed to load effective BPM; using legacy fallback: %v", measuredErr)
+		logger.API("DJ Mode: failed to load local BPM; tracks without measurements remain unknown: %v", measuredErr)
 	} else {
 		scoreCtx.EffectiveBPM = measuredBPM
 	}
@@ -2126,7 +2126,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	}
 	validation.Shortened = len(queue) < plannedSongCount
 	if validation.AuditRejected > 0 {
-		phaseResults = reconcileDJPhaseResults(queue, phaseResults)
+		phaseResults = reconcileDJPhaseResults(queue, phaseResults, scoreCtx.EffectiveBPM)
 	}
 
 	// Generate narration if talk mode is enabled

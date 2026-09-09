@@ -15,12 +15,12 @@
 // Unified Metadata Enrichment (TOON Format):
 //   - EnrichAllMetadata: High-efficiency batch enrichment for up to 200 songs
 //   - Uses TOON (Token-Oriented Object Notation) for compact response format
-//   - Combines genres, mood, energy, tempo, BPM, instrumental detection, and original year
+//   - Combines genres, mood, energy, tempo, instrumental detection, and original year
 //   - Single API call per batch for maximum efficiency
 //
 // Legacy Wrapper Methods (call EnrichAllMetadata internally):
 //   - EnrichGenres: Returns genre classifications only
-//   - AnalyzeSongMood: Returns mood, energy, tempo, BPM, and instrumental flag
+//   - AnalyzeSongMood: Returns mood, energy, tempo, and instrumental flag
 //   - AnalyzeOriginalYear: Returns original release year detection
 //
 // Playlist Filter Generation:
@@ -265,14 +265,13 @@ type UnifiedMetadata struct {
 	Mood         string   `json:"mood"`          // Emotional quality: happy, sad, energetic, calm, melancholic, etc.
 	Energy       string   `json:"energy"`        // Energy level: high, medium, low
 	Tempo        string   `json:"tempo"`         // Perceived tempo: fast, medium, slow
-	BPM          int      `json:"bpm"`           // Estimated beats per minute (0 if unknown)
 	Instrumental bool     `json:"instrumental"`  // true if song has no vocals
 	OriginalYear int      `json:"original_year"` // Original release year (not remaster date)
 }
 
 // parseTOONLine parses a single line of TOON (Token-Oriented Object Notation) format.
-// Format: ID|Genre1;Genre2;Genre3|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
-// Example: abc123|Rock;Alternative;90s Rock|energetic|high|fast|140|false|1994
+// Format: ID|Genre1;Genre2;Genre3|Mood|Energy|Tempo|Instrumental|OriginalYear
+// Example: abc123|Rock;Alternative;90s Rock|energetic|high|fast|false|1994
 func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error) {
 	line = strings.TrimSpace(line)
 	if line == "" {
@@ -280,8 +279,8 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 	}
 
 	parts := strings.Split(line, "|")
-	if len(parts) < 8 {
-		return "", nil, fmt.Errorf("invalid TOON format: expected 8 fields, got %d", len(parts))
+	if len(parts) != 7 {
+		return "", nil, fmt.Errorf("invalid TOON format: expected 7 fields, got %d", len(parts))
 	}
 
 	id = strings.TrimSpace(parts[0])
@@ -320,20 +319,12 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 		metadata.Tempo = "medium"
 	}
 
-	// Parse BPM (integer)
-	bpmStr := strings.TrimSpace(parts[5])
-	if bpmStr != "" && bpmStr != "0" {
-		if bpm, err := strconv.Atoi(bpmStr); err == nil {
-			metadata.BPM = bpm
-		}
-	}
-
 	// Parse instrumental (boolean)
-	instrStr := strings.ToLower(strings.TrimSpace(parts[6]))
+	instrStr := strings.ToLower(strings.TrimSpace(parts[5]))
 	metadata.Instrumental = instrStr == "true" || instrStr == "1" || instrStr == "yes"
 
 	// Parse original year (integer)
-	yearStr := strings.TrimSpace(parts[7])
+	yearStr := strings.TrimSpace(parts[6])
 	if yearStr != "" && yearStr != "0" {
 		if year, err := strconv.Atoi(yearStr); err == nil {
 			metadata.OriginalYear = year
@@ -343,7 +334,7 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 	return id, metadata, nil
 }
 
-// EnrichAllMetadata performs unified enrichment of genres, mood, energy, tempo, BPM,
+// EnrichAllMetadata performs unified enrichment of genres, mood, energy, tempo,
 // instrumental detection, and original year analysis in a single API call.
 //
 // This method uses TOON (Token-Oriented Object Notation) format instead of JSON
@@ -351,7 +342,7 @@ func parseTOONLine(line string) (id string, metadata *UnifiedMetadata, err error
 //
 // TOON format uses pipe-delimited values with semicolon-separated genres:
 // Input:  ID|Artist|Title|Album|Year
-// Output: ID|Genres|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
+// Output: ID|Genres|Mood|Energy|Tempo|Instrumental|OriginalYear
 //
 // Returns a map of song ID to UnifiedMetadata.
 func (c *Client) EnrichAllMetadata(songs []db.Song) (map[string]*UnifiedMetadata, error) {
@@ -371,7 +362,7 @@ INPUT FORMAT (provided below):
 ID|Artist|Title|Album|Year
 
 OUTPUT FORMAT (one line per song, no headers):
-ID|Genres|Mood|Energy|Tempo|BPM|Instrumental|OriginalYear
+ID|Genres|Mood|Energy|Tempo|Instrumental|OriginalYear
 
 FIELD DEFINITIONS:
 - ID: Return the exact ID from input
@@ -379,14 +370,13 @@ FIELD DEFINITIONS:
 - Mood: One of: happy, sad, energetic, calm, melancholic, uplifting, aggressive, romantic, chill, intense, dreamy, nostalgic
 - Energy: One of: high, medium, low
 - Tempo: One of: fast, medium, slow
-- BPM: Estimated beats per minute (integer, 0 if unknown)
 - Instrumental: true/false (true only if no vocals)
 - OriginalYear: Original release year (NOT remaster date). Use your music history knowledge.
 
 ANALYSIS RULES:
 1. GENRES: Use real genres, from specific to broad. Include decade tags when appropriate (e.g., "80s Synthpop").
 2. MOOD/ENERGY: Infer from artist's typical style, genre conventions, and title implications.
-3. BPM: Estimate based on genre conventions (e.g., punk ~170, ballads ~70, dance ~128).
+3. BPM AND KEY: These are audio-derived facts handled by the local analyzer. Never estimate or return them.
 4. ORIGINAL YEAR: If album says "Remastered" or "Deluxe Edition", find the ORIGINAL release date.
 5. INSTRUMENTAL: Most songs have vocals (false). Only true for classical, ambient, or explicitly instrumental.
 
@@ -630,18 +620,17 @@ func (c *Client) GeneratePlaylistFilter(prompt string) (*PlaylistFilter, error) 
 	return &filter, nil
 }
 
-// MoodAnalysis represents the AI-detected mood, energy, tempo, and BPM for a song.
+// MoodAnalysis represents the AI-detected mood, energy, and tempo for a song.
 // These values are inferred from song metadata (artist, title, album, genre) using
 // Gemini's knowledge of music styles and conventions.
 type MoodAnalysis struct {
 	Mood         string `json:"mood"`         // Emotional quality: happy, sad, energetic, calm, melancholic, uplifting, aggressive, romantic, chill, intense, dreamy, nostalgic
 	Energy       string `json:"energy"`       // Energy level: high, medium, low
 	Tempo        string `json:"tempo"`        // Perceived tempo: fast, medium, slow
-	BPM          int    `json:"bpm"`          // Estimated beats per minute (0 if unknown)
 	Instrumental bool   `json:"instrumental"` // true if song has no vocals (instrumental only)
 }
 
-// AnalyzeSongMood uses Gemini AI to analyze the mood, energy, tempo, and BPM of songs.
+// AnalyzeSongMood uses Gemini AI to analyze the mood, energy, and tempo of songs.
 // This is a legacy wrapper that calls EnrichAllMetadata and extracts mood-related fields.
 func (c *Client) AnalyzeSongMood(songs []db.Song) (map[string]*MoodAnalysis, error) {
 	if len(songs) == 0 {
@@ -662,7 +651,6 @@ func (c *Client) AnalyzeSongMood(songs []db.Song) (map[string]*MoodAnalysis, err
 				Mood:         meta.Mood,
 				Energy:       meta.Energy,
 				Tempo:        meta.Tempo,
-				BPM:          meta.BPM,
 				Instrumental: meta.Instrumental,
 			}
 		}

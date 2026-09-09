@@ -2,16 +2,18 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func TestParseEnrichmentResponseRequiresCompleteKnownValidatedResults(t *testing.T) {
 	allowed := map[string]struct{}{"first": {}, "second": {}}
 	response := `[
-		{"id":"first","genres":["ambient","Ambient","post-rock","electronic","drone","extra"],"mood":"calm","energy":"low","tempo":"slow","bpm":65,"instrumental":true,"original_year":0},
-		{"id":"second","genres":["rock"],"mood":"energetic","energy":"high","tempo":"fast","bpm":160,"instrumental":false,"original_year":1995}
+		{"id":"first","genres":["ambient","Ambient","post-rock","electronic","drone","extra"],"mood":"calm","energy":"low","tempo":"slow","instrumental":true,"original_year":0},
+		{"id":"second","genres":["rock"],"mood":"energetic","energy":"high","tempo":"fast","instrumental":false,"original_year":1995}
 	]`
 	results, err := parseEnrichmentResponse(response, allowed)
 	if err != nil {
@@ -32,6 +34,12 @@ func TestParseEnrichmentResponseRequiresCompleteKnownValidatedResults(t *testing
 	if _, err := parseEnrichmentResponse(`[{"id":"first","mood":"surprised"},{"id":"second"}]`, allowed); err == nil {
 		t.Error("response with an unsupported mood was accepted")
 	}
+	if _, err := parseEnrichmentResponse(`[{"id":"first","bpm":128},{"id":"second"}]`, allowed); err == nil {
+		t.Error("response containing forbidden BPM enrichment was accepted")
+	}
+	if _, err := parseEnrichmentResponse(`[{"id":"first","key":"Am"},{"id":"second"}]`, allowed); err == nil {
+		t.Error("response containing forbidden key enrichment was accepted")
+	}
 }
 
 func TestUnifiedMetadataHasMetadataDistinguishesEmptyLLMResults(t *testing.T) {
@@ -44,12 +52,29 @@ func TestUnifiedMetadataHasMetadataDistinguishesEmptyLLMResults(t *testing.T) {
 	for name, metadata := range map[string]*UnifiedMetadata{
 		"genre":        {Genres: []string{"Rock"}},
 		"mood":         {Mood: "happy"},
-		"bpm":          {BPM: 120},
 		"instrumental": {Instrumental: true},
 		"year":         {OriginalYear: 1999},
 	} {
 		if !metadata.HasMetadata() {
 			t.Errorf("%s metadata was treated as empty", name)
+		}
+	}
+}
+
+func TestEnrichmentContractExcludesBPMAndKey(t *testing.T) {
+	lowerPrompt := strings.ToLower(EnrichmentSystemPrompt)
+	for _, forbidden := range []string{`"bpm":`, `"key":`} {
+		if strings.Contains(lowerPrompt, forbidden) {
+			t.Fatalf("enrichment prompt contains forbidden audio-analysis field %s", forbidden)
+		}
+	}
+	encoded, err := json.Marshal(UnifiedMetadata{Mood: "happy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{`"bpm"`, `"key"`} {
+		if strings.Contains(strings.ToLower(string(encoded)), forbidden) {
+			t.Fatalf("enrichment response schema serialized forbidden field %s: %s", forbidden, encoded)
 		}
 	}
 }

@@ -112,7 +112,7 @@ type Song struct {
 	Mood           string   `json:"mood,omitempty"`           // e.g., "happy", "sad", "energetic", "calm"
 	Energy         string   `json:"energy,omitempty"`         // e.g., "high", "medium", "low"
 	Tempo          string   `json:"tempo,omitempty"`          // e.g., "fast", "medium", "slow"
-	BPM            int      `json:"bpm,omitempty"`            // Beats per minute (if analyzed)
+	BPM            int      `json:"bpm,omitempty"`            // Deprecated legacy storage; local tempo lives in TrackAnalysis
 	Instrumental   bool     `json:"instrumental,omitempty"`   // true if song has no vocals
 	MoodAnalyzedAt int64    `json:"moodAnalyzedAt,omitempty"` // Timestamp of mood analysis
 	Liked          bool     `json:"liked,omitempty"`          // true if user has liked this song
@@ -959,17 +959,16 @@ func (d *DB) UpdateSongDuration(songID string, duration float64) error {
 }
 
 // UpdateSongMood updates the mood/energy/tempo/instrumental metadata for a song.
-func (d *DB) UpdateSongMood(songID, mood, energy, tempo string, bpm int, instrumental bool) error {
+func (d *DB) UpdateSongMood(songID, mood, energy, tempo string, instrumental bool) error {
 	_, err := d.conn.Exec(`
 		UPDATE songs SET
 			mood = ?,
 			energy = ?,
 			tempo = ?,
-			bpm = ?,
 			instrumental = ?,
 			mood_analyzed_at = ?
 		WHERE id = ?
-	`, mood, energy, tempo, bpm, instrumental, time.Now().Unix(), songID)
+	`, mood, energy, tempo, instrumental, time.Now().Unix(), songID)
 	return err
 }
 
@@ -3474,7 +3473,6 @@ type AIEnrichmentUpdate struct {
 	Mood         string
 	Energy       string
 	Tempo        string
-	BPM          int
 	Instrumental bool
 	OriginalYear int
 }
@@ -3519,7 +3517,7 @@ func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (A
 
 		newGenre, newMood, newEnergy, newTempo := currentGenre, mood.String, energy.String, tempo.String
 		newOriginalYear, newYearUncertain := originalYear.Int64, yearUncertain.Bool
-		newBPM, newInstrumental := 0, false
+		newInstrumental := false
 		if applyGenres {
 			normalized := NormalizeGenres(update.Genres)
 			if encoded, err := json.Marshal(normalized); err != nil {
@@ -3531,7 +3529,7 @@ func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (A
 		}
 		if applyMood {
 			newMood, newEnergy, newTempo = update.Mood, update.Energy, update.Tempo
-			newBPM, newInstrumental = update.BPM, update.Instrumental
+			newInstrumental = update.Instrumental
 			result.Mood++
 		}
 		if applyYear {
@@ -3539,8 +3537,8 @@ func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (A
 			result.Years++
 		}
 		now := time.Now().Unix()
-		if _, err := tx.Exec(`UPDATE songs SET genre = ?, mood = ?, energy = ?, tempo = ?, bpm = CASE WHEN ? THEN ? ELSE bpm END, instrumental = CASE WHEN ? THEN ? ELSE instrumental END, mood_analyzed_at = CASE WHEN ? THEN ? ELSE mood_analyzed_at END, original_year = ?, year_uncertain = ?, year_analyzed_at = CASE WHEN ? THEN ? ELSE year_analyzed_at END WHERE id = ?`,
-			newGenre, newMood, newEnergy, newTempo, applyMood, newBPM, applyMood, newInstrumental, applyMood, now, newOriginalYear, newYearUncertain, applyYear, now, update.SongID); err != nil {
+		if _, err := tx.Exec(`UPDATE songs SET genre = ?, mood = ?, energy = ?, tempo = ?, instrumental = CASE WHEN ? THEN ? ELSE instrumental END, mood_analyzed_at = CASE WHEN ? THEN ? ELSE mood_analyzed_at END, original_year = ?, year_uncertain = ?, year_analyzed_at = CASE WHEN ? THEN ? ELSE year_analyzed_at END WHERE id = ?`,
+			newGenre, newMood, newEnergy, newTempo, applyMood, newInstrumental, applyMood, now, newOriginalYear, newYearUncertain, applyYear, now, update.SongID); err != nil {
 			return result, fmt.Errorf("apply enrichment update: %w", err)
 		}
 		result.Songs++

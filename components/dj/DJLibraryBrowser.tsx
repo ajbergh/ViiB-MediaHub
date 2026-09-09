@@ -243,8 +243,8 @@ export const DJLibraryBrowser: React.FC = () => {
                   </td>
 
                   <td className={`px-3 py-2 ${loadedDeck ? 'bg-brand/10' : ''}`}>
-                    <span className={`text-sm font-mono ${song.bpm ? 'text-brand' : 'text-neutral-600'}`}>
-                      {song.bpm || '-'}
+                    <span className="text-sm font-mono text-neutral-600" title="Run local track analysis to measure BPM">
+                      -
                     </span>
                   </td>
                 </>

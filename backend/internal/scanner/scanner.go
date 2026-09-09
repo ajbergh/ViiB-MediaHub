@@ -1166,7 +1166,7 @@ func (s *Scanner) enrichWithLLM() {
 			}
 			updates = append(updates, db.AIEnrichmentUpdate{
 				SongID: song.ID, Genres: metadata.Genres, Mood: metadata.Mood,
-				Energy: metadata.Energy, Tempo: metadata.Tempo, BPM: metadata.BPM,
+				Energy: metadata.Energy, Tempo: metadata.Tempo,
 				Instrumental: metadata.Instrumental, OriginalYear: metadata.OriginalYear,
 			})
 		}

@@ -8,6 +8,8 @@
 
 The engineering slices for Phases 0–7 have landed, including persistent analysis, beatgrid/downbeat artifacts and edits, energy/structure artifacts, advisory cues, deck energy UI, opt-in cue acceptance, and explainable local transition recommendations. Phase 5–7 work was opened under an explicit project-owner override.
 
+The production defaults now use the measured half-BPM multi-feature tempo candidate (crest 15) and the 36-bin HPCP/Krumhansl key candidate (3500 Hz, flatness 0.98, minimum profile margin 0.01). This repairs an operational mismatch where the user-visible job still ran the original synthetic-fixture prototypes and rejected nearly all mastered tracks. The algorithm versions were advanced so those rejected rows are selectable as outdated. Analysis jobs and per-track failures also write structured `[Analysis]` entries to an append-only-across-restarts `viib.log`.
+
 This **does not authorize a professional-accuracy claim**. The Phase 0 evidence gate remains open. The current work is primarily corpus expansion, measurement, tempo improvement, calibration, and cross-platform proof—not foundational feature construction.
 
 ## Delivered capabilities
@@ -18,6 +20,7 @@ This **does not authorize a professional-accuracy claim**. The Phase 0 evidence 
 - Persisted BPM/key/beatgrid and shared energy/structure artifacts; beatgrid edits survive reloads.
 - DJ UI for deck energy, advisory cues with opt-in acceptance, and local explainable transition recommendations.
 - A held-out key candidate that meets the roadmap’s key tripwires on the current sample: 71.93% exact and 85.96% Camelot-compatible (49/57).
+- Versioned production defaults based on the best measured candidates, with durable job/per-track diagnostics for incomplete, decoding, source, claim, and persistence failures.
 
 ## Quality gate: still open
 

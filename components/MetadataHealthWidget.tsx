@@ -66,7 +66,7 @@ export const MetadataHealthWidget: React.FC = () => {
       if (song.genre && song.genre.length > 0) genreCount++;
       if (song.year && song.year > 0) yearCount++;
       if (song.originalYear && song.originalYear > 0) originalYearCount++;
-      if (song.mood || song.bpm) aiCount++;
+      if (song.mood) aiCount++;
       if (song.lastfmEnrichedAt || song.lastfmTags) lastfmCount++;
       if (song.replayGainDb !== undefined) replayGainCount++;
     }

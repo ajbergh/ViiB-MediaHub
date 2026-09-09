@@ -16,6 +16,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/track"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/google/uuid"
 )
 
@@ -72,6 +73,7 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 		a.deferAnalysisJob(job.ID)
 		return
 	}
+	logger.Analysis("job started job_id=%q mode=%q tracks=%d algorithm=%q", job.ID, selection.Mode, len(songIDs), track.AlgorithmVersion)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -118,13 +120,19 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 			// Outstanding tracks stay outstanding. Re-running the same
 			// selection re-dispatches only what is still invalid.
 			_ = a.db.CancelJob(job.ID, fmt.Sprintf("Canceled after %d of %d tracks", progress.Processed, progress.Total))
+			logger.Analysis("job canceled job_id=%q mode=%q processed=%d total=%d", job.ID, selection.Mode, progress.Processed, progress.Total)
 			return
 		}
 		_ = a.db.FailJob(job.ID, "analysis_run_failed", runErr.Error())
+		logger.Analysis("job failed job_id=%q mode=%q processed=%d total=%d error=%q", job.ID, selection.Mode, progress.Processed, progress.Total, runErr)
 		return
 	}
-	_ = a.db.CompleteJob(job.ID, result,
-		fmt.Sprintf("Analysis complete: %d analyzed, %d skipped, %d failed", progress.Analyzed, progress.Skipped, progress.Failed))
+	if err := a.db.CompleteJob(job.ID, result,
+		fmt.Sprintf("Analysis complete: %d analyzed, %d skipped, %d failed", progress.Analyzed, progress.Skipped, progress.Failed)); err != nil {
+		logger.Analysis("job completion persistence failed job_id=%q mode=%q error=%q", job.ID, selection.Mode, err)
+		return
+	}
+	logger.Analysis("job completed job_id=%q mode=%q total=%d analyzed=%d skipped=%d failed=%d", job.ID, selection.Mode, progress.Total, progress.Analyzed, progress.Skipped, progress.Failed)
 }
 
 // deferAnalysisJob returns a job to the durable queue so it resumes once
