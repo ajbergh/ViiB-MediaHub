@@ -4,23 +4,22 @@
  * Analyzes the entire song library and displays a comprehensive health breakdown:
  * - Core Tagging (Title, Artist, Album, Year)
  * - Genres Coverage
- * - AI Music Profile (Mood, Energy, Tempo, BPM)
+ * - AI Music Profile (Mood, Energy)
+ * - Local Tempo & Key Analysis
  * - Last.fm Community Enrichment
- * - ReplayGain Loudness Analysis
  * 
  * Provides quick actions to trigger enrichment or filter tracks missing metadata.
  * 
  * @module MetadataHealthWidget
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Activity,
   Sparkles,
   Tag,
   Calendar,
-  Volume2,
   Radio,
   FileCheck,
   CheckCircle2,
@@ -30,12 +29,52 @@ import {
   Sliders
 } from 'lucide-react';
 import { useStore } from '../store';
+import { api } from '../services/api';
 import { Button } from './ui/Button';
 
 export const MetadataHealthWidget: React.FC = () => {
   const navigate = useNavigate();
   const songs = useStore(state => state.songs);
   const setLocalSearchQuery = useStore(state => state.setLocalSearchQuery);
+  const [analysisCoverage, setAnalysisCoverage] = useState<{
+    tempoPercent: number;
+    keyPercent: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const songIds = new Set(songs.map(song => song.id));
+
+    if (songIds.size === 0) {
+      setAnalysisCoverage({ tempoPercent: 0, keyPercent: 0 });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void api.getTrackAnalysisFeatures()
+      .then(features => {
+        if (cancelled) return;
+
+        const libraryFeatures = features.filter(feature => songIds.has(feature.songId));
+        const percentage = (count: number) => Math.round((count / songIds.size) * 100);
+        setAnalysisCoverage({
+          tempoPercent: percentage(
+            libraryFeatures.filter(feature => feature.bpm !== undefined && feature.bpmSource !== 'unknown').length,
+          ),
+          keyPercent: percentage(
+            libraryFeatures.filter(feature => Boolean(feature.key) && feature.keySource !== 'unknown').length,
+          ),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setAnalysisCoverage(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [songs]);
 
   const stats = useMemo(() => {
     const total = songs.length;
@@ -48,7 +87,6 @@ export const MetadataHealthWidget: React.FC = () => {
         originalYearPercent: 0,
         aiPercent: 0,
         lastfmPercent: 0,
-        replayGainPercent: 0,
         overallScore: 0,
       };
     }
@@ -59,7 +97,6 @@ export const MetadataHealthWidget: React.FC = () => {
     let originalYearCount = 0;
     let aiCount = 0;
     let lastfmCount = 0;
-    let replayGainCount = 0;
 
     for (const song of songs) {
       if (song.title && song.artist && song.album) coreCount++;
@@ -68,7 +105,6 @@ export const MetadataHealthWidget: React.FC = () => {
       if (song.originalYear && song.originalYear > 0) originalYearCount++;
       if (song.mood) aiCount++;
       if (song.lastfmEnrichedAt || song.lastfmTags) lastfmCount++;
-      if (song.replayGainDb !== undefined) replayGainCount++;
     }
 
     const corePercent = Math.round((coreCount / total) * 100);
@@ -77,15 +113,12 @@ export const MetadataHealthWidget: React.FC = () => {
     const originalYearPercent = Math.round((originalYearCount / total) * 100);
     const aiPercent = Math.round((aiCount / total) * 100);
     const lastfmPercent = Math.round((lastfmCount / total) * 100);
-    const replayGainPercent = Math.round((replayGainCount / total) * 100);
-
     const overallScore = Math.round(
-      (corePercent * 0.25) +
-      (genrePercent * 0.20) +
-      (yearPercent * 0.15) +
-      (aiPercent * 0.20) +
-      (lastfmPercent * 0.10) +
-      (replayGainPercent * 0.10)
+      (corePercent * 0.28) +
+      (genrePercent * 0.22) +
+      (yearPercent * 0.17) +
+      (aiPercent * 0.22) +
+      (lastfmPercent * 0.11)
     );
 
     return {
@@ -96,7 +129,6 @@ export const MetadataHealthWidget: React.FC = () => {
       originalYearPercent,
       aiPercent,
       lastfmPercent,
-      replayGainPercent,
       overallScore,
     };
   }, [songs]);
@@ -185,19 +217,50 @@ export const MetadataHealthWidget: React.FC = () => {
           <span className="text-[10px] text-text-subtle block">Year tags ({stats.originalYearPercent}% original release)</span>
         </div>
 
-        {/* AI Vibe & Mood */}
+        {/* AI Mood */}
         <div className="p-3.5 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-2">
           <div className="flex justify-between items-center">
             <span className="font-semibold text-text-main flex items-center gap-1.5">
               <Sparkles size={14} className="text-accent-pink" />
-              AI Mood & BPM Profile
+              AI Mood Profile
             </span>
             <span className="font-mono font-bold text-text-main">{stats.aiPercent}%</span>
           </div>
           <div className="w-full h-2 bg-surface-3 rounded-full overflow-hidden">
             <div className="h-full bg-accent-pink transition-all duration-500" style={{ width: `${stats.aiPercent}%` }} />
           </div>
-          <span className="text-[10px] text-text-subtle block">Gemini / LLM vibe & tempo analysis</span>
+          <span className="text-[10px] text-text-subtle block">AI-enriched mood metadata</span>
+        </div>
+
+        {/* Local Tempo & Key Analysis */}
+        <div className="p-3.5 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="font-semibold text-text-main flex items-center gap-1.5">
+              <Activity size={14} className="text-accent-blue" />
+              BPM & Key Analysis
+            </span>
+            <span className="font-mono font-bold text-text-main">
+              {analysisCoverage ? `${analysisCoverage.tempoPercent}%` : '—'}
+            </span>
+          </div>
+          <div
+            className="w-full h-2 bg-surface-3 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-label="BPM analysis coverage"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={analysisCoverage?.tempoPercent ?? 0}
+          >
+            <div
+              className="h-full bg-accent-blue transition-all duration-500"
+              style={{ width: `${analysisCoverage?.tempoPercent ?? 0}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-text-subtle block">
+            {analysisCoverage
+              ? `Locally measured BPM · ${analysisCoverage.keyPercent}% key coverage`
+              : 'Loading local tempo and key analysis'}
+          </span>
         </div>
 
         {/* Last.fm Enrichment */}
@@ -215,20 +278,6 @@ export const MetadataHealthWidget: React.FC = () => {
           <span className="text-[10px] text-text-subtle block">Global scrobbles & community tags</span>
         </div>
 
-        {/* ReplayGain Normalization */}
-        <div className="p-3.5 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="font-semibold text-text-main flex items-center gap-1.5">
-              <Volume2 size={14} className="text-accent-blue" />
-              ReplayGain Normalization
-            </span>
-            <span className="font-mono font-bold text-text-main">{stats.replayGainPercent}%</span>
-          </div>
-          <div className="w-full h-2 bg-surface-3 rounded-full overflow-hidden">
-            <div className="h-full bg-accent-blue transition-all duration-500" style={{ width: `${stats.replayGainPercent}%` }} />
-          </div>
-          <span className="text-[10px] text-text-subtle block">Loudness offset tags calculated</span>
-        </div>
       </div>
 
       {/* Action Footer */}
@@ -239,7 +288,7 @@ export const MetadataHealthWidget: React.FC = () => {
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate('/settings', { state: { tab: 'ai' } })}
             className="text-xs py-1.5 px-3"
             leftIcon={<Sliders size={13} />}
           >
