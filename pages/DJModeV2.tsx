@@ -36,6 +36,7 @@ import { DJHeadphoneMix } from '../components/dj/v2/DJHeadphoneMix';
 import { DJFXSection } from '../components/dj/v2/DJFXSection';
 import { DJBeatJump } from '../components/dj/v2/DJBeatJump';
 import { DJBeatGridEdit } from '../components/dj/v2/DJBeatGridEdit';
+import { DJEnergyInsights } from '../components/dj/v2/DJEnergyInsights';
 import { DJSamplerPads } from '../components/dj/v2/DJSamplerPads';
 import { DJNudgeButtons } from '../components/dj/v2/DJNudgeButtons';
 import { DJMidiMapping } from '../components/dj/v2/DJMidiMapping';
@@ -615,6 +616,7 @@ const DJModeV2Inner: React.FC = () => {
                       <DJBeatJump deck='A' compact />
                       <DJBeatGridEdit deck='A' />
                   </div>
+                  <DJEnergyInsights trackID={deckATrack?.id} />
             </div>
 
             {/* Deck Jog Area — EQ strip left of jog, jog right */}
@@ -863,6 +865,7 @@ const DJModeV2Inner: React.FC = () => {
                       <DJBeatJump deck='B' compact />
                       <DJLoopSection deck='B' />
                   </div>
+                  <DJEnergyInsights trackID={deckBTrack?.id} />
             </div>
 
             {/* Deck Jog Area — jog left, EQ strip right of jog (deck B mirrored) */}
