@@ -85,6 +85,8 @@ ViiB uses the current Plex JWT/PIN device flow:
 
 Expired or rejected credentials surface as an authentication-required/reconnect state instead of silently breaking playback.
 
+After account sign-in, ViiB can also list Plex servers that the account owns or can access through sharing. Select one to validate and activate it without manually entering a LAN address. Access tokens used for that selection remain encrypted in the backend.
+
 ### 4. Select a music library
 
 After connecting/authenticating, ViiB displays only Plex sections representing music/audio. Movies, TV shows, photos, clips/music videos, and other video libraries are filtered out and cannot be selected as ViiB sources.
@@ -171,9 +173,7 @@ Plex may return either PMS-relative artwork keys or absolute publicly accessible
 
 ### Artist portrait scope
 
-The circular artist portrait shown on ViiB's Artists/Artist Detail pages is a separate artist-metadata enrichment feature and currently remains Spotify-backed when enrichment is available. It is intentionally **not** populated with a Plex album cover merely to appear Plex-native.
-
-If Plex artist-portrait parity is added, it should browse Plex's documented artist/type-8 metadata and use each artist item's own `thumb`. Album/track artwork fidelity does not depend on that future enhancement.
+When Plex supplies artist artwork, ViiB records that artist-specific artwork separately from album/track covers and serves it through an authenticated backend proxy. It does not substitute a Plex album cover merely to appear Plex-native. Spotify or other enrichment imagery may still be used when no Plex artist image is available.
 
 ## Security
 
@@ -240,10 +240,15 @@ Plex configuration uses `/api/v2/plex`:
 - `DELETE /config`
 - `POST /auth/start`
 - `GET /auth/status`
+- `GET /servers`
+- `POST /servers/select`
+- `GET /artist-artwork/{name}`
 - `GET /libraries`
 - `PUT /library`
 - `POST /sync`
 - `GET /sync/status`
+- `POST /metadata-writeback/preview`
+- `POST /metadata-writeback/sync`
 
 Media remains on the source-transparent routes:
 

@@ -178,6 +178,67 @@ paths:
               schema: { $ref: '#/components/schemas/PlexAuthStatus' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '502': { $ref: '#/components/responses/BadGateway' }
+  /plex/servers:
+    get:
+      operationId: listPlexAccountServers
+      summary: List Plex Media Servers available to the signed-in account
+      description: Includes owned and shared servers. Per-server access tokens are never returned.
+      responses:
+        '200':
+          description: Account-visible Plex servers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [servers]
+                properties:
+                  servers:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlexAccountServer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /plex/servers/select:
+    post:
+      operationId: selectPlexAccountServer
+      summary: Validate and activate an account-visible Plex server
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [machineIdentifier]
+              properties:
+                machineIdentifier: { type: string }
+      responses:
+        '200':
+          description: Activated Plex server identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlexServer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /plex/artist-artwork/{name}:
+    get:
+      operationId: getPlexArtistArtwork
+      summary: Return Plex artist artwork through the backend proxy
+      description: The response is sourced from the configured PMS when artist artwork is available. Plex credentials are never exposed to the browser.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Proxied artist artwork
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/BadGateway' }
   /plex/libraries:
     get:
       operationId: listPlexMusicLibraries
@@ -253,6 +314,47 @@ paths:
                     oneOf:
                       - { $ref: '#/components/schemas/PlexSource' }
                       - { type: 'null' }
+  /plex/metadata-writeback/preview:
+    post:
+      operationId: previewPlexMetadataWriteback
+      summary: Preview eligible AI genre and original-year changes without modifying Plex
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlexMetadataWritebackRequest' }
+      responses:
+        '200':
+          description: Current Plex values, proposed changes, and an approval digest; at most 100 tracks are previewed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlexMetadataWritebackPreview' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+  /plex/metadata-writeback/sync:
+    post:
+      operationId: syncPlexMetadataWriteback
+      summary: Apply and verify an explicitly approved Plex metadata preview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/PlexMetadataWritebackRequest' }
+                - type: object
+                  required: [confirmation]
+      responses:
+        '200':
+          description: Write and verification result. Only approved genre/year fields are written and locked in Plex.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlexMetadataWritebackResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '502': { $ref: '#/components/responses/BadGateway' }
   /jobs/:
     get:
       operationId: listJobs
@@ -759,6 +861,19 @@ components:
         claimed: { type: boolean }
         authRequired: { type: boolean }
       description: Browser-safe PMS identity. No Plex access token is included.
+    PlexAccountServer:
+      type: object
+      required: [name, url, machineIdentifier, owned, local, relay]
+      properties:
+        name: { type: string }
+        url: { type: string }
+        machineIdentifier: { type: string }
+        version: { type: string }
+        owned: { type: boolean }
+        owner: { type: string }
+        local: { type: boolean }
+        relay: { type: boolean }
+      description: Browser-safe account-directory server metadata. No per-server access token is included.
     PlexSource:
       type: object
       required: [id, machineIdentifier, baseUrl, name, connectedAt, lastSyncStatus, available, active]
@@ -820,6 +935,50 @@ components:
         expiresAt: { type: integer, description: Unix seconds }
         message: { type: string }
       description: Authentication status only. Plex JWT/access tokens are never returned.
+    PlexMetadataWritebackRequest:
+      type: object
+      properties:
+        songIds:
+          type: array
+          maxItems: 100
+          items: { type: string, maxLength: 200 }
+        confirmation:
+          type: string
+      description: Empty songIds previews all eligible pending tracks up to the 100-track limit.
+    PlexMetadataWritebackField:
+      type: object
+      required: [field, before, after]
+      properties:
+        field: { type: string, enum: [genres, year] }
+        before: {}
+        after: {}
+    PlexMetadataWritebackItem:
+      type: object
+      required: [songId, title, artist, album, changes, status]
+      properties:
+        songId: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        album: { type: string }
+        proposedGenres: { type: array, items: { type: string } }
+        proposedYear: { type: integer }
+        changes: { type: array, items: { $ref: '#/components/schemas/PlexMetadataWritebackField' } }
+        status: { type: string, enum: [ready, already_matches] }
+    PlexMetadataWritebackPreview:
+      type: object
+      required: [confirmation, items, hasMore]
+      properties:
+        confirmation: { type: string, description: Exact approval digest required by the sync endpoint. }
+        items: { type: array, items: { $ref: '#/components/schemas/PlexMetadataWritebackItem' } }
+        hasMore: { type: boolean }
+    PlexMetadataWritebackResult:
+      type: object
+      required: [updated, verified, failed]
+      properties:
+        updated: { type: integer, minimum: 0 }
+        verified: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        errors: { type: array, items: { type: string } }
     Job:
       type: object
       required: [id, type, status, progressCurrent, progressTotal, attempts, createdAt, updatedAt]

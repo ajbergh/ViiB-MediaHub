@@ -28,7 +28,7 @@ Spotify remains a separate integration for Spotify browsing, streaming, and down
 | [Smart Playlists / AI DJ](smart-playlists.md) | AI-generated playlists and DJ sets over the ViiB catalog |
 | [Search](search.md) | Indexed search across the unified ViiB catalog |
 | [Spotify](spotify.md) | Spotify integration, streaming, browse, and downloads |
-| [Plex Music](plex-music.md) | PMS discovery, authentication, library selection, sync, playback, security, and troubleshooting |
+| [Plex Music](plex-music.md) | PMS discovery, account/server selection, library sync, proxied playback, explicit metadata writeback, security, and troubleshooting |
 | [DJ Mode](dj-mode.md) | Full-featured two-deck DJ interface |
 | [DJv2 Professional Track Analysis Roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) | Persistent BPM/key/Camelot analysis and its implementation status, plus planned harmonic mixing, beatgrid, and next-generation DJ intelligence |
 | [Downloads](downloads.md) | Spotify download queue and status |

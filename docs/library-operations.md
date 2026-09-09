@@ -8,7 +8,7 @@ Library Operations is ViiB MediaHub's music-source and maintenance surface. Open
 
 Library Operations can connect a Plex Media Server music/audio library to ViiB. The panel supports LAN discovery, manual server addresses, Plex authentication/reconnect, music-library selection, explicit synchronization, offline state, and safe source removal.
 
-Plex synchronization writes normalized metadata into the same `songs` catalog used by local filesystem tracks, with source-specific identity/playback information stored separately. ViiB treats Plex as read-only remote media storage: removing/changing the source changes ViiB's cached catalog only and never deletes, moves, renames, or modifies content on PMS.
+Plex synchronization writes normalized metadata into the same `songs` catalog used by local filesystem tracks, with source-specific identity/playback information stored separately. ViiB treats Plex as read-only remote media storage by default: removing/changing the source changes ViiB's cached catalog only and never deletes, moves, renames, or modifies content on PMS. The sole exception is the separately reviewed, explicitly approved AI metadata writeback flow for eligible track genres and original release year; it requires PMS management permission and does not modify audio-file tags.
 
 See [Plex Media Server Music Support](plex-music.md) for the full setup, security, synchronization, playback, and troubleshooting guide.
 
@@ -57,7 +57,7 @@ Diagnostics do not change the library. A temporarily offline Plex server is repr
 
 The operations API can edit ViiB database metadata for a song: title, artist, album, album artist, track/disc number, genre, and year. Source-file tag write-back is deliberately unavailable in this build. A request that asks for write-back is rejected before database metadata changes.
 
-For Plex tracks these edits are ViiB-local only; they are never silently written back to PMS. A later authoritative Plex synchronization can replace fields with the server's current metadata.
+For Plex tracks these edits are ViiB-local only; they are never silently written back to PMS. A later authoritative Plex synchronization can replace fields with the server's current metadata. The Plex panel's distinct AI Metadata Writeback workflow is the only way ViiB can update PMS metadata, and it is limited to a reviewed and approved genre/year diff.
 
 ## Backup and staged restore
 

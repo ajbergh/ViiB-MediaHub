@@ -32,7 +32,7 @@ Generated results use normal ViiB song IDs, so a result can contain both local a
 Configure the separate **Semantic Retrieval Index** in **Settings → Library Intelligence**. It is independent of the chat/LLM provider and does not modify source-media metadata.
 
 - **Ollama** can build embeddings locally. ViiB never downloads a model automatically.
-- **OpenAI** uses the embeddings API only after showing and receiving confirmation for the one-time catalog estimate.
+- **OpenAI**, **Google Gemini**, and **OpenRouter** can use their respective embeddings APIs only after ViiB presents the provider-specific data/cost notice and the user explicitly confirms it.
 - ViiB indexes deterministic track, album, and artist descriptions in SQLite. File paths, internal song IDs, listening history, and embedding vectors are not sent to the cloud provider or returned to the UI.
 - Indexing runs in the background. The Smart Playlists page displays whether semantic matching is ready, indexing, or using the standard fallback, and links to Index Settings when action is needed.
 

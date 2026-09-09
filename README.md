@@ -85,7 +85,8 @@ Both modes share the same Go backend and React frontend.
 - Offline-safe catalog retention: temporary PMS outages never become mass deletions
 - Backend-authenticated audio and artwork proxying; Plex tokens are not placed in browser-visible media URLs
 - Range forwarding and seeking through the existing `/api/audio/{songId}` contract
-- Read-only source behavior: ViiB never deletes, moves, renames, or reconfigures Plex media
+- Read-only source behavior by default: ViiB never deletes, moves, renames, or reconfigures Plex media
+- Explicit, reviewable AI metadata writeback for approved Plex genre and original-year proposals only; it requires PMS management permission and never edits audio-file tags
 
 See [Plex Media Server Music Support](docs/plex-music.md).
 
@@ -103,7 +104,7 @@ See [Spotify Integration](docs/spotify.md).
 
 - Natural-language playlist generation with semantic track, album, and artist recall when the optional local SQLite index is ready
 - Semantic AI DJ phase retrieval with local source/filter enforcement, behaviour-aware ranking, diversity, BPM flow, and deterministic metadata fallback
-- Separate semantic embedding configuration: local Ollama or explicitly cost-confirmed OpenAI embeddings; chat-provider settings and listening history are never repurposed as embedding content
+- Separate semantic embedding configuration: local Ollama or explicitly confirmed OpenAI, Gemini, or OpenRouter embeddings; chat-provider settings and listening history are never repurposed as embedding content
 - Smart Mixes based on catalog metadata and listening history
 - Multi-provider LLM support including Gemini, OpenAI, Anthropic, OpenRouter, Ollama, and X.AI where configured
 - Genre, mood, energy, tempo, BPM, and year enrichment
@@ -294,10 +295,15 @@ Plex management routes live under `/api/v2/plex`:
 | `DELETE` | `/config` | Remove the ViiB Plex source/cache without modifying PMS |
 | `POST` | `/auth/start` | Start Plex device authentication |
 | `GET` | `/auth/status` | Poll authentication state |
+| `GET` | `/servers` | List Plex servers available to the signed-in account |
+| `POST` | `/servers/select` | Connect one account-visible or shared Plex server |
+| `GET` | `/artist-artwork/{name}` | Return proxied Plex artist artwork without exposing credentials |
 | `GET` | `/libraries` | List selectable music/audio libraries only |
 | `PUT` | `/library` | Select a Plex music library |
 | `POST` | `/sync` | Start Plex library synchronization |
 | `GET` | `/sync/status` | Read Plex synchronization/source status |
+| `POST` | `/metadata-writeback/preview` | Review eligible AI genre/year changes without writing to Plex |
+| `POST` | `/metadata-writeback/sync` | Apply the exact approved metadata preview and verify it |
 
 The complete versioned contract is [docs/openapi-v2.yaml](docs/openapi-v2.yaml).
 
