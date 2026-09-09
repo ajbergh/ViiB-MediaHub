@@ -10,6 +10,8 @@ import (
 	"errors"
 	"math"
 	"time"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 )
 
 const (
@@ -34,13 +36,60 @@ type Section struct {
 	Energy float64 `json:"energy"`
 }
 
+// CueSuggestion is a non-authoritative, measured preparation hint. DJs can
+// accept, move, or ignore it; it never changes stored hot cues by itself.
+type CueSuggestion struct {
+	Position   float64 `json:"position"`
+	Kind       string  `json:"kind"`
+	Confidence float64 `json:"confidence"`
+	Rationale  string  `json:"rationale"`
+}
+
 // Result contains measured loudness and compact structure suitable for a
 // library row, a waveform overlay, or explainable recommendation scoring.
 type Result struct {
-	IntegratedLUFS float64       `json:"integratedLufs"`
-	TruePeakDBFS   float64       `json:"truePeakDbfs"`
-	Energy         []EnergyPoint `json:"energy"`
-	Sections       []Section     `json:"sections"`
+	IntegratedLUFS float64         `json:"integratedLufs"`
+	TruePeakDBFS   float64         `json:"truePeakDbfs"`
+	Energy         []EnergyPoint   `json:"energy"`
+	Sections       []Section       `json:"sections"`
+	CueSuggestions []CueSuggestion `json:"cueSuggestions"`
+}
+
+// AddCueSuggestions derives compact mix-in, section, and mix-out suggestions.
+// Every position is snapped to a detected downbeat when a grid is available;
+// absent a reliable grid it intentionally returns no cues rather than faking
+// beat alignment.
+func (r *Result) AddCueSuggestions(grid *beatgrid.Grid) {
+	r.CueSuggestions = []CueSuggestion{}
+	if grid == nil || len(grid.DownbeatIndices) == 0 || len(r.Sections) == 0 {
+		return
+	}
+	downbeats := make([]float64, 0, len(grid.DownbeatIndices))
+	for _, index := range grid.DownbeatIndices {
+		if index >= 0 && index < len(grid.Beats) {
+			downbeats = append(downbeats, grid.Beats[index])
+		}
+	}
+	if len(downbeats) == 0 {
+		return
+	}
+	snap := func(time float64) float64 {
+		best := downbeats[0]
+		for _, candidate := range downbeats[1:] {
+			if math.Abs(candidate-time) < math.Abs(best-time) {
+				best = candidate
+			}
+		}
+		return best
+	}
+	first, last := r.Sections[0], r.Sections[len(r.Sections)-1]
+	r.CueSuggestions = append(r.CueSuggestions,
+		CueSuggestion{Position: snap(first.Start), Kind: "mix-in", Confidence: .70, Rationale: "First measured section, snapped to detected downbeat"},
+		CueSuggestion{Position: snap(last.End), Kind: "mix-out", Confidence: .65, Rationale: "Final measured section boundary, snapped to detected downbeat"},
+	)
+	for _, section := range r.Sections[1:] {
+		r.CueSuggestions = append(r.CueSuggestions, CueSuggestion{Position: snap(section.Start), Kind: "section", Confidence: .60, Rationale: "Measured energy novelty boundary, snapped to detected downbeat"})
+	}
 }
 
 // Accumulator keeps only 500 ms RMS windows and a few scalars; full PCM is
