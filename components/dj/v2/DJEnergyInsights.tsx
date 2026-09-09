@@ -31,7 +31,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     if (!deck) return;
     const slot = Array.from({ length: 8 }, (_, index) => index + 1).find(candidate => !hotCues.some(cue => cue.slot === candidate));
     if (!slot) return;
-    setHotCue(deck, slot, position, `Suggested ${kind}`, '#22d3ee');
+    setHotCue(deck, slot, position, `Suggested ${kind}`);
   };
   const top = recommendations?.recommendations[0];
   return <section aria-label="Measured track energy" className="px-2 py-1 text-[10px] text-neutral-400">
