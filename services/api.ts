@@ -127,6 +127,17 @@ export interface TrackAnalysisFeature {
   keySource: 'unknown' | 'manual' | 'measured';
 }
 
+// Persisted phase-aligned timing data. It is distinct from the scalar BPM so
+// deck Sync can use measured beat positions without recreating a zero-offset
+// browser grid.
+export interface TrackBeatGrid {
+  songId: string;
+  beats: number[];
+  downbeatIndices: number[];
+  locked: boolean;
+  algorithmVersion: string;
+}
+
 export interface DuplicateSong extends ApiSong {
   sourcePath?: string;
 }
@@ -1402,6 +1413,11 @@ export const api = {
   async getTrackAnalysisFeatures(): Promise<TrackAnalysisFeature[]> {
     const response = await fetch(`${API_BASE}/v2/analysis`, { cache: 'no-store' });
     return handleResponse<TrackAnalysisFeature[]>(response);
+  },
+
+  async getTrackBeatGrid(trackId: string): Promise<TrackBeatGrid> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { cache: 'no-store' });
+    return handleResponse<TrackBeatGrid>(response);
   },
 
   /**

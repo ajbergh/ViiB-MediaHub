@@ -18,3 +18,14 @@ func TestEffectiveBPMOverridesLegacyMetadataForScoring(t *testing.T) {
 		t.Fatalf("getSongBPM() without measurement = %d, want legacy 90", got)
 	}
 }
+
+func TestMeasuredEnergyOverridesTagForPhaseScoring(t *testing.T) {
+	song := db.Song{ID: "song", Energy: "low"}
+	context := NewScoreContext()
+	context.EffectiveEnergy[song.ID] = .82
+	measured := scoreSongEnergy(song, EnergyHigh, context)
+	fallback := scoreEnergyMatch(song.Energy, EnergyHigh)
+	if measured <= fallback {
+		t.Fatalf("measured energy score = %f, tag fallback = %f; measured curve should win", measured, fallback)
+	}
+}

@@ -1,6 +1,7 @@
 package dj
 
 import (
+	"math"
 	"strings"
 	"time"
 
@@ -34,7 +35,7 @@ func ScoreSongForPhase(song db.Song, phase DJPhase, ctx *ScoreContext, persona P
 	// ========================================================================
 
 	// Energy match
-	energyScore := scoreEnergyMatch(song.Energy, phase.TargetEnergy)
+	energyScore := scoreSongEnergy(song, phase.TargetEnergy, ctx)
 	breakdown.EnergyMatchScore = energyScore
 
 	// Tempo match
@@ -192,6 +193,18 @@ func scoreEnergyMatch(songEnergy, targetEnergy string) float64 {
 	default:
 		return 0.2
 	}
+}
+
+func scoreSongEnergy(song db.Song, targetEnergy string, ctx *ScoreContext) float64 {
+	if ctx != nil && ctx.EffectiveEnergy != nil {
+		if value, ok := ctx.EffectiveEnergy[song.ID]; ok && value >= 0 && value <= 1 {
+			targets := map[string]float64{"low": .2, "medium": .5, "high": .8}
+			if target, known := targets[strings.ToLower(targetEnergy)]; known {
+				return max(.2, 1-math.Abs(value-target)/.6)
+			}
+		}
+	}
+	return scoreEnergyMatch(song.Energy, targetEnergy)
 }
 
 // scoreTempoMatch scores how well the song tempo matches the phase target.
