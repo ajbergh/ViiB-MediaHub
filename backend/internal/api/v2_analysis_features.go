@@ -2,9 +2,12 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	analysiskey "github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/go-chi/chi/v5"
@@ -25,6 +28,38 @@ type TrackAnalysisFeatureResponse struct {
 	OpenKey       *string  `json:"openKey,omitempty"`
 	KeyConfidence *float64 `json:"keyConfidence,omitempty"`
 	KeySource     string   `json:"keySource"`
+}
+
+// BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
+// in seconds so waveform and deck clients do not need to reproduce codec or
+// tempo interpolation behavior.
+type BeatGridResponse struct {
+	SongID           string    `json:"songId"`
+	Beats            []float64 `json:"beats"`
+	DownbeatIndices  []int     `json:"downbeatIndices"`
+	Locked           bool      `json:"locked"`
+	AlgorithmVersion string    `json:"algorithmVersion"`
+}
+
+// BeatGridUpdate accepts a complete validated replacement from the editor.
+// Requiring a whole grid prevents a stale drag operation from applying a
+// partial positional patch against a different dynamic grid.
+type BeatGridUpdate struct {
+	Beats           []float64 `json:"beats"`
+	DownbeatIndices []int     `json:"downbeatIndices"`
+	Locked          bool      `json:"locked"`
+}
+
+// EnergyFeaturesResponse exposes measurements and derived sections with the
+// producing version, so clients can render an explainable curve without
+// inferring energy from an LLM tag.
+type EnergyFeaturesResponse struct {
+	SongID           string                 `json:"songId"`
+	IntegratedLUFS   float64                `json:"integratedLufs"`
+	TruePeakDBFS     float64                `json:"truePeakDbfs"`
+	Energy           []features.EnergyPoint `json:"energy"`
+	Sections         []features.Section     `json:"sections"`
+	AlgorithmVersion string                 `json:"algorithmVersion"`
 }
 
 func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) {
@@ -97,4 +132,111 @@ func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAn
 		response.OpenKey = &openKey
 	}
 	return response
+}
+
+func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	artifact, err := a.db.GetTrackAnalysisArtifact(songID, beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(w, http.StatusNotFound, "beatgrid not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	grid, err := beatgrid.Decode(artifact.Data)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override, err := a.db.GetTrackAnalysisOverride(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		override = db.TrackAnalysisOverride{}
+	} else if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, BeatGridResponse{SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: override.BeatgridLocked, AlgorithmVersion: artifact.AlgorithmVersion})
+}
+
+func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	if songID == "" {
+		respondError(w, http.StatusBadRequest, "song ID is required")
+		return
+	}
+	var update BeatGridUpdate
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20))
+	if err := decoder.Decode(&update); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid beatgrid update")
+		return
+	}
+	grid := beatgrid.Grid{Beats: update.Beats, DownbeatIndices: update.DownbeatIndices}
+	encoded, err := grid.Encode()
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	artifactID := songID + ":" + beatgrid.AlgorithmVersion
+	if err := a.db.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: artifactID, SongID: songID, Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Data: encoded}); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override, err := a.db.GetTrackAnalysisOverride(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		override = db.TrackAnalysisOverride{SongID: songID}
+	} else if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override.BeatgridArtifactID = &artifactID
+	override.BeatgridLocked = update.Locked
+	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, BeatGridResponse{SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion})
+}
+
+func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	artifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(w, http.StatusNotFound, "energy features not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	result, err := features.Decode(artifact.Data)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, EnergyFeaturesResponse{SongID: songID, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: result.Energy, Sections: result.Sections, AlgorithmVersion: artifact.AlgorithmVersion})
+}
+
+// measuredEnergyForDJ returns the same persisted curve summary exposed to the
+// UI.  Corrupt individual artifacts are ignored rather than making the AI DJ
+// unavailable; that song falls back to its existing metadata score.
+func (a *API) measuredEnergyForDJ() (map[string]float64, error) {
+	artifacts, err := a.db.ListTrackAnalysisArtifacts(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if err != nil {
+		return nil, err
+	}
+	values := make(map[string]float64, len(artifacts))
+	for _, artifact := range artifacts {
+		result, err := features.Decode(artifact.Data)
+		if err != nil || len(result.Energy) == 0 {
+			continue
+		}
+		var total float64
+		for _, point := range result.Energy {
+			total += point.Value
+		}
+		values[artifact.SongID] = total / float64(len(result.Energy))
+	}
+	return values, nil
 }

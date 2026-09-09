@@ -293,14 +293,17 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       // scanning never turns an estimate into a timing value.
       const persisted = await (async () => {
         try {
-          const feature = await api.getTrackAnalysisFeature(track.id);
+          const [feature, grid] = await Promise.all([
+            api.getTrackAnalysisFeature(track.id),
+            api.getTrackBeatGrid(track.id).catch(() => null),
+          ]);
           if (!isTrackStillLoaded()) return { hasBPM: true, hasKey: true };
           const patch: { bpm?: number; key?: string; beatGrid?: number[] } = {};
           if (typeof feature.bpm === 'number') {
             const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
             const duration = deckState.duration || track.duration || 0;
             patch.bpm = feature.bpm;
-            patch.beatGrid = duration > 0 ? generateBeatGrid(feature.bpm, duration) : [];
+            patch.beatGrid = grid?.beats ?? (duration > 0 ? generateBeatGrid(feature.bpm, duration) : []);
           }
           if (feature.key) patch.key = feature.key;
           if (Object.keys(patch).length > 0) setDeckAnalysis(deck, patch);
@@ -1075,14 +1078,17 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     // hook is the one used by the virtualized library browser.
     const persisted = await (async () => {
       try {
-        const feature = await api.getTrackAnalysisFeature(track.id);
+        const [feature, grid] = await Promise.all([
+          api.getTrackAnalysisFeature(track.id),
+          api.getTrackBeatGrid(track.id).catch(() => null),
+        ]);
         if (!isTrackStillLoaded()) return { hasBPM: true, hasKey: true };
         const patch: { bpm?: number; key?: string; beatGrid?: number[] } = {};
         if (typeof feature.bpm === 'number') {
           const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
           const duration = ds.duration || track.duration || 0;
           patch.bpm = feature.bpm;
-          patch.beatGrid = duration > 0 ? generateBeatGrid(feature.bpm, duration) : [];
+          patch.beatGrid = grid?.beats ?? (duration > 0 ? generateBeatGrid(feature.bpm, duration) : []);
         }
         if (feature.key) patch.key = feature.key;
         if (Object.keys(patch).length > 0) useStore.getState().setDeckAnalysis(deck, patch);

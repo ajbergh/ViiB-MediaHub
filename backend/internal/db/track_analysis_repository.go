@@ -351,6 +351,30 @@ func (d *DB) GetTrackAnalysisArtifact(songID, kind string, formatVersion int, al
 	return artifact, err
 }
 
+// ListTrackAnalysisArtifacts returns one representation per song for a
+// versioned feature family.  AI and UI callers use this bounded metadata read
+// instead of decoding a file or issuing an N+1 artifact query per library row.
+func (d *DB) ListTrackAnalysisArtifacts(kind string, formatVersion int, algorithmVersion string) ([]TrackAnalysisArtifact, error) {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return nil, err
+	}
+	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, data, created_at
+		FROM track_analysis_artifacts WHERE kind = ? AND format_version = ? AND algorithm_version = ? ORDER BY song_id`, kind, formatVersion, algorithmVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	artifacts := make([]TrackAnalysisArtifact, 0)
+	for rows.Next() {
+		var artifact TrackAnalysisArtifact
+		if err := rows.Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Data, &artifact.CreatedAt); err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, artifact)
+	}
+	return artifacts, rows.Err()
+}
+
 // UpsertTrackAnalysisOverride persists manual values and their independent
 // locks. Supplying a zero UpdatedAt assigns the write time.
 func (d *DB) UpsertTrackAnalysisOverride(override TrackAnalysisOverride) error {

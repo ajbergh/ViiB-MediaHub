@@ -7,6 +7,7 @@ package track
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,8 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/tempo"
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -49,7 +52,11 @@ type Result struct {
 	Status string
 	Tempo  tempo.Estimate
 	Key    key.Estimate
-	Source analysis.ResolvedSource
+	// BeatGrid is optional: scalar analysis remains useful when audio has no
+	// sufficiently periodic onset evidence for safe phase alignment.
+	BeatGrid *beatgrid.Grid
+	Features *features.Result
+	Source   analysis.ResolvedSource
 }
 
 // Options selects analyzer priors for a pass.
@@ -102,6 +109,8 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 	var timing FileTiming
 	var onsets *tempo.OnsetAccumulator
 	var chroma *key.ChromaAccumulator
+	var phase *beatgrid.PhaseAccumulator
+	var energy *features.Accumulator
 	sampleRate := 0
 
 	err := analysis.StreamMonoFileWithOpener(ctx, registry, name, open, func(chunk analysis.MonoChunk) error {
@@ -114,6 +123,8 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 			}
 			onsets = tempo.NewOnsetAccumulatorWithOptions(chunk.SampleRate, opts.Tempo)
 			chroma = key.NewChromaAccumulatorWithOptions(chunk.SampleRate, opts.Key)
+			phase = beatgrid.NewPhaseAccumulator(chunk.SampleRate)
+			energy = features.NewAccumulator(chunk.SampleRate)
 		}
 		if sampleRate != chunk.SampleRate {
 			return fmt.Errorf("analysis stream sample rate changed")
@@ -122,6 +133,8 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		dspStarted := time.Now()
 		onsets.Feed(chunk.Samples)
 		chroma.Feed(chunk.Samples)
+		phase.Feed(chunk.Samples)
+		energy.Feed(chunk.Samples)
 		timing.DSPSeconds += time.Since(dspStarted).Seconds()
 		return nil
 	})
@@ -139,6 +152,14 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 	} else {
 		result.Tempo = onsets.Estimate()
 		result.Key = chroma.Estimate()
+		if result.Tempo.Known {
+			if grid, gridErr := phase.Build(result.Tempo.BPM, timing.AudioSeconds, 4); gridErr == nil {
+				result.BeatGrid = &grid
+			}
+		}
+		if measured, featureErr := energy.Result(); featureErr == nil {
+			result.Features = &measured
+		}
 	}
 	timing.DSPSeconds += time.Since(dspStarted).Seconds()
 	result.Status = combinedStatus(result.Tempo.Known, result.Key.Known)
@@ -229,7 +250,60 @@ func Persist(database *db.DB, result Result) error {
 		record.ErrorCode = ptr(ErrorNoReliableKey)
 		record.ErrorMessage = ptr("No reliable tonal evidence in the decoded audio")
 	}
-	return database.UpsertTrackAnalysis(record)
+	if err := database.UpsertTrackAnalysis(record); err != nil {
+		return err
+	}
+	if err := persistBeatGrid(database, result); err != nil {
+		return err
+	}
+	return persistFeatures(database, result)
+}
+
+func persistBeatGrid(database *db.DB, result Result) error {
+	if result.BeatGrid == nil {
+		return nil
+	}
+	// A locked grid is an explicit performance decision.  Re-analysis may
+	// refresh measured BPM/key but must not replace the DJ's timing edits.
+	override, err := database.GetTrackAnalysisOverride(result.SongID)
+	if err == nil && override.BeatgridLocked {
+		return nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	encoded, err := result.BeatGrid.Encode()
+	if err != nil {
+		return err
+	}
+	return database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+		ID:               result.SongID + ":" + beatgrid.AlgorithmVersion,
+		SongID:           result.SongID,
+		Kind:             beatgrid.ArtifactKind,
+		FormatVersion:    beatgrid.FormatVersion,
+		AlgorithmVersion: beatgrid.AlgorithmVersion,
+		Encoding:         beatgrid.Encoding,
+		Data:             encoded,
+	})
+}
+
+func persistFeatures(database *db.DB, result Result) error {
+	if result.Features == nil {
+		return nil
+	}
+	encoded, err := result.Features.Encode()
+	if err != nil {
+		return err
+	}
+	return database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+		ID:               result.SongID + ":" + features.AlgorithmVersion,
+		SongID:           result.SongID,
+		Kind:             features.ArtifactKind,
+		FormatVersion:    features.FormatVersion,
+		AlgorithmVersion: features.AlgorithmVersion,
+		Encoding:         features.Encoding,
+		Data:             encoded,
+	})
 }
 
 // PersistFailure records a durable terminal failure so a poison source is not

@@ -2085,6 +2085,11 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	} else {
 		scoreCtx.EffectiveBPM = measuredBPM
 	}
+	if measuredEnergy, measuredErr := a.measuredEnergyForDJ(); measuredErr != nil {
+		logger.API("DJ Mode: failed to load measured energy; using tag fallback: %v", measuredErr)
+	} else {
+		scoreCtx.EffectiveEnergy = measuredEnergy
+	}
 
 	// Create the sequencer
 	sequencer := dj.NewSequencer()

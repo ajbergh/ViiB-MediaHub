@@ -139,6 +139,10 @@ type ScoreContext struct {
 	// entries deliberately fall back to the legacy metadata score path.
 	EffectiveBPM map[string]int
 
+	// EffectiveEnergy carries the mean of the shared measured energy curve on a
+	// 0..1 scale.  Missing entries deliberately retain the legacy tag path.
+	EffectiveEnergy map[string]float64
+
 	// User preference settings
 	DiscoverMode   string // "balanced", "discover", "favorites"
 	FlowStrictness int    // 0-100
@@ -165,6 +169,7 @@ func NewScoreContext() *ScoreContext {
 		GenreCompletionRate: make(map[string]float64),
 		SemanticScores:      make(map[string]float64),
 		EffectiveBPM:        make(map[string]int),
+		EffectiveEnergy:     make(map[string]float64),
 		CurrentTime:         time.Now(),
 		DiscoverMode:        "balanced",
 		FlowStrictness:      60,
