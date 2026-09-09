@@ -32,6 +32,7 @@ func (a *API) V2Routes() chi.Router {
 	r.Get("/analysis/{songID}", a.getTrackAnalysisFeatureV2)
 	r.Get("/analysis/{songID}/beatgrid", a.getBeatGridV2)
 	r.Put("/analysis/{songID}/beatgrid", a.putBeatGridV2)
+	r.Delete("/analysis/{songID}/beatgrid", a.resetBeatGridV2)
 	r.Get("/analysis/{songID}/energy", a.getEnergyFeaturesV2)
 	return r
 }

@@ -298,12 +298,16 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
             api.getTrackBeatGrid(track.id).catch(() => null),
           ]);
           if (!isTrackStillLoaded()) return { hasBPM: true, hasKey: true };
-          const patch: { bpm?: number; key?: string; beatGrid?: number[] } = {};
+          const patch: { bpm?: number; key?: string; beatGrid?: number[]; downbeatIndices?: number[]; beatGridLocked?: boolean } = {};
           if (typeof feature.bpm === 'number') {
             const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
             const duration = deckState.duration || track.duration || 0;
             patch.bpm = feature.bpm;
             patch.beatGrid = grid?.beats ?? (duration > 0 ? generateBeatGrid(feature.bpm, duration) : []);
+            if (grid) {
+              patch.downbeatIndices = grid.downbeatIndices;
+              patch.beatGridLocked = grid.locked;
+            }
           }
           if (feature.key) patch.key = feature.key;
           if (Object.keys(patch).length > 0) setDeckAnalysis(deck, patch);
@@ -1083,12 +1087,16 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
           api.getTrackBeatGrid(track.id).catch(() => null),
         ]);
         if (!isTrackStillLoaded()) return { hasBPM: true, hasKey: true };
-        const patch: { bpm?: number; key?: string; beatGrid?: number[] } = {};
+        const patch: { bpm?: number; key?: string; beatGrid?: number[]; downbeatIndices?: number[]; beatGridLocked?: boolean } = {};
         if (typeof feature.bpm === 'number') {
           const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
           const duration = ds.duration || track.duration || 0;
           patch.bpm = feature.bpm;
           patch.beatGrid = grid?.beats ?? (duration > 0 ? generateBeatGrid(feature.bpm, duration) : []);
+          if (grid) {
+            patch.downbeatIndices = grid.downbeatIndices;
+            patch.beatGridLocked = grid.locked;
+          }
         }
         if (feature.key) patch.key = feature.key;
         if (Object.keys(patch).length > 0) useStore.getState().setDeckAnalysis(deck, patch);
