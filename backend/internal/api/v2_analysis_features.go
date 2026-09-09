@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
@@ -61,6 +62,24 @@ type EnergyFeaturesResponse struct {
 	Sections         []features.Section       `json:"sections"`
 	CueSuggestions   []features.CueSuggestion `json:"cueSuggestions"`
 	AlgorithmVersion string                   `json:"algorithmVersion"`
+}
+
+// TransitionRecommendationResponse is an explicitly explainable, local
+// candidate for the track currently leaving a deck.  It is advisory only;
+// callers retain full control over cue and track selection.
+type TransitionRecommendationResponse struct {
+	SongID     string                         `json:"songId"`
+	Title      string                         `json:"title"`
+	Artist     string                         `json:"artist"`
+	Score      float64                        `json:"score"`
+	Vector     features.TransitionVector      `json:"vector"`
+	Components []features.TransitionComponent `json:"components"`
+}
+
+type TransitionRecommendationsResponse struct {
+	SongID           string                             `json:"songId"`
+	AlgorithmVersion string                             `json:"algorithmVersion"`
+	Recommendations  []TransitionRecommendationResponse `json:"recommendations"`
 }
 
 func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) {
@@ -246,6 +265,69 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, EnergyFeaturesResponse{SongID: songID, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: result.Energy, Sections: result.Sections, CueSuggestions: result.CueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion})
+}
+
+// getTransitionRecommendationsV2 ranks only locally analyzed tracks.  It
+// never fabricates features for an unmeasured candidate and returns every
+// score component so the UI can present a useful reason rather than a black
+// box number.
+func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	sourceArtifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(w, http.StatusNotFound, "energy features not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	source, err := features.Decode(sourceArtifact.Data)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	artifacts, err := a.db.ListTrackAnalysisArtifacts(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	songs, err := a.db.GetAllSongs()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	songByID := make(map[string]db.Song, len(songs))
+	for _, song := range songs {
+		songByID[song.ID] = song
+	}
+	recommendations := make([]TransitionRecommendationResponse, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		if artifact.SongID == songID {
+			continue
+		}
+		candidate, err := features.Decode(artifact.Data)
+		if err != nil {
+			continue // a corrupt candidate must not make the deck unavailable
+		}
+		song, exists := songByID[artifact.SongID]
+		if !exists {
+			continue
+		}
+		score := features.ScoreTransition(source, candidate)
+		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Vector: score.Vector, Components: score.Components})
+	}
+	sort.Slice(recommendations, func(i, j int) bool {
+		if recommendations[i].Score == recommendations[j].Score {
+			return recommendations[i].SongID < recommendations[j].SongID
+		}
+		return recommendations[i].Score > recommendations[j].Score
+	})
+	limit := parseBoundedInt(r.URL.Query().Get("limit"), 10, 50)
+	if len(recommendations) > limit {
+		recommendations = recommendations[:limit]
+	}
+	respondJSON(w, TransitionRecommendationsResponse{SongID: songID, AlgorithmVersion: features.AlgorithmVersion, Recommendations: recommendations})
 }
 
 // measuredEnergyForDJ returns the same persisted curve summary exposed to the

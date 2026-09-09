@@ -34,6 +34,7 @@ func (a *API) V2Routes() chi.Router {
 	r.Put("/analysis/{songID}/beatgrid", a.putBeatGridV2)
 	r.Delete("/analysis/{songID}/beatgrid", a.resetBeatGridV2)
 	r.Get("/analysis/{songID}/energy", a.getEnergyFeaturesV2)
+	r.Get("/analysis/{songID}/recommendations", a.getTransitionRecommendationsV2)
 	return r
 }
 
