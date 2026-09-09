@@ -144,6 +144,19 @@ export interface TrackBeatGridUpdate {
   locked: boolean;
 }
 
+export interface EnergyPoint { time: number; value: number; }
+export interface EnergySection { start: number; end: number; energy: number; }
+export interface CueSuggestion { position: number; kind: 'mix-in' | 'mix-out' | 'section'; confidence: number; rationale: string; }
+export interface TrackEnergyFeatures {
+  songId: string;
+  integratedLufs: number;
+  truePeakDbfs: number;
+  energy: EnergyPoint[];
+  sections: EnergySection[];
+  cueSuggestions: CueSuggestion[];
+  algorithmVersion: string;
+}
+
 export interface DuplicateSong extends ApiSong {
   sourcePath?: string;
 }
@@ -1438,6 +1451,11 @@ export const api = {
   async resetTrackBeatGrid(trackId: string): Promise<void> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { method: 'DELETE' });
     if (!response.ok) await handleResponse(response);
+  },
+
+  async getTrackEnergyFeatures(trackId: string): Promise<TrackEnergyFeatures> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/energy`, { cache: 'no-store' });
+    return handleResponse<TrackEnergyFeatures>(response);
   },
 
   /**
