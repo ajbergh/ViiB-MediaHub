@@ -54,12 +54,13 @@ type BeatGridUpdate struct {
 // producing version, so clients can render an explainable curve without
 // inferring energy from an LLM tag.
 type EnergyFeaturesResponse struct {
-	SongID           string                 `json:"songId"`
-	IntegratedLUFS   float64                `json:"integratedLufs"`
-	TruePeakDBFS     float64                `json:"truePeakDbfs"`
-	Energy           []features.EnergyPoint `json:"energy"`
-	Sections         []features.Section     `json:"sections"`
-	AlgorithmVersion string                 `json:"algorithmVersion"`
+	SongID           string                   `json:"songId"`
+	IntegratedLUFS   float64                  `json:"integratedLufs"`
+	TruePeakDBFS     float64                  `json:"truePeakDbfs"`
+	Energy           []features.EnergyPoint   `json:"energy"`
+	Sections         []features.Section       `json:"sections"`
+	CueSuggestions   []features.CueSuggestion `json:"cueSuggestions"`
+	AlgorithmVersion string                   `json:"algorithmVersion"`
 }
 
 func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +245,7 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, EnergyFeaturesResponse{SongID: songID, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: result.Energy, Sections: result.Sections, AlgorithmVersion: artifact.AlgorithmVersion})
+	respondJSON(w, EnergyFeaturesResponse{SongID: songID, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: result.Energy, Sections: result.Sections, CueSuggestions: result.CueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion})
 }
 
 // measuredEnergyForDJ returns the same persisted curve summary exposed to the
