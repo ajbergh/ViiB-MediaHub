@@ -91,7 +91,16 @@ export const cssUrl = (url: string): string => {
  * Wails uses 'wails.localhost' as the hostname for the WebView.
  */
 export const isWailsEnvironment = (): boolean => {
-  return window.location.hostname === 'wails.localhost';
+  const wailsWindow = window as Window & {
+    runtime?: { BrowserOpenURL?: (url: string) => void };
+    go?: unknown;
+  };
+
+  return window.location.hostname === 'wails.localhost'
+    || window.location.hostname === 'wails'
+    || window.location.protocol === 'wails:'
+    || typeof wailsWindow.runtime?.BrowserOpenURL === 'function'
+    || typeof wailsWindow.go !== 'undefined';
 };
 
 /**

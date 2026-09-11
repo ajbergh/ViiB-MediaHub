@@ -382,24 +382,24 @@ export const Spotify: React.FC = () => {
             return;
         }
 
-        // Get the proper callback URL (handles Wails environment)
-        const redirectUri = await getOAuthCallbackUrl();
+        try {
+            // Get the proper callback URL (handles Wails environment)
+            const redirectUri = await getOAuthCallbackUrl();
         
-        // For standard web builds on localhost, prompt user to use 127.0.0.1
-        if (!isWailsEnvironment() && window.location.hostname === 'localhost') {
-            alert("Please access this app via http://127.0.0.1:3000 instead of localhost to comply with Spotify's new security requirements.");
-            window.location.href = window.location.href.replace('localhost', '127.0.0.1');
-            return;
-        }
+            // For standard web builds on localhost, prompt user to use 127.0.0.1
+            if (!isWailsEnvironment() && window.location.hostname === 'localhost') {
+                alert("Please access this app via http://127.0.0.1:3000 instead of localhost to comply with Spotify's new security requirements.");
+                window.location.href = window.location.href.replace('localhost', '127.0.0.1');
+                return;
+            }
 
-        addLog('info', 'Initiating Spotify Login', { redirectUri, clientId: spotifyClientId });
+            addLog('info', 'Initiating Spotify Login', { redirectUri, clientId: spotifyClientId });
 
-        const { url, codeVerifier, state } = await SpotifyService.generateAuthUrl(spotifyClientId, redirectUri);
+            const { url, codeVerifier, state } = await SpotifyService.generateAuthUrl(spotifyClientId, redirectUri);
 
-        // For Wails builds, save credentials to backend BEFORE opening popup
-        // This allows the cross-origin popup to fetch them
-        if (isWailsEnvironment()) {
-            try {
+            // For Wails builds, save credentials to backend BEFORE opening the
+            // system browser. The loopback callback uses this OAuth context.
+            if (isWailsEnvironment()) {
                 const preSaveData = {
                     clientId: spotifyClientId,
                     clientSecret: '',
@@ -411,38 +411,40 @@ export const Spotify: React.FC = () => {
                     redirectUri
                 };
                 await api.saveSpotifyCredentials(preSaveData);
-                console.log('[Spotify] Pre-saved credentials and verifier to backend for popup');
-            } catch (e) {
-                console.error('[Spotify] Failed to pre-save credentials:', e);
-                addLog('error', 'Failed to save credentials');
+                console.log('[Spotify] Pre-saved credentials and verifier to backend for browser callback');
+            }
+
+            // Store verifier for the callback
+            localStorage.setItem('spotify_code_verifier', codeVerifier);
+            localStorage.setItem('spotify_oauth_state', state);
+            // Also store the redirect URI for the callback to use
+            localStorage.setItem('spotify_redirect_uri', redirectUri);
+
+            addLog('info', 'Opening Spotify authorization', { url });
+
+            // Start polling for auth completion (for Wails)
+            if (isWailsEnvironment()) {
+                setIsWaitingForAuth(true);
+            }
+
+            if (isWailsEnvironment()) {
+                await openExternalURL(url);
                 return;
             }
+
+            // Browser builds retain popup-based authorization.
+            const width = 600;
+            const height = 800;
+            const left = window.screen.width / 2 - width / 2;
+            const top = window.screen.height / 2 - height / 2;
+            window.open(url, 'Spotify Auth', `width=${width},height=${height},left=${left},top=${top}`);
+        } catch (error) {
+            setIsWaitingForAuth(false);
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            console.error('[Spotify] Failed to start authorization:', error);
+            addLog('error', 'Failed to start Spotify authorization', { error: message });
+            showToast({ type: 'error', message: `Could not open Spotify login: ${message}` });
         }
-
-        // Store verifier for the callback
-        localStorage.setItem('spotify_code_verifier', codeVerifier);
-        localStorage.setItem('spotify_oauth_state', state);
-        // Also store the redirect URI for the callback to use
-        localStorage.setItem('spotify_redirect_uri', redirectUri);
-
-        addLog('info', 'Opening Spotify Auth Popup', { url });
-
-        // Start polling for auth completion (for Wails)
-        if (isWailsEnvironment()) {
-            setIsWaitingForAuth(true);
-        }
-
-        if (isWailsEnvironment()) {
-            await openExternalURL(url);
-            return;
-        }
-
-        // Browser builds retain popup-based authorization.
-        const width = 600;
-        const height = 800;
-        const left = window.screen.width / 2 - width / 2;
-        const top = window.screen.height / 2 - height / 2;
-        window.open(url, 'Spotify Auth', `width=${width},height=${height},left=${left},top=${top}`);
     };
 
     const handleLogout = () => {

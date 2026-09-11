@@ -2,15 +2,30 @@
 
 export interface NavigationRuntime {
   hostname: string;
+  protocol?: string;
+  hasWailsBridge?: boolean;
 }
 
 function getRuntime(): NavigationRuntime | null {
   if (typeof window === 'undefined') return null;
-  return { hostname: window.location.hostname };
+  const wailsWindow = window as Window & {
+    runtime?: { BrowserOpenURL?: (url: string) => void };
+    go?: unknown;
+  };
+
+  return {
+    hostname: window.location.hostname,
+    protocol: window.location.protocol,
+    hasWailsBridge: typeof wailsWindow.runtime?.BrowserOpenURL === 'function'
+      || typeof wailsWindow.go !== 'undefined',
+  };
 }
 
 export function shouldUseSystemBrowser(runtime: NavigationRuntime | null = getRuntime()): boolean {
-  return runtime?.hostname === 'wails.localhost';
+  return runtime?.hostname === 'wails.localhost'
+    || runtime?.hostname === 'wails'
+    || runtime?.protocol === 'wails:'
+    || runtime?.hasWailsBridge === true;
 }
 
 /**
@@ -24,7 +39,8 @@ export async function openExternalURL(url: string): Promise<void> {
       BrowserOpenURL(url);
       return;
     } catch (error) {
-      console.warn('[ExternalNavigation] Wails system-browser request failed', error);
+      console.error('[ExternalNavigation] Wails system-browser request failed', error);
+      throw new Error('The system browser could not be opened.', { cause: error });
     }
   }
 
