@@ -14,6 +14,10 @@ export function GetVersion() {
   return window['go']['main']['App']['GetVersion']();
 }
 
+export function SaveSupportBundle() {
+  return window['go']['main']['App']['SaveSupportBundle']();
+}
+
 export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
 }

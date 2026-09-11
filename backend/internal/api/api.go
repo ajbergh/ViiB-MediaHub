@@ -211,6 +211,7 @@ func (a *API) Routes() chi.Router {
 
 	// System
 	r.Get("/health", a.healthCheck)
+	r.Get("/support-bundle", a.downloadSupportBundle)
 	r.Post("/browse", a.browseFolder)
 	r.Get("/settings/{key}", a.getSetting)
 	r.Post("/settings/{key}", a.setSetting)

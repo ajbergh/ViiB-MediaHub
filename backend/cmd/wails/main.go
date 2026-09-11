@@ -76,15 +76,17 @@ type App struct {
 	serverURL string
 	dataDir   string
 	database  *db.DB
+	api       *api.API
 	quitChan  chan struct{} // Channel to signal app quit from systray
 }
 
 // NewApp creates a new App instance with the given configuration.
-func NewApp(serverURL, dataDir string, database *db.DB, quitChan chan struct{}) *App {
+func NewApp(serverURL, dataDir string, database *db.DB, apiHandler *api.API, quitChan chan struct{}) *App {
 	return &App{
 		serverURL: serverURL,
 		dataDir:   dataDir,
 		database:  database,
+		api:       apiHandler,
 		quitChan:  quitChan,
 	}
 }
@@ -135,6 +137,30 @@ func (a *App) GetVersion() string {
 // GetDataDir returns the application data directory path.
 func (a *App) GetDataDir() string {
 	return a.dataDir
+}
+
+// SaveSupportBundle prompts for a destination and writes a sanitized support
+// archive there. An empty path means the user cancelled the save dialog.
+func (a *App) SaveSupportBundle() (string, error) {
+	data, filename, err := a.api.CreateSupportBundle()
+	if err != nil {
+		return "", err
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save ViiB Support Bundle",
+		DefaultFilename: filename,
+		Filters: []runtime.FileFilter{{
+			DisplayName: "ZIP archive (*.zip)",
+			Pattern:     "*.zip",
+		}},
+	})
+	if err != nil || path == "" {
+		return path, err
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return "", fmt.Errorf("save support bundle: %w", err)
+	}
+	return path, nil
 }
 
 // createAPIProxyHandler creates an http.Handler that proxies /api requests
@@ -265,7 +291,7 @@ func main() {
 	}
 
 	// Create app instance for Wails bindings
-	app := NewApp(serverURL, *dataDir, database, quitChan)
+	app := NewApp(serverURL, *dataDir, database, apiHandler, quitChan)
 
 	// Create API proxy handler for Wails AssetServer
 	// This routes /api/* requests to the HTTP server while letting

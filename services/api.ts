@@ -545,6 +545,15 @@ export const api = {
     return response.blob();
   },
 
+  async downloadSupportBundle(): Promise<Blob> {
+    const response = await fetch(`${API_BASE}/support-bundle`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    return response.blob();
+  },
+
   // Scanning
   async startScan(): Promise<void> {
     const response = await fetch(`${API_BASE}/scan`, { method: 'POST' });

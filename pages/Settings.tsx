@@ -37,7 +37,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router';
-import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker, Copy, ShieldCheck, Wrench } from 'lucide-react';
+import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker, Copy, ShieldCheck, Wrench, FileArchive } from 'lucide-react';
 import { useStore } from '../store';
 import { HomeLayoutVariant, VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
@@ -45,7 +45,7 @@ import { api } from '../services/api';
 import { Button } from '../components/ui/Button';
 import { Page } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
-import { SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
+import { isWailsEnvironment, SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
 import { LibraryMonitoringPanel, LibraryOperationsPanel } from './LibraryOperations';
 
 const HOME_LAYOUT_OPTIONS: Array<{
@@ -293,6 +293,8 @@ export const Settings: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [supportBundleStatus, setSupportBundleStatus] = useState<'idle' | 'working' | 'success' | 'error'>('idle');
+  const [supportBundleMessage, setSupportBundleMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Folder browser state
@@ -547,6 +549,45 @@ export const Settings: React.FC = () => {
   const initialTab = (location.state as { tab?: SettingsTab } | null)?.tab || 'library';
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const isBrowserRuntime = typeof window !== 'undefined' && /^https?:$/.test(window.location.protocol);
+
+  const createSupportBundle = async () => {
+    try {
+      setSupportBundleStatus('working');
+      setSupportBundleMessage('');
+
+      if (isWailsEnvironment()) {
+        const { SaveSupportBundle } = await import('../backend/cmd/wails/frontend/wailsjs/go/main/App');
+        const path = await SaveSupportBundle();
+        if (!path) {
+          setSupportBundleStatus('idle');
+          return;
+        }
+        setSupportBundleStatus('success');
+        setSupportBundleMessage(`Support bundle saved to ${path}`);
+        addLog('success', 'Support bundle created');
+        return;
+      }
+
+      const blob = await api.downloadSupportBundle();
+      const objectURL = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectURL;
+      link.download = `viib-support-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectURL);
+      setSupportBundleStatus('success');
+      setSupportBundleMessage('Support bundle downloaded.');
+      addLog('success', 'Support bundle created');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Failed to create support bundle:', error);
+      setSupportBundleStatus('error');
+      setSupportBundleMessage(`Could not create support bundle: ${message}`);
+      addLog('error', 'Failed to create support bundle', { error: message });
+    }
+  };
 
   useEffect(() => {
     const tabFromState = (location.state as { tab?: SettingsTab } | null)?.tab;
@@ -3031,6 +3072,36 @@ export const Settings: React.FC = () => {
                 <FolderOpen size={18} className="text-brand" />
               </div>
             </div>
+          </section>
+
+          {/* Support Bundle */}
+          <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
+            <div className="flex items-center gap-3 mb-3 text-brand">
+              <FileArchive size={20} />
+              <h2 className="text-lg font-bold text-text-main">Support Bundle</h2>
+            </div>
+            <p className="text-sm text-text-subtle mb-4">
+              Create a ZIP file to email to the developer when reporting an error. It contains version and platform diagnostics plus a size-limited, sanitized application log.
+            </p>
+            <div className="rounded-lg bg-surface-1 border border-surface-border p-4 mb-4 text-xs text-text-subtle space-y-1">
+              <p className="font-bold text-text-main">Privacy</p>
+              <p>The bundle excludes your media database, music, artwork, playlists, scan-folder list, and credential values. Logs are scrubbed for secrets and local paths; you can review the ZIP before sending it.</p>
+            </div>
+            <Button
+              variant="primary"
+              onClick={createSupportBundle}
+              disabled={!backendAvailable || supportBundleStatus === 'working'}
+              leftIcon={supportBundleStatus === 'working' ? <Loader2 size={16} className="animate-spin" /> : <FileArchive size={16} />}
+              className="text-sm font-bold"
+            >
+              {supportBundleStatus === 'working' ? 'Creating Bundle...' : 'Create Support Bundle'}
+            </Button>
+            {!backendAvailable && <p className="mt-3 text-xs text-warning">The Go backend must be connected to create a support bundle.</p>}
+            {supportBundleMessage && (
+              <p className={`mt-3 text-xs break-all ${supportBundleStatus === 'error' ? 'text-error' : 'text-success'}`}>
+                {supportBundleMessage}
+              </p>
+            )}
           </section>
 
           {/* Debug Console */}
