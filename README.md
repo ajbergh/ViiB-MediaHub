@@ -377,3 +377,5 @@ MIT
 ## Contributing
 
 Contributions are welcome. Please open an issue or pull request and keep changes aligned with the existing source-transparent catalog and playback architecture.
+
+Song BPM and key data provided by [GetSongBPM](https://getsongbpm.com/).
