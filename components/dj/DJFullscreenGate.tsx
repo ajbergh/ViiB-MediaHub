@@ -1,23 +1,23 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Maximize2, ArrowLeft, Monitor } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { useIsDJ1080p } from '../../hooks/useMediaQuery';
+import { useIsDJReady } from '../../hooks/useMediaQuery';
 
 interface DJFullscreenGateProps {
   children: React.ReactNode;
 }
 
 /**
- * Wraps DJ Mode v2 content. When the viewport is below 1920×1080 AND
- * the document is not in fullscreen, renders an informational overlay
- * offering the user the option to enter fullscreen or continue anyway.
+ * Wraps DJ Mode v2 content. The scalable canvas supports every viewport at
+ * or above the DJ width floor, so the informational overlay is only relevant
+ * below that supported minimum.
  *
  * The gate is skipped entirely once the user dismisses it for the session
  * or after entering fullscreen.
  */
 export const DJFullscreenGate: React.FC<DJFullscreenGateProps> = ({ children }) => {
   const navigate = useNavigate();
-  const ready = useIsDJ1080p();
+  const ready = useIsDJReady();
   const [dismissed, setDismissed] = useState(ready);
   // Once admitted, resizing must not replace the mounted performance tree.
   useEffect(() => { if (ready) setDismissed(true); }, [ready]);
@@ -57,13 +57,13 @@ export const DJFullscreenGate: React.FC<DJFullscreenGateProps> = ({ children }) 
 
         {/* Heading */}
         <h1 id="djgate-title" className="text-2xl font-bold text-text-main">
-          DJ Mode v2 works best at 1080p
+          DJ Mode v2 needs a wider viewport
         </h1>
 
         {/* Description */}
         <p id="djgate-desc" className="text-sm text-text-secondary leading-relaxed max-w-sm">
-          This panel is designed for a{' '}
-          <strong className="text-text-main">1920 × 1080</strong> (Full HD) canvas.
+          This panel needs at least a{' '}
+          <strong className="text-text-main">1440px</strong>-wide viewport.
           Your current viewport is{' '}
           <strong className="text-text-main">{viewportW} × {viewportH}</strong>.
           Enter fullscreen to unlock the full experience, or continue in the current
@@ -73,7 +73,7 @@ export const DJFullscreenGate: React.FC<DJFullscreenGateProps> = ({ children }) 
         {/* Resolution chips */}
         <div className="flex gap-2 text-xs text-text-subtle">
           <span className="px-2 py-1 bg-surface-2 rounded">Current: {viewportW}×{viewportH}</span>
-          <span className="px-2 py-1 bg-surface-2 rounded">Target: 1920×1080</span>
+          <span className="px-2 py-1 bg-surface-2 rounded">Minimum width: 1440px</span>
         </div>
 
         {/* Primary CTA */}

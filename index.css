@@ -83,6 +83,20 @@
   --dj-fx-h:       clamp(230px, 25vh, 300px);
 }
 
+/* DJv2 is a fixed-ratio design canvas. Its parent applies one scale factor,
+   so these reference dimensions must not depend on the physical viewport. */
+[data-dj-canvas] {
+  --dj-mixer-w: 422px;
+}
+[data-dj-canvas][data-dj-mode="perf"],
+[data-dj-canvas][data-dj-mode="browse"] {
+  --dj-waveform-h: 194px;
+}
+[data-dj-canvas][data-dj-mode="fx"] {
+  --dj-waveform-h: 180px;
+  --dj-fx-h: 270px;
+}
+
 /* Shared focus ring used across DJ V2 controls */
 .dj-focus-ring {
   outline: none;

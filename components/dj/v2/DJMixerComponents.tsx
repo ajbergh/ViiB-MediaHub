@@ -51,9 +51,6 @@ export const DJChannelStrip = React.memo<DJChannelStripProps>(({
 
   return (
     <div className='flex-1 flex flex-col items-center py-1 gap-2 min-w-[90px] min-h-0 border-[#2a2a2a]'>
-      {/* Spacer — pushes fader towards bottom */}
-      <div className='flex-1' />
-
       {/* Headphone Cue button */}
       <div className='mb-2'>
         <DJCueButton deck={deckId} />

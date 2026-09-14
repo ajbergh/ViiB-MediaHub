@@ -30,6 +30,37 @@ const drawer = page.getByRole('region', { name: 'DJ library' });
 const search = page.getByRole('textbox', { name: 'Search DJ library' });
 const geometry = () => page.locator('[data-dj-workspace], [data-dj-workspace] > div').evaluateAll(elements =>
   elements.map(el => el.getBoundingClientRect().toJSON()));
+const layoutMetrics = () => page.evaluate(() => {
+  const rect = element => element.getBoundingClientRect();
+  const canvas = document.querySelector('[data-dj-canvas]');
+  const viewport = canvas.parentElement;
+  const workspace = document.querySelector('[data-dj-workspace]');
+  const [deckA, mixer, deckB] = workspace.querySelectorAll(':scope > .dj-deck, :scope > .dj-mixer');
+  const canvasRect = rect(canvas);
+  const scale = canvasRect.width / canvas.clientWidth;
+  const normalize = element => {
+    const box = rect(element);
+    return { x: (box.x - canvasRect.x) / scale, y: (box.y - canvasRect.y) / scale, width: box.width / scale, height: box.height / scale };
+  };
+
+  return {
+    scale,
+    canvas: rect(canvas).toJSON(),
+    viewport: rect(viewport).toJSON(),
+    workspace: {
+      clientWidth: workspace.clientWidth,
+      clientHeight: workspace.clientHeight,
+      scrollWidth: workspace.scrollWidth,
+      scrollHeight: workspace.scrollHeight,
+    },
+    normalized: {
+      workspace: normalize(workspace),
+      deckA: normalize(deckA),
+      mixer: normalize(mixer),
+      deckB: normalize(deckB),
+    },
+  };
+});
 const deckState = () => page.evaluate(async () => {
   const useStore = window.__djAuditStore;
   const s = useStore.getState();
@@ -47,10 +78,35 @@ try {
     window.__djAuditStore = (await import(storeUrl)).useStore;
   });
   await page.waitForFunction(() => window.__djAuditStore.getState().songs.length === 12000);
-  for (const [width, height] of [[1920,1080], [2560,1440], [1840,960], [1600,900], [1440,900]]) {
+  let referenceLayout;
+  for (const [width, height] of [[1470,825], [1920,1080], [2560,1440], [3840,2160]]) {
     await page.setViewportSize({ width, height });
+    await page.waitForFunction(({ canvasWidth, canvasHeight }) => {
+      const canvas = document.querySelector('[data-dj-canvas]');
+      const viewport = canvas?.parentElement;
+      if (!canvas || !viewport) return false;
+      const canvasRect = canvas.getBoundingClientRect();
+      const viewportRect = viewport.getBoundingClientRect();
+      const expectedScale = Math.min(viewportRect.width / canvasWidth, viewportRect.height / canvasHeight);
+      return Math.abs(canvasRect.width / canvasWidth - expectedScale) < 0.001;
+    }, { canvasWidth: 1856, canvasHeight: 1090 });
     await settle();
     const before = await geometry();
+    const layout = await layoutMetrics();
+    assert.ok(layout.workspace.scrollWidth <= layout.workspace.clientWidth + 1, `${width}×${height} workspace has horizontal overflow`);
+    assert.ok(layout.workspace.scrollHeight <= layout.workspace.clientHeight + 1, `${width}×${height} workspace has vertical overflow: ${JSON.stringify(layout)}`);
+    assert.ok(layout.canvas.right <= layout.viewport.right + 1, `${width}×${height} canvas is cut off on the right`);
+    assert.ok(layout.canvas.bottom <= layout.viewport.bottom + 1, `${width}×${height} canvas is cut off at the bottom`);
+    if (referenceLayout) {
+      for (const key of Object.keys(referenceLayout)) {
+        for (const dimension of ['x', 'y', 'width', 'height']) {
+          assert.ok(Math.abs(layout.normalized[key][dimension] - referenceLayout[key][dimension]) < 1,
+            `${width}×${height} changes normalized ${key}.${dimension}`);
+        }
+      }
+    } else {
+      referenceLayout = layout.normalized;
+    }
     const state = await deckState();
     await page.screenshot({ path: `${output}/${width}x${height}-closed.png` });
     await page.getByRole('button', { name: 'Library /', exact: true }).click();
@@ -66,7 +122,7 @@ try {
     await search.press('Escape');
     assert.equal(await drawer.isVisible(), false);
     assert.deepEqual(await geometry(), before, 'closing moves workspace');
-    results.push({ width, height, geometry: before, renderedRows: rows, displacement: 0 });
+    results.push({ width, height, geometry: before, layout, renderedRows: rows, displacement: 0 });
   }
   await page.keyboard.press('/'); await search.waitFor();
   await search.fill('Audit Track 00001');
@@ -130,7 +186,7 @@ try {
   await page.waitForFunction(() => !document.fullscreenElement);
   await page.setViewportSize({ width: 1439, height: 900 });
   await page.getByRole('heading', { name: /needs a wider screen/ }).waitFor();
-  console.log(`PASS${disableWebGL ? ' (Canvas fallback)' : ''}: 5 desktop geometries, 12,000-track virtualization, focus/Escape/modal priority, typing, sort/playlist/columns, A/B loading + drag, playback continuity, fullscreen, width gate`);
+  console.log(`PASS${disableWebGL ? ' (Canvas fallback)' : ''}: 4 proportional desktop geometries, 12,000-track virtualization, focus/Escape/modal priority, typing, sort/playlist/columns, A/B loading + drag, playback continuity, fullscreen, width gate`);
   await writeFile(`${output}/results.json`, JSON.stringify(results, null, 2));
 } catch (error) {
   await page.screenshot({ path: `${output}/failure.png` });

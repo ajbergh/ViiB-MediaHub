@@ -36,7 +36,7 @@ The interface provides two decks, waveform/analysis surfaces, a central mixer, a
 
 The Deck A → Mixer → Deck B workspace keeps the same geometry when the library opens or closes. The centered **Library** button stays at the bottom of DJ Mode. **Browse** opens the same overlay; it shares Performance's waveform sizing so browsing does not shrink the decks. FX remains a separate layout choice.
 
-1920×1080 is the preferred viewport; the mixer and jog wheels have capped sizes at larger resolutions. At constrained desktop heights, the performance area scrolls to keep controls reachable instead of clipping EQ or collapsing the mixer. Track headers reserve separate rows for titles and performance metadata. Below 1440px wide, the existing unsupported-width screen remains. The fullscreen recommendation is dismissed once the session is admitted, so later resizing above the width floor does not replace the running performance tree.
+DJv2 uses one proportionally scaled design canvas, with 1470×825 as its minimum supported viewport. This preserves every control's dimensions and spacing relationship at 1080p, 1440p, and 4K without clipping or an internally scrolling workstation. Track headers reserve separate rows for titles and performance metadata. Below 1440px wide, the existing unsupported-width screen remains.
 
 ---
 

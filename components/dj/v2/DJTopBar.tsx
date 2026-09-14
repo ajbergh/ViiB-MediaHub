@@ -71,7 +71,7 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
   onViewModeChange,
   isRecording = false,
   onRecordToggle,
-  layoutMode = 'perf',
+  layoutMode = 'fx',
   onLayoutModeChange,
 }) => {
   // Granular selectors - avoid subscribing to position/volume/eq changes
