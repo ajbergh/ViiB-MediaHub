@@ -15,7 +15,6 @@
 import { useStore } from '../store';
 import type { BeatFXTarget, BeatFXType, BeatFraction, DeckId, DeckState } from '../slices/djMixerSlice';
 import type { Song } from '../types';
-import { vinylMomentum } from './vinylMomentum';
 
 // Debug flag - set to false for production to reduce console overhead
 const DJ_DEBUG = false;
@@ -955,7 +954,7 @@ export class DJAudioEngine {
   pause(deck: DeckId): void {
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (scratch) scratch.wasPlaying = false;
-    if (this.scratchMomentum[deck] !== undefined) this.endScratch(deck, 0, false);
+    if (scratch?.coasting) this.endScratch(deck, 0, false);
     const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
     if (audioElement) {
       audioElement.pause();
@@ -998,17 +997,30 @@ export class DJAudioEngine {
   private scratchReady: Partial<Record<DeckId, boolean>> = {};
   private scratchLoads: Partial<Record<DeckId, AbortController>> = {};
   private scratchModule: Promise<void> | null = null;
-  private scratchMomentum: Partial<Record<DeckId, number>> = {};
+  private scratchToken = 0;
 
-  private cancelScratchMomentum(deck: DeckId): void {
-    const frame = this.scratchMomentum[deck];
-    if (frame !== undefined) cancelAnimationFrame(frame);
-    delete this.scratchMomentum[deck];
+  canScratch(deck: DeckId): boolean {
+    return !!this.scratchReady[deck] && !!this.scratchNodes[deck];
+  }
+
+  private handleScratchMessage(deck: DeckId, message: { type: string; token?: number; position?: number; time?: number; rate?: number }): void {
+    if (message.type === 'ready') { this.scratchReady[deck] = true; return; }
+    const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
+    if (!scratch || scratch.token !== message.token || !Number.isFinite(message.position)) return;
+    if (message.type === 'held' && scratch.holdBase !== undefined) {
+      scratch.position = Math.max(0, Math.min(this.getDuration(deck), scratch.position + message.position! - scratch.holdBase));
+      delete scratch.holdBase;
+      return;
+    }
+    if (!scratch.coasting) return;
+    const elapsed = Math.max(0, (this.audioContext?.currentTime ?? message.time ?? 0) - (message.time ?? 0));
+    scratch.position = Math.max(0, Math.min(this.getDuration(deck), message.position! + elapsed * (message.rate ?? 0)));
+    if (message.type === 'settled') this.endScratch(deck, 0, true);
   }
 
   getScratchStatus(deck: DeckId): string {
     if (this.scratchReady[deck]) return 'Scratch';
-    return this.scratchLoads[deck] ? 'Preparing scratch…' : 'Scratch unavailable';
+    return this.scratchLoads[deck] || this.scratchNodes[deck] ? 'Preparing scratch…' : 'Scratch unavailable';
   }
 
   private clearScratchAudio(deck: DeckId): void {
@@ -1044,9 +1056,17 @@ export class DJAudioEngine {
       node.port.postMessage({ type: 'load', channels }, channels.map(channel => channel.buffer));
       node.connect((deck === 'A' ? this.gainNodeA : this.gainNodeB)!);
       this.scratchNodes[deck] = node;
-      this.scratchReady[deck] = true;
-      const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
-      if (scratch) node.port.postMessage({ type: 'start', position: scratch.position });
+      node.port.onmessage = event => {
+        if (this.scratchNodes[deck] === node) this.handleScratchMessage(deck, event.data);
+      };
+      node.onprocessorerror = () => {
+        if (this.scratchNodes[deck] !== node) return;
+        this.scratchReady[deck] = false;
+        this.endScratch(deck, 0, true);
+        node.disconnect();
+        node.port.close();
+        delete this.scratchNodes[deck];
+      };
     } catch (error) {
       if (current()) console.warn(`Scratch audio unavailable on Deck ${deck}`, error);
     } finally {
@@ -1055,8 +1075,8 @@ export class DJAudioEngine {
   }
 
   // Track scratch state per deck
-  private scratchStateA: { active: boolean; position: number; wasPlaying: boolean } | null = null;
-  private scratchStateB: { active: boolean; position: number; wasPlaying: boolean } | null = null;
+  private scratchStateA: { active: boolean; position: number; wasPlaying: boolean; coasting: boolean; token: number; holdBase?: number } | null = null;
+  private scratchStateB: { active: boolean; position: number; wasPlaying: boolean; coasting: boolean; token: number; holdBase?: number } | null = null;
 
   // Slip mode: shadow position tracks where playback would be if scratch hadn't happened
   private slipShadowA: { startRealTime: number; startPosition: number; tempo: number } | null = null;
@@ -1067,15 +1087,20 @@ export class DJAudioEngine {
   private autoGainFactorB: number = 1.0;
 
   /** Grab the vinyl: the normal transport stops immediately. */
-  startScratch(deck: DeckId): void {
+  startScratch(deck: DeckId): boolean {
     const audio = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (this.scratchMomentum[deck] !== undefined) {
-      this.cancelScratchMomentum(deck);
-      // Re-grabbing brakes the coast at its current position, retaining slip time.
-      return;
+    if (!audio?.src || !this.canScratch(deck)) return false;
+    const previous = deck === 'A' ? this.scratchStateA : this.scratchStateB;
+    if (previous?.coasting) {
+      previous.coasting = false;
+      previous.holdBase = previous.position;
+      previous.token = ++this.scratchToken;
+      this.scratchNodes[deck]!.port.postMessage({ type: 'hold', token: previous.token });
+      return true;
     }
-    if (!audio?.src || this.isScratching(deck)) return;
-    const scratch = { active: true, position: audio.currentTime, wasPlaying: !audio.paused };
+    if (previous) return false;
+    const scratch = { active: true, position: audio.currentTime, wasPlaying: !audio.paused,
+      coasting: false, token: ++this.scratchToken };
     if (deck === 'A') this.scratchStateA = scratch;
     else this.scratchStateB = scratch;
     const mixer = useStore.getState().djMixer;
@@ -1086,7 +1111,8 @@ export class DJAudioEngine {
     }
     audio.pause();
     void this.audioContext?.resume().catch(() => {});
-    this.scratchNodes[deck]?.port.postMessage({ type: 'start', position: scratch.position });
+    this.scratchNodes[deck]?.port.postMessage({ type: 'start', position: scratch.position, token: scratch.token });
+    return true;
   }
 
   /** Position is controlled solely by the hand; the audio thread smooths signed motion. */
@@ -1095,7 +1121,7 @@ export class DJAudioEngine {
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (!audio || !scratch || !Number.isFinite(deltaTime)) return;
     scratch.position = Math.max(0, Math.min(Number.isFinite(audio.duration) ? audio.duration : 0, scratch.position + deltaTime));
-    this.scratchNodes[deck]?.port.postMessage({ type: 'move', position: scratch.position });
+    this.scratchNodes[deck]?.port.postMessage({ type: 'move', delta: deltaTime });
   }
 
   /** Release returns to the deck transport, preserving paused state and slip time. */
@@ -1103,23 +1129,16 @@ export class DJAudioEngine {
     const audio = deck === 'A' ? this.audioElementA : this.audioElementB;
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (!audio || !scratch) return;
-    this.cancelScratchMomentum(deck);
-    if (resumePlayback && this.scratchReady[deck] && Number.isFinite(finalVelocity) && Math.abs(finalVelocity) > 0.15) {
-      const start = performance.now();
-      let lastDistance = 0;
+    if (resumePlayback && this.canScratch(deck) && Number.isFinite(finalVelocity) && Math.abs(finalVelocity) > 0.15) {
       const state = useStore.getState();
-      const target = scratch.wasPlaying ? (deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo) : 0;
-      const coast = () => {
-        const motion = vinylMomentum(finalVelocity, target, (performance.now() - start) / 1000);
-        this.updateScratch(deck, motion.distance - lastDistance, 0);
-        lastDistance = motion.distance;
-        if (motion.done) {
-          this.endScratch(deck, 0, true);
-        } else {
-          this.scratchMomentum[deck] = requestAnimationFrame(coast);
-        }
-      };
-      this.scratchMomentum[deck] = requestAnimationFrame(coast);
+      scratch.coasting = true;
+      scratch.token = ++this.scratchToken;
+      const shadow = deck === 'A' ? this.slipShadowA : this.slipShadowB;
+      this.scratchNodes[deck]!.port.postMessage({ type: 'coast', token: scratch.token,
+        velocity: Math.max(-8, Math.min(8, finalVelocity)),
+        targetRate: scratch.wasPlaying ? (deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo) : 0,
+        shadowPosition: shadow ? shadow.startPosition + (performance.now() - shadow.startRealTime) / 1000 * shadow.tempo : undefined,
+        shadowRate: shadow?.tempo });
       return;
     }
     this.scratchNodes[deck]?.port.postMessage({ type: 'stop' });

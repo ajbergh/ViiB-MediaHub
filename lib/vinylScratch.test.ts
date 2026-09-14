@@ -59,75 +59,73 @@ function deck(paused: boolean) {
     play: vi.fn(async function () { audio.paused = false; }),
   };
   const port = { postMessage: vi.fn() };
-  Object.assign(engine, { audioElementA: audio, scratchNodes: { A: { port } } });
+  Object.assign(engine, { audioElementA: audio, scratchNodes: { A: { port } }, scratchReady: { A: true } });
   return { engine, audio, port };
 }
 
 describe('scratch deck handoff', () => {
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-  function animationClock() {
-    let now = 0;
-    let nextId = 0;
-    const callbacks = new Map<number, FrameRequestCallback>();
-    vi.spyOn(performance, 'now').mockImplementation(() => now);
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      callbacks.set(++nextId, callback);
-      return nextId;
-    });
-    vi.stubGlobal('cancelAnimationFrame', (id: number) => callbacks.delete(id));
-    return (time: number) => {
-      now = time;
-      const pending = [...callbacks.values()];
-      callbacks.clear();
-      pending.forEach(callback => callback(now));
-    };
+  function message(engine: DJAudioEngine, payload: object) {
+    (engine as unknown as { handleScratchMessage: (deck: string, value: object) => void }).handleScratchMessage('A', payload);
   }
 
-  it.each([-4, 4])('coasts with signed velocity %s and resumes only after settling', velocity => {
-    const tick = animationClock();
+  it('leaves playback untouched until the processor acknowledges readiness', () => {
     const { engine, audio } = deck(false);
-    Object.assign(engine, { scratchReady: { A: true } });
+    Object.assign(engine, { scratchReady: {} });
+    expect(engine.startScratch('A')).toBe(false);
+    expect(audio.pause).not.toHaveBeenCalled();
+    expect(engine.isScratching('A')).toBe(false);
+    message(engine, { type: 'ready' });
+    expect(engine.startScratch('A')).toBe(true);
+    expect(audio.pause).toHaveBeenCalledOnce();
+  });
+
+  it.each([-4, 4])('delegates signed coast %s without scheduling animation frames', velocity => {
+    const raf = vi.fn(() => { throw new Error('Audio must not depend on RAF'); });
+    vi.stubGlobal('requestAnimationFrame', raf);
+    const { engine, audio, port } = deck(false);
     engine.startScratch('A');
     engine.endScratch('A', velocity);
-    tick(50);
-    expect(Math.sign(engine.getPosition('A') - 20)).toBe(Math.sign(velocity));
+    const coast = port.postMessage.mock.calls.at(-1)![0];
+    expect(coast).toMatchObject({ type: 'coast', velocity, targetRate: 1 });
+    message(engine, { type: 'position', token: coast.token, position: 19, time: 1, rate: -1 });
+    expect(engine.getPosition('A')).toBe(19);
     expect(audio.play).not.toHaveBeenCalled();
-    tick(2000);
-    expect(engine.isScratching('A')).toBe(false);
+    message(engine, { type: 'settled', token: coast.token, position: 20, time: 2, rate: 1 });
     expect(audio.play).toHaveBeenCalledOnce();
+    expect(raf).not.toHaveBeenCalled();
   });
 
-  it('re-grabbing cancels momentum, and a paused deck coasts to a stop', () => {
-    const tick = animationClock();
-    const { engine, audio } = deck(true);
-    Object.assign(engine, { scratchReady: { A: true } });
+  it('ignores stale completion after re-grabbing or pausing', () => {
+    const { engine, audio, port } = deck(false);
     engine.startScratch('A');
     engine.endScratch('A', -3);
-    tick(50);
-    engine.startScratch('A');
-    const held = engine.getPosition('A');
-    tick(1000);
-    expect(engine.getPosition('A')).toBe(held);
+    const token = port.postMessage.mock.calls.at(-1)![0].token;
+    expect(engine.startScratch('A')).toBe(true);
+    expect(port.postMessage.mock.calls.at(-1)![0].type).toBe('hold');
+    message(engine, { type: 'settled', token, position: 30, time: 1, rate: 1 });
+    expect(audio.play).not.toHaveBeenCalled();
+    expect(engine.getPosition('A')).toBe(20);
     engine.endScratch('A', 3);
-    tick(3000);
-    expect(engine.getPosition('A')).toBeGreaterThan(held);
+    const nextToken = port.postMessage.mock.calls.at(-1)![0].token;
+    engine.pause('A');
+    message(engine, { type: 'settled', token: nextToken, position: 30, time: 2, rate: 1 });
     expect(audio.play).not.toHaveBeenCalled();
     expect(engine.isScratching('A')).toBe(false);
   });
 
-  it('pause cancels an active coast without a delayed resume', () => {
-    const tick = animationClock();
-    const { engine, audio } = deck(false);
-    Object.assign(engine, { scratchReady: { A: true } });
+  it('keeps a paused deck stopped after audio-thread coast completion', () => {
+    const { engine, audio, port } = deck(true);
     engine.startScratch('A');
-    engine.endScratch('A', 4);
-    tick(50);
-    engine.pause('A');
-    tick(2000);
-    expect(engine.isScratching('A')).toBe(false);
+    engine.endScratch('A', 3);
+    const coast = port.postMessage.mock.calls.at(-1)![0];
+    expect(coast.targetRate).toBe(0);
+    message(engine, { type: 'settled', token: coast.token, position: 21, rate: 0, time: 1 });
+    expect(audio.currentTime).toBe(21);
     expect(audio.play).not.toHaveBeenCalled();
   });
+
   it.each([true, false])('preserves paused=%s and avoids media seeks during dragging', paused => {
     const { engine, audio, port } = deck(paused);
     engine.startScratch('A');
@@ -135,7 +133,7 @@ describe('scratch deck handoff', () => {
     engine.updateScratch('A', -0.5, -1);
     expect(audio.currentTime).toBe(20);
     expect(engine.getPosition('A')).toBe(19.5);
-    expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'move', position: 19.5 });
+    expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'move', delta: -0.5 });
     engine.endScratch('A');
     expect(audio.currentTime).toBe(19.5);
     expect(audio.play).toHaveBeenCalledTimes(paused ? 0 : 1);
@@ -183,5 +181,42 @@ describe('vinyl momentum curve', () => {
   it('settles a paused platter at a fixed distance', () => {
     expect(vinylMomentum(4, 0, 2).distance).toBe(vinylMomentum(4, 0, 10).distance);
     expect(vinylMomentum(-4, 0, 2).distance).toBe(-vinylMomentum(4, 0, 2).distance);
+  });
+});
+
+
+describe('audio-thread momentum', () => {
+  it.each([-4, 4])('renders a complete coast at %s without any main-thread updates', velocity => {
+    const transport = new VinylScratchTransport(48000);
+    const samples = Float32Array.from({ length: 480000 }, (_, i) => Math.sin(i / 20) * 0.5);
+    transport.command({ type: 'load', channels: [samples] });
+    transport.command({ type: 'start', position: 4, token: 1 });
+    transport.command({ type: 'coast', velocity, targetRate: 1, token: 2 });
+    const initial = transport.position;
+    render(transport, 2400);
+    expect(Math.sign(transport.position - initial)).toBe(Math.sign(velocity));
+    // Simulate a blocked UI: no move messages or timers for three seconds.
+    const output = render(transport, 144000)[0];
+    expect(transport.coast?.done).toBe(true);
+    expect(transport.rate).toBeCloseTo(1);
+    expect(output.every(Number.isFinite)).toBe(true);
+    expect(Math.max(...output.slice(-4800).map(Math.abs))).toBeGreaterThan(0.4);
+  });
+
+  it('stops a paused coast and lets a re-grab brake the moving record', () => {
+    const transport = new VinylScratchTransport(48000);
+    transport.command({ type: 'load', channels: [new Float32Array(480000).fill(0.5)] });
+    transport.command({ type: 'start', position: 4, token: 1 });
+    transport.command({ type: 'coast', velocity: -4, targetRate: 0, token: 2 });
+    render(transport, 144000);
+    expect(Math.abs(transport.rate)).toBeLessThan(0.001);
+    expect(Math.max(...render(transport)[0].map(Math.abs))).toBeLessThan(0.001);
+    transport.command({ type: 'coast', velocity: 4, targetRate: 1, token: 3 });
+    render(transport, 2400);
+    transport.command({ type: 'hold', token: 4 });
+    const held = transport.position;
+    render(transport, 24000);
+    expect(transport.position).toBeCloseTo(held);
+    expect(transport.coast).toBeNull();
   });
 });

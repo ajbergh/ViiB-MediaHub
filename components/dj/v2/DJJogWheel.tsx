@@ -11,6 +11,7 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
+import { useScratchAvailability } from '../../../hooks/useScratchAvailability';
 import { getDJAudioEngine } from '../../../lib/djAudio';
 // BPM glow now handled directly in RAF loop (no useBpmGlow hook)
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -50,8 +51,9 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   const tempo = useStore(state => deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo);
   const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
   const duration = useStore(state => deck === 'A' ? state.djDeckA.duration : state.djDeckB.duration);
-  const { startScratch, updateScratch, endScratch } = useDJAudioEngineActions();
+  const { updateScratch, endScratch } = useDJAudioEngineActions();
   
+  const scratchAvailability = useScratchAvailability(deck);
   const bpm = effectiveBpm || originalBpm || 0;
   const tempoPercent = ((tempo - 1) * 100).toFixed(1);
   const tempoDisplay = tempo >= 1 ? `+${tempoPercent}%` : `${tempoPercent}%`;
@@ -247,6 +249,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!track || pointerRef.current !== null || e.button !== 0) return;
+    if (!getDJAudioEngine().startScratch(deck)) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     pointerRef.current = e.pointerId;
@@ -256,8 +259,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
     spindleRef.current = false;
     releaseVelocityRef.current = 0;
     lastMoveTimeRef.current = e.timeStamp;
-    startScratch(deck);
-  }, [deck, track, startScratch]);
+  }, [deck, track]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (pointerRef.current !== e.pointerId || lastAngleRef.current === null) return;
@@ -351,8 +353,10 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   return (
     <div 
       ref={containerRef}
-      className={`relative select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className={`relative select-none ${isDragging ? 'cursor-grabbing' : scratchAvailability.ready ? 'cursor-grab' : 'cursor-default'}`}
       style={{ width: computedSize, height: computedSize, touchAction: 'none' }}
+      title={scratchAvailability.ready ? 'Drag to scratch · Flick to coast' : scratchAvailability.status}
+      aria-label={`Deck ${deck} record: ${scratchAvailability.status}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -563,6 +567,9 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
         />
       </svg>
       
+      {track && !scratchAvailability.ready && <div className="pointer-events-none absolute bottom-2 left-0 w-full text-center text-[10px] text-white/70" role="status">
+        {scratchAvailability.status}
+      </div>}
       {/* Scratch indicator overlay */}
       {isDragging && (
         <div 
