@@ -91,22 +91,27 @@ const SamplerPadButton = memo(({
     <div className="flex flex-col items-center gap-0.5">
       {/* Pad button */}
       <button
-        className={`relative overflow-hidden w-14 h-12 rounded-md border-2 transition-all duration-75 flex flex-col items-center justify-center text-[10px] font-bold select-none ${
+        className={`relative overflow-hidden w-full h-20 rounded-md border-2 transition-all duration-75 flex flex-col items-center justify-center text-[10px] font-bold select-none ${
           pad.isPlaying
-            ? 'shadow-lg scale-[0.97]'
+            ? 'scale-[0.98] translate-y-px'
             : hasAssignment
-              ? 'hover:brightness-125 active:scale-95'
-              : 'border-dashed opacity-50 hover:opacity-75'
+              ? 'hover:brightness-125 active:scale-[0.98] active:translate-y-px'
+              : 'border-dashed opacity-50 hover:opacity-75 active:scale-[0.98]'
         }`}
         style={{
           borderColor: hasAssignment ? pad.color : '#555',
-          backgroundColor: pad.isPlaying
-            ? `${pad.color}40`
+          background: pad.isPlaying
+            ? `linear-gradient(180deg, ${pad.color}70 0%, ${pad.color}35 48%, ${pad.color}18 100%)`
             : hasAssignment
-              ? `${pad.color}15`
-              : 'transparent',
-          boxShadow: pad.isPlaying ? `0 0 12px ${pad.color}60` : 'none',
+              ? `linear-gradient(180deg, ${pad.color}28 0%, ${pad.color}10 100%)`
+              : 'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(0,0,0,0.12))',
+          boxShadow: pad.isPlaying
+            ? `inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -4px 8px rgba(0,0,0,0.42), 0 0 18px ${pad.color}a0, 0 3px 7px rgba(0,0,0,0.7)`
+            : hasAssignment
+              ? `inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -4px 8px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.55)`
+              : 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -3px 6px rgba(0,0,0,0.35)',
         }}
+        aria-pressed={hasAudio ? pad.isPlaying : undefined}
         onClick={pad.mode === 'gate' ? undefined : handleClick}
         onMouseDown={pad.mode === 'gate' ? handleMouseDown : undefined}
         onMouseUp={pad.mode === 'gate' ? handleMouseUp : undefined}
@@ -305,7 +310,7 @@ export const DJSamplerPads: React.FC = memo(() => {
           Session
         </span>
       </div>
-      <div className="grid grid-cols-4 gap-1">
+      <div className="grid grid-cols-4 gap-2 w-full">
         {djSampler.map(pad => (
           <SamplerPadButton
             key={pad.id}
