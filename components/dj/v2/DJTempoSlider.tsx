@@ -192,7 +192,7 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
       onContextMenu={handleContextMenu}
     >
       {/* BPM Display */}
-      <div className="text-[10px] font-mono text-neutral-400 text-center">
+      <div className="dj-tempo-bpm text-[10px] font-mono text-neutral-400 text-center whitespace-nowrap">
         <span className={effectiveBpm ? 'text-green-400' : ''}>{bpmDisplay}</span>
         <span className="text-neutral-500 ml-0.5">BPM</span>
       </div>
@@ -204,7 +204,7 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
           relative rounded-full bg-[#1a1a1a] border border-[#333]
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-ns-resize'}
         `}
-        style={{ width: 24, height: computedHeight }}
+        style={{ width: 30, height: computedHeight }}
         role="slider"
         tabIndex={disabled ? -1 : 0}
         aria-label={`Deck ${deck} tempo`}
@@ -237,10 +237,10 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
         />
         
         {/* Range markers */}
-        <div className="absolute -left-1 top-0 text-[10px] text-neutral-600 font-mono">
+        <div className="absolute -left-8 top-0 w-7 text-right text-[10px] text-neutral-600 font-mono">
           +{tempoRange}
         </div>
-        <div className="absolute -left-1 bottom-0 text-[10px] text-neutral-600 font-mono">
+        <div className="absolute -left-8 bottom-0 w-7 text-right text-[10px] text-neutral-600 font-mono">
           -{tempoRange}
         </div>
         
@@ -270,7 +270,7 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
         {/* Slider cap */}
         <div 
           className={`
-            absolute left-1/2 -translate-x-1/2 w-8 h-5 rounded
+            absolute left-1/2 -translate-x-1/2 w-9 h-5 rounded
             transition-shadow duration-100
             ${isDragging ? 'shadow-lg' : ''}
           `}

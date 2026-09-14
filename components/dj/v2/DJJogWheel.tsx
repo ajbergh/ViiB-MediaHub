@@ -271,7 +271,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   }, [deck, isDragging, endScratch]);
 
   // Colors based on deck
-  const accentColor = deck === 'A' ? '#3b82f6' : '#ec4899';
+  const accentColor = deck === 'A' ? '#3b82f6' : '#8b5cf6';
   // accentColorDim available if needed: deck === 'A' ? '#3b82f680' : '#ec489980'
 
   // Progress arc ref - updated in RAF

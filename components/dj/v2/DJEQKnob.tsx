@@ -17,6 +17,7 @@ interface DJEQKnobProps {
   size?: number;
   /** Compact mode: hide value bar + numeric readout to save vertical space (used in EQ strip column). */
   compact?: boolean;
+  valueText?: string;
 }
 
 export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
@@ -26,6 +27,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
   color = '#888',
   size = 44,
   compact = false,
+  valueText,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -114,13 +116,13 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
   return (
     <div 
       ref={containerRef}
-      className="flex flex-col items-center select-none"
+      className="group relative flex flex-col items-center select-none"
       style={{ width: size }}
     >
       {/* Label */}
       <span
         className={`text-[10px] font-bold uppercase tracking-wider ${compact ? 'leading-none mb-0' : 'mb-0.5'}`}
-        style={{ color }}
+        style={{ color: '#bac6d6' }}
       >
         {label}
       </span>
@@ -132,6 +134,8 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
         role="slider"
         tabIndex={0}
         aria-label={label}
+        aria-valuetext={valueText ?? `${displayValue} dB`}
+        title={`${label}: ${valueText ?? `${displayValue} dB`}`}
         aria-valuemin={-24}
         aria-valuemax={12}
         aria-valuenow={value}
@@ -204,23 +208,29 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
             />
           ))}
 
-          {/* Position indicator line */}
+          {/* Dark outline keeps the pointer legible over metallic highlights. */}
+          <line x1="20" y1="7" x2="20" y2="18" stroke="#080b10" strokeWidth="5" strokeLinecap="round" transform={`rotate(${angle}, 20, 20)`} />
+          {/* White pointer rotates with the actual knob value, including at zero. */}
           <line
             x1="20"
-            y1="8"
+            y1="7"
             x2="20"
-            y2="15"
-            stroke={value !== 0 ? color : '#999'}
-            strokeWidth="2.5"
+            y2="18"
+            stroke="#f8fafc"
+            strokeWidth="3"
             strokeLinecap="round"
             transform={`rotate(${angle}, 20, 20)`}
-            filter={value !== 0 ? `url(#${glowId})` : undefined}
           />
 
           {/* Center dot */}
           <circle cx="20" cy="20" r="2" fill="#222" stroke="#333" strokeWidth="0.5" />
         </svg>
       </div>
+      {compact && (
+        <span className={`absolute top-1/2 left-1/2 -translate-x-1/2 z-40 pointer-events-none whitespace-nowrap rounded border border-slate-500 bg-slate-950 px-2 py-1 text-[12px] font-mono text-white shadow-lg ${isDragging ? 'block' : 'hidden group-hover:block group-focus-within:block'}`}>
+          {valueText ?? `${displayValue} dB`}
+        </span>
+      )}
       
       {/* Value indicator bar (hidden in compact mode to save vertical space) */}
       {!compact && (
@@ -248,10 +258,10 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
       {/* Value display */}
       {!compact && (
         <span
-          className="text-[10px] font-mono mt-0.5 transition-colors"
-          style={{ color: value !== 0 ? color : '#555' }}
+          className="text-[10px] font-mono mt-0.5 transition-colors whitespace-nowrap"
+          style={{ color: '#cbd5e1' }}
         >
-          {displayValue}
+          {valueText ?? displayValue}
         </span>
       )}
     </div>

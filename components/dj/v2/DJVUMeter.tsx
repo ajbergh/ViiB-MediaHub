@@ -69,6 +69,7 @@ const DJVUMeter = memo(function DJVUMeter({
   const peakTimerRef = useRef(0);
   const smoothLevelRef = useRef(0);
   const idleFrameCount = useRef(0);
+  const overloadUntil = useRef(0);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -77,6 +78,7 @@ const DJVUMeter = memo(function DJVUMeter({
     if (!ctx) return;
 
     const rawLevel = getLevel();
+    if (rawLevel >= 1) overloadUntil.current = performance.now() + 1200;
     // Smooth the level (fast attack, slow release) for natural meter response
     const target = rawLevel;
     const current = smoothLevelRef.current;
@@ -91,7 +93,7 @@ const DJVUMeter = memo(function DJVUMeter({
       smoothLevelRef.current = 0;
       idleFrameCount.current++;
       // Draw once at idle to show dim segments, then throttle to ~4fps via setTimeout
-      if (idleFrameCount.current > 2) {
+      if (idleFrameCount.current > 2 && performance.now() > overloadUntil.current + 300) {
         idleTimerRef.current = setTimeout(() => { rafRef.current = requestAnimationFrame(draw); }, 250);
         return;
       }
@@ -146,6 +148,10 @@ const DJVUMeter = memo(function DJVUMeter({
       ctx.globalAlpha = 1;
     }
 
+    if (performance.now() < overloadUntil.current) {
+      ctx.fillStyle = '#ff374d';
+      ctx.fillRect(0, 0, width, 5);
+    }
     rafRef.current = requestAnimationFrame(draw);
   }, [getLevel, height, width, segments, showPeak, peakHoldTime, peakFallSpeed]);
 
@@ -220,7 +226,10 @@ export const DJStereoVUMeter = memo(function DJStereoVUMeter({
       {label && (
         <span className="text-[10px] text-[#777] font-bold mb-0.5 tracking-wider">{label}</span>
       )}
-      <div className="flex items-end" style={{ gap }}>
+      <div className="relative flex items-end" style={{ gap }}>
+        <div aria-hidden='true' className='absolute -left-4 top-0 h-full flex flex-col justify-between text-[8px] text-neutral-400 pointer-events-none'>
+          <span>1</span><span>½</span><span>0</span>
+        </div>
         <DJVUMeter
           getLevel={getLevelLeft}
           height={height}

@@ -131,6 +131,22 @@ try {
   await search.fill('Audit Track 00002');
   await page.getByRole('button', { name: 'Load Audit Track 00002 to Deck B', exact: true }).click();
   await page.waitForFunction(() => window.__djAuditStore.getState().djDeckB.track?.id === 'dj-audit-2');
+  await search.press('Escape');
+  for (const [width, height] of [[1470,825], [1920,1080], [2560,1440], [3840,2160]]) {
+    await page.setViewportSize({ width, height });
+    await page.locator('.dj-grid-editor summary').first().click();
+    assert.equal(await page.locator('.dj-grid-editor').first().getAttribute('open'), '');
+    await page.locator('.dj-grid-editor summary').first().click();
+    await page.screenshot({ path: `${output}/${width}x${height}-loaded.png` });
+    const overflow = await page.locator('.dj-deck-info').evaluateAll(elements => elements.map(el => ({ width: el.clientWidth, scroll: el.scrollWidth })));
+    assert.ok(overflow.every(el => el.scroll <= el.width + 1), 'Loaded deck metadata overflows');
+    for (const mode of ['timeline', 'scope', 'racks']) {
+      await page.getByRole('button', { name: mode, exact: true }).click();
+      const bounds = await layoutMetrics();
+      assert.ok(bounds.workspace.scrollHeight <= bounds.workspace.clientHeight + 1, `${mode} workspace overflows at ${width}: ${JSON.stringify(bounds.workspace)}`);
+    }
+  }
+  await page.keyboard.press('/'); await search.waitFor();
   await search.fill('');
   await page.getByRole('columnheader', { name: /Title/ }).click();
   await page.getByRole('button', { name: /^Audit playlist/ }).click();

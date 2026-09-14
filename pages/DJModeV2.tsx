@@ -36,6 +36,7 @@ import { DJHeadphoneMix } from '../components/dj/v2/DJHeadphoneMix';
 import { DJFXSection } from '../components/dj/v2/DJFXSection';
 import { DJBeatJump } from '../components/dj/v2/DJBeatJump';
 import { DJBeatGridEdit } from '../components/dj/v2/DJBeatGridEdit';
+import { DJDeckOverview } from '../components/dj/v2/DJDeckOverview';
 import { DJEnergyInsights } from '../components/dj/v2/DJEnergyInsights';
 import { DJSamplerPads } from '../components/dj/v2/DJSamplerPads';
 import { DJNudgeButtons } from '../components/dj/v2/DJNudgeButtons';
@@ -644,8 +645,8 @@ const DJModeV2Inner: React.FC = () => {
                         <DeckBpmBadge deck='A' large />
                         <DeckHasTrack deck='A'>
                           <div className='flex flex-col items-end font-mono leading-none'>
-                            <DeckTimeDisplay deck='A' color='#93c5fd' sizeClass='text-[20px]' />
-                            <DeckTimeDisplay deck='A' color='#737373' sizeClass='text-[12px] mt-0.5' showRemaining />
+                            <DeckTimeDisplay deck='A' color='#dbeafe' sizeClass='text-[20px]' showRemaining />
+                            <DeckTimeDisplay deck='A' color='#94a3b8' sizeClass='text-[12px] mt-0.5' />
                           </div>
                         </DeckHasTrack>
                       </div>
@@ -654,15 +655,16 @@ const DJModeV2Inner: React.FC = () => {
                   <div className='flex items-center gap-3 px-3 py-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
                       <DJLoopSection deck='A' />
                       <DJBeatJump deck='A' compact />
-                      <DJBeatGridEdit deck='A' />
+                      <details className='dj-grid-editor'><summary>Edit Grid</summary><div><DJBeatGridEdit deck='A' /></div></details>
                   </div>
                   <DJEnergyInsights trackID={deckATrack?.id} deck='A' />
+                  {viewMode === 'racks' && <DJDeckOverview deck='A' />}
             </div>
 
             {/* Deck Jog Area — EQ strip left of jog, jog right */}
             <div className='flex-1 relative bg-[#141414] flex items-stretch overflow-hidden'>
                 {/* Tempo Slider — slim outer edge */}
-                <div className='w-16 flex-shrink-0 flex flex-col items-center justify-center py-3 gap-2 z-10'>
+                <div className='w-20 flex-shrink-0 flex flex-col items-center justify-center py-3 gap-2 z-10'>
                      <DJNudgeButtons deck='A' onNudge={nudgePosition} disabled={!deckATrack} />
                      <div className='flex-1 min-h-0 flex items-center justify-center'>
                      <DJTempoSliderSelfSub
@@ -724,7 +726,7 @@ const DJModeV2Inner: React.FC = () => {
         {/* === MIXER CENTER (Fixed Width) === */}
         <div className='dj-mixer flex-shrink-0 flex flex-col border-x border-[#333] z-0 relative @container/mixer' style={{ width: 'var(--dj-mixer-w)', backgroundColor: 'var(--dj-surface-1, #181818)' }}>
              {/* Mixer Body */}
-             <div className='flex-1 flex w-full relative min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar'>
+             <div className='dj-mixer-channels flex w-full relative flex-shrink-0'>
                  {/* Channel A */}
                  <DJChannelStrip
                    deckId='A'
@@ -740,7 +742,7 @@ const DJModeV2Inner: React.FC = () => {
                       <div className='flex-none flex items-center justify-center mb-2'>
                            <DJStereoVUMeter
                              getLevels={getMasterLevels}
-                             height={80}
+                             height={64}
                              channelWidth={6}
                              gap={3}
                              segments={14}
@@ -869,8 +871,8 @@ const DJModeV2Inner: React.FC = () => {
                       <div className='flex items-center gap-3 flex-shrink-0'>
                         <DeckHasTrack deck='B'>
                           <div className='flex flex-col items-start font-mono leading-none'>
-                            <DeckTimeDisplay deck='B' color='#d8b4fe' sizeClass='text-[20px]' />
-                            <DeckTimeDisplay deck='B' color='#737373' sizeClass='text-[12px] mt-0.5' showRemaining />
+                            <DeckTimeDisplay deck='B' color='#ede9fe' sizeClass='text-[20px]' showRemaining />
+                            <DeckTimeDisplay deck='B' color='#94a3b8' sizeClass='text-[12px] mt-0.5' />
                           </div>
                         </DeckHasTrack>
                         {/* Jumbo BPM display */}
@@ -901,11 +903,12 @@ const DJModeV2Inner: React.FC = () => {
                   </div>
                   {/* Controls Row: Grid + Beat Jump + Loop (mirrored, icon-only) */}
                   <div className='flex items-center gap-3 px-3 py-1 justify-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
-                      <DJBeatGridEdit deck='B' />
+                      <details className='dj-grid-editor'><summary>Edit Grid</summary><div><DJBeatGridEdit deck='B' /></div></details>
                       <DJBeatJump deck='B' compact />
                       <DJLoopSection deck='B' />
                   </div>
                   <DJEnergyInsights trackID={deckBTrack?.id} deck='B' />
+                  {viewMode === 'racks' && <DJDeckOverview deck='B' />}
             </div>
 
             {/* Deck Jog Area — jog left, EQ strip right of jog (deck B mirrored) */}
@@ -929,7 +932,7 @@ const DJModeV2Inner: React.FC = () => {
                 </div>
 
                 {/* Tempo Slider — slim outer edge */}
-                <div className='w-16 flex-shrink-0 flex flex-col items-center justify-center py-3 gap-2 z-10'>
+                <div className='w-20 flex-shrink-0 flex flex-col items-center justify-center py-3 gap-2 z-10'>
                      <DJNudgeButtons deck='B' onNudge={nudgePosition} disabled={!deckBTrack} />
                      <div className='flex-1 min-h-0 flex items-center justify-center'>
                      <DJTempoSliderSelfSub

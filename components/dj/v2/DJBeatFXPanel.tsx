@@ -48,7 +48,7 @@ export const DJBeatFXPanel: React.FC<DJBeatFXPanelProps> = memo(({ className = '
       : 'bg-cyan-600 text-white border-cyan-400 shadow-cyan-500/30';
 
   return (
-    <div className={`w-[196px] rounded-md border border-[#282828] bg-[#101010] p-2 ${className}`}>
+    <div className={`dj-beat-fx-panel w-[220px] rounded-md border border-[#282828] bg-[#101010] p-2 ${className}`}>
       <div className='flex items-center justify-between gap-2'>
         <span className='text-[10px] font-bold text-neutral-500 uppercase tracking-widest'>Beat FX</span>
         <button
