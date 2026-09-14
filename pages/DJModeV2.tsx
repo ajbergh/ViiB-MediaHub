@@ -468,6 +468,7 @@ const DJModeV2Inner: React.FC = () => {
                 ['Z', 'Crossfader → A'],
                 ['X', 'Crossfader → Center'],
                 ['C', 'Crossfader → B'],
+                ['← / →', 'Adjust crossfader ±2%'],
                 ['', ''],
                 ['Nudge', null],
                 ['Shift+←', 'Nudge active deck -20ms'],

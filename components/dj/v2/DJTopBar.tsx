@@ -79,7 +79,7 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
   const deckBTrack = useStore(state => state.djDeckB.track);
 
   return (
-    <div className="h-11 bg-gradient-to-b from-[#1f1f1f] to-[#1a1a1a] border-b border-[#2a2a2a] flex items-center justify-between px-3">
+    <div className="relative h-11 bg-gradient-to-b from-[#1f1f1f] to-[#1a1a1a] border-b border-[#2a2a2a] flex items-center justify-between px-3">
       {/* Left - View Mode Tabs + Layout Mode Toggle */}
       <div className="flex items-center gap-1">
         {(['scope', 'timeline', 'racks'] as ViewMode[]).map(mode => (
@@ -124,10 +124,10 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
         </div>
       </div>
 
-      {/* Center - Track Info + Record. (Times moved to deck headers — single source.) */}
-      <div className="flex items-center justify-center gap-3 min-w-0">
+      {/* Center group — deck metadata balances around the fixed REC position. */}
+      <>
         {/* Deck A Info */}
-        <div className="flex items-center gap-2">
+        <div className="absolute right-[calc(50%+52px)] top-1/2 -translate-y-1/2 flex items-center justify-end gap-2 min-w-0 max-w-[240px]">
           {deckATrack && (
             <>
               <div className="w-7 h-7 bg-[#252525] rounded overflow-hidden flex-shrink-0 border border-[#333]">
@@ -159,7 +159,7 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
           aria-label={isRecording ? 'Stop recording' : 'Start recording'}
           aria-pressed={isRecording}
           className={`
-            flex items-center gap-2 px-3 py-1.5 min-h-[32px] rounded
+            absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 min-h-[32px] rounded
             transition-all duration-100 border
             ${isRecording
               ? 'bg-red-900/30 border-red-500/50 shadow-lg shadow-red-500/20'
@@ -179,7 +179,7 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
         </button>
 
         {/* Deck B Info */}
-        <div className="flex items-center gap-2">
+        <div className="absolute left-[calc(50%+52px)] top-1/2 -translate-y-1/2 flex items-center gap-2 min-w-0 max-w-[240px]">
           {deckBTrack && (
             <>
               <div className="max-w-[180px]">
@@ -204,7 +204,7 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
             </>
           )}
         </div>
-      </div>
+      </>
 
       {/* Right - Fullscreen toggle (zoom is handled via Ctrl+Scroll on the waveform — see help dialog) */}
       <div className="flex items-center justify-end gap-2 text-neutral-500 w-44 shrink-0">

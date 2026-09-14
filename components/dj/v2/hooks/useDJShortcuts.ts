@@ -74,7 +74,14 @@ export function useDJShortcuts(options: UseDJShortcutsOptions): void {
       if (target?.closest('#dj-library-drawer') && e.key !== '/') return;
       if (target?.matches('input, textarea, select') || target?.isContentEditable) return;
       if (e.ctrlKey || e.metaKey) return;
-      if (target?.closest('button, [role="button"], [role="slider"]') && (e.key === ' ' || e.key === 'Tab')) return;
+      // Let focused controls own activation and slider navigation. Buttons
+      // still preserve Space/Tab, while Left/Right remain available for the
+      // global crossfader shortcut after a transport button is clicked.
+      if (target?.closest('button, [role="button"]') && (e.key === ' ' || e.key === 'Tab')) return;
+      if (target?.closest('[role="slider"]') && (
+        ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) ||
+        e.key === ' ' || e.key === 'Tab'
+      )) return;
 
       const {
         togglePlay,
@@ -135,12 +142,18 @@ export function useDJShortcuts(options: UseDJShortcutsOptions): void {
           if (e.shiftKey) {
             e.preventDefault();
             nudgePosition(activeDeck, e.altKey ? -5 : -20);
+          } else {
+            e.preventDefault();
+            setCrossfader(Math.max(-1, (state.djMixer?.crossfader ?? 0) - 0.02));
           }
           break;
         case 'arrowright':
           if (e.shiftKey) {
             e.preventDefault();
             nudgePosition(activeDeck, e.altKey ? 5 : 20);
+          } else {
+            e.preventDefault();
+            setCrossfader(Math.min(1, (state.djMixer?.crossfader ?? 0) + 0.02));
           }
           break;
         case 'f11':
