@@ -241,5 +241,5 @@
 .dj-mixer > .dj-mixer-channels + div > .pb-2 { padding-bottom: 4px; }
 .dj-mixer { background: #151b23; }
 .dj-library-affordance { flex-basis: 44px; background: #1d2532; }
-.dj-library-affordance > button { min-width: 200px; font-weight: 700; color: #eef2ff; border-inline: 1px solid #66768d; background: #2a3546; }
+.dj-library-affordance > button { width: 220px; justify-content: center; gap: 8px; font-size: 14px; font-weight: 700; color: #eef2ff; border-inline: 1px solid #66768d; background: #2a3546; }
 .dj-library-drawer { bottom: 44px; }
