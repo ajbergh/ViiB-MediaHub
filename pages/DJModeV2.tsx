@@ -22,7 +22,7 @@
  * @module pages/DJModeV2
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '../store';
 import { useDJAudioEngineActions, useDJAudioEngineSync } from '../hooks/useDJAudioEngine';
 import { DJTopBar } from '../components/dj/v2/DJTopBar';
@@ -61,8 +61,14 @@ const logger = createLogger('DJModeV2');
 
 type ViewMode = 'timeline' | 'scope' | 'racks';
 
+// The complete workstation is authored against the usable canvas beside the
+// collapsed sidebar at 1920×1080. Scaling the whole canvas from this single
+// reference keeps control dimensions and every inter-control gap proportional.
+const DJ_CANVAS_WIDTH = 1856;
+const DJ_CANVAS_HEIGHT = 1090;
+
 const DJModeV2Inner: React.FC = () => {
-  const [viewMode, setViewMode] = useState<ViewMode>('timeline');
+  const [viewMode, setViewMode] = useState<ViewMode>('racks');
   // Respect the shared platform policy and renderer fallback chain.
   const advancedWebGLEnabled = shouldUseAdvancedWebGL();
   const [isRecording, setIsRecording] = useState(false);
@@ -75,6 +81,29 @@ const DJModeV2Inner: React.FC = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
+  const workstationViewportRef = useRef<HTMLDivElement>(null);
+  const [canvas, setCanvas] = useState({ scale: 1, left: 0 });
+
+  useLayoutEffect(() => {
+    const viewport = workstationViewportRef.current;
+    if (!viewport) return;
+
+    const updateCanvasScale = () => {
+      const { width, height } = viewport.getBoundingClientRect();
+      const nextScale = Math.min(width / DJ_CANVAS_WIDTH, height / DJ_CANVAS_HEIGHT);
+      const nextLeft = Math.max(0, (width - DJ_CANVAS_WIDTH * nextScale) / 2);
+      setCanvas(current =>
+        Math.abs(current.scale - nextScale) < 0.0001 && Math.abs(current.left - nextLeft) < 0.1
+          ? current
+          : { scale: nextScale, left: nextLeft }
+      );
+    };
+
+    updateCanvasScale();
+    const observer = new ResizeObserver(updateCanvasScale);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
   
   // While a deck is playing, tell the backend to yield background track
   // analysis so library preparation does not compete with the set.
@@ -110,7 +139,7 @@ const DJModeV2Inner: React.FC = () => {
   const deckBLoop = useStore(s => s.djDeckB.loop);
 
   // Mixer render state (low-frequency values only — high-freq moved to self-subscribing wrappers)
-  const djLayoutMode = useStore(s => s.djMixer?.djLayoutMode || 'perf') as DJLayoutMode;
+  const djLayoutMode = useStore(s => s.djMixer?.djLayoutMode || 'fx') as DJLayoutMode;
   const useWebGLWaveform = useStore(s => s.djMixer?.useWebGLWaveform);
   const syncMode = useStore(s => s.djMixer?.syncMode);
   const quantize = useStore(s => s.djMixer?.quantize);
@@ -397,13 +426,24 @@ const DJModeV2Inner: React.FC = () => {
 
   return (
     <div
-      className='dj-workstation relative h-full flex flex-col overflow-hidden'
-      data-dj-mode={djLayoutMode}
-      style={{
-        backgroundColor: 'var(--dj-bg)',
-      }}
+      ref={workstationViewportRef}
+      className='relative h-full overflow-hidden'
+      style={{ backgroundColor: 'var(--dj-bg)' }}
     >
-      <h1 className='sr-only'>DJ Mode</h1>
+      <div
+        className='dj-workstation absolute top-0 flex flex-col overflow-hidden'
+        data-dj-mode={djLayoutMode}
+        data-dj-canvas
+        style={{
+          width: DJ_CANVAS_WIDTH,
+          height: DJ_CANVAS_HEIGHT,
+          left: canvas.left,
+          transform: `scale(${canvas.scale})`,
+          transformOrigin: 'top left',
+          backgroundColor: 'var(--dj-bg)',
+        }}
+      >
+        <h1 className='sr-only'>DJ Mode</h1>
       
       {/* Keyboard Shortcuts Overlay */}
       {showShortcuts && (
@@ -934,6 +974,7 @@ const DJModeV2Inner: React.FC = () => {
       </div>
 
       <DJLibraryDrawer ref={libraryRef} />
+      </div>
     </div>
   );
 };

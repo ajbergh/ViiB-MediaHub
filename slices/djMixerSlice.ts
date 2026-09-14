@@ -224,7 +224,7 @@ export interface MixerState {
   useWebGLWaveform: boolean; // Use WebGL2 waveform renderer (vs Canvas 2D fallback)
 
   // UI Layout
-  djLayoutMode: DJLayoutMode; // perf (default), browse (expanded library), fx (expanded FX)
+  djLayoutMode: DJLayoutMode; // fx (default), perf, browse (expanded library)
 }
 
 // ============================================================================
@@ -427,7 +427,7 @@ const createDefaultMixerState = (): MixerState => ({
   autoGainA: false,        // Default auto-gain OFF
   autoGainB: false,        // Default auto-gain OFF
   useWebGLWaveform: false, // Default Canvas 2D (safer fallback)
-  djLayoutMode: 'perf',   // Default layout mode: Performance
+  djLayoutMode: 'fx',     // Default layout mode: Expanded FX
 });
 
 // ============================================================================
