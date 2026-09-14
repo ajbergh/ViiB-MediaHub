@@ -736,8 +736,8 @@ const DJModeV2Inner: React.FC = () => {
                  <div className='w-[88px] bg-[#131313] flex flex-col items-center py-2 border-x border-[#222]/50 overflow-hidden min-h-0'>
                       <div className='text-[10px] text-[#444] font-bold mb-1 tracking-widest'>MASTER</div>
 
-                      {/* Real-time Master VU Meters — flex-1 to fill available space */}
-                      <div className='flex-1 min-h-0 flex items-center justify-center mb-2'>
+                      {/* Keep the master meter with its controls at the top of the strip. */}
+                      <div className='flex-none flex items-center justify-center mb-2'>
                            <DJStereoVUMeter
                              getLevels={getMasterLevels}
                              height={80}
