@@ -17,6 +17,7 @@
  */
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { useWaveformScratch } from '../../../../hooks/useWaveformScratch';
 import { useStore } from '../../../../store';
 import { useDJAudioEngineActions } from '../../../../hooks/useDJAudioEngine';
 import { getDJAudioEngine } from '../../../../lib/djAudio';
@@ -49,10 +50,10 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   // Get only what we need from store — granular selectors to avoid re-renders
   const deckAWaveformPeaks = useStore(state => state.djDeckA.waveformPeaks);
   const deckBWaveformPeaks = useStore(state => state.djDeckB.waveformPeaks);
-  const deckAIsPlaying = useStore(state => state.djDeckA.isPlaying);
-  const deckBIsPlaying = useStore(state => state.djDeckB.isPlaying);
   const { seek } = useDJAudioEngineActions();
   
+  const scratchA = useWaveformScratch('A', visibleSeconds, !useFallback);
+  const scratchB = useWaveformScratch('B', visibleSeconds, !useFallback);
   // Calculate heights
   const surfaceHeight = height < 0 ? '100%' : height;
   const mainHeight = height < 0 ? `calc((100% - ${OVERVIEW_HEIGHT + 8}px) / 2)` : (height - OVERVIEW_HEIGHT - 8) / 2;
@@ -130,14 +131,15 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     const bTrackId = currentDeckB.track?.id ?? null;
     const aPlaying = currentDeckA.isPlaying;
     const bPlaying = currentDeckB.isPlaying;
-    const idle = !aPlaying && !bPlaying;
+
 
     // Read position from engine when playing for smooth 60fps,
     // fall back to store position when paused (store is throttled ~15fps)
     const engine = getDJAudioEngine();
-    const posA = aPlaying && engine?.initialized
+    const idle = !aPlaying && !bPlaying && !engine.isScratching('A') && !engine.isScratching('B');
+    const posA = (aPlaying || engine.isScratching('A')) && engine?.initialized
       ? engine.getPosition('A') : currentDeckA.position;
-    const posB = bPlaying && engine?.initialized
+    const posB = (bPlaying || engine.isScratching('B')) && engine?.initialized
       ? engine.getPosition('B') : currentDeckB.position;
 
     // Skip render when idle and nothing visual has changed
@@ -214,12 +216,18 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   }, [isReady, visibleSeconds, deckAWebGL.renderWaveform, deckBWebGL.renderWaveform, overviewWebGL.renderOverview]);
   
   // Run animation loop — throttle to 4fps when both decks idle
+  const isTimelineIdle = useCallback(() => {
+    const state = useStore.getState();
+    const engine = getDJAudioEngine();
+    return !state.djDeckA.isPlaying && !state.djDeckB.isPlaying &&
+      !engine.isScratching('A') && !engine.isScratching('B');
+  }, []);
   useDJWebGLAnimation(
     renderFrame,
     isReady && !useFallback,
     60,
     4,
-    !deckAIsPlaying && !deckBIsPlaying
+    isTimelineIdle
   );
   
   // Handle waveform click to seek
@@ -239,7 +247,7 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     // Calculate time from click position
     const playheadX = width / 2;
     const secondsPerPixel = visibleSeconds / width;
-    const clickTime = deckState.position + ((x - playheadX) * secondsPerPixel);
+    const clickTime = getDJAudioEngine().getPosition(deck) + ((x - playheadX) * secondsPerPixel);
     const clampedTime = Math.max(0, Math.min(deckState.duration, clickTime));
     
     seek(deck, clampedTime);
@@ -269,9 +277,9 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
       {/* Main waveform Deck A */}
       <canvas
         ref={deckAWebGL.canvasRef}
-        className="w-full cursor-crosshair"
-        style={{ height: mainHeight }}
-        onClick={(e) => handleWaveformClick(e, 'A')}
+        {...scratchA}
+        style={{ height: mainHeight, touchAction: 'none' }}
+        onDoubleClick={(e) => handleWaveformClick(e, 'A')}
       />
       
       {/* Separator with crossfader indicator */}
@@ -282,9 +290,9 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
       {/* Main waveform Deck B */}
       <canvas
         ref={deckBWebGL.canvasRef}
-        className="w-full cursor-crosshair"
-        style={{ height: mainHeight }}
-        onClick={(e) => handleWaveformClick(e, 'B')}
+        {...scratchB}
+        style={{ height: mainHeight, touchAction: 'none' }}
+        onDoubleClick={(e) => handleWaveformClick(e, 'B')}
       />
       
       {/* WebGL indicator (dev only) */}

@@ -16,6 +16,7 @@
  */
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { useWaveformScratch } from '../../../hooks/useWaveformScratch';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getDJAudioEngine } from '../../../lib/djAudio';
@@ -126,6 +127,8 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
   const VISIBLE_SECONDS_MIN = 2;
   const VISIBLE_SECONDS_MAX = 60;
   const [visibleSeconds, setVisibleSeconds] = useState(VISIBLE_SECONDS_DEFAULT);
+  const scratchA = useWaveformScratch('A', visibleSeconds);
+  const scratchB = useWaveformScratch('B', visibleSeconds);
   const [colorMode, setColorMode] = useState<WaveformColorMode>('rgb');
   const OVERVIEW_HEIGHT = 24;
   const MAIN_HEIGHT = (computedHeight - OVERVIEW_HEIGHT - 8) / 2; // Split between both decks
@@ -485,11 +488,11 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
 
       // Skip redraw if neither deck is playing AND positions haven't changed
       // (allows one initial draw for placeholder text, then idles)
-      const posA = aPlaying && engine?.initialized
+      const posA = (aPlaying || engine.isScratching('A')) && engine?.initialized
         ? engine.getPosition('A') : currentDeckA.position;
-      const posB = bPlaying && engine?.initialized
+      const posB = (bPlaying || engine.isScratching('B')) && engine?.initialized
         ? engine.getPosition('B') : currentDeckB.position;
-      const bothIdle = !aPlaying && !bPlaying;
+      const bothIdle = !aPlaying && !bPlaying && !engine.isScratching('A') && !engine.isScratching('B');
       if (bothIdle && posA === lastPosA && posB === lastPosB && !needsInitialDraw) {
         scheduleNext(true);
         return;
@@ -666,7 +669,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     // Calculate time from click position
     const playheadX = width / 2;
     const secondsPerPixel = visibleSeconds / width;
-    const clickTime = deckState.position + ((x - playheadX) * secondsPerPixel);
+    const clickTime = getDJAudioEngine().getPosition(deck) + ((x - playheadX) * secondsPerPixel);
     const clampedTime = Math.max(0, Math.min(deckState.duration, clickTime));
     
     seek(deck, clampedTime);
@@ -727,9 +730,9 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
       {/* Main waveform Deck A */}
       <canvas 
         ref={mainCanvasARef}
-        className="w-full cursor-crosshair"
-        style={{ height: MAIN_HEIGHT }}
-        onClick={(e) => handleWaveformClick(e, 'A')}
+        {...scratchA}
+        style={{ height: MAIN_HEIGHT, touchAction: 'none' }}
+        onDoubleClick={(e) => handleWaveformClick(e, 'A')}
       />
       
       {/* Separator with crossfader indicator */}
@@ -740,9 +743,9 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
       {/* Main waveform Deck B */}
       <canvas 
         ref={mainCanvasBRef}
-        className="w-full cursor-crosshair"
-        style={{ height: MAIN_HEIGHT }}
-        onClick={(e) => handleWaveformClick(e, 'B')}
+        {...scratchB}
+        style={{ height: MAIN_HEIGHT, touchAction: 'none' }}
+        onDoubleClick={(e) => handleWaveformClick(e, 'B')}
       />
     </div>
   );
