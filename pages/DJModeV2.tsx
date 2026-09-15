@@ -1,3 +1,4 @@
+import { DJBeatGridStatus } from '../components/dj/v2/DJBeatGridStatus';
 /**
  * ViiB MediaHub - DJ Mode Page V2
  * 
@@ -656,7 +657,7 @@ const DJModeV2Inner: React.FC = () => {
                   <div className='flex items-center gap-3 px-3 py-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
                       <DJLoopSection deck='A' />
                       <DJBeatJump deck='A' compact />
-                      <details className='dj-grid-editor'><summary>Edit Grid</summary><div><DJBeatGridEdit deck='A' /></div></details>
+                      <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='A' /> · Edit Grid</summary><div><DJBeatGridEdit deck='A' /></div></details>
                   </div>
                   <DJEnergyInsights trackID={deckATrack?.id} deck='A' />
                   {viewMode === 'racks' && <DJDeckOverview deck='A' />}
@@ -904,7 +905,7 @@ const DJModeV2Inner: React.FC = () => {
                   </div>
                   {/* Controls Row: Grid + Beat Jump + Loop (mirrored, icon-only) */}
                   <div className='flex items-center gap-3 px-3 py-1 justify-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
-                      <details className='dj-grid-editor'><summary>Edit Grid</summary><div><DJBeatGridEdit deck='B' /></div></details>
+                      <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='B' /> · Edit Grid</summary><div><DJBeatGridEdit deck='B' /></div></details>
                       <DJBeatJump deck='B' compact />
                       <DJLoopSection deck='B' />
                   </div>

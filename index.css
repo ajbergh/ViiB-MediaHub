@@ -233,7 +233,7 @@
 .dj-deck-info + div { overflow: visible; min-height: 56px; }
 .dj-grid-editor { position: relative; margin-left: auto; flex-shrink: 0; }
 .dj-grid-editor summary { cursor: pointer; padding: 9px 12px; border: 1px solid #424b59; border-radius: 5px; color: #cbd5e1; background: #222832; }
-.dj-grid-editor > div { position: absolute; top: calc(100% + 6px); right: 0; padding: 14px; background: #171c24; border: 1px solid #536174; border-radius: 8px; z-index: 45; box-shadow: 0 8px 24px #0009; }
+.dj-grid-editor > div { max-height: min(55vh, 480px); overflow-y: auto; position: absolute; top: calc(100% + 6px); right: 0; padding: 14px; background: #171c24; border: 1px solid #536174; border-radius: 8px; z-index: 45; box-shadow: 0 8px 24px #0009; }
 .dj-deck:last-child .dj-grid-editor { margin-left: 0; margin-right: auto; }
 .dj-deck:last-child .dj-grid-editor > div { left: 0; right: auto; }
 .dj-mixer-channels { padding-top: 4px; padding-bottom: 4px; background: #151b23; }

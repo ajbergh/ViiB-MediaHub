@@ -35,3 +35,44 @@ describe('deck analysis patches', () => {
     expect(state.djDeckA.effectiveBpm).toBe(136.5);
   });
 });
+
+
+describe('reviewed beat grids', () => {
+  it('invalidates stale evidence after edits and protects reviewed evidence from automatic updates', () => {
+    const state = createTestMixerState();
+    const evidence = { source: 'browser' as const, alternateBpm: 60, stability: 1 };
+    state.setDeckAnalysis('A', { bpm: 120, beatGrid: [0, .5, 1], tempoEvidence: evidence });
+    state.setDeckAnalysis('A', { key: '8A' });
+    expect(state.djDeckA.tempoEvidence).toEqual(evidence);
+    state.setDeckAnalysis('A', { beatGrid: [.1, .6, 1.1], beatGridSource: 'manual', beatGridLocked: true });
+    expect(state.djDeckA.tempoEvidence).toBeNull();
+    state.setDeckAnalysis('A', { tempoEvidence: evidence });
+    state.setDeckAnalysis('A', { automatic: true, bpm: 130, beatGrid: [0, .46, .92], tempoEvidence: null });
+    expect(state.djDeckA.tempoEvidence).toEqual(evidence);
+    expect(state.djDeckA.originalBpm).toBe(120);
+  });
+  it('preserves manual timing through background results, including missing analysis', () => {
+    const state = createTestMixerState();
+    state.setDeckAnalysis('A', { bpm: 120, beatGrid: [0.1, 0.6, 1.1], beatGridSource: 'manual', beatGridLocked: true });
+    state.setDeckAnalysis('A', { automatic: true, bpm: 130, beatGrid: [0, 0.46], beatGridSource: 'generated', beatGridLocked: false, key: '8A' });
+    state.setDeckAnalysis('A', { automatic: true, bpm: null, beatGrid: null, beatGridSource: 'unknown', beatGridLocked: false });
+    expect(state.djDeckA.beatGrid).toEqual([0.1, 0.6, 1.1]);
+    expect(state.djDeckA.beatGridSource).toBe('manual');
+    expect(state.djDeckA.originalBpm).toBe(120);
+    expect(state.djDeckA.key).toBe('8A');
+    state.setDeckAnalysis('A', { beatGrid: null, beatGridSource: 'unknown', beatGridLocked: false });
+    expect(state.djDeckA.beatGrid).toBeNull();
+    expect(state.djDeckA.beatGridLocked).toBe(false);
+  });
+  it('blocks phase alignment for an estimate but permits two reviewed grids', () => {
+    const state = createTestMixerState();
+    for (const deck of ['A', 'B'] as const) state.setDeckAnalysis(deck, { bpm: 120, beatGrid: [0, 0.5, 1, 1.5], beatGridSource: 'generated' });
+    state.setDeckPosition('A', 0.2);
+    state.setDeckPosition('B', 0.4);
+    state.syncBeatPhase('A');
+    expect(state.djDeckA.position).toBe(0.2);
+    for (const deck of ['A', 'B'] as const) state.setDeckAnalysis(deck, { beatGrid: [0, 0.5, 1, 1.5], beatGridSource: 'manual', beatGridLocked: true });
+    state.syncBeatPhase('A');
+    expect(state.djDeckA.position).toBeCloseTo(0.4);
+  });
+});

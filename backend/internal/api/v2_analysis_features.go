@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"sort"
 
@@ -18,23 +19,27 @@ import (
 // snapshot for one song. It intentionally omits diagnostic and source-path
 // fields, leaving the library UI with only values it can safely display.
 type TrackAnalysisFeatureResponse struct {
-	SongID        string   `json:"songId"`
-	Status        string   `json:"status"`
-	BPM           *float64 `json:"bpm,omitempty"`
-	BPMConfidence *float64 `json:"bpmConfidence,omitempty"`
-	BPMSource     string   `json:"bpmSource"`
-	SyncAllowed   bool     `json:"syncAllowed"`
-	Key           *string  `json:"key,omitempty"`
-	CamelotKey    *string  `json:"camelotKey,omitempty"`
-	OpenKey       *string  `json:"openKey,omitempty"`
-	KeyConfidence *float64 `json:"keyConfidence,omitempty"`
-	KeySource     string   `json:"keySource"`
+	BPMAltCandidate *float64 `json:"bpmAltCandidate,omitempty"`
+	TempoStability  *float64 `json:"tempoStability,omitempty"`
+	TempoKind       *string  `json:"tempoKind,omitempty"`
+	SongID          string   `json:"songId"`
+	Status          string   `json:"status"`
+	BPM             *float64 `json:"bpm,omitempty"`
+	BPMConfidence   *float64 `json:"bpmConfidence,omitempty"`
+	BPMSource       string   `json:"bpmSource"`
+	SyncAllowed     bool     `json:"syncAllowed"`
+	Key             *string  `json:"key,omitempty"`
+	CamelotKey      *string  `json:"camelotKey,omitempty"`
+	OpenKey         *string  `json:"openKey,omitempty"`
+	KeyConfidence   *float64 `json:"keyConfidence,omitempty"`
+	KeySource       string   `json:"keySource"`
 }
 
 // BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
 // in seconds so waveform and deck clients do not need to reproduce codec or
 // tempo interpolation behavior.
 type BeatGridResponse struct {
+	Source           string    `json:"source"`
 	SongID           string    `json:"songId"`
 	Beats            []float64 `json:"beats"`
 	DownbeatIndices  []int     `json:"downbeatIndices"`
@@ -46,6 +51,7 @@ type BeatGridResponse struct {
 // Requiring a whole grid prevents a stale drag operation from applying a
 // partial positional patch against a different dynamic grid.
 type BeatGridUpdate struct {
+	BPM             *float64  `json:"bpm,omitempty"`
 	Beats           []float64 `json:"beats"`
 	DownbeatIndices []int     `json:"downbeatIndices"`
 	Locked          bool      `json:"locked"`
@@ -139,6 +145,9 @@ func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAn
 	}
 	if effectiveBPM.Source == db.EffectiveBPMMeasured {
 		response.BPMConfidence = analysis.BPMConfidence
+		response.BPMAltCandidate = analysis.BPMAltCandidate
+		response.TempoStability = analysis.TempoStability
+		response.TempoKind = analysis.TempoKind
 	}
 	if effectiveKey.Source == db.EffectiveKeyMeasured {
 		response.KeyConfidence = analysis.KeyConfidence
@@ -177,7 +186,16 @@ func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, BeatGridResponse{SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: override.BeatgridLocked, AlgorithmVersion: artifact.AlgorithmVersion})
+	source := "measured"
+	if override.BeatgridArtifactID != nil {
+		// Unlocked historical artifacts may have been replaced by automatic analysis.
+		// Their ownership is ambiguous until explicitly reviewed and locked again.
+		source = "unknown"
+		if override.BeatgridLocked {
+			source = "manual"
+		}
+	}
+	respondJSON(w, BeatGridResponse{Source: source, SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: override.BeatgridLocked, AlgorithmVersion: artifact.AlgorithmVersion})
 }
 
 func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +208,10 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20))
 	if err := decoder.Decode(&update); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid beatgrid update")
+		return
+	}
+	if update.BPM != nil && (math.IsNaN(*update.BPM) || math.IsInf(*update.BPM, 0) || *update.BPM <= 0 || *update.BPM > 1000) {
+		respondError(w, http.StatusBadRequest, "invalid beatgrid BPM")
 		return
 	}
 	grid := beatgrid.Grid{Beats: update.Beats, DownbeatIndices: update.DownbeatIndices}
@@ -212,11 +234,15 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 	}
 	override.BeatgridArtifactID = &artifactID
 	override.BeatgridLocked = update.Locked
+	if update.BPM != nil {
+		override.BPM = update.BPM
+		override.BPMLocked = true
+	}
 	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, BeatGridResponse{SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion})
+	respondJSON(w, BeatGridResponse{Source: "manual", SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion})
 }
 
 // resetBeatGridV2 clears an explicit grid edit and its lock.  A later normal

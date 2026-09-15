@@ -118,6 +118,9 @@ export interface TrackAnalysisFeature {
   status: 'pending' | 'running' | 'complete' | 'partial' | 'failed' | 'unsupported';
   bpm?: number;
   bpmConfidence?: number;
+  bpmAltCandidate?: number;
+  tempoStability?: number;
+  tempoKind?: string;
   bpmSource: 'unknown' | 'manual' | 'measured';
   syncAllowed: boolean;
   key?: string;
@@ -136,9 +139,11 @@ export interface TrackBeatGrid {
   downbeatIndices: number[];
   locked: boolean;
   algorithmVersion: string;
+  source?: 'unknown' | 'measured' | 'manual';
 }
 
 export interface TrackBeatGridUpdate {
+  bpm?: number;
   beats: number[];
   downbeatIndices: number[];
   locked: boolean;

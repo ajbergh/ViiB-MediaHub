@@ -1,3 +1,4 @@
+import { canSyncBeatGrid, resolvedGridPatch } from '../lib/beatGridConfidence';
 /**
  * ViiB MediaHub - DJ Audio Engine Hook
  * 
@@ -12,7 +13,7 @@ import { useStore } from '../store';
 import { getDJAudioEngine, disposeDJAudioEngine, VULevels } from '../lib/djAudio';
 import { api } from '../services/api';
 import { generateClientWaveform } from '../lib/clientWaveform';
-import { detectBPM, normalizeBPM, generateBeatGrid } from '../lib/bpmDetection';
+import { detectBPM } from '../lib/bpmDetection';
 import { detectKey } from '../lib/keyDetection';
 import { createLogger } from '../services/loggerService';
 import type { BeatFXTarget, DeckId } from '../slices/djMixerSlice';
@@ -294,24 +295,14 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       const persisted = await (async () => {
         try {
           const [feature, grid] = await Promise.all([
-            api.getTrackAnalysisFeature(track.id),
+            api.getTrackAnalysisFeature(track.id).catch(() => null),
             api.getTrackBeatGrid(track.id).catch(() => null),
           ]);
           if (!isTrackStillLoaded()) return { hasBPM: true, hasKey: true };
-          const patch: { bpm?: number; key?: string; beatGrid?: number[]; downbeatIndices?: number[]; beatGridLocked?: boolean } = {};
-          if (typeof feature.bpm === 'number') {
-            const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-            const duration = deckState.duration || track.duration || 0;
-            patch.bpm = feature.bpm;
-            patch.beatGrid = grid?.beats ?? (duration > 0 ? generateBeatGrid(feature.bpm, duration) : []);
-            if (grid) {
-              patch.downbeatIndices = grid.downbeatIndices;
-              patch.beatGridLocked = grid.locked;
-            }
-          }
-          if (feature.key) patch.key = feature.key;
+          const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+          const patch = resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0);
           if (Object.keys(patch).length > 0) setDeckAnalysis(deck, patch);
-          return { hasBPM: typeof feature.bpm === 'number', hasKey: Boolean(feature.key) };
+          return { hasBPM: typeof patch.bpm === 'number', hasKey: Boolean(feature?.key) };
         } catch (analysisErr) {
           logger.debug(`Persisted analysis unavailable for Deck ${deck}; using browser fallback`, analysisErr);
           return { hasBPM: false, hasKey: false };
@@ -327,16 +318,15 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           
           if (!isTrackStillLoaded()) return;
           
-          // Normalize BPM to reasonable range (avoid half/double time errors)
-          const normalizedBpm = normalizeBPM(bpmResult.bpm);
+          // Keep the measured candidate; expose half/double alternatives for review.
+          if (!(bpmResult.confidence > 0) || !Number.isFinite(bpmResult.bpm)) return;
+          const normalizedBpm = bpmResult.bpm;
           
-          // Generate beat grid from BPM
-          const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-          const duration = deckState.duration || track.duration || 0;
-          const beatGrid = duration > 0 ? generateBeatGrid(normalizedBpm, duration) : [];
+          // Use the onset-aligned grid from the same analysis.
+          const beatGrid = bpmResult.beatGrid;
           
           // Tempo must not overwrite a key resolved by the independent task.
-          setDeckAnalysis(deck, { bpm: normalizedBpm, beatGrid });
+          setDeckAnalysis(deck, { automatic: true, bpm: normalizedBpm, beatGrid, beatGridSource: 'measured', bpmConfidence: bpmResult.confidence, tempoEvidence: bpmResult.evidence });
           logger.info(`BPM detected for Deck ${deck}: ${normalizedBpm.toFixed(1)} (confidence: ${(bpmResult.confidence * 100).toFixed(0)}%)`);
         } catch (bpmErr) {
           logger.warn(`BPM detection failed for Deck ${deck}`, bpmErr);
@@ -772,8 +762,8 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
     const sourceDeck = targetDeck === 'A' ? state.djDeckB : state.djDeckA;
     const target = targetDeck === 'A' ? state.djDeckA : state.djDeckB;
     
-    if (!sourceDeck.beatGrid?.length || !target.beatGrid?.length) {
-      console.warn('Beat-phase sync requires beat grids on both decks');
+    if (!canSyncBeatGrid(sourceDeck) || !canSyncBeatGrid(target)) {
+      console.warn('Beat-phase sync requires reviewed, locked beat grids on both decks');
       return;
     }
     
@@ -1083,24 +1073,14 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     const persisted = await (async () => {
       try {
         const [feature, grid] = await Promise.all([
-          api.getTrackAnalysisFeature(track.id),
+          api.getTrackAnalysisFeature(track.id).catch(() => null),
           api.getTrackBeatGrid(track.id).catch(() => null),
         ]);
         if (!isTrackStillLoaded()) return { hasBPM: true, hasKey: true };
-        const patch: { bpm?: number; key?: string; beatGrid?: number[]; downbeatIndices?: number[]; beatGridLocked?: boolean } = {};
-        if (typeof feature.bpm === 'number') {
-          const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-          const duration = ds.duration || track.duration || 0;
-          patch.bpm = feature.bpm;
-          patch.beatGrid = grid?.beats ?? (duration > 0 ? generateBeatGrid(feature.bpm, duration) : []);
-          if (grid) {
-            patch.downbeatIndices = grid.downbeatIndices;
-            patch.beatGridLocked = grid.locked;
-          }
-        }
-        if (feature.key) patch.key = feature.key;
+        const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+        const patch = resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0);
         if (Object.keys(patch).length > 0) useStore.getState().setDeckAnalysis(deck, patch);
-        return { hasBPM: typeof feature.bpm === 'number', hasKey: Boolean(feature.key) };
+        return { hasBPM: typeof patch.bpm === 'number', hasKey: Boolean(feature?.key) };
       } catch {
         return { hasBPM: false, hasKey: false };
       }
@@ -1111,11 +1091,10 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
       try {
         const result = await detectBPM(`/api/audio/${track.id}`);
         if (!isTrackStillLoaded()) return;
-        const bpm = normalizeBPM(result.bpm);
-        const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-        const duration = ds.duration || track.duration || 0;
-        const beatGrid = duration > 0 ? generateBeatGrid(bpm, duration) : [];
-        useStore.getState().setDeckAnalysis(deck, { bpm, beatGrid });
+        if (!(result.confidence > 0) || !Number.isFinite(result.bpm)) return;
+        const bpm = result.bpm;
+        const beatGrid = result.beatGrid;
+        useStore.getState().setDeckAnalysis(deck, { automatic: true, bpm, beatGrid, beatGridSource: 'measured', bpmConfidence: result.confidence, tempoEvidence: result.evidence });
       } catch { /* non-critical */ }
     })();
 
@@ -1291,7 +1270,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     const s = useStore.getState();
     const src = targetDeck === 'A' ? s.djDeckB : s.djDeckA;
     const tgt = targetDeck === 'A' ? s.djDeckA : s.djDeckB;
-    if (!src.beatGrid?.length || !tgt.beatGrid?.length) return;
+    if (!canSyncBeatGrid(src) || !canSyncBeatGrid(tgt)) return;
     engine.syncBeatPhase(targetDeck, tgt.beatGrid, src.beatGrid, src.position);
   }, []);
 

@@ -7,10 +7,13 @@
  * @module components/dj/v2/DJBeatGridEdit
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Lock, RotateCcw, Unlock } from 'lucide-react';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { useStore } from '../../../store';
+import { DJBeatGridStatus } from './DJBeatGridStatus';
+import { detectBPM, type BPMResult } from '../../../lib/bpmDetection';
+import { measureGridAlignment } from '../../../lib/tempoEvidence';
 import { api } from '../../../services/api';
 
 interface DJBeatGridEditProps {
@@ -24,6 +27,39 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
   const setDeckAnalysis = useStore(state => state.setDeckAnalysis);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<BPMResult | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const request = useRef(0);
+  useEffect(() => {
+    request.current++;
+    setAnalysis(null); setProgress(null); setError(null);
+    return () => { request.current++; };
+  }, [deckState.track?.id]);
+  const analyze = async () => {
+    if (!deckState.track || progress !== null) return;
+    const id = deckState.track.id, token = ++request.current;
+    setError(null); setProgress(0); setAnalysis(null);
+    try {
+      const result = await detectBPM(`/api/audio/${encodeURIComponent(id)}`, p => {
+        if (request.current === token) setProgress(p);
+      });
+      const current = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+      if (request.current !== token || current.track?.id !== id) return;
+      setAnalysis(result);
+      setDeckAnalysis(deck, { tempoEvidence: { ...result.evidence, alignment: measureGridAlignment(result.onsetSections, current.beatGrid ?? []) } });
+      if (!result.bpm) setError('Not enough rhythmic evidence. Keep the current grid and review it manually.');
+    } catch (cause) {
+      if (request.current === token) setError(cause instanceof Error ? cause.message : 'Analysis failed');
+    } finally { if (request.current === token) setProgress(null); }
+  };
+  const applyAnalysis = () => {
+    if (!analysis?.bpm || deckState.beatGridLocked || saving) return;
+    setDeckAnalysis(deck, { bpm: analysis.bpm, bpmConfidence: analysis.confidence, beatGrid: analysis.beatGrid,
+      beatGridSource: 'measured', beatGridLocked: false, downbeatIndices: null, tempoEvidence: analysis.evidence });
+  };
+  const evidence = deckState.tempoEvidence;
+  const percent = (value: number | null | undefined) => value != null && Number.isFinite(value) ? `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%` : 'unknown';
+  const alignment = evidence?.alignment;
   const beats = deckState.beatGrid;
   const downbeats = deckState.downbeatIndices ?? [];
   const locked = deckState.beatGridLocked;
@@ -45,8 +81,11 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
         beats: nextBeats,
         downbeatIndices: nextDownbeats,
         locked: nextLocked,
+        ...(isDynamic ? {} : { bpm: bpm ?? deckState.originalBpm ?? undefined }),
       });
+      if ((deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB).track?.id !== deckState.track.id) return;
       setDeckAnalysis(deck, {
+        beatGridSource: 'manual',
         beatGrid: saved.beats,
         downbeatIndices: saved.downbeatIndices,
         beatGridLocked: saved.locked,
@@ -57,7 +96,7 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
     } finally {
       setSaving(false);
     }
-  }, [deck, deckState.track, setDeckAnalysis]);
+  }, [deck, deckState.track, deckState.originalBpm, isDynamic, setDeckAnalysis]);
 
   const shift = useCallback((delta: number) => {
     if (!beats || locked || saving) return;
@@ -90,7 +129,8 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
     setError(null);
     try {
       await api.resetTrackBeatGrid(deckState.track.id);
-      setDeckAnalysis(deck, { beatGrid: null, downbeatIndices: null, beatGridLocked: false });
+      if ((deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB).track?.id !== deckState.track.id) return;
+      setDeckAnalysis(deck, { beatGridSource: 'unknown', beatGrid: null, downbeatIndices: null, beatGridLocked: false });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not reset beatgrid');
     } finally {
@@ -102,6 +142,22 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
 
   return (
     <div className='flex flex-col items-center gap-1 px-2 flex-shrink-0' aria-live='polite'>
+      <DJBeatGridStatus deck={deck} />
+      <div className='max-w-64 space-y-1 text-center text-[10px] text-text-secondary'>
+        <p>Tempo evidence: {percent(evidence?.score ?? deckState.bpmConfidence)}{evidence ? ` · ${evidence.source === 'browser' ? 'Track scan' : 'Library analysis'}` : ''}</p>
+        {evidence?.bpm != null && evidence.bpm > 0 && <p>Detected: {evidence.bpm.toFixed(2)} BPM{evidence.alternateBpm != null ? ` · Alternative: ${evidence.alternateBpm.toFixed(1)}` : ''}</p>}
+        <p>Section agreement: {percent(evidence?.stability)}{evidence?.sections != null ? ` (${evidence.sections} rhythmic sections)` : ''}</p>
+        <p>Grid review: {locked && deckState.beatGridSource === 'manual' ? 'reviewed & locked' : 'needs review'}</p>
+        {alignment ? <>
+          <p>Onsets within 35 ms: {percent(alignment.matched)}</p>
+          <p title="Median onset offset from the current grid. Section shift compares the earliest and latest measured sections; offsets wrap to the nearest beat, so this cannot rule out large drift.">Typical offset: {Math.round(alignment.offsetMs)} ms · Section shift: {alignment.driftMs == null ? 'unknown' : `${Math.round(alignment.driftMs)} ms`}</p>
+        </> : <p>Alignment &amp; drift: not measured</p>}
+        <p>Scores describe rhythmic evidence, not accuracy probability. Check the intro, middle and outro before locking.</p>
+      </div>
+      <button disabled={!deckState.track || progress !== null || saving} onClick={() => void analyze()} className='rounded border border-brand px-3 py-2 text-xs text-brand'>
+        {progress === null ? 'Analyze track' : `Analyzing ${Math.round(progress * 100)}%`}
+      </button>
+      {!!analysis?.bpm && !locked && <button disabled={saving || progress !== null} onClick={applyAnalysis} className='rounded border border-brand px-3 py-2 text-xs text-brand'>Use detected tempo &amp; grid</button>}
       <span className='text-[10px] text-neutral-500 font-bold uppercase tracking-wider'>
         GRID {isDynamic ? 'DYNAMIC' : 'STRAIGHT'}
       </span>
@@ -139,6 +195,7 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
         </button>
         <button disabled={disabled} onClick={() => void clear()} className={BTN} aria-label='Reset beatgrid to auto analysis' title='Remove manual beatgrid and use next automatic analysis'><RotateCcw size={16} aria-hidden /></button>
       </div>
+      {!locked && <button disabled={disabled} onClick={() => void persist(beats!, downbeats, true)} className='rounded border border-brand px-3 py-2 text-xs text-brand'>Verify &amp; lock grid</button>}
       <span className='text-[9px] text-neutral-600'>DB {downbeats.length ? downbeats[0] + 1 : '—'}</span>
       {error && <span className='max-w-32 text-center text-[9px] text-red-300'>{error}</span>}
     </div>

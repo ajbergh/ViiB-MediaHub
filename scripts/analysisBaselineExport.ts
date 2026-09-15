@@ -21,7 +21,7 @@ export type BrowserBaselineResult = {
 };
 
 export type BrowserBaselineResultSet = {
-  algorithm: 'browser-baseline-v1';
+  algorithm: 'browser-multisection-v2';
   results: BrowserBaselineResult[];
 };
 
@@ -47,7 +47,7 @@ export const indexManifestTracksByFilename = (manifest: BenchmarkManifest): Map<
 
 export const browserBaselineResult = (
   id: string,
-  bpm: BPMResult | undefined,
+  bpm: Pick<BPMResult, 'bpm' | 'confidence' | 'peaks'> | undefined,
   key: KeyDetectionResult | undefined,
 ): BrowserBaselineResult => {
   const result: BrowserBaselineResult = { id };
@@ -125,7 +125,7 @@ const bindExporter = (): void => {
           URL.revokeObjectURL(objectURL);
         }
       }
-      const resultSet: BrowserBaselineResultSet = { algorithm: 'browser-baseline-v1', results };
+      const resultSet: BrowserBaselineResultSet = { algorithm: 'browser-multisection-v2', results };
       const blob = new Blob([`${JSON.stringify(resultSet, null, 2)}\n`], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const download = document.createElement('a');

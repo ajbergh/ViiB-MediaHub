@@ -1,3 +1,4 @@
+import { canSyncBeatGrid } from './beatGridConfidence';
 /**
  * ViiB MediaHub - DJ Audio Engine
  * 
@@ -1697,6 +1698,8 @@ export class DJAudioEngine {
     sourceBeatGrid: number[],
     sourcePosition: number
   ): void {
+    const state = useStore.getState();
+    if (!canSyncBeatGrid(state.djDeckA) || !canSyncBeatGrid(state.djDeckB)) return;
     const targetElement = targetDeck === 'A' ? this.audioElementA : this.audioElementB;
     if (!targetElement || !sourceBeatGrid.length || !targetBeatGrid.length) {
       console.warn('Beat-phase sync: Missing audio element or beat grids');
