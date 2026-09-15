@@ -9,7 +9,6 @@ import { Activity, Archive, CheckCircle2, Database, Eye, Play, RefreshCw, Shield
 import { Page, PageHeader } from '../components/ui/Page';
 import { BackupInfo, LibraryDiagnostics, WatcherStatus, libraryOperationsV2 } from '../services/libraryOperationsV2';
 import { MetadataHealthWidget } from '../components/MetadataHealthWidget';
-import { PlexMusicSourceSettings } from '../components/PlexMusicSourceSettings';
 import { LibraryAnalysisPanel } from '../components/LibraryAnalysisPanel';
 
 const formatBytes = (bytes: number) => {
@@ -135,8 +134,6 @@ export const LibraryOperationsPanel: React.FC = () => {
   return (
     <div className="space-y-6">
       <p className="max-w-3xl text-text-secondary text-sm">Configure library sources, prepare tracks for DJ features, diagnose and repair library consistency, and create validated backups or stage recovery.</p>
-
-      <PlexMusicSourceSettings />
 
       {(message || error) && (
         <div className={`rounded-lg border p-4 text-sm ${error ? 'border-error/40 bg-error/10 text-error' : 'border-accent-green/30 bg-accent-green/10 text-text-main'}`} role="status">
