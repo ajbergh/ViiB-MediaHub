@@ -12,6 +12,7 @@ import { AlertTriangle, Gauge, Pause, Play, RefreshCw, Square } from 'lucide-rea
 import {
   AnalysisJobResult,
   AnalysisSelectionMode,
+  AnalysisSource,
   OperationJob,
   SETTING_AUTO_ANALYZE_NEW_TRACKS,
   jobsV2,
@@ -24,10 +25,11 @@ const secondaryClass = 'inline-flex items-center gap-2 rounded-lg bg-surface-2 p
 /** Statuses in which a job still represents outstanding work. */
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'paused', 'canceling']);
 
-const SELECTIONS: { mode: AnalysisSelectionMode; label: string; hint: string }[] = [
-  { mode: 'missing', label: 'Prepare new tracks', hint: 'Analyze local tracks that have never been prepared.' },
-  { mode: 'stale', label: 'Update analysis', hint: 'Refresh tracks analyzed by an older algorithm version.' },
-  { mode: 'all', label: 'Prepare library', hint: 'Prepare every local track. Current results are skipped.' },
+const SELECTIONS: { mode: AnalysisSelectionMode; source: AnalysisSource; label: string; hint: string }[] = [
+  { mode: 'missing', source: 'local', label: 'Prepare new tracks', hint: 'Analyze local tracks that have never been prepared.' },
+  { mode: 'missing', source: 'plex', label: 'Prepare Plex tracks', hint: 'Analyze available Plex tracks that have never been prepared.' },
+  { mode: 'stale', source: 'all', label: 'Update analysis', hint: 'Refresh local and Plex tracks analyzed by an older algorithm version.' },
+  { mode: 'all', source: 'all', label: 'Prepare library', hint: 'Prepare every available local and Plex track. Current results are skipped.' },
 ];
 
 const isEnabled = (value: string) => ['1', 'true', 'yes', 'on', 'enabled'].includes(value.trim().toLowerCase());
@@ -93,9 +95,9 @@ export const LibraryAnalysisPanel: React.FC = () => {
     finally { setBusy(null); await refresh(); }
   };
 
-  const startAnalysis = (mode: AnalysisSelectionMode) => run(`start-${mode}`, async () => {
-    const job = await jobsV2.analyze({ mode });
-    return `Analysis queued (${mode}). Job ${job.id.slice(0, 8)}.`;
+  const startAnalysis = (mode: AnalysisSelectionMode, source: AnalysisSource) => run(`start-${mode}-${source}`, async () => {
+    const job = await jobsV2.analyze({ mode, source });
+    return `Analysis queued (${mode}, ${source}). Job ${job.id.slice(0, 8)}.`;
   });
 
   const pauseQueue = () => run('pause', async () => {
@@ -139,7 +141,7 @@ export const LibraryAnalysisPanel: React.FC = () => {
         <h2 className="text-xl font-semibold">Track Analysis</h2>
       </div>
       <p className="mb-4 max-w-3xl text-sm text-text-secondary">
-        Prepare tempo, key, phase-aligned beat grids, and energy features for your local library before you open the DJ panel.
+        Prepare tempo, key, phase-aligned beat grids, and energy features for local and available Plex tracks before you open the DJ panel.
         Results are stored per track and survive restarts: a run that is interrupted resumes where it stopped instead of starting over.
       </p>
 
@@ -152,11 +154,11 @@ export const LibraryAnalysisPanel: React.FC = () => {
       <div className="mb-4 flex flex-wrap gap-3">
         {SELECTIONS.map(selection => (
           <button
-            key={selection.mode}
-            className={selection.mode === 'missing' ? actionClass : secondaryClass}
+            key={`${selection.mode}-${selection.source}`}
+            className={selection.mode === 'missing' && selection.source === 'local' ? actionClass : secondaryClass}
             disabled={busy !== null || activeJob !== null}
             title={selection.hint}
-            onClick={() => startAnalysis(selection.mode)}
+            onClick={() => startAnalysis(selection.mode, selection.source)}
           >
             <RefreshCw size={16} />{selection.label}
           </button>

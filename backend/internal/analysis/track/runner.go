@@ -27,6 +27,9 @@ func (p RunProgress) Done() int { return p.Processed }
 // RunOptions configures one pass over a work list.
 type RunOptions struct {
 	Analysis Options
+	// ResolveSource optionally supplies an authenticated or otherwise remote
+	// stream source. Local catalog analysis uses ResolveLocalSource by default.
+	ResolveSource func(context.Context, string) (analysis.ResolvedSource, error)
 	// Canceled is consulted between tracks. Cancellation is cooperative at
 	// track granularity: suspending DSP mid-track would buy a few seconds of
 	// latency at the cost of a much harder invariant.
@@ -59,7 +62,7 @@ func Run(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistr
 				return progress, err
 			}
 		}
-		settled := analyzeOne(ctx, database, registry, songID, opts.Analysis)
+		settled := analyzeOne(ctx, database, registry, songID, opts.Analysis, opts.ResolveSource)
 		// A cancellation that arrived mid-decode leaves the track outstanding
 		// rather than failed, so it must not be counted before returning.
 		if err := ctx.Err(); err != nil {
@@ -92,8 +95,13 @@ const (
 
 // analyzeOne settles exactly one track. Every terminal condition is persisted,
 // so a source that cannot be analyzed is not retried on the next run.
-func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options) outcome {
-	source, err := analysis.ResolveLocalSource(database, songID)
+func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options, resolveSource func(context.Context, string) (analysis.ResolvedSource, error)) outcome {
+	if resolveSource == nil {
+		resolveSource = func(_ context.Context, id string) (analysis.ResolvedSource, error) {
+			return analysis.ResolveLocalSource(database, id)
+		}
+	}
+	source, err := resolveSource(ctx, songID)
 	if err != nil {
 		code, message := ClassifyError(err)
 		if persistErr := PersistFailure(database, songID, analysis.ResolvedSource{}, code, message); persistErr != nil {
@@ -122,7 +130,7 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		return outcomeSkipped
 	}
 
-	result, err := Analyze(ctx, database, registry, songID, opts)
+	result, err := AnalyzeResolved(ctx, registry, source, opts)
 	if err != nil {
 		if ctx.Err() != nil {
 			// Do not persist a cancellation as a track-level failure; the work

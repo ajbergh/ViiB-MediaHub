@@ -34,6 +34,9 @@ func TestParseAnalysisSelectionDefaultsToMissing(t *testing.T) {
 	if selection.Mode != AnalysisSelectionMissing {
 		t.Fatalf("mode = %q, want %q", selection.Mode, AnalysisSelectionMissing)
 	}
+	if selection.Source != AnalysisSourceLocal {
+		t.Fatalf("source = %q, want %q", selection.Source, AnalysisSourceLocal)
+	}
 }
 
 func TestParseAnalysisSelectionRejectsIncompleteSelections(t *testing.T) {
@@ -137,9 +140,7 @@ func TestExpandAnalysisSelectionPlaylist(t *testing.T) {
 	}
 }
 
-// Plex-backed songs need an authenticated source adapter that does not exist
-// yet. Expanding them would only queue guaranteed failures.
-func TestExpandAnalysisSelectionExcludesPlexTracks(t *testing.T) {
+func TestExpandAnalysisSelectionScopesPlexTracks(t *testing.T) {
 	database := selectionDatabase(t)
 	saveSelectionSong(t, database, "local", 1)
 	saveSelectionSong(t, database, "remote", 2)
@@ -159,7 +160,21 @@ func TestExpandAnalysisSelectionExcludesPlexTracks(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !equalStrings(got, []string{"local"}) {
-		t.Fatalf("got %v, want [local]", got)
+		t.Fatalf("local default got %v, want [local]", got)
+	}
+	got, err = database.ExpandAnalysisSelection(AnalysisSelection{Mode: AnalysisSelectionAll, Source: AnalysisSourcePlex}, 1, testAlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equalStrings(got, []string{"remote"}) {
+		t.Fatalf("plex got %v, want [remote]", got)
+	}
+	got, err = database.ExpandAnalysisSelection(AnalysisSelection{Mode: AnalysisSelectionAll, Source: AnalysisSourceAll}, 1, testAlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equalStrings(got, []string{"local", "remote"}) {
+		t.Fatalf("all got %v, want [local remote]", got)
 	}
 }
 
@@ -235,6 +250,25 @@ func TestTrackAnalysisValidTreatsSettledFailuresAsDone(t *testing.T) {
 	}
 	if got {
 		t.Fatal("a running record must not be treated as settled")
+	}
+}
+
+func TestTrackAnalysisValidRetriesUnavailableSource(t *testing.T) {
+	database := selectionDatabase(t)
+	saveSelectionSong(t, database, "remote", 1)
+	code := "source_unavailable"
+	if err := database.UpsertTrackAnalysis(TrackAnalysis{
+		SongID: "remote", Status: TrackAnalysisFailed, AnalysisVersion: 1,
+		AlgorithmVersion: testAlgorithmVersion, SourceFingerprint: "fp", ErrorCode: &code,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	valid, err := database.TrackAnalysisValid("remote", "fp", 1, testAlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid {
+		t.Fatal("a source_unavailable result must retry when its source returns")
 	}
 }
 

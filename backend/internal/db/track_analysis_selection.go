@@ -23,6 +23,14 @@ const (
 	AnalysisSelectionPlaylist = "playlist"
 )
 
+// Analysis source scopes. Automatic local scans retain the local default;
+// Plex streaming is selected explicitly by the user-facing preparation job.
+const (
+	AnalysisSourceLocal = "local"
+	AnalysisSourcePlex  = "plex"
+	AnalysisSourceAll   = "all"
+)
+
 // maxAnalysisSelection bounds one job's work list so a pathological catalog
 // cannot produce an unbounded in-memory slice.
 const maxAnalysisSelection = 200000
@@ -30,6 +38,7 @@ const maxAnalysisSelection = 200000
 // AnalysisSelection describes which tracks a job covers.
 type AnalysisSelection struct {
 	Mode       string   `json:"mode"`
+	Source     string   `json:"source,omitempty"`
 	SongIDs    []string `json:"songIds,omitempty"`
 	PlaylistID string   `json:"playlistId,omitempty"`
 }
@@ -48,11 +57,20 @@ func ParseAnalysisSelection(parameters json.RawMessage) (AnalysisSelection, erro
 	if selection.Mode == "" {
 		selection.Mode = AnalysisSelectionMissing
 	}
+	selection.Source = strings.ToLower(strings.TrimSpace(selection.Source))
+	if selection.Source == "" {
+		selection.Source = AnalysisSourceLocal
+	}
 	return selection, selection.Validate()
 }
 
 // Validate rejects a selection that cannot be expanded.
 func (s AnalysisSelection) Validate() error {
+	switch s.Source {
+	case "", AnalysisSourceLocal, AnalysisSourcePlex, AnalysisSourceAll:
+	default:
+		return fmt.Errorf("unsupported analysis source %q", s.Source)
+	}
 	switch s.Mode {
 	case AnalysisSelectionAll, AnalysisSelectionMissing, AnalysisSelectionStale:
 		return nil
@@ -72,9 +90,8 @@ func (s AnalysisSelection) Validate() error {
 }
 
 // ExpandAnalysisSelection returns the candidate song IDs for a selection in a
-// stable order. Plex-backed songs are excluded because they need an
-// authenticated source adapter that does not exist yet; including them would
-// only produce a run of source_unavailable failures.
+// stable order. Plex candidates require an available source and are included
+// only when the selection explicitly requests Plex or all sources.
 //
 // Expansion is deliberately coarse: it filters on what SQL can see cheaply
 // (presence of a row, analysis version, algorithm version). The authoritative
@@ -87,18 +104,28 @@ func (d *DB) ExpandAnalysisSelection(selection AnalysisSelection, analysisVersio
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
-	// The exclusion below reads plex_tracks, which is installed lazily and is
-	// absent in a catalog that never connected a Plex source.
 	if err := d.EnsurePlexSchema(); err != nil {
 		return nil, err
 	}
 
-	// Restrict to songs this analyzer can actually open.
+	// Restrict to sources this analyzer can actually open. Plex streams are
+	// authenticated by the API adapter, and unavailable servers are omitted so
+	// an ordinary preparation run does not create durable transient failures.
 	base := `SELECT s.id FROM songs s
 		LEFT JOIN track_analysis a ON a.song_id = s.id
-		WHERE s.file_path IS NOT NULL AND TRIM(s.file_path) != ''
-		  AND NOT EXISTS (SELECT 1 FROM plex_tracks p WHERE p.song_id = s.id)`
+		LEFT JOIN plex_tracks p ON p.song_id = s.id
+		LEFT JOIN plex_sources ps ON ps.id = p.source_id
+		WHERE `
 	args := []any{}
+	switch selection.Source {
+	case AnalysisSourcePlex:
+		base += `p.song_id IS NOT NULL AND ps.available = 1 AND TRIM(p.media_key) != ''`
+	case AnalysisSourceAll:
+		base += `((p.song_id IS NULL AND s.file_path IS NOT NULL AND TRIM(s.file_path) != '')
+			OR (p.song_id IS NOT NULL AND ps.available = 1 AND TRIM(p.media_key) != ''))`
+	default:
+		base += `p.song_id IS NULL AND s.file_path IS NOT NULL AND TRIM(s.file_path) != ''`
+	}
 
 	switch selection.Mode {
 	case AnalysisSelectionAll:
@@ -241,6 +268,9 @@ func (d *DB) TrackAnalysisValid(songID, sourceFingerprint string, analysisVersio
 		return false, nil
 	}
 	if analysis.SourceFingerprint != sourceFingerprint {
+		return false, nil
+	}
+	if analysis.Status == TrackAnalysisFailed && analysis.ErrorCode != nil && *analysis.ErrorCode == "source_unavailable" {
 		return false, nil
 	}
 	switch analysis.Status {

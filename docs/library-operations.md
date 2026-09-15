@@ -14,23 +14,24 @@ See [Plex Media Server Music Support](plex-music.md) for the full setup, securit
 
 ## Track analysis
 
-The **Track Analysis** panel prepares your local library for DJ features by measuring each track's tempo and musical key and storing the result durably. Analysis runs in the background as a persistent job, so it survives closing and reopening ViiB.
+The **Track Analysis** panel prepares local files and available Plex tracks for DJ features by measuring each track's tempo and musical key and storing the result durably. Analysis runs in the background as a persistent job, so it survives closing and reopening ViiB.
 
 Three actions cover the usual cases:
 
 - **Prepare new tracks** — tracks that have never been analyzed.
+- **Prepare Plex tracks** — available Plex tracks that have never been analyzed.
 - **Update analysis** — tracks whose stored result came from an older analyzer version.
-- **Prepare library** — every local track. Results that are already current are skipped rather than repeated, so this is not as expensive as it sounds.
+- **Prepare library** — every available local and Plex track. Results that are already current are skipped rather than repeated, so this is not as expensive as it sounds.
 
 While a run is in progress the panel shows how many tracks are done, and offers **Pause** and **Cancel**. Pausing stops new tracks from starting and lets the current one finish; it never suspends analysis part-way through a track. Cancelling keeps every track that was already analyzed, so starting the same selection again resumes rather than restarting.
 
 When a run finishes, the summary reports how many tracks were analyzed, how many were already current, and how many could not be analyzed. A track that fails is recorded with the reason and is not retried on every subsequent run. The usual causes are unsupported formats and unreadable or missing files.
 
-**Prepare new tracks automatically** queues a background run whenever a scan finds new tracks. It is on by default; turn it off if you prefer to prepare tracks manually. Automatic runs are given a lower priority than anything you start yourself.
+**Prepare new tracks automatically** queues a background run whenever a local scan finds new tracks. It is on by default; turn it off if you prefer to prepare tracks manually. Automatic runs are given a lower priority than anything you start yourself. Plex preparation remains explicit so a library synchronization cannot unexpectedly consume bandwidth or PMS decode capacity.
 
 Two limits are worth knowing:
 
-- **Plex tracks are not analyzed.** Analysis reads audio from local files. Plex-hosted tracks are skipped entirely rather than queued and failed.
+- **Plex tracks are analyzed through PMS direct play.** ViiB opens an authenticated server-side media stream; the token never enters a browser URL or analysis record. One analysis stream is allowed per Plex source, and tracks from an offline source are skipped until that source is available again.
 - **Analysis yields to DJ playback.** While a DJ deck is playing, a background run releases its worker and resumes once playback stops, so library preparation does not compete with a live set. Anything you start explicitly is not held back this way.
 
 Measured tempo and key values are not yet shown in the library. They are stored, versioned, and available to later DJ features, but the accuracy work that has to precede presenting them as reliable is not finished.

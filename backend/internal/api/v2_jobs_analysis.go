@@ -82,7 +82,8 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 	lastWrite := time.Now()
 
 	progress, runErr := track.Run(ctx, a.db, decoderRegistry(), songIDs, track.RunOptions{
-		Canceled: func() bool { return a.jobCancellationRequested(job.ID) },
+		ResolveSource: a.resolveAnalysisSource,
+		Canceled:      func() bool { return a.jobCancellationRequested(job.ID) },
 		Throttle: func(context.Context) error {
 			// Consulted between tracks. Yielding releases the worker so scans
 			// and foreground analysis are not stuck behind a paused run.
@@ -104,6 +105,7 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 
 	result := map[string]any{
 		"mode":     selection.Mode,
+		"source":   selection.Source,
 		"total":    progress.Total,
 		"analyzed": progress.Analyzed,
 		"skipped":  progress.Skipped,

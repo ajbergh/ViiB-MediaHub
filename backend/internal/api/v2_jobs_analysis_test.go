@@ -115,6 +115,56 @@ func TestAnalyzeTracksJobIsAcceptedAndDrained(t *testing.T) {
 	}
 }
 
+func TestAnalyzeTracksJobStreamsAvailablePlexSource(t *testing.T) {
+	fixture, err := analysisbench.NewClickTrack("plex-clicks", 128, 3, 22050, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wav bytes.Buffer
+	if err := analysisbench.WriteWAVPCM16(&wav, fixture); err != nil {
+		t.Fatal(err)
+	}
+	const token = "analysis-secret"
+	var sawToken, leakedToken bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawToken = r.Header.Get("X-Plex-Token") == token
+		leakedToken = r.URL.Query().Get("X-Plex-Token") != "" || strings.Contains(r.URL.RawQuery, token)
+		w.Header().Set("Content-Type", "audio/wav")
+		_, _ = w.Write(wav.Bytes())
+	}))
+	defer upstream.Close()
+
+	database, api, plexTrack := setupPlexProxyTest(t, upstream.URL, "/audio", token, true)
+	plexTrack.Container = "wav"
+	if _, _, _, err := database.SyncPlexLibrary(plexTrack.SourceID, plexTrack.LibraryID, []db.PlexCatalogTrack{plexTrack}); err != nil {
+		t.Fatal(err)
+	}
+	api.V2JobRoutes()
+	if err := database.CreateJob(db.Job{ID: "plex-analysis", Type: JobTypeAnalyzeTracks, Status: db.JobStatusQueued,
+		Parameters: json.RawMessage(`{"mode":"missing","source":"plex"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	api.wakeJobScheduler()
+	finished := awaitJobStatus(t, database, "plex-analysis", db.JobStatusSucceeded)
+	if sawToken == false || leakedToken {
+		t.Fatalf("Plex authorization handling bad: token=%v leaked=%v", sawToken, leakedToken)
+	}
+	var result struct{ Analyzed, Failed int }
+	if err := json.Unmarshal(finished.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Analyzed != 1 || result.Failed != 0 {
+		t.Fatalf("result = %#v, want one successful Plex analysis", result)
+	}
+	record, err := database.GetTrackAnalysis(plexTrack.SongID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.BPM == nil || record.SourceRevision == nil || record.SourceSize != nil || !strings.HasPrefix(*record.SourceRevision, "plex:") {
+		t.Fatalf("persisted Plex analysis = %#v", record)
+	}
+}
+
 func TestAnalyzeTracksJobRejectsUnexpandableSelection(t *testing.T) {
 	database, _, _ := analysisCatalog(t, 1)
 	api := &API{db: database}

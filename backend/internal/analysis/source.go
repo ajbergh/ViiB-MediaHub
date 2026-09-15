@@ -14,12 +14,17 @@ import (
 // ResolvedSource is a canonical song source plus the inexpensive revision
 // material used to invalidate a prior analysis result.
 type ResolvedSource struct {
-	SongID      string
-	Name        string
-	Path        string
-	Fingerprint string
-	Size        int64
-	Mtime       int64
+	SongID         string
+	Name           string
+	Path           string
+	Fingerprint    string
+	SourceRevision string
+	Size           int64
+	Mtime          int64
+	// OpenStream supplies an authenticated remote stream when Path is not a
+	// local file. It deliberately returns only a reader: source credentials
+	// remain in the adapter that created the request.
+	OpenStream func() (io.ReadCloser, error)
 }
 
 // ResolveLocalSource resolves one canonical local song. Plex streams require a
@@ -53,4 +58,9 @@ func ResolveLocalSource(database *db.DB, songID string) (ResolvedSource, error) 
 }
 
 // Open provides a new source stream. Decoders own and close the returned file.
-func (source ResolvedSource) Open() (io.ReadCloser, error) { return os.Open(source.Path) }
+func (source ResolvedSource) Open() (io.ReadCloser, error) {
+	if source.OpenStream != nil {
+		return source.OpenStream()
+	}
+	return os.Open(source.Path)
+}
