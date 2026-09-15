@@ -42,7 +42,7 @@ For Plex Media Server music, track analysis, database diagnostics, repair, valid
 
 ### Track analysis
 
-Tempo and musical key measurement for local tracks is configured in the **Track Analysis** panel under Library Health, including the **Analyze new tracks automatically** option, which is off by default. See [Library Operations](library-operations.md#track-analysis).
+Tempo, musical key, phase-aligned beat grids, and energy measurements for local tracks are prepared in the **Track Analysis** panel under Library Health. **Prepare new tracks automatically** is on by default and can be disabled there. See [Library Operations](library-operations.md#track-analysis).
 
 ### Plex Media Server music
 

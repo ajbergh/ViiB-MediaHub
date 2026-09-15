@@ -131,12 +131,14 @@ const DJModeV2Inner: React.FC = () => {
   // Deck A header info (excludes position/duration/hotCues — those update at 15fps)
   const deckATrack = useStore(s => s.djDeckA.track);
   const deckAKey = useStore(s => s.djDeckA.key);
+  const deckAHasGrid = useStore(s => Boolean(s.djDeckA.beatGrid?.length));
   const deckACuePoint = useStore(s => s.djDeckA.cuePoint);
   const deckALoop = useStore(s => s.djDeckA.loop);
 
   // Deck B header info
   const deckBTrack = useStore(s => s.djDeckB.track);
   const deckBKey = useStore(s => s.djDeckB.key);
+  const deckBHasGrid = useStore(s => Boolean(s.djDeckB.beatGrid?.length));
   const deckBCuePoint = useStore(s => s.djDeckB.cuePoint);
   const deckBLoop = useStore(s => s.djDeckB.loop);
 
@@ -657,7 +659,7 @@ const DJModeV2Inner: React.FC = () => {
                   <div className='flex items-center gap-3 px-3 py-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
                       <DJLoopSection deck='A' />
                       <DJBeatJump deck='A' compact />
-                      <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='A' /> · Edit Grid</summary><div><DJBeatGridEdit deck='A' /></div></details>
+                      {deckAHasGrid && <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='A' /> · Edit Grid</summary><div><DJBeatGridEdit deck='A' /></div></details>}
                   </div>
                   <DJEnergyInsights trackID={deckATrack?.id} deck='A' />
                   {viewMode === 'racks' && <DJDeckOverview deck='A' />}
@@ -905,7 +907,7 @@ const DJModeV2Inner: React.FC = () => {
                   </div>
                   {/* Controls Row: Grid + Beat Jump + Loop (mirrored, icon-only) */}
                   <div className='flex items-center gap-3 px-3 py-1 justify-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
-                      <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='B' /> · Edit Grid</summary><div><DJBeatGridEdit deck='B' /></div></details>
+                      {deckBHasGrid && <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='B' /> · Edit Grid</summary><div><DJBeatGridEdit deck='B' /></div></details>}
                       <DJBeatJump deck='B' compact />
                       <DJLoopSection deck='B' />
                   </div>

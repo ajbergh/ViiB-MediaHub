@@ -18,15 +18,15 @@ The **Track Analysis** panel prepares your local library for DJ features by meas
 
 Three actions cover the usual cases:
 
-- **Analyze missing** — tracks that have never been analyzed.
-- **Analyze outdated** — tracks whose stored result came from an older analyzer version.
-- **Re-analyze all** — every local track. Results that are already current are skipped rather than repeated, so this is not as expensive as it sounds.
+- **Prepare new tracks** — tracks that have never been analyzed.
+- **Update analysis** — tracks whose stored result came from an older analyzer version.
+- **Prepare library** — every local track. Results that are already current are skipped rather than repeated, so this is not as expensive as it sounds.
 
 While a run is in progress the panel shows how many tracks are done, and offers **Pause** and **Cancel**. Pausing stops new tracks from starting and lets the current one finish; it never suspends analysis part-way through a track. Cancelling keeps every track that was already analyzed, so starting the same selection again resumes rather than restarting.
 
 When a run finishes, the summary reports how many tracks were analyzed, how many were already current, and how many could not be analyzed. A track that fails is recorded with the reason and is not retried on every subsequent run. The usual causes are unsupported formats and unreadable or missing files.
 
-**Analyze new tracks automatically** queues a background run whenever a scan finds new tracks. It is off by default. Automatic runs are given a lower priority than anything you start yourself.
+**Prepare new tracks automatically** queues a background run whenever a scan finds new tracks. It is on by default; turn it off if you prefer to prepare tracks manually. Automatic runs are given a lower priority than anything you start yourself.
 
 Two limits are worth knowing:
 

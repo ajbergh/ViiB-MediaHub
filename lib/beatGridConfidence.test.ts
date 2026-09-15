@@ -4,11 +4,12 @@ import type { TrackAnalysisFeature } from '../services/api';
 
 const feature: TrackAnalysisFeature = { songId: 'one', status: 'complete', bpm: 120, bpmConfidence: 0.95, bpmSource: 'measured', keySource: 'unknown', syncAllowed: true };
 describe('beat-grid provenance', () => {
-  it('labels uniform BPM fallbacks as estimates, even with high tempo confidence', () => {
+  it('does not invent a browser grid from BPM alone', () => {
     const patch = resolvedGridPatch(feature, null, 10);
-    expect(patch.beatGridSource).toBe('generated');
+    expect(patch.beatGrid).toBeNull();
+    expect(patch.beatGridSource).toBe('unknown');
     expect(patch.bpmConfidence).toBe(0.95);
-    expect(canSyncBeatGrid({ beatGrid: patch.beatGrid!, beatGridSource: patch.beatGridSource!, beatGridLocked: false })).toBe(false);
+    expect(canSyncBeatGrid({ beatGrid: patch.beatGrid, beatGridSource: patch.beatGridSource!, beatGridLocked: false })).toBe(false);
   });
   it('preserves a manual grid even when scalar analysis is unavailable', () => {
     const patch = resolvedGridPatch(null, { songId: 'one', beats: [0.1, 0.6], downbeatIndices: [0], locked: true, algorithmVersion: 'v1', source: 'manual' }, 10);

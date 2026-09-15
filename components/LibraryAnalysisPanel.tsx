@@ -25,9 +25,9 @@ const secondaryClass = 'inline-flex items-center gap-2 rounded-lg bg-surface-2 p
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'paused', 'canceling']);
 
 const SELECTIONS: { mode: AnalysisSelectionMode; label: string; hint: string }[] = [
-  { mode: 'missing', label: 'Analyze missing', hint: 'Tracks that have never been analyzed.' },
-  { mode: 'stale', label: 'Analyze outdated', hint: 'Tracks analyzed by an older algorithm version.' },
-  { mode: 'all', label: 'Re-analyze all', hint: 'Every local track. Already-current results are skipped, not repeated.' },
+  { mode: 'missing', label: 'Prepare new tracks', hint: 'Analyze local tracks that have never been prepared.' },
+  { mode: 'stale', label: 'Update analysis', hint: 'Refresh tracks analyzed by an older algorithm version.' },
+  { mode: 'all', label: 'Prepare library', hint: 'Prepare every local track. Current results are skipped.' },
 ];
 
 const isEnabled = (value: string) => ['1', 'true', 'yes', 'on', 'enabled'].includes(value.trim().toLowerCase());
@@ -75,7 +75,9 @@ export const LibraryAnalysisPanel: React.FC = () => {
     void (async () => {
       try {
         const value = await api.getSetting(SETTING_AUTO_ANALYZE_NEW_TRACKS);
-        if (!canceled) setAutoAnalyze(isEnabled(value));
+        // The backend enables this for an unset setting. An explicit false is
+        // the only way to opt out.
+        if (!canceled) setAutoAnalyze(value.trim() === '' || isEnabled(value));
       } catch {
         // An unreadable setting simply leaves the toggle off; it is not an
         // error worth interrupting the panel for.
@@ -137,7 +139,7 @@ export const LibraryAnalysisPanel: React.FC = () => {
         <h2 className="text-xl font-semibold">Track Analysis</h2>
       </div>
       <p className="mb-4 max-w-3xl text-sm text-text-secondary">
-        Measure tempo and musical key for your local library so DJ features have durable, versioned values to work with.
+        Prepare tempo, key, phase-aligned beat grids, and energy features for your local library before you open the DJ panel.
         Results are stored per track and survive restarts: a run that is interrupted resumes where it stopped instead of starting over.
       </p>
 
@@ -213,7 +215,7 @@ export const LibraryAnalysisPanel: React.FC = () => {
           onChange={toggleAutoAnalyze}
         />
         <span>
-          <span className="font-semibold">Analyze new tracks automatically</span>
+          <span className="font-semibold">Prepare new tracks automatically</span>
           <span className="block text-text-secondary">Queue a background analysis run after a scan finds new tracks. It runs below anything you start yourself and yields while DJ playback is active.</span>
         </span>
       </label>

@@ -143,8 +143,8 @@ func (a *API) deferAnalysisJob(id string) {
 }
 
 // SettingAutoAnalyzeNewTracks enables queueing analysis for tracks a scan just
-// added. It defaults to off: analysis is expensive and, until the Phase 5
-// integration gate, nothing in the product depends on the result.
+// added. It defaults to on because DJ deck loading relies on the durable
+// analysis record; users can explicitly turn it off in Library Operations.
 const SettingAutoAnalyzeNewTracks = "analysis_auto_analyze_new"
 
 // autoAnalyzePriority keeps scan-triggered analysis below anything a user asked
@@ -156,7 +156,7 @@ const autoAnalyzePriority = -10
 // must never turn a successful scan into a failed one.
 func (a *API) queueAutoAnalysis(trigger string) {
 	value, err := a.db.GetSetting(SettingAutoAnalyzeNewTracks)
-	if err != nil || !isEnabledSetting(value) {
+	if err != nil || (strings.TrimSpace(value) != "" && !isEnabledSetting(value)) {
 		return
 	}
 	// A run that has not started yet already covers whatever the scan added,
