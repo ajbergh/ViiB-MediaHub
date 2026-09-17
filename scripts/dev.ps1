@@ -14,12 +14,13 @@ Write-Host "`n🔧 Starting Go backend on port 8080..." -ForegroundColor Yellow
 $devDataDir = Join-Path $env:APPDATA "ViiB-MediaHub-dev"
 Write-Host "Using development data directory: $devDataDir" -ForegroundColor Gray
 
-$backendJob = Start-Job -ScriptBlock {
+$backendScript = {
     param($root, $dataDir)
     Set-Location (Join-Path $root "backend")
     $env:CGO_ENABLED = "1"
     go run ./cmd/viib -port 8080 -no-browser -data $dataDir
-} -ArgumentList $projectRoot, $devDataDir
+}
+$backendJob = Start-Job -ScriptBlock $backendScript -ArgumentList @($projectRoot, $devDataDir)
 
 # Give backend time to start
 Start-Sleep -Seconds 2
