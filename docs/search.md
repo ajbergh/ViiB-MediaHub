@@ -46,7 +46,7 @@ Matches album name, album artist, or track artist. Clicking an album opens [Albu
 Matches artist name. Clicking an artist opens [Artist Detail](artists.md).
 
 ### Playlists
-Matches playlist name. Clicking a playlist opens [Playlist Detail](playlists.md).
+Matches playlist name. Search results expose playlist matches, but the current router does not provide a separate playlist-detail route; use the Playlists page for playlist actions.
 
 ---
 

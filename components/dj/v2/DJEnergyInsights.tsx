@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../../store';
+import { getDJAudioEngine } from '../../../lib/djAudio';
 import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations } from '../../../services/api';
 
 interface DJEnergyInsightsProps {
@@ -14,6 +15,30 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [recommendations, setRecommendations] = useState<TrackTransitionRecommendations | null>(null);
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
   const setHotCue = useStore(state => state.setHotCue);
+  const progressRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!features || !deck) return;
+    const updatePosition = () => {
+      const progress = progressRef.current;
+      if (!progress) return;
+      const state = useStore.getState();
+      const currentDeck = deck === 'A' ? state.djDeckA : state.djDeckB;
+      const engine = getDJAudioEngine();
+      const valid = currentDeck.track?.id === trackID && currentDeck.duration > 0;
+      progress.hidden = !valid;
+      if (!valid) return;
+      const position = engine.initialized && (currentDeck.isPlaying || engine.isScratching(deck))
+        ? engine.getPosition(deck) : currentDeck.position;
+      const percent = Math.max(0, Math.min(100, position / currentDeck.duration * 100));
+      progress.style.width = `${percent}%`;
+      progress.setAttribute('aria-valuenow', String(Math.round(percent)));
+      progress.setAttribute('aria-valuetext', `${Math.floor(position)} of ${Math.floor(currentDeck.duration)} seconds`);
+    };
+    updatePosition();
+    const timer = window.setInterval(updatePosition, 50);
+    return () => window.clearInterval(timer);
+  }, [features, deck, trackID]);
 
   useEffect(() => {
     let live = true;
@@ -35,8 +60,15 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   };
   const top = recommendations?.recommendations[0];
   return <section aria-label="Measured track energy" className="px-2 py-1 text-[10px] text-neutral-400">
-    <div className="flex h-5 items-end gap-px" title="Measured 500 ms energy windows">
+    <div className="relative flex h-5 items-end gap-px overflow-hidden" title="Track energy · Highlight shows playback position">
       {features.energy.map((point, index) => <i key={index} className="w-1 bg-cyan-400/70" style={{ height: `${Math.max(2, point.value * 100)}%` }} />)}
+      {deck && <div ref={progressRef} hidden role="progressbar" aria-label={`Deck ${deck} track position`}
+        aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}
+        className="pointer-events-none absolute inset-y-0 left-0 bg-white/15" style={{ width: '0%' }}>
+        <span className="absolute inset-y-0 right-0 w-2 translate-x-1/2 bg-white/20" />
+        <span className="absolute inset-y-0 right-0 w-0.5 bg-white" />
+        <span className="absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 rotate-45 bg-white" />
+      </div>}
     </div>
     <div className="mt-1 flex flex-wrap items-center gap-2">
       <span>{features.integratedLufs.toFixed(1)} LUFS</span>

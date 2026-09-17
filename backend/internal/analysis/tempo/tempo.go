@@ -1,4 +1,5 @@
-// Package tempo provides the first backend-owned tempo candidate estimator.
+// Package tempo provides the backend-owned tempo estimator used by durable
+// track analysis and DJ-library metadata.
 package tempo
 
 import (
@@ -11,8 +12,8 @@ import (
 type RangePreset string
 
 // Method identifies the candidate-selection strategy after onset extraction.
-// The established method remains the default while Phase 0 evaluates the
-// periodicity candidate on the reserved tuning split.
+// The multi-feature half-BPM estimator is the current product default; the
+// other methods remain available for explicit benchmarks and comparisons.
 type Method string
 
 const (
@@ -29,9 +30,9 @@ const (
 	MethodOnsetAutocorrelation  Method = "onset-autocorrelation"
 	MethodMultiFeatureConsensus Method = "multifeature-consensus"
 	// MethodMultiFeatureHalfBPM preserves the multi-feature estimator's
-	// continuous periodicity measurement but reports on a half-BPM grid.  It
-	// is a Phase 0 calibration candidate for integer-reference corpora, not a
-	// replacement for the continuous production representation.
+	// continuous periodicity measurement but reports on a half-BPM grid. It is
+	// the current production method; accuracy qualification remains a separate
+	// benchmark/release concern.
 	MethodMultiFeatureHalfBPM Method = "multifeature-half-bpm"
 )
 
@@ -44,8 +45,8 @@ type Options struct {
 	MinOnsetCrestFactor float64
 }
 
-// DefaultOptions selects the real-corpus candidate that generalized best in
-// the Phase 0 held-out evaluation. The original peak-interval prototype was
+// DefaultOptions selects the production estimator that generalized best in the
+// evaluated real-corpus comparison. The original peak-interval prototype was
 // useful for synthetic click tracks, but rejected most mastered music and is
 // retained only as an explicitly selectable benchmark method.
 func DefaultOptions() Options {
@@ -84,8 +85,8 @@ const AlgorithmVersion = "tempo-v2-multifeature-half-bpm"
 const minOnsetCrestFactor = 25
 
 // EstimatePCM estimates a static tempo from a mono normalized PCM segment.
-// It is deliberately fractional and conservative; Phase 0 corpus gates still
-// determine whether its algorithm is adequate for professional release.
+// It is deliberately fractional and conservative. Professional-release
+// accuracy qualification is tracked separately from this runtime estimator.
 func EstimatePCM(samples []float32, sampleRate int) Estimate {
 	return EstimatePCMWithOptions(samples, sampleRate, DefaultOptions())
 }

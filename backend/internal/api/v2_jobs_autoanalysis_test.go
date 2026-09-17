@@ -6,7 +6,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/db"
 )
 
-func TestQueueAutoAnalysisIsOffByDefault(t *testing.T) {
+func TestQueueAutoAnalysisIsOnByDefault(t *testing.T) {
 	database, _, _ := analysisCatalog(t, 1)
 	api := &API{db: database}
 	api.jobSchedulerOn = true // Inspect the queue rather than draining it.
@@ -16,8 +16,25 @@ func TestQueueAutoAnalysisIsOffByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(jobs) != 1 || jobs[0].Type != JobTypeAnalyzeTracks {
+		t.Fatalf("jobs with the setting unset = %#v, want one analysis job", jobs)
+	}
+}
+
+func TestQueueAutoAnalysisHonorsExplicitDisable(t *testing.T) {
+	database, _, _ := analysisCatalog(t, 1)
+	api := &API{db: database}
+	api.jobSchedulerOn = true
+	if err := database.SetSetting(SettingAutoAnalyzeNewTracks, "false"); err != nil {
+		t.Fatal(err)
+	}
+	api.queueAutoAnalysis("a full scan")
+	jobs, err := database.ListJobs(100, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(jobs) != 0 {
-		t.Fatalf("%d jobs queued with the setting unset, want 0", len(jobs))
+		t.Fatalf("%d jobs queued when auto-analysis is disabled, want 0", len(jobs))
 	}
 }
 

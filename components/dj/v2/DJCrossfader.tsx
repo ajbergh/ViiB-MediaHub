@@ -117,10 +117,21 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
         onKeyDown={(e) => {
-          const big = e.shiftKey ? 0.05 : 0.02;
-          if (e.key === 'ArrowLeft')        { e.preventDefault(); onChange(Math.max(-1, value - big)); }
-          else if (e.key === 'ArrowRight')  { e.preventDefault(); onChange(Math.min( 1, value + big)); }
-          else if (e.key === 'Home' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onChange(0); }
+          // Keep the fader usable from the keyboard in the same way as a
+          // native range input: arrows make small adjustments, Shift makes
+          // larger adjustments, and Home/End jump to either deck.
+          const step = e.shiftKey ? 0.1 : 0.02;
+          let nextValue: number | null = null;
+
+          if (e.key === 'ArrowLeft') nextValue = Math.max(-1, value - step);
+          else if (e.key === 'ArrowRight') nextValue = Math.min(1, value + step);
+          else if (e.key === 'Home') nextValue = -1;
+          else if (e.key === 'End') nextValue = 1;
+
+          if (nextValue !== null) {
+            e.preventDefault();
+            if (nextValue !== value) onChange(nextValue);
+          }
         }}
         onDoubleClick={() => onChange(0)}
       >

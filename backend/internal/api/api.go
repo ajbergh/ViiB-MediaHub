@@ -66,6 +66,8 @@ type API struct {
 	jobSchedulerOn     bool
 	jobWake            chan struct{}
 	analysisPressure   playbackPressure
+	plexAnalysisMu     sync.Mutex
+	plexAnalysisGates  map[string]chan struct{}
 }
 
 // New constructs a new API instance using the given database and

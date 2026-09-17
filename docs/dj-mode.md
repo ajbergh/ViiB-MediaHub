@@ -26,7 +26,7 @@ The **AI DJ** page is the set-generation workflow; it is distinct from this two-
 
 The LLM receives the prompt and compact planning context, not a dump of the ViiB catalog or local genre taxonomy. Generated queues always contain existing ViiB song IDs and retain the selected local/Plex source constraint. If the index is unavailable or its pools cannot satisfy the plan without reusing songs, ViiB falls back to the established metadata/full-catalog path before sequencing.
 
-The AI DJ page shows index readiness and optional count-only retrieval diagnostics. Configure, reindex, test, or recover the semantic provider in **Settings → Library Intelligence**.
+The AI DJ page shows index readiness and optional count-only retrieval diagnostics. Configure, reindex, test, or recover the semantic provider in **Settings → AI & Enrichment**.
 
 ---
 
@@ -36,7 +36,7 @@ The interface provides two decks, waveform/analysis surfaces, a central mixer, a
 
 The Deck A → Mixer → Deck B workspace keeps the same geometry when the library opens or closes. The centered **Library** button stays at the bottom of DJ Mode. **Browse** opens the same overlay; it shares Performance's waveform sizing so browsing does not shrink the decks. FX remains a separate layout choice.
 
-DJv2 uses one proportionally scaled design canvas, with 1470×825 as its minimum supported viewport. This preserves every control's dimensions and spacing relationship at 1080p, 1440p, and 4K without clipping or an internally scrolling workstation. Track headers reserve separate rows for titles and performance metadata. Below 1440px wide, the existing unsupported-width screen remains.
+DJv2 uses one proportionally scaled design canvas. The active width gate requires at least 1440px; 1470×825 is the smallest audit geometry used by the current regression checks. This preserves every control's dimensions and spacing relationship at 1080p, 1440p, and 4K without clipping or an internally scrolling workstation. Track headers reserve separate rows for titles and performance metadata.
 
 ---
 
@@ -60,7 +60,7 @@ Track-specific analysis features depend on media being readable by the active br
 
 DJ Mode can display waveform/position information and use BPM/key/beat metadata or analysis where available. Remote Plex media is not copied to a local music folder merely to enable DJ Mode; access remains through the ViiB/PMS playback path.
 
-Deck-load BPM and key detection still runs in the browser and is what DJ Mode currently reads. A separate backend engine now measures tempo and key durably for local tracks and stores versioned results per song — see **Track Analysis** in [Library Operations](library-operations.md). Those stored values are not yet what the decks use; connecting them is gated on the accuracy work in the roadmap below.
+The DJ library hydrates persisted backend analysis and displays BPM, key, Camelot/Open Key, and harmonic compatibility when those results are available. Runtime deck behavior can still use browser/WebView audio analysis for waveform, cue, and playback features. The backend engine also measures beatgrid and energy/structure features durably for local and reachable Plex tracks — see **Track Analysis** in [Library Operations](library-operations.md).
 
 While a deck is playing, DJ Mode tells the backend to hold back background library analysis so preparation work does not compete with a live set. The signal renews on a short timer, so a closed or crashed window cannot leave the analysis queue parked. Analysis you start explicitly from Library Operations is not held back.
 
@@ -74,7 +74,7 @@ The mixer combines Deck A and Deck B with the supported channel levels, EQ, cros
 
 Audio output configuration can include a primary output and headphone/cue output on platforms where the Web Audio/device-routing APIs provide the required capabilities.
 
-See [Settings](settings.md#audio-output-devices).
+See [Settings → Playback & Audio](settings.md#playback--audio).
 
 ---
 
@@ -130,4 +130,4 @@ The planned migration from deck-load/browser analysis to persistent, audio-measu
 
 That roadmap treats the current browser BPM/key detectors and generated beat-grid state as verified implementation baselines, while keeping proposed backend analysis work clearly separate from current behavior.
 
-Phases 0 through 4 are implemented: the benchmark harness, the shared pure-Go decode and DSP foundation, the persistence model, the tempo and key analyzers, and the durable library analysis service with its scheduler. Phase 5 — showing measured BPM, key, Camelot/Open Key, and harmonic compatibility in the DJ library — has not started, and the roadmap records the tempo accuracy findings that must be resolved before those values are presented as reliable.
+Phases 0 through 5 are implemented: the benchmark harness, the shared pure-Go decode and DSP foundation, the persistence model, the tempo and key analyzers, the durable library analysis service with its scheduler, and the DJ-library display of persisted BPM/key/harmonic values. The roadmap's accuracy and professional-release gates remain separate validation work; displaying an available result does not claim every track has a reliable measurement.

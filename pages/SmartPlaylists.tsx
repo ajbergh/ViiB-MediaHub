@@ -12,7 +12,7 @@
  * Features:
  * - Mode Toggle: Playlist mode vs DJ mode
  * - Natural language prompt input (e.g., "90s alternative rock", "chill evening vibes")
- * - Multi-Genre Mix: AI DJ always creates cross-genre blends based on user input
+ * - Semantic-first retrieval with metadata/full-catalog fallback
  * - Discovery Mode: Balanced, Discover New, or Favorites
  * - Avoid Recently Played: Configurable time window (1h to 1 week)
  * - One Per Artist: Ensures variety by limiting artist repetition
@@ -25,8 +25,8 @@
  * - Talk mode for DJ narration cues
  * - Phase visualization with energy arc
  * 
- * The backend uses a four-tier matching system plus intelligent sequencing
- * in DJ mode for structured sets with deliberate energy progression.
+ * The backend uses semantic-first retrieval with deterministic local filtering
+ * and a metadata/full-catalog fallback, plus intelligent sequencing in DJ mode.
  */
 
 import React, { useState, useEffect } from 'react';

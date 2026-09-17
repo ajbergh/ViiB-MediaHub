@@ -1,17 +1,17 @@
 /**
- * LibraryAnalysisPanel is the Phase 4 control surface for durable track
- * analysis: start a run over missing, outdated, or all tracks, watch its
- * progress, pause or cancel it, and see how many tracks could not be analyzed.
+ * LibraryAnalysisPanel is the durable track-analysis control surface: start a
+ * run over missing, outdated, or all local/Plex tracks, watch its progress,
+ * pause or cancel it, and see how many tracks could not be analyzed.
  *
- * It deliberately shows no BPM or key values. Those are Phase 5 and are gated
- * on the accuracy work; presenting a measured tempo here would make a claim
- * the analyzers have not yet earned.
+ * The panel is progress/status-oriented. Persisted BPM, key, beatgrid, and
+ * energy results are surfaced in the DJ library when available.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Gauge, Pause, Play, RefreshCw, Square } from 'lucide-react';
 import {
   AnalysisJobResult,
   AnalysisSelectionMode,
+  AnalysisSource,
   OperationJob,
   SETTING_AUTO_ANALYZE_NEW_TRACKS,
   jobsV2,
@@ -24,10 +24,11 @@ const secondaryClass = 'inline-flex items-center gap-2 rounded-lg bg-surface-2 p
 /** Statuses in which a job still represents outstanding work. */
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'paused', 'canceling']);
 
-const SELECTIONS: { mode: AnalysisSelectionMode; label: string; hint: string }[] = [
-  { mode: 'missing', label: 'Analyze missing', hint: 'Tracks that have never been analyzed.' },
-  { mode: 'stale', label: 'Analyze outdated', hint: 'Tracks analyzed by an older algorithm version.' },
-  { mode: 'all', label: 'Re-analyze all', hint: 'Every local track. Already-current results are skipped, not repeated.' },
+const SELECTIONS: { mode: AnalysisSelectionMode; source: AnalysisSource; label: string; hint: string }[] = [
+  { mode: 'missing', source: 'local', label: 'Prepare new tracks', hint: 'Analyze local tracks that have never been prepared.' },
+  { mode: 'missing', source: 'plex', label: 'Prepare Plex tracks', hint: 'Analyze available Plex tracks that have never been prepared.' },
+  { mode: 'stale', source: 'all', label: 'Update analysis', hint: 'Refresh local and Plex tracks analyzed by an older algorithm version.' },
+  { mode: 'all', source: 'all', label: 'Prepare library', hint: 'Prepare every available local and Plex track. Current results are skipped.' },
 ];
 
 const isEnabled = (value: string) => ['1', 'true', 'yes', 'on', 'enabled'].includes(value.trim().toLowerCase());
@@ -75,7 +76,9 @@ export const LibraryAnalysisPanel: React.FC = () => {
     void (async () => {
       try {
         const value = await api.getSetting(SETTING_AUTO_ANALYZE_NEW_TRACKS);
-        if (!canceled) setAutoAnalyze(isEnabled(value));
+        // The backend enables this for an unset setting. An explicit false is
+        // the only way to opt out.
+        if (!canceled) setAutoAnalyze(value.trim() === '' || isEnabled(value));
       } catch {
         // An unreadable setting simply leaves the toggle off; it is not an
         // error worth interrupting the panel for.
@@ -91,9 +94,9 @@ export const LibraryAnalysisPanel: React.FC = () => {
     finally { setBusy(null); await refresh(); }
   };
 
-  const startAnalysis = (mode: AnalysisSelectionMode) => run(`start-${mode}`, async () => {
-    const job = await jobsV2.analyze({ mode });
-    return `Analysis queued (${mode}). Job ${job.id.slice(0, 8)}.`;
+  const startAnalysis = (mode: AnalysisSelectionMode, source: AnalysisSource) => run(`start-${mode}-${source}`, async () => {
+    const job = await jobsV2.analyze({ mode, source });
+    return `Analysis queued (${mode}, ${source}). Job ${job.id.slice(0, 8)}.`;
   });
 
   const pauseQueue = () => run('pause', async () => {
@@ -137,7 +140,7 @@ export const LibraryAnalysisPanel: React.FC = () => {
         <h2 className="text-xl font-semibold">Track Analysis</h2>
       </div>
       <p className="mb-4 max-w-3xl text-sm text-text-secondary">
-        Measure tempo and musical key for your local library so DJ features have durable, versioned values to work with.
+        Prepare tempo, key, phase-aligned beat grids, and energy features for local and available Plex tracks before you open the DJ panel.
         Results are stored per track and survive restarts: a run that is interrupted resumes where it stopped instead of starting over.
       </p>
 
@@ -150,11 +153,11 @@ export const LibraryAnalysisPanel: React.FC = () => {
       <div className="mb-4 flex flex-wrap gap-3">
         {SELECTIONS.map(selection => (
           <button
-            key={selection.mode}
-            className={selection.mode === 'missing' ? actionClass : secondaryClass}
+            key={`${selection.mode}-${selection.source}`}
+            className={selection.mode === 'missing' && selection.source === 'local' ? actionClass : secondaryClass}
             disabled={busy !== null || activeJob !== null}
             title={selection.hint}
-            onClick={() => startAnalysis(selection.mode)}
+            onClick={() => startAnalysis(selection.mode, selection.source)}
           >
             <RefreshCw size={16} />{selection.label}
           </button>
@@ -213,7 +216,7 @@ export const LibraryAnalysisPanel: React.FC = () => {
           onChange={toggleAutoAnalyze}
         />
         <span>
-          <span className="font-semibold">Analyze new tracks automatically</span>
+          <span className="font-semibold">Prepare new tracks automatically</span>
           <span className="block text-text-secondary">Queue a background analysis run after a scan finds new tracks. It runs below anything you start yourself and yields while DJ playback is active.</span>
         </span>
       </label>

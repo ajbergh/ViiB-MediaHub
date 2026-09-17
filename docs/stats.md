@@ -22,7 +22,7 @@ Top charts aggregate play-history data against the current ViiB catalog metadata
 - Genre-based statistics depend on populated genre metadata.
 - ViiB-side metadata enrichment can improve genre-based reporting.
 
-See [Settings → Library Intelligence](settings.md#library-intelligence).
+See [Settings → AI & Enrichment](settings.md#ai--enrichment).
 
 ---
 

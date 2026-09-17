@@ -1,3 +1,4 @@
+import { canSyncBeatGrid } from '../../../lib/beatGridConfidence';
 /**
  * ViiB MediaHub - DJ Transport Buttons Component (v2)
  * 
@@ -28,6 +29,7 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   const originalBpm = useStore(state => deck === 'A' ? state.djDeckA.originalBpm : state.djDeckB.originalBpm);
   const effectiveBpm = useStore(state => deck === 'A' ? state.djDeckA.effectiveBpm : state.djDeckB.effectiveBpm);
   const otherEffectiveBpm = useStore(state => deck === 'A' ? state.djDeckB.effectiveBpm : state.djDeckA.effectiveBpm);
+  const gridsVerified = useStore(state => canSyncBeatGrid(state.djDeckA) && canSyncBeatGrid(state.djDeckB));
   const syncMode = useStore(state => state.djMixer.syncMode);
 
   const { togglePlay, returnToCue, setCue, setTempo, syncBeatPhase } = useDJAudioEngineActions();
@@ -77,7 +79,7 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   }, [deck, track, setCue]);
 
   const handleSync = useCallback(() => {
-    if (syncMode === 'off' || !originalBpm || !otherEffectiveBpm) return;
+    if ((syncMode === 'beat-phase' && !gridsVerified) || syncMode === 'off' || !originalBpm || !otherEffectiveBpm) return;
 
     const targetBpm = otherEffectiveBpm;
     const newTempo = targetBpm / originalBpm;
@@ -87,7 +89,7 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
     if (syncMode === 'beat-phase') {
       syncBeatPhase(deck);
     }
-  }, [deck, originalBpm, otherEffectiveBpm, setTempo, syncMode, syncBeatPhase]);
+  }, [deck, originalBpm, otherEffectiveBpm, setTempo, syncMode, syncBeatPhase, gridsVerified]);
 
   const accentColor = deck === 'A' ? '#3b82f6' : '#8b5cf6';
   // Bigger primary transport — Play is the hero, CUE/SYNC scale with it.
@@ -145,9 +147,9 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
       {/* Sync Button */}
       <button
         onClick={handleSync}
-        disabled={!track || syncMode === 'off'}
+        disabled={!track || syncMode === 'off' || (syncMode === 'beat-phase' && !gridsVerified)}
         aria-label={`Sync deck ${deck} to other deck`}
-        title={syncMode === 'off' ? 'Sync disabled — set sync mode in mixer' : `Sync to other deck (${syncMode})`}
+        title={syncMode === 'beat-phase' && !gridsVerified ? 'Verify and lock both grids in Edit Grid before beat-phase sync. BPM-only sync is still available.' : syncMode === 'off' ? 'Sync disabled — set sync mode in mixer' : `Sync to other deck (${syncMode})`}
         className={`
           ${compact ? 'h-12 px-4 text-[12px]' : 'h-16 px-7 text-[14px]'} rounded-lg font-bold uppercase tracking-wider
           transition-all duration-100 border flex items-center gap-1.5

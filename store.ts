@@ -9,7 +9,7 @@
  * 
  * Persistence:
  * - Audio settings and UI preferences persisted to localStorage
- * - Spotify client ID and non-sensitive preferences persisted to localStorage; secrets and tokens remain memory-only
+ * - Spotify client ID and non-sensitive preferences persisted to localStorage; secrets and tokens are excluded from renderer persistence and restored from the backend when available
  * - Song library backed by SQLite (via Go backend); IndexedDB used as fallback in browser-only mode
  * 
  * Selectors:
@@ -61,8 +61,8 @@ export const useStore = create<AppState>()(
           isSkinnyAlwaysOnTop: state.isSkinnyAlwaysOnTop,
           spotifyClientId: state.spotifyClientId,
           // NOTE: spotifyAccessToken, spotifyRefreshToken, and spotifyTokenExpiry
-          // are intentionally NOT persisted to localStorage to avoid XSS token theft.
-          // Tokens are held in-memory only; re-auth occurs on app restart.
+          // are intentionally NOT persisted to renderer localStorage. The backend
+          // owns encrypted session persistence and restores valid tokens at startup.
           spotifyUser: state.spotifyUser,
           streamingEnabled: state.streamingEnabled,
           streamingQuality: state.streamingQuality,

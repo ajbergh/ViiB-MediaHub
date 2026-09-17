@@ -8,7 +8,7 @@ The Spotify page connects ViiB MediaHub to your Spotify account so you can brows
 
 ## Prerequisites
 
-Before you can use Spotify features, you must register a Spotify Developer app and enter your credentials in [Settings → Spotify](settings.md#spotify).
+Before you can use Spotify features, you must register a Spotify Developer app and enter your credentials in [Settings → Integrations & Spotify](settings.md#integrations--spotify).
 
 | Setting | Where to find it |
 |---|---|
@@ -25,9 +25,9 @@ The URI must match exactly. Do **not** register `http://wails.localhost/callback
 1. Navigate to the **Spotify** page.
 2. Click **Connect with Spotify**.
 3. A browser window opens for Spotify's OAuth PKCE flow.
-4. After authorization, you are redirected back and the token is stored in memory.
+4. After authorization, the renderer receives the session and keeps active access/refresh tokens in memory. The Go backend stores the encrypted Spotify session when available so a valid session can be restored on the next launch.
 
-> Tokens are intentionally **not persisted to disk** for security. Re-authentication is needed after each app restart.
+> Tokens are intentionally **not persisted to renderer localStorage**. The backend owns encrypted session persistence; if the stored session is missing or expired, sign in again from the Spotify page.
 
 ---
 
@@ -61,11 +61,11 @@ To download tracks to your local library:
 
 1. Right-click a track or album and choose **Download**, or click the download icon.
 2. The item is added to the [Downloads](downloads.md) queue.
-3. Files are saved to the **Spotify Download Location** configured in [Settings](settings.md).
-4. Downloaded files are in **OGG Vorbis** format.
-5. After download, the next library scan will pick up the new files.
+3. Files are saved to the **Spotify Download Location** configured in **Settings → Integrations & Spotify → Downloads & Conversion**.
+4. Downloaded files begin in **OGG Vorbis** format; if automatic conversion is enabled, the completed file may be a 320 kbps MP3 instead.
+5. If **Quick Scan After Downloads** is enabled in **Settings → Integrations & Spotify → Downloads & Conversion**, the configured number of completed downloads triggers a quick scan. Set the threshold to 0 to disable automatic post-download scans.
 
-> Downloading requires `librespot-go` to be installed and configured. See [Settings → Spotify](settings.md#spotify).
+> Downloading requires `librespot-go` to be installed and configured. See [Settings → Integrations & Spotify](settings.md#integrations--spotify).
 
 ---
 
@@ -82,7 +82,7 @@ To download tracks to your local library:
 
 ## Session Restoration
 
-On startup the app attempts to restore your Spotify session from cached tokens (stored in memory only during the session). If the cached token is still valid, you will not need to re-authenticate.
+On startup the app asks the Go backend for the stored Spotify session. A valid access token is restored into renderer memory; expired sessions are refreshed when possible, otherwise the Spotify page asks you to authenticate again.
 
 ---
 

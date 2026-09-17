@@ -13,9 +13,12 @@ export type JobType = 'full_scan' | 'quick_scan' | 'refresh_genre_stats' | 'anal
 /** Which tracks an analysis job covers. Recorded in the job's parameters so a
  * resumed job re-expands the identical selection. */
 export type AnalysisSelectionMode = 'all' | 'missing' | 'stale' | 'ids' | 'playlist';
+export type AnalysisSource = 'local' | 'plex' | 'all';
 
 export interface AnalysisSelection {
   mode: AnalysisSelectionMode;
+  /** Local is the backwards-compatible default. Plex preparation is explicit. */
+  source?: AnalysisSource;
   songIds?: string[];
   playlistId?: string;
 }

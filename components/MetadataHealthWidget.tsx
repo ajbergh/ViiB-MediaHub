@@ -5,7 +5,7 @@
  * - Core Tagging (Title, Artist, Album, Year)
  * - Genres Coverage
  * - AI Music Profile (Mood, Energy)
- * - Local Tempo & Key Analysis
+ * - Durable tempo, key, beatgrid, and energy analysis
  * - Last.fm Community Enrichment
  * 
  * Provides quick actions to trigger enrichment or filter tracks missing metadata.
@@ -259,7 +259,7 @@ export const MetadataHealthWidget: React.FC = () => {
           <span className="text-[10px] text-text-subtle block">
             {analysisCoverage
               ? `Locally measured BPM · ${analysisCoverage.keyPercent}% key coverage`
-              : 'Loading local tempo and key analysis'}
+              : 'Loading measured tempo and key analysis'}
           </span>
         </div>
 

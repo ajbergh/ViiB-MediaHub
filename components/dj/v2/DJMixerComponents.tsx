@@ -118,6 +118,7 @@ export const DJDeckEQStrip = React.memo<DJDeckEQStripProps>(({
     <div className='flex flex-col items-center justify-evenly h-full py-2 px-1 gap-0.5'>
       <DJEQKnob
         label='TRIM'
+        valueText={volume > 0 ? `${(20 * Math.log10(volume)).toFixed(1)} dB` : '−∞ dB'}
         value={parseFloat(((volume / 1.5) * 36 - 24).toFixed(1))}
         onChange={(v) => {
           const normalized = (v + 24) / 36;
@@ -132,6 +133,7 @@ export const DJDeckEQStrip = React.memo<DJDeckEQStripProps>(({
       <DJEQKnob label='LOW'    value={eqLow}           onChange={v => onEQChange(deckId, 'low', v)}    color='#f59e0b' size={40} compact />
       <DJEQKnob
         label='FILT'
+        valueText={!filterEnabled || Math.abs(filterValue) < 0.001 ? 'OFF' : `${filterValue < 0 ? 'LP' : 'HP'} ${Math.round(Math.abs(filterValue) * 100)}%`}
         value={filterKnobValue}
         onChange={v => onFilterChange(deckId, v)}
         color={filterEnabled ? '#ef4444' : '#666'}
@@ -157,6 +159,7 @@ export const DJMasterKnob = React.memo<DJMasterKnobProps>(({ onChange }) => {
   return (
     <DJEQKnob
       label='MAIN'
+      valueText={masterVolume > 0 ? `${(20 * Math.log10(masterVolume)).toFixed(1)} dB` : '−∞ dB'}
       value={parseFloat((masterVolume * 36 - 24).toFixed(1))}
       onChange={onChange}
       size={48}

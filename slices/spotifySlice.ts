@@ -9,10 +9,10 @@
  * - spotifyTokenExpiry: Token expiration timestamp
  * - spotifyUser: Authenticated user profile
  * 
- * Only the client ID and non-sensitive preferences are persisted to localStorage.
- * Access/refresh tokens are held in-memory only (not persisted) to prevent
- * XSS token theft — re-authentication occurs on app restart.
- * Credentials are also synced with the Go backend for download functionality.
+ * Only the client ID and non-sensitive preferences are persisted by the
+ * renderer's localStorage store. Access/refresh tokens are never written to
+ * renderer localStorage; the Go backend may persist the encrypted session and
+ * the app restores valid credentials into renderer memory at startup.
  * 
  * @module spotifySlice
  */

@@ -7,7 +7,7 @@
  * - songs: Complete song library
  * - playlists: User-created playlists
  * - smartMixes: Auto-generated playlists
- * - artistMetadata/albumMetadata: Spotify-enriched metadata cache
+ * - artistMetadata/albumMetadata: external metadata cache used for catalog presentation
  * - scanFolders: Configured music directories
  * - isScanning: Library scan status
  * - likedSongIds: Set of liked song IDs

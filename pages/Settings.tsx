@@ -1,20 +1,16 @@
 /**
  * ViiB MediaHub - Settings Page
  * 
- * Comprehensive settings interface for application configuration.
+ * Tabbed settings interface for application configuration.
  * 
  * Sections:
- * - Backend Status: Connection status indicator
- * - Library: Scan folders management, library reset
- * - Playback: Crossfade, gapless, normalization, and EQ
- * - Appearance: Home layout and Now Playing visualizer presentation
- * - Spotify: OAuth credentials, download location, concurrent downloads
- * - Library Intelligence: AI-powered features
- *   - AI Provider: Configure LLM provider (Gemini, OpenAI, Anthropic, Ollama, X.AI)
- *   - Last.FM Integration: Community-sourced metadata enrichment (added 2025-12-31)
- *   - Genre Enrichment: Uses configured AI to populate genre metadata
- *   - Unified Enrichment: Full metadata enrichment (genres, mood, energy, tempo, BPM, year)
- * - Activity Log: Debug log viewer
+ * - Library Sources: Local folders, monitoring, Plex, maintenance, and reset
+ * - Library Operations: Track analysis, metadata operations, diagnostics, repair, and backup/restore
+ * - Playback & Audio: Playback controls, EQ, and audio output routing
+ * - Integrations & Spotify: Download/conversion settings, Spotify, and Last.FM
+ * - AI & Enrichment: AI provider, semantic retrieval, and metadata enrichment
+ * - Appearance & Now Playing: Home layout, Smart Mix visibility, and player presentation
+ * - System & Logs: System information, support tools, and the debug log
  * 
  * Last.FM Features (added 2025-12-31):
  * - API key and shared secret configuration
@@ -24,10 +20,10 @@
  * 
  * Folder browser dialogs allow navigation and selection of:
  * - Music scan directories
- * - Spotify download destination
+ * - Spotify download destination and conversion settings
  * 
  * AI Features (requires configured AI provider):
- * - All AI features use the configured LLM provider (AI DJ Provider section)
+ * - AI DJ and metadata features use the configured AI Provider & Model section
  * - Genre enrichment runs during library scans or can be triggered manually
  * - Mood analysis detects emotional characteristics without audio processing
  * - Results are stored in the songs table for AI DJ playlist generation
@@ -46,6 +42,7 @@ import { Button } from '../components/ui/Button';
 import { Page } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
 import { isWailsEnvironment, SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
+import { PlexMusicSourceSettings } from '../components/PlexMusicSourceSettings';
 import { LibraryMonitoringPanel, LibraryOperationsPanel } from './LibraryOperations';
 
 const HOME_LAYOUT_OPTIONS: Array<{
@@ -533,7 +530,7 @@ export const Settings: React.FC = () => {
   const [downloadBrowserEntries, setDownloadBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingDownloadBrowser, setLoadingDownloadBrowser] = useState(false);
 
-  // Spotify download location
+  // Integrations & Spotify download/conversion state
   const [spotifyDownloadPath, setSpotifyDownloadPath] = useState('');
   const [downloadPathSaved, setDownloadPathSaved] = useState(false);
   const [autoConvertOggToMp3, setAutoConvertOggToMp3] = useState(false);
@@ -607,7 +604,7 @@ export const Settings: React.FC = () => {
       }
   }, [backendAvailable]);
 
-  // Load Spotify download path and concurrent downloads
+  // Load Spotify download and conversion settings
   useEffect(() => {
       const loadDownloadSettings = async () => {
           try {
@@ -1092,7 +1089,7 @@ export const Settings: React.FC = () => {
           }`}
         >
           <FolderOpen size={16} />
-          Library Sources & Downloads
+          Library Sources
         </button>
 
         <button
@@ -1174,7 +1171,7 @@ export const Settings: React.FC = () => {
         </button>
       </div>
 
-      {/* TAB 1: LIBRARY & STORAGE */}
+      {/* TAB: LIBRARY SOURCES */}
       {activeTab === 'library' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Library Management */}
@@ -1294,191 +1291,8 @@ export const Settings: React.FC = () => {
             )}
           </section>
 
-          {/* Downloads & Conversion */}
-          <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
-            <div className="flex items-center gap-3 mb-6 text-brand">
-                <HardDrive size={20} />
-                <h2 className="text-lg font-bold text-text-main">Downloads &amp; Conversion</h2>
-            </div>
-
-            {/* Spotify Download Location */}
-            {backendAvailable && (
-                <div className="mb-6">
-                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Spotify Download Location</label>
-                    <p className="text-xs text-text-subtle mb-3">
-                        Specify where Spotify downloads should be saved. Leave empty to use default location.
-                    </p>
-                    <div className="flex items-center gap-3">
-                        <TextInput
-                            type="text"
-                            value={spotifyDownloadPath}
-                            onChange={(e) => setSpotifyDownloadPath(e.target.value)}
-                            placeholder="Default: AppData/ViiB-MediaHub/spotify_downloads"
-                            className="flex-1 px-4 py-3"
-                            inputClassName="font-mono text-sm"
-                        />
-                        <Button
-                            variant="secondary"
-                            onClick={openDownloadFolderBrowser}
-                            className="py-3 px-4"
-                            title="Browse folders"
-                            aria-label="Browse folders"
-                        >
-                            <FolderOpen size={18} />
-                        </Button>
-                        {downloadPathSaved && (
-                            <span className="text-success text-sm font-bold">
-                                Saved!
-                            </span>
-                        )}
-                        <Button
-                            variant="primary"
-                            accent="brand"
-                            onClick={handleSaveDownloadPath}
-                            className="py-3 px-6 rounded-lg text-sm font-bold"
-                        >
-                            Save
-                        </Button>
-                    </div>
-                </div>
-            )}
-
-            {/* Concurrent Downloads */}
-            {backendAvailable && (
-                <div className="mb-6">
-                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Concurrent Downloads</label>
-                    <p className="text-xs text-text-subtle mb-3">
-                        Number of tracks to download simultaneously. Higher values may improve speed on fast connections.
-                    </p>
-                    <div className="flex items-center gap-4">
-                        <div className="flex-1 flex items-center gap-4">
-                            <input 
-                                type="range"
-                                min={1}
-                                max={10}
-                                value={concurrentDownloads}
-                                onChange={(e) => setConcurrentDownloads(parseInt(e.target.value, 10))}
-                                className="flex-1 h-2 bg-surface-1 rounded-lg appearance-none cursor-pointer accent-brand"
-                            />
-                            <span className="text-text-main font-bold w-8 text-center">{concurrentDownloads}</span>
-                        </div>
-                        {concurrentSaved && (
-                            <span className="text-success text-sm font-bold">
-                                Saved!
-                            </span>
-                        )}
-                        <Button
-                            variant="primary"
-                            accent="brand"
-                            onClick={handleSaveConcurrentDownloads}
-                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
-                        >
-                            Save
-                        </Button>
-                    </div>
-                    <p className="text-xs text-text-subtle mt-2">
-                        Recommended: 3 for most connections, up to 6-10 for high-speed connections (100+ Mbps).
-                    </p>
-                </div>
-            )}
-
-            {/* Automatic library quick scan threshold */}
-            {backendAvailable && (
-                <div className="mb-6">
-                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Quick Scan After Downloads</label>
-                    <p className="text-xs text-text-subtle mb-3">
-                        Run a quick library scan after this many downloads finish. Use 0 to disable automatic scans. Converted files count after MP3 conversion completes.
-                    </p>
-                    <div className="flex items-center gap-4">
-                        <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={downloadRescanThreshold}
-                            onChange={(e) => setDownloadRescanThreshold(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                            className="w-24 bg-surface-1 border border-surface-3 rounded-lg px-4 py-3 text-text-main"
-                            aria-label="Completed downloads before automatic quick scan"
-                        />
-                        {downloadRescanThresholdSaved && (
-                            <span className="text-success text-sm font-bold">Saved!</span>
-                        )}
-                        <Button
-                            variant="primary"
-                            accent="brand"
-                            onClick={handleSaveDownloadRescanThreshold}
-                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
-                        >
-                            Save
-                        </Button>
-                    </div>
-                </div>
-            )}
-
-            {/* Automatic Ogg to MP3 conversion */}
-            {backendAvailable && (
-                <div className="mb-6 flex items-center justify-between bg-surface-1 p-4 rounded-lg">
-                    <div className="pr-6">
-                        <h3 className="text-sm text-text-main font-medium">Convert downloads to MP3</h3>
-                        <p className="text-xs text-text-subtle">
-                            Automatically convert downloaded Ogg/Vorbis files to 320 kbps MP3 using the built-in converter. The Ogg file is removed only after conversion succeeds.
-                        </p>
-                    </div>
-                    <button
-                        type="button"
-                        role="switch"
-                        aria-checked={autoConvertOggToMp3}
-                        aria-label="Automatically convert downloaded Ogg files to MP3"
-                        onClick={handleToggleAutoConvertOgg}
-                        disabled={autoConvertOggSaving}
-                        className={`relative w-12 h-6 shrink-0 rounded-full transition-colors disabled:opacity-50 ${autoConvertOggToMp3 ? 'bg-brand' : 'bg-surface-3'}`}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${autoConvertOggToMp3 ? 'translate-x-7' : 'translate-x-1'}`} />
-                    </button>
-                </div>
-            )}
-
-            {/* MP3 Conversion Workers */}
-            {backendAvailable && (
-                <div className="mb-6">
-                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">MP3 Conversion Workers</label>
-                    <p className="text-xs text-text-subtle mb-3">
-                        Number of files to convert in parallel. These workers are separate from download slots; when possible, the automatic default leaves one logical CPU core available and is capped at four workers.
-                    </p>
-                    <div className="flex items-center gap-4">
-                        <div className="flex-1 flex items-center gap-4">
-                            <input
-                                type="range"
-                                min={1}
-                                max={4}
-                                value={conversionWorkers}
-                                onChange={(e) => setConversionWorkers(parseInt(e.target.value, 10))}
-                                disabled={!autoConvertOggToMp3}
-                                className="flex-1 h-2 bg-surface-1 rounded-lg appearance-none cursor-pointer accent-brand disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
-                            <span className="text-text-main font-bold w-8 text-center">{conversionWorkers}</span>
-                        </div>
-                        {conversionWorkersSaved && (
-                            <span className="text-success text-sm font-bold">Saved!</span>
-                        )}
-                        <Button
-                            variant="primary"
-                            accent="brand"
-                            onClick={handleSaveConversionWorkers}
-                            disabled={!autoConvertOggToMp3}
-                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
-                        >
-                            Save
-                        </Button>
-                    </div>
-                    <p className="text-xs text-text-subtle mt-2">
-                        {!autoConvertOggToMp3
-                          ? 'Enable MP3 conversion above to adjust this setting.'
-                          : 'Increase for faster batch conversion; reduce if playback or other CPU-heavy work becomes less responsive.'}
-                    </p>
-                </div>
-            )}
-
-          </section>
+          {/* Plex Media Server */}
+          <PlexMusicSourceSettings />
 
           {/* Library Maintenance */}
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
@@ -1543,7 +1357,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: PLAYBACK & AUDIO */}
+      {/* TAB: PLAYBACK & AUDIO */}
       {(activeTab === 'audio' || activeTab === 'appearance') && (
         <div className="space-y-6 animate-in fade-in duration-200">
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
@@ -1844,9 +1658,195 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: INTEGRATIONS & SPOTIFY */}
+      {/* TAB: INTEGRATIONS & SPOTIFY */}
       {activeTab === 'integrations' && (
         <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Downloads & Conversion */}
+          <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
+            <div className="flex items-center gap-3 mb-6 text-brand">
+                <HardDrive size={20} />
+                <h2 className="text-lg font-bold text-text-main">Downloads &amp; Conversion</h2>
+            </div>
+
+            {/* Spotify Download Location */}
+            {backendAvailable && (
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Spotify Download Location</label>
+                    <p className="text-xs text-text-subtle mb-3">
+                        Specify where Spotify downloads should be saved. Leave empty to use default location.
+                    </p>
+                    <div className="flex items-center gap-3">
+                        <TextInput
+                            type="text"
+                            value={spotifyDownloadPath}
+                            onChange={(e) => setSpotifyDownloadPath(e.target.value)}
+                            placeholder="Default: AppData/ViiB-MediaHub/spotify_downloads"
+                            className="flex-1 px-4 py-3"
+                            inputClassName="font-mono text-sm"
+                        />
+                        <Button
+                            variant="secondary"
+                            onClick={openDownloadFolderBrowser}
+                            className="py-3 px-4"
+                            title="Browse folders"
+                            aria-label="Browse folders"
+                        >
+                            <FolderOpen size={18} />
+                        </Button>
+                        {downloadPathSaved && (
+                            <span className="text-success text-sm font-bold">
+                                Saved!
+                            </span>
+                        )}
+                        <Button
+                            variant="primary"
+                            accent="brand"
+                            onClick={handleSaveDownloadPath}
+                            className="py-3 px-6 rounded-lg text-sm font-bold"
+                        >
+                            Save
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Concurrent Downloads */}
+            {backendAvailable && (
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Concurrent Downloads</label>
+                    <p className="text-xs text-text-subtle mb-3">
+                        Number of tracks to download simultaneously. Higher values may improve speed on fast connections.
+                    </p>
+                    <div className="flex items-center gap-4">
+                        <div className="flex-1 flex items-center gap-4">
+                            <input
+                                type="range"
+                                min={1}
+                                max={10}
+                                value={concurrentDownloads}
+                                onChange={(e) => setConcurrentDownloads(parseInt(e.target.value, 10))}
+                                className="flex-1 h-2 bg-surface-1 rounded-lg appearance-none cursor-pointer accent-brand"
+                            />
+                            <span className="text-text-main font-bold w-8 text-center">{concurrentDownloads}</span>
+                        </div>
+                        {concurrentSaved && (
+                            <span className="text-success text-sm font-bold">
+                                Saved!
+                            </span>
+                        )}
+                        <Button
+                            variant="primary"
+                            accent="brand"
+                            onClick={handleSaveConcurrentDownloads}
+                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
+                        >
+                            Save
+                        </Button>
+                    </div>
+                    <p className="text-xs text-text-subtle mt-2">
+                        Recommended: 3 for most connections, up to 6-10 for high-speed connections (100+ Mbps).
+                    </p>
+                </div>
+            )}
+
+            {/* Automatic library quick scan threshold */}
+            {backendAvailable && (
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Quick Scan After Downloads</label>
+                    <p className="text-xs text-text-subtle mb-3">
+                        Run a quick library scan after this many downloads finish. Use 0 to disable automatic scans. Converted files count after MP3 conversion completes.
+                    </p>
+                    <div className="flex items-center gap-4">
+                        <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={downloadRescanThreshold}
+                            onChange={(e) => setDownloadRescanThreshold(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                            className="w-24 bg-surface-1 border border-surface-3 rounded-lg px-4 py-3 text-text-main"
+                            aria-label="Completed downloads before automatic quick scan"
+                        />
+                        {downloadRescanThresholdSaved && (
+                            <span className="text-success text-sm font-bold">Saved!</span>
+                        )}
+                        <Button
+                            variant="primary"
+                            accent="brand"
+                            onClick={handleSaveDownloadRescanThreshold}
+                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
+                        >
+                            Save
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Automatic Ogg to MP3 conversion */}
+            {backendAvailable && (
+                <div className="mb-6 flex items-center justify-between bg-surface-1 p-4 rounded-lg">
+                    <div className="pr-6">
+                        <h3 className="text-sm text-text-main font-medium">Convert downloads to MP3</h3>
+                        <p className="text-xs text-text-subtle">
+                            Automatically convert downloaded Ogg/Vorbis files to 320 kbps MP3 using the built-in converter. The Ogg file is removed only after conversion succeeds.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={autoConvertOggToMp3}
+                        aria-label="Automatically convert downloaded Ogg files to MP3"
+                        onClick={handleToggleAutoConvertOgg}
+                        disabled={autoConvertOggSaving}
+                        className={`relative w-12 h-6 shrink-0 rounded-full transition-colors disabled:opacity-50 ${autoConvertOggToMp3 ? 'bg-brand' : 'bg-surface-3'}`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${autoConvertOggToMp3 ? 'translate-x-7' : 'translate-x-1'}`} />
+                    </button>
+                </div>
+            )}
+
+            {/* MP3 Conversion Workers */}
+            {backendAvailable && (
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">MP3 Conversion Workers</label>
+                    <p className="text-xs text-text-subtle mb-3">
+                        Number of files to convert in parallel. These workers are separate from download slots; when possible, the automatic default leaves one logical CPU core available and is capped at four workers.
+                    </p>
+                    <div className="flex items-center gap-4">
+                        <div className="flex-1 flex items-center gap-4">
+                            <input
+                                type="range"
+                                min={1}
+                                max={4}
+                                value={conversionWorkers}
+                                onChange={(e) => setConversionWorkers(parseInt(e.target.value, 10))}
+                                disabled={!autoConvertOggToMp3}
+                                className="flex-1 h-2 bg-surface-1 rounded-lg appearance-none cursor-pointer accent-brand disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                            <span className="text-text-main font-bold w-8 text-center">{conversionWorkers}</span>
+                        </div>
+                        {conversionWorkersSaved && (
+                            <span className="text-success text-sm font-bold">Saved!</span>
+                        )}
+                        <Button
+                            variant="primary"
+                            accent="brand"
+                            onClick={handleSaveConversionWorkers}
+                            disabled={!autoConvertOggToMp3}
+                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
+                        >
+                            Save
+                        </Button>
+                    </div>
+                    <p className="text-xs text-text-subtle mt-2">
+                        {!autoConvertOggToMp3
+                          ? 'Enable MP3 conversion above to adjust this setting.'
+                          : 'Increase for faster batch conversion; reduce if playback or other CPU-heavy work becomes less responsive.'}
+                    </p>
+                </div>
+            )}
+
+          </section>
+
           {/* Spotify Integration */}
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-4 text-brand">
@@ -2212,7 +2212,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 4: AI & ENRICHMENT */}
+      {/* TAB: AI & ENRICHMENT; the health branch below shares Library Operations metadata actions */}
       {(activeTab === 'ai' || activeTab === 'health') && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {activeTab === 'ai' && (
@@ -2975,7 +2975,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 5: APPEARANCE & NOW PLAYING */}
+      {/* TAB: APPEARANCE & NOW PLAYING */}
       {activeTab === 'appearance' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
@@ -3034,7 +3034,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 6: SYSTEM & LOGS */}
+      {/* TAB: SYSTEM & LOGS */}
       {activeTab === 'system' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Server Info */}

@@ -14,17 +14,15 @@ ViiB playlists are application-level playlists built from ViiB song IDs. They ca
 
 ---
 
-## Playlist Detail
+## Playlist actions
 
-Playlist Detail provides the normal ViiB controls:
+The Playlists page displays playlist cards with song counts and supports:
 
-- Play / Shuffle
-- drag-to-reorder
-- remove individual playlist entries
-- rename playlist
-- per-track context actions
+- creating a playlist;
+- importing and exporting M3U playlists;
+- opening the playlist context menu for play, play-next, queue, and delete actions.
 
-A playlist entry references ViiB catalog identity, not a filesystem path. This is what allows a Plex track to participate naturally without ViiB having access to PMS storage paths.
+The current page does not provide a separate playlist-detail editor or drag-to-reorder view. A playlist entry references ViiB catalog identity, not a filesystem path. This is what allows a Plex track to participate naturally without ViiB having access to PMS storage paths.
 
 ---
 

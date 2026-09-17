@@ -4,6 +4,10 @@ ViiB MediaHub can use a Plex Media Server **music/audio library** as a first-cla
 
 Plex content synchronizes into ViiB's existing catalog, so Plex-hosted tracks use the normal Songs, Albums, Artists, Search, Queue, playlists, likes, play history, Smart Mixes, AI DJ, statistics, and player interfaces wherever those features operate on the ViiB `Song` catalog.
 
+## Track analysis
+
+The **Track Analysis** panel can prepare BPM, musical key, beat-grid, and energy data for available Plex tracks. ViiB reads the PMS media part through an authenticated server-side direct-play stream; Plex tokens remain in request headers and are never written to browser URLs, job records, or analysis artifacts. Preparation is explicit and is limited to one stream per Plex source. A source that is offline or needs authentication is skipped until it becomes available again.
+
 > Plex support in ViiB is **audio/music only**. Movie, TV, photo, music-video, and general Plex video playback are intentionally unsupported.
 
 ## Architecture
@@ -32,7 +36,7 @@ The integration follows the current Plex Media Server API model and Plex network
 
 ## Configure Plex
 
-Plex can be configured directly from the **first-launch wizard** or later from **Settings → Library Health → Library Operations**.
+Plex can be configured directly from the **first-launch wizard** or later from **Settings → Library Sources → Plex Media Server**.
 
 On first launch, Plex and local folders are peer music-source choices. A Plex-only installation does **not** need to add a dummy local folder. The first-launch Plex flow can discover or manually connect to a server, complete Plex sign-in when required, select a music library, and start the initial synchronization. The existing local-folder, Spotify, AI, and Last.fm onboarding remains available from the same first-run source-selection screen.
 
@@ -194,7 +198,7 @@ ViiB does not delete, move, rename, or rewrite Plex media; and does not change P
 
 ### AI metadata writeback (explicit opt-in)
 
-**Settings → Library Health → Plex Media Server** offers an optional **AI Metadata Writeback** panel for Plex-backed tracks. It is the only path that can modify PMS metadata, and it is deliberately separate from synchronization and enrichment:
+**Settings → Library Sources → Plex Media Server** offers an optional **AI Metadata Writeback** panel for Plex-backed tracks. It is the only path that can modify PMS metadata, and it is deliberately separate from synchronization and enrichment:
 
 - AI enrichment stages a local proposal; it never writes to Plex automatically.
 - **Preview AI metadata** reads the current PMS track metadata and shows a per-track diff. A preview is capped at 100 pending tracks.

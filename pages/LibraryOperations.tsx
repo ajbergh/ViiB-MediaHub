@@ -1,6 +1,8 @@
 /**
- * LibraryOperations is the local maintenance UI for diagnostics, database
- * repair, validated backup/restore staging, and continuous monitoring.
+ * LibraryOperations provides the Library Operations maintenance UI for track
+ * analysis, diagnostics, repair, and validated backup/restore staging. This
+ * module also exports the continuous folder-monitoring panel used beside local
+ * scan configuration in Settings > Library Sources.
  * Restore activation stays outside the running app and is performed by
  * viib-restore after ViiB has exited.
  */
@@ -9,7 +11,6 @@ import { Activity, Archive, CheckCircle2, Database, Eye, Play, RefreshCw, Shield
 import { Page, PageHeader } from '../components/ui/Page';
 import { BackupInfo, LibraryDiagnostics, WatcherStatus, libraryOperationsV2 } from '../services/libraryOperationsV2';
 import { MetadataHealthWidget } from '../components/MetadataHealthWidget';
-import { PlexMusicSourceSettings } from '../components/PlexMusicSourceSettings';
 import { LibraryAnalysisPanel } from '../components/LibraryAnalysisPanel';
 
 const formatBytes = (bytes: number) => {
@@ -92,8 +93,8 @@ export const LibraryOperationsPanel: React.FC = () => {
 
   useEffect(() => { void load(); }, [load]);
 
-  // run serializes user-triggered maintenance actions so an expensive repair,
-  // backup, or watcher transition cannot overlap another operation in this UI.
+  // Serialize user-triggered maintenance actions so an expensive repair or
+  // backup cannot overlap another operation in this UI.
   const run = async (label: string, operation: () => Promise<void>) => {
     setBusy(label); setError(''); setMessage('');
     try { await operation(); }
@@ -134,9 +135,7 @@ export const LibraryOperationsPanel: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-text-secondary text-sm">Configure library sources, prepare tracks for DJ features, diagnose and repair library consistency, and create validated backups or stage recovery.</p>
-
-      <PlexMusicSourceSettings />
+      <p className="max-w-3xl text-text-secondary text-sm">Prepare tracks for DJ features, diagnose and repair library consistency, and create validated backups or stage recovery. Configure local folders, Plex, and continuous monitoring in Library Sources.</p>
 
       {(message || error) && (
         <div className={`rounded-lg border p-4 text-sm ${error ? 'border-error/40 bg-error/10 text-error' : 'border-accent-green/30 bg-accent-green/10 text-text-main'}`} role="status">

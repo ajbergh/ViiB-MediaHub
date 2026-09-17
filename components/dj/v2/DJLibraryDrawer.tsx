@@ -43,7 +43,7 @@ export const DJLibraryDrawer = forwardRef<DJLibraryDrawerHandle>(function DJLibr
       <div className="dj-library-affordance">
         <button ref={triggerRef} type="button" className="dj-focus-ring inline-flex items-center gap-2 px-5 min-h-8 text-xs text-text-main"
           aria-controls="dj-library-drawer" aria-expanded={open} onClick={() => open ? close() : show()}>
-          <Library size={14} aria-hidden="true" /> Library <span className="text-text-subtle">/</span>
+          <Library size={16} aria-hidden="true" /> <span>Library</span>
         </button>
       </div>
       <section ref={drawerRef} id="dj-library-drawer" role="region" aria-label="DJ library" hidden={!open}

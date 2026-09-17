@@ -11,6 +11,7 @@
 import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
+import { useScratchAvailability } from '../../../hooks/useScratchAvailability';
 import { getDJAudioEngine } from '../../../lib/djAudio';
 // BPM glow now handled directly in RAF loop (no useBpmGlow hook)
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -28,8 +29,14 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   const [computedSize, setComputedSize] = useState(size > 0 ? size : 140);
   const lastAngleRef = useRef<number | null>(null);
   const rotationRef = useRef(0);
+  const pointerRef = useRef<number | null>(null);
+  const lastMoveTimeRef = useRef(0);
+  const releaseVelocityRef = useRef(0);
+  const spindleRef = useRef(false);
+  const lastPlaybackPositionRef = useRef<number | null>(null);
   // Refs for RAF-driven elements (avoid React re-renders)
   const rotationDotRef = useRef<SVGCircleElement>(null);
+  const scratchLabelRef = useRef<HTMLDivElement>(null);
   const glowRingRef = useRef<SVGCircleElement>(null);
   const bpmTextRef = useRef<SVGTextElement>(null);
   const tempoTextRef = useRef<SVGTextElement>(null);
@@ -44,8 +51,9 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   const tempo = useStore(state => deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo);
   const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
   const duration = useStore(state => deck === 'A' ? state.djDeckA.duration : state.djDeckB.duration);
-  const { startScratch, updateScratch, endScratch } = useDJAudioEngineActions();
+  const { updateScratch, endScratch } = useDJAudioEngineActions();
   
+  const scratchAvailability = useScratchAvailability(deck);
   const bpm = effectiveBpm || originalBpm || 0;
   const tempoPercent = ((tempo - 1) * 100).toFixed(1);
   const tempoDisplay = tempo >= 1 ? `+${tempoPercent}%` : `${tempoPercent}%`;
@@ -107,6 +115,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
       const playing = deckState.isPlaying;
       const engine = getDJAudioEngine();
       const scratching = engine?.isScratching(deck) ?? false;
+      if (scratchLabelRef.current) scratchLabelRef.current.textContent = engine.getScratchStatus(deck);
       const pos = (playing || scratching) && engine?.initialized
         ? engine.getPosition(deck)
         : deckState.position;
@@ -126,19 +135,13 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
       lastPosRef.current = pos;
       
       // --- Rotation ---
-      if ((playing || scratching || isDraggingRef.current) && currentBpm > 0 && typeof pos === 'number' && !isNaN(pos)) {
-        const beatsElapsed = (pos / 60) * currentBpm;
-        const targetRotation = (beatsElapsed * 360) % 360;
-        
-        if (!isNaN(targetRotation)) {
-          const diff = targetRotation - rotationRef.current;
-          const adjustedDiff = diff > 180 ? diff - 360 : diff < -180 ? diff + 360 : diff;
-          rotationRef.current += adjustedDiff * 0.3;
-          if (rotationRef.current > 360) rotationRef.current -= 360;
-          if (rotationRef.current < 0) rotationRef.current += 360;
-        }
+      // 33 1/3 RPM: one revolution corresponds to 1.8 seconds of audio.
+      // Integrate playback motion to preserve the hand's angle after release.
+      if (!isDraggingRef.current && lastPlaybackPositionRef.current !== null) {
+        rotationRef.current = (rotationRef.current + (pos - lastPlaybackPositionRef.current) * 200) % 360;
       }
-      
+      lastPlaybackPositionRef.current = pos;
+
       // Apply rotation via DOM (no React state update)
       if (rotationDotRef.current) {
         rotationDotRef.current.setAttribute('transform', 
@@ -233,45 +236,83 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
     return Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
   };
 
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (!track) return;
+  useEffect(() => {
+    setIsDragging(false);
+    lastPlaybackPositionRef.current = null;
+    return () => {
+      endScratch(deck, 0, true);
+      isDraggingRef.current = false;
+      pointerRef.current = null;
+      lastAngleRef.current = null;
+    };
+  }, [deck, track?.id, endScratch]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!track || pointerRef.current !== null || e.button !== 0) return;
+    if (!getDJAudioEngine().startScratch(deck)) return;
     e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pointerRef.current = e.pointerId;
     setIsDragging(true);
     isDraggingRef.current = true;
     lastAngleRef.current = getAngleFromCenter(e.clientX, e.clientY);
-    startScratch(deck);
-  }, [deck, track, startScratch]);
+    spindleRef.current = false;
+    releaseVelocityRef.current = 0;
+    lastMoveTimeRef.current = e.timeStamp;
+  }, [deck, track]);
 
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging || lastAngleRef.current === null) return;
-    
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (pointerRef.current !== e.pointerId || lastAngleRef.current === null) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    // Angle is unstable at the spindle; re-anchor when leaving that dead zone.
+    if (Math.hypot(e.clientX - rect.left - rect.width / 2, e.clientY - rect.top - rect.height / 2) < rect.width * 0.08) {
+      spindleRef.current = true;
+      releaseVelocityRef.current = 0;
+      lastAngleRef.current = getAngleFromCenter(e.clientX, e.clientY);
+      lastMoveTimeRef.current = e.timeStamp;
+      return;
+    }
     const currentAngle = getAngleFromCenter(e.clientX, e.clientY);
+    if (spindleRef.current) {
+      spindleRef.current = false;
+      lastAngleRef.current = currentAngle;
+      lastMoveTimeRef.current = e.timeStamp;
+      return;
+    }
     let deltaAngle = currentAngle - lastAngleRef.current;
-    
     if (deltaAngle > 180) deltaAngle -= 360;
     if (deltaAngle < -180) deltaAngle += 360;
-    
-    const deltaTime = (deltaAngle / 360) * 2;
-    const velocity = deltaAngle / 10;
-    
+    const deltaTime = deltaAngle / 200;
+    const elapsed = Math.max(1, e.timeStamp - lastMoveTimeRef.current);
+    const velocity = Math.max(-8, Math.min(8, deltaTime * 1000 / elapsed));
+    const previous = releaseVelocityRef.current;
+    // A reversal should change direction immediately, not inherit the previous flick.
+    const weight = 1 - Math.exp(-elapsed / 24);
+    releaseVelocityRef.current = previous * velocity < 0 || elapsed > 80
+      ? velocity : previous + (velocity - previous) * weight;
     updateScratch(deck, deltaTime, velocity);
+    rotationRef.current = (rotationRef.current + deltaAngle) % 360;
+    rotationDotRef.current?.setAttribute('transform', `rotate(${rotationRef.current}, ${computedSize / 2}, ${computedSize / 2})`);
     lastAngleRef.current = currentAngle;
-  }, [deck, isDragging, updateScratch]);
+    lastMoveTimeRef.current = e.timeStamp;
+  }, [deck, computedSize, updateScratch]);
 
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (!isDragging) return;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (pointerRef.current !== e.pointerId) return;
+    pointerRef.current = null;
     setIsDragging(false);
     isDraggingRef.current = false;
     lastAngleRef.current = null;
-    endScratch(deck, 0, true);
-  }, [deck, isDragging, endScratch]);
+    const velocity = e.type === 'pointerup' && e.timeStamp - lastMoveTimeRef.current < 80
+      ? releaseVelocityRef.current : 0;
+    releaseVelocityRef.current = 0;
+    endScratch(deck, velocity, true);
+    lastPlaybackPositionRef.current = getDJAudioEngine().getPosition(deck);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  }, [deck, endScratch]);
 
   // Colors based on deck
-  const accentColor = deck === 'A' ? '#3b82f6' : '#ec4899';
+  const accentColor = deck === 'A' ? '#3b82f6' : '#8b5cf6';
   // accentColorDim available if needed: deck === 'A' ? '#3b82f680' : '#ec489980'
 
   // Progress arc ref - updated in RAF
@@ -312,12 +353,15 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   return (
     <div 
       ref={containerRef}
-      className={`relative select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-      style={{ width: computedSize, height: computedSize }}
+      className={`relative select-none ${isDragging ? 'cursor-grabbing' : scratchAvailability.ready ? 'cursor-grab' : 'cursor-default'}`}
+      style={{ width: computedSize, height: computedSize, touchAction: 'none' }}
+      title={scratchAvailability.ready ? 'Drag to scratch · Flick to coast' : scratchAvailability.status}
+      aria-label={`Deck ${deck} record: ${scratchAvailability.status}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onLostPointerCapture={handlePointerUp}
     >
       <svg 
         width={computedSize} 
@@ -523,9 +567,13 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
         />
       </svg>
       
+      {track && !scratchAvailability.ready && <div className="pointer-events-none absolute bottom-2 left-0 w-full text-center text-[10px] text-white/70" role="status">
+        {scratchAvailability.status}
+      </div>}
       {/* Scratch indicator overlay */}
       {isDragging && (
         <div 
+          ref={scratchLabelRef}
           className="absolute top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-sm text-[10px] font-bold text-white uppercase tracking-wider"
           style={{ backgroundColor: accentColor, boxShadow: `0 0 10px ${accentColor}` }}
         >

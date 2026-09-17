@@ -90,7 +90,14 @@ func Analyze(ctx context.Context, database *db.DB, registry *analysis.DecoderReg
 	if err != nil {
 		return Result{SongID: songID}, err
 	}
-	result, _, err := analyzeSource(ctx, registry, source.Name, source.Open, songID, opts)
+	return AnalyzeResolved(ctx, registry, source, opts)
+}
+
+// AnalyzeResolved runs the combined analyzer over a source that has already
+// been resolved by the caller. Remote source adapters use this to keep their
+// authenticated stream setup outside the DSP package.
+func AnalyzeResolved(ctx context.Context, registry *analysis.DecoderRegistry, source analysis.ResolvedSource, opts Options) (Result, error) {
+	result, _, err := analyzeSource(ctx, registry, source.Name, source.Open, source.SongID, opts)
 	result.Source = source
 	return result, err
 }
@@ -212,9 +219,16 @@ func Persist(database *db.DB, result Result) error {
 		AnalysisVersion:   AnalysisVersion,
 		AlgorithmVersion:  AlgorithmVersion,
 		SourceFingerprint: result.Source.Fingerprint,
-		SourceSize:        &result.Source.Size,
-		SourceMtime:       &result.Source.Mtime,
 		AnalyzedAt:        ptr(time.Now().UnixMilli()),
+	}
+	if result.Source.Size > 0 {
+		record.SourceSize = ptr(result.Source.Size)
+	}
+	if result.Source.Mtime > 0 {
+		record.SourceMtime = ptr(result.Source.Mtime)
+	}
+	if result.Source.SourceRevision != "" {
+		record.SourceRevision = ptr(result.Source.SourceRevision)
 	}
 	if result.Tempo.Known {
 		record.BPM = &result.Tempo.BPM
@@ -334,6 +348,9 @@ func PersistFailure(database *db.DB, songID string, source analysis.ResolvedSour
 		ErrorCode:         &code,
 		ErrorMessage:      &message,
 	}
+	if source.SourceRevision != "" {
+		record.SourceRevision = ptr(source.SourceRevision)
+	}
 	if code == ErrorUnsupportedCodec {
 		record.Status = db.TrackAnalysisUnsupported
 	}
@@ -352,7 +369,7 @@ func ClassifyError(err error) (string, string) {
 		return ErrorUnsupportedCodec, err.Error()
 	}
 	message := err.Error()
-	for _, marker := range []string{"no local analysis source", "stat local source", "not a regular file", "Plex source adapter", "open local source"} {
+	for _, marker := range []string{"no local analysis source", "stat local source", "not a regular file", "Plex source adapter", "Plex source unavailable", "open local source"} {
 		if strings.Contains(message, marker) {
 			return ErrorSourceUnavailable, message
 		}

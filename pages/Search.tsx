@@ -1,7 +1,8 @@
 /**
- * Search presents categorized local-library results. Backend mode uses the
- * indexed v2 API; browser-only mode and request failures use the loaded-song
- * fallback so navigation remains available offline.
+ * Search presents categorized ViiB-catalog results, including synchronized
+ * Plex tracks. Backend mode uses the indexed v2 API; browser-only mode and
+ * request failures use the loaded-song fallback so navigation remains available
+ * offline.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { ListPlus, Music, Play, Search as SearchIcon } from 'lucide-react';

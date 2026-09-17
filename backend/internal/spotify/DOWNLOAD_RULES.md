@@ -1,6 +1,6 @@
-# Spotify Download Rules and Metadata Standards
+# Legacy Spotify Download Rules and Metadata Standards
 
-This document defines the file organization and metadata tagging rules for Spotify downloads in Supersonic.
+This is a retained Supersonic-era design note, not the live ViiB MediaHub download contract. Current user-facing behavior is documented in [docs/downloads.md](../../../docs/downloads.md) and [docs/spotify.md](../../../docs/spotify.md). Current ViiB downloads begin as Ogg Vorbis, may be converted to MP3, and use Settings → Integrations & Spotify → Downloads & Conversion for destination and conversion controls.
 
 ## General Rules
 

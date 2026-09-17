@@ -71,7 +71,7 @@ Both modes share the same Go backend and React frontend.
 - One canonical ViiB `songs` catalog for local and Plex tracks
 - Source-transparent Albums, Artists, Search, playlists, likes, history, Smart Mixes, AI DJ, and Stats
 - Revisioned library synchronization and indexed backend search for large catalogs
-- Library Operations for diagnostics, repair, backup, staged offline restore, and continuous local-folder monitoring
+- Library Operations for track analysis, diagnostics, repair, backup, and staged offline restore
 
 ### Plex Media Server
 
@@ -96,7 +96,7 @@ See [Plex Media Server Music Support](docs/plex-music.md).
 - Saved albums, playlists, recently played, and Spotify search/browse experiences
 - Direct Spotify streaming with configurable quality
 - Track/album/playlist downloads with metadata and progress events
-- Automatic local-library rescan after completed downloads
+- Optional threshold-controlled local-library quick scan after completed downloads
 
 See [Spotify Integration](docs/spotify.md).
 
@@ -142,7 +142,7 @@ See [Spotify Integration](docs/spotify.md).
 |---|---|---|
 | Node.js | 20 LTS | Frontend tooling |
 | Go | **1.26.8+** | Current security-patched Go 1.26 baseline |
-| GCC / Clang | — | Required for CGO/SQLite |
+| GCC / Clang | — | Required for native Wails builds and packages that opt into CGO |
 | Wails CLI | v2 | Desktop builds |
 
 Install Wails:
@@ -151,7 +151,7 @@ Install Wails:
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 ```
 
-Platform-native build dependencies are documented by Wails. On Windows, the repository CI uses MSYS2/MinGW for CGO.
+Platform-native build dependencies are documented by Wails. The backend uses the pure-Go `modernc.org/sqlite` driver and can build without CGO; native Wails packaging still uses the repository's platform toolchain and may enable CGO for other native dependencies.
 
 ### Development
 
@@ -201,7 +201,7 @@ Use **Settings** to add local music folders. ViiB scans configured roots and inc
 
 ### Plex Media Server
 
-Open **Settings → Library Health / Library Operations** and use the Plex Music Source panel:
+Open **Settings → Library Sources** and use the **Plex Media Server** panel:
 
 1. Search the local network or enter a PMS address manually.
 2. Validate/connect the server.

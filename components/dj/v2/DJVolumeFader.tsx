@@ -130,6 +130,9 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
         />
 
         {/* VU meter markers (outside the wider track) */}
+        <div className='absolute top-0 -left-5 h-full flex flex-col justify-between text-[10px] text-neutral-400 pointer-events-none' aria-hidden='true'>
+          <span title='Unity gain'>0 dB</span><span>−6</span><span>−∞</span>
+        </div>
         <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-between py-1.5 pr-0.5">
           {[100, 80, 60, 40, 20, 0].map((pct) => (
             <div
@@ -139,7 +142,7 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
               <div
                 className="w-1.5 h-px"
                 style={{
-                  backgroundColor: pct >= 80 ? '#ef4444' : pct >= 60 ? '#f59e0b' : '#444'
+                  backgroundColor: pct === 100 ? '#e2e8f0' : '#64748b'
                 }}
               />
             </div>
@@ -199,9 +202,9 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
       {/* Value display */}
       <span
         className="text-[10px] font-mono mt-0.5 transition-colors"
-        style={{ color: value > 0.8 ? '#ef4444' : value > 0 ? '#888' : '#444' }}
+        style={{ color: '#cbd5e1' }}
       >
-        {Math.round(value * 100)}
+        {value > 0 ? `${(20 * Math.log10(value)).toFixed(1)} dB` : '−∞ dB'}
       </span>
     </div>
   );

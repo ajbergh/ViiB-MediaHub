@@ -1,3 +1,5 @@
+import type { TempoEvidence } from '../lib/tempoEvidence';
+import { canSyncBeatGrid, type BeatGridSource } from '../lib/beatGridConfidence';
 /**
  * ViiB MediaHub - DJ Mixer State Slice
  * 
@@ -125,6 +127,9 @@ export interface DeckState {
   beatGrid: number[] | null;
   downbeatIndices: number[] | null;
   beatGridLocked: boolean;
+  beatGridSource: BeatGridSource;
+  bpmConfidence: number | null;
+  tempoEvidence: TempoEvidence | null;
   beatGridOffset: number;  // Manual beat grid offset in seconds (for alignment editing)
   
   // Loop (Phase 3+)
@@ -144,11 +149,15 @@ export interface DeckState {
 // beatgrid pipelines. A patch prevents one result from overwriting fields a
 // different pipeline has already completed.
 export interface DeckAnalysisPatch {
+  automatic?: boolean; // Background analysis must not replace a reviewed manual grid.
   bpm?: number | null;
   key?: string | null;
   beatGrid?: number[] | null;
   downbeatIndices?: number[] | null;
   beatGridLocked?: boolean;
+  beatGridSource?: BeatGridSource;
+  bpmConfidence?: number | null;
+  tempoEvidence?: TempoEvidence | null;
 }
 
 // ============================================================================
@@ -397,6 +406,9 @@ const createDefaultDeckState = (): DeckState => ({
   beatGrid: null,
   downbeatIndices: null,
   beatGridLocked: false,
+  beatGridSource: 'unknown',
+  bpmConfidence: null,
+  tempoEvidence: null,
   beatGridOffset: 0,     // No offset by default
   loop: { enabled: false, start: 0, end: 0 },
   hotCues: [],
@@ -681,6 +693,18 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
     const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
     set((state) => {
       const current = state[deckKey];
+      if (current.beatGridLocked && current.beatGridSource === 'manual' && patch.automatic) {
+        patch = { ...patch };
+        delete patch.beatGrid;
+        delete patch.downbeatIndices;
+        delete patch.beatGridLocked;
+        delete patch.beatGridSource;
+        delete patch.tempoEvidence;
+        if (current.originalBpm !== null) {
+          delete patch.bpm;
+          delete patch.bpmConfidence;
+        }
+      }
       const hasBPM = Object.hasOwn(patch, 'bpm');
       const hasKey = Object.hasOwn(patch, 'key');
       const hasBeatGrid = Object.hasOwn(patch, 'beatGrid');
@@ -696,6 +720,9 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
           beatGrid: hasBeatGrid ? patch.beatGrid ?? null : current.beatGrid,
           downbeatIndices: hasDownbeats ? patch.downbeatIndices ?? null : current.downbeatIndices,
           beatGridLocked: hasBeatGridLock ? Boolean(patch.beatGridLocked) : current.beatGridLocked,
+          beatGridSource: hasBeatGrid ? (patch.beatGrid?.length ? patch.beatGridSource ?? 'unknown' : 'unknown') : current.beatGridSource,
+          bpmConfidence: Object.hasOwn(patch, 'bpmConfidence') ? patch.bpmConfidence ?? null : hasBPM ? null : current.bpmConfidence,
+          tempoEvidence: Object.hasOwn(patch, 'tempoEvidence') ? patch.tempoEvidence ?? null : hasBeatGrid || hasBPM ? null : current.tempoEvidence,
           // A new grid invalidates its manual offset; tempo/key-only updates do not.
           beatGridOffset: hasBeatGrid ? 0 : current.beatGridOffset,
         },
@@ -1065,8 +1092,8 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
     const target = targetDeck === 'A' ? state.djDeckA : state.djDeckB;
     
     // Both decks need beat grids for phase sync
-    if (!sourceDeck.beatGrid?.length || !target.beatGrid?.length) {
-      console.warn('Beat-phase sync requires beat grids on both decks');
+    if (!canSyncBeatGrid(sourceDeck) || !canSyncBeatGrid(target)) {
+      console.warn('Beat-phase sync requires reviewed, locked beat grids on both decks');
       return;
     }
     

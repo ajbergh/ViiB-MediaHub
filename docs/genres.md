@@ -34,6 +34,6 @@ ViiB-side genre enrichment is not silently written back to Plex.
 
 ## Genre Enrichment
 
-Configure and run enrichment from [Settings → Library Intelligence](settings.md#library-intelligence).
+Configure and run enrichment from [Settings → AI & Enrichment](settings.md#ai--enrichment).
 
 Enrichment changes ViiB catalog metadata used by Genre browsing, Smart Mixes, AI DJ, and statistics. It does not modify local source-file tags or PMS metadata unless a future explicitly supported source-writeback feature is introduced.

@@ -10,9 +10,24 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 )
+
+func TestV2TrackTempoEvidenceUsesMeasuredValuesOnly(t *testing.T) {
+	bpm, alternate, stability, confidence := 128.5, 64.25, .8, .36
+	source, kind := "measured", "dynamic-candidate"
+	record := db.TrackAnalysis{Status: db.TrackAnalysisComplete, BPM: &bpm, BPMSource: &source, BPMAltCandidate: &alternate, TempoStability: &stability, BPMConfidence: &confidence, TempoKind: &kind}
+	result := trackAnalysisFeatureResponse(record, db.TrackAnalysisOverride{})
+	if result.BPMAltCandidate == nil || *result.BPMAltCandidate != alternate || result.TempoStability == nil || *result.TempoStability != stability || result.TempoKind == nil || *result.TempoKind != kind {
+		t.Fatalf("missing measured tempo evidence: %#v", result)
+	}
+	result = trackAnalysisFeatureResponse(record, db.TrackAnalysisOverride{BPM: &bpm, BPMLocked: true})
+	if result.BPMAltCandidate != nil || result.TempoStability != nil || result.BPMConfidence != nil || result.TempoKind != nil {
+		t.Fatalf("measured evidence attributed to manual tempo: %#v", result)
+	}
+}
 
 func TestV2TrackAnalysisFeatureResolvesManualValues(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
@@ -131,12 +146,27 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatal(err)
 	}
-	if !response.Locked || len(response.Beats) != 4 || response.Beats[0] != .125 {
+	if response.Source != "manual" || !response.Locked || len(response.Beats) != 4 || response.Beats[0] != .125 {
 		t.Fatalf("beatgrid = %#v", response)
 	}
 	override, err := database.GetTrackAnalysisOverride("song")
 	if err != nil || override.BPM == nil || *override.BPM != manual || !override.BPMLocked {
 		t.Fatalf("override = %#v, err = %v", override, err)
+	}
+	// Applying a detected tempo must survive reloading along with its grid.
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0.13,0.63,1.13],"downbeatIndices":[],"locked":true,"bpm":120}`)))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("save corrected tempo: %d %s", recorder.Code, recorder.Body.String())
+	}
+	override, err = database.GetTrackAnalysisOverride("song")
+	if err != nil || override.BPM == nil || *override.BPM != 120 || !override.BPMLocked || !override.BeatgridLocked {
+		t.Fatalf("corrected tempo did not persist: %#v, %v", override, err)
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0,0.5,1],"locked":true,"bpm":-1}`)))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("invalid tempo accepted: %d", recorder.Code)
 	}
 }
 
@@ -241,5 +271,55 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	}
 	if len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "compatible" || len(response.Recommendations[0].Components) != 3 {
 		t.Fatalf("recommendations = %#v", response)
+	}
+}
+
+func TestV2BeatGridProvenance(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		override bool
+		locked   bool
+		source   string
+	}{
+		{"measured", false, false, "measured"},
+		{"unlocked legacy edit", true, false, "unknown"},
+		{"reviewed manual", true, true, "manual"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
+				t.Fatal(err)
+			}
+			grid := beatgrid.Grid{Beats: []float64{0.1, 0.6, 1.1}, DownbeatIndices: []int{0}}
+			encoded, err := grid.Encode()
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := "song:" + beatgrid.AlgorithmVersion
+			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id, SongID: "song", Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Data: encoded}); err != nil {
+				t.Fatal(err)
+			}
+			if test.override {
+				if err := database.UpsertTrackAnalysisOverride(db.TrackAnalysisOverride{SongID: "song", BeatgridArtifactID: &id, BeatgridLocked: test.locked}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			response := httptest.NewRecorder()
+			(&API{db: database}).V2Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/analysis/song/beatgrid", nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("GET: %d %s", response.Code, response.Body.String())
+			}
+			var gridResponse BeatGridResponse
+			if err := json.NewDecoder(response.Body).Decode(&gridResponse); err != nil {
+				t.Fatal(err)
+			}
+			if gridResponse.Source != test.source {
+				t.Fatalf("source=%s, want %s", gridResponse.Source, test.source)
+			}
+		})
 	}
 }

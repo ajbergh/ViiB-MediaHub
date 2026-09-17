@@ -57,16 +57,16 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
     const f = fx as any;
     switch (type) {
       case 'filter':
-        setFilterFX(deck, newEnabled, f.type || 'lowpass', f.frequency || 1000, f.resonance || 5);
+        setFilterFX(deck, newEnabled, f.type || 'lowpass', f.frequency ?? 1000, f.resonance ?? 5);
         break;
       case 'delay':
-        setDelayFX(deck, newEnabled, f.time || 0.25, f.feedback || 0.3, f.mix || 0.5);
+        setDelayFX(deck, newEnabled, f.time ?? 0.25, f.feedback ?? 0.3, f.mix ?? 0.5);
         break;
       case 'reverb':
-        setReverbFX(deck, newEnabled, f.roomSize || 0.5, f.damping || 0.5, f.mix || 0.3);
+        setReverbFX(deck, newEnabled, f.roomSize ?? 0.5, f.damping ?? 0.5, f.mix ?? 0.3);
         break;
       case 'flanger':
-        setFlangerFX(deck, newEnabled, f.rate || 0.5, f.depth || 0.5, f.feedback || 0.3);
+        setFlangerFX(deck, newEnabled, f.rate ?? 0.5, f.depth ?? 0.5, f.feedback ?? 0.3);
         break;
     }
   }, [deck, type, fx, setFilterFX, setDelayFX, setReverbFX, setFlangerFX]);
@@ -132,31 +132,31 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
     switch (type) {
       case 'filter':
         return {
-          param1: { label: 'FREQ', value: f.frequency || 1000, min: -24, max: 12 },
-          param2: { label: 'RES', value: f.resonance || 5, min: -24, max: 12 },
+          param1: { label: 'FREQ', value: mapToKnobRange(Math.log((f.frequency ?? 1000) / 20) / Math.log(1000), 0, 1), min: -24, max: 12 },
+          param2: { label: 'RES', value: mapToKnobRange(f.resonance ?? 5, 0.1, 20), min: -24, max: 12 },
           hasWet: false,
           wet: { label: '', value: 0, min: 0, max: 1 },
         };
       case 'delay':
         return {
-          param1: { label: 'TIME', value: mapToKnobRange(f.time || 0.25, 0.01, 1), min: -24, max: 12 },
-          param2: { label: 'FDBK', value: mapToKnobRange(f.feedback || 0.3, 0, 0.9), min: -24, max: 12 },
+          param1: { label: 'TIME', value: mapToKnobRange(f.time ?? 0.25, 0.01, 1), min: -24, max: 12 },
+          param2: { label: 'FDBK', value: mapToKnobRange(f.feedback ?? 0.3, 0, 0.9), min: -24, max: 12 },
           hasWet: true,
-          wet: { label: 'MIX', value: mapToKnobRange(f.mix || 0.5, 0, 1), min: -24, max: 12 },
+          wet: { label: 'MIX', value: mapToKnobRange(f.mix ?? 0.5, 0, 1), min: -24, max: 12 },
         };
       case 'reverb':
         return {
-          param1: { label: 'ROOM', value: mapToKnobRange(f.roomSize || 0.5, 0.1, 1), min: -24, max: 12 },
-          param2: { label: 'DAMP', value: mapToKnobRange(f.damping || 0.5, 0, 1), min: -24, max: 12 },
+          param1: { label: 'ROOM', value: mapToKnobRange(f.roomSize ?? 0.5, 0.1, 1), min: -24, max: 12 },
+          param2: { label: 'DAMP', value: mapToKnobRange(f.damping ?? 0.5, 0, 1), min: -24, max: 12 },
           hasWet: true,
-          wet: { label: 'MIX', value: mapToKnobRange(f.mix || 0.3, 0, 1), min: -24, max: 12 },
+          wet: { label: 'MIX', value: mapToKnobRange(f.mix ?? 0.3, 0, 1), min: -24, max: 12 },
         };
       case 'flanger':
         return {
-          param1: { label: 'RATE', value: mapToKnobRange(f.rate || 0.5, 0.1, 5), min: -24, max: 12 },
-          param2: { label: 'DPTH', value: mapToKnobRange(f.depth || 0.5, 0, 1), min: -24, max: 12 },
+          param1: { label: 'RATE', value: mapToKnobRange(f.rate ?? 0.5, 0.1, 5), min: -24, max: 12 },
+          param2: { label: 'DPTH', value: mapToKnobRange(f.depth ?? 0.5, 0, 1), min: -24, max: 12 },
           hasWet: true,
-          wet: { label: 'FDBK', value: mapToKnobRange(f.feedback || 0.3, 0, 0.9), min: -24, max: 12 },
+          wet: { label: 'FDBK', value: mapToKnobRange(f.feedback ?? 0.3, 0, 0.9), min: -24, max: 12 },
         };
       default:
         return {
@@ -228,6 +228,14 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
   }, [type, handleDryWetChange]);
 
   const knobSize = expanded ? 44 : 32;
+  const actual = fx as any;
+  const percent = (value: number) => `${Math.round(value * 100)}%`;
+  const valueText1 = type === 'filter' ? `${Math.round(actual.frequency)} Hz`
+    : type === 'delay' ? `${Math.round(actual.time * 1000)} ms`
+    : type === 'flanger' ? `${actual.rate.toFixed(2)} Hz` : percent(actual.roomSize);
+  const valueText2 = type === 'filter' ? `${actual.resonance.toFixed(1)} Q`
+    : percent(type === 'delay' ? actual.feedback : type === 'reverb' ? actual.damping : actual.depth);
+  const wetText = percent(type === 'flanger' ? actual.feedback : actual.mix);
 
   // Compact mode: toggle tab + always-rendered macro knob (greyed when off,
   // so toggling does NOT shift neighbour layout — see review §2.6).
@@ -260,6 +268,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
         {params.hasWet && (
           <DJEQKnob
             label={params.wet.label}
+            valueText={wetText}
             value={params.wet.value}
             onChange={handleKnobWet}
             color={isEnabled ? enabledColor : '#444'}
@@ -300,6 +309,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
       <div className={`flex ${expanded ? 'gap-1.5' : 'gap-0.5'}`}>
         <DJEQKnob
           label={params.param1.label}
+          valueText={valueText1}
           value={params.param1.value}
           onChange={handleKnobParam1}
           color={isEnabled ? enabledColor : '#555'}
@@ -307,6 +317,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
         />
         <DJEQKnob
           label={params.param2.label}
+          valueText={valueText2}
           value={params.param2.value}
           onChange={handleKnobParam2}
           color={isEnabled ? enabledColor : '#555'}
@@ -315,6 +326,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
         {params.hasWet && (
           <DJEQKnob
             label={params.wet.label}
+            valueText={wetText}
             value={params.wet.value}
             onChange={handleKnobWet}
             color={isEnabled ? enabledColor : '#555'}

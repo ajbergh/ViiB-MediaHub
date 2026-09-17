@@ -141,7 +141,7 @@ export function useDJWebGLAnimation(
   isEnabled: boolean = true,
   targetFPS: number = 60,
   idleFPS: number = 4,
-  isIdle: boolean = false
+  isIdle: boolean | (() => boolean) = false
 ): void {
   const frameIdRef = useRef<number>(0);
   const timerIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -171,7 +171,8 @@ export function useDJWebGLAnimation(
     const animate = (timestamp: number) => {
       if (cancelled) return;
       const hidden = typeof document !== 'undefined' && document.hidden;
-      const effectiveFPS = hidden ? 1 : (isIdle ? idleFPS : targetFPS);
+      const idle = typeof isIdle === 'function' ? isIdle() : isIdle;
+      const effectiveFPS = hidden ? 1 : (idle ? idleFPS : targetFPS);
       const frameInterval = 1000 / Math.max(1, effectiveFPS);
       const elapsed = timestamp - lastFrameTimeRef.current;
 
@@ -180,7 +181,7 @@ export function useDJWebGLAnimation(
         renderCallback(timestamp);
       }
 
-      scheduleNext(isIdle);
+      scheduleNext(idle);
     };
 
     // Kick off the first frame
