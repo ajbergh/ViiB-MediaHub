@@ -9,7 +9,9 @@ info:
     Jobs, Library Operations, and Plex configuration return the documented
     machine-readable error envelope; legacy library and performance handlers
     retain their existing response shape for compatibility. Plex credentials
-    are never returned by this API.
+    are never returned by this API. The core routes below are documented here;
+    the durable analysis detail routes are implemented in `V2Routes` and remain
+    subject to the backend handler contract until their schemas are added.
 servers:
   - url: /api/v2
 paths:

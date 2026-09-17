@@ -18,6 +18,7 @@ ViiB MediaHub supports keyboard shortcuts for hands-free control of playback, pa
 | `↑` (Arrow Up) | Volume up 5% |
 | `↓` (Arrow Down) | Volume down 5% |
 | `M` | Toggle mute |
+| `Ctrl/Cmd + I` | Open Song Info for the current track (also works with `I` while Now Playing is open) |
 
 ---
 
@@ -36,7 +37,7 @@ ViiB MediaHub supports keyboard shortcuts for hands-free control of playback, pa
 
 | Key | Action |
 |---|---|
-| `V` | Cycle visualizer mode (Off → Waveform → Spectrum → Milkdrop → Off) |
+| `V` | Cycle the 12 visualizer modes while Now Playing is open |
 
 ---
 
@@ -58,6 +59,20 @@ DJ Mode has its own dedicated set of shortcuts active only while on the DJ Mode 
 |---|---|
 | `Space` | Play/Pause Deck A |
 | `Shift + Space` | Play/Pause Deck B |
+| `W` | Play/Pause Deck A |
+| `P` | Play/Pause Deck B |
+| `Q` | Return Deck A to cue |
+| `O` | Return Deck B to cue |
+| `Tab` | Toggle active deck |
+| `Z` / `X` / `C` | Crossfader left / center / right |
+| `E` / `[` | Sync Deck A / Deck B |
+| `Shift + ←` / `Shift + →` | Nudge the active deck backward / forward |
+| `Alt + Shift + ←` / `Alt + Shift + →` | Larger nudge backward / forward |
+| `1`–`8` | Trigger the active deck's hot cue |
+| `Shift + 1`–`8` | Set the active deck's hot cue at the current position |
+| `/` | Open and focus the DJ library search |
+| `?` | Open the DJ keyboard-shortcuts dialog |
+| `F11` | Enter/exit fullscreen |
 
 > See the [DJ Mode](dj-mode.md) page for the full list of DJ-specific shortcuts.
 
@@ -65,6 +80,6 @@ DJ Mode has its own dedicated set of shortcuts active only while on the DJ Mode 
 
 ## Notes
 
-- Shortcuts work globally across all pages except when an input is focused.
-- The `Escape` key also blurs the focused input when you are typing.
+- Global shortcuts work across normal pages except when an input is focused; DJ Mode adds its dedicated mappings while active.
+- The `Escape` key blurs a focused input, closes Now Playing/Queue/EQ or context menus, and closes the DJ library/shortcut dialog according to the active surface.
 - No modifier key is required for the basic media shortcuts.

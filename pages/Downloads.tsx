@@ -313,7 +313,7 @@ export const Downloads: React.FC = () => {
     );
   }
 
-  // Handler for navigating to Spotify settings and refreshing auth
+  // Return to Spotify and refresh the current authentication state.
   const handleReconnectSpotify = async () => {
     navigate('/spotify');
     // Clear the auth required flag since user is re-authenticating

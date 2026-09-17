@@ -75,7 +75,7 @@ The player uses the Web Audio stack for EQ/visualization where supported by the 
 
 The equalizer provides 10 frequency bands from 32 Hz through 16 kHz, per-band gain, presets, enable/bypass, and reset-to-flat behavior.
 
-Visualizer availability depends on the active mode and platform. Configure audio/visualizer behavior in [Settings](settings.md#audio).
+Visualizer availability depends on the active mode and platform. Configure audio/visualizer behavior in [Settings → Playback & Audio](settings.md#playback--audio) and [Settings → Appearance & Now Playing](settings.md#appearance--now-playing).
 
 ---
 

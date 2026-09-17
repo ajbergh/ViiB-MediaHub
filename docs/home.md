@@ -8,7 +8,7 @@ The Home page is ViiB MediaHub's landing screen. It summarizes the canonical Vii
 
 ## Layout Options
 
-The Home page supports multiple layouts configured under [Settings](settings.md) → **Personalization**.
+The Home page supports multiple layouts configured under [Settings](settings.md) → **Appearance & Now Playing**.
 
 | Layout | Best for | Typical emphasis |
 |---|---|---|
@@ -53,6 +53,6 @@ A Plex outage does not remove already synchronized entries from the Home catalog
 ## Keeping Home current
 
 - For local folders, run or allow the normal ViiB scanner to reconcile filesystem changes.
-- For Plex, use **Resynchronize** in [Library Operations](library-operations.md) to import new/changed/removed PMS music metadata.
+- For Plex, use **Resynchronize** in [Settings → Library Sources → Plex Media Server](settings.md#plex-media-server-music) to import new/changed/removed PMS music metadata.
 - Temporary Plex connectivity/authentication failures retain the cached catalog until a later successful authoritative sync.
 - Spotify streaming/browse content is not automatically folded into the ViiB catalog unless it becomes local downloaded media through the supported download workflow.

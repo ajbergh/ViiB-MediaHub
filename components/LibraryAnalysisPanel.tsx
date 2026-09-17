@@ -1,11 +1,10 @@
 /**
- * LibraryAnalysisPanel is the Phase 4 control surface for durable track
- * analysis: start a run over missing, outdated, or all tracks, watch its
- * progress, pause or cancel it, and see how many tracks could not be analyzed.
+ * LibraryAnalysisPanel is the durable track-analysis control surface: start a
+ * run over missing, outdated, or all local/Plex tracks, watch its progress,
+ * pause or cancel it, and see how many tracks could not be analyzed.
  *
- * It deliberately shows no BPM or key values. Those are Phase 5 and are gated
- * on the accuracy work; presenting a measured tempo here would make a claim
- * the analyzers have not yet earned.
+ * The panel is progress/status-oriented. Persisted BPM, key, beatgrid, and
+ * energy results are surfaced in the DJ library when available.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Gauge, Pause, Play, RefreshCw, Square } from 'lucide-react';

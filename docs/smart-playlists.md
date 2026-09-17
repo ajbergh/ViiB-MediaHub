@@ -29,7 +29,7 @@ Generated results use normal ViiB song IDs, so a result can contain both local a
 
 ## Semantic retrieval
 
-Configure the separate **Semantic Retrieval Index** in **Settings → Library Intelligence**. It is independent of the chat/LLM provider and does not modify source-media metadata.
+Configure the separate **Semantic Retrieval Index** in **Settings → AI & Enrichment**. It is independent of the chat/LLM provider and does not modify source-media metadata.
 
 - **Ollama** can build embeddings locally. ViiB never downloads a model automatically.
 - **OpenAI**, **Google Gemini**, and **OpenRouter** can use their respective embeddings APIs only after ViiB presents the provider-specific data/cost notice and the user explicitly confirms it.
@@ -68,7 +68,7 @@ A later successful authoritative Plex synchronization reconciles additions, upda
 
 ## Metadata enrichment
 
-For best results, configure the desired AI/metadata provider in [Settings → Library Intelligence](settings.md#library-intelligence).
+For best results, configure the desired AI/metadata provider in [Settings → AI & Enrichment](settings.md#ai--enrichment).
 
 ViiB-side enrichment may add or improve genre, mood, energy, tempo, BPM, and year metadata used by Smart Mixes/AI DJ.
 

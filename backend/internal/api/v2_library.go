@@ -1,4 +1,5 @@
-// v2_library.go exposes revisioned snapshot, delta, search, and SSE routes.
+// v2_library.go exposes revisioned snapshot, delta, search, SSE, and durable
+// analysis/beatgrid/energy/recommendation routes.
 // These handlers preserve the legacy JSON response shape for compatibility.
 package api
 
@@ -16,7 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// V2Routes returns the additive library synchronization and search routes.
+// V2Routes returns the additive library synchronization, search, and analysis routes.
 func (a *API) V2Routes() chi.Router {
 	r := chi.NewRouter()
 	if err := a.db.EnsureLibrarySyncSchema(); err != nil {

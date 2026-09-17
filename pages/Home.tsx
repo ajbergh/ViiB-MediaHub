@@ -2,7 +2,7 @@
  * ViiB MediaHub - Home Page
  *
  * Renders the selected Home layout variant. Layout preference is stored in the
- * UI slice and can be changed from Settings > Personalization.
+ * UI slice and can be changed from Settings > Appearance & Now Playing.
  *
  * @module Home
  */

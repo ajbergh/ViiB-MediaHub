@@ -4,7 +4,7 @@
  * Attaches a single keydown listener on mount using a stable ref pattern.
  * All callbacks are captured in a ref that stays current each render, so
  * the listener never needs to be removed/re-added when callback references
- * change — eliminating the churn documented in DJ_MODE_V2_SUGGESTIONS.md §2.2.
+ * change — eliminating listener churn across renders.
  *
  * @module components/dj/v2/hooks/useDJShortcuts
  */

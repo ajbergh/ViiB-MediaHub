@@ -58,10 +58,10 @@ type Options struct {
 	Extraction   Extraction
 }
 
-// Extraction selects the pitch-class representation. DirectChroma preserves
-// the current product path. HPCPPeaks is a Phase 0 candidate independently
-// implementing the published spectral-peaks/HPCP design used by established
-// offline analysis pipelines; it is not linked to their GPL/AGPL code.
+// Extraction selects the pitch-class representation. HPCPPeaks is the current
+// product default and DirectChroma remains available for explicit comparison.
+// The implementation is independent of the published offline analysis
+// pipelines and is not linked to their GPL/AGPL code.
 type Extraction string
 
 const (
@@ -114,8 +114,8 @@ func EstimatePCM(samples []float32, sampleRate int) Estimate {
 	return EstimatePCMWithOptions(samples, sampleRate, DefaultOptions())
 }
 
-// EstimatePCMWithOptions evaluates PCM using an explicit Phase 0 tonality
-// setting. Product callers use EstimatePCM and therefore retain the default.
+// EstimatePCMWithOptions evaluates PCM using explicit tonality settings.
+// Product callers use EstimatePCM and therefore retain the production default.
 func EstimatePCMWithOptions(samples []float32, sampleRate int, options Options) Estimate {
 	acc := NewChromaAccumulatorWithOptions(sampleRate, options)
 	acc.Feed(samples)

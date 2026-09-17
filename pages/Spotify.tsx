@@ -866,7 +866,7 @@ export const Spotify: React.FC = () => {
                                     <span className="text-white font-mono bg-surface-3 px-1 rounded mx-1">Client ID</span>
                                     and
                                     <span className="text-white font-mono bg-surface-3 px-1 rounded mx-1">Client Secret</span>
-                                    into <span className="text-white font-bold">Settings → Spotify</span> in ViiB MediaHub.
+                                    into <span className="text-white font-bold">Settings → Integrations & Spotify</span> in ViiB MediaHub.
                                 </li>
                             </ol>
                             <div className="mt-2 flex items-center gap-2">

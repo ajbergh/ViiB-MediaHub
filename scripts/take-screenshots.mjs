@@ -1,7 +1,8 @@
 /**
  * ViiB MediaHub - Screenshot capture script
  * 
- * Takes screenshots of all UI panels and saves them to /assets/screenshots/
+ * Takes screenshots of every primary sidebar surface, the Settings tabs, and
+ * the documented player panels, then saves them to /assets/screenshots/.
  * 
  * Usage:
  *   node scripts/take-screenshots.mjs
@@ -36,7 +37,18 @@ const PAGES = [
   { name: 'dj-mode', path: '/dj', label: 'DJ Mode' },
   { name: 'downloads', path: '/downloads', label: 'Downloads' },
   { name: 'stats', path: '/stats', label: 'Stats' },
+  { name: 'duplicates', path: '/duplicates', label: 'Duplicates' },
   { name: 'settings', path: '/settings', label: 'Settings' },
+];
+
+const SETTINGS_TABS = [
+  { name: 'settings-library-sources', label: 'Library Sources' },
+  { name: 'settings-library-operations', label: 'Library Operations' },
+  { name: 'settings-playback-audio', label: 'Playback & Audio' },
+  { name: 'settings-integrations-spotify', label: 'Integrations & Spotify' },
+  { name: 'settings-ai-enrichment', label: 'AI & Enrichment' },
+  { name: 'settings-appearance-now-playing', label: 'Appearance & Now Playing' },
+  { name: 'settings-system-logs', label: 'System & Logs' },
 ];
 
 async function waitForContentLoaded(page) {
@@ -48,6 +60,17 @@ async function waitForContentLoaded(page) {
   }
   // Small extra settle time for animations
   await page.waitForTimeout(800);
+}
+
+async function dismissFirstLaunchDialog(page) {
+  // A clean backend data directory shows the source-choice wizard on first
+  // load. Screenshots document the destination surface, so defer setup before
+  // capturing the rest of the application.
+  const setUpLater = page.getByRole('button', { name: 'Set up later', exact: true });
+  if (await setUpLater.isVisible().catch(() => false)) {
+    await setUpLater.click();
+    await page.waitForTimeout(300);
+  }
 }
 
 async function main() {
@@ -70,11 +93,29 @@ async function main() {
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
       await waitForContentLoaded(page);
+      await dismissFirstLaunchDialog(page);
       await page.screenshot({ path: outFile, fullPage: false });
       console.log(`   ✓ Saved: assets/screenshots/${name}.png`);
     } catch (err) {
       console.error(`   ✗ Failed: ${err.message}`);
     }
+  }
+
+  // Settings has one documented screenshot for each visible tab.
+  try {
+    console.log('📸 Settings tabs');
+    await page.goto(`${BASE_URL}/settings`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await waitForContentLoaded(page);
+    await dismissFirstLaunchDialog(page);
+    for (const { name, label } of SETTINGS_TABS) {
+      await page.getByRole('button', { name: label, exact: true }).click();
+      await waitForContentLoaded(page);
+      const outFile = path.join(SCREENSHOTS_DIR, `${name}.png`);
+      await page.screenshot({ path: outFile, fullPage: false });
+      console.log(`   ✓ Saved: assets/screenshots/${name}.png`);
+    }
+  } catch (err) {
+    console.error(`   ✗ Failed (Settings tabs): ${err.message}`);
   }
 
   // ── Special panel screenshots ──────────────────────────────────────────────
@@ -111,7 +152,7 @@ async function main() {
 
   await browser.close();
   console.log('\n✅ Screenshot capture complete!');
-  console.log(`   ${PAGES.length + 2} screenshots saved to: assets/screenshots/`);
+  console.log(`   ${PAGES.length + SETTINGS_TABS.length + 2} screenshots saved to: assets/screenshots/`);
 }
 
 main().catch(err => {

@@ -63,4 +63,4 @@ For local media, the added date comes from ViiB's scan/catalog ingestion. For Pl
 If the ViiB catalog is empty, configure at least one music source:
 
 - add a local folder in [Settings](settings.md), or
-- connect and synchronize Plex in [Library Operations](library-operations.md).
+- connect and synchronize Plex in [Settings → Library Sources → Plex Media Server](settings.md#plex-media-server-music).

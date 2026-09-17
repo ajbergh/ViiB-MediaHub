@@ -14,8 +14,8 @@
  * Handles click-outside and escape key dismissal.
  * Position auto-adjusts to stay within viewport.
  * 
- * Phase 5 TODO: implement arrow-key roving focus and optional typeahead
- * to meet ARIA menu interaction baseline for keyboard-only users.
+ * Supports click-outside dismissal, arrow-key navigation, Home/End movement,
+ * submenu traversal, Enter/Space activation, and typeahead.
  * 
  * @module ContextMenu
  */

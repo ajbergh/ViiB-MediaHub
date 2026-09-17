@@ -32,9 +32,8 @@ type Grid struct {
 }
 
 // BuildStraight constructs a constant-tempo grid beginning at firstDownbeat.
-// It is the Phase 6 bridge for existing static BPM results. A future phase
-// tracker will supply an audio-derived firstDownbeat instead of zero; neither
-// persistence nor playback needs to change when it does.
+// The phase accumulator supplies an audio-derived firstDownbeat in the normal
+// analysis path, while callers may still provide an explicit phase.
 func BuildStraight(bpm, firstDownbeat, duration float64, beatsPerBar int) (Grid, error) {
 	if !finitePositive(bpm) {
 		return Grid{}, errors.New("beatgrid BPM must be finite and positive")

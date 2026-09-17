@@ -32,12 +32,13 @@ Spotify remains a separate integration for Spotify browsing, streaming, and down
 | [DJ Mode](dj-mode.md) | Full-featured two-deck DJ interface |
 | [DJv2 Professional Track Analysis Roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) | Persistent BPM/key/Camelot analysis and its implementation status, plus planned harmonic mixing, beatgrid, and next-generation DJ intelligence |
 | [Downloads](downloads.md) | Spotify download queue and status |
+| [Duplicates](duplicates.md) | Duplicate-track review and ignore state |
 | [Stats](stats.md) | Listening history and statistics across ViiB catalog playback |
-| [Settings](settings.md) | Library, audio, Plex, Spotify, AI, and system configuration |
-| [Library Operations](library-operations.md) | Music sources, track analysis, diagnostics, repair, backup, staged restore, and monitoring |
+| [Settings](settings.md) | Library sources, library operations, playback, integrations, AI, appearance, and system configuration |
+| [Library Operations](library-operations.md) | Track analysis, metadata operations, diagnostics, repair, backup, and staged restore |
 | [Player](player.md) | Source-transparent playback, queue, EQ, visualizer, and Now Playing |
 | [Keyboard Shortcuts](keyboard-shortcuts.md) | Keyboard shortcut reference |
-| [OpenAPI v2](openapi-v2.yaml) | Machine-readable versioned backend API contract |
+| [OpenAPI v2](openapi-v2.yaml) | Core machine-readable versioned backend API contract |
 
 ---
 
@@ -81,14 +82,13 @@ See [Architecture and Media Source Model](architecture.md) for the detailed back
 │ Downloads                                               │
 │ Stats                                                   │
 │ Settings                                                │
-│ Library Health shortcut                                 │
 ├──────────────────────────────────────────────────────────┤
 │ Player bar (persistent, bottom)                         │
 │ Artwork · Track info · Controls · Volume · Queue · EQ    │
 └──────────────────────────────────────────────────────────┘
 ```
 
-Plex does not add duplicate Plex-only Songs, Albums, Artists, Search, or Now Playing screens. Configure Plex through **Settings → Library Health / Library Operations**, then use the normal ViiB UI.
+Plex does not add duplicate Plex-only Songs, Albums, Artists, Search, or Now Playing screens. Configure Plex through **Settings → Library Sources**, then use the normal ViiB UI.
 
 ---
 

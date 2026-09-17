@@ -4,31 +4,38 @@
 
 The Settings page provides full configuration for all aspects of ViiB MediaHub.
 
+The screenshots below were captured at 1440×900 against a clean local backend
+state, so empty-library and unconfigured-integration states are intentional.
+
+| Settings surface | Screenshot |
+|---|---|
+| Library Sources | [Library Sources](../assets/screenshots/settings-library-sources.png) |
+| Library Operations | [Library Operations](../assets/screenshots/settings-library-operations.png) |
+| Playback & Audio | [Playback & Audio](../assets/screenshots/settings-playback-audio.png) |
+| Integrations & Spotify | [Integrations & Spotify](../assets/screenshots/settings-integrations-spotify.png) |
+| AI & Enrichment | [AI & Enrichment](../assets/screenshots/settings-ai-enrichment.png) |
+| Appearance & Now Playing | [Appearance & Now Playing](../assets/screenshots/settings-appearance-now-playing.png) |
+| System & Logs | [System & Logs](../assets/screenshots/settings-system-logs.png) |
+
 ---
 
 ## Sections
 
 | Section | Purpose |
 |---|---|
-| [Backend Status](#backend-status) | View connection to the Go backend |
-| [Library](#library) | Scan folders, trigger scans, reset library |
-| [Personalization](#personalization) | Home layout and Smart Mix visibility |
-| [Audio](#audio) | Crossfade, gapless, normalization, EQ, visualizer |
-| [Audio Output Devices](#audio-output-devices) | Main and headphone output routing |
-| [Spotify](#spotify) | OAuth credentials, download location, concurrency |
-| [Library Intelligence](#library-intelligence) | AI provider, Last.FM, genre/mood enrichment |
-| [Activity Log](#activity-log) | In-app debug log viewer |
-| [Library Operations](library-operations.md) | Plex music sources, diagnostics, repair, backup, restore staging, and continuous monitoring |
+| [Library Sources](#library-sources) | Local folders, scans, monitoring, Plex, maintenance, and reset |
+| [Library Operations](#library-operations) | Track analysis, metadata operations, diagnostics, repair, and backup/restore |
+| [Playback & Audio](#playback--audio) | Crossfade, gapless, normalization, EQ, and output routing |
+| [Integrations & Spotify](#integrations--spotify) | Downloads, conversion, Spotify, and Last.FM |
+| [AI & Enrichment](#ai--enrichment) | AI provider, semantic retrieval, and metadata enrichment |
+| [Appearance & Now Playing](#appearance--now-playing) | Home layout, Smart Mix visibility, and player presentation |
+| [System & Logs](#system--logs) | System information, support tools, and the in-app debug log |
 
 ---
 
-## Backend Status
+## Library Sources
 
-Shows whether the React frontend is successfully connected to the Go HTTP backend. A green indicator means the API is reachable. A red indicator means the backend is not running (start it with `scripts/dev-wails.ps1` during development).
-
----
-
-## Library
+The Library Sources tab includes a backend connection status indicator. A green indicator means the API is reachable; a warning indicator means the frontend is running without an available Go backend.
 
 ### Scan Folders
 
@@ -38,15 +45,11 @@ Lists all local music directories ViiB MediaHub monitors. Each folder has:
 
 To add a folder click **Add Folder** and use the folder browser dialog.
 
-For Plex Media Server music, track analysis, database diagnostics, repair, validated backups, offline restore staging, and configurable continuous monitoring, use the **Library Health** shortcut. See [Library Operations](library-operations.md) and [Plex Music](plex-music.md).
-
-### Track analysis
-
-Tempo, musical key, phase-aligned beat grids, and energy measurements for local and available Plex tracks are prepared in the **Track Analysis** panel under Library Health. **Prepare new tracks automatically** is on by default for local scans; Plex preparation is started explicitly from the same panel. See [Library Operations](library-operations.md#track-analysis).
+Continuous monitoring is configured directly below local folder scanning. It checks configured folders for changes between manual scans; choose 5 seconds, 15 seconds, 30 seconds, 1 minute, or 5 minutes.
 
 ### Plex Media Server music
 
-Open **Settings → Library Health** to configure Plex as a remote music source. The Plex panel supports:
+Open **Settings → Library Sources → Plex Media Server** to configure Plex as a remote music source. The Plex panel supports:
 
 - bounded automatic LAN discovery through Plex GDM;
 - manual hostname, IP, HTTP, or HTTPS server configuration;
@@ -64,15 +67,21 @@ See [Plex Media Server Music Support](plex-music.md) for setup, authentication/s
 
 ### Scan Now
 
-Triggers an immediate incremental scan of all configured local folders. Progress is streamed via SSE and shown in the sidebar and Downloads page. Plex synchronization is a separate explicit operation in the Plex source panel.
+Triggers an immediate incremental scan of all configured local folders. Progress is streamed through the library event path and reflected in the app's status surfaces. Plex synchronization is a separate explicit operation in the Plex source panel.
 
 ### Reset Library
 
 **Destructive to ViiB's local catalog state.** Removes catalog data from the ViiB database, then re-scans configured local folders. It does not delete source media. Use Library Operations diagnostics/repair before resetting the library when possible.
 
+## Library Operations
+
+The [Library Operations](library-operations.md) tab prepares tracks for DJ features and handles metadata operations, diagnostics, repair, validated backups, and staged restore. Track analysis supports local files and available Plex tracks; **Prepare new tracks automatically** is on by default for local scans, while Plex preparation is explicit.
+
+See [Library Operations](library-operations.md#track-analysis) for the analysis workflow and recovery details.
+
 ---
 
-## Personalization
+## Appearance & Now Playing
 
 Controls how the [Home](home.md) page is presented.
 
@@ -80,24 +89,24 @@ Controls how the [Home](home.md) page is presented.
 |---|---|
 | Home Layout | Choose **Music Shelves**, **Cover Wall**, or **Compact Dashboard** |
 | Show Smart Mixes | Show or hide auto-generated Smart Mix sections on Home |
+| Now Playing visuals | Visualizer mode, artwork opacity, fullscreen background, and fullscreen opacity |
 
 Home layout choices persist across reloads.
 
 ---
 
-## Audio
+## Playback & Audio
 
 | Setting | Description |
 |---|---|
 | Crossfade | Duration (0–12 s) of the fade between tracks |
 | Gapless Playback | Pre-load next track to eliminate silence between songs |
 | Volume Normalization | Adjust playback level so all tracks sound similar |
-| Visualizer Mode | **Off**, **Waveform**, **Spectrum**, **Milkdrop** |
 | Equalizer | Toggle the 10-band EQ panel |
 
 ---
 
-## Audio Output Devices
+### Audio Output Devices
 
 Configures separate audio devices for DJ use:
 
@@ -108,7 +117,7 @@ Device routing uses the Web Audio API's `setSinkId`. Devices are listed after th
 
 ---
 
-## Spotify
+## Integrations & Spotify
 
 | Setting | Description |
 |---|---|
@@ -116,14 +125,27 @@ Device routing uses the Web Audio API's `setSinkId`. Devices are listed after th
 | Client Secret | Your Spotify Developer app Client Secret |
 | Download Location | Folder where downloaded OGG files are saved |
 | Concurrent Downloads | How many simultaneous downloads are allowed (1–10, default 3) |
+| Quick Scan After Downloads | Number of completed downloads before an automatic quick scan; 0 disables it |
+| MP3 Conversion | Optional Ogg-to-MP3 conversion and worker count |
 
 When creating the Spotify Developer app, add this exact Redirect URI: `http://127.0.0.1:34115/callback`. `wails.localhost` is not a valid Spotify callback for the desktop application.
 
 > Refer to [Spotify Integration](spotify.md) for how to create a Developer app.
 
+### Last.FM Integration
+
+| Setting | Description |
+|---|---|
+| API Key | From your Last.FM developer account |
+| Shared Secret | From your Last.FM developer account |
+| Test Connection | Verifies the key is valid |
+| Scrobbling | Enable scrobbling with your Last.FM username and password |
+
+Last.FM provides community-sourced genre and tag metadata for tracks, artists, and albums.
+
 ---
 
-## Library Intelligence
+## AI & Enrichment
 
 ### AI Provider
 
@@ -160,26 +182,14 @@ Ollama uses its embedding endpoint and ViiB never downloads a model automaticall
 
 Status reports ready/indexing/configuration/error state plus ready, pending, and error document counts. If the index is unavailable, Smart Playlists and AI DJ use their normal metadata fallback rather than becoming unavailable.
 
-### Last.FM Integration
+### Metadata enrichment source
 
-| Setting | Description |
-|---|---|
-| API Key | From your Last.FM developer account |
-| Shared Secret | From your Last.FM developer account |
-| Test Connection | Verifies the key is valid |
-| Scrobbling | Enable scrobbling with your Last.FM username and password |
+Choose AI, Last.FM, or Hybrid as the source used for automatic metadata enrichment during library scans. The Library Operations tab provides the **Unified AI Enrichment** action for a full run across genres, mood, energy, tempo, BPM, and release year.
 
-Last.FM provides community-sourced genre and tag metadata for tracks, artists, and albums.
-
-### Genre Enrichment
-
-Runs the configured AI provider over your library to fill in missing or empty genre tags.
-
-- Click **Run Genre Enrichment** to start.
-- Progress is shown in the Activity Log.
+- Progress is shown in the Library Operations status panel and the in-app log when events are emitted.
 - Genres are written to the `songs.genre` column in SQLite. For Plex-backed tracks, a separate explicit AI Metadata Writeback preview can later send approved genre changes to Plex; no source audio file tags are modified.
 
-### Unified Enrichment
+### Unified AI Enrichment
 
 Runs full metadata enrichment: genres, mood, energy, tempo, BPM, and release year.
 
@@ -188,9 +198,9 @@ Runs full metadata enrichment: genres, mood, energy, tempo, BPM, and release yea
 
 ---
 
-## Activity Log
+## System & Logs
 
-A scrollable live log of backend events:
+A scrollable in-app event log containing events recorded by the frontend and backend-facing workflows:
 - Library scan progress
 - Plex source/synchronization activity
 - Enrichment status

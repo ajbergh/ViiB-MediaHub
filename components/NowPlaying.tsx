@@ -14,7 +14,7 @@
  * Visual Elements:
  * - Large square album artwork (60vh) with aspect ratio preservation
  * - Dynamic gradient background blurred and faded from album colors
- * - Audio-reactive visualizer overlay with 21 modes (see AlbumArtVisualizer)
+ * - Audio-reactive visualizer overlay with 12 modes (see AlbumArtVisualizer)
  * - Visualizer cycle button with active state indication
  * - Album art download functionality with progress indication
  * 
@@ -27,10 +27,9 @@
  * - Volume slider with icon indication
  * 
  * Visualizer System:
- * - 22 visualization modes: OFF, WAVE, SPECTRUM, AURORA, CIRCULAR, PARTICLES, NEBULA,
- *   FLAME_SPECTRUM, STARDUST_HALO, AURORA_RIBBON, ELECTRIC_ARC, GRASS_OSCILLOSCOPE,
- *   CRYSTAL_SHARDS, WATERCOLOR_BLOOM, ICE_FRACTURE, FIREFLY_FIELD, VINYL_SPIN,
- *   BEAT_ORBS, TUNNEL_WAVEFORM, GLASS_SHARDS, WIND_FIELD, MILKDROP
+ * - 12 visualization modes: OFF, WAVE, SPECTRUM, FLAME_SPECTRUM, STARDUST_HALO,
+ *   AURORA_RIBBON, ELECTRIC_ARC, GRASS_OSCILLOSCOPE, FIREFLY_FIELD,
+ *   TUNNEL_WAVEFORM, WIND_FIELD, and MILKDROP
  * - MILKDROP mode uses WebGL Butterchurn library for classic Winamp-style visualizations
  * - Cycle through modes via Activity button (bottom-left controls)
  * - Real-time audio analysis via Web Audio API
@@ -193,32 +192,8 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     /**
      * Cycles through all available visualizer modes in order.
      * 
-     * Order: OFF → Classic modes (6) → Next-gen modes (14) → back to OFF
-     * 
-     * Classic Modes:
-     * - WAVE: Smooth waveform
-     * - SPECTRUM: Circular frequency bars
-     * - AURORA: Ambient gradients
-     * - CIRCULAR: Rotating bars with pulse
-     * - PARTICLES: Dynamic particle system
-     * - NEBULA: Cosmic nebula clouds
-     * 
-     * Next-Gen Modes:
-     * - FLAME_SPECTRUM: Rising flame tongues
-     * - STARDUST_HALO: Pulsing particle ring
-     * - AURORA_RIBBON: Flowing ribbon
-     * - ELECTRIC_ARC: TRON light beams
-     * - GRASS_OSCILLOSCOPE: Swaying grass blades
-     * - CRYSTAL_SHARDS: Bursting prisms
-     * - WATERCOLOR_BLOOM: Painterly blooms
-     * - ICE_FRACTURE: Cracking ice
-     * - FIREFLY_FIELD: Drifting fireflies
-     * - VINYL_SPIN: Rotating grooves
-     * - BEAT_ORBS: Expanding orbs
-     * - TUNNEL_WAVEFORM: 3D ring tunnel
-     * - GLASS_SHARDS: Reflective fragments
-     * - WIND_FIELD: Flowing particles
-     * - MILKDROP: WebGL Milkdrop/Butterchurn visualization
+     * Order: the 12 supported modes in the same sequence used by the global
+     * keyboard shortcut, then back to OFF.
      * 
      * Triggered by clicking the Activity button in the Now Playing view.
      * Updates global audio settings via Zustand store.

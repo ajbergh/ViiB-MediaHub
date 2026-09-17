@@ -1,13 +1,12 @@
 /**
  * ViiB MediaHub - Playlists Page
  * 
- * Manages user-created playlists with creation and editing capabilities.
+ * Manages user-created playlists with creation, import/export, and playback actions.
  * 
  * Features:
  * - Create new playlists with custom names
  * - Display playlist grid with cover art
- * - Click to navigate to playlist detail
- * - Context menu for rename/delete operations
+ * - Context menu for playback, queue, and delete operations
  * - Empty state for new users
  * 
  * @module Playlists

@@ -40,4 +40,4 @@ If PMS is temporarily offline, already synchronized artist and album metadata re
 
 Configured AI/metadata services can enrich ViiB's catalog presentation. Enrichment is ViiB-side state; ViiB does not silently write artist or track metadata back to Plex. The separate Plex writeback workflow requires review and explicit approval and is limited to eligible track genres and original release year; it never changes artist metadata or audio-file tags.
 
-See [Settings → Library Intelligence](settings.md#library-intelligence).
+See [Settings → AI & Enrichment](settings.md#ai--enrichment).

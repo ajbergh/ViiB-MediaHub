@@ -18,7 +18,7 @@
  * - Real-time download progress via SSE (handled by DownloadManager component)
  * 
  * AI DJ Features:
- * - generateSmartPlaylist: Natural language playlist generation with multi-tier matching
+ * - generateSmartPlaylist: Natural language playlist generation with semantic-first retrieval and metadata fallback
  * - enrichGenresStream: SSE-based genre enrichment using the configured LLM provider
  * - enrichMoodStream: SSE-based mood/energy/tempo analysis using the configured LLM provider
  * 
@@ -1373,12 +1373,10 @@ export const api = {
   /**
    * Generate a smart playlist using the AI DJ feature.
    * 
-   * The backend uses a three-tier matching system:
-   * 1. Artist-based matching: For "more like [artist]" prompts
-   * 2. Local genre matching: Direct match against indexed genres
-   * 3. Gemini AI fallback: For complex prompts requiring AI interpretation
-   * 
-   * Always uses multi-genre blending to create cross-genre playlists based on user input.
+   * The backend uses semantic retrieval when the configured index is ready,
+   * then applies local source/filter/history rules. If semantic retrieval is
+   * unavailable or cannot fill the request, it falls back to the established
+   * metadata/full-catalog matcher.
    * 
    * @param prompt - Natural language description of desired playlist
    * @param options.blendMode - 'mixed' for multi-genre blending (always used)

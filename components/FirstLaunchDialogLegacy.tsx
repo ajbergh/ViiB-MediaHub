@@ -1272,7 +1272,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
           </div>
 
           <p className="text-xs text-text-subtle mt-4">
-            You can change this anytime in Settings → Library Intelligence.
+            You can change this anytime in Settings → AI & Enrichment.
           </p>
         </div>
 

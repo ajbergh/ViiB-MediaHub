@@ -5,7 +5,7 @@
  * 
  * Features:
  * - Virtualized grid using react-virtuoso for large libraries
- * - Artist images from Spotify (via background enrichment) or gradient fallback
+ * - Artist images from catalog/enrichment data, including Plex-aware mappings, or gradient fallback
  * - Shows song and album count per artist
  * - Click to navigate to artist detail page
  * - Context menu support for each artist

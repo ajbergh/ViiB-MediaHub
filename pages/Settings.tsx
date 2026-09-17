@@ -1,20 +1,16 @@
 /**
  * ViiB MediaHub - Settings Page
  * 
- * Comprehensive settings interface for application configuration.
+ * Tabbed settings interface for application configuration.
  * 
  * Sections:
- * - Backend Status: Connection status indicator
- * - Library: Scan folders management, library reset
- * - Playback: Crossfade, gapless, normalization, and EQ
- * - Appearance: Home layout and Now Playing visualizer presentation
- * - Spotify: OAuth credentials, download location, concurrent downloads
- * - Library Intelligence: AI-powered features
- *   - AI Provider: Configure LLM provider (Gemini, OpenAI, Anthropic, Ollama, X.AI)
- *   - Last.FM Integration: Community-sourced metadata enrichment (added 2025-12-31)
- *   - Genre Enrichment: Uses configured AI to populate genre metadata
- *   - Unified Enrichment: Full metadata enrichment (genres, mood, energy, tempo, BPM, year)
- * - Activity Log: Debug log viewer
+ * - Library Sources: Local folders, monitoring, Plex, maintenance, and reset
+ * - Library Operations: Track analysis, metadata operations, diagnostics, repair, and backup/restore
+ * - Playback & Audio: Playback controls, EQ, and audio output routing
+ * - Integrations & Spotify: Download/conversion settings, Spotify, and Last.FM
+ * - AI & Enrichment: AI provider, semantic retrieval, and metadata enrichment
+ * - Appearance & Now Playing: Home layout, Smart Mix visibility, and player presentation
+ * - System & Logs: System information, support tools, and the debug log
  * 
  * Last.FM Features (added 2025-12-31):
  * - API key and shared secret configuration
@@ -24,10 +20,10 @@
  * 
  * Folder browser dialogs allow navigation and selection of:
  * - Music scan directories
- * - Spotify download destination
+ * - Spotify download destination and conversion settings
  * 
  * AI Features (requires configured AI provider):
- * - All AI features use the configured LLM provider (AI DJ Provider section)
+ * - AI DJ and metadata features use the configured AI Provider & Model section
  * - Genre enrichment runs during library scans or can be triggered manually
  * - Mood analysis detects emotional characteristics without audio processing
  * - Results are stored in the songs table for AI DJ playlist generation
@@ -534,7 +530,7 @@ export const Settings: React.FC = () => {
   const [downloadBrowserEntries, setDownloadBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
   const [loadingDownloadBrowser, setLoadingDownloadBrowser] = useState(false);
 
-  // Spotify download location
+  // Integrations & Spotify download/conversion state
   const [spotifyDownloadPath, setSpotifyDownloadPath] = useState('');
   const [downloadPathSaved, setDownloadPathSaved] = useState(false);
   const [autoConvertOggToMp3, setAutoConvertOggToMp3] = useState(false);
@@ -608,7 +604,7 @@ export const Settings: React.FC = () => {
       }
   }, [backendAvailable]);
 
-  // Load Spotify download path and concurrent downloads
+  // Load Spotify download and conversion settings
   useEffect(() => {
       const loadDownloadSettings = async () => {
           try {
@@ -1175,7 +1171,7 @@ export const Settings: React.FC = () => {
         </button>
       </div>
 
-      {/* TAB 1: LIBRARY & STORAGE */}
+      {/* TAB: LIBRARY SOURCES */}
       {activeTab === 'library' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Library Management */}
@@ -1361,7 +1357,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: PLAYBACK & AUDIO */}
+      {/* TAB: PLAYBACK & AUDIO */}
       {(activeTab === 'audio' || activeTab === 'appearance') && (
         <div className="space-y-6 animate-in fade-in duration-200">
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
@@ -1662,7 +1658,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: INTEGRATIONS & SPOTIFY */}
+      {/* TAB: INTEGRATIONS & SPOTIFY */}
       {activeTab === 'integrations' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Downloads & Conversion */}
@@ -2216,7 +2212,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 4: AI & ENRICHMENT */}
+      {/* TAB: AI & ENRICHMENT; the health branch below shares Library Operations metadata actions */}
       {(activeTab === 'ai' || activeTab === 'health') && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {activeTab === 'ai' && (
@@ -2979,7 +2975,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 5: APPEARANCE & NOW PLAYING */}
+      {/* TAB: APPEARANCE & NOW PLAYING */}
       {activeTab === 'appearance' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
@@ -3038,7 +3034,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 6: SYSTEM & LOGS */}
+      {/* TAB: SYSTEM & LOGS */}
       {activeTab === 'system' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Server Info */}

@@ -16,15 +16,15 @@ ViiB MediaHub is a local media player application with a React frontend and Go b
   - Backend uses SQLite for all persistent data
   - IndexedDB (via `idb`) as fallback for browser-only mode
   - `localStorage` (via Zustand persist) for UI settings
-- **Styling**: Tailwind CSS via CDN with custom config (colors: `surface-0`/`surface-1`/`surface-2`, `brand`, etc.)
-- **Routing**: `react-router-dom` v7 with `BrowserRouter`
+- **Styling**: Tailwind CSS with the repository PostCSS/config pipeline (colors: `surface-0`/`surface-1`/`surface-2`, `brand`, etc.)
+- **Routing**: `react-router` v8 with `BrowserRouter`
 - **Virtual Scrolling**: `react-virtuoso` for large lists
 
 ### Backend (Go)
-- **Runtime**: Go 1.25+ (requires CGO for SQLite)
+- **Runtime**: Go 1.26.8+ (the backend uses pure-Go `modernc.org/sqlite`; native Wails builds may still enable CGO for other dependencies)
 - **Desktop Framework**: Wails v2 with WebView2 (embedded frontend)
 - **Router**: `chi/v5` for HTTP API
-- **Database**: SQLite (`mattn/go-sqlite3`) with WAL mode
+- **Database**: SQLite (`modernc.org/sqlite`) with WAL mode
 - **Entry Points**:
   - `backend/cmd/wails/main.go`: Native desktop app (production)
   - `backend/cmd/viib/main.go`: Web-embedded build (legacy)

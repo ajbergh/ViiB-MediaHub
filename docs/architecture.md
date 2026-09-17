@@ -58,24 +58,26 @@ The dispatcher is a bounded worker pool sized `min(2, max(1, NumCPU/4))`. Claimi
 
 ## Track analysis engine
 
-Track analysis owns audio-derived facts — currently tempo and musical key — for every catalog track ViiB can decode. It is deliberately a shared engine rather than a DJ-only feature.
+Track analysis owns audio-derived facts — tempo, musical key, beatgrid, and energy/structure features — for every catalog track ViiB can decode. It is deliberately a shared engine rather than a DJ-only feature.
 
 ```text
-song_id → local source resolve → decoder registry → mono downmix ──┬─> onset accumulator → tempo
-          (+ fingerprint)        (wav/mp3/ogg)     (bounded chunks) └─> chroma accumulator → key
-                                                                          │
-                                                          one combined track_analysis row
+song_id → source resolve → decoder registry → mono downmix ──┬─> onset accumulator → tempo
+          (+ fingerprint)  (local/Plex, bounded chunks)      ├─> chroma accumulator → key
+                                                             ├─> phase accumulator → beatgrid
+                                                             └─> energy accumulator → structure/features
+                                                                    │
+                                                       one combined analysis result/row
 ```
 
 Design constraints that shaped it:
 
-- **One decode pass feeds every analyzer.** Tempo and key share decoding, downmixing, and chunking. Running them separately would double the I/O and, worse, let each one overwrite the other's status and algorithm version in the shared row.
+- **One decode pass feeds every analyzer.** Tempo, key, beatgrid, and energy share decoding, downmixing, and chunking. Running them separately would double the I/O and, worse, let each one overwrite the other's status and algorithm version in the shared row.
 - **Facts are versioned and fingerprinted.** Each row records the analysis version, the composite algorithm version, and a fingerprint of the source bytes. A change to any of them makes the row stale, which is what lets a run skip work it has already done and re-analyze only what actually changed.
 - **The work list is derived, never stored.** Because per-track state lives in `track_analysis`, "what is left to do" is always recomputable from the catalog. A resumed job re-expands its recorded selection and skips valid rows, so a multi-day run needs no lease recovery.
 - **Unknown is a result.** An analyzer that finds no reliable evidence records that explicitly with a stable error code. It never substitutes a default tempo or key.
 - **Measured facts stay separate from inferred metadata.** Analysis writes to `track_analysis` and never to `songs.bpm`, which may hold an AI-estimated value. Manual user overrides live in their own table with independent locks and win at read time.
 
-Decoding is bounded and streaming; whole files are never held in memory. Plex-hosted tracks need an authenticated source adapter that does not exist yet and are excluded from analysis rather than queued and failed.
+Decoding is bounded and streaming; whole files are never held in memory. Reachable, authenticated Plex tracks are analyzed through the PMS direct-play path; tracks from an unavailable source are skipped until the source is available again.
 
 ## Local filesystem source
 

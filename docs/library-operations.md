@@ -1,12 +1,12 @@
 # Library Operations
 
-Library Operations is ViiB MediaHub's music-source and maintenance surface. Open it from the **Library Health** shortcut in the desktop layout. It combines source configuration, track analysis, and database diagnostics/recovery while keeping normal browsing and playback in the main ViiB UI.
+Library Operations is ViiB MediaHub's track-analysis and maintenance surface. Open it by selecting **Library Operations** in Settings. It combines track analysis, metadata/enrichment operations, database diagnostics/recovery, and backup/restore staging while keeping normal browsing and playback in the main ViiB UI. Configure local folders, Plex, and continuous monitoring in **Settings → Library Sources**.
 
-## Music sources
+## Plex source
 
 ### Plex Media Server
 
-Library Operations can connect a Plex Media Server music/audio library to ViiB. The panel supports LAN discovery, manual server addresses, Plex authentication/reconnect, music-library selection, explicit synchronization, offline state, and safe source removal.
+Plex is configured from **Settings → Library Sources → Plex Media Server**. The panel supports LAN discovery, manual server addresses, Plex authentication/reconnect, music-library selection, explicit synchronization, offline state, and safe source removal.
 
 Plex synchronization writes normalized metadata into the same `songs` catalog used by local filesystem tracks, with source-specific identity/playback information stored separately. ViiB treats Plex as read-only remote media storage by default: removing/changing the source changes ViiB's cached catalog only and never deletes, moves, renames, or modifies content on PMS. The sole exception is the separately reviewed, explicitly approved AI metadata writeback flow for eligible track genres and original release year; it requires PMS management permission and does not modify audio-file tags.
 
@@ -14,9 +14,9 @@ See [Plex Media Server Music Support](plex-music.md) for the full setup, securit
 
 ## Track analysis
 
-The **Track Analysis** panel prepares local files and available Plex tracks for DJ features by measuring each track's tempo and musical key and storing the result durably. Analysis runs in the background as a persistent job, so it survives closing and reopening ViiB.
+The **Track Analysis** panel prepares local files and available Plex tracks for DJ features by measuring tempo, musical key, beatgrid, and energy/structure features and storing results durably. Analysis runs in the background as a persistent job, so it survives closing and reopening ViiB.
 
-Three actions cover the usual cases:
+Four actions cover the usual cases:
 
 - **Prepare new tracks** — tracks that have never been analyzed.
 - **Prepare Plex tracks** — available Plex tracks that have never been analyzed.
@@ -74,7 +74,7 @@ Creating a backup:
 
 ## Continuous monitoring
 
-Continuous monitoring periodically performs quick change detection for configured local folders, adds deletion detection, coalesces duplicate paths, and queues any work through the bounded background scanner. Choose an interval from 2 seconds to 1 hour. It is useful for filesystems where native journal updates are unavailable or incomplete.
+Continuous monitoring is configured in **Settings → Library Sources**, directly below local folder scanning. It periodically performs quick change detection for configured local folders, adds deletion detection, coalesces duplicate paths, and queues any work through the bounded background scanner. Choose 5 seconds, 15 seconds, 30 seconds, 1 minute, or 5 minutes. It is useful for filesystems where native journal updates are unavailable or incomplete.
 
 Plex does not use this filesystem watcher. Plex libraries synchronize through the explicit Plex synchronization operation so temporary remote outages cannot be mistaken for mass deletion.
 

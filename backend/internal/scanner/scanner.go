@@ -8,7 +8,7 @@
 //   - Album artwork caching: one cover per album to save disk space
 //   - Removal detection: removes songs when source files are deleted
 //   - SSE event broadcasting: notifies frontend of scan progress
-//   - Spotify download monitoring: auto-rescans after downloads complete
+//   - Spotify download monitoring: threshold-controlled quick rescans after completed downloads
 //   - Metadata enrichment: uses Last.FM or LLM based on user settings
 //
 // Supported audio extensions:
