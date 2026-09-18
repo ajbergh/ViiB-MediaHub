@@ -77,6 +77,9 @@ func TestProduceBenchmarkResultsRunsProductionPathForMP3AndOgg(t *testing.T) {
 	if resultSet.Results[0].Error != "" || resultSet.Results[0].BPM == nil || resultSet.Results[0].Status == "" || resultSet.Results[0].TempoCrestFactor == nil || resultSet.Results[0].KeyFlatness == nil {
 		t.Fatalf("MP3 result = %#v, want measured BPM", resultSet.Results[0])
 	}
+	if len(resultSet.Results[0].BeatPositions) < 2 || resultSet.Results[0].BeatPositions[1] <= resultSet.Results[0].BeatPositions[0] {
+		t.Fatalf("MP3 beat positions = %#v, want ascending grid evidence", resultSet.Results[0].BeatPositions)
+	}
 	if resultSet.Throughput.AudioSeconds < 23.9 || resultSet.Throughput.DSPSeconds <= 0 || resultSet.Throughput.DecodeAndStreamSeconds < 0 {
 		t.Fatalf("throughput = %#v, want separate timing over both tracks", resultSet.Throughput)
 	}

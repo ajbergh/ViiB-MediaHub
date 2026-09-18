@@ -156,6 +156,12 @@ func produceBenchmarkResults(ctx context.Context, manifest analysisbench.CorpusM
 				}
 				detectorResult.TempoConfidence = benchmarkFloat64Pointer(result.Tempo.Confidence)
 			}
+			if result.BeatGrid != nil && len(result.BeatGrid.Beats) > 0 {
+				// Retain the observed benchmark output for grid diagnostics. Copy
+				// it so a caller cannot mutate the analysis result through the
+				// ResultSet after this run has completed.
+				detectorResult.BeatPositions = append([]float64(nil), result.BeatGrid.Beats...)
+			}
 			if result.Key.Known {
 				detectorResult.Key = result.Key.Key
 				detectorResult.KeyConfidence = benchmarkFloat64Pointer(result.Key.Confidence)
