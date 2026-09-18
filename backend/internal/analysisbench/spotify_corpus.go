@@ -28,17 +28,17 @@ type SpotifyCorpusOptions struct {
 // be used for regression measurement without attaching a label to the wrong
 // file.
 type CorpusImportReport struct {
-	Root             string   `json:"root"`
-	CSVFiles         []string `json:"csvFiles"`
-	MediaFiles       int      `json:"mediaFiles"`
-	CSVRows          int      `json:"csvRows"`
-	MatchedTracks    int      `json:"matchedTracks"`
+	Root             string         `json:"root"`
+	CSVFiles         []string       `json:"csvFiles"`
+	MediaFiles       int            `json:"mediaFiles"`
+	CSVRows          int            `json:"csvRows"`
+	MatchedTracks    int            `json:"matchedTracks"`
 	Corpus           CorpusCoverage `json:"corpus"`
-	ManifestOutput   string   `json:"manifestOutput,omitempty"`
-	UnmatchedMedia   []string `json:"unmatchedMedia,omitempty"`
-	UnmatchedCSVRows []string `json:"unmatchedCsvRows,omitempty"`
-	AmbiguousMedia   []string `json:"ambiguousMedia,omitempty"`
-	UnsupportedMedia []string `json:"unsupportedMedia,omitempty"`
+	ManifestOutput   string         `json:"manifestOutput,omitempty"`
+	UnmatchedMedia   []string       `json:"unmatchedMedia,omitempty"`
+	UnmatchedCSVRows []string       `json:"unmatchedCsvRows,omitempty"`
+	AmbiguousMedia   []string       `json:"ambiguousMedia,omitempty"`
+	UnsupportedMedia []string       `json:"unsupportedMedia,omitempty"`
 	Manifest         CorpusManifest `json:"-"`
 }
 
@@ -109,6 +109,7 @@ func ImportSpotifyCorpus(root string, options SpotifyCorpusOptions) (CorpusImpor
 				Path:              mediaPath,
 				License:           strings.TrimSpace(options.License),
 				LabelSource:       strings.TrimSpace(options.LabelSource),
+				RecordingGroup:    "label:" + normalizeSpotifyIdentity(row.Artist) + "|" + normalizeSpotifyIdentity(row.Title),
 				Genre:             filepath.Base(filepath.Dir(mediaPath)),
 				Split:             spotifyCorpusSplit(relativePath),
 				ExpectedBPM:       &bpm,
@@ -249,6 +250,9 @@ func matchSpotifyCSVRows(media []string, rows []spotifyCSVRow) (map[string]spoti
 		var candidates []int
 		for index, row := range rows {
 			score := spotifyTitleMatchScore(filename, normalizeSpotifyTitle(row.Title))
+			if identityScore := spotifyArtistTitleMatchScore(mediaPath, row); identityScore > score {
+				score = identityScore
+			}
 			if score == 0 {
 				continue
 			}
@@ -281,6 +285,56 @@ func matchSpotifyCSVRows(media []string, rows []spotifyCSVRow) (map[string]spoti
 		}
 	}
 	return matches, unmatchedMedia, unmatchedRows, ambiguous
+}
+
+// spotifyArtistTitleMatchScore recognizes the explicit number-artist-title
+// filename form. Exact artist/title identity can disambiguate duplicate titles
+// and safely admit short titles. Only an explicit CSV ellipsis permits a title
+// prefix match; arbitrary shortened titles do not receive this stronger score.
+func spotifyArtistTitleMatchScore(path string, row spotifyCSVRow) int {
+	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if separator := strings.IndexByte(stem, '-'); separator > 0 {
+		prefix := stem[:separator]
+		if strings.TrimFunc(prefix, unicode.IsDigit) == "" {
+			stem = stem[separator+1:]
+		}
+	}
+	artists := []string{row.Artist}
+	if first, _, found := strings.Cut(row.Artist, ","); found {
+		artists = append(artists, strings.TrimSpace(first))
+	}
+	title := strings.TrimSpace(row.Title)
+	truncated := strings.HasSuffix(title, "...") || strings.HasSuffix(title, "…")
+	normalizedTitle := normalizeSpotifyIdentity(title)
+	for index, char := range stem {
+		if char != '-' {
+			continue
+		}
+		fileArtist := normalizeSpotifyIdentity(stem[:index])
+		fileTitle := normalizeSpotifyIdentity(stem[index+1:])
+		for _, artist := range artists {
+			if fileArtist == "" || fileArtist != normalizeSpotifyIdentity(artist) || normalizedTitle == "" {
+				continue
+			}
+			if fileTitle == normalizedTitle {
+				return 5
+			}
+			if truncated && len(normalizedTitle) >= 12 && strings.HasPrefix(fileTitle, normalizedTitle) {
+				return 4
+			}
+		}
+	}
+	return 0
+}
+
+func normalizeSpotifyIdentity(value string) string {
+	var normalized strings.Builder
+	for _, r := range strings.ToLower(value) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			normalized.WriteRune(r)
+		}
+	}
+	return normalized.String()
 }
 
 func spotifyTitleMatchScore(filename, title string) int {

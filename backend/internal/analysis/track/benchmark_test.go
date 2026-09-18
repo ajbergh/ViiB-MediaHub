@@ -2,7 +2,9 @@ package track
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -65,6 +67,13 @@ func TestProduceBenchmarkResultsRunsProductionPathForMP3AndOgg(t *testing.T) {
 	if resultSet.Algorithm == "" || len(resultSet.Results) != 2 || resultSet.Throughput == nil {
 		t.Fatalf("result set = %#v", resultSet)
 	}
+	var recordedOptions Options
+	if err := json.Unmarshal(resultSet.Configuration, &recordedOptions); err != nil || recordedOptions != DefaultOptions() {
+		t.Fatalf("configuration=%s error=%v, want exact default options", resultSet.Configuration, err)
+	}
+	if resultSet.Results[0].BPM == nil || resultSet.Results[0].AlternateBPM == nil || *resultSet.Results[0].AlternateBPM == *resultSet.Results[0].BPM {
+		t.Fatalf("alternate=%v, want a distinct recorded alternative", resultSet.Results[0].AlternateBPM)
+	}
 	if resultSet.Results[0].Error != "" || resultSet.Results[0].BPM == nil || resultSet.Results[0].Status == "" || resultSet.Results[0].TempoCrestFactor == nil || resultSet.Results[0].KeyFlatness == nil {
 		t.Fatalf("MP3 result = %#v, want measured BPM", resultSet.Results[0])
 	}
@@ -108,3 +117,82 @@ func TestProbeBenchmarkFileReportsDecoderEvidenceWithoutCorpusLabels(t *testing.
 }
 
 func benchmarkPointer(value float64) *float64 { return &value }
+
+func TestBenchmarkRecordsCustomOptionsAndSuccessfulRefusal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "silence.mp3")
+	if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := analysisbench.CorpusManifest{Version: "test", EvidenceClass: analysisbench.EvidenceSyntheticCI, Tracks: []analysisbench.CorpusTrack{{
+		ID: "silence", Path: path, License: "generated", LabelSource: "generator", Genre: "silence", Split: analysisbench.SplitTuning, ExpectedUnknown: true,
+	}}}
+	registry := analysis.NewDecoderRegistry()
+	if err := registry.Register([]string{".mp3"}, benchmarkDecoder{samples: make([]float32, 22050*8)}); err != nil {
+		t.Fatal(err)
+	}
+	options := DefaultOptions()
+	options.Tempo.MinOnsetCrestFactor = 22
+	options.Key.MaxFrequency = 3000
+	results, err := ProduceBenchmarkResultsWithRegistryAndOptions(context.Background(), manifest, registry, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path = filepath.Join(t.TempDir(), "results.json")
+	if err := analysisbench.WriteResultSet(path, results); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := analysisbench.LoadResultSet(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recorded Options
+	if err := json.Unmarshal(loaded.Configuration, &recorded); err != nil || recorded != options {
+		t.Fatalf("recorded=%+v want=%+v err=%v", recorded, options, err)
+	}
+	if loaded.Results[0].Status != "unknown" || loaded.Results[0].Error != "" {
+		t.Fatalf("successful refusal not distinguished: %+v", loaded.Results[0])
+	}
+	report, err := analysisbench.Compare(manifest, loaded, analysisbench.SplitTuning)
+	if err != nil || report.Unknown.Correct != 1 || len(report.Configuration) == 0 {
+		t.Fatalf("comparison=%+v err=%v", report, err)
+	}
+}
+
+func TestSyntheticBenchmarkRunsProductionDecoderAndPreservesRefusals(t *testing.T) {
+	results, err := ProduceSyntheticBenchmarkResults(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtures, err := analysisbench.Phase0SyntheticFixtures()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := analysisbench.SyntheticCorpusManifest(fixtures, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results.Results) != len(manifest.Tracks) || results.Algorithm != AlgorithmVersion || results.Throughput == nil || results.Throughput.AudioSeconds <= 0 {
+		t.Fatalf("incomplete synthetic production evidence: %+v", results)
+	}
+	foundSilence, foundTempo := false, false
+	for _, result := range results.Results {
+		if result.Error != "" {
+			t.Fatalf("generated fixture failed to decode: %+v", result)
+		}
+		if result.ID == "silence" {
+			foundSilence = true
+			if result.Status != "unknown" || result.BPM != nil || result.Key != "" {
+				t.Fatalf("silence was not explicitly refused: %+v", result)
+			}
+		}
+		if result.ID == "click-120" {
+			foundTempo = true
+			if result.BPM == nil || math.Abs(*result.BPM-120) > .5 {
+				t.Fatalf("click fixture not measured: %+v", result)
+			}
+		}
+	}
+	if !foundSilence || !foundTempo {
+		t.Fatal("production determinism evidence omitted known/unknown fixtures")
+	}
+}

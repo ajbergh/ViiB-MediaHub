@@ -1,7 +1,8 @@
 # DJv2 Track Analysis — Concise Context and Next Actions
 
 **Source:** `DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md`  
-**Snapshot:** 2026-09-09  
+**Snapshot:** 2026-09-18
+
 **Purpose:** Operational handoff of the active context, completed work, quality gate, and next actions. The source roadmap remains the detailed research, design, and evidence record.
 
 ## Current position
@@ -11,6 +12,16 @@ The engineering slices for Phases 0–7 have landed, including persistent analys
 The production defaults now use the measured half-BPM multi-feature tempo candidate (crest 15) and the 36-bin HPCP/Krumhansl key candidate (3500 Hz, flatness 0.98, minimum profile margin 0.01). This repairs an operational mismatch where the user-visible job still ran the original synthetic-fixture prototypes and rejected nearly all mastered tracks. The algorithm versions were advanced so those rejected rows are selectable as outdated. Analysis jobs and per-track failures also write structured `[Analysis]` entries to an append-only-across-restarts `viib.log`.
 
 This **does not authorize a professional-accuracy claim**. The Phase 0 evidence gate remains open. The current work is primarily corpus expansion, measurement, tempo improvement, calibration, and cross-platform proof—not foundational feature construction.
+
+The September 17 reliability pass advances tempo to `tempo-v3-multifeature-half-bpm`: tied alternative votes resolve deterministically, alternatives remain distinct after rounding, and confidence uses the actual runner-up rather than replacing it with a weaker displayed alternative. Primary BPM selection and refusal thresholds are unchanged. New benchmark artifacts preserve supplied analyzer options and alternate BPM; comparison/gate reports retain configuration. Determinism checks now include configuration, alternate BPM, stability, crest, flatness, and status, and reject invalid or empty result sets. Missing results and source failures no longer count as successful unknown refusals. Successfully analyzed tracks with neither reliable scalar use benchmark status `unknown`; catalog status semantics are unchanged. Legacy artifacts still load, but old `failed` rows without explicit refusal evidence do not earn unknown-refusal credit.
+
+Validation of this pass: analysis, benchmark, DJ, and API tests passed, as did focused `go vet`. A fresh Windows run of all 127 tuning tracks preserved every primary BPM from `phase0-go-tuning-calibration-o-r2.json`: 103/127 strict matches (81.10%), two half/double errors, six unknown BPM results, and 57.91× real-time throughput. Confidence changed on 35 tracks; no reported alternate duplicated its primary. Two decoder failures remain explicit. Immutable local artifacts are `sample_media/Test Corpus/phase0-go-tuning-reliability-20260917-v3.json` and `phase0-tuning-reliability-comparison-20260917-v3.json`. These are tuning measurements, not new held-out qualification. Tempo confidence is still non-monotonic (low/medium/high bucket accuracy 88.14%/82.69%/80.00%); key confidence has no high-bucket observations. Fixing confidence arithmetic does not establish calibration.
+
+The subsequent tuning-only clustered-vote experiment recovered two strict misses and lost one: 104/127 strict (81.89%), four half/double errors (3.15%), six unknowns, 62.96× real time. It remains an explicit `multifeature-clustered-half-bpm` benchmark method, not the production default; the small gain and added metrical errors do not justify promotion. Evidence is retained in `phase0-go-tuning-clustered-20260917-v1.json` and `phase0-tuning-clustered-comparison-20260917-v1.json` under the local corpus directory.
+
+The `multifeature-refined-half-bpm` experiment adds padded boundary-peak measurements and refinement across two to four beat periods before clustered voting. It passes synthetic 90/90.5/128.3/179.5/180 BPM checks at 22.05/44.1 kHz. On the original tuning split it reaches 109/127 strict (85.83%), 5/127 half/double (3.94%), and monotonic tempo-confidence buckets (50%/76.47%/95.83%). Frozen in `phase0-refined-selection-20260918-v1.json`, it was evaluated once on the overlap-free r5 held-out subset: **43/54 strict (79.63%), 3/54 half/double (5.56%), four unknown BPM results, 51.44× real time**. Confidence remains monotonic (0%/80%/92.86%), but accuracy fails qualification. Key on that subset is 38/54 exact (70.37%) and 45/54 compatible (83.33%), with no high-confidence observations. The method remains benchmark-only; do not promote it or retune against these held-out errors. Raw and comparison artifacts are `phase0-go-tuning-refined-20260918-v1.json`, `phase0-tuning-refined-comparison-20260918-v1.json`, `phase0-go-heldout-refined-r5-20260918-v1.json`, and `phase0-heldout-refined-comparison-r5-20260918-v1.json`.
+
+Native Linux tempo/benchmark tests passed under Debian WSL using Linux binaries cross-compiled with Go 1.26.8. All 33 comparable generated fixtures and the 127-track real-audio tuning replay agree with Windows within the recorded scalar tolerance (1e-6); macOS evidence is still pending. The corpus comparison is preserved in `sample_media/analysis-platform/corpus-windows-linux-determinism-20260918-v3.json`. `analysisbench -synthetic-results-out <new.json>` runs generated WAV fixtures through the actual decoder and combined production pipeline. `-determinism-results <comma-separated-files>` now supports standalone comparison and exposes measured differences even when one required platform is missing. A CI matrix runs the same generated fixtures on Windows, Linux, and macOS and publishes a scalar determinism report; this is regression evidence and does not replace lawful real-audio qualification.
 
 ## Delivered capabilities
 
@@ -24,7 +35,7 @@ This **does not authorize a professional-accuracy claim**. The Phase 0 evidence 
 
 ## Quality gate: still open
 
-The latest recorded held-out gate remains **do not claim professional readiness**. The current best tempo candidate has:
+The latest recorded held-out gate remains **do not claim professional readiness**. The figures below are historical measurements on the original manifest; the September 18 identity audit found four artist/title groups crossing tuning and held-out splits, so these figures cannot establish independent release qualification. The prior selected tempo candidate recorded:
 
 | Measure | Current held-out evidence | Provisional gate |
 |---|---:|---:|
@@ -36,11 +47,15 @@ The latest recorded held-out gate remains **do not claim professional readiness*
 | Exact-key improvement vs browser | 29.82 percentage points | >= 10 pp |
 | One-worker throughput | 57.40x real time | >= 5x real time |
 
-Evidence is also incomplete: the lawful corpus has 184 unambiguous labeled MP3/Ogg tracks, requiring at least 16 more tracks and five additional held-out tracks, and is missing required genre/case tags. Confidence calibration, expected-unknown behavior on real audio, stable-electronic coverage, and macOS/Linux determinism are not yet demonstrated.
+The importer now resolves six additional artist/title matches while preserving all 184 existing labels, provenance declarations, and split assignments. Its explicit artist/title matching admits short titles only with artist identity and resolves duplicate titles; CSV truncation requires an explicit ellipsis and a matching artist/title prefix. The new raw manifest has 190 entries, but its 14 repeated label-derived recording groups include four cross-split groups. All 190 file SHA-256 values differ; differing encoded bytes do not prove distinct recordings.
+
+The conservative `phase0-spotify-manifest-r5.json` subset retains one representative per declared recording group, preferring a tuning representative if a group crosses splits, without relabeling or reassigning any retained track. It has **176 groups: 122 tuning and 54 held out**, zero missing group identities, and zero declared overlap. It needs at least **24 additional independent recordings, including 13 new held-out recordings**, to reach 200/67. Label-derived groups still require review; this metadata audit cannot prove acoustic uniqueness. Required genre/case tags, real-audio refusal evidence, confidence calibration, stable-electronic coverage, and three-platform determinism remain incomplete. Playlist names are not genre annotations.
+
+Local audit artifacts: `phase0-spotify-manifest-r4.json`, `phase0-spotify-import-r4.json`, `phase0-corpus-content-hashes-r3.json`, `phase0-identity-subset-audit-r5.json`, and `phase0-corpus-coverage-r5.json` under `sample_media/Test Corpus/`. The gate now requires recording-group identity and blocks repeated/cross-split groups rather than treating copies as independent evidence. Legacy manifests still load, but missing identity is an explicit readiness deficit.
 
 ## Prioritized next actions
 
-1. **Expand and tag the lawful corpus.** Add at least 16 unambiguous labeled `.mp3`/`.ogg` tracks; reserve at least five more for held-out evaluation. Tag every required genre/case, especially `stable-electronic`; do not guess ambiguous filename matches. Preserve authoritative label source and license provenance.
+1. **Expand and tag the independent corpus.** Start from the conservative r5 subset; review recording identities and add at least 24 independently labeled `.mp3`/`.ogg` recordings, reserving at least 13 additions for held-out evaluation to reach 67/200. Use one `recordingGroup` for every copy/encoding of the same recording; do not move a previously tuned recording into held-out. Tag every required genre/case, especially `stable-electronic`; do not guess missing CSV labels or derive genres from playlist names. Preserve authoritative label source and license provenance.
 2. **Improve tempo—not thresholds alone.** Use only the tuning split for candidate work, preserve each result in a new immutable artifact, then evaluate the chosen configuration once on the held-out split. The remaining gap is strict BPM accuracy; half/double performance already passes.
 3. **Calibrate real-audio refusal and confidence behavior.** Measure unknown rates separately on real and synthetic material. Recalibrate `tempo.minOnsetCrestFactor` and `key.maxTonalChromaFlatness` from corpus evidence, and investigate the major/minor key-confidence asymmetry before fixing confidence buckets.
 4. **Produce cross-platform evidence.** Run the same fixtures/results on Windows, macOS, and Linux; record scalar determinism (or a documented tolerance no greater than `1e-6`) in a gate artifact.

@@ -39,7 +39,7 @@ func TestCompareSeparatesStrictMetricalHalfDoubleAndUnknownTempo(t *testing.T) {
 	if report.Key.Labeled != 3 || report.Key.Reported != 2 || report.Key.Exact != 1 || report.Key.CamelotCompatible != 2 || report.Key.Unknown != 1 {
 		t.Fatalf("key report = %+v", report.Key)
 	}
-	if report.Unknown.Labeled != 1 || report.Unknown.Correct != 1 || report.Unknown.Incorrect != 0 {
+	if report.Unknown.Labeled != 1 || report.Unknown.Correct != 0 || report.Unknown.Incorrect != 1 {
 		t.Fatalf("unknown report = %+v", report.Unknown)
 	}
 	if report.Corpus.Phase0Ready || report.Corpus.Tracks != 5 || report.Corpus.HeldOutTracks != 4 {
@@ -61,6 +61,50 @@ func TestManifestForSplitRetainsOnlyReservedTracks(t *testing.T) {
 	}
 	if _, err := ManifestForSplit(manifest, "all"); err == nil {
 		t.Fatal("unsupported split was accepted")
+	}
+}
+
+func TestExpectedUnknownRequiresObservedRefusal(t *testing.T) {
+	manifest := CorpusManifest{Version: "test", EvidenceClass: EvidenceSyntheticCI, Tracks: []CorpusTrack{{
+		ID: "silence", Path: "fixture:silence", License: "generated", LabelSource: "generator", Genre: "silence", Split: SplitHeldOut, ExpectedUnknown: true,
+	}}}
+	for _, tc := range []struct {
+		name    string
+		results []DetectorResult
+		correct int
+	}{
+		{"missing", nil, 0},
+		{"decode failure", []DetectorResult{{ID: "silence", Status: "failed", Error: "decode_failed"}}, 0},
+		{"failed without code", []DetectorResult{{ID: "silence", Status: "failed"}}, 0},
+		{"pending", []DetectorResult{{ID: "silence", Status: "pending"}}, 0},
+		{"error without status", []DetectorResult{{ID: "silence", Error: "source_unavailable"}}, 0},
+		{"refusal", []DetectorResult{{ID: "silence", Status: "unknown"}}, 1},
+		{"browser refusal", []DetectorResult{{ID: "silence", Key: "unknown"}}, 1},
+		{"invented BPM", []DetectorResult{{ID: "silence", BPM: float64Ptr(120)}}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			report, err := Compare(manifest, ResultSet{Algorithm: "test", Results: tc.results}, SplitHeldOut)
+			if err != nil || report.Unknown.Correct != tc.correct || report.Unknown.Incorrect != 1-tc.correct {
+				t.Fatalf("unknown=%+v err=%v", report.Unknown, err)
+			}
+		})
+	}
+}
+
+func TestValidateBenchmarkConfigurationAndAlternate(t *testing.T) {
+	for _, configuration := range []string{`null`, `[]`, `{}`, `{"Tempo":`} {
+		if err := (ResultSet{Algorithm: "test", Configuration: json.RawMessage(configuration)}).Validate(); err == nil {
+			t.Fatalf("invalid configuration accepted: %s", configuration)
+		}
+	}
+	for _, alternate := range []float64{0, -1, math.NaN(), math.Inf(1)} {
+		result := ResultSet{Algorithm: "test", Results: []DetectorResult{{ID: "track", BPM: float64Ptr(128), AlternateBPM: float64Ptr(alternate)}}}
+		if err := result.Validate(); err == nil {
+			t.Fatalf("invalid alternate accepted: %v", alternate)
+		}
+	}
+	if err := (ResultSet{Algorithm: "test", Results: []DetectorResult{{ID: "track", AlternateBPM: float64Ptr(64)}}}).Validate(); err == nil {
+		t.Fatal("alternate without primary accepted")
 	}
 }
 
@@ -170,11 +214,36 @@ func readyCorpusManifest() CorpusManifest {
 		}
 		manifest.Tracks = append(manifest.Tracks, CorpusTrack{
 			ID: fmt.Sprintf("track-%03d", index), Path: fmt.Sprintf("local-%03d.mp3", index), License: "private-local",
-			LabelSource: "authoritative label", Genre: "benchmark", Coverage: []string{required[index%len(required)]},
+			RecordingGroup: fmt.Sprintf("recording-%03d", index),
+			LabelSource:    "authoritative label", Genre: "benchmark", Coverage: []string{required[index%len(required)]},
 			Split: split, ExpectedBPM: float64Ptr(120),
 		})
 	}
 	return manifest
+}
+
+func TestCoverageRejectsDuplicateRecordingsAndSplitLeakage(t *testing.T) {
+	manifest := readyCorpusManifest()
+	manifest.Tracks[100].RecordingGroup = manifest.Tracks[0].RecordingGroup
+	coverage := Coverage(manifest, SplitHeldOut)
+	if coverage.Phase0Ready || coverage.RecordingIdentity.CrossSplitGroups != 1 || coverage.RecordingIdentity.DistinctGroups != 199 || len(coverage.RecordingIdentity.RepeatedGroups) != 1 {
+		t.Fatalf("cross-split overlap not caught: %+v", coverage)
+	}
+	if manifest.Tracks[100].Split != SplitTuning || manifest.Tracks[0].Split != SplitHeldOut {
+		t.Fatal("audit changed frozen split assignments")
+	}
+	manifest = readyCorpusManifest()
+	manifest.Tracks[1].RecordingGroup = manifest.Tracks[0].RecordingGroup
+	coverage = Coverage(manifest, SplitHeldOut)
+	if coverage.Phase0Ready || coverage.RecordingIdentity.CrossSplitGroups != 0 || len(coverage.RecordingIdentity.RepeatedGroups) != 1 {
+		t.Fatalf("same-split duplicates incorrectly treated as independent: %+v", coverage)
+	}
+	manifest = readyCorpusManifest()
+	manifest.Tracks[0].RecordingGroup = ""
+	coverage = Coverage(manifest, SplitHeldOut)
+	if coverage.Phase0Ready || coverage.RecordingIdentity.UnidentifiedTracks != 1 {
+		t.Fatalf("missing identity silently accepted: %+v", coverage)
+	}
 }
 
 func track(id, split string, bpm float64, accepted []float64, key string) CorpusTrack {

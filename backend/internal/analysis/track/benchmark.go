@@ -2,6 +2,7 @@ package track
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -75,6 +76,33 @@ func ProduceBenchmarkResultsWithRegistry(ctx context.Context, manifest analysisb
 // ProduceBenchmarkResultsWithRegistryAndOptions permits deterministic tests
 // and tuning-split benchmark sweeps without changing the production default.
 func ProduceBenchmarkResultsWithRegistryAndOptions(ctx context.Context, manifest analysisbench.CorpusManifest, registry *analysis.DecoderRegistry, options Options) (analysisbench.ResultSet, error) {
+	return produceBenchmarkResults(ctx, manifest, registry, options, false)
+}
+
+// ProduceSyntheticBenchmarkResults runs generated, labeled fixtures through the
+// actual WAV decoder and combined production pipeline. It is suitable for
+// cross-platform regression evidence without distributing private audio.
+func ProduceSyntheticBenchmarkResults(ctx context.Context) (analysisbench.ResultSet, error) {
+	fixtures, err := analysisbench.Phase0SyntheticFixtures()
+	if err != nil {
+		return analysisbench.ResultSet{}, err
+	}
+	directory, err := os.MkdirTemp("", "viib-analysis-fixtures-")
+	if err != nil {
+		return analysisbench.ResultSet{}, err
+	}
+	defer os.RemoveAll(directory)
+	if _, err := analysisbench.WriteFixturesWAV(directory, fixtures); err != nil {
+		return analysisbench.ResultSet{}, err
+	}
+	manifest, err := analysisbench.SyntheticCorpusManifest(fixtures, directory)
+	if err != nil {
+		return analysisbench.ResultSet{}, err
+	}
+	return produceBenchmarkResults(ctx, manifest, analysis.NewDefaultDecoderRegistry(), DefaultOptions(), true)
+}
+
+func produceBenchmarkResults(ctx context.Context, manifest analysisbench.CorpusManifest, registry *analysis.DecoderRegistry, options Options, generatedFixtures bool) (analysisbench.ResultSet, error) {
 	if err := manifest.Validate(); err != nil {
 		return analysisbench.ResultSet{}, err
 	}
@@ -82,13 +110,18 @@ func ProduceBenchmarkResultsWithRegistryAndOptions(ctx context.Context, manifest
 		return analysisbench.ResultSet{}, fmt.Errorf("analysis benchmark requires a decoder registry")
 	}
 	for _, corpusTrack := range manifest.Tracks {
-		if !isBenchmarkCodec(corpusTrack.Path) {
+		generatedWAV := generatedFixtures && manifest.EvidenceClass == analysisbench.EvidenceSyntheticCI && strings.EqualFold(filepath.Ext(corpusTrack.Path), ".wav")
+		if !isBenchmarkCodec(corpusTrack.Path) && !generatedWAV {
 			return analysisbench.ResultSet{}, fmt.Errorf("track %q uses %q; this Phase 0 runner currently supports only .mp3 and .ogg", corpusTrack.ID, filepath.Ext(corpusTrack.Path))
 		}
 	}
 
 	throughput := analysisbench.ThroughputMetrics{Environment: benchmarkEnvironment()}
-	resultSet := analysisbench.ResultSet{Algorithm: AlgorithmVersion, Throughput: &throughput}
+	configuration, err := json.Marshal(options)
+	if err != nil {
+		return analysisbench.ResultSet{}, fmt.Errorf("encode benchmark configuration: %w", err)
+	}
+	resultSet := analysisbench.ResultSet{Algorithm: AlgorithmVersion, Configuration: configuration, Throughput: &throughput}
 	for _, corpusTrack := range manifest.Tracks {
 		if err := ctx.Err(); err != nil {
 			return analysisbench.ResultSet{}, err
@@ -108,11 +141,19 @@ func ProduceBenchmarkResultsWithRegistryAndOptions(ctx context.Context, manifest
 			detectorResult.ErrorMessage = err.Error()
 			measurement.Error = code
 		} else {
+			// The catalog uses failed when both dimensions refuse. Benchmark
+			// evidence must distinguish that observed refusal from a source error.
+			if !result.Tempo.Known && !result.Key.Known {
+				detectorResult.Status = "unknown"
+			}
 			detectorResult.TempoCrestFactor = benchmarkFloat64Pointer(result.Tempo.OnsetCrestFactor)
 			detectorResult.TempoStability = benchmarkFloat64Pointer(result.Tempo.Stability)
 			detectorResult.KeyFlatness = benchmarkFloat64Pointer(result.Key.Flatness)
 			if result.Tempo.Known {
 				detectorResult.BPM = benchmarkFloat64Pointer(result.Tempo.BPM)
+				if result.Tempo.Alternate > 0 {
+					detectorResult.AlternateBPM = benchmarkFloat64Pointer(result.Tempo.Alternate)
+				}
 				detectorResult.TempoConfidence = benchmarkFloat64Pointer(result.Tempo.Confidence)
 			}
 			if result.Key.Known {
