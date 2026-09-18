@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf16"
 	"unsafe"
@@ -127,8 +126,13 @@ func (u *WindowsUSNDetector) IsAvailable() bool {
 
 	// Try to get a handle to the C: drive to test
 	testPath := `\\.\C:`
+	testPathPtr, err := windows.UTF16PtrFromString(testPath)
+	if err != nil {
+		logger.Scanner("USN journal not available: invalid volume path: %v", err)
+		return false
+	}
 	handle, err := windows.CreateFile(
-		syscall.StringToUTF16Ptr(testPath),
+		testPathPtr,
 		windows.GENERIC_READ,
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
 		nil,
@@ -166,8 +170,12 @@ func (u *WindowsUSNDetector) openVolume(path string) (windows.Handle, string, er
 
 	// Open the volume
 	volumeDevice := `\\.\` + volumePath
+	volumeDevicePtr, err := windows.UTF16PtrFromString(volumeDevice)
+	if err != nil {
+		return 0, "", fmt.Errorf("invalid volume path %s: %w", volumeDevice, err)
+	}
 	handle, err := windows.CreateFile(
-		syscall.StringToUTF16Ptr(volumeDevice),
+		volumeDevicePtr,
 		windows.GENERIC_READ,
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
 		nil,

@@ -25,11 +25,11 @@ func (a *API) resolveAnalysisSource(ctx context.Context, songID string) (analysi
 		return analysis.ResolveLocalSource(a.db, songID)
 	}
 	if !plexTrack.Available || strings.TrimSpace(plexTrack.MediaKey) == "" {
-		return analysis.ResolvedSource{}, fmt.Errorf("Plex source unavailable")
+		return analysis.ResolvedSource{}, fmt.Errorf("plex source unavailable")
 	}
 	source, err := a.db.GetPlexSource(plexTrack.SourceID)
 	if err != nil || source == nil || !source.Available {
-		return analysis.ResolvedSource{}, fmt.Errorf("Plex source unavailable")
+		return analysis.ResolvedSource{}, fmt.Errorf("plex source unavailable")
 	}
 	revision := strings.Join([]string{
 		"plex", plexTrack.MachineID, plexTrack.RatingKey, plexTrack.MediaKey,
@@ -69,44 +69,44 @@ func (a *API) openPlexAnalysisStream(ctx context.Context, source *db.PlexSource,
 	}()
 	client, err := a.plexClientForSource(ctx, source)
 	if err != nil {
-		return nil, fmt.Errorf("Plex source unavailable")
+		return nil, fmt.Errorf("plex source unavailable")
 	}
 	request, err := client.MediaRequest(ctx, mediaKey)
 	if err != nil {
-		return nil, fmt.Errorf("Plex source unavailable")
+		return nil, fmt.Errorf("plex source unavailable")
 	}
 	request.Header.Set("Accept", "*/*")
 	client.ApplyPlaybackIdentity(request)
 	response, err := client.MediaHTTPClient().Do(request)
 	if err != nil {
 		_ = a.db.SetPlexSyncState(source.ID, source.LastSyncStatus, "Plex server unreachable during analysis", false, 0)
-		return nil, fmt.Errorf("Plex source unavailable")
+		return nil, fmt.Errorf("plex source unavailable")
 	}
 	if response.StatusCode == http.StatusServiceUnavailable && strings.TrimSpace(metadataKey) != "" {
 		response.Body.Close()
 		if err := client.PrepareDirectPlay(ctx, metadataKey); err != nil {
-			return nil, fmt.Errorf("Plex source unavailable")
+			return nil, fmt.Errorf("plex source unavailable")
 		}
 		request, err = client.MediaRequest(ctx, mediaKey)
 		if err != nil {
-			return nil, fmt.Errorf("Plex source unavailable")
+			return nil, fmt.Errorf("plex source unavailable")
 		}
 		request.Header.Set("Accept", "*/*")
 		client.ApplyPlaybackIdentity(request)
 		response, err = client.MediaHTTPClient().Do(request)
 		if err != nil {
 			_ = a.db.SetPlexSyncState(source.ID, source.LastSyncStatus, "Plex server unreachable during analysis", false, 0)
-			return nil, fmt.Errorf("Plex source unavailable")
+			return nil, fmt.Errorf("plex source unavailable")
 		}
 	}
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden || response.StatusCode == 498 {
 		response.Body.Close()
 		_ = a.db.SetPlexSyncState(source.ID, "auth_required", "Plex authentication expired", false, 0)
-		return nil, fmt.Errorf("Plex source unavailable")
+		return nil, fmt.Errorf("plex source unavailable")
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		response.Body.Close()
-		return nil, fmt.Errorf("Plex source unavailable")
+		return nil, fmt.Errorf("plex source unavailable")
 	}
 	closeOnError = false
 	return &releaseReadCloser{ReadCloser: response.Body, release: release}, nil

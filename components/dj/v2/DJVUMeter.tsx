@@ -70,6 +70,7 @@ const DJVUMeter = memo(function DJVUMeter({
   const smoothLevelRef = useRef(0);
   const idleFrameCount = useRef(0);
   const overloadUntil = useRef(0);
+  const overloadColorRef = useRef('');
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -149,13 +150,17 @@ const DJVUMeter = memo(function DJVUMeter({
     }
 
     if (performance.now() < overloadUntil.current) {
-      ctx.fillStyle = '#ff374d';
+      ctx.fillStyle = overloadColorRef.current;
       ctx.fillRect(0, 0, width, 5);
     }
     rafRef.current = requestAnimationFrame(draw);
   }, [getLevel, height, width, segments, showPeak, peakHoldTime, peakFallSpeed]);
 
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      overloadColorRef.current = getComputedStyle(canvas).getPropertyValue('--dj-danger').trim();
+    }
     rafRef.current = requestAnimationFrame(draw);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);

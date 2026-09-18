@@ -209,14 +209,14 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
           ))}
 
           {/* Dark outline keeps the pointer legible over metallic highlights. */}
-          <line x1="20" y1="7" x2="20" y2="18" stroke="#080b10" strokeWidth="5" strokeLinecap="round" transform={`rotate(${angle}, 20, 20)`} />
+          <line x1="20" y1="7" x2="20" y2="18" stroke="var(--dj-bg)" strokeWidth="5" strokeLinecap="round" transform={`rotate(${angle}, 20, 20)`} />
           {/* White pointer rotates with the actual knob value, including at zero. */}
           <line
             x1="20"
             y1="7"
             x2="20"
             y2="18"
-            stroke="#f8fafc"
+            stroke="var(--dj-text-primary)"
             strokeWidth="3"
             strokeLinecap="round"
             transform={`rotate(${angle}, 20, 20)`}

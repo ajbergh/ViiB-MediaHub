@@ -11,6 +11,10 @@ export const DJDeckOverview = React.memo(({ deck }: { deck: DeckId }) => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const styles = getComputedStyle(canvas);
+    const deckColor = styles.getPropertyValue(deck === 'A' ? '--dj-deck-a' : '--dj-deck-b').trim();
+    const cueColor = styles.getPropertyValue('--dj-warning').trim();
+    const playheadColor = styles.getPropertyValue('--dj-text-primary').trim();
     const draw = () => {
       const state = useStore.getState();
       const d = deck === 'A' ? state.djDeckA : state.djDeckB;
@@ -24,7 +28,7 @@ export const DJDeckOverview = React.memo(({ deck }: { deck: DeckId }) => {
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
       const peaks = d.waveformPeaks;
-      ctx.fillStyle = deck === 'A' ? '#60a5fa' : '#c4b5fd';
+      ctx.fillStyle = deckColor;
       if (peaks?.length) {
         for (let x = 0; x < width; x += 2) {
           const first = Math.floor(x / width * peaks.length);
@@ -42,11 +46,11 @@ export const DJDeckOverview = React.memo(({ deck }: { deck: DeckId }) => {
         ctx.font = 'bold 10px sans-serif';
         for (const cue of d.hotCues) {
           const x = Math.max(0, Math.min(width - 12, cue.position / d.duration * width));
-          ctx.fillStyle = '#fbbf24';
+          ctx.fillStyle = cueColor;
           ctx.fillRect(x, 0, 2, height);
           ctx.fillText(String(cue.slot), x + 3, 10);
         }
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = playheadColor;
         ctx.fillRect(Math.min(width - 2, Math.max(0, d.position / d.duration * width)), 0, 2, height);
       }
     };
