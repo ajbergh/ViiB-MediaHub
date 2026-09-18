@@ -105,7 +105,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 calibration threshold")
 		os.Exit(2)
 	}
-	if *tempoMethod != "" && *tempoMethod != string(tempo.MethodPeakInterval) && *tempoMethod != string(tempo.MethodOnsetAutocorrelation) && *tempoMethod != string(tempo.MethodMultiFeatureConsensus) && *tempoMethod != string(tempo.MethodMultiFeatureHalfBPM) && *tempoMethod != string(tempo.MethodMultiFeatureClustered) && *tempoMethod != string(tempo.MethodMultiFeatureRefined) {
+	if *tempoMethod != "" && *tempoMethod != string(tempo.MethodPeakInterval) && *tempoMethod != string(tempo.MethodOnsetAutocorrelation) && *tempoMethod != string(tempo.MethodMultiFeatureConsensus) && *tempoMethod != string(tempo.MethodMultiFeatureHalfBPM) && *tempoMethod != string(tempo.MethodMultiFeatureClustered) && *tempoMethod != string(tempo.MethodMultiFeatureRefined) && *tempoMethod != string(tempo.MethodBeatIntervalConsistency) {
 		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 tempo method")
 		os.Exit(2)
 	}

@@ -117,3 +117,19 @@ This does not qualify it as a production target. The held-out artifacts are
 `reference-essentia-multifeature-90-180-heldout-r5-20260918-v1.json` and
 `reference-essentia-multifeature-90-180-heldout-r5-comparison-20260918-v1.json`
 under `sample_media/Test Corpus/`; they remain local and ignored.
+
+## Rejected native interval candidate
+
+`beat-interval-consistency` is a benchmark-only native method that combines
+existing periodicity hypotheses with the consistency of observed onset-peak
+intervals. It does not score the generated `BeatGrid`, because that grid is
+created only after tempo selection. Its peak search uses a 100 ms refractory
+period to bound full-track work, and benchmark results now expose the native
+grid ticks for diagnostics beside external reference ticks.
+
+It passes the generated static-tempo and unknown-audio fixtures, but its first
+r5 tuning evaluation reached only **64/122 strict BPM matches (52.46%)**, with
+one half/double error and six unknowns at 62.58× real time. It is rejected and
+will not receive a held-out evaluation or replace the production method. The
+ignored local artifacts are `phase0-go-tuning-beat-interval-consistency-20260918-v2.json`
+and `phase0-tuning-beat-interval-consistency-comparison-20260918-v2.json`.
