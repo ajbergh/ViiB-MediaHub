@@ -356,7 +356,7 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 			report.Unknown.Labeled++
 			// Only an observed refusal is correct. Missing/failed analysis is
 			// missing evidence, even if no scalar values were produced.
-			if present && result.Error == "" && (result.Status == "" || result.Status == "unknown" || result.Status == "complete" || result.Status == "partial") && result.BPM == nil && (strings.TrimSpace(result.Key) == "" || strings.EqualFold(strings.TrimSpace(result.Key), "unknown")) {
+			if present && result.Error == "" && result.ErrorMessage == "" && (result.Status == "" || result.Status == "unknown") && result.BPM == nil && (strings.TrimSpace(result.Key) == "" || strings.EqualFold(strings.TrimSpace(result.Key), "unknown")) {
 				report.Unknown.Correct++
 			} else {
 				report.Unknown.Incorrect++

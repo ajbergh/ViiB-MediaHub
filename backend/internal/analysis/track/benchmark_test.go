@@ -174,6 +174,17 @@ func TestSyntheticBenchmarkRunsProductionDecoderAndPreservesRefusals(t *testing.
 	if len(results.Results) != len(manifest.Tracks) || results.Algorithm != AlgorithmVersion || results.Throughput == nil || results.Throughput.AudioSeconds <= 0 {
 		t.Fatalf("incomplete synthetic production evidence: %+v", results)
 	}
+	// Agreement across platforms is insufficient if every platform produces
+	// the same wrong answer. Check every comparable fixture against its label.
+	for _, split := range []string{analysisbench.SplitTuning, analysisbench.SplitHeldOut} {
+		report, err := analysisbench.Compare(manifest, results, split)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Tempo.StrictWithinHalf != report.Tempo.Labeled || report.Key.Exact != report.Key.Labeled || report.Unknown.Correct != report.Unknown.Labeled {
+			t.Fatalf("synthetic accuracy regression on %s: tempo=%+v key=%+v unknown=%+v", split, report.Tempo, report.Key, report.Unknown)
+		}
+	}
 	foundSilence, foundTempo := false, false
 	for _, result := range results.Results {
 		if result.Error != "" {
