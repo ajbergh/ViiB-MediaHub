@@ -109,3 +109,11 @@ replay's 98/122 strict matches, while the two tools make different errors.
 The local artifacts are `reference-essentia-multifeature-default-tuning-20260918-v1.json`,
 `reference-essentia-multifeature-90-180-tuning-20260918-v1.json`, and their
 corresponding comparison reports under `sample_media/Test Corpus/`.
+
+The 90–180 BPM configuration was then frozen and evaluated once on the
+independent 54-track r5 held-out split. It reached **39/54 strict BPM matches
+(72.22%)**, with two half/double errors and no unknowns in 199.72 seconds.
+This does not qualify it as a production target. The held-out artifacts are
+`reference-essentia-multifeature-90-180-heldout-r5-20260918-v1.json` and
+`reference-essentia-multifeature-90-180-heldout-r5-comparison-20260918-v1.json`
+under `sample_media/Test Corpus/`; they remain local and ignored.
