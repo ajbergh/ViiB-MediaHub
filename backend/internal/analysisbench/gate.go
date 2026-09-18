@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -351,6 +352,19 @@ func compareDetectorResult(report *DeterminismReport, algorithm, id string, expe
 	}
 	if expected.Status != actual.Status {
 		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: "status", Expected: expected.Status, Actual: actual.Status})
+	}
+	compareBeatPositions(report, algorithm, id, expected.BeatPositions, actual.BeatPositions)
+}
+
+func compareBeatPositions(report *DeterminismReport, algorithm, id string, expected, actual []float64) {
+	if len(expected) != len(actual) {
+		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: "beatPositions.length", Expected: strconv.Itoa(len(expected)), Actual: strconv.Itoa(len(actual))})
+		return
+	}
+	for index := range expected {
+		if math.Abs(expected[index]-actual[index]) > 1e-6 {
+			report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: fmt.Sprintf("beatPositions[%d]", index), Expected: fmt.Sprintf("%.9f", expected[index]), Actual: fmt.Sprintf("%.9f", actual[index])})
+		}
 	}
 }
 

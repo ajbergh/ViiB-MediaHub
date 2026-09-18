@@ -101,10 +101,13 @@ type DetectorResult struct {
 	KeyConfidence    *float64 `json:"keyConfidence,omitempty"`
 	TempoCrestFactor *float64 `json:"tempoCrestFactor,omitempty"`
 	TempoStability   *float64 `json:"tempoStability,omitempty"`
-	KeyFlatness      *float64 `json:"keyFlatness,omitempty"`
-	Status           string   `json:"status,omitempty"`
-	Error            string   `json:"error,omitempty"`
-	ErrorMessage     string   `json:"errorMessage,omitempty"`
+	// BeatPositions are observed beat ticks in seconds. They are reference
+	// evidence for grid analysis; Phase 0 currently scores BPM separately.
+	BeatPositions []float64 `json:"beatPositions,omitempty"`
+	KeyFlatness   *float64  `json:"keyFlatness,omitempty"`
+	Status        string    `json:"status,omitempty"`
+	Error         string    `json:"error,omitempty"`
+	ErrorMessage  string    `json:"errorMessage,omitempty"`
 }
 
 // ComparisonReport contains metrics for exactly one manifest split.
@@ -319,6 +322,14 @@ func (resultSet ResultSet) Validate() error {
 		for label, scalar := range map[string]*float64{"tempo stability": result.TempoStability, "key flatness": result.KeyFlatness, "tempo crest factor": result.TempoCrestFactor} {
 			if scalar != nil && (math.IsNaN(*scalar) || math.IsInf(*scalar, 0) || *scalar < 0 || (label != "tempo crest factor" && *scalar > 1)) {
 				return fmt.Errorf("result %q has invalid %s", result.ID, label)
+			}
+		}
+		for tickIndex, tick := range result.BeatPositions {
+			if math.IsNaN(tick) || math.IsInf(tick, 0) || tick < 0 {
+				return fmt.Errorf("result %q has invalid beat position %d", result.ID, tickIndex)
+			}
+			if tickIndex > 0 && tick <= result.BeatPositions[tickIndex-1] {
+				return fmt.Errorf("result %q has non-ascending beat positions", result.ID)
 			}
 		}
 		if strings.TrimSpace(result.Key) != "" && !strings.EqualFold(strings.TrimSpace(result.Key), "unknown") {

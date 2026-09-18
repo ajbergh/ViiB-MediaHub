@@ -52,6 +52,20 @@ func TestEvaluateDeterminismRequiresThreeMatchingPlatforms(t *testing.T) {
 	}
 }
 
+func TestEvaluateDeterminismDetectsBeatPositionDifferences(t *testing.T) {
+	base := deterministicResult("windows", 128)
+	base.Results[0].BeatPositions = []float64{0.1, 0.6, 1.1}
+	mac := deterministicResult("darwin", 128)
+	mac.Results[0].BeatPositions = []float64{0.1, 0.6, 1.1}
+	linux := deterministicResult("linux", 128)
+	linux.Results[0].BeatPositions = []float64{0.1, 0.61, 1.1}
+
+	report := EvaluateDeterminism([]ResultSet{base, mac, linux})
+	if report.Status != "fail" || len(report.Differences) != 1 || report.Differences[0].Field != "beatPositions[1]" {
+		t.Fatalf("beat position mismatch = %#v, want one beat position difference", report)
+	}
+}
+
 func TestWritePhase0GateReportDoesNotOverwrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gate.json")
 	report := Phase0GateReport{Decision: "do not open Phase 5"}

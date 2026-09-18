@@ -112,6 +112,19 @@ func TestValidateBenchmarkConfigurationAndAlternate(t *testing.T) {
 	}
 }
 
+func TestResultSetRejectsInvalidBeatPositions(t *testing.T) {
+	for _, positions := range [][]float64{{-0.01}, {1, 1}, {1, .5}, {math.NaN()}} {
+		result := ResultSet{Algorithm: "test", Results: []DetectorResult{{ID: "track", BeatPositions: positions}}}
+		if err := result.Validate(); err == nil {
+			t.Fatalf("accepted invalid beat positions %v", positions)
+		}
+	}
+	valid := ResultSet{Algorithm: "test", Results: []DetectorResult{{ID: "track", BeatPositions: []float64{0, .5, 1}}}}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("rejected valid beat positions: %v", err)
+	}
+}
+
 func TestManifestAndResultsValidationRejectSilentBenchmarkCorruption(t *testing.T) {
 	validTrack := track("same", SplitHeldOut, 128, nil, "Db major")
 	manifest := CorpusManifest{Version: "phase0-v1", EvidenceClass: EvidenceSyntheticCI, Tracks: []CorpusTrack{validTrack, validTrack}}
