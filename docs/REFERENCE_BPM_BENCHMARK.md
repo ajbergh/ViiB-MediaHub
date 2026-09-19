@@ -75,6 +75,35 @@ track policy, manifest hash, beat-position units, and wall time. For
 benchmark schema's 0–1 range by dividing by 5.32 and clamping. It defaults to
 tuning; a held-out run requires `--allow-held-out` after configuration freeze.
 
+## Beat This reference adapter
+
+`scripts/beat_this_bpm_benchmark.py` runs the MIT-licensed Beat This `final0`
+transformer model as a separate CPU-only development process. It emits the
+model's ascending beat timestamps in seconds and derives BPM as `60 / median`
+of consecutive positive beat intervals. This is an external comparator, not a
+ViiB dependency or production candidate.
+
+Install its pinned CPU environment outside the repository, download the
+checkpoint once, verify its SHA-256, and then run from `backend`:
+
+```bash
+python3 -m venv /tmp/viib-beat-this-venv
+/tmp/viib-beat-this-venv/bin/pip install -r ../tools/reference-beat-this-requirements.txt
+
+/tmp/viib-beat-this-venv/bin/python ../scripts/beat_this_bpm_benchmark.py \
+  --manifest '../sample_media/Test Corpus/phase0-spotify-manifest-r5.json' \
+  --checkpoint ~/.cache/torch/hub/checkpoints/beat_this-final0.ckpt \
+  --split tuning \
+  --out '../sample_media/Test Corpus/reference-beat-this-final0-tuning-YYYYMMDD-v1.json'
+```
+
+The adapter refuses model downloads and artifact overwrites. It records the
+checkpoint hash, Beat This/Torch/Torchaudio versions, CPU device, `dbn=false`,
+minimal postprocessor, 22.05 kHz target rate, BPM derivation, manifest hash,
+and wall time. Its first run is tuning only; use `--allow-held-out` only after
+freezing this exact configuration. Keep model files and generated artifacts out
+of Git.
+
 ## First reference measurement
 
 On 2026-09-18, `librosa` 0.11.0 ran the full 122-track r5 tuning split through
