@@ -106,11 +106,19 @@ freezing this exact configuration. Keep model files and generated artifacts out
 of Git.
 
 `final0` was trained on most data used by the upstream project. Its authors
-warn that measurements can be unfairly high on training material; therefore
-ViiB must establish that its local corpus has no training overlap before using
-a Beat This held-out measurement as independent qualification evidence. Until
-then, these results are diagnostic external-reference evidence only. See the
-[upstream model guidance](https://github.com/CPJKU/beat_this#available-models).
+warn that measurements can be unfairly high on training material. The required
+overlap review was completed against version `v1.0` of the published
+annotations (commit `c3c47fd37d3074d9f8119f18bbf460f909609f22`) on
+2026-09-18. It found direct Harmonix title matches for corpus recordings
+including Darude — "Sandstorm", Alice Deejay — "Better Off Alone", Swedish
+House Mafia — "Don't You Worry Child", Cascada — "Everytime We Touch", Benny
+Benassi — "Satisfaction", Calvin Harris — "Feel So Close", and Michael
+Jackson — "Beat It". The published `single.split` marks most of those
+annotation entries as training data. The r5 corpus is therefore not independent
+of `final0`; do not run it on r5 held-out or use any `final0` result as
+qualification evidence. Both tuning artifacts remain diagnostic external
+reference evidence only. See the [upstream model guidance](https://github.com/CPJKU/beat_this#available-models)
+and [versioned annotations](https://github.com/CPJKU/beat_this_annotations/tree/v1.0).
 
 ## Beat This tuning diagnostic
 
@@ -124,8 +132,9 @@ BPM matches (90.98%)**, with three half/double errors and no unknowns.
 The artifacts are `reference-beat-this-final0-tuning-20260918-v1.json` and
 `reference-beat-this-final0-span16-tuning-20260918-v1.json`, plus their local
 comparison reports under `sample_media/Test Corpus/`. The latter remains
-tuning-only diagnostic evidence, not a production candidate or a basis for a
-held-out qualification run until training-data overlap is reviewed.
+tuning-only diagnostic evidence, not a production candidate or a basis for an
+r5 held-out qualification run because the overlap review found direct training
+set matches.
 
 ## First reference measurement
 
