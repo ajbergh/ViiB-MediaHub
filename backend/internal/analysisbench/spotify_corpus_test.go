@@ -49,6 +49,9 @@ func TestImportSpotifyCorpusMatchesMediaByTitleAndConvertsCamelot(t *testing.T) 
 	if first.ExpectedBPM == nil || *first.ExpectedBPM != 128 || first.ExpectedKey != "A minor" || first.LabelSource != options.LabelSource {
 		t.Fatalf("first imported track = %+v", first)
 	}
+	if first.RecordingGroup != "label:djexample|firstsong" || second.RecordingGroup != "label:djexample|secondsong" {
+		t.Fatal("import lost artist/title identity groups")
+	}
 	if second.ExpectedBPM == nil || *second.ExpectedBPM != 126 || second.ExpectedKey != "A major" {
 		t.Fatalf("second imported track = %+v", second)
 	}
@@ -83,5 +86,47 @@ func writeSpotifyCSV(t *testing.T, path, contents string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestArtistTitleIdentityResolvesDuplicateAndShortTitles(t *testing.T) {
+	rows := []spotifyCSVRow{
+		{Title: "Faded", Artist: "Alan Walker"},
+		{Title: "Faded", Artist: "ZHU"},
+		{Title: "Stay", Artist: "Zedd, Alessia Cara"},
+		{Title: "King", Artist: "Olly Alexander (Years & Years)"},
+	}
+	media := []string{"045-Alan Walker-Faded.ogg", "100-ZHU-Faded.ogg", "036-Zedd-Stay.ogg", "050-Olly Alexander (Years & Years)-King.ogg"}
+	matches, missing, unmatched, ambiguous := matchSpotifyCSVRows(media, rows)
+	if len(matches) != 4 || len(missing)+len(unmatched)+len(ambiguous) != 0 {
+		t.Fatalf("matches=%v missing=%v unmatched=%v ambiguous=%v", matches, missing, unmatched, ambiguous)
+	}
+	if matches[media[0]].Artist != "Alan Walker" || matches[media[1]].Artist != "ZHU" {
+		t.Fatal("duplicate titles were assigned to the wrong artist")
+	}
+}
+
+func TestArtistTitleIdentityRequiresExactOrExplicitlyTruncatedTitle(t *testing.T) {
+	for _, tc := range []struct {
+		file, artist, title string
+		score               int
+	}{
+		{"029-Lana Del Rey-Summertime Sadness (Lana Del Rey Vs. Cedric Gervais) - Remix.ogg", "Lana Del Rey, Cedric Gervais", "Summertime Sadness (Lana Del Rey Vs. Cedric Gervai...", 4},
+		{"001-Artist-One Long Song Remix.ogg", "Artist", "One Long Song", 0},
+		{"001-Other Artist-One Long Song.ogg", "Artist", "One Long Song", 0},
+		{"001-ArtistExtra-Stay.ogg", "Artist", "Stay", 0},
+		{"001-Artist-Stay.ogg", "Artist", "Sta...", 0},
+		{"001-2Pac-Changes.ogg", "2Pac", "Changes", 5},
+		{"001-Artist-9 PM.ogg", "Artist", "9 PM", 5},
+		{"001-Jay-Z-Song.ogg", "Jay-Z", "Song", 5},
+	} {
+		if score := spotifyArtistTitleMatchScore(tc.file, spotifyCSVRow{Artist: tc.artist, Title: tc.title}); score != tc.score {
+			t.Errorf("%s: score=%d want=%d", tc.file, score, tc.score)
+		}
+	}
+	rows := []spotifyCSVRow{{Artist: "Artist", Title: "Same Song"}, {Artist: "Artist", Title: "Same Song"}}
+	matches, _, _, ambiguous := matchSpotifyCSVRows([]string{"001-Artist-Same Song.ogg"}, rows)
+	if len(matches) != 0 || len(ambiguous) != 1 {
+		t.Fatal("duplicate authoritative rows must remain ambiguous")
 	}
 }

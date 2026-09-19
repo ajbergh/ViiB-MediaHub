@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -15,14 +17,15 @@ const stableElectronicCoverageTag = "stable-electronic"
 // It evaluates the provisional §14.6 thresholds without silently turning
 // missing evidence into a pass.
 type Phase0GateReport struct {
-	Split           string            `json:"split"`
-	Candidate       string            `json:"candidate"`
-	BrowserBaseline string            `json:"browserBaseline"`
-	Corpus          CorpusCoverage    `json:"corpus"`
-	Tripwires       []GateTripwire    `json:"tripwires"`
-	Determinism     DeterminismReport `json:"determinism"`
-	Passed          bool              `json:"passed"`
-	Decision        string            `json:"decision"`
+	Split                  string            `json:"split"`
+	Candidate              string            `json:"candidate"`
+	CandidateConfiguration json.RawMessage   `json:"candidateConfiguration,omitempty"`
+	BrowserBaseline        string            `json:"browserBaseline"`
+	Corpus                 CorpusCoverage    `json:"corpus"`
+	Tripwires              []GateTripwire    `json:"tripwires"`
+	Determinism            DeterminismReport `json:"determinism"`
+	Passed                 bool              `json:"passed"`
+	Decision               string            `json:"decision"`
 }
 
 // GateTripwire has an explicit status so an incomplete corpus or absent
@@ -92,7 +95,8 @@ func EvaluatePhase0Gate(manifest CorpusManifest, candidate, browserBaseline Resu
 	}
 	report := Phase0GateReport{
 		Split: SplitHeldOut, Candidate: candidate.Algorithm, BrowserBaseline: browserBaseline.Algorithm,
-		Corpus: candidateReport.Corpus, Determinism: determinism,
+		CandidateConfiguration: candidate.Configuration,
+		Corpus:                 candidateReport.Corpus, Determinism: determinism,
 	}
 
 	stableManifest := stableElectronicManifest(manifest)
@@ -255,6 +259,11 @@ func EvaluateDeterminism(resultSets []ResultSet) DeterminismReport {
 	}
 	platforms := make(map[string]struct{})
 	for _, resultSet := range resultSets {
+		if err := resultSet.Validate(); err != nil || len(resultSet.Results) == 0 {
+			report.Status = "fail"
+			report.Reason = "determinism requires valid, non-empty result sets"
+			return report
+		}
 		if resultSet.Throughput != nil && resultSet.Throughput.Environment.OS != "" {
 			platforms[resultSet.Throughput.Environment.OS] = struct{}{}
 		}
@@ -263,12 +272,6 @@ func EvaluateDeterminism(resultSets []ResultSet) DeterminismReport {
 		report.ObservedPlatforms = append(report.ObservedPlatforms, platform)
 	}
 	sort.Strings(report.ObservedPlatforms)
-	for _, required := range report.RequiredPlatforms {
-		if _, present := platforms[required]; !present {
-			report.Reason = "requires result sets from Windows, macOS (darwin), and Linux"
-			return report
-		}
-	}
 	reference := resultSets[0]
 	for _, actual := range resultSets[1:] {
 		compareDeterminism(&report, reference, actual)
@@ -278,6 +281,12 @@ func EvaluateDeterminism(resultSets []ResultSet) DeterminismReport {
 		report.Reason = "detector outputs differ across platforms"
 		return report
 	}
+	for _, required := range report.RequiredPlatforms {
+		if _, present := platforms[required]; !present {
+			report.Reason = "observed result sets agree; requires result sets from Windows, macOS (darwin), and Linux"
+			return report
+		}
+	}
 	report.Status = "pass"
 	return report
 }
@@ -286,6 +295,12 @@ func compareDeterminism(report *DeterminismReport, expected, actual ResultSet) {
 	if expected.Algorithm != actual.Algorithm {
 		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: actual.Algorithm, Field: "algorithm", Expected: expected.Algorithm, Actual: actual.Algorithm})
 		return
+	}
+	var expectedConfig, actualConfig any
+	_ = json.Unmarshal(expected.Configuration, &expectedConfig)
+	_ = json.Unmarshal(actual.Configuration, &actualConfig)
+	if !reflect.DeepEqual(expectedConfig, actualConfig) {
+		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: actual.Algorithm, Field: "configuration", Expected: string(expected.Configuration), Actual: string(actual.Configuration)})
 	}
 	expectedByID := make(map[string]DetectorResult, len(expected.Results))
 	for _, result := range expected.Results {
@@ -316,6 +331,10 @@ func compareDetectorResult(report *DeterminismReport, algorithm, id string, expe
 		a, b *float64
 	}{
 		{"bpm", expected.BPM, actual.BPM}, {"confidence", expected.Confidence, actual.Confidence},
+		{"alternateBpm", expected.AlternateBPM, actual.AlternateBPM},
+		{"tempoStability", expected.TempoStability, actual.TempoStability},
+		{"tempoCrestFactor", expected.TempoCrestFactor, actual.TempoCrestFactor},
+		{"keyFlatness", expected.KeyFlatness, actual.KeyFlatness},
 		{"tempoConfidence", expected.TempoConfidence, actual.TempoConfidence}, {"keyConfidence", expected.KeyConfidence, actual.KeyConfidence},
 	} {
 		if scalar.a == nil && scalar.b == nil {
@@ -330,6 +349,22 @@ func compareDetectorResult(report *DeterminismReport, algorithm, id string, expe
 	}
 	if expected.Error != actual.Error {
 		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: "error", Expected: expected.Error, Actual: actual.Error})
+	}
+	if expected.Status != actual.Status {
+		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: "status", Expected: expected.Status, Actual: actual.Status})
+	}
+	compareBeatPositions(report, algorithm, id, expected.BeatPositions, actual.BeatPositions)
+}
+
+func compareBeatPositions(report *DeterminismReport, algorithm, id string, expected, actual []float64) {
+	if len(expected) != len(actual) {
+		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: "beatPositions.length", Expected: strconv.Itoa(len(expected)), Actual: strconv.Itoa(len(actual))})
+		return
+	}
+	for index := range expected {
+		if math.Abs(expected[index]-actual[index]) > 1e-6 {
+			report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: fmt.Sprintf("beatPositions[%d]", index), Expected: fmt.Sprintf("%.9f", expected[index]), Actual: fmt.Sprintf("%.9f", actual[index])})
+		}
 	}
 }
 

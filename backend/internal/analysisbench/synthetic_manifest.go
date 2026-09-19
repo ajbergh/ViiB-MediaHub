@@ -25,12 +25,13 @@ func SyntheticCorpusManifest(fixtures []PCMFixture, audioDirectory string) (Corp
 			continue
 		}
 		track := CorpusTrack{
-			ID:          fixture.Name,
-			Path:        filepath.Join(audioDirectory, fixture.Name+".wav"),
-			License:     "generated",
-			LabelSource: "deterministic fixture generator",
-			Genre:       "synthetic",
-			Notes:       "Generated regression fixture; not Phase 0 real-audio corpus evidence.",
+			ID:             fixture.Name,
+			Path:           filepath.Join(audioDirectory, fixture.Name+".wav"),
+			License:        "generated",
+			LabelSource:    "deterministic fixture generator",
+			RecordingGroup: "fixture:" + fixture.Name,
+			Genre:          "synthetic",
+			Notes:          "Generated regression fixture; not Phase 0 real-audio corpus evidence.",
 		}
 		if len(manifest.Tracks)%3 == 0 {
 			track.Split = SplitHeldOut
