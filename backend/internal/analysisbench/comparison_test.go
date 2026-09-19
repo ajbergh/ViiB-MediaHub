@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -218,6 +219,34 @@ func TestCoverageRequiresEveryRoadmapCorpusCase(t *testing.T) {
 	coverage = Coverage(manifest, SplitHeldOut)
 	if coverage.Phase0Ready || len(coverage.MissingRequiredCoverage) != 1 || coverage.MissingRequiredCoverage[0] != RequiredCorpusCoverage()[0] {
 		t.Fatalf("coverage = %#v, want the missing required category visible", coverage)
+	}
+}
+
+func TestCoverageReportsFixedQualificationTargetGaps(t *testing.T) {
+	manifest := readyCorpusManifest()
+	manifest.Tracks = manifest.Tracks[:176]
+	for index := 54; index < 67; index++ {
+		manifest.Tracks[index].Split = SplitTuning
+	}
+	coverage := Coverage(manifest, SplitHeldOut)
+	if coverage.Tracks != 176 || coverage.HeldOutTracks != 54 || coverage.TracksNeeded != 24 || coverage.HeldOutTracksNeededAtTarget != 13 {
+		t.Fatalf("coverage target gaps = %+v, want 176 tracks, 54 held out, and 24/13 gaps", coverage)
+	}
+	if coverage.HeldOutStableElectronicTracks == 0 {
+		t.Fatalf("coverage = %+v, want stable-electronic held-out evidence", coverage)
+	}
+	for index := range manifest.Tracks {
+		if manifest.Tracks[index].Split == SplitHeldOut {
+			for coverageIndex, tag := range manifest.Tracks[index].Coverage {
+				if tag == "stable-electronic" {
+					manifest.Tracks[index].Coverage = append(manifest.Tracks[index].Coverage[:coverageIndex], manifest.Tracks[index].Coverage[coverageIndex+1:]...)
+				}
+			}
+		}
+	}
+	coverage = Coverage(manifest, SplitHeldOut)
+	if coverage.HeldOutStableElectronicTracks != 0 || !strings.Contains(coverage.ReadinessMessage, "held-out stable-electronic") {
+		t.Fatalf("coverage = %+v, want missing held-out stable-electronic evidence", coverage)
 	}
 }
 

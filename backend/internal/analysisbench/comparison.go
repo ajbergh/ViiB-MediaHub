@@ -156,19 +156,29 @@ type UnknownMetrics struct {
 	Accuracy  *float64 `json:"accuracy,omitempty"`
 }
 
+const (
+	// Phase0MinimumTracks and Phase0MinimumHeldOutTracks are fixed qualification
+	// targets. They must not be derived from a smaller, incomplete manifest.
+	Phase0MinimumTracks        = 200
+	Phase0MinimumHeldOutTracks = 67
+)
+
 // CorpusCoverage makes it impossible for a tiny smoke-test manifest to look
-// like a Phase 0 exit-gate result. The 200-track, one-third held-out rule comes
+// like a Phase 0 exit-gate result. The 200-track, 67-held-out target comes
 // directly from the roadmap and remains visible in every comparison report.
 type CorpusCoverage struct {
-	Tracks                  int                    `json:"tracks"`
-	TracksInSplit           int                    `json:"tracksInSplit"`
-	HeldOutTracks           int                    `json:"heldOutTracks"`
-	DistinctGenres          []string               `json:"distinctGenres"`
-	EvidenceClass           string                 `json:"evidenceClass"`
-	MissingRequiredCoverage []string               `json:"missingRequiredCoverage"`
-	Phase0Ready             bool                   `json:"phase0Ready"`
-	ReadinessMessage        string                 `json:"readinessMessage"`
-	RecordingIdentity       RecordingIdentityAudit `json:"recordingIdentity"`
+	Tracks                        int                    `json:"tracks"`
+	TracksInSplit                 int                    `json:"tracksInSplit"`
+	HeldOutTracks                 int                    `json:"heldOutTracks"`
+	TracksNeeded                  int                    `json:"tracksNeeded"`
+	HeldOutTracksNeededAtTarget   int                    `json:"heldOutTracksNeededAtTarget"`
+	HeldOutStableElectronicTracks int                    `json:"heldOutStableElectronicTracks"`
+	DistinctGenres                []string               `json:"distinctGenres"`
+	EvidenceClass                 string                 `json:"evidenceClass"`
+	MissingRequiredCoverage       []string               `json:"missingRequiredCoverage"`
+	Phase0Ready                   bool                   `json:"phase0Ready"`
+	ReadinessMessage              string                 `json:"readinessMessage"`
+	RecordingIdentity             RecordingIdentityAudit `json:"recordingIdentity"`
 }
 
 // TempoMetrics keeps raw counts beside percentages so a small corpus cannot
@@ -505,9 +515,16 @@ func Coverage(manifest CorpusManifest, split string) CorpusCoverage {
 		if track.Split == SplitHeldOut {
 			coverage.HeldOutTracks++
 		}
-		covered[normalizeCoverageTag(track.Genre)] = struct{}{}
+		genre := normalizeCoverageTag(track.Genre)
+		covered[genre] = struct{}{}
+		stableElectronic := genre == "stable-electronic"
 		for _, tag := range track.Coverage {
-			covered[normalizeCoverageTag(tag)] = struct{}{}
+			normalized := normalizeCoverageTag(tag)
+			covered[normalized] = struct{}{}
+			stableElectronic = stableElectronic || normalized == "stable-electronic"
+		}
+		if track.Split == SplitHeldOut && stableElectronic {
+			coverage.HeldOutStableElectronicTracks++
 		}
 	}
 	for _, required := range RequiredCorpusCoverage() {
@@ -515,7 +532,8 @@ func Coverage(manifest CorpusManifest, split string) CorpusCoverage {
 			coverage.MissingRequiredCoverage = append(coverage.MissingRequiredCoverage, required)
 		}
 	}
-	minimumHeldOut := (coverage.Tracks + 2) / 3
+	coverage.TracksNeeded = max(0, Phase0MinimumTracks-coverage.Tracks)
+	coverage.HeldOutTracksNeededAtTarget = max(0, Phase0MinimumHeldOutTracks-coverage.HeldOutTracks)
 	deficits := make([]string, 0, 4)
 	if coverage.RecordingIdentity.UnidentifiedTracks > 0 {
 		deficits = append(deficits, fmt.Sprintf("%d tracks lack recording-group identity for duplicate/split-leakage review", coverage.RecordingIdentity.UnidentifiedTracks))
@@ -526,11 +544,14 @@ func Coverage(manifest CorpusManifest, split string) CorpusCoverage {
 	if manifest.EvidenceClass != EvidenceLawfulRealAudio {
 		deficits = append(deficits, fmt.Sprintf("evidence class must be %q; %q is regression evidence only", EvidenceLawfulRealAudio, manifest.EvidenceClass))
 	}
-	if coverage.Tracks < 200 {
-		deficits = append(deficits, fmt.Sprintf("needs %d additional tracks to meet the 200-track Phase 0 minimum", 200-coverage.Tracks))
+	if coverage.TracksNeeded > 0 {
+		deficits = append(deficits, fmt.Sprintf("needs %d additional tracks to meet the %d-track Phase 0 minimum", coverage.TracksNeeded, Phase0MinimumTracks))
 	}
-	if coverage.HeldOutTracks < minimumHeldOut {
-		deficits = append(deficits, fmt.Sprintf("needs %d additional held-out tracks to reserve one third of the corpus", minimumHeldOut-coverage.HeldOutTracks))
+	if coverage.HeldOutTracksNeededAtTarget > 0 {
+		deficits = append(deficits, fmt.Sprintf("needs %d additional held-out tracks to meet the %d-track qualification target", coverage.HeldOutTracksNeededAtTarget, Phase0MinimumHeldOutTracks))
+	}
+	if coverage.HeldOutStableElectronicTracks == 0 {
+		deficits = append(deficits, "needs held-out stable-electronic coverage")
 	}
 	if len(coverage.MissingRequiredCoverage) > 0 {
 		deficits = append(deficits, fmt.Sprintf("missing required Phase 0 coverage: %s", strings.Join(coverage.MissingRequiredCoverage, ", ")))
@@ -551,7 +572,7 @@ func RequiredCorpusCoverage() []string {
 	return []string{
 		"house", "techno", "drum-and-bass", "hip-hop", "breakbeat",
 		"rock-live-drums", "disco", "ambient", "acoustic", "sparse-no-percussion",
-		"meter-3-4-or-6-8", "tempo-ramp-or-switch", "tempo-70-140-ambiguity", "tempo-85-170-ambiguity",
+		"stable-electronic", "meter-3-4-or-6-8", "tempo-ramp-or-switch", "tempo-70-140-ambiguity", "tempo-85-170-ambiguity",
 	}
 }
 

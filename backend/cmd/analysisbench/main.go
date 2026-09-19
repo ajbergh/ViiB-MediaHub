@@ -49,6 +49,8 @@ func main() {
 	browserResultsPath := flag.String("browser-results", "", "browser baseline result JSON; requires -gate-manifest and -candidate-results")
 	determinismResultsPaths := flag.String("determinism-results", "", "comma-separated Go result JSON files for standalone determinism comparison, or additional platform results when -gate-manifest is set")
 	gateOutputPath := flag.String("gate-out", "", "non-overwriting Phase 0 gate report JSON; requires -gate-manifest")
+	auditManifestPath := flag.String("audit-manifest", "", "label-only corpus manifest to audit without opening audio; requires -audit-out")
+	auditOutputPath := flag.String("audit-out", "", "new corpus-readiness audit JSON path; requires -audit-manifest")
 	probePaths := flag.String("probe", "", "comma-separated local .mp3/.ogg paths for unlabeled decoder/analyzer smoke measurements")
 	analyzeManifestPath := flag.String("analyze", "", "local .mp3/.ogg corpus manifest to run through the Go analyzers")
 	outputPath := flag.String("out", "", "non-overwriting Go analyzer result JSON; requires -analyze")
@@ -88,6 +90,26 @@ func main() {
 	if *gateOutputPath != "" && *gateManifestPath == "" {
 		fmt.Fprintln(os.Stderr, "analysisbench: -gate-out requires -gate-manifest")
 		os.Exit(2)
+	}
+	if (*auditManifestPath == "") != (*auditOutputPath == "") {
+		fmt.Fprintln(os.Stderr, "analysisbench: -audit-manifest and -audit-out must be provided together")
+		os.Exit(2)
+	}
+	if *auditManifestPath != "" && (*manifestPath != "" || *gateManifestPath != "" || *analyzeManifestPath != "" || *spotifyCorpusRoot != "") {
+		fmt.Fprintln(os.Stderr, "analysisbench: -audit-manifest cannot be combined with comparison, gate, analysis, or import modes")
+		os.Exit(2)
+	}
+	if *auditManifestPath != "" {
+		manifest, err := analysisbench.LoadManifest(*auditManifestPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: load audit manifest: %v\\n", err)
+			os.Exit(1)
+		}
+		if err := writeNewJSON(*auditOutputPath, analysisbench.Coverage(manifest, analysisbench.SplitHeldOut)); err != nil {
+			fmt.Fprintf(os.Stderr, "analysisbench: write audit report: %v\\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 	if (*analyzeManifestPath == "") != (*outputPath == "") {
 		fmt.Fprintln(os.Stderr, "analysisbench: -analyze and -out must be provided together")
@@ -340,4 +362,20 @@ func main() {
 		fmt.Fprintf(os.Stderr, "analysisbench: encode report: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func writeNewJSON(path string, value any) error {
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode JSON: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(append(encoded, '\n')); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
