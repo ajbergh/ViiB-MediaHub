@@ -80,8 +80,9 @@ tuning; a held-out run requires `--allow-held-out` after configuration freeze.
 `scripts/beat_this_bpm_benchmark.py` runs the MIT-licensed Beat This `final0`
 transformer model as a separate CPU-only development process. It emits the
 model's ascending beat timestamps in seconds and derives BPM as `60 / median`
-of consecutive positive beat intervals. This is an external comparator, not a
-ViiB dependency or production candidate.
+of 16-beat periods. This avoids the model's 50 FPS single-tick quantization
+while rejecting isolated missing or spurious ticks. This is an external
+comparator, not a ViiB dependency or production candidate.
 
 Install its pinned CPU environment outside the repository, download the
 checkpoint once, verify its SHA-256, and then run from `backend`:
@@ -110,6 +111,21 @@ ViiB must establish that its local corpus has no training overlap before using
 a Beat This held-out measurement as independent qualification evidence. Until
 then, these results are diagnostic external-reference evidence only. See the
 [upstream model guidance](https://github.com/CPJKU/beat_this#available-models).
+
+## Beat This tuning diagnostic
+
+On 2026-09-18, Beat This `1.1.0` `final0` processed all 122 r5 tuning tracks
+on CPU in 1,429.42 seconds. Its initial single-interval BPM export is retained
+as raw tick evidence but is not a valid scalar comparator: 50 FPS timestamps
+quantize a 140 BPM single interval to 142.86 BPM. Re-deriving BPM from the
+same immutable ticks with the documented 16-beat median gives **111/122 strict
+BPM matches (90.98%)**, with three half/double errors and no unknowns.
+
+The artifacts are `reference-beat-this-final0-tuning-20260918-v1.json` and
+`reference-beat-this-final0-span16-tuning-20260918-v1.json`, plus their local
+comparison reports under `sample_media/Test Corpus/`. The latter remains
+tuning-only diagnostic evidence, not a production candidate or a basis for a
+held-out qualification run until training-data overlap is reviewed.
 
 ## First reference measurement
 

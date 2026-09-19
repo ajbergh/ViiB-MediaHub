@@ -20,6 +20,13 @@ import time
 from typing import Any
 
 
+# Beat This emits ticks at 50 FPS. A one-beat interval alone is quantized in
+# 20 ms steps (for example 140 BPM can appear as 142.86); sixteen beats spans
+# four 4/4 bars and gives the BPM scalar usable resolution while the median
+# still rejects isolated missed or spurious ticks.
+BPM_PERIOD_SPAN = 16
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -54,7 +61,11 @@ def finite_ticks(values: Any) -> list[float]:
 
 
 def bpm_from_ticks(ticks: list[float]) -> float | None:
-    intervals = [right - left for left, right in zip(ticks, ticks[1:]) if right > left and math.isfinite(right - left)]
+    intervals = [
+        (ticks[index + BPM_PERIOD_SPAN] - ticks[index]) / BPM_PERIOD_SPAN
+        for index in range(len(ticks) - BPM_PERIOD_SPAN)
+        if ticks[index + BPM_PERIOD_SPAN] > ticks[index] and math.isfinite(ticks[index + BPM_PERIOD_SPAN] - ticks[index])
+    ]
     if not intervals:
         return None
     bpm = 60.0 / statistics.median(intervals)
@@ -119,7 +130,8 @@ def main() -> int:
             "postprocessor": "minimal",
             "targetSampleRate": 22050,
             "beatPositionUnits": "seconds",
-            "bpmDerivation": "60 / median(positive consecutive beat-position intervals)",
+            "bpmDerivation": "60 / median((beatPosition[i + 16] - beatPosition[i]) / 16)",
+            "bpmPeriodSpanBeats": BPM_PERIOD_SPAN,
             "torchVersion": torch.__version__,
             "torchaudioVersion": torchaudio.__version__,
             "split": args.split,

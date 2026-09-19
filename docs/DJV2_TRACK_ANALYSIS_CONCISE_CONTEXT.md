@@ -27,6 +27,8 @@ The development-only external reference adapters normalize established BPM tools
 
 Benchmark outputs now retain the native post-selection beat-grid ticks, with finite/ascending validation and cross-platform tick determinism checks. This is diagnostic evidence only because the grid is constructed after BPM selection. The native `beat-interval-consistency` candidate instead scored observed onset-peak intervals with a bounded 100 ms refractory peak selector across existing periodicity hypotheses. It passed generated static-tempo/refusal fixtures but reached only **64/122 strict BPM (52.46%)**, one half/double error, six unknowns, and 62.58× real time on r5 tuning. It is rejected without a held-out run; production remains `tempo-v3-multifeature-half-bpm`.
 
+The development-only MIT Beat This `final0` transformer reference produces timestamped beat grids rather than a native scalar BPM. Its CPU r5 tuning run took 1,429.42 seconds. The first single-tick median export was invalid for ±0.5 BPM scoring because 50 FPS tick quantization turns a 140 BPM interval into 142.86 BPM. The corrected fixed 16-beat median derivation over the same immutable ticks reaches **111/122 strict BPM (90.98%)**, three half/double errors, and no unknowns. This is valuable diagnostic reference evidence only: upstream states `final0` was trained broadly and warns of potentially unfair results on training data, so do not run it on held-out r5 or promote it until overlap has been reviewed. Production remains `tempo-v3-multifeature-half-bpm`.
+
 ## Delivered capabilities
 
 - A backend-owned, local-first Go analysis stack with durable persistence and job lifecycle support.
