@@ -104,6 +104,13 @@ and wall time. Its first run is tuning only; use `--allow-held-out` only after
 freezing this exact configuration. Keep model files and generated artifacts out
 of Git.
 
+`final0` was trained on most data used by the upstream project. Its authors
+warn that measurements can be unfairly high on training material; therefore
+ViiB must establish that its local corpus has no training overlap before using
+a Beat This held-out measurement as independent qualification evidence. Until
+then, these results are diagnostic external-reference evidence only. See the
+[upstream model guidance](https://github.com/CPJKU/beat_this#available-models).
+
 ## First reference measurement
 
 On 2026-09-18, `librosa` 0.11.0 ran the full 122-track r5 tuning split through
