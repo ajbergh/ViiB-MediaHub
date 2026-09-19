@@ -55,7 +55,7 @@ func main() {
 	syntheticResultsPath := flag.String("synthetic-results-out", "", "non-overwriting production-analyzer results for generated WAV fixtures; regression evidence only")
 	analyzeSplit := flag.String("analyze-split", "", "optional reserved corpus split to analyze: tuning or held_out; requires -analyze")
 	tempoMinOnsetCrest := flag.Float64("tempo-min-onset-crest", 0, "optional Phase 0 tempo refusal threshold; requires -analyze and must be tuned only on the tuning split")
-	tempoMethod := flag.String("tempo-method", "", "optional Phase 0 tempo candidate method: peak-interval, onset-autocorrelation, multifeature-consensus, multifeature-half-bpm, multifeature-clustered-half-bpm, or multifeature-refined-half-bpm; requires -analyze")
+	tempoMethod := flag.String("tempo-method", "", "optional Phase 0 tempo candidate method: peak-interval, onset-autocorrelation, multifeature-consensus, multifeature-half-bpm, multifeature-clustered-half-bpm, multifeature-refined-half-bpm, or beat-interval-consistency; requires -analyze")
 	keyMaxChromaFlatness := flag.Float64("key-max-chroma-flatness", 0, "optional Phase 0 key refusal threshold; requires -analyze and must be tuned only on the tuning split")
 	keyMaxFrequency := flag.Float64("key-max-frequency", 0, "optional Phase 0 chroma upper frequency in Hz; requires -analyze and must be tuned only on the tuning split")
 	keyExtraction := flag.String("key-extraction", "", "optional Phase 0 key extraction: direct-chroma or hpcp-peaks; requires -analyze")
