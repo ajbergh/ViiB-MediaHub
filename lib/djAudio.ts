@@ -2284,11 +2284,16 @@ export class DJAudioEngine {
       try {
         this.loopWorker = new Worker(new URL('./djLoopTicker.worker.ts', import.meta.url), { type: 'module' });
         this.loopWorker.onmessage = () => this.wrapActiveLoops();
+        this.loopWorker.onerror = () => {
+          this.loopWorker?.terminate();
+          this.loopWorker = null;
+          if (!this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
+        };
       } catch (error) {
         console.warn('[DJAudio] Loop worker unavailable; using timer fallback', error);
       }
     }
-    if (!this.loopWorker && !this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 10);
+    if (!this.loopWorker && !this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
     const updatePositions = () => {
       const storeState = useStore.getState();
       const now = performance.now();
