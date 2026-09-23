@@ -4,7 +4,7 @@ Date: 2026-09-23
 
 ## Fix Progress
 
-Current status: Implementation complete on `djv2/panel-review-fixes`; local verification passed. PR creation is pending GitHub authentication, and minimized-window loop behavior needs Wails runtime confirmation.
+Current status: Implementation complete and pushed on `djv2/panel-review-fixes`; TypeScript verification passed. PR creation is blocked by unavailable GitHub CLI/Git credential-helper authentication, and minimized-window loop behavior needs Wails runtime confirmation.
 
 | Finding | Status | Progress |
 |---|---|---|
@@ -25,6 +25,7 @@ Implementation log:
 - 2026-09-23: Fixed finding 19 by mounting a page-level MIDI action handler, loading saved mappings during its lifecycle, dispatching all defined mapping categories to engine/store/sampler APIs, and clearing the handler when the DJ page unmounts.
 - 2026-09-23: Fixed finding 20 by recording per-deck analysis status, stopping beat-grid/energy/recommendation requests when the base feature record is missing, and showing “Not analysed” or “Unavailable” feedback beside BPM and in the energy panel.
 - 2026-09-23: `npm run typecheck` passed and `git diff --check` is clean. The automated test suite was not run. `gh auth status` reports the saved GitHub token is invalid, so push/PR creation is blocked until GitHub is reauthenticated. Finding 7 still needs confirmation in a minimized Wails window.
+- 2026-09-23: Pushed commit `833ca11` to `origin/djv2/panel-review-fixes`. `gh auth status` reports an invalid saved token, and `git credential fill` returned no reusable GitHub credential, so I could not create the PR. `git push` printed the branch's GitHub PR creation link.
 
 ## Scope
 
