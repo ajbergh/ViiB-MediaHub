@@ -25,8 +25,8 @@ Implementation log:
 - 2026-09-23: Fixed finding 19 by mounting a page-level MIDI action handler, loading saved mappings during its lifecycle, dispatching all defined mapping categories to engine/store/sampler APIs, and clearing the handler when the DJ page unmounts.
 - 2026-09-23: Fixed finding 20 by recording per-deck analysis status, stopping beat-grid/energy/recommendation requests when the base feature record is missing, and showing “Not analysed” or “Unavailable” feedback beside BPM and in the energy panel.
 - 2026-09-23: `npm run typecheck` passed and `git diff --check` is clean. The automated test suite was not run. `gh auth status` reports the saved GitHub token is invalid, so push/PR creation is blocked until GitHub is reauthenticated. Finding 7 still needs confirmation in a minimized Wails window.
-- 2026-09-23: Pushed commit `833ca11` to `origin/djv2/panel-review-fixes`. `gh auth status` reports an invalid saved token, and `git credential fill` returned no reusable GitHub credential, so I could not create the PR. `git push` printed the branch's GitHub PR creation link.
-- 2026-09-23: Tightened finding 7's worker/fallback interval to 5 ms and added fallback on worker errors. The pushed branch needs this follow-up commit; Wails minimized-window runtime confirmation remains outstanding.
+- 2026-09-23: Pushed implementation commit `833ca11` to `origin/djv2/panel-review-fixes`. `gh auth status` reports an invalid saved token, and Git Credential Manager returned no reusable credential even with the repository marked safe, so I could not create the PR. `git push` printed the branch's GitHub PR creation link.
+- 2026-09-23: Tightened finding 7's worker/fallback interval to 5 ms and added fallback on worker errors. Pushed commit `2a3d864`; `npm run typecheck` passed after the change. Wails minimized-window runtime confirmation remains outstanding.
 
 ## Scope
 
