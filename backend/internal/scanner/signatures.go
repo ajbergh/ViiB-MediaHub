@@ -82,7 +82,12 @@ func (s *Scanner) ComputeAndSaveDirectorySignatures() error {
 
 	var signatures []db.DirectorySignature
 	for _, folder := range folders {
-		walkErr := filepath.Walk(folder.Path, func(path string, info os.FileInfo, err error) error {
+		scanRoot, err := resolveScanRoot(folder.Path)
+		if err != nil {
+			logger.Scanner("Error resolving scan root %s: %v", folder.Path, err)
+			continue
+		}
+		walkErr := filepath.Walk(scanRoot, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}

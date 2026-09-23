@@ -1216,31 +1216,28 @@ func (a *API) browseFolder(w http.ResponseWriter, r *http.Request) {
 
 	var result []FolderEntry
 
-	// Check if we need to list available drives on Windows
-	// This happens when path is "drives" or when on root and requesting drive list
-	if req.Path == "drives" || req.Path == "/" || req.Path == "\\" {
-		// List available drives on Windows
-		if runtime.GOOS == "windows" {
-			for drive := 'A'; drive <= 'Z'; drive++ {
-				drivePath := string(drive) + ":"
-				// Check if the drive is accessible
-				if _, err := os.Stat(drivePath); err == nil {
-					result = append(result, FolderEntry{
-						Name:  drivePath,
-						Path:  drivePath + "\\",
-						IsDir: true,
-					})
-				}
+	// Windows uses a virtual "drives" root because drive letters have no
+	// common filesystem parent. Unix-like systems can browse their real root,
+	// which is needed to reach mounted volumes such as /Volumes on macOS.
+	if runtime.GOOS == "windows" && (req.Path == "drives" || req.Path == "/" || req.Path == "\\") {
+		for drive := 'A'; drive <= 'Z'; drive++ {
+			drivePath := string(drive) + ":"
+			if _, err := os.Stat(drivePath); err == nil {
+				result = append(result, FolderEntry{
+					Name:  drivePath,
+					Path:  drivePath + "\\",
+					IsDir: true,
+				})
 			}
-			respondJSON(w, map[string]interface{}{
-				"currentPath": "Drives",
-				"entries":     result,
-			})
-			return
 		}
-		// On non-Windows systems, default to home directory
-		home, _ := os.UserHomeDir()
-		req.Path = home
+		respondJSON(w, map[string]interface{}{
+			"currentPath": "Drives",
+			"entries":     result,
+		})
+		return
+	}
+	if runtime.GOOS != "windows" && (req.Path == "drives" || req.Path == "\\") {
+		req.Path = string(os.PathSeparator)
 	}
 
 	entries, err := os.ReadDir(req.Path)

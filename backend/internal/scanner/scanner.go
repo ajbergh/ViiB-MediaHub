@@ -531,6 +531,24 @@ func isSubPath(parent, child string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// resolveScanRoot returns an absolute, symlink-resolved scan root. Scanned
+// files, metadata cache entries, directory signatures, and macOS FSEvents
+// events must all use the same physical path representation.
+func resolveScanRoot(folderPath string) (string, error) {
+	if runtime.GOOS != "darwin" {
+		return folderPath, nil
+	}
+	absPath, err := filepath.Abs(folderPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve scan root %q: %w", folderPath, err)
+	}
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve scan root symlinks %q: %w", absPath, err)
+	}
+	return filepath.Clean(resolvedPath), nil
+}
+
 // IsScanning returns whether a scan is currently in progress
 func (s *Scanner) IsScanning() bool {
 	s.scanMutex.RLock()
@@ -650,7 +668,14 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 	for _, folder := range folders {
 		s.setProgress(fmt.Sprintf("Scanning: %s", folder.Path))
 
-		folderResult, scannedPaths, err := s.ScanFolderWithPaths(folder.Path)
+		scanRoot, resolveErr := resolveScanRoot(folder.Path)
+		if resolveErr != nil {
+			logger.Scanner("Error resolving scan root %s: %v", folder.Path, resolveErr)
+			result.Errors++
+			continue
+		}
+
+		folderResult, scannedPaths, err := s.ScanFolderWithPaths(scanRoot)
 		if err != nil {
 			logger.Scanner("Error scanning %s: %v", folder.Path, err)
 			result.Errors++
@@ -667,7 +692,10 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		result.UpdatedSongs += folderResult.UpdatedSongs
 		result.Errors += folderResult.Errors
 		if folderResult.Errors == 0 {
+			// Keep both forms so a full scan can reconcile records created by
+			// older versions that stored the configured symlink path.
 			deletionSafeFolderPaths[filepath.Clean(folder.Path)] = true
+			deletionSafeFolderPaths[scanRoot] = true
 		} else {
 			logger.Scanner("Skipping destructive reconciliation for %s because traversal reported %d errors", folder.Path, folderResult.Errors)
 		}
@@ -794,6 +822,12 @@ func (s *Scanner) ScanFolder(folderPath string) (*ScanResult, error) {
 
 // ScanFolderWithPaths scans a single folder for audio files and returns the list of scanned file paths
 func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string, error) {
+	resolvedFolderPath, err := resolveScanRoot(folderPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	folderPath = resolvedFolderPath
+
 	result := &ScanResult{}
 	var songs []db.Song
 	var scannedPaths []string
@@ -806,7 +840,7 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 	fileCount := 0
 	const batchSize = 50
 
-	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// Continue discovery, but mark this root unsafe for deletion reconciliation.
 			logger.Scanner("Error accessing %s: %v", path, err)

@@ -135,6 +135,11 @@ if [[ ! -d "$WAILS_DIR" ]]; then
     exit 1
 fi
 
+# The Darwin build embeds this icon from build/appicon.png. The build directory
+# is ignored, so prepare the embed asset on every local build.
+mkdir -p "$WAILS_DIR/build"
+cp "$PROJECT_ROOT/assets/icons/appicon.png" "$WAILS_DIR/build/appicon.png"
+
 # ============================================================================
 # Clean (if requested)
 # ============================================================================

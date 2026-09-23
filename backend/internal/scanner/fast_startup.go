@@ -154,7 +154,12 @@ func (s *Scanner) signatureBasedStartup() (*QuickStartupResult, error) {
 	logger.Scanner("Found %d entries in file metadata cache", len(metadataCache))
 
 	for _, folder := range folders {
-		changes, checked, unchanged, err := s.checkDirectoryWithSignature(folder.Path, sigMap, metadataCache)
+		scanRoot, err := resolveScanRoot(folder.Path)
+		if err != nil {
+			logger.Scanner("Error resolving scan root %s: %v", folder.Path, err)
+			continue
+		}
+		changes, checked, unchanged, err := s.checkDirectoryWithSignature(scanRoot, sigMap, metadataCache)
 		if err != nil {
 			logger.Scanner("Error checking directory %s: %v", folder.Path, err)
 			continue
