@@ -9,7 +9,7 @@ Current status: Implementation complete and pushed on `djv2/panel-review-fixes`;
 | Finding | Status | Progress |
 |---|---|---|
 | 1–5 | Fixed | Loop creation now has visible presets; invalid loops auto-create safely and cannot be halved/doubled; set operations preserve enabled state; loop-in is pending until loop-out. |
-| 6–9 | Partial | Overshoot is preserved, beat loops use quantize/grid timing, and displays are consistent. Loop boundaries now use a worker ticker independent of requestAnimationFrame; minimized Wails behavior still needs runtime confirmation. |
+| 6–9 | Partial | Overshoot is preserved, beat loops use quantize/grid timing, and displays are consistent. Loop boundaries use a 5 ms worker ticker plus media `timeupdate` events, independent of requestAnimationFrame; minimized Wails behavior still needs runtime confirmation. |
 | 10–12 | Fixed | Canvas idle invalidation observes waveform, duration, grid, cues, loop state, position, and backing sizes; centered mapping and max-pool sampling are used in both lanes and overview. |
 | 13–18 | Fixed | WebGL keeps the full peak series in a multirow texture with max-pooled per-pixel sampling, shares zoom/color controls, tracks renderer invalidation state, draws loop bands/edges, and marks overview regions. Both palettes are accurately named; controls, labels, overview seeking, and lane sizes are separated. |
 | 19 | Fixed | DJ page mounts MIDI dispatch, loads persisted mappings, routes transport/mixer/EQ/tempo/jog/hot-cue/FX/loop/headphone/sampler actions, and clears the handler on unmount. |
@@ -27,6 +27,7 @@ Implementation log:
 - 2026-09-23: `npm run typecheck` passed and `git diff --check` is clean. The automated test suite was not run. `gh auth status` reports the saved GitHub token is invalid, so push/PR creation is blocked until GitHub is reauthenticated. Finding 7 still needs confirmation in a minimized Wails window.
 - 2026-09-23: Pushed implementation commit `833ca11` to `origin/djv2/panel-review-fixes`. `gh auth status` reports an invalid saved token, and Git Credential Manager returned no reusable credential even with the repository marked safe, so I could not create the PR. `git push` printed the branch's GitHub PR creation link.
 - 2026-09-23: Tightened finding 7's worker/fallback interval to 5 ms and added fallback on worker errors. Pushed commit `2a3d864`; `npm run typecheck` passed after the change. Wails minimized-window runtime confirmation remains outstanding.
+- 2026-09-23: Added media `timeupdate` listeners as a second hidden-window-safe loop-wrap trigger, alongside the worker ticker. The listeners are removed during engine disposal; Wails minimized-window behavior still requires runtime confirmation.
 
 ## Scope
 

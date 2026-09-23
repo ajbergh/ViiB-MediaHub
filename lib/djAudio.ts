@@ -212,6 +212,8 @@ export class DJAudioEngine {
   private positionIdleTimer: ReturnType<typeof setTimeout> | null = null;
   private loopWorker: Worker | null = null;
   private loopCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private loopWrapOnTimeUpdateA: (() => void) | null = null;
+  private loopWrapOnTimeUpdateB: (() => void) | null = null;
 
   // VU metering state
   private vuLevels: VULevels = { deckA: { left: 0, right: 0 }, deckB: { left: 0, right: 0 }, master: { left: 0, right: 0 } };
@@ -2280,6 +2282,14 @@ export class DJAudioEngine {
   // ============================================================================
 
   private startPositionTracking(): void {
+    if (this.audioElementA && !this.loopWrapOnTimeUpdateA) {
+      this.loopWrapOnTimeUpdateA = () => this.wrapActiveLoops();
+      this.audioElementA.addEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
+    }
+    if (this.audioElementB && !this.loopWrapOnTimeUpdateB) {
+      this.loopWrapOnTimeUpdateB = () => this.wrapActiveLoops();
+      this.audioElementB.addEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
+    }
     if (typeof Worker !== 'undefined' && !this.loopWorker) {
       try {
         this.loopWorker = new Worker(new URL('./djLoopTicker.worker.ts', import.meta.url), { type: 'module' });
@@ -2472,6 +2482,10 @@ export class DJAudioEngine {
     }
     this.loopWorker?.terminate();
     this.loopWorker = null;
+    if (this.audioElementA && this.loopWrapOnTimeUpdateA) this.audioElementA.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
+    if (this.audioElementB && this.loopWrapOnTimeUpdateB) this.audioElementB.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
+    this.loopWrapOnTimeUpdateA = null;
+    this.loopWrapOnTimeUpdateB = null;
     if (this.loopCheckTimer) {
       clearInterval(this.loopCheckTimer);
       this.loopCheckTimer = null;
