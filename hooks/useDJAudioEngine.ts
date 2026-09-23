@@ -287,18 +287,25 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       // Run waveform loading asynchronously (non-blocking)
       loadWaveform();
 
-      // BPM, key, grid, and evidence come from the one-pass backend analysis.
-      // Deck loading never starts a second browser-side audio analysis.
+      // Fetch the feature record first. A missing record means there cannot be
+      // a persisted beat grid, so do not issue a second guaranteed 404.
       try {
-        const [feature, grid] = await Promise.all([
-          api.getTrackAnalysisFeature(track.id).catch(() => null),
-          api.getTrackBeatGrid(track.id).catch(() => null),
-        ]);
-        if (isTrackStillLoaded()) {
-          const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-          setDeckAnalysis(deck, resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0));
+        const feature = await api.getTrackAnalysisFeature(track.id).catch(error => {
+          if ((error as Error & { status?: number })?.status === 404) return null;
+          throw error;
+        });
+        if (!feature) {
+          if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
+        } else {
+          const grid = await api.getTrackBeatGrid(track.id).catch(() => null);
+          if (isTrackStillLoaded()) {
+            const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+            setDeckAnalysis(deck, resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0));
+            useStore.getState().setDeckAnalysisStatus(deck, 'available');
+          }
         }
       } catch (analysisErr) {
+        if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'error');
         logger.debug(`Persisted analysis unavailable for Deck ${deck}`, analysisErr);
       }
       

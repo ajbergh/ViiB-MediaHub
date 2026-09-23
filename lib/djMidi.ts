@@ -296,7 +296,7 @@ class DJMidiService {
   // Public API
   // ========================================================================
 
-  setActionHandler(handler: MidiActionHandler): void {
+  setActionHandler(handler: MidiActionHandler | null): void {
     this.actionHandler = handler;
   }
 

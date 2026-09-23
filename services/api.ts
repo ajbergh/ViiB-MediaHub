@@ -61,7 +61,9 @@ interface ApiError {
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error: ApiError = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
+    const apiError = new Error(error.error || `HTTP ${response.status}`) as Error & { status: number };
+    apiError.status = response.status;
+    throw apiError;
   }
   return response.json();
 }

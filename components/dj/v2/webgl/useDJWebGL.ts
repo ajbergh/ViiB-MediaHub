@@ -9,6 +9,7 @@
 
 import { useRef, useEffect, useCallback } from 'react';
 import { DJWebGLRenderer, DJWaveformRenderState, DJWebGLRendererOptions, DeckId } from './DJWebGLRenderer';
+import type { Loop } from '../../../../slices/djMixerSlice';
 import { shouldUseAdvancedWebGL } from '../../../../lib/webglSafety';
 
 export interface UseDJWebGLOptions extends DJWebGLRendererOptions {
@@ -29,8 +30,8 @@ export interface UseDJWebGLReturn {
   renderWaveform: (state: DJWaveformRenderState) => void;
   /** Render overview strip */
   renderOverview: (
-    deckA: { peaks: number[] | null; position: number; duration: number } | null,
-    deckB: { peaks: number[] | null; position: number; duration: number } | null
+    deckA: { peaks: number[] | null; position: number; duration: number; loop: Loop } | null,
+    deckB: { peaks: number[] | null; position: number; duration: number; loop: Loop } | null
   ) => void;
   /** Get WebGL info */
   getInfo: () => { webgl2: boolean; maxTextureSize: number } | null;
@@ -107,8 +108,8 @@ export function useDJWebGL(options: UseDJWebGLOptions = {}): UseDJWebGLReturn {
 
   // Render overview
   const renderOverview = useCallback((
-    deckA: { peaks: number[] | null; position: number; duration: number } | null,
-    deckB: { peaks: number[] | null; position: number; duration: number } | null
+    deckA: { peaks: number[] | null; position: number; duration: number; loop: Loop } | null,
+    deckB: { peaks: number[] | null; position: number; duration: number; loop: Loop } | null
   ) => {
     if (rendererRef.current) {
       rendererRef.current.renderOverview(deckA, deckB);
