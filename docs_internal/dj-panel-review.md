@@ -27,7 +27,7 @@ Implementation log:
 - 2026-09-23: `npm run typecheck` passed and `git diff --check` is clean. The automated test suite was not run. `gh auth status` reports the saved GitHub token is invalid, so push/PR creation is blocked until GitHub is reauthenticated. Finding 7 still needs confirmation in a minimized Wails window.
 - 2026-09-23: Pushed implementation commit `833ca11` to `origin/djv2/panel-review-fixes`. `gh auth status` reports an invalid saved token, and Git Credential Manager returned no reusable credential even with the repository marked safe, so I could not create the PR. `git push` printed the branch's GitHub PR creation link.
 - 2026-09-23: Tightened finding 7's worker/fallback interval to 5 ms and added fallback on worker errors. Pushed commit `2a3d864`; `npm run typecheck` passed after the change. Wails minimized-window runtime confirmation remains outstanding.
-- 2026-09-23: Added media `timeupdate` listeners as a second hidden-window-safe loop-wrap trigger, alongside the worker ticker. The listeners are removed during engine disposal; Wails minimized-window behavior still requires runtime confirmation.
+- 2026-09-23: Added media `timeupdate` listeners as a second loop-wrap trigger alongside the worker ticker, removed on engine disposal. `npm run typecheck` passed, and commit `9365a40` is pushed. Wails minimized-window behavior still requires runtime confirmation.
 
 ## Scope
 
