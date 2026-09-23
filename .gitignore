@@ -44,3 +44,5 @@ backend/cmd/viib/dist/
 /output/*
 /docs_internal/*
 sample_media/*
+.reference-bpm-venv/
+__pycache__/

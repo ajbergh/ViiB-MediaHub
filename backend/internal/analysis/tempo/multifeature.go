@@ -1,6 +1,9 @@
 package tempo
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 type periodicityCandidate struct {
 	bpm   float64
@@ -11,9 +14,13 @@ type periodicityCandidate struct {
 // representations. Each representation supplies whole-track periodicity
 // evidence; sixteen-second sections then vote only for their strongest tempo,
 // limiting the influence of intros, breakdowns, and isolated transients.
-func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate, minBPM, maxBPM, crestFactor float64, halfBPMGrid bool) Estimate {
-	energyCandidates := periodicityCandidates(energy, energyRate, minBPM, maxBPM)
-	fluxCandidates := periodicityCandidates(flux, fluxRate, minBPM, maxBPM)
+func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate, minBPM, maxBPM, crestFactor float64, method Method) Estimate {
+	findCandidates := periodicityCandidates
+	if method == MethodMultiFeatureRefined {
+		findCandidates = refinedPeriodicityCandidates
+	}
+	energyCandidates := findCandidates(energy, energyRate, minBPM, maxBPM)
+	fluxCandidates := findCandidates(flux, fluxRate, minBPM, maxBPM)
 	if len(energyCandidates) == 0 || len(fluxCandidates) == 0 {
 		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
 	}
@@ -36,9 +43,89 @@ func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate,
 	}
 	addCandidates(energyCandidates, 0.55)
 	addCandidates(fluxCandidates, 0.45)
-	addSectionVotes(votes, energy, energyRate, minBPM, maxBPM, 0.20)
-	addSectionVotes(votes, flux, fluxRate, minBPM, maxBPM, 0.20)
+	addSectionVotes(votes, energy, energyRate, minBPM, maxBPM, 0.20, findCandidates)
+	addSectionVotes(votes, flux, fluxRate, minBPM, maxBPM, 0.20, findCandidates)
 
+	primary, alternate, confidence := selectConsensusVotes(votes, method != MethodMultiFeatureConsensus)
+	if method == MethodMultiFeatureClustered || method == MethodMultiFeatureRefined {
+		primary, alternate, confidence = selectClusteredVotes(votes, 5)
+	}
+	if primary == 0 {
+		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
+	}
+	return Estimate{
+		BPM:              primary,
+		Alternate:        alternate,
+		Confidence:       confidence,
+		Stability:        sectionAgreement(energy, energyRate, minBPM, maxBPM, primary, findCandidates),
+		OnsetCrestFactor: crestFactor,
+		Known:            true,
+		AlgorithmVersion: AlgorithmVersion,
+	}
+}
+
+// selectClusteredVotes measures disjoint neighborhoods, rather than counting
+// almost-identical tenth-BPM estimates as competing rhythmic hypotheses. Each
+// original vote contributes to at most one cluster. A fixed radius prevents
+// chains of adjacent votes from merging distant tempos. Sorted accumulation
+// keeps floating-point sums independent of Go map iteration order.
+func selectClusteredVotes(votes map[int]float64, radius int) (primary, alternate, confidence float64) {
+	buckets := make([]int, 0, len(votes))
+	for bucket, vote := range votes {
+		if vote > 0 {
+			buckets = append(buckets, bucket)
+		}
+	}
+	sort.Ints(buckets)
+	clusters := make([]periodicityCandidate, 0, 2)
+	for len(buckets) > 0 && len(clusters) < 2 {
+		bestCenter, bestScore, bestWeighted := 0, 0.0, 0.0
+		for _, center := range buckets {
+			score, weighted := 0.0, 0.0
+			for _, bucket := range buckets {
+				if bucket >= center-radius && bucket <= center+radius {
+					score += votes[bucket]
+					weighted += float64(bucket) * votes[bucket]
+				}
+			}
+			if score > bestScore {
+				bestCenter, bestScore, bestWeighted = center, score, weighted
+			}
+		}
+		if bestScore <= 0 {
+			break
+		}
+		clusters = append(clusters, periodicityCandidate{bpm: math.Round(bestWeighted/bestScore/5) / 2, score: bestScore})
+		remaining := buckets[:0]
+		for _, bucket := range buckets {
+			if bucket < bestCenter-radius || bucket > bestCenter+radius {
+				remaining = append(remaining, bucket)
+			}
+		}
+		buckets = remaining
+	}
+	if len(clusters) == 0 {
+		return 0, 0, 0
+	}
+	primary, confidence = clusters[0].bpm, 1
+	if len(clusters) > 1 {
+		alternate = clusters[1].bpm
+		confidence = math.Max(0, 1-clusters[1].score/clusters[0].score)
+	}
+	if alternate == 0 || alternate == primary {
+		alternate = primary * 2
+		if primary >= 120 {
+			alternate = primary / 2
+		}
+		alternate = math.Round(alternate*2) / 2
+	}
+	return primary, alternate, confidence
+}
+
+// selectConsensusVotes keeps the confidence runner-up separate from the
+// displayed alternative. Nearby competitors still reduce confidence even when
+// rounding would display them as the same BPM.
+func selectConsensusVotes(votes map[int]float64, halfBPMGrid bool) (primary, alternate, confidence float64) {
 	bestBucket, bestVote := 0, -math.MaxFloat64
 	runnerUpVote := -math.MaxFloat64
 	for bucket, vote := range votes {
@@ -50,21 +137,27 @@ func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate,
 		}
 	}
 	if bestBucket == 0 || bestVote <= 0 {
-		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
+		return 0, 0, 0
 	}
 
-	primary := float64(bestBucket) / 10
+	primary = float64(bestBucket) / 10
 	if halfBPMGrid {
 		primary = math.Round(primary*2) / 2
 	}
-	alternate := 0.0
+	alternateBucket, alternateVote := 0, -math.MaxFloat64
 	for bucket, vote := range votes {
 		if bucket == bestBucket || math.Abs(float64(bucket-bestBucket)) < 2 {
 			continue
 		}
-		if alternate == 0 || vote > runnerUpVote {
-			alternate = float64(bucket) / 10
-			runnerUpVote = vote
+		candidate := float64(bucket) / 10
+		if halfBPMGrid {
+			candidate = math.Round(candidate*2) / 2
+		}
+		if candidate == primary {
+			continue
+		}
+		if vote > alternateVote || (vote == alternateVote && bucket < alternateBucket) {
+			alternate, alternateBucket, alternateVote = candidate, bucket, vote
 		}
 	}
 	if alternate == 0 {
@@ -78,20 +171,20 @@ func estimateMultiFeatureConsensus(energy, flux []float64, energyRate, fluxRate,
 		alternate = math.Round(alternate*2) / 2
 	}
 	margin := bestVote - math.Max(0, runnerUpVote)
-	confidence := math.Max(0, math.Min(1, margin/math.Max(0.05, bestVote)))
-	return Estimate{
-		BPM:              primary,
-		Alternate:        alternate,
-		Confidence:       confidence,
-		Stability:        sectionAgreement(energy, energyRate, minBPM, maxBPM, primary),
-		OnsetCrestFactor: crestFactor,
-		Known:            true,
-		AlgorithmVersion: AlgorithmVersion,
-	}
+	confidence = math.Max(0, math.Min(1, margin/math.Max(0.05, bestVote)))
+	return primary, alternate, confidence
 }
 
 func periodicityCandidates(values []float64, rate, minBPM, maxBPM float64) []periodicityCandidate {
-	if rate <= 0 || len(values) < 8 {
+	return periodicityCandidatesWithRefinement(values, rate, minBPM, maxBPM, false)
+}
+
+func refinedPeriodicityCandidates(values []float64, rate, minBPM, maxBPM float64) []periodicityCandidate {
+	return periodicityCandidatesWithRefinement(values, rate, minBPM, maxBPM, true)
+}
+
+func periodicityCandidatesWithRefinement(values []float64, rate, minBPM, maxBPM float64, refineCycles bool) []periodicityCandidate {
+	if rate <= 0 || minBPM <= 0 || maxBPM < minBPM || len(values) < 8 {
 		return nil
 	}
 	stride := max(1, int(math.Round(rate/125)))
@@ -118,17 +211,33 @@ func periodicityCandidates(values []float64, rate, minBPM, maxBPM float64) []per
 	}
 	minLag := max(1, int(math.Ceil(60*rate/maxBPM)))
 	maxLag := min(len(collapsed)-1, int(math.Floor(60*rate/minBPM)))
+	if refineCycles {
+		// Measure guard lags outside the requested range so a peak at a
+		// boundary still has two measured neighbors. Do not turn a monotonic
+		// boundary slope into an invented one-sided peak.
+		minLag = max(1, int(math.Floor(60*rate/maxBPM))-1)
+		maxLag = min(len(collapsed)-1, int(math.Ceil(60*rate/minBPM))+1)
+	}
 	if minLag > maxLag {
 		return nil
 	}
 	scores := make([]float64, maxLag-minLag+1)
+	correlations := make(map[int]float64)
+	correlation := func(lag int) float64 {
+		if value, present := correlations[lag]; present {
+			return value
+		}
+		value := normalizedAutocorrelation(collapsed, lag)
+		correlations[lag] = value
+		return value
+	}
 	for lag := minLag; lag <= maxLag; lag++ {
-		score := normalizedAutocorrelation(collapsed, lag)
+		score := correlation(lag)
 		if 2*lag < len(collapsed) {
-			score += 0.45 * normalizedAutocorrelation(collapsed, 2*lag)
+			score += 0.45 * correlation(2*lag)
 		}
 		if 3*lag < len(collapsed) {
-			score += 0.20 * normalizedAutocorrelation(collapsed, 3*lag)
+			score += 0.20 * correlation(3*lag)
 		}
 		scores[lag-minLag] = score
 	}
@@ -150,17 +259,68 @@ func periodicityCandidates(values []float64, rate, minBPM, maxBPM float64) []per
 			offset = math.Max(-0.5, math.Min(0.5, offset))
 		}
 		lag := float64(minLag+index) + offset
-		candidates = append(candidates, periodicityCandidate{bpm: 60 * rate / lag, score: current})
+		if refineCycles {
+			lag = refinePeriodAcrossCycles(lag, len(collapsed), correlation)
+		}
+		bpm := 60 * rate / lag
+		if refineCycles {
+			// Allow one tenth-BPM voting bin of interpolation uncertainty at
+			// an exact boundary, not the much wider half-BPM display grid.
+			// Otherwise an out-of-range half-tempo (e.g. 89.75 for 179.5)
+			// can round into the range and displace the in-range hypothesis.
+			if bpm < minBPM-.1 || bpm > maxBPM+.1 {
+				continue
+			}
+			bpm = math.Max(minBPM, math.Min(maxBPM, bpm))
+		}
+		candidates = append(candidates, periodicityCandidate{bpm: bpm, score: current})
 	}
 	return candidates
 }
 
-func addSectionVotes(votes map[int]float64, values []float64, rate, minBPM, maxBPM, weight float64) {
+// refinePeriodAcrossCycles uses longer observed cycles for sub-frame timing.
+// An interpolation error at four beats is divided by four when estimating a
+// single beat. Each search stays near the original measured hypothesis and
+// requires a positive, two-sided autocorrelation maximum.
+func refinePeriodAcrossCycles(period float64, length int, correlation func(int) float64) float64 {
+	weighted, weight := 0.0, 0.0
+	for multiple := 2; multiple <= 4; multiple++ {
+		center := int(math.Round(period * float64(multiple)))
+		radius := multiple
+		bestLag, bestScore := 0, 0.0
+		for lag := max(2, center-radius); lag <= min(length-2, center+radius); lag++ {
+			score := correlation(lag)
+			if score > bestScore && score >= correlation(lag-1) && score >= correlation(lag+1) {
+				bestLag, bestScore = lag, score
+			}
+		}
+		if bestLag == 0 {
+			continue
+		}
+		left, right := correlation(bestLag-1), correlation(bestLag+1)
+		denominator := left - 2*bestScore + right
+		offset := 0.0
+		if denominator < -1e-12 {
+			offset = math.Max(-.5, math.Min(.5, .5*(left-right)/denominator))
+		}
+		w := bestScore * float64(multiple)
+		weighted += w * (float64(bestLag) + offset) / float64(multiple)
+		weight += w
+	}
+	if weight == 0 {
+		return period
+	}
+	return weighted / weight
+}
+
+type periodicityFinder func([]float64, float64, float64, float64) []periodicityCandidate
+
+func addSectionVotes(votes map[int]float64, values []float64, rate, minBPM, maxBPM, weight float64, findCandidates periodicityFinder) {
 	sectionLength := max(1, int(math.Round(16*rate)))
 	sections := 0
 	for start := 0; start+sectionLength/2 <= len(values); start += sectionLength {
 		end := min(start+sectionLength, len(values))
-		candidates := periodicityCandidates(values[start:end], rate, minBPM, maxBPM)
+		candidates := findCandidates(values[start:end], rate, minBPM, maxBPM)
 		if len(candidates) == 0 {
 			continue
 		}
@@ -178,12 +338,12 @@ func addSectionVotes(votes map[int]float64, values []float64, rate, minBPM, maxB
 	}
 }
 
-func sectionAgreement(values []float64, rate, minBPM, maxBPM, primary float64) float64 {
+func sectionAgreement(values []float64, rate, minBPM, maxBPM, primary float64, findCandidates periodicityFinder) float64 {
 	sectionLength := max(1, int(math.Round(16*rate)))
 	matched, total := 0, 0
 	for start := 0; start+sectionLength/2 <= len(values); start += sectionLength {
 		end := min(start+sectionLength, len(values))
-		candidates := periodicityCandidates(values[start:end], rate, minBPM, maxBPM)
+		candidates := findCandidates(values[start:end], rate, minBPM, maxBPM)
 		if len(candidates) == 0 {
 			continue
 		}

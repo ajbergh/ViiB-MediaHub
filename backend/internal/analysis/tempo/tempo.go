@@ -34,6 +34,14 @@ const (
 	// the current production method; accuracy qualification remains a separate
 	// benchmark/release concern.
 	MethodMultiFeatureHalfBPM Method = "multifeature-half-bpm"
+	// MethodMultiFeatureClustered is a tuning candidate that consolidates nearby
+	// periodicity votes before selecting a tempo. It is not the product default.
+	MethodMultiFeatureClustered Method = "multifeature-clustered-half-bpm"
+	MethodMultiFeatureRefined   Method = "multifeature-refined-half-bpm"
+	// MethodBeatIntervalConsistency is a benchmark-only candidate. It scores
+	// observed onset intervals against periodicity hypotheses; it is never the
+	// production default until separately qualified.
+	MethodBeatIntervalConsistency Method = "beat-interval-consistency"
 )
 
 // Options configure candidate bounds and metrical range priors.
@@ -71,7 +79,7 @@ type Estimate struct {
 	AlgorithmVersion string
 }
 
-const AlgorithmVersion = "tempo-v2-multifeature-half-bpm"
+const AlgorithmVersion = "tempo-v3-multifeature-half-bpm"
 
 // minOnsetCrestFactor is the least impulsive an onset envelope may be before
 // tempo is refused. A sustained source — a drone, pad, sine tone, or spoken
@@ -206,7 +214,10 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
 	}
 	minBPM, maxBPM := resolveBounds(a.options)
-	if a.options.Method == MethodMultiFeatureConsensus || a.options.Method == MethodMultiFeatureHalfBPM {
+	if a.options.Method == MethodBeatIntervalConsistency {
+		return estimateBeatIntervalConsistency(onsets, a.positions, a.fluxEnvelope, float64(a.sampleRate)/float64(a.hop), float64(a.sampleRate)/float64(a.fluxSTFT.HopSize), float64(a.sampleRate), minBPM, maxBPM, crestFactor)
+	}
+	if a.options.Method == MethodMultiFeatureConsensus || a.options.Method == MethodMultiFeatureHalfBPM || a.options.Method == MethodMultiFeatureClustered || a.options.Method == MethodMultiFeatureRefined {
 		return estimateMultiFeatureConsensus(
 			onsets,
 			a.fluxEnvelope,
@@ -215,7 +226,7 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 			minBPM,
 			maxBPM,
 			crestFactor,
-			a.options.Method == MethodMultiFeatureHalfBPM,
+			a.options.Method,
 		)
 	}
 	if a.options.Method == MethodOnsetAutocorrelation {

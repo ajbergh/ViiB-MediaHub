@@ -100,6 +100,78 @@ jobs:
         if: ${{ steps.backend_checks.outcome == 'failure' }}
         run: exit 1
 
+  analysis-platform:
+    name: Track analysis (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: darwin
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.8'
+          cache-dependency-path: backend/go.sum
+      - name: Validate analysis and generate production fixture results
+        run: |
+          set -euo pipefail
+          mkdir -p .ci
+          go test ./internal/analysis/... ./internal/analysisbench ./cmd/analysisbench
+          go run ./cmd/analysisbench -synthetic-results-out ".ci/analysis-${{ matrix.platform }}.json" > .ci/analysis-fixtures.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: analysis-platform-${{ matrix.platform }}
+          path: backend/.ci/analysis-${{ matrix.platform }}.json
+          if-no-files-found: error
+          retention-days: 14
+
+  analysis-determinism:
+    name: Track analysis scalar determinism
+    needs: analysis-platform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.8'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: analysis-platform-*
+          path: backend/.ci/determinism
+          merge-multiple: true
+      - name: Compare all three native platform results
+        run: |
+          go run ./cmd/analysisbench -determinism-results .ci/determinism/analysis-windows.json,.ci/determinism/analysis-linux.json,.ci/determinism/analysis-darwin.json > .ci/determinism/report.json
+          python3 -c 'import json,sys; r=json.load(open(".ci/determinism/report.json"))["determinism"]; print(json.dumps(r,indent=2)); sys.exit(r["status"] != "pass")'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: analysis-determinism-report
+          path: backend/.ci/determinism/report.json
+          if-no-files-found: error
+          retention-days: 14
+
   semantic-cross-compile:
     name: Semantic foundation (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest

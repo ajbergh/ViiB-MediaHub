@@ -4,6 +4,7 @@
   "tracks": [
     {
       "id": "click-120",
+      "recordingGroup": "fixture:click-120",
       "path": "fixture:click-120",
       "license": "generated",
       "labelSource": "deterministic fixture generator",
@@ -14,6 +15,7 @@
     },
     {
       "id": "click-128.5",
+      "recordingGroup": "fixture:click-128.5",
       "path": "fixture:click-128.5",
       "license": "generated",
       "labelSource": "deterministic fixture generator",
@@ -24,6 +26,7 @@
     },
     {
       "id": "silence",
+      "recordingGroup": "fixture:silence",
       "path": "fixture:silence",
       "license": "generated",
       "labelSource": "deterministic fixture generator",

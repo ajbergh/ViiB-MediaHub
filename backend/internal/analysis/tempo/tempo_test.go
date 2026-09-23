@@ -29,7 +29,7 @@ func TestDefaultOptionsSelectRealCorpusCandidate(t *testing.T) {
 	if options.Method != MethodMultiFeatureHalfBPM || options.MinOnsetCrestFactor != 15 {
 		t.Fatalf("DefaultOptions() = %#v, want held-out real-corpus selection", options)
 	}
-	if AlgorithmVersion != "tempo-v2-multifeature-half-bpm" {
+	if AlgorithmVersion != "tempo-v3-multifeature-half-bpm" {
 		t.Fatalf("AlgorithmVersion = %q, want promoted candidate version", AlgorithmVersion)
 	}
 }
@@ -94,7 +94,7 @@ func TestOnsetAccumulatorMatchesOneShotAcrossChunkBoundaries(t *testing.T) {
 		start = end
 	}
 	got := accumulator.Estimate()
-	if !got.Known || math.Abs(got.BPM-want.BPM) > .001 || got.Confidence != want.Confidence {
+	if !got.Known || math.Abs(got.BPM-want.BPM) > .001 || got.Confidence != want.Confidence || got.Alternate != want.Alternate || got.Stability != want.Stability {
 		t.Fatalf("chunked = %#v, one-shot = %#v", got, want)
 	}
 }

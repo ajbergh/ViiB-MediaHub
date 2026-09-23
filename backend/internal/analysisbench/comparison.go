@@ -35,10 +35,13 @@ type CorpusManifest struct {
 
 // CorpusTrack mirrors roadmap §14.1 while adding the required split field.
 type CorpusTrack struct {
-	ID                string    `json:"id"`
-	Path              string    `json:"path"`
-	License           string    `json:"license"`
-	LabelSource       string    `json:"labelSource"`
+	ID          string `json:"id"`
+	Path        string `json:"path"`
+	License     string `json:"license"`
+	LabelSource string `json:"labelSource"`
+	// RecordingGroup must be shared by alternate encodings/copies of the same
+	// recording. Label-derived groups are conservative until independently reviewed.
+	RecordingGroup    string    `json:"recordingGroup,omitempty"`
 	Genre             string    `json:"genre"`
 	Coverage          []string  `json:"coverage,omitempty"`
 	Split             string    `json:"split"`
@@ -75,17 +78,21 @@ func ManifestForSplit(manifest CorpusManifest, split string) (CorpusManifest, er
 // implementation. Keeping it JSON-only prevents a benchmark from importing
 // Web Audio code into the Go process.
 type ResultSet struct {
-	Algorithm  string             `json:"algorithm"`
-	Results    []DetectorResult   `json:"results"`
-	Throughput *ThroughputMetrics `json:"throughput,omitempty"`
+	Algorithm string `json:"algorithm"`
+	// Configuration records the exact analyzer options supplied to this run.
+	// Optional for legacy and browser exports; new Go producers always emit it.
+	Configuration json.RawMessage    `json:"configuration,omitempty"`
+	Results       []DetectorResult   `json:"results"`
+	Throughput    *ThroughputMetrics `json:"throughput,omitempty"`
 }
 
 // DetectorResult intentionally permits unknown BPM/key values. A missing
 // result must be counted, not converted into a plausible default.
 type DetectorResult struct {
-	ID  string   `json:"id"`
-	BPM *float64 `json:"bpm,omitempty"`
-	Key string   `json:"key,omitempty"`
+	ID           string   `json:"id"`
+	BPM          *float64 `json:"bpm,omitempty"`
+	AlternateBPM *float64 `json:"alternateBpm,omitempty"`
+	Key          string   `json:"key,omitempty"`
 	// Confidence remains the legacy/browser confidence field. New producers
 	// should use the dimension-specific fields so tempo and key calibration
 	// cannot accidentally share an unrelated score.
@@ -94,22 +101,26 @@ type DetectorResult struct {
 	KeyConfidence    *float64 `json:"keyConfidence,omitempty"`
 	TempoCrestFactor *float64 `json:"tempoCrestFactor,omitempty"`
 	TempoStability   *float64 `json:"tempoStability,omitempty"`
-	KeyFlatness      *float64 `json:"keyFlatness,omitempty"`
-	Status           string   `json:"status,omitempty"`
-	Error            string   `json:"error,omitempty"`
-	ErrorMessage     string   `json:"errorMessage,omitempty"`
+	// BeatPositions are observed beat ticks in seconds. They are reference
+	// evidence for grid analysis; Phase 0 currently scores BPM separately.
+	BeatPositions []float64 `json:"beatPositions,omitempty"`
+	KeyFlatness   *float64  `json:"keyFlatness,omitempty"`
+	Status        string    `json:"status,omitempty"`
+	Error         string    `json:"error,omitempty"`
+	ErrorMessage  string    `json:"errorMessage,omitempty"`
 }
 
 // ComparisonReport contains metrics for exactly one manifest split.
 type ComparisonReport struct {
-	Algorithm   string                `json:"algorithm"`
-	Split       string                `json:"split"`
-	Corpus      CorpusCoverage        `json:"corpus"`
-	Tempo       TempoMetrics          `json:"tempo"`
-	Key         KeyMetrics            `json:"key"`
-	Unknown     UnknownMetrics        `json:"unknown"`
-	Calibration ConfidenceCalibration `json:"calibration"`
-	Throughput  *ThroughputMetrics    `json:"throughput,omitempty"`
+	Algorithm     string                `json:"algorithm"`
+	Configuration json.RawMessage       `json:"configuration,omitempty"`
+	Split         string                `json:"split"`
+	Corpus        CorpusCoverage        `json:"corpus"`
+	Tempo         TempoMetrics          `json:"tempo"`
+	Key           KeyMetrics            `json:"key"`
+	Unknown       UnknownMetrics        `json:"unknown"`
+	Calibration   ConfidenceCalibration `json:"calibration"`
+	Throughput    *ThroughputMetrics    `json:"throughput,omitempty"`
 }
 
 // ConfidenceCalibration shows whether reported confidence predicts actual
@@ -145,18 +156,29 @@ type UnknownMetrics struct {
 	Accuracy  *float64 `json:"accuracy,omitempty"`
 }
 
+const (
+	// Phase0MinimumTracks and Phase0MinimumHeldOutTracks are fixed qualification
+	// targets. They must not be derived from a smaller, incomplete manifest.
+	Phase0MinimumTracks        = 200
+	Phase0MinimumHeldOutTracks = 67
+)
+
 // CorpusCoverage makes it impossible for a tiny smoke-test manifest to look
-// like a Phase 0 exit-gate result. The 200-track, one-third held-out rule comes
+// like a Phase 0 exit-gate result. The 200-track, 67-held-out target comes
 // directly from the roadmap and remains visible in every comparison report.
 type CorpusCoverage struct {
-	Tracks                  int      `json:"tracks"`
-	TracksInSplit           int      `json:"tracksInSplit"`
-	HeldOutTracks           int      `json:"heldOutTracks"`
-	DistinctGenres          []string `json:"distinctGenres"`
-	EvidenceClass           string   `json:"evidenceClass"`
-	MissingRequiredCoverage []string `json:"missingRequiredCoverage"`
-	Phase0Ready             bool     `json:"phase0Ready"`
-	ReadinessMessage        string   `json:"readinessMessage"`
+	Tracks                        int                    `json:"tracks"`
+	TracksInSplit                 int                    `json:"tracksInSplit"`
+	HeldOutTracks                 int                    `json:"heldOutTracks"`
+	TracksNeeded                  int                    `json:"tracksNeeded"`
+	HeldOutTracksNeededAtTarget   int                    `json:"heldOutTracksNeededAtTarget"`
+	HeldOutStableElectronicTracks int                    `json:"heldOutStableElectronicTracks"`
+	DistinctGenres                []string               `json:"distinctGenres"`
+	EvidenceClass                 string                 `json:"evidenceClass"`
+	MissingRequiredCoverage       []string               `json:"missingRequiredCoverage"`
+	Phase0Ready                   bool                   `json:"phase0Ready"`
+	ReadinessMessage              string                 `json:"readinessMessage"`
+	RecordingIdentity             RecordingIdentityAudit `json:"recordingIdentity"`
 }
 
 // TempoMetrics keeps raw counts beside percentages so a small corpus cannot
@@ -281,6 +303,12 @@ func (resultSet ResultSet) Validate() error {
 	if strings.TrimSpace(resultSet.Algorithm) == "" {
 		return fmt.Errorf("result algorithm is required")
 	}
+	if len(resultSet.Configuration) > 0 {
+		var configuration map[string]json.RawMessage
+		if err := json.Unmarshal(resultSet.Configuration, &configuration); err != nil || len(configuration) == 0 {
+			return fmt.Errorf("result configuration must be a non-empty JSON object")
+		}
+	}
 	seen := make(map[string]struct{}, len(resultSet.Results))
 	for index, result := range resultSet.Results {
 		if strings.TrimSpace(result.ID) == "" {
@@ -293,9 +321,25 @@ func (resultSet ResultSet) Validate() error {
 		if result.BPM != nil && (*result.BPM <= 0 || math.IsNaN(*result.BPM) || math.IsInf(*result.BPM, 0)) {
 			return fmt.Errorf("result %q has invalid BPM", result.ID)
 		}
+		if result.AlternateBPM != nil && (result.BPM == nil || *result.AlternateBPM <= 0 || math.IsNaN(*result.AlternateBPM) || math.IsInf(*result.AlternateBPM, 0)) {
+			return fmt.Errorf("result %q has invalid alternate BPM", result.ID)
+		}
 		for label, confidence := range map[string]*float64{"confidence": result.Confidence, "tempo confidence": result.TempoConfidence, "key confidence": result.KeyConfidence} {
 			if confidence != nil && (*confidence < 0 || *confidence > 1 || math.IsNaN(*confidence) || math.IsInf(*confidence, 0)) {
 				return fmt.Errorf("result %q has invalid %s", result.ID, label)
+			}
+		}
+		for label, scalar := range map[string]*float64{"tempo stability": result.TempoStability, "key flatness": result.KeyFlatness, "tempo crest factor": result.TempoCrestFactor} {
+			if scalar != nil && (math.IsNaN(*scalar) || math.IsInf(*scalar, 0) || *scalar < 0 || (label != "tempo crest factor" && *scalar > 1)) {
+				return fmt.Errorf("result %q has invalid %s", result.ID, label)
+			}
+		}
+		for tickIndex, tick := range result.BeatPositions {
+			if math.IsNaN(tick) || math.IsInf(tick, 0) || tick < 0 {
+				return fmt.Errorf("result %q has invalid beat position %d", result.ID, tickIndex)
+			}
+			if tickIndex > 0 && tick <= result.BeatPositions[tickIndex-1] {
+				return fmt.Errorf("result %q has non-ascending beat positions", result.ID)
 			}
 		}
 		if strings.TrimSpace(result.Key) != "" && !strings.EqualFold(strings.TrimSpace(result.Key), "unknown") {
@@ -323,7 +367,7 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 	for _, result := range resultSet.Results {
 		results[result.ID] = result
 	}
-	report := ComparisonReport{Algorithm: resultSet.Algorithm, Split: split, Corpus: Coverage(manifest, split), Throughput: resultSet.Throughput}
+	report := ComparisonReport{Algorithm: resultSet.Algorithm, Configuration: resultSet.Configuration, Split: split, Corpus: Coverage(manifest, split), Throughput: resultSet.Throughput}
 	for _, track := range manifest.Tracks {
 		if track.Split != split {
 			continue
@@ -331,7 +375,9 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 		result, present := results[track.ID]
 		if track.ExpectedUnknown {
 			report.Unknown.Labeled++
-			if !present || (result.BPM == nil && (strings.TrimSpace(result.Key) == "" || strings.EqualFold(strings.TrimSpace(result.Key), "unknown"))) {
+			// Only an observed refusal is correct. Missing/failed analysis is
+			// missing evidence, even if no scalar values were produced.
+			if present && result.Error == "" && result.ErrorMessage == "" && (result.Status == "" || result.Status == "unknown") && result.BPM == nil && (strings.TrimSpace(result.Key) == "" || strings.EqualFold(strings.TrimSpace(result.Key), "unknown")) {
 				report.Unknown.Correct++
 			} else {
 				report.Unknown.Incorrect++
@@ -460,6 +506,7 @@ func calibrateConfidence(manifest CorpusManifest, results map[string]DetectorRes
 // does not check audio file existence because corpora are intentionally local.
 func Coverage(manifest CorpusManifest, split string) CorpusCoverage {
 	coverage := CorpusCoverage{Tracks: len(manifest.Tracks), EvidenceClass: manifest.EvidenceClass, DistinctGenres: RequiredGenres(manifest, split)}
+	coverage.RecordingIdentity = AuditRecordingIdentity(manifest)
 	covered := make(map[string]struct{})
 	for _, track := range manifest.Tracks {
 		if track.Split == split {
@@ -468,9 +515,16 @@ func Coverage(manifest CorpusManifest, split string) CorpusCoverage {
 		if track.Split == SplitHeldOut {
 			coverage.HeldOutTracks++
 		}
-		covered[normalizeCoverageTag(track.Genre)] = struct{}{}
+		genre := normalizeCoverageTag(track.Genre)
+		covered[genre] = struct{}{}
+		stableElectronic := genre == "stable-electronic"
 		for _, tag := range track.Coverage {
-			covered[normalizeCoverageTag(tag)] = struct{}{}
+			normalized := normalizeCoverageTag(tag)
+			covered[normalized] = struct{}{}
+			stableElectronic = stableElectronic || normalized == "stable-electronic"
+		}
+		if track.Split == SplitHeldOut && stableElectronic {
+			coverage.HeldOutStableElectronicTracks++
 		}
 	}
 	for _, required := range RequiredCorpusCoverage() {
@@ -478,16 +532,26 @@ func Coverage(manifest CorpusManifest, split string) CorpusCoverage {
 			coverage.MissingRequiredCoverage = append(coverage.MissingRequiredCoverage, required)
 		}
 	}
-	minimumHeldOut := (coverage.Tracks + 2) / 3
+	coverage.TracksNeeded = max(0, Phase0MinimumTracks-coverage.Tracks)
+	coverage.HeldOutTracksNeededAtTarget = max(0, Phase0MinimumHeldOutTracks-coverage.HeldOutTracks)
 	deficits := make([]string, 0, 4)
+	if coverage.RecordingIdentity.UnidentifiedTracks > 0 {
+		deficits = append(deficits, fmt.Sprintf("%d tracks lack recording-group identity for duplicate/split-leakage review", coverage.RecordingIdentity.UnidentifiedTracks))
+	}
+	if len(coverage.RecordingIdentity.RepeatedGroups) > 0 {
+		deficits = append(deficits, fmt.Sprintf("%d repeated recording groups require deduplication or identity review (%d cross the tuning/held-out boundary)", len(coverage.RecordingIdentity.RepeatedGroups), coverage.RecordingIdentity.CrossSplitGroups))
+	}
 	if manifest.EvidenceClass != EvidenceLawfulRealAudio {
 		deficits = append(deficits, fmt.Sprintf("evidence class must be %q; %q is regression evidence only", EvidenceLawfulRealAudio, manifest.EvidenceClass))
 	}
-	if coverage.Tracks < 200 {
-		deficits = append(deficits, fmt.Sprintf("needs %d additional tracks to meet the 200-track Phase 0 minimum", 200-coverage.Tracks))
+	if coverage.TracksNeeded > 0 {
+		deficits = append(deficits, fmt.Sprintf("needs %d additional tracks to meet the %d-track Phase 0 minimum", coverage.TracksNeeded, Phase0MinimumTracks))
 	}
-	if coverage.HeldOutTracks < minimumHeldOut {
-		deficits = append(deficits, fmt.Sprintf("needs %d additional held-out tracks to reserve one third of the corpus", minimumHeldOut-coverage.HeldOutTracks))
+	if coverage.HeldOutTracksNeededAtTarget > 0 {
+		deficits = append(deficits, fmt.Sprintf("needs %d additional held-out tracks to meet the %d-track qualification target", coverage.HeldOutTracksNeededAtTarget, Phase0MinimumHeldOutTracks))
+	}
+	if coverage.HeldOutStableElectronicTracks == 0 {
+		deficits = append(deficits, "needs held-out stable-electronic coverage")
 	}
 	if len(coverage.MissingRequiredCoverage) > 0 {
 		deficits = append(deficits, fmt.Sprintf("missing required Phase 0 coverage: %s", strings.Join(coverage.MissingRequiredCoverage, ", ")))
@@ -508,7 +572,7 @@ func RequiredCorpusCoverage() []string {
 	return []string{
 		"house", "techno", "drum-and-bass", "hip-hop", "breakbeat",
 		"rock-live-drums", "disco", "ambient", "acoustic", "sparse-no-percussion",
-		"meter-3-4-or-6-8", "tempo-ramp-or-switch", "tempo-70-140-ambiguity", "tempo-85-170-ambiguity",
+		"stable-electronic", "meter-3-4-or-6-8", "tempo-ramp-or-switch", "tempo-70-140-ambiguity", "tempo-85-170-ambiguity",
 	}
 }
 

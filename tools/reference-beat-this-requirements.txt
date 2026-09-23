@@ -1,0 +1,11 @@
+# Development-only external BPM reference. Never add these to ViiB runtime deps.
+--extra-index-url https://download.pytorch.org/whl/cpu
+beat-this==1.1.0
+torch==2.5.1+cpu
+torchaudio==2.5.1+cpu
+numpy==2.4.6
+soundfile==0.14.0
+soxr==1.1.0
+einops==0.8.2
+rotary-embedding-torch==0.9.1
+tqdm==4.70.1
