@@ -475,10 +475,120 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  web:
+    name: Package web/browser (${{ matrix.target }})
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            runner: windows-latest
+            goos: windows
+            goarch: amd64
+            executable: ViiB-MediaHub-Web.exe
+          - target: windows-arm64
+            runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            executable: ViiB-MediaHub-Web.exe
+          - target: macos-x64
+            runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            executable: ViiB-MediaHub-Web
+          - target: macos-arm64
+            runner: macos-15
+            goos: darwin
+            goarch: arm64
+            executable: ViiB-MediaHub-Web
+          - target: linux-amd64
+            runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            executable: ViiB-MediaHub-Web
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            executable: ViiB-MediaHub-Web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Linux tray dependencies
+        if: matrix.goos == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libayatana-appindicator3-dev
+
+      - name: Download validated frontend bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: validated-frontend-dist
+          path: backend/cmd/viib/dist
+
+      - name: Build and package embedded web server
+        shell: bash
+        working-directory: backend
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          EXPECTED_GOOS: ${{ matrix.goos }}
+          EXPECTED_GOARCH: ${{ matrix.goarch }}
+          EXECUTABLE: ${{ matrix.executable }}
+        run: |
+          set -euo pipefail
+          test "$(go env GOOS)" = "$EXPECTED_GOOS"
+          test "$(go env GOARCH)" = "$EXPECTED_GOARCH"
+          mkdir -p ../web-package
+          go build -trimpath -ldflags '-s -w' -o "../web-package/$EXECUTABLE" ./cmd/viib
+          test -s "../web-package/$EXECUTABLE"
+          cat > ../web-package/README.txt <<EOF
+          ViiB MediaHub ${VERSION} - web/browser mode (${TARGET})
+
+          Run ${EXECUTABLE} to start the local server and open the browser.
+          The frontend is embedded in this executable; no separate web server is needed.
+          Use -no-tray to run without a system tray, or -port 8080 for a fixed port.
+          The server binds to 127.0.0.1 (localhost) only.
+          EOF
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+
+          folder = Path('../web-package')
+          archive = Path('..') / f"ViiB-MediaHub-{os.environ['VERSION']}-web-{os.environ['TARGET']}.zip"
+          with ZipFile(archive, 'w', compression=ZIP_DEFLATED, compresslevel=6) as zf:
+              for path in sorted(folder.iterdir()):
+                  zf.write(path, path.name)
+          print(f'Created {archive} ({archive.stat().st_size} bytes)')
+          PY
+
+      - name: Upload web release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-web-${{ matrix.target }}
+          path: ViiB-MediaHub-${{ needs.prepare.outputs.version }}-web-${{ matrix.target }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Publish GitHub release
     if: github.event_name != 'pull_request'
-    needs: [prepare, linux, macos, windows]
+    needs: [prepare, linux, macos, windows, web]
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
@@ -507,6 +617,12 @@ jobs:
             "ViiB-MediaHub-${VERSION}-macos-x64.dmg"
             "ViiB-MediaHub-${VERSION}-linux-amd64.deb"
             "ViiB-MediaHub-${VERSION}-linux-amd64.tar.gz"
+            "ViiB-MediaHub-${VERSION}-web-windows-x64.zip"
+            "ViiB-MediaHub-${VERSION}-web-windows-arm64.zip"
+            "ViiB-MediaHub-${VERSION}-web-macos-x64.zip"
+            "ViiB-MediaHub-${VERSION}-web-macos-arm64.zip"
+            "ViiB-MediaHub-${VERSION}-web-linux-amd64.zip"
+            "ViiB-MediaHub-${VERSION}-web-linux-arm64.zip"
           )
           for asset in "${expected[@]}"; do
             test -s "release-assets/$asset" || { echo "Missing release asset: $asset" >&2; exit 1; }
@@ -521,7 +637,7 @@ jobs:
         shell: bash
         run: |
           cat > release-notes.md <<EOF
-          ViiB MediaHub ${VERSION} is the first 1.0 release candidate.
+          ViiB MediaHub ${VERSION} is a 1.0 release candidate.
 
           ### Installers
           - **Windows 10/11 x64:** ViiB-MediaHub-${VERSION}-windows-x64-setup.exe
@@ -529,6 +645,9 @@ jobs:
           - **macOS Intel:** ViiB-MediaHub-${VERSION}-macos-x64.dmg
           - **Ubuntu/Debian x64:** ViiB-MediaHub-${VERSION}-linux-amd64.deb
           - **Generic Linux x64:** ViiB-MediaHub-${VERSION}-linux-amd64.tar.gz
+
+          ### Web/browser builds
+          Download the `web-` ZIP matching your operating system and architecture (Windows x64/ARM64, macOS Intel/Apple Silicon, Linux x64/ARM64). Unzip and run the included executable. It serves the embedded frontend at a localhost address and opens your browser. The web build requires no separate frontend install. On Linux, the system tray requires Ayatana AppIndicator; pass `-no-tray` when unavailable.
 
           SHA256SUMS.txt contains checksums for every downloadable binary.
 
