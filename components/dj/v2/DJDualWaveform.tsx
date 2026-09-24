@@ -1,11 +1,11 @@
 /**
  * ViiB MediaHub - DJ Dual Waveform Component (v2)
  * 
- * Stacked horizontal waveform display with frequency-based coloring.
+ * Stacked horizontal waveform display with amplitude-only color palettes.
  * Shows both decks in a single view with overview strips.
  * 
  * Features:
- * - Multi-colored frequency waveforms (bass=red, mid=green, high=blue)
+ * - Gradient, amplitude-level and solid deck color palettes
  * - Overview waveform strips with hot cue markers
  * - Beat grid visualization
  * - Playhead indicators
@@ -20,7 +20,7 @@ import { useWaveformScratch } from '../../../hooks/useWaveformScratch';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getDJAudioEngine } from '../../../lib/djAudio';
-import type { DeckId, HotCue } from '../../../slices/djMixerSlice';
+import type { DeckId, HotCue, Loop } from '../../../slices/djMixerSlice';
 
 interface DJDualWaveformProps {
   height?: number;
@@ -80,7 +80,10 @@ function drawPeakBars(
   ctx.fillStyle = color;
   ctx.beginPath();
   for (let x = 0; x < width; x++) {
-    const peak = peaks[Math.floor(x * samplesPerPixel)] ?? 0;
+    const first = Math.floor(x * samplesPerPixel);
+    const last = Math.max(first + 1, Math.ceil((x + 1) * samplesPerPixel));
+    let peak = 0;
+    for (let index = first; index < Math.min(last, peaks.length); index++) peak = Math.max(peak, peaks[index] ?? 0);
     const amplitude = peak * maxAmplitude;
     if (amplitude > 0) ctx.rect(xOffset + x, centerY - amplitude, 1, amplitude * 2);
   }
@@ -131,7 +134,8 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
   const scratchB = useWaveformScratch('B', visibleSeconds);
   const [colorMode, setColorMode] = useState<WaveformColorMode>('rgb');
   const OVERVIEW_HEIGHT = 24;
-  const MAIN_HEIGHT = (computedHeight - OVERVIEW_HEIGHT - 8) / 2; // Split between both decks
+  const TOOLBAR_HEIGHT = 32;
+  const MAIN_HEIGHT = Math.floor((computedHeight - TOOLBAR_HEIGHT - OVERVIEW_HEIGHT - 8) / 2); // Whole-pixel lanes
 
   // Zoom handlers
   const zoomIn = useCallback(() => {
@@ -221,7 +225,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     ctx.strokeRect(0, 0, width, h);
   }, []);
 
-  // Draw main scrolling waveform with frequency colors
+  // Draw main scrolling waveform with the selected amplitude palette.
   const drawMainWaveform = useCallback((
     canvas: HTMLCanvasElement | null,
     peaks: number[] | null,
@@ -230,7 +234,8 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     beatGrid: number[] | null,
     cuePoint: number,
     deck: DeckId,
-    beatGridOffset: number = 0
+    beatGridOffset: number = 0,
+    loop: Loop
   ) => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -282,14 +287,13 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     // Calculate visible range
     const playheadX = width / 2;
     const secondsPerPixel = visibleSeconds / width;
-    const visibleStartTime = Math.max(0, position - (playheadX * secondsPerPixel));
-    const visibleEndTime = Math.min(duration, position + ((width - playheadX) * secondsPerPixel));
+    const visibleStartTime = position - (playheadX * secondsPerPixel);
+    const visibleEndTime = position + ((width - playheadX) * secondsPerPixel);
 
     // Map waveform data to visible range
     const peaksPerSecond = peaks.length / duration;
 
-    // Draw frequency-colored waveform
-    // For now, simulate frequency bands with amplitude zones
+    // Draw the amplitude waveform using the selected palette.
     const maxAmplitude = h / 2 - 4;
 
     // Pre-compute RGB gradient once per frame (reused for all bars)
@@ -304,12 +308,14 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     }
 
     if (colorMode === '3band') {
-      // 3-Band varies its paint by amplitude, so it retains separate fills.
+      // Level mode uses amplitude thresholds and therefore separate fills.
       for (let x = 0; x < width; x++) {
-        const pixelTime = visibleStartTime + (x * secondsPerPixel);
+        const pixelTime = position + ((x - playheadX) * secondsPerPixel);
         if (pixelTime < 0 || pixelTime > duration) continue;
-
-        const peak = peaks[Math.floor(pixelTime * peaksPerSecond)] || 0;
+        const first = Math.max(0, Math.floor((pixelTime - secondsPerPixel / 2) * peaksPerSecond));
+        const last = Math.min(peaks.length, Math.max(first + 1, Math.ceil((pixelTime + secondsPerPixel / 2) * peaksPerSecond)));
+        let peak = 0;
+        for (let index = first; index < last; index++) peak = Math.max(peak, peaks[index] || 0);
         const amplitude = peak * maxAmplitude;
         if (amplitude <= 0) continue;
 
@@ -317,19 +323,39 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
         ctx.fillRect(x, centerY - amplitude, 1, amplitude * 2);
       }
     } else {
-      // RGB and single-deck modes have one paint. Batch their bars so the
+      // Gradient and solid modes have one paint. Batch their bars so the
       // Canvas fallback submits a single fill per deck per frame.
       ctx.fillStyle = colorMode === 'single' ? DECK_COLORS[deck] : rgbGradient!;
       ctx.beginPath();
       for (let x = 0; x < width; x++) {
-        const pixelTime = visibleStartTime + (x * secondsPerPixel);
+        const pixelTime = position + ((x - playheadX) * secondsPerPixel);
         if (pixelTime < 0 || pixelTime > duration) continue;
-
-        const peak = peaks[Math.floor(pixelTime * peaksPerSecond)] || 0;
+        const first = Math.max(0, Math.floor((pixelTime - secondsPerPixel / 2) * peaksPerSecond));
+        const last = Math.min(peaks.length, Math.max(first + 1, Math.ceil((pixelTime + secondsPerPixel / 2) * peaksPerSecond)));
+        let peak = 0;
+        for (let index = first; index < last; index++) peak = Math.max(peak, peaks[index] || 0);
         const amplitude = peak * maxAmplitude;
         if (amplitude > 0) ctx.rect(x, centerY - amplitude, 1, amplitude * 2);
       }
       ctx.fill();
+    }
+
+    // Show the loop region and boundaries behind the grid/playhead markers.
+    if (loop.end > loop.start) {
+      const loopLeft = playheadX + ((loop.start - position) / secondsPerPixel);
+      const loopRight = playheadX + ((loop.end - position) / secondsPerPixel);
+      const left = Math.max(0, loopLeft);
+      const right = Math.min(width, loopRight);
+      if (right > left) {
+        ctx.fillStyle = loop.enabled ? 'rgba(34, 197, 94, 0.16)' : 'rgba(148, 163, 184, 0.08)';
+        ctx.fillRect(left, 0, right - left, h);
+        ctx.strokeStyle = loop.enabled ? 'rgba(74, 222, 128, 0.9)' : 'rgba(148, 163, 184, 0.45)';
+        ctx.lineWidth = 1;
+        for (const edge of [loopLeft, loopRight]) {
+          if (edge < 0 || edge > width) continue;
+          ctx.beginPath(); ctx.moveTo(edge, 0); ctx.lineTo(edge, h); ctx.stroke();
+        }
+      }
     }
 
     // Draw beat grid markers (with offset applied)
@@ -407,7 +433,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     ctx.fillStyle = '#ffffff40';
     ctx.textAlign = 'left';
     ctx.font = 'bold 10px system-ui';
-    ctx.fillText(`DECK ${deck}`, 8, 14);
+    ctx.fillText(`DECK ${deck}`, 8, 25);
   }, [visibleSeconds, colorMode]);
 
   // Handle resize
@@ -448,8 +474,7 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     let lastFrameTime = 0;
     const targetFps = 60;
     const frameInterval = 1000 / targetFps;
-    let lastPosA = -1;
-    let lastPosB = -1;
+    let lastVisual: any = null;
     let needsInitialDraw = true;
 
     const scheduleNext = (idle: boolean, ts?: number) => {
@@ -493,12 +518,33 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
       const posB = (bPlaying || engine.isScratching('B')) && engine?.initialized
         ? engine.getPosition('B') : currentDeckB.position;
       const bothIdle = !aPlaying && !bPlaying && !engine.isScratching('A') && !engine.isScratching('B');
-      if (bothIdle && posA === lastPosA && posB === lastPosB && !needsInitialDraw) {
+      const canvasSizes = [overviewRef.current, mainCanvasARef.current, mainCanvasBRef.current]
+        .map(canvas => canvas ? `${canvas.width}x${canvas.height}` : 'missing').join('|');
+      const unchanged = lastVisual
+        && posA === lastVisual.posA && posB === lastVisual.posB
+        && currentDeckA.waveformPeaks === lastVisual.peaksA && currentDeckB.waveformPeaks === lastVisual.peaksB
+        && currentDeckA.duration === lastVisual.durationA && currentDeckB.duration === lastVisual.durationB
+        && currentDeckA.beatGrid === lastVisual.gridA && currentDeckB.beatGrid === lastVisual.gridB
+        && currentDeckA.beatGridOffset === lastVisual.offsetA && currentDeckB.beatGridOffset === lastVisual.offsetB
+        && currentDeckA.cuePoint === lastVisual.cueA && currentDeckB.cuePoint === lastVisual.cueB
+        && currentDeckA.hotCues === lastVisual.hotA && currentDeckB.hotCues === lastVisual.hotB
+        && currentDeckA.loop === lastVisual.loopA && currentDeckB.loop === lastVisual.loopB
+        && canvasSizes === lastVisual.canvasSizes;
+      if (bothIdle && unchanged && !needsInitialDraw) {
         scheduleNext(true);
         return;
       }
-      lastPosA = posA;
-      lastPosB = posB;
+      lastVisual = {
+        posA, posB,
+        peaksA: currentDeckA.waveformPeaks, peaksB: currentDeckB.waveformPeaks,
+        durationA: currentDeckA.duration, durationB: currentDeckB.duration,
+        gridA: currentDeckA.beatGrid, gridB: currentDeckB.beatGrid,
+        offsetA: currentDeckA.beatGridOffset, offsetB: currentDeckB.beatGridOffset,
+        cueA: currentDeckA.cuePoint, cueB: currentDeckB.cuePoint,
+        hotA: currentDeckA.hotCues, hotB: currentDeckB.hotCues,
+        loopA: currentDeckA.loop, loopB: currentDeckB.loop,
+        canvasSizes,
+      };
       needsInitialDraw = false;
 
       // Draw overview (combined view)
@@ -547,6 +593,15 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
           }
 
           if (cache) ctx.drawImage(cache.canvas, 0, 0, width, OVERVIEW_HEIGHT);
+          for (const [deckState, offset] of [[currentDeckA, 0], [currentDeckB, halfWidth]] as const) {
+            const loop = deckState.loop;
+            if (loop.end > loop.start && deckState.duration > 0) {
+              const left = offset + loop.start / deckState.duration * halfWidth;
+              const right = offset + loop.end / deckState.duration * halfWidth;
+              ctx.fillStyle = loop.enabled ? 'rgba(34, 197, 94, 0.42)' : 'rgba(148, 163, 184, 0.2)';
+              ctx.fillRect(left, 0, Math.max(1, right - left), OVERVIEW_HEIGHT);
+            }
+          }
           
           // Deck A (left half)
           if (currentDeckA.waveformPeaks && currentDeckA.waveformPeaks.length > 0 && currentDeckA.duration > 0) {
@@ -621,8 +676,9 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
           ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
           ctx.font = 'bold 9px system-ui';
           ctx.textAlign = 'left';
-          ctx.fillText('OVERVIEW', 4, OVERVIEW_HEIGHT - 4);
+              ctx.fillText('OVERVIEW', 4, OVERVIEW_HEIGHT - 4);
         }
+
       }
 
       // Draw main waveforms
@@ -634,7 +690,8 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
         currentDeckA.beatGrid,
         currentDeckA.cuePoint,
         'A',
-        currentDeckA.beatGridOffset
+        currentDeckA.beatGridOffset,
+        currentDeckA.loop
       );
 
       drawMainWaveform(
@@ -645,7 +702,8 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
         currentDeckB.beatGrid,
         currentDeckB.cuePoint,
         'B',
-        currentDeckB.beatGridOffset
+        currentDeckB.beatGridOffset,
+        currentDeckB.loop
       );
 
       animationId = requestAnimationFrame(drawFrame);
@@ -675,6 +733,18 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     seek(deck, clampedTime);
   }, [seek, visibleSeconds]);
 
+  const handleOverviewClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const deck: DeckId = x < rect.width / 2 ? 'A' : 'B';
+    const state = useStore.getState();
+    const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
+    if (!deckState.duration) return;
+    const localX = deck === 'A' ? x : x - rect.width / 2;
+    const laneWidth = rect.width / 2;
+    seek(deck, Math.max(0, Math.min(deckState.duration, localX / laneWidth * deckState.duration)));
+  }, [seek]);
+
   return (
     <div ref={containerRef} className="w-full bg-surface-0 relative" style={{ height }} onWheel={handleWheelZoom}>
       {/* Waveform controls overlay (top-right) */}
@@ -690,9 +760,9 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
                 ? 'bg-brand/30 text-brand border border-brand/50'
                 : 'text-neutral-500 hover:text-neutral-300 hover:bg-[#333]'
             }`}
-            title={`Waveform: ${mode === 'rgb' ? 'RGB (multi-color)' : mode === '3band' ? '3-Band' : 'Single color'}`}
+            title={`Waveform: ${mode === 'rgb' ? 'Gradient' : mode === '3band' ? 'Amplitude level' : 'Solid deck color'}`}
           >
-            {mode === 'rgb' ? 'RGB' : mode === '3band' ? '3B' : 'CLR'}
+            {mode === 'rgb' ? 'GRAD' : mode === '3band' ? 'LEVEL' : 'SOLID'}
           </button>
         ))}
         <div className="w-px h-5 bg-[#444]" />
@@ -717,11 +787,14 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
         >−</button>
       </div>
 
+      {/* Reserved strip keeps the toolbar and renderer switch clear of canvas labels. */}
+      <div aria-hidden="true" style={{ height: TOOLBAR_HEIGHT }} />
       {/* Overview waveforms */}
       <canvas 
         ref={overviewRef}
         className="w-full cursor-pointer"
         style={{ height: OVERVIEW_HEIGHT }}
+        onClick={handleOverviewClick}
       />
       
       {/* Overview → Main separator */}

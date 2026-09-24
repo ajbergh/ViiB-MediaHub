@@ -40,6 +40,10 @@ function getBeatFXBpm(state: ReturnType<typeof useStore.getState>, target: BeatF
   return 120;
 }
 
+function isSupersededTrackLoad(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
 export interface UseDJAudioEngineReturn {
   /** Initialize the audio engine (must be called after user interaction) */
   initialize: () => Promise<void>;
@@ -287,18 +291,25 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       // Run waveform loading asynchronously (non-blocking)
       loadWaveform();
 
-      // BPM, key, grid, and evidence come from the one-pass backend analysis.
-      // Deck loading never starts a second browser-side audio analysis.
+      // Fetch the feature record first. A missing record means there cannot be
+      // a persisted beat grid, so do not issue a second guaranteed 404.
       try {
-        const [feature, grid] = await Promise.all([
-          api.getTrackAnalysisFeature(track.id).catch(() => null),
-          api.getTrackBeatGrid(track.id).catch(() => null),
-        ]);
-        if (isTrackStillLoaded()) {
-          const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-          setDeckAnalysis(deck, resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0));
+        const feature = await api.getTrackAnalysisFeature(track.id).catch(error => {
+          if ((error as Error & { status?: number })?.status === 404) return null;
+          throw error;
+        });
+        if (!feature) {
+          if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
+        } else {
+          const grid = await api.getTrackBeatGrid(track.id).catch(() => null);
+          if (isTrackStillLoaded()) {
+            const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+            setDeckAnalysis(deck, resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0));
+            useStore.getState().setDeckAnalysisStatus(deck, 'available');
+          }
         }
       } catch (analysisErr) {
+        if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'error');
         logger.debug(`Persisted analysis unavailable for Deck ${deck}`, analysisErr);
       }
       
@@ -333,6 +344,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       
       loadSavedHotCues();
     } catch (error) {
+      if (isSupersededTrackLoad(error)) return;
       logger.logError(error, `Failed to load track to Deck ${deck}`);
       throw error;
     }
@@ -991,7 +1003,12 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     const engine = getDJAudioEngine();
     if (!engine.initialized) await initialize();
 
-    await engine.loadTrack(deck, track);
+    try {
+      await engine.loadTrack(deck, track);
+    } catch (error) {
+      if (isSupersededTrackLoad(error)) return;
+      throw error;
+    }
     useStore.getState().loadTrackToDeck(deck, track);
 
     const isTrackStillLoaded = () => {
@@ -1014,17 +1031,27 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
       } catch { /* non-critical */ }
     })();
 
-    // The virtualized DJ library follows the same persisted-only path.
+    // Resolve the feature first: beat-grid data cannot exist without its base
+    // analysis feature, and issuing both requests together creates avoidable
+    // 404s for tracks that have not been analysed.
     try {
-      const [feature, grid] = await Promise.all([
-        api.getTrackAnalysisFeature(track.id).catch(() => null),
-        api.getTrackBeatGrid(track.id).catch(() => null),
-      ]);
-      if (isTrackStillLoaded()) {
-        const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-        useStore.getState().setDeckAnalysis(deck, resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0));
+      const feature = await api.getTrackAnalysisFeature(track.id).catch(error => {
+        if ((error as Error & { status?: number })?.status === 404) return null;
+        throw error;
+      });
+      if (!feature) {
+        if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
+      } else {
+        const grid = await api.getTrackBeatGrid(track.id).catch(() => null);
+        if (isTrackStillLoaded()) {
+          const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+          useStore.getState().setDeckAnalysis(deck, resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0));
+          useStore.getState().setDeckAnalysisStatus(deck, 'available');
+        }
       }
-    } catch { /* analysis is prepared by the durable library job */ }
+    } catch {
+      if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'error');
+    }
 
     // Hot cues (async, non-blocking)
     (async () => {

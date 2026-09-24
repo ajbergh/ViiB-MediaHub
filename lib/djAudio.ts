@@ -199,6 +199,8 @@ export class DJAudioEngine {
   
   private trackLoadGenerationA = 0;
   private trackLoadGenerationB = 0;
+  private pendingTrackLoadCancelA: (() => void) | null = null;
+  private pendingTrackLoadCancelB: (() => void) | null = null;
 
   // Callbacks
   private onTrackEnd: ((deck: DeckId) => void) | null = null;
@@ -210,6 +212,10 @@ export class DJAudioEngine {
   private lastPositionUpdateA = 0;
   private lastPositionUpdateB = 0;
   private positionIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  private loopWorker: Worker | null = null;
+  private loopCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private loopWrapOnTimeUpdateA: (() => void) | null = null;
+  private loopWrapOnTimeUpdateB: (() => void) | null = null;
 
   // VU metering state
   private vuLevels: VULevels = { deckA: { left: 0, right: 0 }, deckB: { left: 0, right: 0 }, master: { left: 0, right: 0 } };
@@ -768,6 +774,8 @@ export class DJAudioEngine {
       throw new Error('Audio engine not initialized');
     }
 
+    const previousCancel = deck === 'A' ? this.pendingTrackLoadCancelA : this.pendingTrackLoadCancelB;
+    previousCancel?.();
     const generation = deck === 'A' ? ++this.trackLoadGenerationA : ++this.trackLoadGenerationB;
 
     this.clearScratchAudio(deck);
@@ -782,52 +790,83 @@ export class DJAudioEngine {
     audioElement.src = audioUrl;
 
     // Load the audio
-    await new Promise<void>((resolve, reject) => {
-      let timeoutId: ReturnType<typeof setTimeout>;
-      const cleanup = () => {
-        clearTimeout(timeoutId);
-        audioElement.removeEventListener('canplay', onCanPlay);
-        audioElement.removeEventListener('error', onError);
-      };
+    let cancelThisLoad: (() => void) | null = null;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let timeoutId: ReturnType<typeof setTimeout>;
+        let settled = false;
+        const cleanup = () => {
+          clearTimeout(timeoutId);
+          audioElement.removeEventListener('canplay', onCanPlay);
+          audioElement.removeEventListener('error', onError);
+          if (deck === 'A' && this.pendingTrackLoadCancelA === cancelThisLoad) this.pendingTrackLoadCancelA = null;
+          if (deck === 'B' && this.pendingTrackLoadCancelB === cancelThisLoad) this.pendingTrackLoadCancelB = null;
+        };
 
-      const checkGeneration = () => {
-        const currentGen = deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
-        return currentGen === generation;
-      };
+        const checkGeneration = () => {
+          const currentGen = deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
+          return currentGen === generation;
+        };
 
-      timeoutId = setTimeout(() => {
-        cleanup();
-        if (checkGeneration()) {
-          console.error(`🎧 DJ Audio: Timeout loading track to Deck ${deck}`);
-          reject(new Error(`Timeout loading track: ${track.title}`));
+        const superseded = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          const error = new Error(`Track load superseded: ${track.title}`);
+          error.name = 'AbortError';
+          reject(error);
+        };
+        cancelThisLoad = superseded;
+        if (deck === 'A') this.pendingTrackLoadCancelA = superseded;
+        else this.pendingTrackLoadCancelB = superseded;
+
+        timeoutId = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (checkGeneration()) {
+            console.error(`🎧 DJ Audio: Timeout loading track to Deck ${deck}`);
+            reject(new Error(`Timeout loading track: ${track.title}`));
+          } else {
+            const error = new Error(`Track load superseded: ${track.title}`);
+            error.name = 'AbortError';
+            reject(error);
+          }
+        }, 30000); // 30 second timeout
+
+        const onCanPlay = () => {
+          if (settled) return;
+          if (!checkGeneration()) { superseded(); return; }
+          settled = true;
+          cleanup();
+          console.log(`🎧 DJ Audio: Track ready on Deck ${deck}`);
+          resolve();
+        };
+
+        const onError = (e: Event) => {
+          if (settled) return;
+          if (!checkGeneration()) { superseded(); return; }
+          settled = true;
+          cleanup();
+          const errorMsg = audioElement.error?.message || 'Unknown error';
+          console.error(`🎧 DJ Audio: Error loading track to Deck ${deck}: ${errorMsg}`, e);
+          reject(new Error(`Failed to load track: ${track.title} - ${errorMsg}`));
+        };
+
+        audioElement.addEventListener('canplay', onCanPlay);
+        audioElement.addEventListener('error', onError);
+
+        // If readyState is already enough, resolve immediately
+        if (audioElement.readyState >= 3) { // HAVE_FUTURE_DATA
+          onCanPlay();
+        } else {
+          audioElement.load();
         }
-      }, 30000); // 30 second timeout
-      
-      const onCanPlay = () => {
-        if (!checkGeneration()) return;
-        cleanup();
-        console.log(`🎧 DJ Audio: Track ready on Deck ${deck}`);
-        resolve();
-      };
-      
-      const onError = (e: Event) => {
-        if (!checkGeneration()) return;
-        cleanup();
-        const errorMsg = audioElement.error?.message || 'Unknown error';
-        console.error(`🎧 DJ Audio: Error loading track to Deck ${deck}: ${errorMsg}`, e);
-        reject(new Error(`Failed to load track: ${track.title} - ${errorMsg}`));
-      };
-      
-      audioElement.addEventListener('canplay', onCanPlay);
-      audioElement.addEventListener('error', onError);
-      
-      // If readyState is already enough, resolve immediately
-      if (audioElement.readyState >= 3) { // HAVE_FUTURE_DATA
-        onCanPlay();
-      } else {
-        audioElement.load();
-      }
-    });
+      });
+    } finally {
+      if (deck === 'A' && this.pendingTrackLoadCancelA === cancelThisLoad) this.pendingTrackLoadCancelA = null;
+      if (deck === 'B' && this.pendingTrackLoadCancelB === cancelThisLoad) this.pendingTrackLoadCancelB = null;
+    }
 
     console.log(`🎧 Loaded track to Deck ${deck}: ${track.title}`);
 
@@ -923,6 +962,8 @@ export class DJAudioEngine {
    * Unload a deck
    */
   unloadDeck(deck: DeckId): void {
+    const cancelPending = deck === 'A' ? this.pendingTrackLoadCancelA : this.pendingTrackLoadCancelB;
+    cancelPending?.();
     if (deck === 'A') ++this.trackLoadGenerationA; else ++this.trackLoadGenerationB;
     this.clearScratchAudio(deck);
     const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
@@ -2145,9 +2186,17 @@ export class DJAudioEngine {
    * Toggle loop on/off for a deck
    */
   toggleLoop(deck: DeckId): void {
-    useStore.getState().toggleLoop(deck);
-    const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-    if (DJ_DEBUG) console.log(`🔁 Loop ${deck}: ${deckState.loop.enabled ? 'ON' : 'OFF'}`);
+    const state = useStore.getState();
+    const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
+    if (!(deckState.loop.end > deckState.loop.start)) {
+      const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
+      if (!audioElement || !Number.isFinite(audioElement.duration)) return;
+      this.setLoopBeats(deck, 4);
+      return;
+    }
+    state.toggleLoop(deck);
+    const updated = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+    if (DJ_DEBUG) console.log(`🔁 Loop ${deck}: ${updated.loop.enabled ? 'ON' : 'OFF'}`);
   }
 
   /**
@@ -2168,12 +2217,11 @@ export class DJAudioEngine {
     const position = audioElement.currentTime;
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     
-    // If we already have a loop end point, validate
-    if (deckState.loop.end > 0 && position < deckState.loop.end) {
-      useStore.getState().setLoop(deck, position, deckState.loop.end);
+    // Editing an active loop moves its start; otherwise store a pending in-point.
+    if (deckState.loop.enabled && deckState.loop.end > position) {
+      useStore.getState().setLoop(deck, position, deckState.loop.end, true);
     } else {
-      // Just set the start point, keep end at 0 (will be set by setLoopOut)
-      useStore.getState().setLoop(deck, position, deckState.loop.end || position + 4);
+      useStore.getState().setPendingLoopIn(deck, position);
     }
     if (DJ_DEBUG) console.log(`🔁 Loop IN set for deck ${deck}: ${position.toFixed(2)}s`);
   }
@@ -2189,12 +2237,9 @@ export class DJAudioEngine {
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     
     // Validate against start point
-    if (position > deckState.loop.start) {
-      useStore.getState().setLoop(deck, deckState.loop.start, position);
-      // Enable loop when out point is set
-      if (!deckState.loop.enabled) {
-        useStore.getState().toggleLoop(deck);
-      }
+    const start = deckState.loop.pendingIn ?? deckState.loop.start;
+    if (position > start) {
+      useStore.getState().setLoop(deck, start, position, true);
     } else {
       console.warn(`⚠️ Loop OUT must be after loop IN point`);
     }
@@ -2209,30 +2254,32 @@ export class DJAudioEngine {
     if (!audioElement) return;
     
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-    const bpm = deckState.effectiveBpm || deckState.originalBpm;
+    const bpm = deckState.effectiveBpm || deckState.originalBpm || 120;
     
-    if (!bpm) {
-      // Fallback to time-based loop if no BPM
-      const loopSeconds = beats * 0.5; // Assume 120 BPM
-      const start = audioElement.currentTime;
-      const end = Math.min(start + loopSeconds, audioElement.duration);
-      this.setLoop(deck, start, end);
-      return;
+    const state = useStore.getState();
+    const latestDeck = deck === 'A' ? state.djDeckA : state.djDeckB;
+    const beatGrid = latestDeck.beatGrid;
+    let start = audioElement.currentTime;
+    let end = start + beats * (60 / bpm);
+    if (state.djMixer.quantize && beatGrid?.length) {
+      const offset = latestDeck.beatGridOffset || 0;
+      let nearest = 0;
+      for (let index = 1; index < beatGrid.length; index++) {
+        if (Math.abs(beatGrid[index] + offset - start) < Math.abs(beatGrid[nearest] + offset - start)) nearest = index;
+      }
+      const endBeat = nearest + beats;
+      const whole = Math.floor(endBeat);
+      const fraction = endBeat - whole;
+      const beatAt = (index: number) => beatGrid[Math.min(index, beatGrid.length - 1)] + offset;
+      start = beatAt(nearest);
+      end = whole < beatGrid.length
+        ? beatAt(whole) + (whole + 1 < beatGrid.length ? (beatAt(whole + 1) - beatAt(whole)) * fraction : 0)
+        : start + beats * (60 / bpm);
     }
-    
-    // Calculate loop length based on BPM
-    const beatDuration = 60 / bpm;
-    const loopDuration = beats * beatDuration;
-    const start = audioElement.currentTime;
-    const end = Math.min(start + loopDuration, audioElement.duration);
+    end = Math.min(end, audioElement.duration);
     
     this.setLoop(deck, start, end);
-    
-    // Enable the loop
-    if (!deckState.loop.enabled) {
-      useStore.getState().toggleLoop(deck);
-    }
-    if (DJ_DEBUG) console.log(`🔁 ${beats}-beat loop set for deck ${deck}: ${loopDuration.toFixed(2)}s @ ${bpm.toFixed(1)} BPM`);
+    if (DJ_DEBUG) console.log(`🔁 ${beats}-beat loop set for deck ${deck}: ${(end - start).toFixed(2)}s @ ${bpm.toFixed(1)} BPM`);
   }
 
   /**
@@ -2241,12 +2288,13 @@ export class DJAudioEngine {
   doubleLoop(deck: DeckId): void {
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audioElement || !deckState.loop.enabled) return;
+    if (!audioElement || !deckState.loop.enabled || !(deckState.loop.end > deckState.loop.start)) return;
     
     const currentLength = deckState.loop.end - deckState.loop.start;
     const newEnd = Math.min(deckState.loop.start + currentLength * 2, audioElement.duration);
     
-    useStore.getState().setLoop(deck, deckState.loop.start, newEnd);
+    if (newEnd <= deckState.loop.start) return;
+    useStore.getState().setLoop(deck, deckState.loop.start, newEnd, true);
     if (DJ_DEBUG) console.log(`🔁 Loop doubled for deck ${deck}: ${(newEnd - deckState.loop.start).toFixed(2)}s`);
   }
 
@@ -2255,13 +2303,14 @@ export class DJAudioEngine {
    */
   halveLoop(deck: DeckId): void {
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-    if (!deckState.loop.enabled) return;
+    if (!deckState.loop.enabled || !(deckState.loop.end > deckState.loop.start)) return;
     
     const currentLength = deckState.loop.end - deckState.loop.start;
-    const minLength = 0.1; // Minimum 100ms loop
+    const bpm = deckState.effectiveBpm || deckState.originalBpm || 120;
+    const minLength = 60 / bpm / 32;
     const newEnd = deckState.loop.start + Math.max(currentLength / 2, minLength);
     
-    useStore.getState().setLoop(deck, deckState.loop.start, newEnd);
+    useStore.getState().setLoop(deck, deckState.loop.start, newEnd, true);
     if (DJ_DEBUG) console.log(`🔁 Loop halved for deck ${deck}: ${(newEnd - deckState.loop.start).toFixed(2)}s`);
   }
 
@@ -2270,6 +2319,28 @@ export class DJAudioEngine {
   // ============================================================================
 
   private startPositionTracking(): void {
+    if (this.audioElementA && !this.loopWrapOnTimeUpdateA) {
+      this.loopWrapOnTimeUpdateA = () => this.wrapActiveLoops();
+      this.audioElementA.addEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
+    }
+    if (this.audioElementB && !this.loopWrapOnTimeUpdateB) {
+      this.loopWrapOnTimeUpdateB = () => this.wrapActiveLoops();
+      this.audioElementB.addEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
+    }
+    if (typeof Worker !== 'undefined' && !this.loopWorker) {
+      try {
+        this.loopWorker = new Worker(new URL('./djLoopTicker.worker.ts', import.meta.url), { type: 'module' });
+        this.loopWorker.onmessage = () => this.wrapActiveLoops();
+        this.loopWorker.onerror = () => {
+          this.loopWorker?.terminate();
+          this.loopWorker = null;
+          if (!this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
+        };
+      } catch (error) {
+        console.warn('[DJAudio] Loop worker unavailable; using timer fallback', error);
+      }
+    }
+    if (!this.loopWorker && !this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
     const updatePositions = () => {
       const storeState = useStore.getState();
       const now = performance.now();
@@ -2282,14 +2353,6 @@ export class DJAudioEngine {
       if (this.audioElementA && (!aPaused || aScratch)) {
         const currentTime = this.getPosition('A');
         
-        // Check for loop at full frame rate (critical for tight loops)
-        const loopA = storeState.djDeckA.loop;
-        if (!aScratch && loopA.enabled && loopA.end > loopA.start) {
-          if (currentTime >= loopA.end) {
-            this.audioElementA.currentTime = loopA.start;
-          }
-        }
-        
         // Throttle state updates to reduce React re-renders (~15 fps)
         if (now - this.lastPositionUpdateA >= this.POSITION_UPDATE_INTERVAL) {
           this.lastPositionUpdateA = now;
@@ -2301,14 +2364,6 @@ export class DJAudioEngine {
       // Deck B position and loop handling — also update during scratch even when paused
       if (this.audioElementB && (!this.audioElementB.paused || bScratch)) {
         const currentTime = this.getPosition('B');
-        
-        // Check for loop at full frame rate (critical for tight loops)
-        const loopB = storeState.djDeckB.loop;
-        if (!bScratch && loopB.enabled && loopB.end > loopB.start) {
-          if (currentTime >= loopB.end) {
-            this.audioElementB.currentTime = loopB.start;
-          }
-        }
         
         // Throttle state updates to reduce React re-renders (~15 fps)
         if (now - this.lastPositionUpdateB >= this.POSITION_UPDATE_INTERVAL) {
@@ -2333,6 +2388,19 @@ export class DJAudioEngine {
       }
     };
     this.animationFrameId = requestAnimationFrame(updatePositions);
+  }
+
+  private wrapActiveLoops(): void {
+    const state = useStore.getState();
+    for (const deck of ['A', 'B'] as const) {
+      const audio = deck === 'A' ? this.audioElementA : this.audioElementB;
+      const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
+      if (!audio || audio.paused || (this.scratchStateA?.active && deck === 'A') || (this.scratchStateB?.active && deck === 'B')) continue;
+      const length = loop.end - loop.start;
+      if (!loop.enabled || length <= 0 || audio.currentTime < loop.end) continue;
+      const overshoot = (audio.currentTime - loop.start) % length;
+      audio.currentTime = loop.start + overshoot;
+    }
   }
 
   // ============================================================================
@@ -2435,6 +2503,12 @@ export class DJAudioEngine {
    * Clean up and release resources
    */
   dispose(): void {
+    this.pendingTrackLoadCancelA?.();
+    this.pendingTrackLoadCancelB?.();
+    this.pendingTrackLoadCancelA = null;
+    this.pendingTrackLoadCancelB = null;
+    ++this.trackLoadGenerationA;
+    ++this.trackLoadGenerationB;
     this.clearScratchAudio('A');
     this.clearScratchAudio('B');
     this.scratchModule = null;
@@ -2448,6 +2522,16 @@ export class DJAudioEngine {
     if (this.positionIdleTimer) {
       clearTimeout(this.positionIdleTimer);
       this.positionIdleTimer = null;
+    }
+    this.loopWorker?.terminate();
+    this.loopWorker = null;
+    if (this.audioElementA && this.loopWrapOnTimeUpdateA) this.audioElementA.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
+    if (this.audioElementB && this.loopWrapOnTimeUpdateB) this.audioElementB.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
+    this.loopWrapOnTimeUpdateA = null;
+    this.loopWrapOnTimeUpdateB = null;
+    if (this.loopCheckTimer) {
+      clearInterval(this.loopCheckTimer);
+      this.loopCheckTimer = null;
     }
     if (this.vuIdleTimer) {
       clearTimeout(this.vuIdleTimer);

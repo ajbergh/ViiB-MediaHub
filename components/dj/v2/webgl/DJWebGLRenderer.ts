@@ -26,6 +26,7 @@ import {
   toDJWebGL1FragmentShader,
 } from './DJWaveformShaders';
 import { getPreferredWebGLVersion } from '../../../../lib/webglSafety';
+import type { Loop } from '../../../../slices/djMixerSlice';
 
 export type DeckId = 'A' | 'B';
 
@@ -46,12 +47,15 @@ export interface DJWaveformRenderState {
   bpm: number;
   /** Beat grid positions in seconds */
   beatGrid: number[] | null;
+  beatGridOffset: number;
+  loop: Loop;
   /** Cue point position in seconds */
   cuePoint: number;
   /** Hot cue markers */
   hotCues: HotCue[];
   /** Visible time window in seconds */
   visibleSeconds: number;
+  colorMode: 0 | 1 | 2;
   /** Deck identifier */
   deck: DeckId;
 }
@@ -113,8 +117,10 @@ export class DJWebGLRenderer {
   private contextRestoredHandler: ((e: Event) => void) | null = null;
   
   // Pre-allocated arrays
-  private peakDataA: Float32Array = new Float32Array(this.textureWidth);
-  private peakDataB: Float32Array = new Float32Array(this.textureWidth);
+  private sourcePeaksA: number[] | Float32Array | null = null;
+  private sourcePeaksB: number[] | Float32Array | null = null;
+  private textureShapeA = { width: this.textureWidth, height: 1, count: this.textureWidth };
+  private textureShapeB = { width: this.textureWidth, height: 1, count: this.textureWidth };
 
   constructor(options: DJWebGLRendererOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -297,8 +303,8 @@ export class DJWebGLRenderer {
         this.createWaveformTextures();
         
         // Re-upload waveform data
-        this.updateWaveformData('A', this.peakDataA);
-        this.updateWaveformData('B', this.peakDataB);
+        this.updateWaveformData('A', this.sourcePeaksA);
+        this.updateWaveformData('B', this.sourcePeaksB);
         
         console.log('[DJWebGL] Context restored successfully');
       } catch (error) {
@@ -320,19 +326,20 @@ export class DJWebGLRenderer {
       const texture = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, texture);
       
-      // Use RED format for single-channel float data
+      // Allocate a tiny placeholder. updateWaveformData chooses a 2D size
+      // based on the complete series and the device texture limit.
       if (this.isWebGL2) {
         const gl2 = gl as WebGL2RenderingContext;
         gl2.texImage2D(
           gl2.TEXTURE_2D, 0, gl2.R32F,
-          this.textureWidth, 1, 0,
+          1, 1, 0,
           gl2.RED, gl2.FLOAT, null
         );
       } else {
         // WebGL1: Use LUMINANCE as fallback
         gl.texImage2D(
           gl.TEXTURE_2D, 0, gl.LUMINANCE,
-          this.textureWidth, 1, 0,
+          1, 1, 0,
           gl.LUMINANCE, gl.UNSIGNED_BYTE, null
         );
       }
@@ -421,39 +428,40 @@ export class DJWebGLRenderer {
     
     const gl = this.gl;
     const texture = deck === 'A' ? this.waveformTextureA : this.waveformTextureB;
-    const peakData = deck === 'A' ? this.peakDataA : this.peakDataB;
+    if (deck === 'A') this.sourcePeaksA = peaks;
+    else this.sourcePeaksB = peaks;
     
     if (!texture) return;
     
-    // Resample peaks to texture width
     const inputLength = peaks.length;
-    const step = inputLength / this.textureWidth;
-    
-    for (let i = 0; i < this.textureWidth; i++) {
-      const srcIndex = Math.floor(i * step);
-      peakData[i] = peaks[srcIndex] || 0;
+    const maxTextureSize = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || this.textureWidth;
+    const width = Math.min(this.textureWidth, maxTextureSize, inputLength);
+    const count = Math.min(inputLength, width * maxTextureSize);
+    const height = Math.max(1, Math.ceil(count / width));
+    const peakData = new Float32Array(width * height);
+    for (let i = 0; i < count; i++) {
+      const first = Math.floor(i * inputLength / count);
+      const last = Math.max(first + 1, Math.ceil((i + 1) * inputLength / count));
+      let peak = 0;
+      for (let source = first; source < Math.min(last, inputLength); source++) peak = Math.max(peak, peaks[source] || 0);
+      peakData[i] = peak;
     }
+    const shape = { width, height, count };
+    if (deck === 'A') this.textureShapeA = shape;
+    else this.textureShapeB = shape;
     
     gl.bindTexture(gl.TEXTURE_2D, texture);
     
     if (this.isWebGL2) {
       const gl2 = gl as WebGL2RenderingContext;
-      gl2.texSubImage2D(
-        gl2.TEXTURE_2D, 0, 0, 0,
-        this.textureWidth, 1,
-        gl2.RED, gl2.FLOAT, peakData
-      );
+      gl2.texImage2D(gl2.TEXTURE_2D, 0, gl2.R32F, width, height, 0, gl2.RED, gl2.FLOAT, peakData);
     } else {
       // WebGL1: Convert to Uint8
-      const uint8Data = new Uint8Array(this.textureWidth);
-      for (let i = 0; i < this.textureWidth; i++) {
+      const uint8Data = new Uint8Array(width * height);
+      for (let i = 0; i < count; i++) {
         uint8Data[i] = Math.floor(peakData[i] * 255);
       }
-      gl.texSubImage2D(
-        gl.TEXTURE_2D, 0, 0, 0,
-        this.textureWidth, 1,
-        gl.LUMINANCE, gl.UNSIGNED_BYTE, uint8Data
-      );
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, width, height, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, uint8Data);
     }
     
     gl.bindTexture(gl.TEXTURE_2D, null);
@@ -500,6 +508,7 @@ export class DJWebGLRenderer {
     const hasPeaks = state.peaks && state.peaks.length > 0 && state.duration > 0;
     const position = hasPeaks ? state.position / state.duration : 0;
     const visibleRange = hasPeaks ? state.visibleSeconds / state.duration : 0.1;
+    const textureShape = state.deck === 'A' ? this.textureShapeA : this.textureShapeB;
     
     gl.uniform1i(this.getUniform(prog, 'u_waveformTex'), 0);
     gl.uniform1f(this.getUniform(prog, 'u_position'), position);
@@ -508,6 +517,13 @@ export class DJWebGLRenderer {
     gl.uniform1f(this.getUniform(prog, 'u_centerY'), 0.5);
     gl.uniform3fv(this.getUniform(prog, 'u_deckColor'), deckColor);
     gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), hasPeaks ? 1 : 0);
+    gl.uniform1f(this.getUniform(prog, 'u_peakCount'), textureShape.count);
+    gl.uniform1f(this.getUniform(prog, 'u_peakWidth'), textureShape.width);
+    gl.uniform1f(this.getUniform(prog, 'u_peakHeight'), textureShape.height);
+    gl.uniform1f(this.getUniform(prog, 'u_loopStart'), state.loop.end > state.loop.start ? state.loop.start / state.duration : -1);
+    gl.uniform1f(this.getUniform(prog, 'u_loopEnd'), state.loop.end > state.loop.start ? state.loop.end / state.duration : -1);
+    gl.uniform1i(this.getUniform(prog, 'u_loopEnabled'), state.loop.enabled ? 1 : 0);
+    gl.uniform1i(this.getUniform(prog, 'u_colorMode'), state.colorMode);
     
     // Bind texture
     gl.activeTexture(gl.TEXTURE0);
@@ -554,7 +570,7 @@ export class DJWebGLRenderer {
     gl.uniform1f(this.getUniform(prog, 'u_position'), state.position);
     gl.uniform1f(this.getUniform(prog, 'u_bpm'), state.bpm);
     gl.uniform1f(this.getUniform(prog, 'u_visibleSeconds'), state.visibleSeconds);
-    gl.uniform1f(this.getUniform(prog, 'u_beatOffset'), 0);
+    gl.uniform1f(this.getUniform(prog, 'u_beatOffset'), state.beatGridOffset || 0);
     gl.uniform2f(this.getUniform(prog, 'u_resolution'), this.width * dpr, this.height * dpr);
     
     this.drawQuad();
@@ -655,8 +671,8 @@ export class DJWebGLRenderer {
    * Renders the overview strip
    */
   renderOverview(
-    deckA: { peaks: number[] | null; position: number; duration: number } | null,
-    deckB: { peaks: number[] | null; position: number; duration: number } | null
+    deckA: { peaks: number[] | null; position: number; duration: number; loop: Loop } | null,
+    deckB: { peaks: number[] | null; position: number; duration: number; loop: Loop } | null
   ): void {
     if (!this.gl || !this.overviewProgram || !this.initialized || this.contextLost) return;
     
@@ -671,7 +687,8 @@ export class DJWebGLRenderer {
     const halfWidth = this.width / 2;
     
     // Render Deck A (left half)
-    if (deckA && deckA.peaks && deckA.duration > 0) {
+    if (deckA && deckA.duration > 0) {
+      const shape = this.textureShapeA;
       gl.useProgram(prog.program);
       gl.viewport(0, 0, Math.floor(halfWidth * dpr), Math.floor(this.height * dpr));
       
@@ -679,7 +696,13 @@ export class DJWebGLRenderer {
       gl.uniform2f(this.getUniform(prog, 'u_resolution'), halfWidth * dpr, this.height * dpr);
       gl.uniform1f(this.getUniform(prog, 'u_position'), deckA.position / deckA.duration);
       gl.uniform3fv(this.getUniform(prog, 'u_deckColor'), this.options.deckAColor);
-      gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), 1);
+      gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), deckA.peaks ? 1 : 0);
+      gl.uniform1f(this.getUniform(prog, 'u_peakCount'), shape.count);
+      gl.uniform1f(this.getUniform(prog, 'u_peakWidth'), shape.width);
+      gl.uniform1f(this.getUniform(prog, 'u_peakHeight'), shape.height);
+      gl.uniform1f(this.getUniform(prog, 'u_loopStart'), deckA.loop.end > deckA.loop.start ? deckA.loop.start / deckA.duration : -1);
+      gl.uniform1f(this.getUniform(prog, 'u_loopEnd'), deckA.loop.end > deckA.loop.start ? deckA.loop.end / deckA.duration : -1);
+      gl.uniform1i(this.getUniform(prog, 'u_loopEnabled'), deckA.loop.enabled ? 1 : 0);
       
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.waveformTextureA);
@@ -688,7 +711,8 @@ export class DJWebGLRenderer {
     }
     
     // Render Deck B (right half)
-    if (deckB && deckB.peaks && deckB.duration > 0) {
+    if (deckB && deckB.duration > 0) {
+      const shape = this.textureShapeB;
       gl.useProgram(prog.program);
       gl.viewport(Math.floor(halfWidth * dpr), 0, Math.floor(halfWidth * dpr), Math.floor(this.height * dpr));
       
@@ -696,14 +720,20 @@ export class DJWebGLRenderer {
       gl.uniform2f(this.getUniform(prog, 'u_resolution'), halfWidth * dpr, this.height * dpr);
       gl.uniform1f(this.getUniform(prog, 'u_position'), deckB.position / deckB.duration);
       gl.uniform3fv(this.getUniform(prog, 'u_deckColor'), this.options.deckBColor);
-      gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), 1);
+      gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), deckB.peaks ? 1 : 0);
+      gl.uniform1f(this.getUniform(prog, 'u_peakCount'), shape.count);
+      gl.uniform1f(this.getUniform(prog, 'u_peakWidth'), shape.width);
+      gl.uniform1f(this.getUniform(prog, 'u_peakHeight'), shape.height);
+      gl.uniform1f(this.getUniform(prog, 'u_loopStart'), deckB.loop.end > deckB.loop.start ? deckB.loop.start / deckB.duration : -1);
+      gl.uniform1f(this.getUniform(prog, 'u_loopEnd'), deckB.loop.end > deckB.loop.start ? deckB.loop.end / deckB.duration : -1);
+      gl.uniform1i(this.getUniform(prog, 'u_loopEnabled'), deckB.loop.enabled ? 1 : 0);
       
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.waveformTextureB);
       
       this.drawQuad();
     }
-    
+
     // Reset viewport
     gl.viewport(0, 0, Math.floor(this.width * dpr), Math.floor(this.height * dpr));
   }

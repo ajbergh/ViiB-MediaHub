@@ -58,6 +58,7 @@ import { useIsDJReady } from '../hooks/useMediaQuery';
 import { DJUnsupportedWidth } from '../components/dj/DJUnsupportedWidth';
 import { DJFullscreenGate } from '../components/dj/DJFullscreenGate';
 import { useAnalysisPlaybackPressure } from '../hooks/useAnalysisPlaybackPressure';
+import { useDJMidiActions } from '../hooks/useDJMidiActions';
 
 const logger = createLogger('DJModeV2');
 
@@ -110,6 +111,7 @@ const DJModeV2Inner: React.FC = () => {
   // While a deck is playing, tell the backend to yield background track
   // analysis so library preparation does not compete with the set.
   useAnalysisPlaybackPressure();
+  const midiEnabled = useDJMidiActions();
 
   // Actions — stable Zustand references, never trigger re-renders
   const setDJMixerEnabled = useStore(s => s.setDJMixerEnabled);
@@ -134,6 +136,7 @@ const DJModeV2Inner: React.FC = () => {
   const deckAHasGrid = useStore(s => Boolean(s.djDeckA.beatGrid?.length));
   const deckACuePoint = useStore(s => s.djDeckA.cuePoint);
   const deckALoop = useStore(s => s.djDeckA.loop);
+  const deckABpm = useStore(s => s.djDeckA.effectiveBpm || s.djDeckA.originalBpm || 120);
 
   // Deck B header info
   const deckBTrack = useStore(s => s.djDeckB.track);
@@ -141,6 +144,7 @@ const DJModeV2Inner: React.FC = () => {
   const deckBHasGrid = useStore(s => Boolean(s.djDeckB.beatGrid?.length));
   const deckBCuePoint = useStore(s => s.djDeckB.cuePoint);
   const deckBLoop = useStore(s => s.djDeckB.loop);
+  const deckBBpm = useStore(s => s.djDeckB.effectiveBpm || s.djDeckB.originalBpm || 120);
 
   // Mixer render state (low-frequency values only — high-freq moved to self-subscribing wrappers)
   const djLayoutMode = useStore(s => s.djMixer?.djLayoutMode || 'fx') as DJLayoutMode;
@@ -540,15 +544,16 @@ const DJModeV2Inner: React.FC = () => {
           {/* MIDI button — D1: icon-based button */}
           <button
             onClick={() => setShowMidiMapping(true)}
-            className='flex items-center gap-1.5 px-2 min-h-[28px] text-[10px] font-bold uppercase tracking-wider
-              bg-[#222] text-neutral-500 border border-[#333] rounded hover:bg-[#2a2a2a] hover:text-neutral-300 transition-colors'
-            title='MIDI Controller Mapping'
+            className={`flex items-center gap-1.5 px-2 min-h-[28px] text-[10px] font-bold uppercase tracking-wider
+              ${midiEnabled ? 'bg-green-900/30 text-green-400 border border-green-700/50' : 'bg-[#222] text-amber-400 border border-amber-700/40'} rounded hover:bg-[#2a2a2a] hover:text-neutral-200 transition-colors`}
+            title={midiEnabled ? 'MIDI enabled — open controller mappings' : 'MIDI is off — open this panel and enable MIDI to receive controller input'}
+            aria-label={midiEnabled ? 'MIDI enabled, open controller mappings' : 'MIDI off, open controller mappings to enable'}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <rect x="2" y="2" width="20" height="20" rx="2"/>
               <path d="M7 7v10M12 7v4M17 7v10M7 17h10"/>
             </svg>
-            MIDI
+            MIDI {midiEnabled ? 'ON' : 'OFF'}
           </button>
         </div>
       </div>
@@ -720,7 +725,7 @@ const DJModeV2Inner: React.FC = () => {
                     <div className='flex flex-col items-end gap-0.5 w-16 flex-shrink-0'>
                         <span className='text-[9px] text-neutral-500 uppercase tracking-wider'>LOOP</span>
                         <span className={`text-[11px] font-mono ${deckALoop.enabled ? 'text-green-400' : 'text-neutral-600'}`}>
-                            {deckALoop.enabled ? `${(deckALoop.end - deckALoop.start).toFixed(2)}s` : 'OFF'}
+                            {deckALoop.enabled && deckALoop.end > deckALoop.start ? `${((deckALoop.end - deckALoop.start) * deckABpm / 60).toFixed(2)} beats` : 'OFF'}
                         </span>
                     </div>
                 </div>
@@ -971,7 +976,7 @@ const DJModeV2Inner: React.FC = () => {
                     <div className='flex flex-col items-end gap-0.5 w-16 flex-shrink-0'>
                         <span className='text-[9px] text-neutral-500 uppercase tracking-wider'>LOOP</span>
                         <span className={`text-[11px] font-mono ${deckBLoop.enabled ? 'text-green-400' : 'text-neutral-600'}`}>
-                            {deckBLoop.enabled ? `${(deckBLoop.end - deckBLoop.start).toFixed(2)}s` : 'OFF'}
+                            {deckBLoop.enabled && deckBLoop.end > deckBLoop.start ? `${((deckBLoop.end - deckBLoop.start) * deckBBpm / 60).toFixed(2)} beats` : 'OFF'}
                         </span>
                     </div>
                 </div>

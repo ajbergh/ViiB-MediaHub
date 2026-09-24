@@ -6,7 +6,7 @@
  * for 60+ FPS performance.
  * 
  * Features:
- * - Multi-colored frequency waveforms (bass=red, mid=green, high=blue)
+ * - Gradient, amplitude-level and solid deck color palettes
  * - Overview waveform strips with playhead markers
  * - Beat grid visualization
  * - Hot cue markers
@@ -40,12 +40,14 @@ const CanvasWaveform = React.lazy(() => import('../DJDualWaveform'));
 
 export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   height = 200,
-  visibleSeconds = 10,
+  visibleSeconds: initialVisibleSeconds = 10,
   allowFallback = true,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const advancedWebGLEnabled = shouldUseAdvancedWebGL();
   const [useFallback, setUseFallback] = useState(() => !advancedWebGLEnabled);
+  const [visibleSeconds, setVisibleSeconds] = useState(() => Math.max(2, Math.min(60, initialVisibleSeconds)));
+  const [colorMode, setColorMode] = useState<0 | 1 | 2>(0);
   
   // Get only what we need from store — granular selectors to avoid re-renders
   const deckAWaveformPeaks = useStore(state => state.djDeckA.waveformPeaks);
@@ -55,8 +57,9 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   const scratchA = useWaveformScratch('A', visibleSeconds, !useFallback);
   const scratchB = useWaveformScratch('B', visibleSeconds, !useFallback);
   // Calculate heights
+  const TOOLBAR_HEIGHT = 32;
   const surfaceHeight = height < 0 ? '100%' : height;
-  const mainHeight = height < 0 ? `calc((100% - ${OVERVIEW_HEIGHT + 8}px) / 2)` : (height - OVERVIEW_HEIGHT - 8) / 2;
+  const mainHeight = height < 0 ? `calc((100% - ${TOOLBAR_HEIGHT + OVERVIEW_HEIGHT + 8}px) / 2)` : Math.floor((height - TOOLBAR_HEIGHT - OVERVIEW_HEIGHT - 8) / 2);
   
   // WebGL hooks for each canvas
   const overviewWebGL = useDJWebGL({ enabled: advancedWebGLEnabled });
@@ -118,6 +121,16 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     bHotCues: null as any,
     aBeatGrid: null as any,
     bBeatGrid: null as any,
+    aPeaks: null as any,
+    bPeaks: null as any,
+    aDuration: 0,
+    bDuration: 0,
+    aGridOffset: 0,
+    bGridOffset: 0,
+    aLoop: null as any,
+    bLoop: null as any,
+    visibleSeconds: 0,
+    colorMode: -1,
   });
   
   // Animation render callback — reads store directly via getState() to avoid stale closures
@@ -154,7 +167,17 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
       currentDeckA.hotCues === lastIdleFrameRef.current.aHotCues &&
       currentDeckB.hotCues === lastIdleFrameRef.current.bHotCues &&
       currentDeckA.beatGrid === lastIdleFrameRef.current.aBeatGrid &&
-      currentDeckB.beatGrid === lastIdleFrameRef.current.bBeatGrid
+      currentDeckB.beatGrid === lastIdleFrameRef.current.bBeatGrid &&
+      currentDeckA.waveformPeaks === lastIdleFrameRef.current.aPeaks &&
+      currentDeckB.waveformPeaks === lastIdleFrameRef.current.bPeaks &&
+      currentDeckA.duration === lastIdleFrameRef.current.aDuration &&
+      currentDeckB.duration === lastIdleFrameRef.current.bDuration &&
+      currentDeckA.beatGridOffset === lastIdleFrameRef.current.aGridOffset &&
+      currentDeckB.beatGridOffset === lastIdleFrameRef.current.bGridOffset &&
+      currentDeckA.loop === lastIdleFrameRef.current.aLoop &&
+      currentDeckB.loop === lastIdleFrameRef.current.bLoop &&
+      visibleSeconds === lastIdleFrameRef.current.visibleSeconds &&
+      colorMode === lastIdleFrameRef.current.colorMode
     ) {
       return;
     }
@@ -170,6 +193,16 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
       bHotCues: currentDeckB.hotCues,
       aBeatGrid: currentDeckA.beatGrid,
       bBeatGrid: currentDeckB.beatGrid,
+      aPeaks: currentDeckA.waveformPeaks,
+      bPeaks: currentDeckB.waveformPeaks,
+      aDuration: currentDeckA.duration,
+      bDuration: currentDeckB.duration,
+      aGridOffset: currentDeckA.beatGridOffset,
+      bGridOffset: currentDeckB.beatGridOffset,
+      aLoop: currentDeckA.loop,
+      bLoop: currentDeckB.loop,
+      visibleSeconds,
+      colorMode,
     };
     
     // Render Deck A waveform
@@ -179,9 +212,12 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
       duration: currentDeckA.duration,
       bpm: currentDeckA.effectiveBpm || currentDeckA.originalBpm || 0,
       beatGrid: currentDeckA.beatGrid,
+      beatGridOffset: currentDeckA.beatGridOffset,
       cuePoint: currentDeckA.cuePoint,
       hotCues: currentDeckA.hotCues,
+      loop: currentDeckA.loop,
       visibleSeconds,
+      colorMode,
       deck: 'A',
     };
     deckAWebGL.renderWaveform(stateA);
@@ -193,9 +229,12 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
       duration: currentDeckB.duration,
       bpm: currentDeckB.effectiveBpm || currentDeckB.originalBpm || 0,
       beatGrid: currentDeckB.beatGrid,
+      beatGridOffset: currentDeckB.beatGridOffset,
       cuePoint: currentDeckB.cuePoint,
       hotCues: currentDeckB.hotCues,
+      loop: currentDeckB.loop,
       visibleSeconds,
+      colorMode,
       deck: 'B',
     };
     deckBWebGL.renderWaveform(stateB);
@@ -206,14 +245,16 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
         peaks: currentDeckA.waveformPeaks,
         position: posA,
         duration: currentDeckA.duration,
+        loop: currentDeckA.loop,
       },
       {
         peaks: currentDeckB.waveformPeaks,
         position: posB,
         duration: currentDeckB.duration,
+        loop: currentDeckB.loop,
       }
     );
-  }, [isReady, visibleSeconds, deckAWebGL.renderWaveform, deckBWebGL.renderWaveform, overviewWebGL.renderOverview]);
+  }, [isReady, visibleSeconds, colorMode, deckAWebGL.renderWaveform, deckBWebGL.renderWaveform, overviewWebGL.renderOverview]);
   
   // Run animation loop — throttle to 4fps when both decks idle
   const isTimelineIdle = useCallback(() => {
@@ -252,6 +293,23 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
     
     seek(deck, clampedTime);
   }, [visibleSeconds, seek]);
+
+  const handleOverviewClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const deck: DeckId = x < rect.width / 2 ? 'A' : 'B';
+    const state = useStore.getState();
+    const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
+    if (!deckState.duration) return;
+    const localX = deck === 'A' ? x : x - rect.width / 2;
+    seek(deck, Math.max(0, Math.min(deckState.duration, localX / (rect.width / 2) * deckState.duration)));
+  }, [seek]);
+
+  const handleWheelZoom = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    setVisibleSeconds(value => Math.max(2, Math.min(60, value * (e.deltaY < 0 ? 1 / 1.15 : 1.15))));
+  }, []);
   
   // Render fallback Canvas 2D if WebGL not available
   if (useFallback) {
@@ -263,12 +321,24 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   }
   
   return (
-    <div ref={containerRef} className="w-full bg-surface-0" style={{ height: surfaceHeight }}>
+    <div ref={containerRef} className="w-full bg-surface-0 relative" style={{ height: surfaceHeight }} onWheel={handleWheelZoom}>
+      <div className="h-8 flex items-center justify-end gap-1 px-2 bg-surface-0">
+        {(['Gradient', 'Level', 'Solid'] as const).map((label, index) => (
+          <button key={label} onClick={() => setColorMode(index as 0 | 1 | 2)} aria-pressed={colorMode === index}
+            className={`px-2 h-6 rounded text-[9px] font-bold ${colorMode === index ? 'bg-brand/30 text-brand' : 'text-neutral-500 hover:text-neutral-200'}`}
+            title={`Waveform: ${label}`}>{label}</button>
+        ))}
+        <span className="mx-1 h-4 w-px bg-neutral-700" />
+        <button onClick={() => setVisibleSeconds(value => Math.max(2, value / 1.5))} aria-label="Zoom in" className="w-6 h-6 text-neutral-300">+</button>
+        <button onClick={() => setVisibleSeconds(10)} aria-label="Reset zoom" className="px-1 h-6 text-[9px] text-neutral-400">{visibleSeconds.toFixed(0)}s</button>
+        <button onClick={() => setVisibleSeconds(value => Math.min(60, value * 1.5))} aria-label="Zoom out" className="w-6 h-6 text-neutral-300">−</button>
+      </div>
       {/* Overview waveforms */}
       <canvas
         ref={overviewWebGL.canvasRef}
         className="w-full cursor-pointer"
         style={{ height: OVERVIEW_HEIGHT }}
+        onClick={handleOverviewClick}
       />
       
       {/* Separator */}

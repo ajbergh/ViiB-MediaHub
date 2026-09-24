@@ -18,6 +18,7 @@ interface DJEQKnobProps {
   /** Compact mode: hide value bar + numeric readout to save vertical space (used in EQ strip column). */
   compact?: boolean;
   valueText?: string;
+  className?: string;
 }
 
 export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
@@ -28,6 +29,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
   size = 44,
   compact = false,
   valueText,
+  className = '',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -116,12 +118,12 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
   return (
     <div 
       ref={containerRef}
-      className="group relative flex flex-col items-center select-none"
+      className={`group relative flex flex-col items-center select-none ${className}`}
       style={{ width: size }}
     >
       {/* Label */}
       <span
-        className={`text-[10px] font-bold uppercase tracking-wider ${compact ? 'leading-none mb-0' : 'mb-0.5'}`}
+        className={`dj-eq-knob-label text-[10px] font-bold uppercase tracking-wider ${compact ? 'leading-none mb-0' : 'mb-0.5'}`}
         style={{ color: '#bac6d6' }}
       >
         {label}
@@ -258,7 +260,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
       {/* Value display */}
       {!compact && (
         <span
-          className="text-[10px] font-mono mt-0.5 transition-colors whitespace-nowrap"
+          className="dj-eq-knob-readout text-[10px] font-mono mt-0.5 transition-colors whitespace-nowrap"
           style={{ color: '#cbd5e1' }}
         >
           {valueText ?? displayValue}

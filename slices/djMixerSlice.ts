@@ -50,6 +50,7 @@ export interface Loop {
   enabled: boolean;
   start: number;     // seconds
   end: number;       // seconds
+  pendingIn?: number | null;
 }
 
 // Phase 3: Effect types
@@ -104,6 +105,7 @@ export interface DeckFX {
 export interface DeckState {
   // Track
   track: Song | null;
+  analysisStatus: 'loading' | 'not_analyzed' | 'available' | 'error';
   
   // Transport
   isPlaying: boolean;
@@ -293,13 +295,15 @@ export interface DJMixerSlice {
   // Analysis data (from backend)
   setDeckWaveform: (deck: DeckId, peaks: number[]) => void;
   setDeckAnalysis: (deck: DeckId, patch: DeckAnalysisPatch) => void;
+  setDeckAnalysisStatus: (deck: DeckId, status: DeckState['analysisStatus']) => void;
   
   // Beat grid editing (Phase 3)
   shiftBeatGrid: (deck: DeckId, offsetDelta: number) => void;  // Shift by ±ms
   resetBeatGridOffset: (deck: DeckId) => void;
   
   // Loop (Phase 3+)
-  setLoop: (deck: DeckId, start: number, end: number) => void;
+  setLoop: (deck: DeckId, start: number, end: number, enabled?: boolean) => void;
+  setPendingLoopIn: (deck: DeckId, position: number | null) => void;
   toggleLoop: (deck: DeckId) => void;
   clearLoop: (deck: DeckId) => void;
   
@@ -391,6 +395,7 @@ const createDefaultFX = (): DeckFX => ({
 
 const createDefaultDeckState = (): DeckState => ({
   track: null,
+  analysisStatus: 'not_analyzed',
   isPlaying: false,
   position: 0,
   duration: 0,
@@ -470,6 +475,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
     set((state) => ({
       [deckKey]: {
         ...createDefaultDeckState(),
+        analysisStatus: 'loading',
         track,
         duration: track.duration || 0, // Initialize from track metadata
         volume: state[deckKey].volume, // Preserve volume setting
@@ -729,6 +735,11 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
       };
     });
   },
+
+  setDeckAnalysisStatus: (deck, status) => {
+    const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    set((state) => ({ [deckKey]: { ...state[deckKey], analysisStatus: status } }));
+  },
   
   // Beat grid editing
   shiftBeatGrid: (deck, offsetDelta) => {
@@ -752,13 +763,23 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
   },
   
   // Loop
-  setLoop: (deck, start, end) => {
+  setLoop: (deck, start, end, enabled = true) => {
     const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
     set((state) => ({
       [deckKey]: { 
         ...state[deckKey], 
-        loop: { enabled: true, start, end }
+        loop: { ...state[deckKey].loop, enabled, start, end, pendingIn: null }
       }
+    }));
+  },
+
+  setPendingLoopIn: (deck, position) => {
+    const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    set((state) => ({
+      [deckKey]: {
+        ...state[deckKey],
+        loop: { ...state[deckKey].loop, pendingIn: position },
+      },
     }));
   },
   
@@ -777,7 +798,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
     set((state) => ({
       [deckKey]: { 
         ...state[deckKey], 
-        loop: { enabled: false, start: 0, end: 0 }
+        loop: { enabled: false, start: 0, end: 0, pendingIn: null }
       }
     }));
   },

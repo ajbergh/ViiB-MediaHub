@@ -60,10 +60,10 @@ export function toDJWebGL1FragmentShader(source: string): string {
 }
 
 /**
- * Main waveform fragment shader with frequency-based coloring
+ * Main waveform fragment shader with amplitude palettes
  * 
  * Features:
- * - Multi-colored frequency bands (bass=red, mid=green, high=blue)
+ * - Gradient, amplitude-level and deck-color palettes
  * - Smooth scrolling via uniform offset
  * - Center-line symmetric rendering
  * - Anti-aliased edges
@@ -78,8 +78,15 @@ uniform vec2 u_resolution;
 uniform float u_centerY;         // Center line Y position (0-1)
 uniform vec3 u_deckColor;        // Deck accent color
 uniform int u_hasPeaks;          // 1 if waveform data available
+uniform float u_peakCount;
+uniform float u_peakWidth;
+uniform float u_peakHeight;
+uniform float u_loopStart;
+uniform float u_loopEnd;
+uniform int u_loopEnabled;
+uniform int u_colorMode;
 
-// Frequency band colors
+// Vertical gradient palette. This waveform stores amplitude only, not frequency bands.
 const vec3 BASS_COLOR = vec3(1.0, 0.267, 0.267);    // #ff4444
 const vec3 LOW_MID_COLOR = vec3(1.0, 0.533, 0.267); // #ff8844
 const vec3 MID_COLOR = vec3(0.267, 1.0, 0.267);     // #44ff44
@@ -90,9 +97,7 @@ const vec3 BG_COLOR = vec3(0.071, 0.071, 0.071);    // #121212
 in vec2 v_uv;
 out vec4 fragColor;
 
-vec3 getFrequencyColor(float normalizedY) {
-    // Map vertical position to frequency band
-    // Center = mid, edges = bass/treble
+vec3 getGradientColor(float normalizedY) {
     float band = normalizedY;
     
     if (band < 0.2) {
@@ -129,7 +134,25 @@ void main() {
     }
     
     // Sample waveform peak from texture
-    float peak = texture(u_waveformTex, vec2(sampleU, 0.5)).r;
+    float samplesPerPixel = max(1.0, u_visibleRange * u_peakCount / u_resolution.x);
+    float sampleCount = min(64.0, ceil(samplesPerPixel));
+    float centerIndex = sampleU * u_peakCount;
+    float firstIndex = centerIndex - samplesPerPixel * 0.5;
+    float peak = 0.0;
+    for (int i = 0; i < 64; i++) {
+        if (float(i) >= sampleCount) break;
+        float sampleIndex = clamp(firstIndex + (float(i) + 0.5) * samplesPerPixel / sampleCount, 0.0, u_peakCount - 1.0);
+        float texX = (mod(floor(sampleIndex), u_peakWidth) + 0.5) / u_peakWidth;
+        float texY = (floor(sampleIndex / u_peakWidth) + 0.5) / u_peakHeight;
+        peak = max(peak, texture(u_waveformTex, vec2(texX, texY)).r);
+    }
+    bool hasLoop = u_loopStart >= 0.0 && u_loopEnd > u_loopStart;
+    float loopStartPixels = abs((sampleU - u_loopStart) / max(u_visibleRange, 0.000001) * u_resolution.x);
+    float loopEndPixels = abs((sampleU - u_loopEnd) / max(u_visibleRange, 0.000001) * u_resolution.x);
+    if (hasLoop && min(loopStartPixels, loopEndPixels) < 1.25) {
+        fragColor = vec4(u_loopEnabled == 1 ? vec3(0.2, 1.0, 0.55) : vec3(0.6, 0.7, 0.8), 0.95);
+        return;
+    }
     
     // Distance from center line
     float distFromCenter = abs(v_uv.y - u_centerY) * 2.0;
@@ -140,17 +163,26 @@ void main() {
     
     // Within waveform amplitude?
     if (alpha > 0.01) {
-        // Frequency coloring based on distance from center
+        // Gradient mode varies color with distance from the center line.
         float freqPosition = distFromCenter / max(peak, 0.001);
-        vec3 color = getFrequencyColor(freqPosition);
+        vec3 color = getGradientColor(freqPosition);
+        if (u_colorMode == 1) {
+            color = peak > 0.66 ? vec3(1.0, 0.27, 0.27) : (peak > 0.33 ? vec3(1.0, 0.67, 0.2) : vec3(0.27, 0.55, 1.0));
+        } else if (u_colorMode == 2) {
+            color = u_deckColor;
+        }
         
         // Slight brightness variation for depth
         color *= 0.85 + 0.15 * (1.0 - freqPosition);
         
+        bool inLoop = hasLoop && sampleU >= u_loopStart && sampleU <= u_loopEnd;
+        if (inLoop) color = mix(color, u_loopEnabled == 1 ? vec3(0.12, 0.82, 0.42) : vec3(0.55, 0.65, 0.72), u_loopEnabled == 1 ? 0.42 : 0.18);
         fragColor = vec4(color, alpha);
     } else {
         // Background
-        fragColor = vec4(BG_COLOR, 1.0);
+        bool inLoop = hasLoop && sampleU >= u_loopStart && sampleU <= u_loopEnd;
+        vec3 background = inLoop ? mix(BG_COLOR, u_loopEnabled == 1 ? vec3(0.12, 0.82, 0.42) : vec3(0.55, 0.65, 0.72), u_loopEnabled == 1 ? 0.2 : 0.08) : BG_COLOR;
+        fragColor = vec4(background, 1.0);
     }
 }
 `;
@@ -319,6 +351,12 @@ uniform vec2 u_resolution;
 uniform float u_position;        // Current playhead position (0-1)
 uniform vec3 u_deckColor;        // Deck accent color
 uniform int u_hasPeaks;          // 1 if waveform data available
+uniform float u_peakCount;
+uniform float u_peakWidth;
+uniform float u_peakHeight;
+uniform float u_loopStart;
+uniform float u_loopEnd;
+uniform int u_loopEnabled;
 
 const vec3 BG_COLOR = vec3(0.102, 0.102, 0.102);  // #1a1a1a
 
@@ -326,8 +364,21 @@ in vec2 v_uv;
 out vec4 fragColor;
 
 void main() {
-    // Sample waveform at this X position
-    float peak = u_hasPeaks == 1 ? texture(u_waveformTex, vec2(v_uv.x, 0.5)).r : 0.0;
+    // Max-pool the full 2D peak texture into the overview's pixel buckets.
+    float samplesPerPixel = max(1.0, u_peakCount / u_resolution.x);
+    float sampleCount = min(64.0, ceil(samplesPerPixel));
+    float centerIndex = v_uv.x * u_peakCount;
+    float firstIndex = centerIndex - samplesPerPixel * 0.5;
+    float peak = 0.0;
+    if (u_hasPeaks == 1) {
+        for (int i = 0; i < 64; i++) {
+            if (float(i) >= sampleCount) break;
+            float sampleIndex = clamp(firstIndex + (float(i) + 0.5) * samplesPerPixel / sampleCount, 0.0, u_peakCount - 1.0);
+            float texX = (mod(floor(sampleIndex), u_peakWidth) + 0.5) / u_peakWidth;
+            float texY = (floor(sampleIndex / u_peakWidth) + 0.5) / u_peakHeight;
+            peak = max(peak, texture(u_waveformTex, vec2(texX, texY)).r);
+        }
+    }
     
     // Distance from center
     float distFromCenter = abs(v_uv.y - 0.5) * 2.0;
@@ -338,6 +389,12 @@ void main() {
         fragColor = vec4(color, 0.8);
     } else {
         fragColor = vec4(BG_COLOR, 1.0);
+    }
+
+    bool inLoop = u_loopStart >= 0.0 && u_loopEnd > u_loopStart && v_uv.x >= u_loopStart && v_uv.x <= u_loopEnd;
+    if (inLoop) {
+        vec3 loopColor = u_loopEnabled == 1 ? vec3(0.12, 0.82, 0.42) : vec3(0.55, 0.65, 0.72);
+        fragColor.rgb = mix(fragColor.rgb, loopColor, u_loopEnabled == 1 ? 0.34 : 0.14);
     }
     
     // Playhead line

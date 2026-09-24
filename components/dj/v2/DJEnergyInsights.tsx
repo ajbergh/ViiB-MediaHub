@@ -14,6 +14,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [features, setFeatures] = useState<TrackEnergyFeatures | null>(null);
   const [recommendations, setRecommendations] = useState<TrackTransitionRecommendations | null>(null);
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
+  const analysisStatus = useStore(state => deck === 'A' ? state.djDeckA.analysisStatus : state.djDeckB.analysisStatus);
   const setHotCue = useStore(state => state.setHotCue);
   const progressRef = useRef<HTMLDivElement>(null);
 
@@ -44,13 +45,14 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     let live = true;
     setFeatures(null);
     setRecommendations(null);
-    if (trackID) {
+    if (trackID && analysisStatus === 'available') {
       api.getTrackEnergyFeatures(trackID).then(value => live && setFeatures(value)).catch(() => {});
       api.getTrackTransitionRecommendations(trackID).then(value => live && setRecommendations(value)).catch(() => {});
     }
     return () => { live = false; };
-  }, [trackID]);
+  }, [trackID, analysisStatus]);
 
+  if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
   if (!features) return null;
   const acceptCue = (position: number, kind: string) => {
     if (!deck) return;
