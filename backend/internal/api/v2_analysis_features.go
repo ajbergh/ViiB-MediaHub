@@ -4,14 +4,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	analysiskey "github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/dj"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -78,20 +83,40 @@ type EnergyFeaturesResponse struct {
 // candidate for the track currently leaving a deck.  It is advisory only;
 // callers retain full control over cue and track selection.
 type TransitionRecommendationResponse struct {
-	SongID     string                         `json:"songId"`
-	Title      string                         `json:"title"`
-	Artist     string                         `json:"artist"`
-	Score      float64                        `json:"score"`
-	Intent     features.TransitionIntent      `json:"intent"`
-	Vector     features.TransitionVector      `json:"vector"`
-	Components []features.TransitionComponent `json:"components"`
+	SongID         string                         `json:"songId"`
+	Title          string                         `json:"title"`
+	Artist         string                         `json:"artist"`
+	Score          float64                        `json:"score"`
+	Intent         features.TransitionIntent      `json:"intent"`
+	Vector         features.TransitionVector      `json:"vector"`
+	Components     []features.TransitionComponent `json:"components"`
+	FilterEvidence TransitionCandidateEvidence    `json:"filterEvidence"`
+}
+
+// TransitionCandidateEvidence echoes the resolved measurements used by the
+// optional Mix Next filters. Stem availability means a registered ready set.
+type TransitionCandidateEvidence struct {
+	BPM            *float64 `json:"bpm,omitempty"`
+	EnergyLevel    *int     `json:"energyLevel,omitempty"`
+	StemsAvailable *bool    `json:"stemsAvailable,omitempty"`
+}
+
+type TransitionRecommendationFilters struct {
+	MinBPM         *float64 `json:"minBpm,omitempty"`
+	MaxBPM         *float64 `json:"maxBpm,omitempty"`
+	MinEnergyLevel *int     `json:"minEnergyLevel,omitempty"`
+	MaxEnergyLevel *int     `json:"maxEnergyLevel,omitempty"`
+	StemsAvailable *bool    `json:"stemsAvailable,omitempty"`
 }
 
 type TransitionRecommendationsResponse struct {
-	SongID           string                             `json:"songId"`
-	Intent           features.TransitionIntent          `json:"intent"`
-	AlgorithmVersion string                             `json:"algorithmVersion"`
-	Recommendations  []TransitionRecommendationResponse `json:"recommendations"`
+	SongID                  string                             `json:"songId"`
+	Intent                  features.TransitionIntent          `json:"intent"`
+	AlgorithmVersion        string                             `json:"algorithmVersion"`
+	Filters                 TransitionRecommendationFilters    `json:"filters"`
+	CandidatesBeforeFilters int                                `json:"candidatesBeforeFilters"`
+	CandidatesAfterFilters  int                                `json:"candidatesAfterFilters"`
+	Recommendations         []TransitionRecommendationResponse `json:"recommendations"`
 }
 
 func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) {
@@ -314,6 +339,11 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 // box number.
 func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Request) {
 	songID := chi.URLParam(r, "songID")
+	filters, err := parseTransitionRecommendationFilters(r.URL.Query())
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	intent := features.TransitionIntent(r.URL.Query().Get("intent"))
 	if intent == "" {
 		intent = features.TransitionIntentHold
@@ -368,7 +398,24 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	for id, record := range analysisByID {
 		metadataByID[id] = resolvedTransitionMetadata(record, overrides[id])
 	}
+	stemStatuses := map[string]string{}
+	if filters.StemsAvailable != nil {
+		candidateIDs := make([]string, 0, len(artifacts))
+		for _, artifact := range artifacts {
+			if artifact.SongID != songID {
+				if _, exists := songByID[artifact.SongID]; exists {
+					candidateIDs = append(candidateIDs, artifact.SongID)
+				}
+			}
+		}
+		stemStatuses, err = a.db.ListStemStatuses(candidateIDs)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	recommendations := make([]TransitionRecommendationResponse, 0, len(artifacts))
+	candidatesBeforeFilters := 0
 	for _, artifact := range artifacts {
 		if artifact.SongID == songID {
 			continue
@@ -381,12 +428,22 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		if !exists {
 			continue
 		}
+		candidatesBeforeFilters++
+		metadata := metadataByID[artifact.SongID]
+		stemAvailable := stemStatuses[artifact.SongID] == "ready"
+		if !transitionCandidateMatchesFilters(metadata, stemAvailable, filters) {
+			continue
+		}
 		score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[artifact.SongID], intent)
 		if scoreErr != nil {
 			respondError(w, http.StatusBadRequest, scoreErr.Error())
 			return
 		}
-		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components})
+		evidence := TransitionCandidateEvidence{BPM: metadata.BPM, EnergyLevel: metadata.EnergyLevel}
+		if filters.StemsAvailable != nil {
+			evidence.StemsAvailable = &stemAvailable
+		}
+		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components, FilterEvidence: evidence})
 	}
 	sort.Slice(recommendations, func(i, j int) bool {
 		if recommendations[i].Score == recommendations[j].Score {
@@ -394,11 +451,102 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		}
 		return recommendations[i].Score > recommendations[j].Score
 	})
+	candidatesAfterFilters := len(recommendations)
 	limit := parseBoundedInt(r.URL.Query().Get("limit"), 10, 50)
 	if len(recommendations) > limit {
 		recommendations = recommendations[:limit]
 	}
-	respondJSON(w, TransitionRecommendationsResponse{SongID: songID, Intent: intent, AlgorithmVersion: features.TransitionAlgorithmVersion, Recommendations: recommendations})
+	respondJSON(w, TransitionRecommendationsResponse{SongID: songID, Intent: intent, AlgorithmVersion: features.TransitionAlgorithmVersion, Filters: filters, CandidatesBeforeFilters: candidatesBeforeFilters, CandidatesAfterFilters: candidatesAfterFilters, Recommendations: recommendations})
+}
+
+func parseTransitionRecommendationFilters(values url.Values) (TransitionRecommendationFilters, error) {
+	var filters TransitionRecommendationFilters
+	parseFloat := func(name string) (*float64, error) {
+		value, present, err := singleQueryValue(values, name)
+		if err != nil || !present {
+			return nil, err
+		}
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < float64(dj.MinValidBPM) || n > float64(dj.MaxValidBPM) {
+			return nil, fmt.Errorf("%s must be a number between %d and %d", name, dj.MinValidBPM, dj.MaxValidBPM)
+		}
+		return &n, nil
+	}
+	parseEnergy := func(name string) (*int, error) {
+		value, present, err := singleQueryValue(values, name)
+		if err != nil || !present {
+			return nil, err
+		}
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 1 || n > 10 {
+			return nil, fmt.Errorf("%s must be an integer between 1 and 10", name)
+		}
+		return &n, nil
+	}
+	var err error
+	if filters.MinBPM, err = parseFloat("minBpm"); err != nil {
+		return filters, err
+	}
+	if filters.MaxBPM, err = parseFloat("maxBpm"); err != nil {
+		return filters, err
+	}
+	if filters.MinEnergyLevel, err = parseEnergy("minEnergyLevel"); err != nil {
+		return filters, err
+	}
+	if filters.MaxEnergyLevel, err = parseEnergy("maxEnergyLevel"); err != nil {
+		return filters, err
+	}
+	if filters.MinBPM != nil && filters.MaxBPM != nil && *filters.MinBPM > *filters.MaxBPM {
+		return filters, errors.New("minBpm must be less than or equal to maxBpm")
+	}
+	if filters.MinEnergyLevel != nil && filters.MaxEnergyLevel != nil && *filters.MinEnergyLevel > *filters.MaxEnergyLevel {
+		return filters, errors.New("minEnergyLevel must be less than or equal to maxEnergyLevel")
+	}
+	if value, present, err := singleQueryValue(values, "stemsAvailable"); err != nil {
+		return filters, err
+	} else if present {
+		var parsed bool
+		switch value {
+		case "true":
+			parsed = true
+		case "false":
+			parsed = false
+		default:
+			return filters, errors.New("stemsAvailable must be true or false")
+		}
+		filters.StemsAvailable = &parsed
+	}
+	return filters, nil
+}
+
+func singleQueryValue(values url.Values, key string) (string, bool, error) {
+	items, present := values[key]
+	if !present {
+		return "", false, nil
+	}
+	if len(items) != 1 || strings.TrimSpace(items[0]) == "" {
+		return "", true, fmt.Errorf("%s must be supplied once with a value", key)
+	}
+	return strings.TrimSpace(items[0]), true, nil
+}
+
+func transitionCandidateMatchesFilters(metadata features.TransitionMetadata, stemsAvailable bool, filters TransitionRecommendationFilters) bool {
+	if filters.MinBPM != nil && (metadata.BPM == nil || *metadata.BPM < *filters.MinBPM) {
+		return false
+	}
+	if filters.MaxBPM != nil && (metadata.BPM == nil || *metadata.BPM > *filters.MaxBPM) {
+		return false
+	}
+	if filters.MinEnergyLevel != nil && (metadata.EnergyLevel == nil || *metadata.EnergyLevel < *filters.MinEnergyLevel) {
+		return false
+	}
+	if filters.MaxEnergyLevel != nil && (metadata.EnergyLevel == nil || *metadata.EnergyLevel > *filters.MaxEnergyLevel) {
+		return false
+	}
+	if filters.StemsAvailable != nil && stemsAvailable != *filters.StemsAvailable {
+		return false
+	}
+	return true
 }
 
 func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) features.TransitionMetadata {

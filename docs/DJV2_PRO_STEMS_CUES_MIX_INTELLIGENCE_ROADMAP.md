@@ -32,7 +32,9 @@ The full roadmap (sections 1–52) was reviewed on 2026-09-24 against repository
 | PR 10 — Stem deck transport | Complete — V1 | One-clock four-bus worklet, bounded prefetch, source-rate resampling, switching, gains, fallback and loop capability reporting; full typecheck and deck/worklet regression tests pass. Key-lock, scratch/slip, long sample-accurate loops and production device qualification remain open. |
 | PR 11 — Four-button stem UI | Complete | Per-deck full/stems mode, four bus mutes, expanded gain/solo controls and buffering/fallback/underrun diagnostics; frontend typecheck and 106 tests passed. |
 | PR 12 — Cue API and preparation editor | Complete — V1 | Typed candidate/list/apply routes, fill-empty/refresh/selected-only policies, provenance/lock/rationale display and candidate actions; full Go and frontend checks pass. Settings, waveform marker styling, quantization controls and richer editing remain open. |
-| Mix/Mashup planning and interoperability | In progress | Mix Next scores confidence-gated BPM/Camelot/Energy Level evidence with Hold/Lift/Reset/Harmonic intents. Candidate filters, structure/vocal/stem evidence, reversible Test Mix audition and Mashup Mode remain outstanding. |
+| PR 13 — DJ library Stem Status | Complete | Snapshot/change song rows carry a batched, path-free registry summary; the optional library badge supports sorting and status search. Full Go, DB, typecheck and frontend checks pass. |
+| PR 14 — Mix Next candidate filters V1 | Complete | Inclusive BPM/Energy ranges and registered-ready stem availability filters expose validated active filters, resolved evidence and before/after counts; API/UI tests pass. |
+| Mix/Mashup planning and interoperability | In progress | Mix Next scores confidence-gated BPM/Camelot/Energy Level evidence with Hold/Lift/Reset/Harmonic intents. Structure/vocal evidence, reversible Test Mix audition and Mashup Mode remain outstanding. |
 
 Current release gates and follow-on work:
 
@@ -40,7 +42,7 @@ Current release gates and follow-on work:
 - Structure: analysis still has energy-only sections; semantic intro/drop/breakdown/outro labels, confidence, local-tempo/bar metadata and a structure API are not implemented.
 - Energy/loudness: Energy Level is deterministic V1 with heuristic confidence and no curated-corpus calibration. The displayed loudness is explicitly an unweighted RMS proxy, not BS.1770 integrated LUFS or true peak.
 - Stems: V1 supports WAV packages and exact decoder/package geometry. Key-lock/time-stretch, scratch/slip, loops beyond the bounded sample buffer, browser/device performance qualification, six-stem editing/export, FLAC and NI `.stem.mp4` interoperability remain gated. StemLab generation remains owned by the separate repository.
-- Mix planning: candidate filters, listening preview with safe deck-state restore, and acceptance-to-load remain unimplemented. Surprise and Vocal-safe intents stay disabled until supported evidence exists.
+- Mix planning: listening preview with safe deck-state restore and acceptance-to-load remain unimplemented. Structure/vocal-safe evidence is not available; Surprise and Vocal-safe intents stay disabled.
 - Mashup/interoperability: stem-aware pairing, independent pitch-shift/key recalculation, phrase-window and loop audition, saved ideas, DJ metadata export and controller/MIDI/accessibility polish remain future slices.
 
 Progress log:
@@ -54,6 +56,7 @@ Progress log:
 - 2026-09-24 — Started PR 3's benchmark harness foundation separately from production beatgrid code; generated cues remain gated until rhythm provenance is validated.
 - 2026-09-24 — Added a Go canonical WAV exporter (`backend/cmd/canonicalwav`) backed by the MediaHub decoder registry; reference adapters now require its timing/hash/frame metadata and never independently decode source files. External model runtimes/checkpoints remain unavailable.
 - 2026-09-24 — Completed the PR 3 reference harness slice: normalized raw result schema, Beat This and All-In-One adapters, canonical WAV verification and exact-metadata overlap audit. Python compilation and focused tests (5/5) passed; model predictions remain unrun because runtimes/checkpoints and complete training annotations are unavailable.
+- 2026-09-24 — Completed PR 13's DJ library Stem Status column. V2 snapshot/change pages batch path-free registry statuses for returned songs and feed a local-sort/searchable badge; `go test ./...`, frontend typecheck and all 112 frontend tests pass.
 - 2026-09-24 — Started the production rhythm-grid provenance portion of PR 3; current native grids must report `inferred-from-meter` until a qualified measured detector exists.
 - 2026-09-24 — Completed PR 8's source-neutral deck transport and regression tests for load/play, seek, loop, cue, sync and scratch. `npm run typecheck` and `npx vitest run --configLoader runner` passed (23 files, 104 tests).
 - 2026-09-24 — Completed PR 3's MediaHub provenance path: native phase grids persist as `inferred-from-meter`, editor changes persist as `manual`, and legacy artifacts resolve through an effective provenance rule. No measured detector or external model inference was available.
@@ -63,11 +66,13 @@ Progress log:
 - 2026-09-24 — Completed PR 9's single-stem WAV preview/export route with HTTP byte ranges and registered-source validation. Frame and preview API tests, DB checks, server compilation and `go vet ./internal/api ./internal/stems` passed. Symlink tests are skipped on this Windows sandbox because it denies symlink creation; traversal rejection is covered.
 - 2026-09-24 — Started PR 10's synchronized multi-stem deck source and PR 11's four-button controls in parallel against a shared proposed API contract.
 - 2026-09-24 — Started the first sections 20–21 Mix Next v2 scoring slice: add confidence-gated tempo, Camelot and Energy Level components plus explicit Hold/Lift/Reset/Harmonic intent; vocal-safe and surprise remain unsupported without evidence.
+- 2026-09-24 — Completed PR 14's Mix Next inclusive BPM (60–190), Energy Level (1–10), and registered-ready stem availability filters. The API validates bounds, excludes candidates missing requested measurements, and echoes active filters, candidate evidence and before/after counts; DJEnergyInsights exposes compact controls. Full API and frontend checks pass; structure/vocal-safe filters remain unsupported.
 - 2026-09-24 — Completed PR 11's four-button DJ stem controls and diagnostics against the new deck actions API. `npm run typecheck` and `npx vitest run --configLoader runner` passed (24 files, 106 tests); palette/raw-color checks passed with no new violations. Key-lock/time-stretch and scratch/slip are reported unsupported in stem mode.
 - 2026-09-24 — The DJ energy panel labels its existing unweighted RMS estimate `Loudness proxy` and clarifies it is not BS.1770 LUFS. Standards-correct BS.1770 measurement remains future work; no component-level test harness exists for this view, and TypeScript typecheck passed.
 - 2026-09-24 — Completed PR 10 transport V1 with a four-bus shared-clock AudioWorklet, bounded frame fetches, fallback and loop capability reporting. Fixed source-rate/output-rate mismatch with linear interpolation and added an executable worklet regression test. Deck tests passed (27 tests), then the focused worklet/deck suite passed (5 tests).
 - 2026-09-24 — Completed PR 12 cue API/editor V1: fresh candidate listing and apply endpoints support fill-empty, replace-generated and selected-only modes; the DJ view displays cue provenance/confidence/rationale/lock state and applies candidates. Selected-only writes preserve other slots.
-- 2026-09-24 — Combined validation passed: `go test ./...`, `go vet ./...`, `npm run typecheck`, serial `npx vitest run --configLoader runner` (26 files, 111 tests), benchmark Python compilation and unit tests (5/5), and `git diff --check`.
+- 2026-09-24 — Updated the cue API freshness guard to reject analysis results whose source fingerprint no longer matches the local file; fixed the API fixture to use a real source file. Cue-specific API tests passed.
+- 2026-09-24 — Combined validation passed: `go test ./...`, `go vet ./...`, `npm run typecheck`, serial `npx vitest run --configLoader runner` (27 files, 112 tests), benchmark Python compilation and unit tests (5/5), and `git diff --check`.
 - 2026-09-24 — Committed as `0ede940` and opened draft PR #61 for review; roadmap implementation remains in progress pending the release gates above.
 
 ## 1. Product vision

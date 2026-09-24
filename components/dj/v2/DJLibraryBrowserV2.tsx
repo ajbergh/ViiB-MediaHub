@@ -34,11 +34,11 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 
-type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy';
+type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'stemStatus';
 type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
-type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre';
+type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus';
 type ResizableColumn = 'title' | 'artist' | 'album';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'viib.dj.library.columnVisibility';
@@ -51,7 +51,17 @@ const DEFAULT_COLUMN_VISIBILITY: Record<OptionalColumn, boolean> = {
   album: true,
   time: true,
   genre: true,
+  stemStatus: true,
 };
+
+const STEM_STATUS_LABELS: Record<NonNullable<Song['stemStatus']>, string> = {
+  none: 'None', discovered: 'Found', validating: 'Checking', ready: 'Ready',
+  stale: 'Stale', invalid: 'Invalid', unavailable: 'Unavailable',
+};
+
+function stemStatusLabel(status: Song['stemStatus']): string {
+  return STEM_STATUS_LABELS[status || 'none'] || 'Unknown';
+}
 
 const DEFAULT_COLUMN_WIDTHS: Record<ResizableColumn, number> = {
   title: 220,
@@ -107,6 +117,7 @@ const TrackRowCells = memo(({
   trackColor,
   onSetTrackColor,
   analysis,
+  stemStatus,
   keyCompatibility,
   columnVisibility,
   columnWidths,
@@ -118,6 +129,7 @@ const TrackRowCells = memo(({
   trackColor: string | undefined;
   onSetTrackColor: (songId: string, color: string | null) => void;
   analysis?: TrackAnalysisFeature;  // Durable resolved analysis from the backend
+  stemStatus?: Song['stemStatus'];
   keyCompatibility: number | null;  // 0-1 score, null if no key data
   columnVisibility: Record<OptionalColumn, boolean>;
   columnWidths: Record<ResizableColumn, number>;
@@ -288,6 +300,24 @@ const TrackRowCells = memo(({
         <td className="px-2 py-1.5 w-20 hidden lg:table-cell">
           <span className="text-neutral-500 truncate block text-[10px]">
             {song.genre?.[0] || '-'}
+          </span>
+        </td>
+      )}
+
+      {/* Stem package registry status */}
+      {columnVisibility.stemStatus && (
+        <td className="px-2 py-1.5 w-24 text-center">
+          <span
+            className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${
+              stemStatus === 'ready' ? 'bg-emerald-500/15 text-emerald-300' :
+              stemStatus === 'invalid' ? 'bg-red-500/15 text-red-300' :
+              stemStatus === 'stale' || stemStatus === 'unavailable' ? 'bg-amber-500/15 text-amber-300' :
+              stemStatus === 'discovered' || stemStatus === 'validating' ? 'bg-blue-500/15 text-blue-300' :
+              'bg-white/5 text-neutral-500'
+            }`}
+            title={`Stem package status · ${stemStatus || 'none'}`}
+          >
+            {stemStatusLabel(stemStatus)}
           </span>
         </td>
       )}
@@ -576,6 +606,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         song.artist.toLowerCase().includes(query) ||
         song.album.toLowerCase().includes(query) ||
         (song.genre && song.genre.some(g => g.toLowerCase().includes(query)))
+        || stemStatusLabel(song.stemStatus).toLowerCase().includes(query)
       );
     }
 
@@ -616,6 +647,9 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
           break;
         case 'energy':
           comparison = (analysisBySongID[a.id]?.energyLevel ?? 0) - (analysisBySongID[b.id]?.energyLevel ?? 0);
+          break;
+        case 'stemStatus':
+          comparison = stemStatusLabel(a.stemStatus).localeCompare(stemStatusLabel(b.stemStatus));
           break;
       }
 
@@ -807,6 +841,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                 ['album', 'Album'],
                 ['time', 'Time'],
                 ['genre', 'Genre'],
+                ['stemStatus', 'Stem Status'],
               ] as Array<[OptionalColumn, string]>).map(([column, label]) => (
                 <label
                   key={column}
@@ -849,6 +884,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   {columnVisibility.album && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Album" sortKeyValue="album" className="hidden xl:table-cell" width={columnWidths.album} resizable="album" />}
                   {columnVisibility.time && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Time" sortKeyValue="duration" className="w-14 text-right" />}
                   {columnVisibility.genre && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Genre" sortKeyValue="genre" className="w-20 hidden lg:table-cell" />}
+                  {columnVisibility.stemStatus && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Stem Status" sortKeyValue="stemStatus" className="w-24 text-center" />}
                 </tr>
               )}
               itemContent={(index, song) => (
@@ -860,6 +896,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   trackColor={trackColorMap.get(song.id)}
                   onSetTrackColor={handleSetTrackColor}
                   analysis={analysisBySongID[song.id]}
+                  stemStatus={song.stemStatus}
                   keyCompatibility={computeKeyCompat(analysisBySongID[song.id]?.key)}
                   columnVisibility={columnVisibility}
                   columnWidths={columnWidths}

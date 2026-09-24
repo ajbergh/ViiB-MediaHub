@@ -110,6 +110,7 @@ export interface ApiSong {
   likedAt?: number;
   source?: 'local' | 'plex';
   sourceName?: string;
+  stemStatus?: 'none' | 'discovered' | 'validating' | 'ready' | 'stale' | 'invalid' | 'unavailable';
 }
 
 // Resolved server-side analysis for DJ display and timing. `bpm` deliberately
@@ -223,6 +224,20 @@ export interface TransitionComponent {
   rationale: string;
 }
 
+export interface TransitionRecommendationFilters {
+  minBpm?: number;
+  maxBpm?: number;
+  minEnergyLevel?: number;
+  maxEnergyLevel?: number;
+  stemsAvailable?: boolean;
+}
+
+export interface TransitionCandidateFilterEvidence {
+  bpm?: number;
+  energyLevel?: number;
+  stemsAvailable?: boolean;
+}
+
 export interface TransitionRecommendation {
   songId: string;
   title: string;
@@ -231,12 +246,16 @@ export interface TransitionRecommendation {
   intent: TransitionIntent;
   vector: TransitionVector;
   components: TransitionComponent[];
+  filterEvidence: TransitionCandidateFilterEvidence;
 }
 
 export interface TrackTransitionRecommendations {
   songId: string;
   intent: TransitionIntent;
   algorithmVersion: string;
+  filters: TransitionRecommendationFilters;
+  candidatesBeforeFilters: number;
+  candidatesAfterFilters: number;
   recommendations: TransitionRecommendation[];
 }
 
@@ -1562,8 +1581,13 @@ export const api = {
     return handleResponse<AnalysisCueApplyResult>(response);
   },
 
-  async getTrackTransitionRecommendations(trackId: string, limit = 3, intent: TransitionIntent = 'hold'): Promise<TrackTransitionRecommendations> {
+  async getTrackTransitionRecommendations(trackId: string, limit = 3, intent: TransitionIntent = 'hold', filters: TransitionRecommendationFilters = {}): Promise<TrackTransitionRecommendations> {
     const query = new URLSearchParams({ limit: String(Math.max(1, Math.min(50, limit))), intent });
+    for (const key of ['minBpm', 'maxBpm', 'minEnergyLevel', 'maxEnergyLevel'] as const) {
+      const value = filters[key];
+      if (value !== undefined) query.set(key, String(value));
+    }
+    if (filters.stemsAvailable !== undefined) query.set('stemsAvailable', String(filters.stemsAvailable));
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/recommendations?${query}`, { cache: 'no-store' });
     return handleResponse<TrackTransitionRecommendations>(response);
   },

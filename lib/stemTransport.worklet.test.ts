@@ -7,7 +7,7 @@ describe('stem transport worklet', () => {
     class WorkletBase {
       port = { onmessage: null as ((event: { data: Record<string, unknown> }) => void) | null, postMessage: () => {} };
     }
-    let Processor: (new () => { port: WorkletBase['port']; process: (inputs: unknown[], outputs: Float32Array[][]) => boolean }) | undefined;
+    let Processor: (new () => { port: WorkletBase['port']; position: number; process: (inputs: unknown[], outputs: Float32Array[][]) => boolean }) | undefined;
     const source = readFileSync(new URL('./stemTransport.worklet.js', import.meta.url), 'utf8');
     runInNewContext(source, {
       AudioWorkletProcessor: WorkletBase,
@@ -31,5 +31,6 @@ describe('stem transport worklet', () => {
     processor.process([], outputs);
     expect(outputs[0][0][0]).toBe(0);
     expect(outputs[0][0][1]).toBeCloseTo((44100 / 48000) * 1.2);
+    expect(processor.position).toBeCloseTo(2 * (44100 / 48000) * 1.2);
   });
 });

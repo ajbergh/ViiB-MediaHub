@@ -95,6 +95,7 @@ export function apiSongToSong(apiSong: ApiSong): Song {
     likedAt: apiSong.likedAt,
     source: apiSong.source,
     sourceName: apiSong.sourceName,
+      stemStatus: apiSong.stemStatus,
   };
 }
 

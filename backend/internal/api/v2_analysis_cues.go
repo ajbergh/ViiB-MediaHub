@@ -160,12 +160,12 @@ func (a *API) analysisCueList(songID string) (AnalysisCueListResponse, error) {
 	if song == nil {
 		return AnalysisCueListResponse{}, sql.ErrNoRows
 	}
-	analysis, err := a.db.GetTrackAnalysis(songID)
+	trackAnalysis, err := a.db.GetTrackAnalysis(songID)
 	if err != nil {
 		return AnalysisCueListResponse{}, err
 	}
 	resolved, err := analysis.ResolveLocalSource(a.db, songID)
-	if err != nil || resolved.Fingerprint != analysis.SourceFingerprint {
+	if err != nil || resolved.Fingerprint != trackAnalysis.SourceFingerprint {
 		return AnalysisCueListResponse{}, errStaleAnalysisCueSource
 	}
 	energyArtifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
@@ -188,7 +188,7 @@ func (a *API) analysisCueList(songID string) (AnalysisCueListResponse, error) {
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return AnalysisCueListResponse{}, err
 	}
-	candidates, err := analysiscues.Generate(song.Duration, grid, structure, analysis.SourceFingerprint)
+	candidates, err := analysiscues.Generate(song.Duration, grid, structure, trackAnalysis.SourceFingerprint)
 	if err != nil {
 		return AnalysisCueListResponse{}, err
 	}
@@ -198,7 +198,7 @@ func (a *API) analysisCueList(songID string) (AnalysisCueListResponse, error) {
 	}
 	response := AnalysisCueListResponse{
 		SongID: songID, GeneratorVersion: analysiscues.GeneratorVersion,
-		SourceFingerprint: analysis.SourceFingerprint, DefaultApplyMode: string(db.GeneratedCueFillEmpty),
+		SourceFingerprint: trackAnalysis.SourceFingerprint, DefaultApplyMode: string(db.GeneratedCueFillEmpty),
 		HotCues: make([]HotCue, 0, len(persisted)), GeneratedCandidates: candidates,
 		Suppressions: []db.DJHotCueSuppression{},
 	}

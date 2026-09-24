@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { getDJAudioEngine } from '../../../lib/djAudio';
-import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent } from '../../../services/api';
+import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
 
 interface DJEnergyInsightsProps {
   trackID?: string;
@@ -14,10 +14,27 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [features, setFeatures] = useState<TrackEnergyFeatures | null>(null);
   const [recommendations, setRecommendations] = useState<TrackTransitionRecommendations | null>(null);
   const [intent, setIntent] = useState<TransitionIntent>('hold');
+  const [minBpm, setMinBpm] = useState('');
+  const [maxBpm, setMaxBpm] = useState('');
+  const [minEnergy, setMinEnergy] = useState('');
+  const [maxEnergy, setMaxEnergy] = useState('');
+  const [stemsOnly, setStemsOnly] = useState(false);
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
   const analysisStatus = useStore(state => deck === 'A' ? state.djDeckA.analysisStatus : state.djDeckB.analysisStatus);
   const setHotCue = useStore(state => state.setHotCue);
   const progressRef = useRef<HTMLDivElement>(null);
+  const filters: TransitionRecommendationFilters = {
+    ...(minBpm !== '' ? { minBpm: Number(minBpm) } : {}),
+    ...(maxBpm !== '' ? { maxBpm: Number(maxBpm) } : {}),
+    ...(minEnergy !== '' ? { minEnergyLevel: Number(minEnergy) } : {}),
+    ...(maxEnergy !== '' ? { maxEnergyLevel: Number(maxEnergy) } : {}),
+    ...(stemsOnly ? { stemsAvailable: true } : {}),
+  };
+  const bpmValuesValid = [minBpm, maxBpm].every(value => value === '' || (Number.isFinite(Number(value)) && Number(value) >= 60 && Number(value) <= 190));
+  const energyValuesValid = [minEnergy, maxEnergy].every(value => value === '' || (Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 10));
+  const minBpmValid = minBpm === '' || maxBpm === '' || Number(minBpm) <= Number(maxBpm);
+  const minEnergyValid = minEnergy === '' || maxEnergy === '' || Number(minEnergy) <= Number(maxEnergy);
+  const filtersValid = bpmValuesValid && energyValuesValid && minBpmValid && minEnergyValid;
 
   useEffect(() => {
     if (!features || !deck) return;
@@ -55,11 +72,11 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   useEffect(() => {
     let live = true;
     setRecommendations(null);
-    if (trackID && analysisStatus === 'available') {
-      api.getTrackTransitionRecommendations(trackID, 3, intent).then(value => live && setRecommendations(value)).catch(() => {});
+    if (trackID && analysisStatus === 'available' && filtersValid) {
+      api.getTrackTransitionRecommendations(trackID, 3, intent, filters).then(value => live && setRecommendations(value)).catch(() => {});
     }
     return () => { live = false; };
-  }, [trackID, analysisStatus, intent]);
+  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, filtersValid]);
 
   if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
   if (!features) return null;
@@ -94,6 +111,27 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
           <option value="harmonic">Harmonic</option>
         </select>
       </label>
+      <label className="inline-flex items-center gap-1" title="Inclusive BPM range; candidates without a BPM value are excluded">
+        <span>BPM</span>
+        <input aria-label="Minimum BPM" type="number" min={60} max={190} step="0.1" value={minBpm} onChange={event => setMinBpm(event.target.value)} placeholder="min"
+          className="w-12 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200" />
+        <span>–</span>
+        <input aria-label="Maximum BPM" type="number" min={60} max={190} step="0.1" value={maxBpm} onChange={event => setMaxBpm(event.target.value)} placeholder="max"
+          className="w-12 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200" />
+      </label>
+      <label className="inline-flex items-center gap-1" title="Inclusive Energy Level range (1–10); candidates without a score are excluded">
+        <span>Energy</span>
+        <input aria-label="Minimum Energy Level" type="number" min={1} max={10} step={1} value={minEnergy} onChange={event => setMinEnergy(event.target.value)} placeholder="min"
+          className="w-9 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200" />
+        <span>–</span>
+        <input aria-label="Maximum Energy Level" type="number" min={1} max={10} step={1} value={maxEnergy} onChange={event => setMaxEnergy(event.target.value)} placeholder="max"
+          className="w-9 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200" />
+      </label>
+      <label className="inline-flex items-center gap-1" title="Only include candidates with a registered ready stem set">
+        <input aria-label="Stems available only" type="checkbox" checked={stemsOnly} onChange={event => setStemsOnly(event.target.checked)} />
+        <span>Stems</span>
+      </label>
+      {!filtersValid && <span role="status" className="text-amber-400">Check ranges: BPM 60–190; Energy Level 1–10; minimum must not exceed maximum.</span>}
       {features.cueSuggestions.slice(0, 3).map((cue, index) => {
         const accepted = hotCues.some(hotCue => Math.abs(hotCue.position - cue.position) < .01);
         return <button key={`${cue.kind}-${index}`} disabled={!deck || accepted} onClick={() => acceptCue(cue.position, cue.kind)} title={cue.rationale}
@@ -110,5 +148,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         </li>)}
       </ul>
     </details>}
+    {recommendations && recommendations.candidatesAfterFilters === 0 && <p role="status" className="mt-1 text-neutral-500">
+      No analyzed candidates match these filters ({recommendations.candidatesBeforeFilters} checked).
+    </p>}
   </section>;
 }

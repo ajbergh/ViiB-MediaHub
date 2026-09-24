@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -105,6 +106,62 @@ func (d *DB) ListStemSets(songID string) ([]StemSet, error) {
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+// ListStemStatuses returns a path-free status summary for the requested songs.
+// It reads only registry status columns and is intended for page-sized library
+// batches. A ready set takes precedence, matching the per-song status route;
+// otherwise the preferred (explicitly linked, then adjacent-first) set wins.
+func (d *DB) ListStemStatuses(songIDs []string) (map[string]string, error) {
+	statuses := make(map[string]string, len(songIDs))
+	unique := make([]string, 0, len(songIDs))
+	for _, id := range songIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, exists := statuses[id]; exists {
+			continue
+		}
+		statuses[id] = "none"
+		unique = append(unique, id)
+	}
+	if len(unique) == 0 {
+		return statuses, nil
+	}
+	if err := d.EnsureStemSchema(); err != nil {
+		return nil, err
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(unique)), ",")
+	args := make([]any, len(unique))
+	for i, id := range unique {
+		args[i] = id
+	}
+	rows, err := d.conn.Query(`SELECT song_id,status FROM track_stem_sets WHERE song_id IN (`+placeholders+`) ORDER BY song_id,explicitly_linked DESC,CASE discovery_source WHEN 'adjacent' THEN 0 ELSE 1 END,package_path COLLATE NOCASE,package_path`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	seen := make(map[string]bool, len(unique))
+	for rows.Next() {
+		var songID, status string
+		if err := rows.Scan(&songID, &status); err != nil {
+			return nil, err
+		}
+		if status == "ready" {
+			statuses[songID] = "ready"
+			seen[songID] = true
+			continue
+		}
+		if !seen[songID] {
+			statuses[songID] = status
+			seen[songID] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return statuses, nil
 }
 
 func (d *DB) SetStemLocations(locations []StemLocation) error {

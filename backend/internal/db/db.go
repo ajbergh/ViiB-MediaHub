@@ -130,6 +130,7 @@ type Song struct {
 	// plex_tracks, while songs remains the unified catalog.
 	Source     string `json:"source,omitempty"`     // "local" or "plex"
 	SourceName string `json:"sourceName,omitempty"` // Friendly Plex server name
+	StemStatus string `json:"stemStatus,omitempty"` // Path-free registry summary added to v2 library rows
 }
 
 // Playlist represents a user-defined playlist persisted in the database.

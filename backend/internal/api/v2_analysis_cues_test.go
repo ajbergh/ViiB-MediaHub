@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -19,10 +21,18 @@ func TestV2AnalysisCueListAndApplyPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", Duration: 64, AddedAt: 1}); err != nil {
+	sourcePath := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(sourcePath, []byte("audio"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test", SourceFingerprint: "source-v1"}); err != nil {
+	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: sourcePath, Duration: 64, AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	resolvedSource, err := analysis.ResolveLocalSource(database, "song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test", SourceFingerprint: resolvedSource.Fingerprint}); err != nil {
 		t.Fatal(err)
 	}
 	featureResult := features.Result{
@@ -61,11 +71,11 @@ func TestV2AnalysisCueListAndApplyPolicies(t *testing.T) {
 	if err := json.NewDecoder(listRecorder.Body).Decode(&listed); err != nil {
 		t.Fatal(err)
 	}
-	if listed.GeneratorVersion != "auto-cues-v1" || listed.SourceFingerprint != "source-v1" || listed.DefaultApplyMode != "fill-empty" || len(listed.GeneratedCandidates) == 0 || len(listed.HotCues) != 1 {
+	if listed.GeneratorVersion != "auto-cues-v1" || listed.SourceFingerprint != resolvedSource.Fingerprint || listed.DefaultApplyMode != "fill-empty" || len(listed.GeneratedCandidates) == 0 || len(listed.HotCues) != 1 {
 		t.Fatalf("cue list response = %#v", listed)
 	}
 	for _, candidate := range listed.GeneratedCandidates {
-		if !candidate.DownbeatAligned || candidate.Rationale != "qualified-manual-downbeat" || candidate.SourceFingerprint != "source-v1" {
+		if !candidate.DownbeatAligned || candidate.Rationale != "qualified-manual-downbeat" || candidate.SourceFingerprint != resolvedSource.Fingerprint {
 			t.Fatalf("manual beatgrid candidate provenance = %#v", candidate)
 		}
 	}
