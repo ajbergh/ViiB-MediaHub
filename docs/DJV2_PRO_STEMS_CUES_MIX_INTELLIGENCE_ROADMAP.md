@@ -2,10 +2,10 @@
 
 **Status:** In progress — roadmap reviewed and implementation started on 2026-09-24<br>
 **Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md<br>
-**Execution branch:** `codex/djv2-stem-qualification-pr`<br>
-**Review PRs:** [#61 — DJv2 stem, cue and mix intelligence slices](https://github.com/ajbergh/ViiB-MediaHub/pull/61) (merged 2026-09-24); [#62 — energy proxy and cue provenance](https://github.com/ajbergh/ViiB-MediaHub/pull/62) (merged 2026-09-24); [#63 — hot cue quantization](https://github.com/ajbergh/ViiB-MediaHub/pull/63) (merged 2026-09-24); [#64 — compatible Camelot filter](https://github.com/ajbergh/ViiB-MediaHub/pull/64) (merged 2026-09-24)<br>
+**Execution branch:** `codex/djv2-library-filters-pr`<br>
+**Review PRs:** [#61 — DJv2 stem, cue and mix intelligence slices](https://github.com/ajbergh/ViiB-MediaHub/pull/61) (merged 2026-09-24); [#62 — energy proxy and cue provenance](https://github.com/ajbergh/ViiB-MediaHub/pull/62) (merged 2026-09-24); [#63 — hot cue quantization](https://github.com/ajbergh/ViiB-MediaHub/pull/63) (merged 2026-09-24); [#64 — compatible Camelot filter](https://github.com/ajbergh/ViiB-MediaHub/pull/64) (merged 2026-09-24); [#65 — stem transport qualification tests](https://github.com/ajbergh/ViiB-MediaHub/pull/65) (merged 2026-09-24)<br>
 **StemLab repository status:** Repository exists; generation work remains outside this MediaHub roadmap.<br>
-**Repository snapshot reviewed:** originally main at d02ad01 (v1.0.0-rc3); baseline claims re-verified at 956bf02 (includes 65cc49f DJ loop/waveform fixes); PR #61 merged to main at `bf05a12`, PR #62 at `f73a8d6`, PR #63 at `6f56e5c`, and PR #64 at `baa4b64` on 2026-09-24<br>
+**Repository snapshot reviewed:** originally main at d02ad01 (v1.0.0-rc3); baseline claims re-verified at 956bf02 (includes 65cc49f DJ loop/waveform fixes); PR #61 merged to main at `bf05a12`, PR #62 at `f73a8d6`, PR #63 at `6f56e5c`, PR #64 at `baa4b64`, and PR #65 at `f843e36` on 2026-09-24<br>
 **Research snapshot:** 2026-09-24 (external references re-checked the same day)  
 **Primary goals:** professional-grade stem playback, scan-time cue creation, Camelot-first library UX, 1-10 energy analysis, structure-aware transition planning, mashup auditioning, and high-quality DJ preparation workflows.  
 **Stem-generation architecture decision:** stem generation is an ahead-of-time workflow owned by the separate **ViiB-StemLab** application/repository ([repository](https://github.com/ajbergh/ViiB-StemLab)). ViiB MediaHub detects, validates, indexes and plays pre-generated stem packages; it does not embed Demucs/PyTorch or perform neural stem separation during DJ playback. This roadmap covers MediaHub's consumer side; StemLab generation work is tracked separately and depends on stabilizing the package contract here.
@@ -29,11 +29,12 @@ The full roadmap (sections 1–52) was reviewed on 2026-09-24 against repository
 | PR 7 — MediaHub stem discovery and registry | Complete | Discovery, persistence, locations, async link/refresh, status/unlink APIs, and PCM32 `audioSha256` matching for exact decoder geometry; Go checks passed. Geometry conversion remains unsupported. |
 | PR 8 — DeckSource refactor | Complete | Source-neutral transport and regression coverage for play/seek/loop/cue/sync/scratch; typecheck and all 104 frontend tests passed. |
 | PR 9 — Stem package preview/audio serving | Complete | Registered frame endpoint and single-stem WAV preview/export are implemented; full endpoint checks pass, with symlink creation tests skipped by Windows permissions. |
-| PR 10 — Stem deck transport | Complete — V1 | One-clock four-bus worklet, bounded prefetch, source-rate resampling, switching, gains, fallback and loop capability reporting; full typecheck and deck/worklet regression tests pass. Key-lock, scratch/slip, long sample-accurate loops and production device qualification remain open. |
+| PR 10 — Stem deck transport | Complete — V1 | One-clock four-bus worklet, bounded prefetch, source-rate resampling, switching, gains, fallback and loop capability reporting; PR #65 adds deterministic transport/lifecycle software coverage. Key-lock, scratch/slip, long sample-accurate loops and production device qualification remain open. |
 | PR 11 — Four-button stem UI | Complete | Per-deck full/stems mode, four bus mutes, expanded gain/solo controls, buffering/fallback/underrun diagnostics, and FULL/ACAPELLA/INSTRUMENTAL mute presets with restore-on-toggle and gain preservation; focused tests and frontend typecheck passed. |
 | PR 12 — Cue API and preparation editor | Complete — V1 plus quantization | Typed candidate/list/apply routes, fill-empty/refresh/selected-only policies, installation-wide automatic cue mode, provenance/lock/rationale display, candidate actions, distinct user/generated waveform markers, and manual Off/beat/half-beat/quarter-beat snapping to stored grid timestamps. Focused snapping tests and frontend typecheck pass; richer editing remains open. |
 | PR 13 — DJ library Stem Status | Complete | Snapshot/change song rows carry a batched, path-free registry summary; the optional library badge supports sorting and status search. Full Go, DB, typecheck and frontend checks pass. |
 | PR 14 — Mix Next candidate filters V1 | Complete — V1 plus compatible Camelot | Inclusive BPM/Energy ranges, registered-ready stem availability, and opt-in compatible-Camelot-only filtering expose resolved evidence and accurate before/after counts. The Camelot filter excludes candidates without trusted valid keys and is available in Mix Next. |
+| PR 15 — Mix Next playlist and exact genre filters | Implemented; review pending on `codex/djv2-library-filters-pr` | Default-off selectors use existing library state. The API ANDs playlist membership with exact normalized genre membership; unknown non-empty values match no candidates, while empty or duplicate parameters return 400. Full API tests, focused client tests, TypeScript typecheck and `git diff --check` pass. |
 | Mix/Mashup planning and interoperability | In progress | Mix Next scores confidence-gated BPM/Camelot/Energy Level evidence with Hold/Lift/Reset/Harmonic intents. A guarded top-candidate headphone preview is implemented for an empty opposite deck; atomic restoration of occupied decks, sync/beatmatch audition, structure/vocal evidence and Mashup Mode remain outstanding. |
 
 Current release gates and follow-on work:
@@ -87,6 +88,8 @@ Progress log:
 - 2026-09-24 — PR #63 passed the complete CI suite (backend race/static/vulnerability checks, frontend, cross-platform analysis/determinism, semantic cross-compilation and Linux/macOS/Windows desktop builds) and squash merged as `6f56e5c`. Added a compatible-Camelot-only Mix Next filter to the recommendations API and UI. It accepts same/adjacent/relative relations only when source and candidate keys pass existing provenance/confidence gates; missing, invalid and untrusted keys are excluded. Backend API and frontend query tests, TypeScript typecheck and `git diff --check` passed.
 - 2026-09-24 — PR #64 passed the full CI suite and squash merged as `baa4b64`. Compatible Camelot filtering is now shipped; recommendations retain only same, adjacent or relative relations when both source and candidate keys pass trusted provenance/confidence gates.
 - 2026-09-24 — Started stem transport qualification follow-up on `codex/djv2-stem-qualification-pr`. Added deterministic four-bus reconstruction/alignment, playback lifecycle, resampling/tempo, loop/EOS, stale generation, underrun recovery, fallback-position, bus control, and cancel/unload/reload tests. Focused tests (13), all frontend tests (137 across 30 files), typecheck, and diff check pass. This is software test coverage only; device qualification and unsupported key-lock/scratch/slip remain open.
+- 2026-09-24 — PR #65 passed the full cross-platform CI suite and merged to main as `f843e36`; the added transport tests are deterministic software coverage, not production device qualification.
+- 2026-09-24 — Implemented PR 15 on `codex/djv2-library-filters-pr`: default-off playlist and exact normalized genre selectors/filtering, AND semantics, one playlist load per filtered request, and deterministic unknown/empty-value handling. `go test ./internal/api -count=1`, focused API-client tests (2/2), TypeScript typecheck and `git diff --check` pass; DJEnergyInsights has no component-level test harness.
 
 ## 1. Product vision
 
@@ -1825,7 +1828,6 @@ Remaining recommendation-vector work:
 - phrase alignment beyond mix-in/mix-out cue confidence;
 - intro/outro compatibility;
 - vocal overlap risk;
-- playlist and genre filters;
 - recency/play-history filters when desired.
 
 Every score component must remain inspectable.
@@ -1892,8 +1894,8 @@ For live performance safety:
 Candidate filters:
 
 - current playlist;
-- selected playlists;
-- genre;
+- one selected playlist (Mix Next V1; multi-playlist selection remains future work);
+- exact normalized genre (Mix Next V1);
 - BPM range;
 - Energy Level range;
 - compatible Camelot only;

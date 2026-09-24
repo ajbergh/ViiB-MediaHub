@@ -4,12 +4,13 @@ import { api } from './api';
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Mix Next recommendation filters', () => {
-  it('serializes typed inclusive range and stem-availability filters', async () => {
+  it('serializes typed inclusive range, library, and stem-availability filters', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ recommendations: [] }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     await api.getTrackTransitionRecommendations('song / 1', 3, 'hold', {
       minBpm: 120.5, maxBpm: 132, minEnergyLevel: 4, maxEnergyLevel: 8, stemsAvailable: true,
       camelotCompatible: true,
+      playlistId: 'playlist / 1', genre: 'Rock',
     });
     const url = String(fetchMock.mock.calls[0][0]);
     const query = new URL(url, 'http://local').searchParams;
@@ -18,6 +19,16 @@ describe('Mix Next recommendation filters', () => {
       limit: '3', intent: 'hold', minBpm: '120.5', maxBpm: '132',
       minEnergyLevel: '4', maxEnergyLevel: '8', stemsAvailable: 'true',
       camelotCompatible: 'true',
+      playlistId: 'playlist / 1', genre: 'Rock',
     });
+  });
+
+  it('omits empty library filters', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ recommendations: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await api.getTrackTransitionRecommendations('song', 3, 'hold', { playlistId: '', genre: '' });
+    const query = new URL(String(fetchMock.mock.calls[0][0]), 'http://local').searchParams;
+    expect(query.has('playlistId')).toBe(false);
+    expect(query.has('genre')).toBe(false);
   });
 });

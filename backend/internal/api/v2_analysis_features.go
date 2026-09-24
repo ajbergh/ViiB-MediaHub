@@ -114,6 +114,8 @@ type TransitionRecommendationFilters struct {
 	MaxEnergyLevel    *int     `json:"maxEnergyLevel,omitempty"`
 	StemsAvailable    *bool    `json:"stemsAvailable,omitempty"`
 	CamelotCompatible *bool    `json:"camelotCompatible,omitempty"`
+	PlaylistID        *string  `json:"playlistId,omitempty"`
+	Genre             *string  `json:"genre,omitempty"`
 }
 
 type TransitionRecommendationsResponse struct {
@@ -387,6 +389,23 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	for _, song := range songs {
 		songByID[song.ID] = song
 	}
+	var playlistSongIDs map[string]struct{}
+	if filters.PlaylistID != nil {
+		playlists, playlistErr := a.db.GetAllPlaylists()
+		if playlistErr != nil {
+			respondError(w, http.StatusInternalServerError, playlistErr.Error())
+			return
+		}
+		playlistSongIDs = make(map[string]struct{})
+		for _, playlist := range playlists {
+			if playlist.ID == *filters.PlaylistID {
+				for _, id := range playlist.SongIDs {
+					playlistSongIDs[id] = struct{}{}
+				}
+				break
+			}
+		}
+	}
 	analyses, err := a.db.ListTrackAnalysis()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -438,7 +457,7 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		candidatesBeforeFilters++
 		metadata := metadataByID[artifact.SongID]
 		stemAvailable := stemStatuses[artifact.SongID] == "ready"
-		if !transitionCandidateMatchesFilters(metadata, stemAvailable, filters) {
+		if !transitionCandidateMatchesFilters(metadata, stemAvailable, filters) || !transitionLibrarySongMatchesFilters(song, playlistSongIDs, filters) {
 			continue
 		}
 		score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[artifact.SongID], intent)
@@ -542,6 +561,21 @@ func parseTransitionRecommendationFilters(values url.Values) (TransitionRecommen
 		}
 		filters.CamelotCompatible = &parsed
 	}
+	if value, present, err := singleQueryValue(values, "playlistId"); err != nil {
+		return filters, err
+	} else if present {
+		filters.PlaylistID = &value
+	}
+	if value, present, err := singleQueryValue(values, "genre"); err != nil {
+		return filters, err
+	} else if present {
+		// Echo a canonical form and compare normalized genre entries below.
+		genre := db.NormalizeGenre(value)
+		if genre == "" {
+			return filters, errors.New("genre must contain a value")
+		}
+		filters.Genre = &genre
+	}
 	return filters, nil
 }
 
@@ -571,6 +605,28 @@ func transitionCandidateMatchesFilters(metadata features.TransitionMetadata, ste
 	}
 	if filters.StemsAvailable != nil && stemsAvailable != *filters.StemsAvailable {
 		return false
+	}
+	return true
+}
+
+func transitionLibrarySongMatchesFilters(song db.Song, playlistSongIDs map[string]struct{}, filters TransitionRecommendationFilters) bool {
+	if filters.PlaylistID != nil {
+		if _, ok := playlistSongIDs[song.ID]; !ok {
+			return false
+		}
+	}
+	if filters.Genre != nil {
+		wanted := strings.ToLower(*filters.Genre)
+		matched := false
+		for _, genre := range song.Genre {
+			if strings.ToLower(db.NormalizeGenre(genre)) == wanted {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
 	}
 	return true
 }
