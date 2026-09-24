@@ -690,6 +690,7 @@ const DJModeV2Inner: React.FC = () => {
                 <div className='w-[72px] flex-shrink-0 border-r border-[#1e1e1e] bg-[#0d0d0d]'>
                     <DJDeckEQStrip
                       deckId='A'
+                      rightAlign
                       onEQChange={handleEQChange}
                       onVolumeChange={handleVolumeChange}
                       onFilterChange={handleFilterChange}

@@ -86,6 +86,7 @@ DJChannelStrip.displayName = 'DJChannelStrip';
 
 interface DJDeckEQStripProps {
   deckId: DeckId;
+  rightAlign?: boolean;
   onEQChange: (deck: DeckId, band: keyof DeckEQ, value: number) => void;
   onVolumeChange: (deck: DeckId, value: number) => void;
   onFilterChange: (deck: DeckId, knobValue: number) => void;
@@ -97,6 +98,7 @@ interface DJDeckEQStripProps {
  */
 export const DJDeckEQStrip = React.memo<DJDeckEQStripProps>(({
   deckId,
+  rightAlign = false,
   onEQChange,
   onVolumeChange,
   onFilterChange,
@@ -115,7 +117,7 @@ export const DJDeckEQStrip = React.memo<DJDeckEQStripProps>(({
   // Compact mode hides each knob's value bar + numeric readout, saving ~22px
   // per knob (×5) so the column fits in the available deck height even at 1080p.
   return (
-    <div className='flex flex-col items-center justify-evenly h-full py-2 px-1 gap-0.5'>
+    <div className={`flex flex-col ${rightAlign ? 'items-end' : 'items-center'} justify-evenly h-full py-2 px-1 gap-0.5`}>
       <DJEQKnob
         label='TRIM'
         valueText={volume > 0 ? `${(20 * Math.log10(volume)).toFixed(1)} dB` : '−∞ dB'}
