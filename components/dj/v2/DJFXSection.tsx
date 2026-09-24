@@ -369,7 +369,7 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
 
   // Layout mode awareness
   const layoutMode = useStore(s => s.djMixer?.djLayoutMode || 'perf') as DJLayoutMode;
-  const isCompact = layoutMode === 'perf' || layoutMode === 'browse';
+  const isCompact = layoutMode === 'browse';
   const isExpanded = layoutMode === 'fx';
 
   // Count active effects per deck

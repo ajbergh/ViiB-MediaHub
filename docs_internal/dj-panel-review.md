@@ -4,7 +4,7 @@ Date: 2026-09-23
 
 ## Fix Progress
 
-Current status: Fixes for findings 1–26, including the DJ load crash regression, are on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. Analysis state, MIDI mapping behavior/status, WebGL overview loop shading, and superseded track loads have been corrected. Minimized-window loop behavior still needs Wails runtime confirmation.
+Current status: Fixes for findings 1–27, including the DJ load crash regression, are on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. Analysis state, MIDI mapping behavior/status, WebGL overview loop shading, superseded track loads, and the PERF FX/sampler layout have been corrected. Minimized-window loop behavior still needs Wails runtime confirmation.
 
 | Finding | Status | Progress |
 |---|---|---|
@@ -20,6 +20,7 @@ Current status: Fixes for findings 1–26, including the DJ load crash regressio
 | 24 | Fixed | The DJ toolbar now labels MIDI as ON/OFF and explains that controller input is inactive until the user enables Web MIDI access. |
 | 25 | Fixed | WebGL overview loop ranges are tinted in the overview shader so the waveform remains visible; removed the scissored framebuffer clear that erased pixels. |
 | 26 | Fixed | A newer deck load cancels and settles the previous pending load with `AbortError`; hook callers swallow only this superseded-load signal and do not install stale deck state. |
+| 27 | Fixed | PERF now renders full v2 FX parameter controls. Sampler pads use a fixed compact height with their mode/volume controls overlaid inside each pad, keeping all eight pads accessible without adding vertical overflow. |
 
 Implementation log:
 
@@ -37,6 +38,7 @@ Implementation log:
 - 2026-09-23: Created [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) using the host GitHub CLI after confirming host authentication. This supersedes the earlier sandbox authentication blockage; minimized-window Wails runtime confirmation remains outstanding.
 - 2026-09-23: Fixed the DJ load crash reported after opening PR #59. The shared BPM badge selector created a new object on every Zustand snapshot, triggering React's infinite update-depth error on both decks. Replaced it with primitive selectors and added finding 21 to this log. User-reported crash diagnosis was reproduced by repository investigation; unrelated existing edits in `backend/go.mod` and `backend/go.sum` were left untouched.
 - 2026-09-23: Fixed additional DJ issues 22–26 found in the follow-up audit: v2 analysis requests now update status and skip the grid request when the feature is missing; MIDI sync/headphone cue semantics match the UI and jog wheel can be learned; MIDI enabled state is visible; WebGL loop shading blends with overview pixels; and superseded track loads reject promptly without allowing stale callers to replace the active deck. Pushed commit `9817d70` to PR #59. Existing edits in `backend/go.mod` and `backend/go.sum` remain untouched.
+- 2026-09-23: Fixed the PERF layout follow-up. PERF FX now uses the full FXUnit controls instead of the Browse compact variant; sampler pad mode/volume controls overlay within fixed-height pads so assigned pads do not increase mixer height or get pushed below the workspace. Added finding 27. Visual verification is still pending.
 
 ## Scope
 
