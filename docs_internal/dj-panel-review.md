@@ -4,7 +4,7 @@ Date: 2026-09-23
 
 ## Fix Progress
 
-Current status: Fixes for findings 1–20 plus the DJ load crash regression (finding 21) are on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. The load crash came from an unstable Zustand selector in both BPM badges; selectors now return stable primitive values. Minimized-window loop behavior still needs Wails runtime confirmation.
+Current status: Fixes for findings 1–26, including the DJ load crash regression, are on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. Analysis state, MIDI mapping behavior/status, WebGL overview loop shading, and superseded track loads have been corrected. Minimized-window loop behavior still needs Wails runtime confirmation.
 
 | Finding | Status | Progress |
 |---|---|---|
@@ -15,6 +15,11 @@ Current status: Fixes for findings 1–20 plus the DJ load crash regression (fin
 | 19 | Fixed | DJ page mounts MIDI dispatch, loads persisted mappings, routes transport/mixer/EQ/tempo/jog/hot-cue/FX/loop/headphone/sampler actions, and clears the handler on unmount. |
 | 20 | Fixed | Deck loading stops after a missing feature record, marks analysis status, and shows a clear status near BPM and energy insights. Non-404 failures remain distinguishable as unavailable. |
 | 21 | Fixed | DJ page crashed on load because each deck BPM badge returned a newly allocated object from its Zustand selector. Split it into primitive `hasTrack` and `analysisStatus` selectors to keep snapshots stable. |
+| 22 | Fixed | The DJ v2 library loader now resolves analysis status to `available`, `not_analyzed`, or `error`; it requests the beat grid only after finding the feature record. |
+| 23 | Fixed | MIDI sync now follows the UI's BPM and beat-phase rules; headphone cue mappings honor toggle, momentary, and value modes; jog wheels are available to learn as relative mappings. |
+| 24 | Fixed | The DJ toolbar now labels MIDI as ON/OFF and explains that controller input is inactive until the user enables Web MIDI access. |
+| 25 | Fixed | WebGL overview loop ranges are tinted in the overview shader so the waveform remains visible; removed the scissored framebuffer clear that erased pixels. |
+| 26 | Fixed | A newer deck load cancels and settles the previous pending load with `AbortError`; hook callers swallow only this superseded-load signal and do not install stale deck state. |
 
 Implementation log:
 
@@ -31,6 +36,7 @@ Implementation log:
 - 2026-09-23: Added media `timeupdate` listeners as a second loop-wrap trigger alongside the worker ticker, removed on engine disposal. `npm run typecheck` passed, and commit `9365a40` is pushed. Wails minimized-window behavior still requires runtime confirmation.
 - 2026-09-23: Created [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) using the host GitHub CLI after confirming host authentication. This supersedes the earlier sandbox authentication blockage; minimized-window Wails runtime confirmation remains outstanding.
 - 2026-09-23: Fixed the DJ load crash reported after opening PR #59. The shared BPM badge selector created a new object on every Zustand snapshot, triggering React's infinite update-depth error on both decks. Replaced it with primitive selectors and added finding 21 to this log. User-reported crash diagnosis was reproduced by repository investigation; unrelated existing edits in `backend/go.mod` and `backend/go.sum` were left untouched.
+- 2026-09-23: Fixed additional DJ issues 22–26 found in the follow-up audit: v2 analysis requests now update status and skip the grid request when the feature is missing; MIDI sync/headphone cue semantics match the UI and jog wheel can be learned; MIDI enabled state is visible; WebGL loop shading blends with overview pixels; and superseded track loads reject promptly without allowing stale callers to replace the active deck. These fixes are being added to PR #59. Existing edits in `backend/go.mod` and `backend/go.sum` remain untouched.
 
 ## Scope
 

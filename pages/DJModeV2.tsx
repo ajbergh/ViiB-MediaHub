@@ -111,7 +111,7 @@ const DJModeV2Inner: React.FC = () => {
   // While a deck is playing, tell the backend to yield background track
   // analysis so library preparation does not compete with the set.
   useAnalysisPlaybackPressure();
-  useDJMidiActions();
+  const midiEnabled = useDJMidiActions();
 
   // Actions — stable Zustand references, never trigger re-renders
   const setDJMixerEnabled = useStore(s => s.setDJMixerEnabled);
@@ -544,15 +544,16 @@ const DJModeV2Inner: React.FC = () => {
           {/* MIDI button — D1: icon-based button */}
           <button
             onClick={() => setShowMidiMapping(true)}
-            className='flex items-center gap-1.5 px-2 min-h-[28px] text-[10px] font-bold uppercase tracking-wider
-              bg-[#222] text-neutral-500 border border-[#333] rounded hover:bg-[#2a2a2a] hover:text-neutral-300 transition-colors'
-            title='MIDI Controller Mapping'
+            className={`flex items-center gap-1.5 px-2 min-h-[28px] text-[10px] font-bold uppercase tracking-wider
+              ${midiEnabled ? 'bg-green-900/30 text-green-400 border border-green-700/50' : 'bg-[#222] text-amber-400 border border-amber-700/40'} rounded hover:bg-[#2a2a2a] hover:text-neutral-200 transition-colors`}
+            title={midiEnabled ? 'MIDI enabled — open controller mappings' : 'MIDI is off — open this panel and enable MIDI to receive controller input'}
+            aria-label={midiEnabled ? 'MIDI enabled, open controller mappings' : 'MIDI off, open controller mappings to enable'}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <rect x="2" y="2" width="20" height="20" rx="2"/>
               <path d="M7 7v10M12 7v4M17 7v10M7 17h10"/>
             </svg>
-            MIDI
+            MIDI {midiEnabled ? 'ON' : 'OFF'}
           </button>
         </div>
       </div>

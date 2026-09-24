@@ -687,7 +687,7 @@ export class DJWebGLRenderer {
     const halfWidth = this.width / 2;
     
     // Render Deck A (left half)
-    if (deckA && deckA.peaks && deckA.duration > 0) {
+    if (deckA && deckA.duration > 0) {
       const shape = this.textureShapeA;
       gl.useProgram(prog.program);
       gl.viewport(0, 0, Math.floor(halfWidth * dpr), Math.floor(this.height * dpr));
@@ -696,10 +696,13 @@ export class DJWebGLRenderer {
       gl.uniform2f(this.getUniform(prog, 'u_resolution'), halfWidth * dpr, this.height * dpr);
       gl.uniform1f(this.getUniform(prog, 'u_position'), deckA.position / deckA.duration);
       gl.uniform3fv(this.getUniform(prog, 'u_deckColor'), this.options.deckAColor);
-      gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), 1);
+      gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), deckA.peaks ? 1 : 0);
       gl.uniform1f(this.getUniform(prog, 'u_peakCount'), shape.count);
       gl.uniform1f(this.getUniform(prog, 'u_peakWidth'), shape.width);
       gl.uniform1f(this.getUniform(prog, 'u_peakHeight'), shape.height);
+      gl.uniform1f(this.getUniform(prog, 'u_loopStart'), deckA.loop.end > deckA.loop.start ? deckA.loop.start / deckA.duration : -1);
+      gl.uniform1f(this.getUniform(prog, 'u_loopEnd'), deckA.loop.end > deckA.loop.start ? deckA.loop.end / deckA.duration : -1);
+      gl.uniform1i(this.getUniform(prog, 'u_loopEnabled'), deckA.loop.enabled ? 1 : 0);
       
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.waveformTextureA);
@@ -708,7 +711,7 @@ export class DJWebGLRenderer {
     }
     
     // Render Deck B (right half)
-    if (deckB && deckB.peaks && deckB.duration > 0) {
+    if (deckB && deckB.duration > 0) {
       const shape = this.textureShapeB;
       gl.useProgram(prog.program);
       gl.viewport(Math.floor(halfWidth * dpr), 0, Math.floor(halfWidth * dpr), Math.floor(this.height * dpr));
@@ -717,10 +720,13 @@ export class DJWebGLRenderer {
       gl.uniform2f(this.getUniform(prog, 'u_resolution'), halfWidth * dpr, this.height * dpr);
       gl.uniform1f(this.getUniform(prog, 'u_position'), deckB.position / deckB.duration);
       gl.uniform3fv(this.getUniform(prog, 'u_deckColor'), this.options.deckBColor);
-      gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), 1);
+      gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), deckB.peaks ? 1 : 0);
       gl.uniform1f(this.getUniform(prog, 'u_peakCount'), shape.count);
       gl.uniform1f(this.getUniform(prog, 'u_peakWidth'), shape.width);
       gl.uniform1f(this.getUniform(prog, 'u_peakHeight'), shape.height);
+      gl.uniform1f(this.getUniform(prog, 'u_loopStart'), deckB.loop.end > deckB.loop.start ? deckB.loop.start / deckB.duration : -1);
+      gl.uniform1f(this.getUniform(prog, 'u_loopEnd'), deckB.loop.end > deckB.loop.start ? deckB.loop.end / deckB.duration : -1);
+      gl.uniform1i(this.getUniform(prog, 'u_loopEnabled'), deckB.loop.enabled ? 1 : 0);
       
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.waveformTextureB);
@@ -728,19 +734,6 @@ export class DJWebGLRenderer {
       this.drawQuad();
     }
 
-    // Mark loop ranges in the overview with a translucent scissored fill.
-    gl.enable(gl.SCISSOR_TEST);
-    for (const [deckState, offset] of [[deckA, 0], [deckB, halfWidth]] as const) {
-      if (!deckState || deckState.duration <= 0 || deckState.loop.end <= deckState.loop.start) continue;
-      const start = offset + deckState.loop.start / deckState.duration * halfWidth;
-      const end = offset + deckState.loop.end / deckState.duration * halfWidth;
-      gl.scissor(Math.floor(start * dpr), 0, Math.max(1, Math.ceil((end - start) * dpr)), Math.floor(this.height * dpr));
-      gl.clearColor(0.12, 0.82, 0.42, deckState.loop.enabled ? 0.34 : 0.14);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-    }
-    gl.disable(gl.SCISSOR_TEST);
-    gl.clearColor(0.102, 0.102, 0.102, 1.0);
-    
     // Reset viewport
     gl.viewport(0, 0, Math.floor(this.width * dpr), Math.floor(this.height * dpr));
   }

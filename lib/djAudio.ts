@@ -199,6 +199,8 @@ export class DJAudioEngine {
   
   private trackLoadGenerationA = 0;
   private trackLoadGenerationB = 0;
+  private pendingTrackLoadCancelA: (() => void) | null = null;
+  private pendingTrackLoadCancelB: (() => void) | null = null;
 
   // Callbacks
   private onTrackEnd: ((deck: DeckId) => void) | null = null;
@@ -772,6 +774,8 @@ export class DJAudioEngine {
       throw new Error('Audio engine not initialized');
     }
 
+    const previousCancel = deck === 'A' ? this.pendingTrackLoadCancelA : this.pendingTrackLoadCancelB;
+    previousCancel?.();
     const generation = deck === 'A' ? ++this.trackLoadGenerationA : ++this.trackLoadGenerationB;
 
     this.clearScratchAudio(deck);
@@ -786,52 +790,83 @@ export class DJAudioEngine {
     audioElement.src = audioUrl;
 
     // Load the audio
-    await new Promise<void>((resolve, reject) => {
-      let timeoutId: ReturnType<typeof setTimeout>;
-      const cleanup = () => {
-        clearTimeout(timeoutId);
-        audioElement.removeEventListener('canplay', onCanPlay);
-        audioElement.removeEventListener('error', onError);
-      };
+    let cancelThisLoad: (() => void) | null = null;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let timeoutId: ReturnType<typeof setTimeout>;
+        let settled = false;
+        const cleanup = () => {
+          clearTimeout(timeoutId);
+          audioElement.removeEventListener('canplay', onCanPlay);
+          audioElement.removeEventListener('error', onError);
+          if (deck === 'A' && this.pendingTrackLoadCancelA === cancelThisLoad) this.pendingTrackLoadCancelA = null;
+          if (deck === 'B' && this.pendingTrackLoadCancelB === cancelThisLoad) this.pendingTrackLoadCancelB = null;
+        };
 
-      const checkGeneration = () => {
-        const currentGen = deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
-        return currentGen === generation;
-      };
+        const checkGeneration = () => {
+          const currentGen = deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
+          return currentGen === generation;
+        };
 
-      timeoutId = setTimeout(() => {
-        cleanup();
-        if (checkGeneration()) {
-          console.error(`🎧 DJ Audio: Timeout loading track to Deck ${deck}`);
-          reject(new Error(`Timeout loading track: ${track.title}`));
+        const superseded = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          const error = new Error(`Track load superseded: ${track.title}`);
+          error.name = 'AbortError';
+          reject(error);
+        };
+        cancelThisLoad = superseded;
+        if (deck === 'A') this.pendingTrackLoadCancelA = superseded;
+        else this.pendingTrackLoadCancelB = superseded;
+
+        timeoutId = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (checkGeneration()) {
+            console.error(`🎧 DJ Audio: Timeout loading track to Deck ${deck}`);
+            reject(new Error(`Timeout loading track: ${track.title}`));
+          } else {
+            const error = new Error(`Track load superseded: ${track.title}`);
+            error.name = 'AbortError';
+            reject(error);
+          }
+        }, 30000); // 30 second timeout
+
+        const onCanPlay = () => {
+          if (settled) return;
+          if (!checkGeneration()) { superseded(); return; }
+          settled = true;
+          cleanup();
+          console.log(`🎧 DJ Audio: Track ready on Deck ${deck}`);
+          resolve();
+        };
+
+        const onError = (e: Event) => {
+          if (settled) return;
+          if (!checkGeneration()) { superseded(); return; }
+          settled = true;
+          cleanup();
+          const errorMsg = audioElement.error?.message || 'Unknown error';
+          console.error(`🎧 DJ Audio: Error loading track to Deck ${deck}: ${errorMsg}`, e);
+          reject(new Error(`Failed to load track: ${track.title} - ${errorMsg}`));
+        };
+
+        audioElement.addEventListener('canplay', onCanPlay);
+        audioElement.addEventListener('error', onError);
+
+        // If readyState is already enough, resolve immediately
+        if (audioElement.readyState >= 3) { // HAVE_FUTURE_DATA
+          onCanPlay();
+        } else {
+          audioElement.load();
         }
-      }, 30000); // 30 second timeout
-      
-      const onCanPlay = () => {
-        if (!checkGeneration()) return;
-        cleanup();
-        console.log(`🎧 DJ Audio: Track ready on Deck ${deck}`);
-        resolve();
-      };
-      
-      const onError = (e: Event) => {
-        if (!checkGeneration()) return;
-        cleanup();
-        const errorMsg = audioElement.error?.message || 'Unknown error';
-        console.error(`🎧 DJ Audio: Error loading track to Deck ${deck}: ${errorMsg}`, e);
-        reject(new Error(`Failed to load track: ${track.title} - ${errorMsg}`));
-      };
-      
-      audioElement.addEventListener('canplay', onCanPlay);
-      audioElement.addEventListener('error', onError);
-      
-      // If readyState is already enough, resolve immediately
-      if (audioElement.readyState >= 3) { // HAVE_FUTURE_DATA
-        onCanPlay();
-      } else {
-        audioElement.load();
-      }
-    });
+      });
+    } finally {
+      if (deck === 'A' && this.pendingTrackLoadCancelA === cancelThisLoad) this.pendingTrackLoadCancelA = null;
+      if (deck === 'B' && this.pendingTrackLoadCancelB === cancelThisLoad) this.pendingTrackLoadCancelB = null;
+    }
 
     console.log(`🎧 Loaded track to Deck ${deck}: ${track.title}`);
 
@@ -927,6 +962,8 @@ export class DJAudioEngine {
    * Unload a deck
    */
   unloadDeck(deck: DeckId): void {
+    const cancelPending = deck === 'A' ? this.pendingTrackLoadCancelA : this.pendingTrackLoadCancelB;
+    cancelPending?.();
     if (deck === 'A') ++this.trackLoadGenerationA; else ++this.trackLoadGenerationB;
     this.clearScratchAudio(deck);
     const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
@@ -2466,6 +2503,12 @@ export class DJAudioEngine {
    * Clean up and release resources
    */
   dispose(): void {
+    this.pendingTrackLoadCancelA?.();
+    this.pendingTrackLoadCancelB?.();
+    this.pendingTrackLoadCancelA = null;
+    this.pendingTrackLoadCancelB = null;
+    ++this.trackLoadGenerationA;
+    ++this.trackLoadGenerationB;
     this.clearScratchAudio('A');
     this.clearScratchAudio('B');
     this.scratchModule = null;

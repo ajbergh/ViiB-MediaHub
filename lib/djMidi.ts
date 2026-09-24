@@ -91,7 +91,7 @@ export interface MidiDevice {
 // ============================================================================
 
 type MidiLearnCallback = (msg: MidiMessage) => void;
-type MidiActionHandler = (action: MidiAction, value: number, type: 'press' | 'release' | 'value') => void;
+type MidiActionHandler = (action: MidiAction, value: number, type: 'press' | 'release' | 'value', mapping: MidiMapping) => void;
 
 class DJMidiService {
   private access: MIDIAccess | null = null;
@@ -273,7 +273,7 @@ class DJMidiService {
         }
       }
       
-      this.actionHandler(mapping.action, value, triggerType);
+      this.actionHandler(mapping.action, value, triggerType, mapping);
     }
   }
 
@@ -411,6 +411,13 @@ export const MIDI_ACTION_CATEGORIES: { label: string; actions: { action: MidiAct
       { action: 'deckB.cue', label: 'Deck B Cue', defaultMode: 'momentary' },
       { action: 'deckA.sync', label: 'Deck A Sync', defaultMode: 'toggle' },
       { action: 'deckB.sync', label: 'Deck B Sync', defaultMode: 'toggle' },
+    ],
+  },
+  {
+    label: 'Jog Wheels',
+    actions: [
+      { action: 'deckA.jogWheel', label: 'Deck A Jog Wheel', defaultMode: 'relative' },
+      { action: 'deckB.jogWheel', label: 'Deck B Jog Wheel', defaultMode: 'relative' },
     ],
   },
   {

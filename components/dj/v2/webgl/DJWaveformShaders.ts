@@ -354,6 +354,9 @@ uniform int u_hasPeaks;          // 1 if waveform data available
 uniform float u_peakCount;
 uniform float u_peakWidth;
 uniform float u_peakHeight;
+uniform float u_loopStart;
+uniform float u_loopEnd;
+uniform int u_loopEnabled;
 
 const vec3 BG_COLOR = vec3(0.102, 0.102, 0.102);  // #1a1a1a
 
@@ -386,6 +389,12 @@ void main() {
         fragColor = vec4(color, 0.8);
     } else {
         fragColor = vec4(BG_COLOR, 1.0);
+    }
+
+    bool inLoop = u_loopStart >= 0.0 && u_loopEnd > u_loopStart && v_uv.x >= u_loopStart && v_uv.x <= u_loopEnd;
+    if (inLoop) {
+        vec3 loopColor = u_loopEnabled == 1 ? vec3(0.12, 0.82, 0.42) : vec3(0.55, 0.65, 0.72);
+        fragColor.rgb = mix(fragColor.rgb, loopColor, u_loopEnabled == 1 ? 0.34 : 0.14);
     }
     
     // Playhead line
