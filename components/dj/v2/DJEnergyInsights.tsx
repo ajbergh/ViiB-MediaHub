@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { getDJAudioEngine } from '../../../lib/djAudio';
-import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPreparedPreviewDeck, isPristineEmptyPreviewDeck, stillOwnsPreviewDeck, type TestMixPreviewBaseline } from '../../../lib/testMixPreviewGuard';
+import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPreparedPreviewDeck, isPristineEmptyPreviewDeck, stillOwnsPreviewDeck, stillOwnsPreviewRoute, type TestMixPreviewBaseline } from '../../../lib/testMixPreviewGuard';
 import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
 
 interface DJEnergyInsightsProps {
@@ -19,6 +19,8 @@ interface TestMixPreviewSession {
   phase: 'preparing' | 'loading' | 'ready' | 'playing';
   startedAtCrossfader: number;
   startedAtKeyLock: boolean;
+  startedAtHeadphoneDeviceId: string;
+  startedAtMasterDeviceId: string;
   timeout?: number;
   interval?: number;
 }
@@ -144,6 +146,23 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     if (previewRef.current?.token === session.token) previewRef.current = null;
   };
 
+  const ownsCurrentPreviewRoute = (session: TestMixPreviewSession, state: ReturnType<typeof useStore.getState>, audio: ReturnType<typeof getDJAudioEngine>) => {
+    const targetIsA = session.targetDeck === 'A';
+    return stillOwnsPreviewRoute({
+      deck: session.targetDeck,
+      crossfader: state.djMixer.crossfader,
+      startedAtCrossfader: session.startedAtCrossfader,
+      masterCueEnabled: state.djMixer.masterCueEnabled || audio.getMasterCueEnabled(),
+      autoGainEnabled: targetIsA ? state.djMixer.autoGainA : state.djMixer.autoGainB,
+      keyLockEnabled: targetIsA ? state.djMixer.keyLockA : state.djMixer.keyLockB,
+      startedAtKeyLock: session.startedAtKeyLock,
+      headphoneDeviceId: audio.getHeadphoneOutputDeviceId(),
+      startedAtHeadphoneDeviceId: session.startedAtHeadphoneDeviceId,
+      masterDeviceId: audio.getMainOutputDeviceId(),
+      startedAtMasterDeviceId: session.startedAtMasterDeviceId,
+    });
+  };
+
   const finishPreview = (token: number, message: string) => {
     const session = previewRef.current;
     if (!session || session.token !== token) return;
@@ -157,6 +176,10 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
 
     if (!generationMatches) { setPreviewMessage('Test Mix handed off: the preview deck was loaded or unloaded elsewhere.'); return; }
     if (session.phase === 'preparing') { setPreviewMessage(message); return; }
+    if (!ownsCurrentPreviewRoute(session, state, currentEngine)) {
+      setPreviewMessage('Test Mix handed off: cue routing changed, so the preview deck was left untouched.');
+      return;
+    }
     if (session.phase === 'loading') {
       // Invalidate only the load operation created by this session. No store
       // state is reset while a different operation owns the deck.
@@ -200,10 +223,13 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     if (!isPristineEmptyPreviewDeck(targetState) || targetState.track) { setPreviewMessage('Test Mix needs an empty, untouched opposite deck.'); return; }
     const baseline: TestMixPreviewBaseline = { volume: targetState.volume, eq: { ...targetState.eq } };
     const audio = getDJAudioEngine();
+    const startedAtHeadphoneDeviceId = audio.getHeadphoneOutputDeviceId();
+    const startedAtMasterDeviceId = audio.getMainOutputDeviceId();
     const session: TestMixPreviewSession = {
       token: ++previewTokenRef.current, targetDeck: target, candidateId: candidateTrack.id, baseline,
       generationBeforeLoad: audio.getDeckLoadGeneration(target), loadGeneration: null, phase: 'preparing',
       startedAtCrossfader: state.djMixer.crossfader, startedAtKeyLock: target === 'A' ? state.djMixer.keyLockA : state.djMixer.keyLockB,
+      startedAtHeadphoneDeviceId, startedAtMasterDeviceId,
     };
     previewRef.current = session;
     setPreviewMessage('Preparing off-air headphone preview…');
@@ -212,12 +238,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       if (previewRef.current?.token !== session.token) return;
       const current = useStore.getState();
       const currentTarget = target === 'A' ? current.djDeckA : current.djDeckB;
-      const mixerStillSafe = current.djMixer.crossfader === session.startedAtCrossfader
-        && isPreviewDeckOffAir(target, current.djMixer.crossfader)
-        && !current.djMixer.masterCueEnabled && !audio.getMasterCueEnabled()
-        && !(target === 'A' ? current.djMixer.autoGainA : current.djMixer.autoGainB)
-        && (target === 'A' ? current.djMixer.keyLockA : current.djMixer.keyLockB) === session.startedAtKeyLock
-        && hasSeparateHeadphoneRoute(audio.getHeadphoneOutputDeviceId(), audio.getMainOutputDeviceId());
+      const mixerStillSafe = ownsCurrentPreviewRoute(session, current, audio);
       if (!mixerStillSafe || !isPristineEmptyPreviewDeck(currentTarget)
         || currentTarget.volume !== baseline.volume || currentTarget.eq.low !== baseline.eq.low
         || currentTarget.eq.mid !== baseline.eq.mid || currentTarget.eq.high !== baseline.eq.high) {
@@ -233,13 +254,11 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       }
       const afterLoad = useStore.getState();
       const afterTarget = target === 'A' ? afterLoad.djDeckA : afterLoad.djDeckB;
-      const routeStillSafe = afterLoad.djMixer.crossfader === session.startedAtCrossfader
-        && isPreviewDeckOffAir(target, afterLoad.djMixer.crossfader)
-        && !afterLoad.djMixer.masterCueEnabled && !audio.getMasterCueEnabled()
-        && !(target === 'A' ? afterLoad.djMixer.autoGainA : afterLoad.djMixer.autoGainB)
-        && (target === 'A' ? afterLoad.djMixer.keyLockA : afterLoad.djMixer.keyLockB) === session.startedAtKeyLock
-        && hasSeparateHeadphoneRoute(audio.getHeadphoneOutputDeviceId(), audio.getMainOutputDeviceId());
-      if (!routeStillSafe || afterTarget.track !== null || afterTarget.volume !== baseline.volume
+      const routeStillSafe = ownsCurrentPreviewRoute(session, afterLoad, audio);
+      if (!routeStillSafe) {
+        discardPreviewSession(session); setPreviewMessage('Test Mix handed off: cue routing changed during load, so the preview deck was left untouched.'); return;
+      }
+      if (afterTarget.track !== null || afterTarget.volume !== baseline.volume
         || afterTarget.eq.low !== baseline.eq.low || afterTarget.eq.mid !== baseline.eq.mid || afterTarget.eq.high !== baseline.eq.high) {
         audio.unloadDeck(target); discardPreviewSession(session); setPreviewMessage('Test Mix stopped: deck or cue routing changed during load.'); return;
       }
@@ -266,11 +285,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         if (previewRef.current?.token !== session.token) return;
         const currentState = useStore.getState();
         const currentTarget = target === 'A' ? currentState.djDeckA : currentState.djDeckB;
-        const mixerChanged = currentState.djMixer.crossfader !== session.startedAtCrossfader
-          || (target === 'A' ? currentState.djMixer.keyLockA : currentState.djMixer.keyLockB) !== session.startedAtKeyLock
-          || (target === 'A' ? currentState.djMixer.autoGainA : currentState.djMixer.autoGainB)
-          || currentState.djMixer.masterCueEnabled || !isPreviewDeckOffAir(target, currentState.djMixer.crossfader)
-          || !hasSeparateHeadphoneRoute(audio.getHeadphoneOutputDeviceId(), audio.getMainOutputDeviceId());
+        const mixerChanged = !ownsCurrentPreviewRoute(session, currentState, audio);
         if (!mixerChanged && audio.getDeckLoadGeneration(target) === session.loadGeneration
           && currentTarget.track?.id === candidateTrack.id && !audio.isPlaying(target)
           && audio.getPosition(target) >= Math.max(0, audio.getDuration(target) - 0.15)) {
