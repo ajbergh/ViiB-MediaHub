@@ -45,7 +45,7 @@ Implementation log:
 - 2026-09-23: Reverted the Deck A rack alignment change from commit `59500d6`; the controls are centered as before. Updated finding 28 to record the user-requested revert.
 - 2026-09-23: Started finding 29: anchored Deck A's FX units to the panel's right edge, increased the full FX knob size and spacing, and reduced only the FX knob label/readout font sizing so long labels and values remain separated.
 - 2026-09-23: Completed finding 29. Deck A's FX rack now sits against the center pad; the FX knobs are wider with more spacing, and FX-only typography keeps labels and numeric readouts distinct. Changes are ready for PR #59; no test suite was run for this visual-only adjustment.
-- 2026-09-24: Fixed PR #59 frontend CI finding 30 by replacing the WebGL waveform toolbar's new raw `#111` color with `bg-surface-0`. The raw-color check and TypeScript check pass locally; Vitest could not start in the restricted shell because esbuild was denied reads above the workspace. The PR's remote CI will rerun the full suite after push.
+- 2026-09-24: Fixed PR #59 frontend CI finding 30 by replacing the WebGL waveform toolbar's new raw `#111` color with `bg-surface-0`. The raw-color check and TypeScript check pass locally; Vitest could not start in the restricted shell because esbuild was denied reads above the workspace. GitHub Actions run `35954333373` then passed all frontend, backend, analysis, semantic, and desktop build checks on commit `c669777`.
 
 ## Scope
 
