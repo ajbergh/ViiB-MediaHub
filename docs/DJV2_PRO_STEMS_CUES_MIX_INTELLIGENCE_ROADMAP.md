@@ -3,6 +3,7 @@
 **Status:** In progress — roadmap reviewed and implementation started on 2026-09-24<br>
 **Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md<br>
 **Execution branch:** `codex/djv2-pro-roadmap`<br>
+**Review PR:** [#61 — DJv2 stem, cue and mix intelligence slices](https://github.com/ajbergh/ViiB-MediaHub/pull/61) (draft)<br>
 **StemLab repository status:** Repository exists; generation work remains outside this MediaHub roadmap.<br>
 **Repository snapshot reviewed:** originally main at d02ad01 (v1.0.0-rc3); baseline claims re-verified against main at 956bf02 (includes 65cc49f DJ loop/waveform fixes) on 2026-09-24  
 **Research snapshot:** 2026-09-24 (external references re-checked the same day)  
@@ -67,6 +68,7 @@ Progress log:
 - 2026-09-24 — Completed PR 10 transport V1 with a four-bus shared-clock AudioWorklet, bounded frame fetches, fallback and loop capability reporting. Fixed source-rate/output-rate mismatch with linear interpolation and added an executable worklet regression test. Deck tests passed (27 tests), then the focused worklet/deck suite passed (5 tests).
 - 2026-09-24 — Completed PR 12 cue API/editor V1: fresh candidate listing and apply endpoints support fill-empty, replace-generated and selected-only modes; the DJ view displays cue provenance/confidence/rationale/lock state and applies candidates. Selected-only writes preserve other slots.
 - 2026-09-24 — Combined validation passed: `go test ./...`, `go vet ./...`, `npm run typecheck`, serial `npx vitest run --configLoader runner` (26 files, 111 tests), benchmark Python compilation and unit tests (5/5), and `git diff --check`.
+- 2026-09-24 — Committed as `0ede940` and opened draft PR #61 for review; roadmap implementation remains in progress pending the release gates above.
 
 ## 1. Product vision
 
