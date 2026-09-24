@@ -219,6 +219,8 @@
 [data-dj-canvas] :is(.text-neutral-500, .text-neutral-600, .text-neutral-400) { color: #a8b2c1; }
 [data-dj-canvas] :is([class*="text-[#444]"], [class*="text-[#555]"], [class*="text-[#666]"], [class*="text-[#777]"]) { color: #9ba8ba; }
 [data-dj-canvas] :is(.text-\[9px\], .text-\[10px\], .text-\[11px\]) { font-size: 12px; }
+[data-dj-canvas] .dj-fx-knob .dj-eq-knob-label { font-size: 10px; letter-spacing: 0; white-space: nowrap; }
+[data-dj-canvas] .dj-fx-knob .dj-eq-knob-readout { font-size: 9px; letter-spacing: 0; }
 [data-dj-canvas] :disabled { opacity: .65; }
 [data-dj-canvas] button { border-radius: 5px; }
 [data-dj-canvas] button[aria-pressed="true"] { box-shadow: inset 0 -2px 0 rgba(255,255,255,.35); }

@@ -227,7 +227,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
     }
   }, [type, handleDryWetChange]);
 
-  const knobSize = expanded ? 44 : 32;
+  const knobSize = expanded ? 44 : compact ? 32 : 40;
   const actual = fx as any;
   const percent = (value: number) => `${Math.round(value * 100)}%`;
   const valueText1 = type === 'filter' ? `${Math.round(actual.frequency)} Hz`
@@ -273,6 +273,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
             onChange={handleKnobWet}
             color={isEnabled ? enabledColor : '#444'}
             size={32}
+            className="dj-fx-knob"
           />
         )}
       </div>
@@ -306,7 +307,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
       </button>
 
       {/* Knobs row */}
-      <div className={`flex ${expanded ? 'gap-1.5' : 'gap-0.5'}`}>
+      <div className="flex gap-1.5">
         <DJEQKnob
           label={params.param1.label}
           valueText={valueText1}
@@ -314,6 +315,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
           onChange={handleKnobParam1}
           color={isEnabled ? enabledColor : '#555'}
           size={knobSize}
+          className="dj-fx-knob"
         />
         <DJEQKnob
           label={params.param2.label}
@@ -322,6 +324,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
           onChange={handleKnobParam2}
           color={isEnabled ? enabledColor : '#555'}
           size={knobSize}
+          className="dj-fx-knob"
         />
         {params.hasWet && (
           <DJEQKnob
@@ -331,6 +334,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
             onChange={handleKnobWet}
             color={isEnabled ? enabledColor : '#555'}
             size={knobSize}
+            className="dj-fx-knob"
           />
         )}
       </div>
@@ -411,7 +415,7 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
       {!collapsed && (
         <div className={`flex items-stretch px-2 pb-2 gap-2 ${isExpanded ? 'pt-1' : ''}`}>
           {/* Deck A FX */}
-          <div className={`flex-1 flex ${isCompact ? 'items-center' : ''} gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]`}>
+          <div className={`flex-1 flex justify-end ${isCompact ? 'items-center' : ''} gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]`}>
             <div className="text-[10px] font-bold text-blue-400 writing-vertical flex items-center justify-center w-3 mr-0.5"
                  style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
               A

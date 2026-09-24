@@ -22,6 +22,7 @@ Current status: Fixes for findings 1–27, including the DJ load crash regressio
 | 26 | Fixed | A newer deck load cancels and settles the previous pending load with `AbortError`; hook callers swallow only this superseded-load signal and do not install stale deck state. |
 | 27 | Fixed | PERF now renders full v2 FX parameter controls. Sampler pads use a fixed compact height with their mode/volume controls overlaid inside each pad, keeping all eight pads accessible without adding vertical overflow. |
 | 28 | Reverted | Deck A's TRIM/HIGH/MID/LOW/FILT rack alignment was restored to its prior centered position at the user's request. |
+| 29 | Fixed | Deck A's FX units are right-aligned toward the center FX pad. Full-size FX knobs have more spacing and dedicated label/readout sizing, preventing their text from colliding. |
 
 Implementation log:
 
@@ -41,6 +42,8 @@ Implementation log:
 - 2026-09-23: Fixed additional DJ issues 22–26 found in the follow-up audit: v2 analysis requests now update status and skip the grid request when the feature is missing; MIDI sync/headphone cue semantics match the UI and jog wheel can be learned; MIDI enabled state is visible; WebGL loop shading blends with overview pixels; and superseded track loads reject promptly without allowing stale callers to replace the active deck. Pushed commit `9817d70` to PR #59. Existing edits in `backend/go.mod` and `backend/go.sum` remain untouched.
 - 2026-09-23: Fixed the PERF layout follow-up in commit `0f686f0`. PERF FX now uses the full FXUnit controls instead of the Browse compact variant; sampler pad mode/volume controls overlay within fixed-height pads so assigned pads do not increase mixer height or get pushed below the workspace. Added finding 27. Visual verification is still pending.
 - 2026-09-23: Reverted the Deck A rack alignment change from commit `59500d6`; the controls are centered as before. Updated finding 28 to record the user-requested revert.
+- 2026-09-23: Started finding 29: anchored Deck A's FX units to the panel's right edge, increased the full FX knob size and spacing, and reduced only the FX knob label/readout font sizing so long labels and values remain separated.
+- 2026-09-23: Completed finding 29. Deck A's FX rack now sits against the center pad; the FX knobs are wider with more spacing, and FX-only typography keeps labels and numeric readouts distinct. Changes are ready for PR #59; no test suite was run for this visual-only adjustment.
 
 ## Scope
 
