@@ -19,7 +19,6 @@ import (
 
 const maxStemFrameResponseBytes int64 = 4 << 20
 
-var dj4StemOrder = []stems.StemName{stems.StemVocals, stems.StemDrums, stems.StemBass}
 var sixStemOrder = []stems.StemName{stems.StemVocals, stems.StemDrums, stems.StemBass, stems.StemGuitar, stems.StemPiano, stems.StemOther}
 
 func (a *API) getStemFramesV2(w http.ResponseWriter, r *http.Request) {
@@ -154,11 +153,7 @@ func (a *API) getStemFramesV2(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Channel-Count", strconv.Itoa(len(groups)*int(channels)))
 	w.Header().Set("X-Layout", layout)
 	w.Header().Set("X-Format", format)
-	orderNames := make([]string, len(groups))
-	for i, n := range groups {
-		orderNames[i] = n
-	}
-	w.Header().Set("X-Channel-Order", strings.Join(orderNames, ","))
+	w.Header().Set("X-Channel-Order", strings.Join(groups, ","))
 	w.Header().Set("Content-Length", strconv.Itoa(len(packed)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(packed)
