@@ -3,7 +3,7 @@
 **Status:** In progress — roadmap reviewed and implementation started on 2026-09-24<br>
 **Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md<br>
 **Execution branch:** `codex/djv2-cue-quantization`<br>
-**Review PRs:** [#61 — DJv2 stem, cue and mix intelligence slices](https://github.com/ajbergh/ViiB-MediaHub/pull/61) (merged 2026-09-24); [#62 — energy proxy and cue provenance](https://github.com/ajbergh/ViiB-MediaHub/pull/62) (merged 2026-09-24)<br>
+**Review PRs:** [#61 — DJv2 stem, cue and mix intelligence slices](https://github.com/ajbergh/ViiB-MediaHub/pull/61) (merged 2026-09-24); [#62 — energy proxy and cue provenance](https://github.com/ajbergh/ViiB-MediaHub/pull/62) (merged 2026-09-24); [#63 — hot cue quantization](https://github.com/ajbergh/ViiB-MediaHub/pull/63) (open)<br>
 **StemLab repository status:** Repository exists; generation work remains outside this MediaHub roadmap.<br>
 **Repository snapshot reviewed:** originally main at d02ad01 (v1.0.0-rc3); baseline claims re-verified at 956bf02 (includes 65cc49f DJ loop/waveform fixes); PR #61 merged to main at `bf05a12` and PR #62 at `f73a8d6` on 2026-09-24<br>
 **Research snapshot:** 2026-09-24 (external references re-checked the same day)  
