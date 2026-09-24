@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
+import { useStore } from '../../../store';
 import type { DeckId } from '../../../slices/djMixerSlice';
 
 export type DJStemBus = 'vocals' | 'drums' | 'bass' | 'music';
 export type DJStemMode = 'full' | 'stems' | 'fallback';
+export type DJStemMixPreset = 'full' | 'acapella' | 'instrumental';
 
 export interface DJStemBusState {
   gain: number;
@@ -12,6 +14,39 @@ export interface DJStemBusState {
 }
 
 export type DJStemState = Record<DJStemBus, DJStemBusState>;
+export type DJStemMuteState = Record<DJStemBus, boolean>;
+
+export interface DJStemPresetTransition {
+  activePreset: DJStemMixPreset | null;
+  muteState: DJStemMuteState;
+  restoreState: DJStemMuteState | null;
+}
+
+export function stemPresetMuteState(preset: DJStemMixPreset): DJStemMuteState {
+  switch (preset) {
+    case 'full': return { vocals: false, drums: false, bass: false, music: false };
+    case 'acapella': return { vocals: false, drums: true, bass: true, music: true };
+    case 'instrumental': return { vocals: true, drums: false, bass: false, music: false };
+  }
+}
+
+// Presets capture and restore mute state only. Bus gains and solo state remain
+// under the DJ's control when presets are applied or toggled back off.
+export function transitionDJStemPreset(
+  activePreset: DJStemMixPreset | null,
+  selectedPreset: DJStemMixPreset,
+  current: DJStemMuteState,
+  restore: DJStemMuteState | null,
+): DJStemPresetTransition {
+  if (activePreset === selectedPreset) {
+    return { activePreset: null, muteState: restore ? { ...restore } : { ...current }, restoreState: null };
+  }
+  return {
+    activePreset: selectedPreset,
+    muteState: stemPresetMuteState(selectedPreset),
+    restoreState: restore ? { ...restore } : { ...current },
+  };
+}
 
 export interface DJStemStatus {
   mode: DJStemMode;
@@ -64,6 +99,7 @@ function clampGain(value: number): number {
 
 /** Compact, per-deck four-bus controls. The audio engine remains the source of truth. */
 export function DJStemControls({ deck }: { deck: DeckId }) {
+  const trackID = useStore(state => deck === 'A' ? state.djDeckA.track?.id : state.djDeckB.track?.id);
   const {
     setStemMode,
     setStemGain,
@@ -75,6 +111,8 @@ export function DJStemControls({ deck }: { deck: DeckId }) {
   const [stemState, setLocalStemState] = useState<DJStemState>(DEFAULT_STEM_STATE);
   const [status, setStatus] = useState<DJStemStatus>(DEFAULT_STEM_STATUS);
   const [changingMode, setChangingMode] = useState(false);
+  const [activePreset, setActivePreset] = useState<DJStemMixPreset | null>(null);
+  const restoreMuteState = React.useRef<Partial<Record<DeckId, DJStemMuteState>>>({});
 
   const refresh = useCallback(() => {
     try {
@@ -91,8 +129,17 @@ export function DJStemControls({ deck }: { deck: DeckId }) {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
+  useEffect(() => {
+    setActivePreset(null);
+    restoreMuteState.current[deck] = undefined;
+  }, [deck, trackID]);
+
   const chooseMode = async (mode: 'full' | 'stems') => {
     if (mode === 'stems' && !status.available) return;
+    // Mode changes may reset the engine's stem buses; start the next stem
+    // session with no stale preset indicator or mute-restore snapshot.
+    setActivePreset(null);
+    restoreMuteState.current[deck] = undefined;
     setChangingMode(true);
     let operationError: string | undefined;
     try {
@@ -106,6 +153,31 @@ export function DJStemControls({ deck }: { deck: DeckId }) {
         setStatus(current => ({ ...current, mode: 'fallback', error: operationError }));
       }
     }
+  };
+
+  const choosePreset = (preset: DJStemMixPreset) => {
+    const current = getStemState(deck);
+    const currentMutes: DJStemMuteState = {
+      vocals: current.vocals.muted,
+      drums: current.drums.muted,
+      bass: current.bass.muted,
+      music: current.music.muted,
+    };
+    const transition = transitionDJStemPreset(activePreset, preset, currentMutes, restoreMuteState.current[deck] ?? null);
+    for (const bus of BUSES) {
+      if (currentMutes[bus.id] !== transition.muteState[bus.id]) {
+        setStemMuted(deck, bus.id, transition.muteState[bus.id]);
+      }
+    }
+    restoreMuteState.current[deck] = transition.restoreState ?? undefined;
+    setActivePreset(transition.activePreset);
+    refresh();
+  };
+
+  const toggleBusMute = (bus: DJStemBus, muted: boolean) => {
+    setStemMuted(deck, bus, muted);
+    restoreMuteState.current[deck] = undefined;
+    setActivePreset(null);
   };
 
   const canControlStems = status.available && status.mode !== 'fallback';
@@ -152,7 +224,7 @@ export function DJStemControls({ deck }: { deck: DeckId }) {
               aria-pressed={!busState.muted}
               title={`${label} · click to ${busState.muted ? 'unmute' : 'mute'}`}
               disabled={!canControlStems}
-              onClick={() => setStemMuted(deck, id, !busState.muted)}
+              onClick={() => toggleBusMute(id, !busState.muted)}
             >{label}</button>
           );
         })}
@@ -163,6 +235,17 @@ export function DJStemControls({ deck }: { deck: DeckId }) {
           MIX
         </summary>
         <div className="mt-1 w-64 rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-0)] p-2 shadow-xl" role="group" aria-label="Stem gain and solo controls">
+          <div className="mb-2 flex items-center gap-1" role="group" aria-label={`Stem mix presets for Deck ${deck}`}>
+            {(['full', 'acapella', 'instrumental'] as const).map(preset => (
+              <button key={preset} type="button"
+                className={`min-h-6 flex-1 rounded border px-1 text-[9px] font-bold ${activePreset === preset ? 'border-[var(--dj-info)] bg-[var(--dj-surface-2)] text-[var(--dj-info)]' : 'border-[var(--dj-border)] bg-[var(--dj-surface-0)] text-[var(--dj-text-secondary)] hover:text-[var(--dj-text-primary)]'}`}
+                aria-pressed={activePreset === preset}
+                title={activePreset === preset ? 'Click again to restore the mute state from before the preset' : `Apply ${preset} mix; bus gains stay unchanged`}
+                disabled={!canControlStems}
+                onClick={() => choosePreset(preset)}
+              >{preset.toUpperCase()}</button>
+            ))}
+          </div>
           {BUSES.map(({ id, label }) => {
             const busState = stemState[id];
             return (
