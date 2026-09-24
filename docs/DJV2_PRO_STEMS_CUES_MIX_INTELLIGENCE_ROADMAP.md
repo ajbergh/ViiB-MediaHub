@@ -2,10 +2,10 @@
 
 **Status:** In progress — roadmap reviewed and implementation started on 2026-09-24<br>
 **Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md<br>
-**Execution branch:** `codex/djv2-energy-provenance`<br>
-**Review PRs:** [#61 — DJv2 stem, cue and mix intelligence slices](https://github.com/ajbergh/ViiB-MediaHub/pull/61) (merged 2026-09-24); [#62 — energy proxy and cue provenance](https://github.com/ajbergh/ViiB-MediaHub/pull/62) (open)<br>
+**Execution branch:** `codex/djv2-cue-quantization`<br>
+**Review PRs:** [#61 — DJv2 stem, cue and mix intelligence slices](https://github.com/ajbergh/ViiB-MediaHub/pull/61) (merged 2026-09-24); [#62 — energy proxy and cue provenance](https://github.com/ajbergh/ViiB-MediaHub/pull/62) (merged 2026-09-24)<br>
 **StemLab repository status:** Repository exists; generation work remains outside this MediaHub roadmap.<br>
-**Repository snapshot reviewed:** originally main at d02ad01 (v1.0.0-rc3); baseline claims re-verified at 956bf02 (includes 65cc49f DJ loop/waveform fixes); tranche PR #61 merged to main at `bf05a12` on 2026-09-24
+**Repository snapshot reviewed:** originally main at d02ad01 (v1.0.0-rc3); baseline claims re-verified at 956bf02 (includes 65cc49f DJ loop/waveform fixes); PR #61 merged to main at `bf05a12` and PR #62 at `f73a8d6` on 2026-09-24<br>
 **Research snapshot:** 2026-09-24 (external references re-checked the same day)  
 **Primary goals:** professional-grade stem playback, scan-time cue creation, Camelot-first library UX, 1-10 energy analysis, structure-aware transition planning, mashup auditioning, and high-quality DJ preparation workflows.  
 **Stem-generation architecture decision:** stem generation is an ahead-of-time workflow owned by the separate **ViiB-StemLab** application/repository ([repository](https://github.com/ajbergh/ViiB-StemLab)). ViiB MediaHub detects, validates, indexes and plays pre-generated stem packages; it does not embed Demucs/PyTorch or perform neural stem separation during DJ playback. This roadmap covers MediaHub's consumer side; StemLab generation work is tracked separately and depends on stabilizing the package contract here.
@@ -24,14 +24,14 @@ The full roadmap (sections 1–52) was reviewed on 2026-09-24 against repository
 | PR 2 — Cue provenance model | Complete | Corrected pad argument order; added durable provenance, legacy-safe migration, full-set round-trip and server-side slot validation; backend tests and all 104 frontend tests passed. |
 | PR 3 — Rhythm/downbeat benchmark and provenance | In progress | Canonical WAV exporter, reference adapters, overlap audit, and persistent provenance are implemented. No measured detector or reference-model predictions: runtimes/checkpoints and complete training annotations are unavailable. |
 | PR 4 — Auto-cue generator V1 | Complete | Scan-time fill-empty generation, eight-slot policy, confidence/rationale/source fingerprint, provenance-aware alignment, and deletion suppressions; focused Go checks passed. |
-| PR 5 — Energy Level V1 | Complete | Versioned deterministic 1–10 score, confidence/API and sortable/filterable library column; silence is unscored and corpus calibration remains outstanding; included in the 104-test frontend pass. |
+| PR 5 — Energy Level V1 | Complete — V1 | Versioned deterministic 1–10 score, confidence/API and sortable/filterable library column; energy proxy semantics are explicit in artifacts/API (PR #62); silence is unscored and corpus calibration remains outstanding. |
 | PR 6 — ViiB Stem Package v1 | Complete | Contract, bounded manifest parser, WAV-only validator, safe path/checksum/geometry checks and deterministic fixtures; Go tests and vet passed. |
 | PR 7 — MediaHub stem discovery and registry | Complete | Discovery, persistence, locations, async link/refresh, status/unlink APIs, and PCM32 `audioSha256` matching for exact decoder geometry; Go checks passed. Geometry conversion remains unsupported. |
 | PR 8 — DeckSource refactor | Complete | Source-neutral transport and regression coverage for play/seek/loop/cue/sync/scratch; typecheck and all 104 frontend tests passed. |
 | PR 9 — Stem package preview/audio serving | Complete | Registered frame endpoint and single-stem WAV preview/export are implemented; full endpoint checks pass, with symlink creation tests skipped by Windows permissions. |
 | PR 10 — Stem deck transport | Complete — V1 | One-clock four-bus worklet, bounded prefetch, source-rate resampling, switching, gains, fallback and loop capability reporting; full typecheck and deck/worklet regression tests pass. Key-lock, scratch/slip, long sample-accurate loops and production device qualification remain open. |
 | PR 11 — Four-button stem UI | Complete | Per-deck full/stems mode, four bus mutes, expanded gain/solo controls, buffering/fallback/underrun diagnostics, and FULL/ACAPELLA/INSTRUMENTAL mute presets with restore-on-toggle and gain preservation; focused tests and frontend typecheck passed. |
-| PR 12 — Cue API and preparation editor | Complete — V1 | Typed candidate/list/apply routes, fill-empty/refresh/selected-only policies, installation-wide automatic cue mode, provenance/lock/rationale display, candidate actions, and distinct solid user/dashed generated waveform markers; focused Go/API/frontend checks pass. Quantization controls and richer editing remain open. |
+| PR 12 — Cue API and preparation editor | Complete — V1 plus quantization | Typed candidate/list/apply routes, fill-empty/refresh/selected-only policies, installation-wide automatic cue mode, provenance/lock/rationale display, candidate actions, distinct user/generated waveform markers, and manual Off/beat/half-beat/quarter-beat snapping to stored grid timestamps. Focused snapping tests and frontend typecheck pass; richer editing remains open. |
 | PR 13 — DJ library Stem Status | Complete | Snapshot/change song rows carry a batched, path-free registry summary; the optional library badge supports sorting and status search. Full Go, DB, typecheck and frontend checks pass. |
 | PR 14 — Mix Next candidate filters V1 | Complete | Inclusive BPM/Energy ranges and registered-ready stem availability filters expose validated active filters, resolved evidence and before/after counts; API/UI tests pass. |
 | Mix/Mashup planning and interoperability | In progress | Mix Next scores confidence-gated BPM/Camelot/Energy Level evidence with Hold/Lift/Reset/Harmonic intents. A guarded top-candidate headphone preview is implemented for an empty opposite deck; atomic restoration of occupied decks, sync/beatmatch audition, structure/vocal evidence and Mashup Mode remain outstanding. |
@@ -82,6 +82,8 @@ Progress log:
 - 2026-09-24 — Completed energy measurement semantics without changing the RMS/peak calculations or Energy Level score. Versioned artifacts and `/analysis/{songID}/energy` report `unweighted-mono-rms-proxy`, `sample-plus-midpoint-peak-proxy`, `channelScope: mono`, and `standard: none`; deprecated numeric JSON aliases remain for compatibility. Energy artifact provenance is now `measured`, and Mix rationale names the loudness proxy in dB. Added solid user-cue and dashed generated-cue waveform markers. Full validation passed: `go test ./...`, `go vet ./...`, `npm run typecheck`, serial `npx vitest run --configLoader runner` (29 files, 122 tests), and `git diff --check`.
 
 - 2026-09-24 — PR #62 backend CI identified Staticcheck SA1019 on internal use of the compatibility fields' Go `Deprecated:` comments. Removed those comments from the internal measurement result type; public JSON aliases and their compatibility descriptions remain. The API response still documents the aliases as deprecated for consumers.
+- 2026-09-24 — PR #62 passed backend race/static/vulnerability checks, frontend checks, deterministic track analysis on Linux/macOS/Windows, semantic cross-compilation and Linux/macOS/Windows desktop builds; squash merged to `main` as `f73a8d6`. Started `codex/djv2-cue-quantization` for nearest beat, half-beat and quarter-beat editing against stored beat timestamps; no measured downbeat claim will be added.
+- 2026-09-24 — Added cue quantization modes Off/beat/half-beat/quarter-beat and per-cue Snap. Both Snap and Move use actual stored beat timestamps, including nonuniform intervals; invalid/out-of-range grids, locked cues and unchanged positions are no-ops. Edited generated cues become user-owned. Focused helper tests (7/7), frontend typecheck and `git diff --check` passed. Also corrected section 20 to reflect the already shipped BPM/Camelot/Energy Level recommendation evidence and list only remaining filters/structure work.
 
 ## 1. Product vision
 
@@ -1807,27 +1809,20 @@ This is a later phase and must not block the first cue/stem release.
 
 ## 20. Upgrade transition recommendations
 
-The current ViiB transition scorer (`features.ScoreTransition` in `backend/internal/analysis/features/transition.go`) combines only:
+The legacy ViiB scorer (`features.ScoreTransition` in `backend/internal/analysis/features/transition.go`) combines:
 
 - energy continuity (weight 0.55): tail vs head mean energy over 8 curve points;
 - loudness match (weight 0.20): the LUFS-proxy delta scaled over 12 dB;
 - phrase preparation (weight 0.25): the mean confidence of the best mix-out and mix-in cue suggestions.
 
-It ranks every analyzed track this way. **Neither BPM nor key is used today**, so harmonic and tempo compatibility are the largest gaps. Note also that the tail/head energy terms compare per-track self-normalized curves (section 16), so they are shape-relative, not absolute.
+The v2 recommendations endpoint now calls `ScoreTransitionWithMetadata`, which adds confidence-gated tempo compatibility, Camelot relation and Energy Level intent components when both tracks have usable evidence. Optional weights are renormalized, and the API/UI expose each component and rationale. Low-confidence, imported, inferred or unsettled measurements do not influence these components. Mix Next also supports BPM, Energy Level and registered-stem filters. These are deterministic advisory heuristics, not corpus-calibrated judgments. Note that tail/head energy terms compare per-track self-normalized curves (section 16), so they are shape-relative, not absolute.
 
-Expand the recommendation vector with:
+Remaining recommendation-vector work:
 
-- Camelot relation;
-- BPM delta;
-- required tempo change percentage;
-- Energy Level delta;
-- tail/head energy;
-- LUFS delta;
-- phrase alignment;
+- phrase alignment beyond mix-in/mix-out cue confidence;
 - intro/outro compatibility;
 - vocal overlap risk;
-- stem availability;
-- genre/playlist filters;
+- compatible-Camelot-only, playlist and genre filters;
 - recency/play-history filters when desired.
 
 Every score component must remain inspectable.
