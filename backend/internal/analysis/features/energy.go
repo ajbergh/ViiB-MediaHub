@@ -53,9 +53,9 @@ type CueSuggestion struct {
 // Result contains measured loudness and compact structure suitable for a
 // library row, a waveform overlay, or explainable recommendation scoring.
 type Result struct {
-	// Deprecated: compatibility alias for unweighted mono RMS dB proxy.
+	// Compatibility alias for unweighted mono RMS dB proxy.
 	IntegratedLUFS float64 `json:"integratedLufs"`
-	// Deprecated: compatibility alias for sample-plus-midpoint peak dBFS proxy.
+	// Compatibility alias for sample-plus-midpoint peak dBFS proxy.
 	TruePeakDBFS   float64         `json:"truePeakDbfs"`
 	LoudnessKind   string          `json:"loudnessKind"`
 	PeakKind       string          `json:"peakKind"`

@@ -81,6 +81,8 @@ Progress log:
 - 2026-09-24 — PR #61 was marked ready and merged to `main` as squash commit `bf05a12` after all required CI jobs passed, including backend race/static/vulnerability validation, frontend checks, track-analysis platform determinism, semantic cross-compilation and Linux/macOS/Windows desktop builds. Started follow-on branch `codex/djv2-energy-provenance` for explicit energy-proxy metadata, measured artifact provenance, accurate transition rationale, and waveform cue provenance styling; score and measurements remain numerically unchanged.
 - 2026-09-24 — Completed energy measurement semantics without changing the RMS/peak calculations or Energy Level score. Versioned artifacts and `/analysis/{songID}/energy` report `unweighted-mono-rms-proxy`, `sample-plus-midpoint-peak-proxy`, `channelScope: mono`, and `standard: none`; deprecated numeric JSON aliases remain for compatibility. Energy artifact provenance is now `measured`, and Mix rationale names the loudness proxy in dB. Added solid user-cue and dashed generated-cue waveform markers. Full validation passed: `go test ./...`, `go vet ./...`, `npm run typecheck`, serial `npx vitest run --configLoader runner` (29 files, 122 tests), and `git diff --check`.
 
+- 2026-09-24 — PR #62 backend CI identified Staticcheck SA1019 on internal use of the compatibility fields' Go `Deprecated:` comments. Removed those comments from the internal measurement result type; public JSON aliases and their compatibility descriptions remain. The API response still documents the aliases as deprecated for consumers.
+
 ## 1. Product vision
 
 DJv2 should evolve from a capable two-deck player into a local-first DJ preparation and performance environment.
