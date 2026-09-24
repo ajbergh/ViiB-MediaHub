@@ -47,7 +47,7 @@ ViiB already persists and exposes:
 - alternate tempo candidates and tempo stability;
 - musical key and confidence;
 - Camelot and Open Key notation;
-- beat positions and downbeats;
+- beat positions and downbeat indices (the current native grid can derive these from meter; later sections distinguish this from true musical-downbeat detection);
 - beatgrid manual edits;
 - a current streaming loudness proxy stored as `IntegratedLUFS` and a peak-level proxy stored as `TruePeakDBFS` (these names must not be interpreted as full BS.1770 integrated loudness / oversampled true-peak compliance yet);
 - track energy curves;
@@ -2186,7 +2186,7 @@ Measure at minimum:
 
 A model must not be promoted because it improves scalar BPM while producing poor downbeat placement.
 
-### 37.2 Third-party model overlap gate
+## 37.2 Third-party model overlap gate
 
 Before using a pretrained model result as release evidence:
 
