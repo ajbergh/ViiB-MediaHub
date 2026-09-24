@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { getDJAudioEngine } from '../../../lib/djAudio';
 import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPreparedPreviewDeck, isPristineEmptyPreviewDeck, stillOwnsPreviewDeck, type TestMixPreviewBaseline } from '../../../lib/testMixPreviewGuard';
@@ -35,6 +35,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [maxEnergy, setMaxEnergy] = useState('');
   const [stemsOnly, setStemsOnly] = useState(false);
   const [camelotOnly, setCamelotOnly] = useState(false);
+  const [playlistId, setPlaylistId] = useState('');
+  const [genre, setGenre] = useState('');
   const [previewMessage, setPreviewMessage] = useState('');
   const previewRef = useRef<TestMixPreviewSession | null>(null);
   const previewTokenRef = useRef(0);
@@ -42,6 +44,9 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const analysisStatus = useStore(state => deck === 'A' ? state.djDeckA.analysisStatus : state.djDeckB.analysisStatus);
   const setHotCue = useStore(state => state.setHotCue);
   const librarySongs = useStore(state => state.songs);
+  const libraryPlaylists = useStore(state => state.playlists);
+  const genreOptions = useMemo(() => Array.from(new Map(librarySongs.flatMap(song => (song.genre ?? [])
+    .map(value => value.trim().replace(/\s+/g, ' ')).filter(Boolean).map(value => [value.toLocaleLowerCase(), value] as const))).values()).sort((a, b) => a.localeCompare(b)), [librarySongs]);
   const previewDeckID = deck === 'A' ? 'B' : 'A';
   const previewDeckState = useStore(state => previewDeckID === 'A' ? state.djDeckA : state.djDeckB);
   const crossfader = useStore(state => state.djMixer.crossfader);
@@ -55,6 +60,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     ...(maxEnergy !== '' ? { maxEnergyLevel: Number(maxEnergy) } : {}),
     ...(stemsOnly ? { stemsAvailable: true } : {}),
     ...(camelotOnly ? { camelotCompatible: true } : {}),
+    ...(playlistId ? { playlistId } : {}),
+    ...(genre ? { genre } : {}),
   };
   const bpmValuesValid = [minBpm, maxBpm].every(value => value === '' || (Number.isFinite(Number(value)) && Number(value) >= 60 && Number(value) <= 190));
   const energyValuesValid = [minEnergy, maxEnergy].every(value => value === '' || (Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 10));
@@ -102,7 +109,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       api.getTrackTransitionRecommendations(trackID, 3, intent, filters).then(value => live && setRecommendations(value)).catch(() => {});
     }
     return () => { live = false; };
-  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, filtersValid]);
+  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistId, genre, filtersValid]);
 
   if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
   if (!features) return null;
@@ -330,6 +337,22 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       <label className="inline-flex items-center gap-1" title="Only include candidates with trusted keys in the same, adjacent, or relative Camelot relation">
         <input aria-label="Compatible Camelot only" type="checkbox" checked={camelotOnly} onChange={event => setCamelotOnly(event.target.checked)} />
         <span>Compatible Camelot only</span>
+      </label>
+      <label className="inline-flex items-center gap-1" title="Optionally limit candidates to one saved playlist">
+        <span>Playlist</span>
+        <select aria-label="Mix Next playlist" value={playlistId} onChange={event => setPlaylistId(event.target.value)}
+          className="max-w-32 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200">
+          <option value="">All playlists</option>
+          {libraryPlaylists.map(playlist => <option key={playlist.id} value={playlist.id}>{playlist.name}</option>)}
+        </select>
+      </label>
+      <label className="inline-flex items-center gap-1" title="Exact normalized genre membership; candidates without this genre are excluded">
+        <span>Genre</span>
+        <select aria-label="Mix Next genre" value={genre} onChange={event => setGenre(event.target.value)}
+          className="max-w-28 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200">
+          <option value="">All genres</option>
+          {genreOptions.map(option => <option key={option} value={option}>{option}</option>)}
+        </select>
       </label>
       {!filtersValid && <span role="status" className="text-amber-400">Check ranges: BPM 60–190; Energy Level 1–10; minimum must not exceed maximum.</span>}
       {features.cueSuggestions.slice(0, 3).map((cue, index) => {

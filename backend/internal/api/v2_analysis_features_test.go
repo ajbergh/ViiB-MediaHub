@@ -268,9 +268,18 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	}
 	defer database.Close()
 	for _, id := range []string{"source", "compatible", "incompatible"} {
-		if err := database.SaveSong(&db.Song{ID: id, Title: id, Artist: "Artist", Album: "Album", FilePath: id + ".mp3", AddedAt: 1}); err != nil {
+		genres := []string(nil)
+		if id == "compatible" {
+			genres = []string{"  rOcK "}
+		} else if id == "incompatible" {
+			genres = []string{"Rockabilly"}
+		}
+		if err := database.SaveSong(&db.Song{ID: id, Title: id, Artist: "Artist", Album: "Album", Genre: genres, FilePath: id + ".mp3", AddedAt: 1}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := database.SavePlaylist(&db.Playlist{ID: "mix", Name: "Mix", SongIDs: []string{"compatible", "stale-song-id"}, CreatedAt: 1}); err != nil {
+		t.Fatal(err)
 	}
 	results := map[string]features.Result{
 		"source":       {IntegratedLUFS: -10, Energy: []features.EnergyPoint{{Value: .2}, {Value: .8}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-out", Confidence: .8}}},
@@ -345,6 +354,38 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	if len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "incompatible" {
 		t.Fatalf("stemsAvailable=false results = %#v", response.Recommendations)
 	}
+	getFiltered := func(query string) TransitionRecommendationsResponse {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations"+query, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("GET library-filtered recommendations = %d: %s", recorder.Code, recorder.Body.String())
+		}
+		var result TransitionRecommendationsResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	libraryFiltered := getFiltered("?playlistId=mix&genre=rock")
+	if libraryFiltered.CandidatesBeforeFilters != 2 || libraryFiltered.CandidatesAfterFilters != 1 || len(libraryFiltered.Recommendations) != 1 || libraryFiltered.Recommendations[0].SongID != "compatible" {
+		t.Fatalf("AND library filters/counts = %#v", libraryFiltered)
+	}
+	if libraryFiltered.Filters.PlaylistID == nil || *libraryFiltered.Filters.PlaylistID != "mix" || libraryFiltered.Filters.Genre == nil || *libraryFiltered.Filters.Genre != "Rock" {
+		t.Fatalf("library filter echo = %#v", libraryFiltered.Filters)
+	}
+	if exactGenre := getFiltered("?genre=rock"); exactGenre.CandidatesAfterFilters != 1 || exactGenre.Recommendations[0].SongID != "compatible" {
+		t.Fatalf("exact normalized genre must not substring-match Rockabilly: %#v", exactGenre)
+	}
+	for _, query := range []string{"?playlistId=unknown", "?genre=Unknown"} {
+		if unmatched := getFiltered(query); unmatched.CandidatesBeforeFilters != 2 || unmatched.CandidatesAfterFilters != 0 || len(unmatched.Recommendations) != 0 {
+			t.Fatalf("unknown library filter %q should match nothing: %#v", query, unmatched)
+		}
+	}
+	unfiltered := getFiltered("")
+	if unfiltered.CandidatesBeforeFilters != 2 || unfiltered.CandidatesAfterFilters != 2 || unfiltered.Filters.PlaylistID != nil || unfiltered.Filters.Genre != nil {
+		t.Fatalf("omitted library filters changed behavior: %#v", unfiltered)
+	}
 }
 
 func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
@@ -357,6 +398,7 @@ func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
 		"minBpm=59", "maxBpm=191", "minBpm=NaN", "minEnergyLevel=0", "maxEnergyLevel=11",
 		"minBpm=130&maxBpm=120", "minEnergyLevel=8&maxEnergyLevel=4", "stemsAvailable=yes", "minBpm=120&minBpm=121",
 		"camelotCompatible=yes", "camelotCompatible=true&camelotCompatible=false",
+		"playlistId=", "playlistId=mix&playlistId=other", "genre=", "genre=rock&genre=pop",
 	} {
 		t.Run(query, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
