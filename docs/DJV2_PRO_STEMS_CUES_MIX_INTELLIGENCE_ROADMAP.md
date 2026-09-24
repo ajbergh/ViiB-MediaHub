@@ -4,7 +4,8 @@
 **Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md  
 **Repository snapshot reviewed:** main at d02ad01dd5d384a77383b70f2669f9dd1c6c1761 (v1.0.0-rc3)  
 **Research snapshot:** 2026-09-23  
-**Primary goals:** professional-grade stem playback, scan-time cue creation, Camelot-first library UX, 1-10 energy analysis, structure-aware transition planning, mashup auditioning, and high-quality DJ preparation workflows.
+**Primary goals:** professional-grade stem playback, scan-time cue creation, Camelot-first library UX, 1-10 energy analysis, structure-aware transition planning, mashup auditioning, and high-quality DJ preparation workflows.  
+**Stem-generation architecture decision:** stem generation is an ahead-of-time workflow owned by a separate future application/repository named **ViiB-StemLab**. ViiB MediaHub detects, validates, indexes and plays pre-generated stem packages; it does not embed Demucs/PyTorch or perform neural stem separation during DJ playback. The ViiB-StemLab repository will be created later, after the package contract in this roadmap is stable.
 
 > This roadmap uses public behavior from Mixed In Key 11 Pro as product inspiration and StemDeck as an open-source implementation reference. It does not attempt to reproduce proprietary Mixed In Key algorithms or visual trade dress. Where StemDeck code is reused directly, Apache-2.0 attribution and third-party notices must be preserved.
 
@@ -18,7 +19,7 @@ The target experience is:
 
 1. Import or scan music once.
 2. Analyze BPM, beatgrid, key, Camelot/Open Key, loudness, energy, song structure and up to eight useful cue points.
-3. Optionally pre-separate tracks into stems in the background.
+3. Prepare stems ahead of time with the separate **ViiB-StemLab** application (future repository), or import a compatible ViiB Stem Package generated elsewhere; MediaHub detects when a valid package is available.
 4. Load a track and immediately see:
    - BPM and confidence;
    - musical key and color-coded Camelot notation;
@@ -128,7 +129,13 @@ The current track color label is session-only state. It is not the same thing as
 
 ### 2.5 Existing job scheduler
 
-The backend already has a persisted long-running job system, auto-analysis triggers and a DJ playback pressure signal. Stem separation should be another durable job type within that scheduler, not an unrelated background process manager.
+The backend already has a persisted long-running job system, auto-analysis triggers and a DJ playback pressure signal. That scheduler remains appropriate for MediaHub-owned analysis, discovery and validation work, but **stem generation itself is no longer a MediaHub job**.
+
+The boundary is:
+
+- **ViiB-StemLab** owns model/runtime management, GPU/CPU selection, generation queues, progress, cancellation and writing completed stem packages.
+- **ViiB MediaHub** owns stem-package discovery, validation, indexing, source-hash matching and DJ playback.
+- An optional future integration may let MediaHub launch or deep-link into ViiB-StemLab, but MediaHub must remain fully functional when ViiB-StemLab is not installed.
 
 ---
 
@@ -198,31 +205,50 @@ The ViiB backend remains the source of truth for:
 - songs;
 - playlists;
 - analysis artifacts;
-- jobs;
-- stem metadata;
+- jobs owned by MediaHub;
+- discovered stem-package metadata;
 - user cues;
 - recommendation data;
 - configuration.
 
-A stem model runtime may be implemented as a managed sidecar because PyTorch/Demucs is not a sensible dependency to force into the Go process.
+MediaHub must **not** ship or embed the stem-generation ML runtime. Demucs/PyTorch, model downloads, GPU runtime handling and separation queues belong to the separate ViiB-StemLab application.
 
-### 4.2 Treat heavy ML as a capability
+### 4.2 Separate the generation domain from the performance domain
 
-Stem separation must be capability-negotiated.
+Stem separation is an ahead-of-time preparation workflow.
 
-The application should be fully usable when stem separation is unavailable.
+**ViiB-StemLab** will be a separate application and future repository. Its responsibilities will be:
 
-Capability states should include:
+- select and manage stem models;
+- select CUDA, Apple MPS or CPU execution;
+- queue and cancel separation jobs;
+- validate generated audio;
+- write a versioned ViiB Stem Package;
+- support batch preparation of tracks/playlists;
+- optionally expose a CLI or launch/deep-link contract for MediaHub.
 
-- unavailable;
-- runtime_missing;
-- model_missing;
-- ready_cpu;
-- ready_cuda;
-- ready_mps;
-- error.
+**ViiB MediaHub** is a stem consumer. Its responsibilities are:
 
-Desktop builds may offer a managed local worker. Browser builds should expose stem processing only when the serving backend has a configured stem worker.
+- discover stem packages;
+- verify schema and source-audio identity;
+- index stem availability;
+- detect stale or invalid packages;
+- stream/decode stems for DJ playback;
+- expose stem controls, waveforms, loops, sync, scratch and FX.
+
+The core MediaHub experience must remain fully usable when ViiB-StemLab is not installed.
+
+MediaHub package states should include:
+
+- none;
+- discovered;
+- validating;
+- ready;
+- stale;
+- invalid;
+- unavailable.
+
+ViiB-StemLab generation states are intentionally outside the MediaHub state machine and will be defined in the future ViiB-StemLab repository.
 
 ### 4.3 Never mix generated and user-authored DJ data without provenance
 
@@ -254,27 +280,41 @@ Per-stem gain/mute/solo is independent. Transport is not.
 
 ### 4.5 Degrade safely
 
-If stem files are missing, corrupt, still processing or incompatible, the deck must fall back to the original track without changing the musical position.
+If stem files are missing, corrupt, stale or incompatible, the deck must fall back to the original track without changing the musical position.
+
+### 4.6 Use a filesystem package contract as the integration boundary
+
+The integration contract between ViiB-StemLab and ViiB MediaHub is a versioned **ViiB Stem Package**, not a Python API, local HTTP service or shared database.
+
+A package contains:
+
+- a machine-readable `manifest.json`;
+- source-track identity including a cryptographic source hash;
+- generator/model/version metadata;
+- sample rate, channel and frame-count metadata;
+- checksums for every stem;
+- the generated audio files.
+
+This keeps MediaHub independent from the implementation language or ML framework used by ViiB-StemLab and also allows future third-party generators to produce compatible packages.
 
 ---
 
 ## 5. Proposed backend components
 
-Add the following high-level components:
+Add the following MediaHub components:
 
     backend/internal/stems/
-        capability.go
-        worker.go
         manifest.go
-        storage.go
+        discovery.go
+        registry.go
+        resolver.go
         validation.go
 
     backend/internal/api/
         v2_stems.go
-        v2_stem_jobs.go
 
     backend/internal/db/
-        stem persistence additions
+        stem registry/persistence additions
 
     backend/internal/analysis/cues/
         generator.go
@@ -286,26 +326,34 @@ Add the following high-level components:
     backend/internal/analysis/structure/
         structure.go
 
-A Python worker may live under a separate runtime directory such as:
+MediaHub does **not** contain a Python worker, model runtime or separation job implementation.
 
-    stem-worker/
-        pyproject.toml
-        viib_stem_worker/
+### 5.1 Future ViiB-StemLab repository
+
+A separate repository will be created later for **ViiB-StemLab**. That repository is expected to contain the heavy stem-generation stack, potentially including:
+
+    ViiB-StemLab/
+        app/
+        cli/
+        stem_engine/
         models/
+        packaging/
         tests/
 
-The worker boundary should be intentionally small.
+The exact implementation language/runtime is intentionally not part of the MediaHub contract. The initial implementation may use Python/PyTorch/Demucs, while a future version could use ONNX or another engine without requiring changes to DJ playback.
 
-Recommended worker operations:
+The stable integration surface is the ViiB Stem Package schema.
 
-- health;
-- capabilities;
-- ensure-model;
-- separate;
-- cancel;
-- shutdown.
+### 5.2 Optional application-to-application integration
 
-Do not duplicate ViiB job state in the worker. ViiB owns the durable job record; the worker performs one task at a time and reports structured progress.
+A future ViiB-StemLab release may expose:
+
+- `viib-stemlab generate <track>`;
+- `viib-stemlab prepare-playlist <manifest>`;
+- a desktop deep link/protocol;
+- a completion notification or package-directory rescan trigger.
+
+These are convenience integrations only. MediaHub must always be able to discover a completed package by filesystem scan without requiring a running StemLab process.
 
 ---
 
@@ -324,16 +372,19 @@ Suggested fields:
 - source_audio_hash
 - model_name
 - model_version
-- worker_version
+- generator_name
+- generator_version
 - stem_layout
 - status
 - sample_rate
 - channels
 - duration_seconds
-- device
+- generated_device
+- package_path
+- manifest_schema_version
 - generated_at
-- error_code
-- error_message
+- validation_error_code
+- validation_error_message
 - manually_invalidated
 
 Recommended unique identity:
@@ -451,20 +502,19 @@ Do not force a semantic label when confidence is weak. A phrase-boundary-only re
 
 ## 7. Proposed API surface
 
-### 7.1 Stem capabilities
+### 7.1 Stem locations and discovery
 
-GET /api/v2/stems/capabilities
+GET /api/v2/stems/locations
 
-Response should include:
+POST /api/v2/stems/rescan
 
-- available;
-- workerVersion;
-- supportedModels;
-- selectedModel;
-- device;
-- modelReady;
-- estimatedModelBytes;
-- supportedStemLayouts.
+Configured locations may include:
+
+- adjacent `.stems` directories next to source tracks;
+- one or more global ViiB Stem Libraries;
+- explicitly linked package paths.
+
+MediaHub scans package manifests rather than treating every stem audio file as an independent library item.
 
 ### 7.2 Track stem state
 
@@ -475,31 +525,33 @@ Returns:
 - status;
 - active stem set;
 - available stems;
-- model/version;
-- device used;
+- source-hash match state;
+- generator/model/version;
+- package path;
 - disk usage;
 - generatedAt;
-- error information.
+- validation error information.
 
-### 7.3 Request separation
+### 7.3 Link or refresh a completed package
 
-POST /api/v2/tracks/{id}/stems
+POST /api/v2/tracks/{id}/stems/link
 
 Body:
 
     {
-      "model": "htdemucs_6s",
-      "priority": "background",
+      "packagePath": "D:/ViiB Stems/...",
       "replace": false
     }
 
-The handler creates a durable operation_jobs row and returns the job.
+POST /api/v2/tracks/{id}/stems/refresh
 
-### 7.4 Delete cached stems
+These endpoints validate/index completed packages. They do **not** perform separation.
+
+### 7.4 Unlink or delete a package
 
 DELETE /api/v2/tracks/{id}/stems/{stemSetId}
 
-Deletion must be refused while either deck is actively using the set.
+The default action should unlink the package from MediaHub. Physical deletion of generated stem files must be a separate explicit action and must be refused while either deck is actively using the set.
 
 ### 7.5 Stem audio access
 
@@ -536,74 +588,110 @@ Never provide a destructive replace-all mode that can overwrite user cues withou
 
 ---
 
-# PART II — FULL STEM SEPARATION
+# PART II — STEM PACKAGE GENERATION & INTEGRATION
 
-## 8. Stem worker design
+## 8. ViiB-StemLab architecture
 
-### 8.1 Initial model
+### 8.1 Separate application and future repository
 
-Use Demucs htdemucs_6s as the first production candidate because it provides the six outputs required by the requested DJ controls.
+Stem generation will be implemented in a separate application named **ViiB-StemLab**.
 
-The worker should auto-select:
+The repository is intentionally **not being created as part of this roadmap update**. Once the ViiB Stem Package v1 contract is stable, create a dedicated repository, expected to be named:
+
+    ajbergh/ViiB-StemLab
+
+ViiB-StemLab is a preparation tool, not part of the live DJ audio path.
+
+Its primary responsibilities:
+
+- generate stems ahead of performance;
+- batch-process folders and DJ playlists;
+- manage model downloads and versions;
+- select CPU/CUDA/MPS execution;
+- display generation progress and errors;
+- cancel/retry jobs;
+- validate output;
+- write completed ViiB Stem Packages.
+
+MediaHub never requires ViiB-StemLab to remain running during DJ playback.
+
+### 8.2 Initial model candidate
+
+Use Demucs `htdemucs_6s` as the first production candidate for ViiB-StemLab because it provides:
+
+- vocals;
+- drums;
+- bass;
+- guitar;
+- piano;
+- other.
+
+StemLab should auto-select:
 
 1. CUDA when a supported NVIDIA runtime is available;
 2. MPS on supported Apple Silicon;
 3. CPU fallback.
 
-The selected device must be visible in Settings and job details.
+This device/model information is written into the package manifest for provenance, but MediaHub does not need the generation runtime in order to play the package.
 
-### 8.2 Runtime packaging
+### 8.3 ViiB Stem Package v1
 
-Recommended product approach:
+Recommended directory shape:
 
-**Development**
-- local Python 3.12 environment;
-- uv-managed dependency lock;
-- worker launched by ViiB.
+    <package-id>.viibstems/
+        manifest.json
+        vocals.flac
+        drums.flac
+        bass.flac
+        guitar.flac
+        piano.flac
+        other.flac
 
-**Desktop production**
-- managed runtime package downloaded or installed on first stem use;
-- model weights downloaded separately and cached;
-- versioned worker directory;
-- checksum verification;
-- update independent of the main application when practical.
+The package may use WAV during early development, but FLAC should be evaluated as the default cache format because six uncompressed PCM files have substantial disk cost.
 
-Do not increase every ViiB installer by the full PyTorch/model footprint unless release testing demonstrates that this is acceptable.
+Minimum manifest information:
 
-**Web deployment**
-- no browser-side PyTorch requirement;
-- backend capability endpoint determines availability;
-- server administrator configures worker/device.
+    {
+      "schemaVersion": 1,
+      "source": {
+        "filename": "Human.flac",
+        "sha256": "...",
+        "duration": 355.21
+      },
+      "generator": {
+        "name": "ViiB-StemLab",
+        "version": "..."
+      },
+      "model": {
+        "name": "htdemucs_6s",
+        "version": "..."
+      },
+      "audio": {
+        "sampleRate": 44100,
+        "channels": 2,
+        "frames": 15664861
+      },
+      "stems": {
+        "vocals": "vocals.flac",
+        "drums": "drums.flac",
+        "bass": "bass.flac",
+        "guitar": "guitar.flac",
+        "piano": "piano.flac",
+        "other": "other.flac"
+      }
+    }
 
-### 8.3 Worker contract
+The final schema must additionally include per-stem checksum/size/frame metadata and a schema-level compatibility policy.
 
-Input:
+### 8.4 Package finalization and validation
 
-- absolute source path or prepared PCM path;
-- output directory;
-- model;
-- device;
-- cancellation token/job id.
+ViiB-StemLab writes into a temporary package directory and only atomically promotes it to the final `.viibstems` directory after generation succeeds.
 
-Progress events:
-
-- preparing;
-- loading_model;
-- separating;
-- validating;
-- complete;
-- failed;
-- cancelled.
-
-The worker should write outputs into a temporary directory and ViiB should atomically promote the directory only after validation succeeds.
-
-### 8.4 Output validation
-
-Before a stem set becomes usable:
+Before finalization, StemLab validates:
 
 - all required files exist;
 - all files have identical sample rate;
-- all files have identical frame count within a defined tolerance;
+- all files have identical frame count within tolerance;
 - all files have compatible channel count;
 - no file is empty;
 - duration matches the source within tolerance;
@@ -611,32 +699,78 @@ Before a stem set becomes usable:
 - output does not contain catastrophic clipping;
 - checksums are recorded.
 
-### 8.5 Cancellation
+MediaHub independently validates the manifest and critical audio geometry when it discovers the package. A package is never trusted merely because its directory exists.
 
-Reuse the durable job cancellation model.
+### 8.5 Discovery locations
 
-Cancelling must:
+MediaHub should support both adjacent and centralized packages.
 
-- signal the active worker;
-- terminate child processes if needed;
+**Adjacent**
+
+    Music/
+        Human.flac
+        Human.stems/
+            manifest.json
+            ...
+
+**Central library**
+
+    D:/ViiB Stems/
+        <package-id>.viibstems/
+            manifest.json
+            ...
+
+Resolution priority:
+
+1. explicitly linked package;
+2. adjacent stem package;
+3. configured Stem Library locations;
+4. optional MediaHub-managed imported package location.
+
+### 8.6 Generation queue and cancellation belong to StemLab
+
+Queue management, retries, progress, device utilization and cancellation are ViiB-StemLab responsibilities.
+
+Cancellation must:
+
+- terminate active model work;
 - release GPU memory;
-- remove the temporary output directory;
-- leave no stem-set row in ready state.
+- remove temporary output;
+- never expose an incomplete package as finalized.
 
-### 8.6 Disk policy
+MediaHub does not mirror this queue into its own durable job scheduler.
 
-Stem files are large. Add a configurable stem-cache budget.
+### 8.7 Optional integrated launch
 
-Settings:
+MediaHub may later expose:
 
-- Stem Cache Location
-- Maximum Stem Cache Size
-- Delete least-recently-used generated stems automatically
-- Keep stems for favorited tracks
-- Keep stems used in saved DJ playlists
-- Never auto-delete manually exported stems
+    Generate Stems
 
-The cache manager should use stem-set last-used timestamps, not file modification time.
+If ViiB-StemLab is installed, the action may launch/deep-link to StemLab with the selected track or playlist.
+
+If StemLab is absent, MediaHub should show that stem generation requires the optional ViiB-StemLab application rather than presenting stem playback as broken.
+
+### 8.8 Storage policy
+
+Stem files are large, but storage ownership is clearer with a separate generator.
+
+ViiB-StemLab should provide:
+
+- output library location;
+- estimated output size;
+- batch storage requirements;
+- cleanup tools;
+- optional least-recently-used policies for its managed library.
+
+MediaHub should provide:
+
+- configured Stem Library locations;
+- package index size/status;
+- stale-package detection;
+- unlink operations;
+- explicit delete only when requested.
+
+MediaHub must never silently delete externally generated packages.
 
 ---
 
@@ -699,7 +833,7 @@ Recommended ramp:
 
 ### 9.4 Production transport
 
-The preferred production design is a single AudioWorklet-based stem transport backed by frame-aligned PCM chunks from the Go server.
+The preferred production design is a single AudioWorklet-based stem transport backed by frame-aligned PCM chunks read from a validated ViiB Stem Package and served by the Go backend.
 
 Benefits:
 
@@ -1519,15 +1653,16 @@ A6. Cue editor and waveform markers
 
 ### Workstream B — Stem platform
 
-B1. Stem worker spike  
-B2. Capability API  
-B3. Durable stem jobs  
-B4. Stem persistence/cache  
-B5. Stem export/preview  
+B1. ViiB Stem Package v1 specification  
+B2. Package discovery and resolver  
+B3. Manifest/source-hash validation  
+B4. Stem registry persistence and Stem Library locations  
+B5. Completed-package preview/audio serving  
 B6. DeckSource refactor  
 B7. Stem transport worklet  
 B8. Four-button DJ stem UI  
-B9. Scratch/loop/sync/key-lock parity
+B9. Scratch/loop/sync/key-lock parity  
+B10. Future ViiB-StemLab repository: generator UI/CLI, htdemucs_6s, batch queue and package writer
 
 ### Workstream C — Mix intelligence
 
@@ -1543,25 +1678,27 @@ C7. Saved mix/mashup ideas
 
 ## 33. Proposed implementation phases
 
-### Phase 0 — Contract and benchmark foundation
+### Phase 0 — Stem package contract and benchmark foundation
 
 Deliver:
 
-- architecture decision record for stem runtime;
-- stem capability types;
-- benchmark fixtures;
-- worker protocol;
-- output manifest format;
-- queue/cancellation tests;
-- memory and disk budget measurements;
-- legal/license inventory.
+- architecture decision record documenting ViiB-StemLab as a separate application/repository;
+- ViiB Stem Package v1 schema;
+- adjacent and centralized discovery rules;
+- source-hash identity rules;
+- deterministic synthetic package fixtures;
+- manifest/audio validation rules;
+- compatibility/versioning policy;
+- storage budget measurements;
+- third-party generator import policy.
 
 Exit criteria:
 
-- Windows, macOS and Linux worker strategy documented;
-- at least one real track separates end to end in a development harness;
-- cancellation leaves no GPU-holding process;
-- source/stem frame counts validate.
+- MediaHub can discover and validate a package without any stem-generation runtime installed;
+- the same package fixture resolves on Windows, macOS and Linux;
+- stale source-hash packages are rejected or marked stale;
+- source/stem frame counts validate;
+- the v1 schema is stable enough to implement in the future ViiB-StemLab repo.
 
 ### Phase 1 — Camelot UX and Energy Level
 
@@ -1598,25 +1735,43 @@ Exit criteria:
 - high-confidence cues quantize to expected beat/downbeat;
 - generated cues are reproducible for identical analysis inputs.
 
-### Phase 3 — Stem worker and cache
+### Phase 3 — MediaHub stem package registry
 
 Deliver:
 
-- managed worker prototype;
-- htdemucs_6s;
-- CPU/CUDA/MPS capability reporting;
-- durable stem job;
-- cancellation;
+- configured Stem Library locations;
+- adjacent-package discovery;
+- manifest parser and schema validation;
+- source-hash matching and stale detection;
 - stem-set persistence;
-- disk cache settings;
-- export/preview endpoints.
+- explicit link/unlink workflow;
+- package audio/preview endpoints;
+- library stem-status badges.
 
 Exit criteria:
 
-- complete six-stem output;
-- restart-safe job state;
-- corrupt/incomplete output never marked ready;
-- cache invalidates when source audio hash changes.
+- valid six-stem packages are indexed without any generator runtime;
+- corrupt/incomplete packages never become ready;
+- packages become stale when the source audio hash changes;
+- duplicate candidate packages resolve deterministically.
+
+### External project milestone — Create ViiB-StemLab repository
+
+After the ViiB Stem Package v1 contract is stable, create the separate **ViiB-StemLab** repository.
+
+Initial StemLab deliverables should include:
+
+- desktop preparation UI;
+- CLI for automation/integration;
+- htdemucs_6s generation;
+- CPU/CUDA/MPS device selection;
+- batch queue;
+- progress/cancellation/retry;
+- output validation;
+- atomic ViiB Stem Package v1 writer;
+- configurable output Stem Library.
+
+This milestone is a dependency for convenient first-party stem creation, but it is **not** a MediaHub backend subsystem and should be planned/tracked in its own repository once created.
 
 ### Phase 4 — DeckSource refactor
 
@@ -1732,15 +1887,28 @@ The exact implementation may exceed these targets; they are intended as minimum 
 
 ## 35. Performance
 
-Measure on:
+### 35.1 MediaHub stem playback
 
-- Windows CPU-only;
-- Windows NVIDIA GPU;
-- Apple Silicon MPS;
-- Linux CPU;
-- Linux NVIDIA GPU where available.
+MediaHub performance gates should focus on consumption of already-generated packages.
 
-Record:
+Measure:
+
+- two-deck stem playback CPU;
+- memory use;
+- storage read throughput;
+- decoder load;
+- AudioWorklet underruns;
+- seek latency;
+- loop/beat-jump recovery;
+- UI frame drops.
+
+Test on Windows, macOS and Linux using identical pre-generated fixture packages.
+
+### 35.2 ViiB-StemLab generation performance
+
+Generation benchmarks belong to the future ViiB-StemLab repository.
+
+StemLab should eventually measure:
 
 - model startup time;
 - separation wall time;
@@ -1748,13 +1916,9 @@ Record:
 - peak RAM;
 - peak VRAM;
 - output disk size;
-- two-deck stem playback CPU;
-- AudioWorklet underruns;
-- UI frame drops.
+- CPU/CUDA/MPS performance.
 
-Background stem jobs should yield to active DJ playback where resource contention is measurable.
-
-Reuse the existing analysis-pressure concept for heavy stem processing.
+Because stem generation is ahead-of-time, MediaHub's live DJ release must not depend on the generator being active or meeting a real-time inference target.
 
 ---
 
@@ -1805,12 +1969,15 @@ The scalar Energy Level is a navigation aid, not an objective truth.
 
 Add tests for:
 
-- stem manifest validation;
+- stem manifest schema validation;
 - source hash invalidation;
-- durable job restart;
-- cancellation;
-- disk-cache LRU;
-- API capability states;
+- adjacent package discovery;
+- configured Stem Library discovery;
+- explicit package linking;
+- duplicate-package resolution;
+- stale/invalid/ready state transitions;
+- per-stem checksum/frame validation;
+- safe unlink/delete behavior;
 - generated cue overwrite policy;
 - user cue preservation;
 - Energy Level determinism;
@@ -1929,13 +2096,15 @@ Preferred approach:
 
 Demucs is open source, but model/runtime packaging and all transitive licenses still require release review.
 
+Those dependencies belong to **ViiB-StemLab**, not ViiB MediaHub. MediaHub should consume the resulting package without linking or shipping Demucs/PyTorch.
+
 ### 44.2 FFmpeg
 
 StemDeck documents using an external FFmpeg executable.
 
-ViiB should not inherit StemDeck's exact FFmpeg packaging without an explicit licensing/release decision.
+Any FFmpeg dependency used for stem generation belongs to the future ViiB-StemLab distribution and requires an explicit licensing/release decision there.
 
-The first ViiB stem path can accept source formats the managed worker can decode directly or receive a prepared PCM file from ViiB.
+MediaHub's package consumer should use its own existing supported decode path wherever practical and must not inherit StemLab's generation dependencies merely to play stems.
 
 ---
 
@@ -2001,13 +2170,10 @@ ViiB should name and implement its own scoring systems where appropriate.
 ### Backend
 
 - backend/internal/api/api.go
-  - register stem routes
-
-- backend/internal/api/v2_jobs*.go
-  - stem job integration
+  - register stem discovery/registry/audio routes
 
 - backend/internal/db/
-  - migrations and persistence
+  - stem registry migrations and persistence
 
 - backend/internal/analysis/features/
   - Energy Level
@@ -2021,13 +2187,15 @@ ViiB should name and implement its own scoring systems where appropriate.
 
 ## 47. New files likely to be created
 
-Suggested names:
+Suggested MediaHub files:
 
-    backend/internal/stems/worker.go
-    backend/internal/stems/capabilities.go
     backend/internal/stems/manifest.go
-    backend/internal/stems/storage.go
+    backend/internal/stems/discovery.go
+    backend/internal/stems/registry.go
+    backend/internal/stems/resolver.go
     backend/internal/stems/validate.go
+
+    docs/VIIB_STEM_PACKAGE_V1.md
 
     backend/internal/analysis/cues/generator.go
     backend/internal/analysis/cues/policy.go
@@ -2044,6 +2212,8 @@ Suggested names:
     lib/stemTransport.worklet.js
     lib/camelotColors.ts
     lib/djPitch.ts
+
+Files for model execution, PyTorch/Demucs integration, generation queues and package writing belong in the future **ViiB-StemLab** repository and should not be added to ViiB-MediaHub.
 
 ---
 
@@ -2081,27 +2251,37 @@ Keep early PRs small and independently reviewable.
 - versioned persistence
 - column/filter
 
-### PR 5 — Stem worker contract
+### PR 5 — ViiB Stem Package v1
 
-- capabilities
-- health
-- local development worker
-- no DJ playback yet
+- versioned manifest specification
+- source-hash identity
+- six-stem canonical names
+- checksum/frame metadata
+- deterministic fixture packages
+- no generator runtime
 
-### PR 6 — Durable stem job
+### PR 6 — MediaHub stem discovery and registry
 
-- operation_jobs integration
-- progress/cancel
-- output validation
+- adjacent/configured-location discovery
+- manifest validation
+- source-hash stale detection
 - stem metadata persistence
+- link/unlink API
+- stem status badge
+
+### Future repo kickoff — ViiB-StemLab
+
+Once PR 5 stabilizes the package contract, create the separate ViiB-StemLab repository and implement the first-party generator there.
+
+This is not a MediaHub PR.
 
 ### PR 7 — DeckSource refactor
 
 - preserve existing behavior only
 
-### PR 8 — Stem preview/export
+### PR 8 — Stem package preview/audio serving
 
-- prove files and APIs before real-time deck integration
+- prove package resolution and audio APIs before real-time deck integration
 
 ### PR 9 — Stem deck transport
 
@@ -2114,7 +2294,7 @@ Keep early PRs small and independently reviewable.
 - Full/Acapella/Instrumental
 - stem badge
 
-This sequence reduces the risk of attempting UI, ML packaging, transport and database changes in one unreviewable branch.
+This sequence keeps ML packaging out of MediaHub entirely and reduces the risk of coupling package discovery, real-time transport, UI and generator implementation into one unreviewable change set.
 
 ---
 
@@ -2122,20 +2302,21 @@ This sequence reduces the risk of attempting UI, ML packaging, transport and dat
 
 ## 49. Professional stem release
 
-Stem functionality is release-ready only when:
+MediaHub stem functionality is release-ready only when:
 
-- six stems can be generated locally;
-- worker/model/device status is transparent;
-- jobs survive/recover correctly;
-- cancellation is reliable;
-- storage is bounded;
+- valid ViiB Stem Package v1 packages can be discovered from adjacent and configured locations;
+- source-hash mismatches are detected as stale;
+- corrupt or partial packages never become ready;
+- MediaHub does not require ViiB-StemLab, Python, PyTorch or Demucs at playback time;
 - four DJ stem groups are sample aligned;
 - seek/loop/sync remain aligned;
 - Key Lock behavior is truthful;
 - stem mode works on both decks;
 - fallback to original audio is reliable;
-- user-facing errors are actionable;
-- normal DJ mode remains unchanged when stems are disabled.
+- user-facing package errors are actionable;
+- normal DJ mode remains unchanged when no stems are available.
+
+First-party generation readiness is defined separately in the future ViiB-StemLab repository and should include complete six-stem generation, device transparency, reliable cancellation, atomic package finalization and storage controls.
 
 ---
 
@@ -2186,8 +2367,8 @@ After the core roadmap lands, high-value extensions include:
 - local recording of the master output;
 - external controller LED feedback;
 - per-stem waveform coloring;
-- batch stem generation for a playlist;
-- “generate stems for next N tracks” preflight before a gig.
+- MediaHub -> ViiB-StemLab playlist handoff for batch generation;
+- ViiB-StemLab “generate stems for next N tracks” preflight before a gig.
 
 ---
 
@@ -2198,12 +2379,13 @@ For the next DJv2 development cycle, prioritize in this order:
 1. **Automatic cue points + provenance**
 2. **Camelot visual system**
 3. **Energy Level 1-10**
-4. **Stem worker + durable cache**
-5. **Four-group stem deck playback**
-6. **Mix Next v2**
-7. **Pitch-shift/mashup planning**
-8. **Third-party DJ export**
+4. **ViiB Stem Package v1 + MediaHub discovery/registry**
+5. **Create the separate ViiB-StemLab repository and first-party generator**
+6. **Four-group stem deck playback**
+7. **Mix Next v2**
+8. **Pitch-shift/mashup planning**
+9. **Third-party DJ export**
 
-This order produces visible DJ-preparation value early while the more difficult real-time stem transport work proceeds behind a stable architecture.
+This order produces visible DJ-preparation value early, stabilizes the package boundary before creating the generator repository, and lets the more difficult real-time stem transport work proceed independently from ML/runtime packaging.
 
-The most important engineering constraint is that stem separation itself is not the hardest part. Demucs already solves the offline separation problem. The difficult product work is making stems behave like a first-class DJ source while preserving one transport clock, bounded memory, tempo/key-lock quality, scratch/loop behavior and the rest of ViiB's existing mixer.
+The most important architectural constraint is now explicit: **separate ahead of time; perform in real time**. ViiB-StemLab owns separation. ViiB MediaHub owns package discovery and performance. Demucs or any future model can evolve independently as long as StemLab continues to emit a compatible package.
