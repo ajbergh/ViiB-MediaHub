@@ -927,6 +927,11 @@ export class DJAudioEngine {
     this.getDeckSource(deck)?.unload();
   }
 
+  /** Monotonic operation epoch used by reversible off-air preview sessions. */
+  getDeckLoadGeneration(deck: DeckId): number {
+    return deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
+  }
+
   /**
    * Play a deck
    */

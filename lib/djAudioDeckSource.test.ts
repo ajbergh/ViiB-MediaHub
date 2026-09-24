@@ -71,4 +71,14 @@ describe('DJAudioEngine DeckSource integration', () => {
     engine.pause('A');
     expect(source.pause).toHaveBeenCalledOnce();
   });
+
+  it('increments the load generation when a deck is unloaded', () => {
+    const engine = new DJAudioEngine();
+    const { source } = fakeSource();
+    Object.assign(engine, { deckSourceB: source });
+    expect(engine.getDeckLoadGeneration('B')).toBe(0);
+    engine.unloadDeck('B');
+    expect(engine.getDeckLoadGeneration('B')).toBe(1);
+    expect(source.unload).toHaveBeenCalledOnce();
+  });
 });

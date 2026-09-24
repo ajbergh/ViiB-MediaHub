@@ -212,11 +212,17 @@ func combinedStatus(tempoKnown, keyKnown bool) string {
 // AnalyzeAndPersist runs one pass and writes both dimensions in a single
 // record, so neither analyzer can clobber the other's provenance.
 func AnalyzeAndPersist(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options) (Result, error) {
+	return AnalyzeAndPersistWithAutoCueMode(ctx, database, registry, songID, opts, db.AutomaticCuePointsFillEmpty)
+}
+
+// AnalyzeAndPersistWithAutoCueMode is the mode-aware variant used by durable
+// jobs. The legacy public wrapper above intentionally remains fill-empty.
+func AnalyzeAndPersistWithAutoCueMode(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options, autoCueMode db.AutomaticCuePointMode) (Result, error) {
 	result, err := Analyze(ctx, database, registry, songID, opts)
 	if err != nil {
 		return result, err
 	}
-	if err := Persist(database, result); err != nil {
+	if err := PersistWithAutoCueMode(database, result, autoCueMode); err != nil {
 		return result, err
 	}
 	return result, nil
@@ -226,6 +232,14 @@ func AnalyzeAndPersist(ctx context.Context, database *db.DB, registry *analysis.
 // recorded; manual locks take precedence at read time through
 // db.ResolveEffectiveBPM rather than by suppressing measurement here.
 func Persist(database *db.DB, result Result) error {
+	return PersistWithAutoCueMode(database, result, db.AutomaticCuePointsFillEmpty)
+}
+
+// PersistWithAutoCueMode writes analysis artifacts and applies generated cues
+// according to the snapshotted installation preference. Suggest/off retain the
+// artifacts needed for candidate GETs but do not persist new generated cues.
+func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.AutomaticCuePointMode) error {
+	autoCueMode = db.NormalizeAutomaticCuePointMode(string(autoCueMode))
 	record := db.TrackAnalysis{
 		SongID:            result.SongID,
 		Status:            result.Status,
@@ -285,7 +299,7 @@ func Persist(database *db.DB, result Result) error {
 	if err := persistFeatures(database, result); err != nil {
 		return err
 	}
-	if result.Features != nil && result.DurationSeconds > 0 && result.Source.Fingerprint != "" {
+	if autoCueMode != db.AutomaticCuePointsOff && autoCueMode != db.AutomaticCuePointsSuggest && result.Features != nil && result.DurationSeconds > 0 && result.Source.Fingerprint != "" {
 		generated, err := analysiscues.Generate(result.DurationSeconds, result.BeatGrid, *result.Features, result.Source.Fingerprint)
 		if err != nil {
 			return fmt.Errorf("generate DJ hot cues: %w", err)
@@ -300,7 +314,11 @@ func Persist(database *db.DB, result Result) error {
 				SourceFingerprint: cue.SourceFingerprint, DownbeatAligned: cue.DownbeatAligned,
 			})
 		}
-		if err := database.ApplyGeneratedDJHotCues(result.SongID, hotCues, db.GeneratedCueFillEmpty); err != nil {
+		applyMode := db.GeneratedCueFillEmpty
+		if autoCueMode == db.AutomaticCuePointsReplaceGenerated {
+			applyMode = db.GeneratedCueReplaceGenerated
+		}
+		if err := database.ApplyGeneratedDJHotCues(result.SongID, hotCues, applyMode); err != nil {
 			return fmt.Errorf("persist generated DJ hot cues: %w", err)
 		}
 	}

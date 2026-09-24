@@ -69,6 +69,26 @@ func TestQueueAutoAnalysisQueuesMissingWorkWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestQueueAutoAnalysisSnapshotsAutomaticCueMode(t *testing.T) {
+	database, _, _ := analysisCatalog(t, 1)
+	api := &API{db: database, jobSchedulerOn: true}
+	if err := database.SetSetting(SettingAutoAnalyzeNewTracks, "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SetSetting(SettingAutoCueMode, "suggest"); err != nil {
+		t.Fatal(err)
+	}
+	api.queueAutoAnalysis("a scan")
+	jobs, err := database.ListJobs(100, db.JobStatusQueued)
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("queued jobs = %#v err=%v", jobs, err)
+	}
+	selection, err := db.ParseAnalysisSelection(jobs[0].Parameters)
+	if err != nil || selection.AutoCueMode != db.AutomaticCuePointsSuggest {
+		t.Fatalf("auto-analysis job mode = %#v err=%v, want suggest snapshot", selection, err)
+	}
+}
+
 // Repeated scans must not stack duplicate analysis runs: a pending run already
 // covers whatever the newest scan added, because the work list is expanded when
 // the job is claimed rather than when it is queued.

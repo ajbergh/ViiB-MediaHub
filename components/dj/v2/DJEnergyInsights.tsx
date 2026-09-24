@@ -1,11 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { getDJAudioEngine } from '../../../lib/djAudio';
+import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPreparedPreviewDeck, isPristineEmptyPreviewDeck, stillOwnsPreviewDeck, type TestMixPreviewBaseline } from '../../../lib/testMixPreviewGuard';
 import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
 
 interface DJEnergyInsightsProps {
   trackID?: string;
   deck?: 'A' | 'B';
+}
+
+interface TestMixPreviewSession {
+  token: number;
+  targetDeck: 'A' | 'B';
+  candidateId: string;
+  baseline: TestMixPreviewBaseline;
+  generationBeforeLoad: number;
+  loadGeneration: number | null;
+  phase: 'preparing' | 'loading' | 'ready' | 'playing';
+  startedAtCrossfader: number;
+  startedAtKeyLock: boolean;
+  timeout?: number;
+  interval?: number;
 }
 
 // This deliberately displays suggestions as opt-in actions. It never writes
@@ -19,9 +34,18 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [minEnergy, setMinEnergy] = useState('');
   const [maxEnergy, setMaxEnergy] = useState('');
   const [stemsOnly, setStemsOnly] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState('');
+  const previewRef = useRef<TestMixPreviewSession | null>(null);
+  const previewTokenRef = useRef(0);
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
   const analysisStatus = useStore(state => deck === 'A' ? state.djDeckA.analysisStatus : state.djDeckB.analysisStatus);
   const setHotCue = useStore(state => state.setHotCue);
+  const librarySongs = useStore(state => state.songs);
+  const previewDeckID = deck === 'A' ? 'B' : 'A';
+  const previewDeckState = useStore(state => previewDeckID === 'A' ? state.djDeckA : state.djDeckB);
+  const crossfader = useStore(state => state.djMixer.crossfader);
+  const masterCueEnabled = useStore(state => state.djMixer.masterCueEnabled);
+  const autoGainEnabled = useStore(state => previewDeckID === 'A' ? state.djMixer.autoGainA : state.djMixer.autoGainB);
   const progressRef = useRef<HTMLDivElement>(null);
   const filters: TransitionRecommendationFilters = {
     ...(minBpm !== '' ? { minBpm: Number(minBpm) } : {}),
@@ -87,6 +111,176 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     setHotCue(deck, slot, position, `Suggested ${kind}`);
   };
   const top = recommendations?.recommendations[0];
+  const candidateTrack = top ? librarySongs.find(song => song.id === top.songId) : undefined;
+  const engine = getDJAudioEngine();
+  const headphoneDeviceId = engine.getHeadphoneOutputDeviceId();
+  const mainDeviceId = engine.getMainOutputDeviceId();
+  const previewAllowed = !!deck && !!candidateTrack && engine.initialized
+    && isPristineEmptyPreviewDeck(previewDeckState)
+    && isPreviewDeckOffAir(previewDeckID, crossfader)
+    && !masterCueEnabled && !engine.getMasterCueEnabled() && !autoGainEnabled
+    && hasSeparateHeadphoneRoute(headphoneDeviceId, mainDeviceId);
+  const previewReason = !deck ? 'A loaded reference deck is required.'
+    : !candidateTrack ? 'Candidate is no longer in the local library.'
+    : !engine.initialized ? 'Initialize audio before testing a mix.'
+      : !isPristineEmptyPreviewDeck(previewDeckState) ? 'Test Mix needs an empty, untouched opposite deck.'
+        : !isPreviewDeckOffAir(previewDeckID, crossfader) ? 'Move the opposite deck fully off the master crossfader.'
+          : masterCueEnabled || engine.getMasterCueEnabled() ? 'Turn off master monitoring in headphones first.'
+            : autoGainEnabled ? 'Turn off auto-gain for the preview deck first.'
+              : !hasSeparateHeadphoneRoute(headphoneDeviceId, mainDeviceId) ? 'Select a separate headphone output device first.' : '';
+
+  const discardPreviewSession = (session: TestMixPreviewSession) => {
+    if (session.timeout !== undefined) window.clearTimeout(session.timeout);
+    if (session.interval !== undefined) window.clearInterval(session.interval);
+    if (previewRef.current?.token === session.token) previewRef.current = null;
+  };
+
+  const finishPreview = (token: number, message: string) => {
+    const session = previewRef.current;
+    if (!session || session.token !== token) return;
+    discardPreviewSession(session);
+    const currentEngine = getDJAudioEngine();
+    const state = useStore.getState();
+    const currentDeck = session.targetDeck === 'A' ? state.djDeckA : state.djDeckB;
+    const generationMatches = session.loadGeneration !== null
+      ? currentEngine.getDeckLoadGeneration(session.targetDeck) === session.loadGeneration
+      : session.phase === 'preparing' && currentEngine.getDeckLoadGeneration(session.targetDeck) === session.generationBeforeLoad;
+
+    if (!generationMatches) { setPreviewMessage('Test Mix handed off: the preview deck was loaded or unloaded elsewhere.'); return; }
+    if (session.phase === 'preparing') { setPreviewMessage(message); return; }
+    if (session.phase === 'loading') {
+      // Invalidate only the load operation created by this session. No store
+      // state is reset while a different operation owns the deck.
+      currentEngine.unloadDeck(session.targetDeck);
+      setPreviewMessage(message);
+      return;
+    }
+    const baselineDeck = session.targetDeck === 'A' ? state.djDeckA : state.djDeckB;
+    const ownsPrepared = isPreparedPreviewDeck(baselineDeck, session.candidateId, session.baseline);
+    const ownsPlaying = stillOwnsPreviewDeck(baselineDeck, session.candidateId, session.baseline);
+    const endedNaturally = session.phase === 'playing' && !currentEngine.isPlaying(session.targetDeck)
+      && currentEngine.getPosition(session.targetDeck) >= Math.max(0, currentEngine.getDuration(session.targetDeck) - 0.15);
+    if (!ownsPrepared || (session.phase === 'playing' && !ownsPlaying && !endedNaturally)) {
+      setPreviewMessage('Test Mix handed off: the preview deck changed, so its state was left untouched.');
+      return;
+    }
+    currentEngine.pause(session.targetDeck);
+    currentEngine.setCueEnabled(session.targetDeck, false);
+    currentEngine.unloadDeck(session.targetDeck);
+    state.setDeckCue(session.targetDeck, false);
+    state.unloadDeck(session.targetDeck);
+    setPreviewMessage(message);
+  };
+
+  const finishPreviewRef = useRef(finishPreview);
+  finishPreviewRef.current = finishPreview;
+
+  useEffect(() => () => {
+    const session = previewRef.current;
+    if (session) finishPreviewRef.current(session.token, 'Test Mix stopped.');
+  }, []);
+
+  const testCandidate = async () => {
+    if (!deck || !candidateTrack || !previewAllowed || previewRef.current) {
+      setPreviewMessage(previewRef.current ? 'A Test Mix preview is already active.' : previewReason);
+      return;
+    }
+    const state = useStore.getState();
+    const target = previewDeckID;
+    const targetState = target === 'A' ? state.djDeckA : state.djDeckB;
+    if (!isPristineEmptyPreviewDeck(targetState) || targetState.track) { setPreviewMessage('Test Mix needs an empty, untouched opposite deck.'); return; }
+    const baseline: TestMixPreviewBaseline = { volume: targetState.volume, eq: { ...targetState.eq } };
+    const audio = getDJAudioEngine();
+    const session: TestMixPreviewSession = {
+      token: ++previewTokenRef.current, targetDeck: target, candidateId: candidateTrack.id, baseline,
+      generationBeforeLoad: audio.getDeckLoadGeneration(target), loadGeneration: null, phase: 'preparing',
+      startedAtCrossfader: state.djMixer.crossfader, startedAtKeyLock: target === 'A' ? state.djMixer.keyLockA : state.djMixer.keyLockB,
+    };
+    previewRef.current = session;
+    setPreviewMessage('Preparing off-air headphone preview…');
+    try {
+      const candidateFeatures = await api.getTrackEnergyFeatures(candidateTrack.id).catch(() => null);
+      if (previewRef.current?.token !== session.token) return;
+      const current = useStore.getState();
+      const currentTarget = target === 'A' ? current.djDeckA : current.djDeckB;
+      const mixerStillSafe = current.djMixer.crossfader === session.startedAtCrossfader
+        && isPreviewDeckOffAir(target, current.djMixer.crossfader)
+        && !current.djMixer.masterCueEnabled && !audio.getMasterCueEnabled()
+        && !(target === 'A' ? current.djMixer.autoGainA : current.djMixer.autoGainB)
+        && (target === 'A' ? current.djMixer.keyLockA : current.djMixer.keyLockB) === session.startedAtKeyLock
+        && hasSeparateHeadphoneRoute(audio.getHeadphoneOutputDeviceId(), audio.getMainOutputDeviceId());
+      if (!mixerStillSafe || !isPristineEmptyPreviewDeck(currentTarget)
+        || currentTarget.volume !== baseline.volume || currentTarget.eq.low !== baseline.eq.low
+        || currentTarget.eq.mid !== baseline.eq.mid || currentTarget.eq.high !== baseline.eq.high) {
+        discardPreviewSession(session); setPreviewMessage('Test Mix stopped: deck or cue routing changed before loading.'); return;
+      }
+
+      session.loadGeneration = session.generationBeforeLoad + 1;
+      session.phase = 'loading';
+      await audio.loadTrack(target, candidateTrack);
+      if (previewRef.current?.token !== session.token) return;
+      if (audio.getDeckLoadGeneration(target) !== session.loadGeneration) {
+        discardPreviewSession(session); setPreviewMessage('Test Mix handed off: another load superseded the candidate.'); return;
+      }
+      const afterLoad = useStore.getState();
+      const afterTarget = target === 'A' ? afterLoad.djDeckA : afterLoad.djDeckB;
+      const routeStillSafe = afterLoad.djMixer.crossfader === session.startedAtCrossfader
+        && isPreviewDeckOffAir(target, afterLoad.djMixer.crossfader)
+        && !afterLoad.djMixer.masterCueEnabled && !audio.getMasterCueEnabled()
+        && !(target === 'A' ? afterLoad.djMixer.autoGainA : afterLoad.djMixer.autoGainB)
+        && (target === 'A' ? afterLoad.djMixer.keyLockA : afterLoad.djMixer.keyLockB) === session.startedAtKeyLock
+        && hasSeparateHeadphoneRoute(audio.getHeadphoneOutputDeviceId(), audio.getMainOutputDeviceId());
+      if (!routeStillSafe || afterTarget.track !== null || afterTarget.volume !== baseline.volume
+        || afterTarget.eq.low !== baseline.eq.low || afterTarget.eq.mid !== baseline.eq.mid || afterTarget.eq.high !== baseline.eq.high) {
+        audio.unloadDeck(target); discardPreviewSession(session); setPreviewMessage('Test Mix stopped: deck or cue routing changed during load.'); return;
+      }
+
+      afterLoad.loadTrackToDeck(target, candidateTrack);
+      afterLoad.setDeckDuration(target, audio.getDuration(target));
+      const mixIn = candidateFeatures?.cueSuggestions.find(cue => cue.kind === 'mix-in');
+      const startAt = Math.max(0, mixIn?.position ?? 0);
+      audio.setCueEnabled(target, true);
+      afterLoad.setDeckCue(target, true);
+      audio.seek(target, startAt);
+      afterLoad.setDeckPosition(target, startAt);
+      session.phase = 'ready';
+      await audio.play(target);
+      if (previewRef.current?.token !== session.token || audio.getDeckLoadGeneration(target) !== session.loadGeneration) return;
+      const started = useStore.getState();
+      const startedDeck = target === 'A' ? started.djDeckA : started.djDeckB;
+      if (!isPreparedPreviewDeck(startedDeck, candidateTrack.id, baseline)) {
+        finishPreviewRef.current(session.token, 'Test Mix stopped because the preview deck changed.'); return;
+      }
+      started.setDeckPlaying(target, true);
+      session.phase = 'playing';
+      session.interval = window.setInterval(() => {
+        if (previewRef.current?.token !== session.token) return;
+        const currentState = useStore.getState();
+        const currentTarget = target === 'A' ? currentState.djDeckA : currentState.djDeckB;
+        const mixerChanged = currentState.djMixer.crossfader !== session.startedAtCrossfader
+          || (target === 'A' ? currentState.djMixer.keyLockA : currentState.djMixer.keyLockB) !== session.startedAtKeyLock
+          || (target === 'A' ? currentState.djMixer.autoGainA : currentState.djMixer.autoGainB)
+          || currentState.djMixer.masterCueEnabled || !isPreviewDeckOffAir(target, currentState.djMixer.crossfader)
+          || !hasSeparateHeadphoneRoute(audio.getHeadphoneOutputDeviceId(), audio.getMainOutputDeviceId());
+        if (!mixerChanged && audio.getDeckLoadGeneration(target) === session.loadGeneration
+          && currentTarget.track?.id === candidateTrack.id && !audio.isPlaying(target)
+          && audio.getPosition(target) >= Math.max(0, audio.getDuration(target) - 0.15)) {
+          finishPreviewRef.current(session.token, 'Test Mix complete; the preview deck was restored.');
+          return;
+        }
+        if (mixerChanged || audio.getDeckLoadGeneration(target) !== session.loadGeneration
+          || !stillOwnsPreviewDeck(currentTarget, candidateTrack.id, baseline)) {
+          discardPreviewSession(session);
+          setPreviewMessage('Test Mix handed off: the preview deck changed, so its state was left untouched.');
+          return;
+        }
+      }, 100);
+      session.timeout = window.setTimeout(() => finishPreviewRef.current(session.token, 'Test Mix complete; the preview deck was restored.'), 10000);
+      setPreviewMessage(`Testing ${candidateTrack.title} in headphones…`);
+    } catch {
+      finishPreviewRef.current(session.token, 'Test Mix failed and the preview deck was restored when still owned.');
+    }
+  };
   return <section aria-label="Measured track energy" className="px-2 py-1 text-[10px] text-neutral-400">
     <div className="relative flex h-5 items-end gap-px overflow-hidden" title="Track energy · Highlight shows playback position">
       {features.energy.map((point, index) => <i key={index} className="w-1 bg-cyan-400/70" style={{ height: `${Math.max(2, point.value * 100)}%` }} />)}
@@ -142,6 +336,14 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     </div>
     {top && <details className="mt-1 text-neutral-500">
       <summary className="cursor-pointer text-violet-300">Recommended next: {top.title} — {top.artist} ({Math.round(top.score * 100)}%)</summary>
+      <div className="mt-2 flex items-center gap-2 text-neutral-300">
+        {previewRef.current ? <button type="button" onClick={() => finishPreview(previewRef.current!.token, 'Test Mix stopped; the preview deck was restored.')}
+          className="rounded border border-amber-500/40 px-2 py-1 text-amber-200">Stop Test Mix</button>
+          : <button type="button" disabled={!previewAllowed || !!previewRef.current} onClick={() => void testCandidate()}
+            title={previewRef.current ? 'Another Test Mix preview is active.' : previewReason}
+            className="rounded border border-violet-500/40 px-2 py-1 text-violet-200 disabled:cursor-not-allowed disabled:opacity-50">Test Mix in headphones</button>}
+        {previewMessage && <span role="status">{previewMessage}</span>}
+      </div>
       <ul className="mt-1 space-y-0.5 pl-3">
         {top.components.map(component => <li key={component.name} title={component.rationale}>
           {component.name}: {Math.round(component.score * 100)}% — {component.rationale}

@@ -158,6 +158,90 @@ func TestAnalyzeAndPersistRecordsBothDimensionsInOneRecord(t *testing.T) {
 	}
 }
 
+func TestPersistHonorsAutomaticCuePointModesAndRefreshPolicy(t *testing.T) {
+	makeResult := func(songID string) Result {
+		return Result{
+			SongID: songID, Status: db.TrackAnalysisComplete, DurationSeconds: 100,
+			Source: analysis.ResolvedSource{Fingerprint: "source-fingerprint"},
+			Features: &features.Result{
+				Energy: []features.EnergyPoint{{Time: 0, Value: .3}},
+				Sections: []features.Section{
+					{Start: 0, End: 20, Energy: .8}, {Start: 25, End: 45, Energy: .7},
+					{Start: 50, End: 70, Energy: .9}, {Start: 75, End: 99, Energy: .6},
+				},
+			},
+		}
+	}
+	newDatabase := func(t *testing.T) *db.DB {
+		t.Helper()
+		database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = database.Close() })
+		if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", FilePath: "song.wav", AddedAt: 1}); err != nil {
+			t.Fatal(err)
+		}
+		return database
+	}
+
+	for _, mode := range []db.AutomaticCuePointMode{db.AutomaticCuePointsOff, db.AutomaticCuePointsSuggest} {
+		t.Run(string(mode), func(t *testing.T) {
+			database := newDatabase(t)
+			if err := PersistWithAutoCueMode(database, makeResult("song"), mode); err != nil {
+				t.Fatal(err)
+			}
+			cues, err := database.GetDJHotCues("song")
+			if err != nil || len(cues) != 0 {
+				t.Fatalf("mode %q persisted generated cues: %#v err=%v", mode, cues, err)
+			}
+			if _, err := database.GetTrackAnalysisArtifact("song", features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion); err != nil {
+				t.Fatalf("mode %q did not retain suggestion artifact: %v", mode, err)
+			}
+		})
+	}
+
+	t.Run("replace-generated", func(t *testing.T) {
+		database := newDatabase(t)
+		confidence := .7
+		initial := []db.DJHotCue{
+			{Slot: 1, Position: 6, Label: "Old generated", Origin: "analysis", GeneratorVersion: "old", Confidence: &confidence, Kind: "intro"},
+			{Slot: 2, Position: 11, Label: "User cue", Origin: "user"},
+			{Slot: 3, Position: 17, Label: "Locked cue", Origin: "analysis", GeneratorVersion: "old", Confidence: &confidence, Kind: "section", Locked: true},
+			{Slot: 4, Position: 23, Label: "Deleted generated", Origin: "analysis", GeneratorVersion: "old", Confidence: &confidence, Kind: "section"},
+		}
+		if err := database.SaveDJHotCues("song", initial); err != nil {
+			t.Fatal(err)
+		}
+		if err := database.SaveDJHotCues("song", initial[:3]); err != nil {
+			t.Fatal(err)
+		}
+		if err := PersistWithAutoCueMode(database, makeResult("song"), db.AutomaticCuePointsReplaceGenerated); err != nil {
+			t.Fatal(err)
+		}
+		cues, err := database.GetDJHotCues("song")
+		if err != nil {
+			t.Fatal(err)
+		}
+		bySlot := make(map[int]db.DJHotCue, len(cues))
+		for _, cue := range cues {
+			bySlot[cue.Slot] = cue
+		}
+		if bySlot[1].Origin != "analysis" || bySlot[1].Label == "Old generated" {
+			t.Fatalf("refresh did not replace unlocked generated cue: %#v", bySlot[1])
+		}
+		if bySlot[2].Origin != "user" || bySlot[2].Label != "User cue" {
+			t.Fatalf("refresh replaced user cue: %#v", bySlot[2])
+		}
+		if bySlot[3].Origin != "analysis" || !bySlot[3].Locked {
+			t.Fatalf("refresh replaced locked cue: %#v", bySlot[3])
+		}
+		if _, exists := bySlot[4]; exists {
+			t.Fatalf("refresh resurrected tombstoned cue: %#v", bySlot[4])
+		}
+	})
+}
+
 func TestAnalyzeAndPersistRecordsPartialWhenOnlyTempoIsMeasured(t *testing.T) {
 	fixture, err := analysisbench.NewClickTrack("clicks", 128, 12, 22050, 1)
 	if err != nil {

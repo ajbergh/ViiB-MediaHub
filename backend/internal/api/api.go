@@ -1357,6 +1357,16 @@ func (a *API) getSetting(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "Invalid setting key")
 		return
 	}
+	if key == SettingAutoCueMode {
+		value, err := a.db.GetSetting(key)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to get setting")
+			return
+		}
+		mode := db.NormalizeAutomaticCuePointMode(value)
+		respondJSON(w, map[string]string{"key": key, "value": string(mode)})
+		return
+	}
 
 	if validation.IsSensitiveSettingKey(key) {
 		value, err := a.db.GetSetting(key)
@@ -1395,6 +1405,14 @@ func (a *API) setSetting(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
+	}
+	if key == SettingAutoCueMode {
+		mode, valid := db.ParseAutomaticCuePointMode(body.Value)
+		if !valid {
+			respondError(w, http.StatusBadRequest, "analysis_auto_cue_mode must be off, suggest, fill-empty, or replace-generated")
+			return
+		}
+		body.Value = string(mode)
 	}
 
 	// Special handling for concurrent_downloads - validate and update download manager

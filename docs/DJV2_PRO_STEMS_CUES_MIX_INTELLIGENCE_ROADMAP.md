@@ -31,10 +31,10 @@ The full roadmap (sections 1–52) was reviewed on 2026-09-24 against repository
 | PR 9 — Stem package preview/audio serving | Complete | Registered frame endpoint and single-stem WAV preview/export are implemented; full endpoint checks pass, with symlink creation tests skipped by Windows permissions. |
 | PR 10 — Stem deck transport | Complete — V1 | One-clock four-bus worklet, bounded prefetch, source-rate resampling, switching, gains, fallback and loop capability reporting; full typecheck and deck/worklet regression tests pass. Key-lock, scratch/slip, long sample-accurate loops and production device qualification remain open. |
 | PR 11 — Four-button stem UI | Complete | Per-deck full/stems mode, four bus mutes, expanded gain/solo controls, buffering/fallback/underrun diagnostics, and FULL/ACAPELLA/INSTRUMENTAL mute presets with restore-on-toggle and gain preservation; focused tests and frontend typecheck passed. |
-| PR 12 — Cue API and preparation editor | Complete — V1 | Typed candidate/list/apply routes, fill-empty/refresh/selected-only policies, provenance/lock/rationale display and candidate actions; full Go and frontend checks pass. Settings, waveform marker styling, quantization controls and richer editing remain open. |
+| PR 12 — Cue API and preparation editor | Complete — V1 | Typed candidate/list/apply routes, fill-empty/refresh/selected-only policies, installation-wide automatic cue mode, provenance/lock/rationale display and candidate actions; focused Go/API/frontend checks pass. Waveform marker styling, quantization controls and richer editing remain open. |
 | PR 13 — DJ library Stem Status | Complete | Snapshot/change song rows carry a batched, path-free registry summary; the optional library badge supports sorting and status search. Full Go, DB, typecheck and frontend checks pass. |
 | PR 14 — Mix Next candidate filters V1 | Complete | Inclusive BPM/Energy ranges and registered-ready stem availability filters expose validated active filters, resolved evidence and before/after counts; API/UI tests pass. |
-| Mix/Mashup planning and interoperability | In progress | Mix Next scores confidence-gated BPM/Camelot/Energy Level evidence with Hold/Lift/Reset/Harmonic intents. Structure/vocal evidence, reversible Test Mix audition and Mashup Mode remain outstanding. |
+| Mix/Mashup planning and interoperability | In progress | Mix Next scores confidence-gated BPM/Camelot/Energy Level evidence with Hold/Lift/Reset/Harmonic intents. A guarded top-candidate headphone preview is implemented for an empty opposite deck; atomic restoration of occupied decks, sync/beatmatch audition, structure/vocal evidence and Mashup Mode remain outstanding. |
 
 Current release gates and follow-on work:
 
@@ -42,7 +42,7 @@ Current release gates and follow-on work:
 - Structure: analysis still has energy-only sections; semantic intro/drop/breakdown/outro labels, confidence, local-tempo/bar metadata and a structure API are not implemented.
 - Energy/loudness: Energy Level is deterministic V1 with heuristic confidence and no curated-corpus calibration. The displayed loudness is explicitly an unweighted RMS proxy, not BS.1770 integrated LUFS or true peak.
 - Stems: V1 supports WAV packages and exact decoder/package geometry. Key-lock/time-stretch, scratch/slip, loops beyond the bounded sample buffer, browser/device performance qualification, six-stem editing/export, FLAC and NI `.stem.mp4` interoperability remain gated. StemLab generation remains owned by the separate repository.
-- Mix planning: listening preview with safe deck-state restore and acceptance-to-load remain unimplemented. Structure/vocal-safe evidence is not available; Surprise and Vocal-safe intents stay disabled.
+- Mix planning: a 10-second candidate-only headphone preview is guarded by an empty/pristine opposite deck, fully off-air crossfader, separate headphone device, disabled master cue and disabled auto-gain. It relinquishes the deck when load generation, routing or preview controls change. Atomic restore of an occupied deck, reference/incoming synchronized audition, beatmatch/key-shift preview and acceptance-to-load remain unimplemented. Structure/vocal-safe evidence is not available; Surprise and Vocal-safe intents stay disabled.
 - Mashup/interoperability: stem-aware pairing, independent pitch-shift/key recalculation, phrase-window and loop audition, saved ideas, DJ metadata export and controller/MIDI/accessibility polish remain future slices.
 
 Progress log:
@@ -75,6 +75,9 @@ Progress log:
 - 2026-09-24 — Updated the cue API freshness guard to reject analysis results whose source fingerprint no longer matches the local file; fixed the API fixture to use a real source file. Cue-specific API tests passed.
 - 2026-09-24 — Combined validation passed: `go test ./...`, `go vet ./...`, `npm run typecheck`, serial `npx vitest run --configLoader runner` (27 files, 115 tests), benchmark Python compilation and unit tests (5/5), and `git diff --check`.
 - 2026-09-24 — Committed as `0ede940` and opened draft PR #61 for review; roadmap implementation remains in progress pending the release gates above.
+- 2026-09-24 — Completed section 12.6's installation-wide automatic cue policy. New and scan-triggered analysis jobs snapshot `off`, `suggest`, `fill-empty` or `replace-generated`; retries preserve the snapshot, legacy wrappers default to fill-empty, and refresh preserves manual cues, locks and suppression tombstones. A Library Analysis selector exposes the choice. Unset/invalid persisted values default to fill-empty; per-user settings are unsupported by the current settings store.
+- 2026-09-24 — Added guarded Test Mix for only the top filtered candidate. It uses a pristine empty opposite deck, keeps that deck fully off-air, requires a distinct headphone route with master cue and auto-gain off, and cleans up only while its load generation and deck controls remain owned. An occupied-deck atomic snapshot/restore API is not available, so that capability remains gated.
+- 2026-09-24 — Follow-on validation passed: `go test ./...`, `go vet ./...`, `npm run typecheck`, serial `npx vitest run --configLoader runner` (28 files, 120 tests), Python compilation, rhythm benchmark unit tests (5/5), and `git diff --check`. Automatic cue mode, job snapshots/retries and guarded Test Mix are included in the working follow-on patch for PR #61.
 
 ## 1. Product vision
 
@@ -1462,10 +1465,13 @@ Add Setting:
 
 Recommended default: Fill empty slots.
 
+The current settings store is installation-wide. New durable analysis jobs snapshot the selected policy, including scan-triggered jobs, and retries retain that snapshot. Unset or invalid stored values fall back to Fill empty slots. Existing direct analysis wrappers retain their historical fill-empty default.
+
 Rules:
 
 - user cues are never replaced;
 - generated cues may be replaced by newer generated cues;
+- Refresh generated cues replaces only unlocked generated cues and respects deletion tombstones;
 - moving or renaming a generated cue makes it user-owned;
 - deleting a generated cue can optionally create a do-not-regenerate tombstone for that slot/track.
 

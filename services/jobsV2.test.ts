@@ -1,5 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ANALYSIS_FOREGROUND_PRIORITY, jobsV2 } from './jobsV2';
+import {
+  ANALYSIS_FOREGROUND_PRIORITY,
+  AUTOMATIC_CUE_POINT_MODES,
+  jobsV2,
+  normalizeAutomaticCuePointMode,
+} from './jobsV2';
 
 // The shared transport schedules its timeout through window; the node test
 // environment has no window, so provide the two timer functions it uses.
@@ -21,6 +26,15 @@ const requestBodyOf = (call: unknown[]) => JSON.parse((call[1] as RequestInit).b
 
 describe('jobsV2 analysis client', () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it('exposes the Automatic DJ Cue Points choices and defaults unknown settings to fill-empty', () => {
+    expect(AUTOMATIC_CUE_POINT_MODES.map(option => option.value)).toEqual([
+      'off', 'suggest', 'fill-empty', 'replace-generated',
+    ]);
+    expect(normalizeAutomaticCuePointMode(' SUGGEST ')).toBe('suggest');
+    expect(normalizeAutomaticCuePointMode('invalid-legacy-value')).toBe('fill-empty');
+    expect(normalizeAutomaticCuePointMode('')).toBe('fill-empty');
+  });
 
   it('records the selection in the job parameters so a resumed job re-expands it', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(accepted({ id: 'job-1', type: 'analyze_tracks', status: 'queued' }));
