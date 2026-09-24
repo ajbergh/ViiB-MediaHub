@@ -2,12 +2,12 @@
 
 **Status:** Proposed implementation roadmap  
 **Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md  
-**Repository snapshot reviewed:** main at d02ad01dd5d384a77383b70f2669f9dd1c6c1761 (v1.0.0-rc3)  
-**Research snapshot:** 2026-09-24  
+**Repository snapshot reviewed:** originally main at d02ad01 (v1.0.0-rc3); baseline claims re-verified against main at 956bf02 (includes 65cc49f DJ loop/waveform fixes) on 2026-09-24  
+**Research snapshot:** 2026-09-24 (external references re-checked the same day)  
 **Primary goals:** professional-grade stem playback, scan-time cue creation, Camelot-first library UX, 1-10 energy analysis, structure-aware transition planning, mashup auditioning, and high-quality DJ preparation workflows.  
 **Stem-generation architecture decision:** stem generation is an ahead-of-time workflow owned by a separate future application/repository named **ViiB-StemLab**. ViiB MediaHub detects, validates, indexes and plays pre-generated stem packages; it does not embed Demucs/PyTorch or perform neural stem separation during DJ playback. The ViiB-StemLab repository will be created later, after the package contract in this roadmap is stable.
 
-> This roadmap uses public behavior from Mixed In Key 11 Pro as product inspiration and StemDeck as an open-source implementation reference. It does not attempt to reproduce proprietary Mixed In Key algorithms or visual trade dress. Where StemDeck code is reused directly, Apache-2.0 attribution and third-party notices must be preserved.
+> This roadmap uses public behavior from Mixed In Key Pro (v11) as product inspiration and StemDeck as an open-source implementation reference. It does not attempt to reproduce proprietary Mixed In Key algorithms or visual trade dress. Where StemDeck code is reused directly, Apache-2.0 attribution and third-party notices must be preserved.
 
 ---
 
@@ -44,25 +44,47 @@ The repository already contains substantial foundations that should be reused in
 ViiB already persists and exposes:
 
 - audio-measured BPM and confidence;
-- alternate tempo candidates and tempo stability;
+- one alternate tempo candidate (`bpm_alt_candidate`, a single value rather than a list) and tempo stability; tracks with stability below 0.85 are marked `dynamic-candidate`;
 - musical key and confidence;
 - Camelot and Open Key notation;
-- beat positions and downbeat indices (the current native grid can derive these from meter; later sections distinguish this from true musical-downbeat detection);
-- beatgrid manual edits;
-- a current streaming loudness proxy stored as `IntegratedLUFS` and a peak-level proxy stored as `TruePeakDBFS` (these names must not be interpreted as full BS.1770 integrated loudness / oversampled true-peak compliance yet);
-- track energy curves;
-- section-like energy regions;
-- advisory mix-in, mix-out and section cue suggestions;
-- transition recommendations based on energy, loudness and phrase-preparation evidence.
+- beat positions and downbeat indices. The native grid is a straight constant-tempo grid with a hard-coded 4 beats per bar, and its first beat is always treated as bar one (see section 11.1);
+- manual beatgrid edits and a beatgrid lock that re-analysis respects;
+- a streaming loudness proxy stored as `IntegratedLUFS` and a peak proxy stored as `TruePeakDBFS`. The loudness value is ungated, un-K-weighted mono RMS in dB minus 0.691. The peak value is the sample peak plus a 2x linear-interpolation midpoint. Both are measured on the mono downmix. These names must not be read as BS.1770 integrated loudness or oversampled true peak;
+- track energy curves (500 ms RMS windows normalized to the track's own maximum, so they are not comparable in absolute terms across tracks);
+- section-like energy regions (split on energy jumps of at least 0.30, at least 4 s apart);
+- advisory `mix-in`, `mix-out` and `section` cue suggestions snapped to the nearest meter-derived downbeat (none are produced without a grid);
+- transition recommendations from `features.ScoreTransition`: energy continuity (weight 0.55), loudness match (0.20) and phrase preparation from cue-suggestion confidence (0.25). **BPM and key are not used by the current scorer.**
 
 Relevant implementation areas:
 
-- backend/internal/analysis/
-- backend/internal/analysis/features/
-- backend/internal/api/
+- backend/internal/analysis/ (`source.go` source resolution, `wav.go` decoder registry, `service.go` streaming mono decode)
+- backend/internal/analysis/track/ (analysis orchestration and persistence of results)
+- backend/internal/analysis/beatgrid/ (phase accumulator and grid construction)
+- backend/internal/analysis/features/ (energy, loudness proxy, cue suggestions, transition scoring)
+- backend/internal/db/track_analysis_schema.go (`track_analysis`, `track_analysis_artifacts`, `track_analysis_overrides`)
+- backend/internal/api/v2_analysis_features.go and v2_library.go (`/api/v2/analysis/{songID}`, `/beatgrid`, `/energy`, `/recommendations`)
 - services/api.ts
 - components/dj/v2/DJEnergyInsights.tsx
 - docs/DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md
+- docs/REFERENCE_BPM_BENCHMARK.md (Beat This / Essentia reference evidence cited in section 3.3)
+
+`backend/internal/analysis/energy/` currently exists as an empty directory. The energy code lives in `features/`.
+
+### 2.1.1 Backend decoder coverage
+
+The Go analysis decoder registry (`backend/internal/analysis/wav.go`) currently supports only:
+
+- WAV (PCM16 or float32; 24-bit PCM is rejected);
+- MP3 (`hajimehoshi/go-mp3`);
+- OGG Vorbis (`jfreymuth/oggvorbis`).
+
+FLAC, M4A/AAC and Opus are **not** decodable by the backend, even though the scanner indexes `.flac`, `.m4a` and `.aac`. Analysis of those files fails with `ErrUnsupportedCodec`, and waveform generation falls back to the client. There is no FFmpeg dependency in the Go code.
+
+This directly affects this roadmap:
+
+- the frame-oriented stem endpoint (section 7.5) needs server-side decoding of package audio. FLAC stem packages (section 8.3) therefore require a backend FLAC decoder, for example a pure-Go implementation, before they can be served;
+- until then, only PCM16/float32 WAV packages are consumable, which should be reflected in the v1 package validation rules;
+- canonical-timing comparisons (section 4.8) and decoded-audio source identity (section 6.1.1) cannot yet be computed for FLAC/AAC sources.
 
 ### 2.2 Existing DJ hot cues
 
@@ -71,12 +93,21 @@ ViiB already supports eight saved hot-cue slots per track through:
 - GET /api/dj/hotcues/{id}
 - PUT /api/dj/hotcues/{id}
 
+These are v1 routes (handlers in `backend/internal/api/dj_waveform.go`), stored in the `dj_hot_cues` table with `UNIQUE(song_id, slot)`.
+
 Current cue fields are:
 
 - slot;
 - position;
 - label;
-- color.
+- color (default `#FF5500`).
+
+Current behavior that the cue-provenance work (section 6.3) must account for:
+
+- the eight-slot limit is enforced only by the UI; the server does not validate the slot range;
+- PUT replaces the whole cue set (delete and re-insert). A client that does not round-trip the new provenance fields would therefore erase them. The migration needs either per-slot upserts or a full-set contract that always carries provenance;
+- the store auto-saves on every set and clear (`slices/djMixerSlice.ts`);
+- **known bug:** the store signature is `setHotCue(deck, slot, position, label?, color?)`, but `components/dj/v2/DJHotCuePad.tsx` and the legacy `components/dj/DJHotCues.tsx` call `setHotCue(deck, slot, position, color)`. The hex color is saved as the label and the color falls back to the default. Fix this before or in the cue-provenance PR.
 
 The new cue-intelligence work should extend this model rather than create a second unrelated cue system.
 
@@ -85,31 +116,39 @@ The new cue-intelligence work should extend this model rather than create a seco
 lib/djAudio.ts currently creates one HTMLAudioElement per deck and routes each deck through the Web Audio graph:
 
     MediaElement source
-        -> deck gain
-        -> 3-band EQ
-        -> deck FX
-        -> crossfader
+        -> deck gain                    <- scratch worklet output also joins here
+        -> 3-band EQ (low shelf / peaking / high shelf)
+        -> FX send -> parallel filter / delay / flanger / reverb -> FX return
+                                        -> headphone cue tap (post-FX, pre-crossfader)
+        -> crossfader gain
         -> deck analyser
-        -> master
-        -> limiter
+        -> master gain                  -> recording tap (pre-limiter)
+        -> limiter (DynamicsCompressor)
+        -> master analyser              -> headphone master feed
         -> output
+
+The headphone mix is rendered to a MediaStreamDestination and played through a second AudioContext with `setSinkId`, or through a hidden `<audio>` element as a fallback.
 
 The engine already supports:
 
 - independent deck transport;
 - EQ;
-- filter, delay, flanger and reverb;
+- per-deck filter, delay, flanger and reverb. A master Beat FX chain (`createMasterBeatFXChain`) is defined but never created, so a "master" FX target is currently applied to both decks' FX instead;
 - crossfader;
 - separate headphone cue routing;
-- master/headphone device routing;
-- tempo control;
-- browser pitch preservation through HTMLMediaElement.preservesPitch;
-- beat sync;
-- loops;
-- slip/scratch work using AudioWorklet;
+- master/headphone device routing (`AudioContext.setSinkId` with MediaStream/`HTMLAudioElement.setSinkId` fallbacks);
+- tempo control (`playbackRate` clamped to 0.5-1.5; the UI cycles +/-8/16/24/50% ranges);
+- key lock through `HTMLMediaElement.preservesPitch` (there is no independent pitch/key-shift feature);
+- beat sync: BPM matching by default. Beat-phase sync runs only when both decks have manual, locked grids;
+- loops, wrapped by seeking `currentTime` from a worker ticker, `timeupdate` and a 5 ms interval fallback. This is beat-quantized but not sample-accurate;
+- slip/scratch using an AudioWorklet (`lib/vinylScratch.worklet.js`), which decodes the whole track into an AudioBuffer in the browser and injects at deck gain in parallel with the media element;
+- auto-gain, which runs a second full `decodeAudioData` per deck and normalizes peak to -3 dBFS;
+- master mix recording (`MediaRecorder`, webm/opus) from a pre-limiter master tap;
 - VU metering.
 
-Stem playback must integrate before the existing deck gain/EQ/FX section so the rest of the mixer remains unchanged.
+There is no separate off-air preview player. Headphone "preview" means cueing a loaded deck.
+
+Stem playback must integrate before the existing deck gain/EQ/FX section so the rest of the mixer remains unchanged. Note that scratch and auto-gain each decode the full original track today. Stem Mode must give both a stem-aware source (section 9.6) rather than silently falling back to the full mix.
 
 ### 2.4 Existing DJ library
 
@@ -125,17 +164,38 @@ DJLibraryBrowserV2 already displays durable analysis and supports:
 - drag/drop;
 - manually assigned track color labels.
 
-The current track color label is session-only state. It is not the same thing as deterministic Camelot coloring.
+Column visibility and widths persist in localStorage. The track color label is session-only: it lives in a module-level in-memory map and is lost on reload. It is not the same thing as deterministic Camelot coloring.
+
+Key cells are currently colored by **compatibility with a reference deck's key** (the playing deck, otherwise any loaded deck), using `getKeyCompatibility` thresholds (>= 0.85 green, >= 0.7 yellow, >= 0.5 orange, otherwise grey). With no deck key loaded, every key renders in the same color.
 
 ### 2.5 Existing job scheduler
 
-The backend already has a persisted long-running job system, auto-analysis triggers and a DJ playback pressure signal. That scheduler remains appropriate for MediaHub-owned analysis, discovery and validation work, but **stem generation itself is no longer a MediaHub job**.
+The backend already has:
+
+- a persisted long-running job system (`operation_jobs`, `/api/v2/jobs`);
+- auto-analysis after full and quick scans (setting `analysis_auto_analyze_new`, on by default);
+- a DJ playback pressure signal (`POST /api/v2/jobs/analysis-pressure`, sent from `hooks/useAnalysisPlaybackPressure.ts`) that defers analysis jobs while DJ Mode is playing.
+
+That scheduler remains appropriate for MediaHub-owned analysis, discovery and validation work, but **stem generation itself is no longer a MediaHub job**.
 
 The boundary is:
 
 - **ViiB-StemLab** owns model/runtime management, GPU/CPU selection, generation queues, progress, cancellation and writing completed stem packages.
 - **ViiB MediaHub** owns stem-package discovery, validation, indexing, source-hash matching and DJ playback.
 - An optional future integration may let MediaHub launch or deep-link into ViiB-StemLab, but MediaHub must remain fully functional when ViiB-StemLab is not installed.
+
+Stem-package validation and indexing jobs that MediaHub does own (checksum and hash computation) should run in this scheduler and respect the playback pressure signal.
+
+### 2.6 Delivery targets
+
+MediaHub ships as:
+
+- Wails desktop builds: Windows (WebView2), macOS (WKWebView) and Linux (WebKitGTK 4.1);
+- browser builds: an embedded web server (`backend/cmd/viib`) that opens the default browser, packaged for Windows, macOS and Linux (x64 and arm64).
+
+Every audio-engine capability in this roadmap (AudioWorklet stem transport, time-stretch/pitch DSP, output-device routing) must be qualified on all three WebView engines **and** on supported desktop browsers.
+
+The app does not currently enable cross-origin isolation: there are no COOP/COEP headers and no `crossOriginIsolated` checks. `SharedArrayBuffer` is therefore unavailable. The stem transport (section 9.4) must either work with transferable `ArrayBuffer`s over a `MessagePort`, or make enabling COOP/COEP an explicit decision, checked against cross-origin artwork, Plex streams and other embedded resources.
 
 ---
 
@@ -147,31 +207,33 @@ StemDeck is Apache-2.0 and currently documents:
 
 - local 6-stem separation using Demucs htdemucs_6s;
 - vocals, drums, bass, guitar, piano and other;
-- CUDA, Apple MPS and CPU execution;
-- per-stem mute, solo and level controls;
+- CUDA, Apple MPS and CPU execution, auto-selected in that order with an environment-variable override;
+- per-stem fader, mute, solo and monitor controls;
 - synchronized multitrack waveform display;
 - cancellable jobs;
-- local storage and cached model weights;
-- stem export;
-- FastAPI/SSE job progress;
-- BPM, key and loudness analysis;
-- optional song-section analysis.
+- local job storage and cached model weights (about 170 MB after first download);
+- per-stem WAV export plus a summed mix of selected stems;
+- FastAPI REST with SSE job progress;
+- BPM (librosa), key/scale with confidence, integrated LUFS and sample-peak analysis;
+- a web server that expects FFmpeg on PATH, and Tauri desktop builds that bundle FFmpeg.
+
+StemDeck does not document song-section (intro/verse/chorus) analysis. Structure analysis must come from ViiB's own work (Part VI).
 
 Reference:
 https://github.com/stemdeckapp/stemdeck
 
 Its architecture is useful as a reference for model lifecycle, cancellation, device detection, model caching, file layout and job UX. ViiB should not embed StemDeck wholesale because ViiB is Go/Wails-first and already owns its job scheduler, catalog and Web Audio engine.
 
-### 3.2 Mixed In Key 11 Pro
+### 3.2 Mixed In Key Pro (v11)
 
-Public Mixed In Key material currently describes:
+The marketing page calls the product "Mixed In Key 11 Pro"; the release notes call it "Mixed In Key Pro" (11.1.x on Windows, 11.2.x on macOS as of September 2025). Public Mixed In Key material currently describes:
 
 - key detection and Camelot notation;
 - 1-10 Energy Level;
 - automatic cue-point creation;
 - up to eight cue points per track;
-- cue points aligned to beats/downbeats;
-- editable cue snapping;
+- cue points that snap to the beatgrid (public material says beatgrid, not specifically musical downbeats);
+- editable cue snapping down to 1/4 beat when zoomed in;
 - DJ Mix Mode recommendations;
 - Mashup Mode recommendations;
 - BPM, key and energy filtering;
@@ -180,7 +242,7 @@ Public Mixed In Key material currently describes:
 - pitch shifting to discover additional compatible combinations;
 - looped auditioning;
 - playlist/favorite idea management;
-- export of stems and DJ preparation metadata.
+- export of stems, plus cue points and key/energy tags written to files or exported for Serato, rekordbox and Traktor.
 
 References:
 
@@ -192,8 +254,13 @@ References:
 
 These references define product behavior only. ViiB should implement its own analysis and scoring methods.
 
----
+**Market context for the ahead-of-time decision.** Most major DJ applications now offer real-time or near-real-time stem separation on the deck: Serato Stems, rekordbox, djay Neural Mix and VirtualDJ Stems. Traktor Pro 4 separates per track on load and still plays pre-made NI `.stem.mp4` files, and Engine DJ pre-renders stems on the desktop. ViiB's ahead-of-time split (ViiB-StemLab generates, MediaHub plays) is a deliberate trade:
 
+- higher-quality offline models;
+- no GPU/ML runtime in the live audio path;
+- a small MediaHub footprint.
+
+The cost is that stems must be prepared before a set. The UX should make that preparation step easy (section 8.7 and Part XIX) rather than hide it.
 
 ### 3.3 Open-source MIR reference stack and current ViiB evidence
 
@@ -204,9 +271,10 @@ The current ViiB analysis stack is already strong enough that these projects sho
 - predicts timestamped beats and downbeats with a transformer-based model;
 - code and published model weights are MIT licensed;
 - supports CPU/GPU inference and exposes framewise beat/downbeat activations;
-- is particularly relevant to ViiB because true musical downbeat inference is a larger current gap than scalar BPM estimation.
+- is particularly relevant to ViiB because true musical downbeat inference is a larger current gap than scalar BPM estimation;
+- was trained on a large multi-dataset corpus (about 4,500 tracks, including Harmonix, Ballroom, SMC, Hainsworth, HJDB, Beatles, RWC, Simac, TapCorrect, JAAH, Filosax, ASAP, Groove MIDI, GuitarSet and Candombe; GTZAN was held out). Popular/electronic material in Harmonix especially is a likely source of overlap with a DJ-oriented evaluation corpus.
 
-ViiB has already run the `final0` model as a development-only reference. Deriving scalar BPM from a fixed 16-beat median over its timestamp grid reached **111/122 strict BPM matches (90.98%)** on the r5 tuning set. That result is **diagnostic only**: the repository's overlap audit found tracks in the ViiB corpus that also occur in Beat This training material. Do not use that result as independent release evidence or promote the model without a clean, overlap-audited evaluation.
+ViiB has already run the `final0` model as a development-only reference. Deriving scalar BPM from a fixed 16-beat median over its timestamp grid reached **111/122 strict BPM matches (90.98%)** on the r5 tuning set. That result is **diagnostic only**: the repository's overlap audit found tracks in the ViiB corpus that also occur in Beat This training material. Do not use that result as independent release evidence or promote the model without a clean, overlap-audited evaluation. The evidence and overlap audit are recorded in `docs/REFERENCE_BPM_BENCHMARK.md` (harness: `scripts/beat_this_bpm_benchmark.py`).
 
 Reference:
 https://github.com/CPJKU/beat_this
@@ -219,9 +287,15 @@ The All-In-One research family jointly predicts:
 - beats;
 - downbeats;
 - functional segment boundaries;
-- functional labels such as intro, verse, chorus, bridge and outro.
+- functional labels from a fixed Harmonix-derived set: `start`, `end`, `intro`, `outro`, `break`, `bridge`, `inst`, `solo`, `verse`, `chorus`.
 
-This is unusually well aligned with ViiB's cue-intelligence problem because one model can provide both rhythmic landmarks and semantic structure. The original project is MIT licensed. A maintained packaging fork, `all-in-one-infer`, was renamed at v3.0.0 in July 2026 and removes several older installation barriers while retaining the upstream analysis behavior.
+This is unusually well aligned with ViiB's cue-intelligence problem because one model can provide both rhythmic landmarks and semantic structure. The original project is MIT licensed. A maintained packaging fork, `all-in-one-infer` (renamed from `all-in-one-fix` at v3.0.0 in July 2026), removes several older installation barriers: it replaces NATTEN with pure-PyTorch neighborhood attention, replaces madmom with `madmom-infer`, and replaces the old PyTorch-1.x Demucs pin with `demucs-infer`. The upstream analysis behavior is retained.
+
+Important caveats:
+
+- All-In-One runs Demucs source separation internally (4 stems) before analysis, so it carries the full Demucs/PyTorch runtime cost. That fits a development benchmark or a ViiB-StemLab-side analyzer better than an in-process MediaHub dependency.
+- Its label vocabulary has no `drop`, `build` or `pre-chorus`. Those ViiB labels (section 6.5) would need mapping rules (for example `break` to breakdown) or a separate detector, and must not be inferred silently.
+- It was trained on the Harmonix Set, which also appears in Beat This training data, so the same overlap audit applies.
 
 References:
 
@@ -237,9 +311,9 @@ https://github.com/mjhydri/BeatNet
 
 **Essentia**
 
-Essentia remains a valuable MIR laboratory and reference implementation, but it is AGPLv3 and should stay outside the shipping MediaHub dependency graph unless a separate licensing decision is made.
+Essentia remains a valuable MIR laboratory and reference implementation. However, its code is AGPLv3 (a commercial license is available from MTG/UPF) and its pretrained models are CC BY-NC-ND 4.0, so it should stay outside the shipping MediaHub dependency graph unless a separate licensing decision is made.
 
-ViiB has already benchmarked Essentia `RhythmExtractor2013` as an isolated development process. Its production-aligned tuning configuration reached **99/122 strict BPM (81.15%)**, but only **39/54 strict (72.22%)** on the independent r5 held-out subset. That evidence does not justify replacing ViiB's native tempo engine with Essentia.
+ViiB has already benchmarked Essentia `RhythmExtractor2013` as an isolated development process. Its production-aligned tuning configuration reached **99/122 strict BPM (81.15%)**, but only **39/54 strict (72.22%)** on the independent r5 held-out subset. That evidence does not justify replacing ViiB's native tempo engine with Essentia (see `docs/REFERENCE_BPM_BENCHMARK.md`).
 
 Reference:
 https://github.com/MTG/essentia
@@ -254,6 +328,7 @@ The recommended direction is:
 4. keep Essentia, Beat This, BeatNet and All-In-One behind benchmark/reference adapters until an explicit promotion gate is passed;
 5. if a neural model is ever promoted to shipping use, make packaging/runtime/licensing a separate architecture decision rather than silently adding PyTorch to MediaHub.
 
+---
 
 # PART I — TARGET ARCHITECTURE
 
@@ -358,9 +433,6 @@ A package contains:
 
 This keeps MediaHub independent from the implementation language or ML framework used by ViiB-StemLab and also allows future third-party generators to produce compatible packages.
 
----
-
-
 ### 4.7 Native-first analysis with swappable reference providers
 
 The native Go analyzer remains authoritative unless a replacement wins a documented quality gate.
@@ -394,6 +466,7 @@ For benchmark and optional companion analysis:
 
 This avoids tens-of-milliseconds decoder-origin shifts being misdiagnosed as beat-tracker error.
 
+---
 
 ## 5. Proposed backend components
 
@@ -483,9 +556,29 @@ Suggested fields:
 - validation_error_message
 - manually_invalidated
 
+`status` uses the MediaHub package states from section 4.2 (none, discovered, validating, ready, stale, invalid, unavailable).
+
 Recommended unique identity:
 
     song_id + source_audio_hash + model_name + model_version + stem_layout
+
+### 6.1.1 Source-audio identity
+
+MediaHub does not currently compute a full-content cryptographic hash of source audio:
+
+- the catalog `songs.file_hash` is a SHA-256 over the file size plus the first and last 64 KiB (`backend/internal/scanner/identity.go`);
+- the analysis source fingerprint is `file_hash:size:mtime` (`backend/internal/analysis/source.go`).
+
+Both change when only tags or embedded artwork are edited, because tag blocks usually sit at the start or end of the file. Neither is a strong enough identity for a portable package produced by another application.
+
+The stem-package contract should therefore define its own identity:
+
+- `source.sha256`: SHA-256 of the complete source file bytes, which is required and cheap for StemLab to compute while it reads the file;
+- `source.audioSha256` (recommended): SHA-256 of the decoded PCM, or of the audio payload with tag blocks excluded, so that retagging does not mark a still-valid package as stale;
+- MediaHub computes the full-file hash lazily at validation time, caches it keyed by `(path, size, mtime)`, and never recomputes it during DJ playback;
+- when `sha256` mismatches but `audioSha256` matches, the package stays **ready** and records a metadata-only change; when both mismatch, it becomes **stale**.
+
+Do not reuse the existing partial `file_hash` as the package identity.
 
 ### 6.2 Individual stem artifacts
 
@@ -512,12 +605,19 @@ Supported canonical names:
 
 Derived DJ groups do not need separate files initially.
 
+`stem_layout` should support at least:
+
+- `six` (vocals, drums, bass, guitar, piano, other), as produced by `htdemucs_6s`;
+- `four` (vocals, drums, bass, other), as produced by four-source models such as `htdemucs` / `htdemucs_ft` and by most third-party generators.
+
 The four-button DJ mapping is:
 
 - VOCAL = vocals
 - DRUMS = drums
 - BASS = bass
-- MUSIC = guitar + piano + other
+- MUSIC = guitar + piano + other (six) or other (four)
+
+The DJ deck must work identically with either layout. The advanced six-stem panel (section 10.3) is simply unavailable for four-stem packages.
 
 Derived convenience mixes may later be cached:
 
@@ -551,6 +651,14 @@ Suggested kinds:
 - custom
 
 A user move/edit converts an analysis cue into user-owned state unless the user explicitly chooses to keep it linked to analysis.
+
+Additional persistence needed by the re-analysis policy (section 12.6):
+
+- a per-track/per-slot **suppression tombstone** recording that the user deleted a generated cue and does not want it regenerated;
+- the analysis/source fingerprint the generated cue was computed from, so stale generated cues can be identified after re-analysis;
+- a short machine-readable **rationale** (for example `first-drop`, `phrase-boundary@32`) shown in the cue editor (section 13.2).
+
+Existing rows migrate as `origin = user`, so no current cue can later be treated as replaceable generated state.
 
 ### 6.4 Scalar Energy Level
 
@@ -594,8 +702,7 @@ Initial labels:
 
 Do not force a semantic label when confidence is weak. A phrase-boundary-only result is preferable to a wrong label.
 
----
-
+If external structure models are evaluated (section 18.3), record their native label and the mapped ViiB label separately. For example, All-In-One emits `break`, `inst` and `solo` but has no `drop`, `build` or `pre-chorus`.
 
 ### 6.6 Rhythm-grid provenance and musical-downbeat semantics
 
@@ -621,8 +728,11 @@ Extend rhythm artifact metadata with:
 
 Cue and phrase logic must be able to tell the difference between a true measured downbeat and a meter-derived placeholder.
 
+---
 
 ## 7. Proposed API surface
+
+Conventions: existing v2 track endpoints are keyed by song ID under feature prefixes (for example `/api/v2/analysis/{songID}/beatgrid`). There is no `/api/v2/tracks/...` prefix. The proposals below follow that convention: stem endpoints live under `/api/v2/stems` and analysis cues under `/api/v2/analysis/{songID}`. Hot cues remain on the existing v1 `/api/dj/hotcues/{id}` route unless a separate v2 migration is planned.
 
 ### 7.1 Stem locations and discovery
 
@@ -632,7 +742,7 @@ POST /api/v2/stems/rescan
 
 Configured locations may include:
 
-- adjacent `.stems` directories next to source tracks;
+- adjacent `.viibstems` package directories next to source tracks;
 - one or more global ViiB Stem Libraries;
 - explicitly linked package paths.
 
@@ -640,7 +750,7 @@ MediaHub scans package manifests rather than treating every stem audio file as a
 
 ### 7.2 Track stem state
 
-GET /api/v2/tracks/{id}/stems
+GET /api/v2/stems/{songID}
 
 Returns:
 
@@ -656,7 +766,7 @@ Returns:
 
 ### 7.3 Link or refresh a completed package
 
-POST /api/v2/tracks/{id}/stems/link
+POST /api/v2/stems/{songID}/link
 
 Body:
 
@@ -665,13 +775,13 @@ Body:
       "replace": false
     }
 
-POST /api/v2/tracks/{id}/stems/refresh
+POST /api/v2/stems/{songID}/refresh
 
 These endpoints validate/index completed packages. They do **not** perform separation.
 
 ### 7.4 Unlink or delete a package
 
-DELETE /api/v2/tracks/{id}/stems/{stemSetId}
+DELETE /api/v2/stems/{songID}/{stemSetId}
 
 The default action should unlink the package from MediaHub. Physical deletion of generated stem files must be a separate explicit action and must be refused while either deck is actively using the set.
 
@@ -679,11 +789,11 @@ The default action should unlink the package from MediaHub. Physical deletion of
 
 For simple preview/export:
 
-GET /api/v2/tracks/{id}/stems/{stemSetId}/{stemName}
+GET /api/v2/stems/{songID}/{stemSetId}/{stemName}
 
 For professional synchronized deck playback, add a frame-oriented endpoint instead of relying on six independent media elements:
 
-GET /api/v2/tracks/{id}/stems/{stemSetId}/frames
+GET /api/v2/stems/{songID}/{stemSetId}/frames
 
 Parameters:
 
@@ -696,9 +806,9 @@ The response packs all requested stem channels from the same frame range so the 
 
 ### 7.6 Analysis cues
 
-GET /api/v2/tracks/{id}/analysis-cues
+GET /api/v2/analysis/{songID}/cues
 
-POST /api/v2/tracks/{id}/analysis-cues/apply
+POST /api/v2/analysis/{songID}/cues/apply
 
 Apply modes:
 
@@ -756,6 +866,12 @@ StemLab should auto-select:
 
 This device/model information is written into the package manifest for provenance, but MediaHub does not need the generation runtime in order to play the package.
 
+Known caveats for StemLab planning (they do not affect MediaHub):
+
+- `facebookresearch/demucs` was archived on 2025-01-01. `adefossez/demucs` is now the officially maintained Demucs (v4.1.0, July 2026, moved model hosting to Hugging Face and lightened inference dependencies). Track that repository, not the archived one.
+- The Demucs README states that the `htdemucs_6s` piano source "is not working great at the moment", with noticeable bleeding and artifacts. This is a further reason for the DJ deck to expose the summed MUSIC group (guitar + piano + other) by default and keep individual guitar/piano stems in the advanced panel only.
+- Newer separation families (BS-RoFormer, Mel-Band RoFormer, SCNet, MDX23C) often beat `htdemucs` on vocal/instrumental quality. MIT-licensed tooling such as `python-audio-separator` and `ZFTurbo/Music-Source-Separation-Training` can run them. Pretrained-weight licenses vary by checkpoint and must be checked one by one. Because the package contract is model-agnostic, StemLab can adopt such models (including a mixed pipeline, for example a RoFormer vocal split plus Demucs for the rest) without any MediaHub change.
+
 ### 8.3 ViiB Stem Package v1
 
 Recommended directory shape:
@@ -769,7 +885,9 @@ Recommended directory shape:
         piano.flac
         other.flac
 
-The package may use WAV during early development, but FLAC should be evaluated as the default cache format because six uncompressed PCM files have substantial disk cost.
+The package may use WAV during early development, but FLAC should be evaluated as the default cache format because six uncompressed PCM files have substantial disk cost (six stereo 16-bit 44.1 kHz stems use about 60 MB per minute of audio; float32 doubles that).
+
+FLAC packages depend on adding a backend FLAC decoder first (section 2.1.1). v1 validation must declare the allowed stem encodings explicitly, for example PCM16/float32 WAV now and FLAC once decodable, and reject everything else as **invalid** rather than failing at playback time.
 
 Minimum manifest information:
 
@@ -778,8 +896,10 @@ Minimum manifest information:
       "source": {
         "filename": "Human.flac",
         "sha256": "...",
+        "audioSha256": "...",
         "duration": 355.21
       },
+      "stemLayout": "six",
       "generator": {
         "name": "ViiB-StemLab",
         "version": "..."
@@ -791,7 +911,7 @@ Minimum manifest information:
       "audio": {
         "sampleRate": 44100,
         "channels": 2,
-        "frames": 15664861
+        "frames": 15664761
       },
       "stems": {
         "vocals": "vocals.flac",
@@ -803,7 +923,9 @@ Minimum manifest information:
       }
     }
 
-The final schema must additionally include per-stem checksum/size/frame metadata and a schema-level compatibility policy.
+The final schema must additionally include per-stem checksum/size/frame metadata and a schema-level compatibility policy (for example: readers reject unknown major `schemaVersion` values and ignore unknown optional fields). See section 6.1.1 for the meaning of `sha256` and `audioSha256`.
+
+Also record any decoder delay or start trim that was applied, so frame 0 of every stem maps exactly to frame 0 of MediaHub's canonical decode of the source (the same concern as section 4.8). Encoded sources such as MP3/AAC commonly carry encoder delay/padding, and different decoders handle it differently. A constant offset between stems and source would break stem/full-track switching (section 4.5) and cue alignment.
 
 ### 8.4 Package finalization and validation
 
@@ -823,6 +945,13 @@ Before finalization, StemLab validates:
 
 MediaHub independently validates the manifest and critical audio geometry when it discovers the package. A package is never trusted merely because its directory exists.
 
+Because packages may come from third-party generators, MediaHub's validation must also treat the manifest as untrusted input:
+
+- stem paths must be relative, must stay inside the package directory (no `..`, absolute paths or symlink escapes) and must use an allow-listed audio extension;
+- enforce a manifest size limit and reject unknown required fields;
+- verify checksums before a package first becomes **ready**; later checks may use size/mtime unless a revalidation is requested;
+- never serve a file through the stem audio endpoints (section 7.5) unless it is a validated member of an indexed package.
+
 ### 8.5 Discovery locations
 
 MediaHub should support both adjacent and centralized packages.
@@ -831,9 +960,11 @@ MediaHub should support both adjacent and centralized packages.
 
     Music/
         Human.flac
-        Human.stems/
+        Human.viibstems/
             manifest.json
             ...
+
+Use the same `.viibstems` suffix for adjacent and central packages. A generic `.stems` suffix is ambiguous next to other stem formats (for example Native Instruments `.stem.mp4` files) and other tools' output folders. An adjacent package is only a hint: MediaHub must still confirm the manifest's source hash before treating it as belonging to the adjacent track.
 
 **Central library**
 
@@ -943,8 +1074,11 @@ Each bus feeds a GainNode.
 Routing:
 
     Stem transport
-      -> Vocal Gain ----      -> Drum Gain ------      -> Bass Gain --------> Stem Sum -> existing deck gain -> EQ -> FX -> crossfader
-      -> Music Gain ------/
+      -> Vocal Gain --\
+      -> Drum Gain ----\
+                        >-- Stem Sum -> existing deck gain -> EQ -> FX -> crossfader ...
+      -> Bass Gain ----/
+      -> Music Gain --/
 
 Stem gain changes must use short Web Audio ramps rather than hard zero/one steps to avoid clicks.
 
@@ -970,6 +1104,10 @@ The worklet can expose four stereo outputs and receive frame blocks for all four
 
 The main thread should prefetch enough data to protect against WebView scheduling jitter.
 
+Because `SharedArrayBuffer` is not available without cross-origin isolation (section 2.6), the baseline design should hand frame blocks to the worklet as transferable `ArrayBuffer`s over its `MessagePort`, with the worklet owning a ring buffer. A SAB-based lock-free ring is an optional optimization that is available only if COOP/COEP is deliberately enabled.
+
+Memory budget: fully decoding six float32 stereo stems for a 6-minute track takes about 6 x 2 x 4 B x 44,100 x 360 s, roughly 760 MB per deck. That is why the transport streams bounded chunks instead of decoding whole stems in the browser, unlike the current scratch path.
+
 Initial buffering target:
 
 - 2-4 seconds ahead during normal playback;
@@ -987,14 +1125,16 @@ Therefore introduce a TempoProcessor abstraction before Stem Mode is considered 
 Required evaluation:
 
 - high-quality WSOLA/phase-vocoder/WASM option;
-- compatible license;
+- compatible license (for example, Rubber Band is GPL or commercial; SoundTouch is LGPL; Signalsmith Stretch is MIT). License fit for a WASM build must be confirmed;
 - Windows WebView2;
 - macOS WKWebView;
+- Linux WebKitGTK;
+- supported desktop browsers (browser builds, section 2.6);
 - CPU usage on two simultaneous decks;
 - latency;
 - transient quality on drums;
-- vocal quality at +/- 8 percent tempo;
-- pitch-shift quality at +/- 4 semitones.
+- vocal quality at +/- 8 percent tempo and acceptable behavior across the wider +/- 16/24/50 percent ranges the tempo control already exposes;
+- pitch-shift quality across the section 25 range (+/- 6 semitones by default, +/- 12 in the expert range), with +/- 1-2 semitones as the most common harmonic-mixing case.
 
 Until a production processor passes the gate, Stem Mode should clearly report any reduced capability. Do not silently change pitch when Key Lock is shown as active.
 
@@ -1002,7 +1142,9 @@ Until a production processor passes the gate, Stem Mode should clearly report an
 
 The existing project already has an AudioWorklet scratch path.
 
-The stem transport should eventually feed scratch from the currently audible stem mix, not from the original full track.
+Today that worklet (`lib/vinylScratch.worklet.js`) decodes the entire original track into an AudioBuffer and injects it at deck gain. That approach does not scale to stems (see the memory budget in section 9.4). The stem transport should eventually feed scratch from the currently audible stem mix, not from the original full track. The simplest route is to fold scratch playback into the stem transport worklet itself, so scratch reads the same frame buffers.
+
+Auto-gain has the same issue. It currently decodes the full original track to normalize peak. In Stem Mode it should use the package's recorded peak metadata (`peak_dbfs`, section 6.2) or the source track's value, rather than decoding stems.
 
 Release gate:
 
@@ -1019,6 +1161,10 @@ Because all stems use one transport:
 - quantized cue jumps are applied once.
 
 This is a strong reason to avoid independent HTMLMediaElement clocks.
+
+It is also an opportunity: current loops wrap by seeking `currentTime` from timers (section 2.3), so they are beat-quantized but not sample-accurate. A worklet transport can wrap loops at the exact frame, which should become the Stem Mode loop gate. It could later back the full-track deck too, via a PCM-backed SingleTrackDeckSource.
+
+Beat-phase sync keeps its current precondition (both decks must have locked manual grids) until the rhythm-provenance work (section 6.6) can supply trustworthy measured downbeats.
 
 ---
 
@@ -1037,8 +1183,10 @@ Recommended interaction:
 
 - click: toggle stem on/off;
 - Shift+click: solo that stem;
-- double-click or dedicated FULL button: restore all;
-- secondary menu: per-stem level.
+- dedicated FULL button: restore all;
+- secondary menu (right-click / long-press): per-stem level.
+
+Avoid double-click as a "restore all" gesture: a double-click also fires two single clicks, so the stem would toggle audibly twice before the restore. Performance controls must act on the first press.
 
 The button should be brightly active when audible and visually dim when removed.
 
@@ -1086,19 +1234,24 @@ The main playhead and cues are shared.
 
 ### 10.5 Stem status in library
 
-Add a compact stem badge to library rows:
+Add a compact stem badge to library rows. Badge states mirror the MediaHub package states in section 4.2, not StemLab generation states:
 
-- no badge: not generated;
-- queued;
-- processing;
-- ready;
-- failed.
+- no badge: none (no package discovered);
+- discovered / validating: package found, checks in progress;
+- ready: valid package matching the current source audio;
+- stale: package exists but the source-audio hash no longer matches;
+- invalid: package failed schema/checksum/geometry validation;
+- unavailable: package was indexed but its location is currently unreachable (e.g. disconnected drive).
+
+MediaHub does not show queued/processing generation states. If a future StemLab integration reports generation progress, show it as a separate, clearly external indicator.
 
 Right-click actions:
 
-- Generate Stems
-- Regenerate Stems
-- Delete Cached Stems
+- Generate Stems in ViiB-StemLab… (only when StemLab is installed; see section 8.7)
+- Link Stem Package…
+- Rescan / Revalidate Stems
+- Unlink Stem Package
+- Delete Stem Package Files… (explicit, confirmed, refused while loaded on a deck; see section 7.4)
 - Open Stem Folder
 - Export Stems
 
@@ -1112,12 +1265,15 @@ Every analyzed track should be able to leave scanning with useful DJ cue points 
 
 Mixed In Key publicly describes up to eight automatically generated cue points aligned to musically useful parts of a track. ViiB should implement its own structure-aware generator using its existing beatgrid, energy and analysis stack.
 
----
-
-
 ### 11.1 Rhythm prerequisite: beat phase is not the same as bar-one detection
 
-The existing ViiB beatgrid is already a good persistence and playback contract, but the current native detector primarily estimates global tempo plus beat phase. It then constructs a straight grid and assigns downbeat indices from the configured meter.
+The existing ViiB beatgrid is already a good persistence and playback contract, but the current native detector estimates only global tempo plus a single beat phase. Specifically:
+
+- `beatgrid.PhaseAccumulator.Build` takes a weighted circular mean of onset energy at the chosen BPM;
+- `BuildStraight` lays out constant-interval beats and marks every fourth beat as a downbeat, starting from the first beat;
+- the caller hard-codes 4 beats per bar (`backend/internal/analysis/track/track.go`).
+
+`BuildDynamic` (variable-tempo anchors) exists but is not used by analysis.
 
 That means the system can have an accurately phased beat grid while still choosing the wrong musical bar-one offset.
 
@@ -1144,6 +1300,7 @@ The first reference candidate to benchmark for this gap is **Beat This!** becaus
 
 The native Go path remains the fallback until an external/native candidate passes the release gate.
 
+---
 
 ## 12. Cue generation pipeline
 
@@ -1258,7 +1415,7 @@ Generated and user cues need distinct provenance styling.
 Example:
 
 - user cue: solid marker;
-- generated cue: solid marker plus small sparkle/AI-analysis icon;
+- generated cue: solid marker plus a small "auto"/analysis glyph;
 - low-confidence generated cue: outlined marker.
 
 Do not use an “AI” label if no AI model produced the cue. “Auto” or “Analyzed” is more accurate.
@@ -1313,7 +1470,7 @@ Keep a canonical musical key in analysis, then derive display systems:
 
 - Traditional: F minor
 - Camelot: 4A
-- Open Key
+- Open Key: 9m (Open Key number = Camelot number + 5, mod 12; `d` = major, `m` = minor)
 - optional custom notation
 
 Pitch changes must transform the canonical key first, then derive the displayed Camelot code.
@@ -1322,7 +1479,9 @@ Pitch changes must transform the canonical key first, then derive the displayed 
 
 ## 15. ViiB Camelot color system
 
-The current library colors keys based on compatibility state, not on the Camelot wheel position itself.
+The current library colors keys by their compatibility score with the playing/loaded deck's key (section 2.4), not by Camelot wheel position. With no deck key, every key renders in the same color.
+
+The compatibility coloring is still useful. Keep it as a secondary indicator (for example a ring, dot or row tint) so the new position-based chip color does not remove existing harmonic guidance.
 
 Add a deterministic Camelot palette.
 
@@ -1376,8 +1535,10 @@ Define explicit relations:
 - exact;
 - adjacent -1;
 - adjacent +1;
-- relative major/minor;
-- energy boost +2;
+- relative major/minor (same number, A to B);
+- diagonal (for example 4A to 5B), an advanced move;
+- energy boost +2 (up a whole tone; Mixed In Key's named "Energy Boost" move);
+- semitone lift +7 (up one semitone, often combined with a pitch shift or a key-changing edit);
 - dramatic/custom relation;
 - incompatible/unknown.
 
@@ -1391,6 +1552,8 @@ Recommendations should explain the relation rather than collapse everything into
 
 ViiB already has a time-varying normalized energy curve. DJs also benefit from one sortable track-level number.
 
+The existing curve is normalized to each track's own maximum (section 2.1), so it describes shape within a track and cannot be averaged into a cross-track score. Energy Level must be computed from absolute (non-self-normalized) features.
+
 Add Energy Level 1-10 as a separate derived feature.
 
 It must not simply be loudness divided into ten buckets.
@@ -1401,7 +1564,7 @@ It must not simply be loudness divided into ten buckets.
 
 ### 17.0 Fix loudness semantics before making it a major Energy input
 
-The existing streaming feature is useful as a loudness proxy, but a future field presented as standards-compliant integrated LUFS should implement the required K-weighting and gating behavior from ITU-R BS.1770 / EBU-style measurement. A user-facing "true peak" claim should likewise use an oversampled inter-sample peak detector rather than ordinary sample peak.
+The existing streaming feature is useful as a loudness proxy, but a future field presented as standards-compliant integrated LUFS should implement the required K-weighting and gating behavior from ITU-R BS.1770 (current revision BS.1770-5, 11/2023) / EBU R128 (EBU Tech 3341/3342) measurement. A user-facing "true peak" claim should likewise use the BS.1770 Annex 2 oversampled inter-sample peak method (at least 4x oversampling at 48 kHz) rather than ordinary sample peak.
 
 Until that work lands:
 
@@ -1569,7 +1732,13 @@ This is a later phase and must not block the first cue/stem release.
 
 ## 20. Upgrade transition recommendations
 
-The current ViiB transition scorer primarily combines energy continuity, loudness match and phrase-preparation evidence.
+The current ViiB transition scorer (`features.ScoreTransition` in `backend/internal/analysis/features/transition.go`) combines only:
+
+- energy continuity (weight 0.55): tail vs head mean energy over 8 curve points;
+- loudness match (weight 0.20): the LUFS-proxy delta scaled over 12 dB;
+- phrase preparation (weight 0.25): the mean confidence of the best mix-out and mix-in cue suggestions.
+
+It ranks every analyzed track this way. **Neither BPM nor key is used today**, so harmonic and tempo compatibility are the largest gaps. Note also that the tail/head energy terms compare per-track self-normalized curves (section 16), so they are shape-relative, not absolute.
 
 Expand the recommendation vector with:
 
@@ -1637,7 +1806,11 @@ Behavior:
 7. play a short synchronized preview;
 8. return both decks to their original states when preview ends.
 
-For live performance safety, planning preview should preferably route to the headphone/cue bus rather than master by default.
+For live performance safety:
+
+- planning preview should route to the headphone/cue bus rather than master by default;
+- Test Mix must never take over a deck that is currently audible on master. If the target deck is on air, either refuse with an explanation or use a dedicated off-air preview source (none exists today; one would have to be built; see section 2.3). In planning mode, when no deck is on air, the regular decks may be used;
+- the "return both decks to their original states" step must restore track, position, play state, tempo, key lock, loop, EQ/FX and stem state atomically, including when the user stops the preview early.
 
 ---
 
@@ -1809,6 +1982,17 @@ Later offline render can optionally apply:
 - tempo;
 - selected stem levels.
 
+### 30.1 Native Instruments Stems (`.stem.mp4`) interoperability
+
+NI Stems is an MP4 container that holds a stereo master plus exactly four stems (drums, bass, other/melody, vocals), with JSON metadata in a `moov/udta/stem` atom. Traktor still plays it on Stem Decks, and community tools exist (for example the MIT-licensed `stemgen`). NI does not currently host an official spec document; the format is described in an ISMIR 2015 late-breaking paper.
+
+It is a natural candidate for:
+
+- **import**: treat a `.stem.mp4` as a third-party four-stem package under the Phase 0 third-party import policy. This requires backend AAC/MP4 demux and decoding, which do not exist today (section 2.1.1);
+- **export**: a DJ four-group export target alongside WAV/FLAC.
+
+Neither should block the ViiB Stem Package v1 work.
+
 ---
 
 ## 31. DJ metadata export
@@ -1852,7 +2036,7 @@ A7. Cue editor and waveform markers
 
 ### Workstream B — Stem platform
 
-B1. ViiB Stem Package v1 specification  
+B1. ViiB Stem Package v1 specification (plus backend FLAC decoding if FLAC is an allowed encoding)  
 B2. Package discovery and resolver  
 B3. Manifest/source-hash validation  
 B4. Stem registry persistence and Stem Library locations  
@@ -1877,7 +2061,9 @@ C7. Saved mix/mashup ideas
 
 ## 33. Proposed implementation phases
 
-### Phase 0 — Stem package contract and benchmark foundation
+### Phase 0 — Stem package contract foundation
+
+(The rhythm/structure benchmark foundation is delivered in Phase 2 and PR 3.)
 
 Deliver:
 
@@ -1889,7 +2075,9 @@ Deliver:
 - manifest/audio validation rules;
 - compatibility/versioning policy;
 - storage budget measurements;
-- third-party generator import policy.
+- allowed stem encodings, tied to backend decoder coverage (section 2.1.1);
+- source identity rules for `sha256` / `audioSha256` (section 6.1.1);
+- third-party generator import policy (including whether NI `.stem.mp4` is in scope; section 30.1).
 
 Exit criteria:
 
@@ -1945,6 +2133,7 @@ Exit criteria:
 
 Deliver:
 
+- backend FLAC decoding, if FLAC is an allowed v1 stem encoding;
 - configured Stem Library locations;
 - adjacent-package discovery;
 - manifest parser and schema validation;
@@ -2108,7 +2297,7 @@ Measure:
 - loop/beat-jump recovery;
 - UI frame drops.
 
-Test on Windows, macOS and Linux using identical pre-generated fixture packages.
+Test on Windows (WebView2), macOS (WKWebView) and Linux (WebKitGTK) desktop builds, and on the browser builds, using identical pre-generated fixture packages.
 
 ### 35.2 ViiB-StemLab generation performance
 
@@ -2169,7 +2358,6 @@ The scalar Energy Level is a navigation aid, not an objective truth.
 
 ---
 
-
 ## 37.1 Rhythm and semantic-structure quality
 
 Maintain an overlap-audited annotated rhythm/structure corpus separate from the scalar BPM/key gate.
@@ -2186,6 +2374,8 @@ Measure at minimum:
 
 A model must not be promoted because it improves scalar BPM while producing poor downbeat placement.
 
+---
+
 ## 37.2 Third-party model overlap gate
 
 Before using a pretrained model result as release evidence:
@@ -2199,6 +2389,7 @@ Before using a pretrained model result as release evidence:
 
 The existing Beat This r5 result is the motivating example: it is useful diagnostic evidence, but known training-set overlap means it is not independent qualification evidence.
 
+---
 
 # PART XIII — TEST PLAN
 
@@ -2214,7 +2405,11 @@ Add tests for:
 - duplicate-package resolution;
 - stale/invalid/ready state transitions;
 - per-stem checksum/frame validation;
+- manifest path-traversal/symlink-escape rejection and manifest size limits;
+- metadata-only source change (`sha256` mismatch, `audioSha256` match) keeps the package ready;
+- FLAC (and any other newly allowed encoding) decode correctness and frame counts;
 - safe unlink/delete behavior;
+- hot-cue provenance round-trip through the full-set PUT, and server-side slot-range rejection;
 - generated cue overwrite policy;
 - user cue preservation;
 - Energy Level determinism;
@@ -2236,6 +2431,7 @@ Add tests for:
 - stem button state;
 - solo/full/instrumental modes;
 - generated/manual cue styling;
+- hot-cue pad saves label and color into the correct fields (regression for the current argument-order bug);
 - cue editor operations;
 - Mix Next filters;
 - preview state restoration;
@@ -2335,33 +2531,32 @@ Preferred approach:
 
 ### 44.1 Demucs
 
-Demucs is open source, but model/runtime packaging and all transitive licenses still require release review.
+Demucs code is MIT and is maintained at `adefossez/demucs` (the original `facebookresearch/demucs` repository is archived). No separate license statement for the pretrained weights was found, so model/runtime packaging, weight licensing and all transitive licenses still require release review.
 
 Those dependencies belong to **ViiB-StemLab**, not ViiB MediaHub. MediaHub should consume the resulting package without linking or shipping Demucs/PyTorch.
 
 ### 44.2 FFmpeg
 
-StemDeck documents using an external FFmpeg executable.
+StemDeck's web server uses an external FFmpeg executable on PATH, and its Tauri desktop builds bundle FFmpeg.
 
 Any FFmpeg dependency used for stem generation belongs to the future ViiB-StemLab distribution and requires an explicit licensing/release decision there.
 
 MediaHub's package consumer should use its own existing supported decode path wherever practical and must not inherit StemLab's generation dependencies merely to play stems.
 
----
-
-
-## 44.3 Open-source MIR references
+### 44.3 Open-source MIR references
 
 Current license posture for the main research candidates:
 
 - **Beat This!** — MIT code and published model weights; training-data provenance still requires evaluation-overlap review.
-- **All-In-One** — MIT upstream; verify the exact fork/package and every bundled dependency/model before distribution.
-- **All-In-One-Infer** — MIT integration layer; still review transitive model/runtime licenses before shipping.
+- **All-In-One** — MIT upstream; it also pulls in Demucs, madmom and (upstream) NATTEN, so verify the exact fork/package and every bundled dependency/model before distribution.
+- **All-In-One-Infer** — MIT integration layer; still review transitive model/runtime licenses (`demucs-infer`, `madmom-infer`, optional NATTEN) before shipping.
 - **BeatNet** — CC-BY-4.0 repository; attribution and dependency review required.
-- **Essentia** — AGPLv3; keep benchmark-only unless an explicit product/licensing decision approves otherwise.
+- **Essentia** — AGPLv3 code (commercial license available from MTG/UPF); pretrained Essentia models are CC BY-NC-ND 4.0. Keep benchmark-only unless an explicit product/licensing decision approves otherwise.
+- **Demucs** — MIT code (`adefossez/demucs`); weight licensing not separately stated. StemLab-only.
 
 A permissive code license is necessary but not sufficient. Model weights, bundled DSP libraries, training-data implications, and transitive runtime licenses need separate review.
 
+---
 
 ## 45. Mixed In Key
 
@@ -2396,6 +2591,10 @@ ViiB should name and implement its own scoring systems where appropriate.
   - DeckSource abstraction
   - StemDeckSource integration
   - stem bus routing
+  - stem-aware scratch/auto-gain sources
+
+- lib/vinylScratch.worklet.js
+  - stem-mix scratch source, or merge into the stem transport worklet
 
 - hooks/useDJAudioEngine.ts
   - stem load lifecycle
@@ -2408,8 +2607,10 @@ ViiB should name and implement its own scoring systems where appropriate.
   - generated cue provenance if deck-local state needs it
 
 - components/dj/v2/
-  - DJDeck*
-  - DJWaveform*
+  - DJDeck* (DJDeckComponents.tsx, DJDeckOverview.tsx, DJDeckStatusBar.tsx)
+  - DJDualWaveform.tsx and webgl/DJWebGLWaveform.tsx (v2 waveform; there is no v2 `DJWaveform*` component)
+  - DJHotCuePad.tsx (cue provenance styling; fix `setHotCue` argument order)
+  - DJTempoSlider.tsx (Stem Mode tempo/key-lock capability reporting)
   - DJLibraryBrowserV2.tsx
   - DJEnergyInsights.tsx
   - new DJStemControls.tsx
@@ -2424,16 +2625,29 @@ ViiB should name and implement its own scoring systems where appropriate.
 
 ### Backend
 
-- backend/internal/api/api.go
-  - register stem discovery/registry/audio routes
+- backend/internal/api/api.go, backend/internal/api/v2_library.go and backend/internal/server/server.go
+  - register stem discovery/registry/audio routes (v2 routers are mounted in server.go)
+
+- backend/internal/api/dj_waveform.go
+  - hot-cue handlers: provenance fields, server-side slot validation
+
+- backend/internal/api/v2_analysis_features.go
+  - Energy Level, structure and rhythm-provenance fields in analysis responses
 
 - backend/internal/db/
   - stem registry migrations and persistence
+  - `dj_hot_cues` provenance migration
+  - track_analysis_schema.go: Energy Level, rhythm provenance, structure artifacts
+
+- backend/internal/analysis/wav.go
+  - FLAC decoder registration (prerequisite for FLAC stem packages; AAC/M4A for NI Stems import)
+
+- backend/internal/analysis/beatgrid/ and backend/internal/analysis/track/track.go
+  - meter/downbeat provenance instead of the hard-coded 4/4, first-beat-is-bar-one grid
 
 - backend/internal/analysis/features/
-  - Energy Level
-  - structure
-  - recommendation v2
+  - transition.go: recommendation v2 (adds BPM, key, Energy Level and structure components)
+  - energy.go: loudness-proxy versioning / standards-correct loudness
 
 - backend/internal/dj/
   - any server-side DJ recommendation aggregation
@@ -2448,18 +2662,21 @@ Suggested MediaHub files:
     backend/internal/stems/discovery.go
     backend/internal/stems/registry.go
     backend/internal/stems/resolver.go
-    backend/internal/stems/validate.go
+    backend/internal/stems/validation.go
+    backend/internal/api/v2_stems.go
 
     docs/VIIB_STEM_PACKAGE_V1.md
 
     backend/internal/analysis/cues/generator.go
     backend/internal/analysis/cues/policy.go
-    backend/internal/analysis/structure/analyzer.go
+    backend/internal/analysis/structure/structure.go
     backend/internal/analysis/energy/level.go
 
-    scripts/beat_this_rhythm_benchmark.py
+    backend/internal/analysis/flac.go        (FLAC decoder registration)
+
+    scripts/beat_this_rhythm_benchmark.py    (extend/share code with existing scripts/beat_this_bpm_benchmark.py)
     scripts/allinone_structure_benchmark.py
-    docs/REFERENCE_RHYTHM_STRUCTURE_BENCHMARK.md
+    docs/REFERENCE_RHYTHM_STRUCTURE_BENCHMARK.md   (companion to existing docs/REFERENCE_BPM_BENCHMARK.md)
 
     components/dj/v2/DJStemControls.tsx
     components/dj/v2/DJCueEditor.tsx
@@ -2492,8 +2709,10 @@ Keep early PRs small and independently reviewable.
 
 ### PR 2 — Cue provenance model
 
-- database migration
-- API type extension
+- fix the existing `setHotCue(deck, slot, position, color)` argument-order bug in DJHotCuePad/DJHotCues
+- server-side slot-range validation (1-8)
+- database migration (existing rows become `origin = user`)
+- API type extension, with a PUT contract that preserves provenance (section 2.2)
 - backward compatibility
 - no generator yet
 
@@ -2523,8 +2742,9 @@ Keep early PRs small and independently reviewable.
 ### PR 6 — ViiB Stem Package v1
 
 - versioned manifest specification
-- source-hash identity
-- six-stem canonical names
+- source-hash identity (full-file `sha256` plus decoded-audio `audioSha256`)
+- six-stem and four-stem canonical layouts
+- allowed encodings (WAV now; FLAC gated on a backend decoder)
 - checksum/frame metadata
 - deterministic fixture packages
 - no generator runtime
@@ -2581,6 +2801,8 @@ MediaHub stem functionality is release-ready only when:
 - seek/loop/sync remain aligned;
 - Key Lock behavior is truthful;
 - stem mode works on both decks;
+- stem mode is qualified on all three desktop WebView engines and the supported browser builds, or any limited target is explicitly gated;
+- scratch and auto-gain in Stem Mode use the stem source rather than silently reverting to the full mix;
 - fallback to original audio is reliable;
 - user-facing package errors are actionable;
 - normal DJ mode remains unchanged when no stems are available.
@@ -2643,7 +2865,9 @@ After the core roadmap lands, high-value extensions include:
 
 ---
 
-# 52. Recommended product priority
+# PART XX — RECOMMENDED PRODUCT PRIORITY
+
+## 52. Recommended product priority
 
 For the next DJv2 development cycle, prioritize in this order:
 
@@ -2657,6 +2881,8 @@ For the next DJv2 development cycle, prioritize in this order:
 8. **Mix Next v2**
 9. **Pitch-shift/mashup planning**
 10. **Third-party DJ export**
+
+This list ranks product value. The phase numbers in section 33 and the PR sequence in section 48 order the delivery work. They differ on purpose: the Camelot visual system (PR 1 / Phase 1) is small, carries little risk and has no dependency on rhythm work, so it can land first in parallel. Automatic cues (PR 4) should not ship as "downbeat-aligned" until the rhythm provenance work (PR 3) has landed. The three workstreams in section 32 run concurrently; phases are dependency groupings, not a strictly serial schedule.
 
 This order fixes the most important prerequisite for trustworthy cue/phrase intelligence first: distinguishing a true musical downbeat from a merely phase-aligned meter grid. It then produces visible DJ-preparation value early, stabilizes the package boundary before creating the generator repository, and lets the more difficult real-time stem transport work proceed independently from ML/runtime packaging.
 
