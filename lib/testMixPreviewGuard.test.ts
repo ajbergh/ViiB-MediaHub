@@ -21,11 +21,13 @@ function deck(overrides: Partial<DeckState> = {}): DeckState {
 }
 
 describe('Test Mix preview guards', () => {
-  it('allows only the opposite deck at the fully off-air crossfader endpoint and a dedicated headphone device', () => {
+  it('allows only the opposite deck at the exact off-air endpoint and a dedicated headphone device', () => {
     expect(isPreviewDeckOffAir('A', 1)).toBe(true);
-    expect(isPreviewDeckOffAir('A', 0.97)).toBe(false);
+    expect(isPreviewDeckOffAir('A', 0.98)).toBe(false);
+    expect(isPreviewDeckOffAir('A', -1)).toBe(false);
     expect(isPreviewDeckOffAir('B', -1)).toBe(true);
-    expect(isPreviewDeckOffAir('B', -0.97)).toBe(false);
+    expect(isPreviewDeckOffAir('B', -0.98)).toBe(false);
+    expect(isPreviewDeckOffAir('B', 1)).toBe(false);
     expect(hasSeparateHeadphoneRoute('headphones-1', 'speakers-1')).toBe(true);
     expect(hasSeparateHeadphoneRoute('', 'speakers-1')).toBe(false);
     expect(hasSeparateHeadphoneRoute('default', 'default')).toBe(false);
