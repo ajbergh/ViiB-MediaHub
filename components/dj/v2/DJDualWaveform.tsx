@@ -21,6 +21,7 @@ import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getDJAudioEngine } from '../../../lib/djAudio';
 import type { DeckId, HotCue, Loop } from '../../../slices/djMixerSlice';
+import { getHotCueMarkerStyle } from '../../../lib/hotCueMarkerStyle';
 
 interface DJDualWaveformProps {
   height?: number;
@@ -197,14 +198,20 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
     if (duration > 0) {
       hotCues.forEach(hc => {
         const x = (hc.position / duration) * width;
-        ctx.fillStyle = hc.color || '#22c55e';
+        const style = getHotCueMarkerStyle(hc);
+        ctx.fillStyle = style.color;
+        ctx.strokeStyle = style.color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash(style.dash);
         // Triangle marker
         ctx.beginPath();
         ctx.moveTo(x - 4, 0);
         ctx.lineTo(x + 4, 0);
         ctx.lineTo(x, 8);
         ctx.closePath();
-        ctx.fill();
+        if (style.fill) ctx.fill();
+        else ctx.stroke();
+        ctx.setLineDash([]);
       });
     }
 
@@ -620,13 +627,19 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
             currentDeckA.hotCues.forEach(hc => {
               const x = (hc.position / currentDeckA.duration) * halfWidth;
               if (!isNaN(x) && isFinite(x)) {
-                ctx.fillStyle = hc.color || '#22c55e';
+                const style = getHotCueMarkerStyle(hc);
+                ctx.fillStyle = style.color;
+                ctx.strokeStyle = style.color;
+                ctx.lineWidth = 1;
+                ctx.setLineDash(style.dash);
                 ctx.beginPath();
                 ctx.moveTo(x - 3, 0);
                 ctx.lineTo(x + 3, 0);
                 ctx.lineTo(x, 6);
                 ctx.closePath();
-                ctx.fill();
+                if (style.fill) ctx.fill();
+                else ctx.stroke();
+                ctx.setLineDash([]);
               }
             });
           }
@@ -648,13 +661,19 @@ export const DJDualWaveform: React.FC<DJDualWaveformProps> = ({ height = 200, re
             currentDeckB.hotCues.forEach(hc => {
               const x = halfWidth + (hc.position / currentDeckB.duration) * halfWidth;
               if (!isNaN(x) && isFinite(x)) {
-                ctx.fillStyle = hc.color || '#22c55e';
+                const style = getHotCueMarkerStyle(hc);
+                ctx.fillStyle = style.color;
+                ctx.strokeStyle = style.color;
+                ctx.lineWidth = 1;
+                ctx.setLineDash(style.dash);
                 ctx.beginPath();
                 ctx.moveTo(x - 3, 0);
                 ctx.lineTo(x + 3, 0);
                 ctx.lineTo(x, 6);
                 ctx.closePath();
-                ctx.fill();
+                if (style.fill) ctx.fill();
+                else ctx.stroke();
+                ctx.setLineDash([]);
               }
             });
           }

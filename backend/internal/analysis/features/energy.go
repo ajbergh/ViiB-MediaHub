@@ -20,6 +20,10 @@ const (
 	AlgorithmVersion            = "energy-structure-v1"
 	EnergyLevelAlgorithmVersion = "energy-level-v1-fixed-reference"
 	Encoding                    = "gzip-json-v1"
+	LoudnessKind                = "unweighted-mono-rms-proxy"
+	PeakKind                    = "sample-plus-midpoint-peak-proxy"
+	ChannelScope                = "mono"
+	MeasurementStandard         = "none"
 )
 
 // EnergyPoint is a fixed-time, normalized intensity sample.  Time is the
@@ -49,11 +53,28 @@ type CueSuggestion struct {
 // Result contains measured loudness and compact structure suitable for a
 // library row, a waveform overlay, or explainable recommendation scoring.
 type Result struct {
-	IntegratedLUFS float64         `json:"integratedLufs"`
+	// Deprecated: compatibility alias for unweighted mono RMS dB proxy.
+	IntegratedLUFS float64 `json:"integratedLufs"`
+	// Deprecated: compatibility alias for sample-plus-midpoint peak dBFS proxy.
 	TruePeakDBFS   float64         `json:"truePeakDbfs"`
+	LoudnessKind   string          `json:"loudnessKind"`
+	PeakKind       string          `json:"peakKind"`
+	ChannelScope   string          `json:"channelScope"`
+	Standard       string          `json:"standard"`
 	Energy         []EnergyPoint   `json:"energy"`
 	Sections       []Section       `json:"sections"`
 	CueSuggestions []CueSuggestion `json:"cueSuggestions"`
+}
+
+func qualifyMeasurement(result Result) Result {
+	// Every artifact written by this analyzer has the same mono, unweighted
+	// measurement path. Filling omitted values also qualifies older artifacts
+	// when they are decoded and returned by the compatibility API.
+	result.LoudnessKind = LoudnessKind
+	result.PeakKind = PeakKind
+	result.ChannelScope = ChannelScope
+	result.Standard = MeasurementStandard
+	return result
 }
 
 // EnergyLevelInputs are fixed-reference, absolute features used for the
@@ -234,17 +255,16 @@ func (a *Accumulator) Result() (Result, error) {
 	// callers can distinguish it by its all-zero energy curve.
 	integrated := 0.0
 	if meanSquare > 0 {
-		// The -0.691 calibration is the standard full-scale RMS-to-LUFS
-		// offset.  This streaming v1 intentionally omits gated K-weighting,
-		// so consumers receive a measured loudness proxy, never a claim of
-		// broadcast compliance.
+		// Preserve the legacy full-scale RMS proxy's numeric range. This offset
+		// does not make the result BS.1770/R128-compliant; there is no K-weighting
+		// or gating in this streaming v1.
 		integrated = 10*math.Log10(meanSquare) - 0.691
 	}
 	peak := 0.0
 	if a.peak > 0 {
 		peak = 20 * math.Log10(a.peak)
 	}
-	return Result{IntegratedLUFS: integrated, TruePeakDBFS: peak, Energy: points, Sections: segment(points)}, nil
+	return qualifyMeasurement(Result{IntegratedLUFS: integrated, TruePeakDBFS: peak, Energy: points, Sections: segment(points)}), nil
 }
 
 func segment(points []EnergyPoint) []Section {
@@ -280,7 +300,7 @@ func (r Result) Encode() ([]byte, error) {
 	if len(r.Energy) == 0 {
 		return nil, errors.New("energy artifact requires points")
 	}
-	payload, err := json.Marshal(r)
+	payload, err := json.Marshal(qualifyMeasurement(r))
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +333,7 @@ func Decode(data []byte) (Result, error) {
 	if len(result.Energy) == 0 {
 		return Result{}, errors.New("energy artifact has no points")
 	}
-	return result, nil
+	return qualifyMeasurement(result), nil
 }
 
 var unixEpoch = time.Unix(0, 0).UTC()

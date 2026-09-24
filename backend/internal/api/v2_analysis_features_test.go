@@ -253,8 +253,11 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatal(err)
 	}
-	if response.AlgorithmVersion != features.AlgorithmVersion || len(response.Energy) != 2 || response.IntegratedLUFS != result.IntegratedLUFS {
+	if response.AlgorithmVersion != features.AlgorithmVersion || len(response.Energy) != 2 || response.IntegratedLUFS != result.IntegratedLUFS || response.TruePeakDBFS != result.TruePeakDBFS {
 		t.Fatalf("energy response = %#v", response)
+	}
+	if response.LoudnessKind != features.LoudnessKind || response.PeakKind != features.PeakKind || response.ChannelScope != "mono" || response.Standard != "none" {
+		t.Fatalf("energy API did not expose qualified measurement metadata: %#v", response)
 	}
 }
 

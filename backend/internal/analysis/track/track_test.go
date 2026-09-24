@@ -195,8 +195,12 @@ func TestPersistHonorsAutomaticCuePointModesAndRefreshPolicy(t *testing.T) {
 			if err != nil || len(cues) != 0 {
 				t.Fatalf("mode %q persisted generated cues: %#v err=%v", mode, cues, err)
 			}
-			if _, err := database.GetTrackAnalysisArtifact("song", features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion); err != nil {
+			artifact, err := database.GetTrackAnalysisArtifact("song", features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+			if err != nil {
 				t.Fatalf("mode %q did not retain suggestion artifact: %v", mode, err)
+			}
+			if artifact.Provenance != "measured" {
+				t.Fatalf("energy artifact provenance=%q, want measured", artifact.Provenance)
 			}
 		})
 	}

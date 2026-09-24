@@ -70,7 +70,13 @@ type BeatGridUpdate struct {
 // producing version, so clients can render an explainable curve without
 // inferring energy from an LLM tag.
 type EnergyFeaturesResponse struct {
-	SongID           string                   `json:"songId"`
+	SongID       string `json:"songId"`
+	LoudnessKind string `json:"loudnessKind"`
+	PeakKind     string `json:"peakKind"`
+	ChannelScope string `json:"channelScope"`
+	Standard     string `json:"standard"`
+	// Deprecated numeric compatibility aliases. Consult the metadata above for
+	// the actual unweighted RMS and sample-plus-midpoint proxy semantics.
 	IntegratedLUFS   float64                  `json:"integratedLufs"`
 	TruePeakDBFS     float64                  `json:"truePeakDbfs"`
 	Energy           []features.EnergyPoint   `json:"energy"`
@@ -330,7 +336,7 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, EnergyFeaturesResponse{SongID: songID, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: result.Energy, Sections: result.Sections, CueSuggestions: result.CueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion})
+	respondJSON(w, EnergyFeaturesResponse{SongID: songID, LoudnessKind: result.LoudnessKind, PeakKind: result.PeakKind, ChannelScope: result.ChannelScope, Standard: result.Standard, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: result.Energy, Sections: result.Sections, CueSuggestions: result.CueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion})
 }
 
 // getTransitionRecommendationsV2 ranks only locally analyzed tracks.  It

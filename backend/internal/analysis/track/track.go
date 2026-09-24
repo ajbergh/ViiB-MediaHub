@@ -385,6 +385,7 @@ func persistFeatures(database *db.DB, result Result) error {
 		FormatVersion:    features.FormatVersion,
 		AlgorithmVersion: features.AlgorithmVersion,
 		Encoding:         features.Encoding,
+		Provenance:       "measured",
 		Data:             encoded,
 	})
 }
