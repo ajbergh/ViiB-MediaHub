@@ -31,6 +31,7 @@ Spotify remains a separate integration for Spotify browsing, streaming, and down
 | [Plex Music](plex-music.md) | PMS discovery, account/server selection, library sync, proxied playback, explicit metadata writeback, security, and troubleshooting |
 | [DJ Mode](dj-mode.md) | Full-featured two-deck DJ interface |
 | [DJv2 Professional Track Analysis Roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) | Persistent BPM/key/Camelot analysis and its implementation status, plus planned harmonic mixing, beatgrid, and next-generation DJ intelligence |
+| [DJv2 Pro Stems, Cue Intelligence & Mix Planning Roadmap](DJV2_PRO_STEMS_CUES_MIX_INTELLIGENCE_ROADMAP.md) | Detailed implementation plan for stem separation/playback, automatic scan-time cues, Camelot color UX, Energy Level, structure-aware recommendations, and mashup planning |
 | [Downloads](downloads.md) | Spotify download queue and status |
 | [Duplicates](duplicates.md) | Duplicate-track review and ignore state |
 | [Stats](stats.md) | Listening history and statistics across ViiB catalog playback |
