@@ -40,7 +40,7 @@ Implementation log:
 - 2026-09-23: Fixed the DJ load crash reported after opening PR #59. The shared BPM badge selector created a new object on every Zustand snapshot, triggering React's infinite update-depth error on both decks. Replaced it with primitive selectors and added finding 21 to this log. User-reported crash diagnosis was reproduced by repository investigation; unrelated existing edits in `backend/go.mod` and `backend/go.sum` were left untouched.
 - 2026-09-23: Fixed additional DJ issues 22–26 found in the follow-up audit: v2 analysis requests now update status and skip the grid request when the feature is missing; MIDI sync/headphone cue semantics match the UI and jog wheel can be learned; MIDI enabled state is visible; WebGL loop shading blends with overview pixels; and superseded track loads reject promptly without allowing stale callers to replace the active deck. Pushed commit `9817d70` to PR #59. Existing edits in `backend/go.mod` and `backend/go.sum` remain untouched.
 - 2026-09-23: Fixed the PERF layout follow-up in commit `0f686f0`. PERF FX now uses the full FXUnit controls instead of the Browse compact variant; sampler pad mode/volume controls overlay within fixed-height pads so assigned pads do not increase mixer height or get pushed below the workspace. Added finding 27. Visual verification is still pending.
-- 2026-09-23: Right-aligned Deck A's TRIM/HIGH/MID/LOW/FILT rack controls toward the jog wheel, leaving Deck B unchanged. Added finding 28.
+- 2026-09-23: Right-aligned Deck A's TRIM/HIGH/MID/LOW/FILT rack controls toward the jog wheel, leaving Deck B unchanged. Added finding 28 in commit `59500d6` on PR #59.
 
 ## Scope
 
