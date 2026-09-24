@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckState } from '../slices/djMixerSlice';
-import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, stillOwnsPreviewDeck } from './testMixPreviewGuard';
+import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, stillOwnsPreviewDeck, stillOwnsPreviewRoute } from './testMixPreviewGuard';
 
 function deck(overrides: Partial<DeckState> = {}): DeckState {
   return {
@@ -32,6 +32,22 @@ describe('Test Mix preview guards', () => {
     expect(hasSeparateHeadphoneRoute('', 'speakers-1')).toBe(false);
     expect(hasSeparateHeadphoneRoute('default', 'default')).toBe(false);
     expect(hasSeparateHeadphoneRoute('speakers-1', 'speakers-1')).toBe(false);
+  });
+
+  it('keeps cleanup ownership only while the preview route remains unchanged and off-air', () => {
+    const route = {
+      deck: 'B' as const, crossfader: -1, startedAtCrossfader: -1,
+      masterCueEnabled: false, autoGainEnabled: false, keyLockEnabled: true, startedAtKeyLock: true,
+      headphoneDeviceId: 'headphones-1', startedAtHeadphoneDeviceId: 'headphones-1',
+      masterDeviceId: 'speakers-1', startedAtMasterDeviceId: 'speakers-1',
+    };
+    expect(stillOwnsPreviewRoute(route)).toBe(true);
+    expect(stillOwnsPreviewRoute({ ...route, crossfader: 0 })).toBe(false);
+    expect(stillOwnsPreviewRoute({ ...route, masterCueEnabled: true })).toBe(false);
+    expect(stillOwnsPreviewRoute({ ...route, autoGainEnabled: true })).toBe(false);
+    expect(stillOwnsPreviewRoute({ ...route, keyLockEnabled: false })).toBe(false);
+    expect(stillOwnsPreviewRoute({ ...route, headphoneDeviceId: 'headphones-2' })).toBe(false);
+    expect(stillOwnsPreviewRoute({ ...route, masterDeviceId: 'speakers-2' })).toBe(false);
   });
 
   it('accepts only an empty, pristine deck for Test Mix audition', () => {

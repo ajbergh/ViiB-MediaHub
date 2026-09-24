@@ -5,6 +5,20 @@ export interface TestMixPreviewBaseline {
   eq: DeckState['eq'];
 }
 
+export interface TestMixPreviewRouteOwnership {
+  deck: DeckId;
+  crossfader: number;
+  startedAtCrossfader: number;
+  masterCueEnabled: boolean;
+  autoGainEnabled: boolean;
+  keyLockEnabled: boolean;
+  startedAtKeyLock: boolean;
+  headphoneDeviceId: string;
+  startedAtHeadphoneDeviceId: string;
+  masterDeviceId: string;
+  startedAtMasterDeviceId: string;
+}
+
 function hasDefaultFX(deck: DeckState): boolean {
   const fx = deck.fx;
   return !fx.filter.enabled && fx.filter.type === 'lowpass' && fx.filter.frequency === 1000 && fx.filter.resonance === 1
@@ -30,6 +44,17 @@ export function isPreviewDeckOffAir(deck: DeckId, crossfader: number): boolean {
 
 export function hasSeparateHeadphoneRoute(headphoneDeviceId: string, masterDeviceId: string): boolean {
   return !!headphoneDeviceId && headphoneDeviceId !== 'default' && headphoneDeviceId !== masterDeviceId;
+}
+
+/** Keep destructive preview cleanup tied to the exact off-air route it started with. */
+export function stillOwnsPreviewRoute(route: TestMixPreviewRouteOwnership): boolean {
+  return route.crossfader === route.startedAtCrossfader
+    && isPreviewDeckOffAir(route.deck, route.crossfader)
+    && !route.masterCueEnabled && !route.autoGainEnabled
+    && route.keyLockEnabled === route.startedAtKeyLock
+    && route.headphoneDeviceId === route.startedAtHeadphoneDeviceId
+    && route.masterDeviceId === route.startedAtMasterDeviceId
+    && hasSeparateHeadphoneRoute(route.headphoneDeviceId, route.masterDeviceId);
 }
 
 /** Detect user-owned control changes before clearing the temporary candidate. */
