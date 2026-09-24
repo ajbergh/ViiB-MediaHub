@@ -138,10 +138,8 @@ export const DeckBpmBadge = React.memo<DeckBpmBadgeProps>(({ deck, large = false
   const bpm = useStore(
     s => deck === 'A' ? s.djDeckA.effectiveBpm : s.djDeckB.effectiveBpm,
   );
-  const { hasTrack, analysisStatus } = useStore(s => {
-    const current = deck === 'A' ? s.djDeckA : s.djDeckB;
-    return { hasTrack: Boolean(current.track), analysisStatus: current.analysisStatus };
-  });
+  const hasTrack = useStore(s => Boolean(deck === 'A' ? s.djDeckA.track : s.djDeckB.track));
+  const analysisStatus = useStore(s => deck === 'A' ? s.djDeckA.analysisStatus : s.djDeckB.analysisStatus);
   const accent = deck === 'A' ? '#3b82f6' : '#8b5cf6';
 
   if (!bpm) {

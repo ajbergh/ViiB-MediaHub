@@ -4,7 +4,7 @@ Date: 2026-09-23
 
 ## Fix Progress
 
-Current status: Implementation is pushed on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. TypeScript verification passed. Minimized-window loop behavior still needs Wails runtime confirmation.
+Current status: Fixes for findings 1–20 plus the DJ load crash regression (finding 21) are on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. The load crash came from an unstable Zustand selector in both BPM badges; selectors now return stable primitive values. Minimized-window loop behavior still needs Wails runtime confirmation.
 
 | Finding | Status | Progress |
 |---|---|---|
@@ -14,6 +14,7 @@ Current status: Implementation is pushed on `djv2/panel-review-fixes` and [PR #5
 | 13–18 | Fixed | WebGL keeps the full peak series in a multirow texture with max-pooled per-pixel sampling, shares zoom/color controls, tracks renderer invalidation state, draws loop bands/edges, and marks overview regions. Both palettes are accurately named; controls, labels, overview seeking, and lane sizes are separated. |
 | 19 | Fixed | DJ page mounts MIDI dispatch, loads persisted mappings, routes transport/mixer/EQ/tempo/jog/hot-cue/FX/loop/headphone/sampler actions, and clears the handler on unmount. |
 | 20 | Fixed | Deck loading stops after a missing feature record, marks analysis status, and shows a clear status near BPM and energy insights. Non-404 failures remain distinguishable as unavailable. |
+| 21 | Fixed | DJ page crashed on load because each deck BPM badge returned a newly allocated object from its Zustand selector. Split it into primitive `hasTrack` and `analysisStatus` selectors to keep snapshots stable. |
 
 Implementation log:
 
@@ -29,6 +30,7 @@ Implementation log:
 - 2026-09-23: Tightened finding 7's worker/fallback interval to 5 ms and added fallback on worker errors. Pushed commit `2a3d864`; `npm run typecheck` passed after the change. Wails minimized-window runtime confirmation remains outstanding.
 - 2026-09-23: Added media `timeupdate` listeners as a second loop-wrap trigger alongside the worker ticker, removed on engine disposal. `npm run typecheck` passed, and commit `9365a40` is pushed. Wails minimized-window behavior still requires runtime confirmation.
 - 2026-09-23: Created [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) using the host GitHub CLI after confirming host authentication. This supersedes the earlier sandbox authentication blockage; minimized-window Wails runtime confirmation remains outstanding.
+- 2026-09-23: Fixed the DJ load crash reported after opening PR #59. The shared BPM badge selector created a new object on every Zustand snapshot, triggering React's infinite update-depth error on both decks. Replaced it with primitive selectors and added finding 21 to this log. User-reported crash diagnosis was reproduced by repository investigation; unrelated existing edits in `backend/go.mod` and `backend/go.sum` were left untouched.
 
 ## Scope
 
