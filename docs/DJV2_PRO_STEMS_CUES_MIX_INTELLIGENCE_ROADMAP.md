@@ -33,7 +33,7 @@ The full roadmap (sections 1–52) was reviewed on 2026-09-24 against repository
 | PR 11 — Four-button stem UI | Complete | Per-deck full/stems mode, four bus mutes, expanded gain/solo controls, buffering/fallback/underrun diagnostics, and FULL/ACAPELLA/INSTRUMENTAL mute presets with restore-on-toggle and gain preservation; focused tests and frontend typecheck passed. |
 | PR 12 — Cue API and preparation editor | Complete — V1 plus quantization | Typed candidate/list/apply routes, fill-empty/refresh/selected-only policies, installation-wide automatic cue mode, provenance/lock/rationale display, candidate actions, distinct user/generated waveform markers, and manual Off/beat/half-beat/quarter-beat snapping to stored grid timestamps. Focused snapping tests and frontend typecheck pass; richer editing remains open. |
 | PR 13 — DJ library Stem Status | Complete | Snapshot/change song rows carry a batched, path-free registry summary; the optional library badge supports sorting and status search. Full Go, DB, typecheck and frontend checks pass. |
-| PR 14 — Mix Next candidate filters V1 | Complete — V1; compatible Camelot follow-on in progress | Inclusive BPM/Energy ranges and registered-ready stem availability filters expose validated active filters, resolved evidence and before/after counts. Compatible Camelot-only filtering is being added on `codex/djv2-camelot-filter`. |
+| PR 14 — Mix Next candidate filters V1 | Complete — V1 plus compatible Camelot | Inclusive BPM/Energy ranges, registered-ready stem availability, and opt-in compatible-Camelot-only filtering expose resolved evidence and accurate before/after counts. The Camelot filter excludes candidates without trusted valid keys and is available in Mix Next. |
 | Mix/Mashup planning and interoperability | In progress | Mix Next scores confidence-gated BPM/Camelot/Energy Level evidence with Hold/Lift/Reset/Harmonic intents. A guarded top-candidate headphone preview is implemented for an empty opposite deck; atomic restoration of occupied decks, sync/beatmatch audition, structure/vocal evidence and Mashup Mode remain outstanding. |
 
 Current release gates and follow-on work:
@@ -84,7 +84,7 @@ Progress log:
 - 2026-09-24 — PR #62 backend CI identified Staticcheck SA1019 on internal use of the compatibility fields' Go `Deprecated:` comments. Removed those comments from the internal measurement result type; public JSON aliases and their compatibility descriptions remain. The API response still documents the aliases as deprecated for consumers.
 - 2026-09-24 — PR #62 passed backend race/static/vulnerability checks, frontend checks, deterministic track analysis on Linux/macOS/Windows, semantic cross-compilation and Linux/macOS/Windows desktop builds; squash merged to `main` as `f73a8d6`. Started `codex/djv2-cue-quantization` for nearest beat, half-beat and quarter-beat editing against stored beat timestamps; no measured downbeat claim will be added.
 - 2026-09-24 — Added cue quantization modes Off/beat/half-beat/quarter-beat and per-cue Snap. Both Snap and Move use actual stored beat timestamps, including nonuniform intervals; invalid/out-of-range grids, locked cues and unchanged positions are no-ops. Edited generated cues become user-owned. Focused helper tests (7/7), frontend typecheck and `git diff --check` passed. Also corrected section 20 to reflect the already shipped BPM/Camelot/Energy Level recommendation evidence and list only remaining filters/structure work.
-- 2026-09-24 — PR #63 passed the complete CI suite (backend race/static/vulnerability checks, frontend, cross-platform analysis/determinism, semantic cross-compilation and Linux/macOS/Windows desktop builds) and squash merged as `6f56e5c`. Started a compatible-Camelot-only filter for Mix Next; only candidates with valid, trusted keys in same/adjacent/relative relations will qualify.
+- 2026-09-24 — PR #63 passed the complete CI suite (backend race/static/vulnerability checks, frontend, cross-platform analysis/determinism, semantic cross-compilation and Linux/macOS/Windows desktop builds) and squash merged as `6f56e5c`. Added a compatible-Camelot-only Mix Next filter to the recommendations API and UI. It accepts same/adjacent/relative relations only when source and candidate keys pass existing provenance/confidence gates; missing, invalid and untrusted keys are excluded. Backend API and frontend query tests, TypeScript typecheck and `git diff --check` passed.
 
 ## 1. Product vision
 
@@ -1823,7 +1823,7 @@ Remaining recommendation-vector work:
 - phrase alignment beyond mix-in/mix-out cue confidence;
 - intro/outro compatibility;
 - vocal overlap risk;
-- compatible-Camelot-only, playlist and genre filters;
+- playlist and genre filters;
 - recency/play-history filters when desired.
 
 Every score component must remain inspectable.

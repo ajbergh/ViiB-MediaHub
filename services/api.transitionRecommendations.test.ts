@@ -9,6 +9,7 @@ describe('Mix Next recommendation filters', () => {
     vi.stubGlobal('fetch', fetchMock);
     await api.getTrackTransitionRecommendations('song / 1', 3, 'hold', {
       minBpm: 120.5, maxBpm: 132, minEnergyLevel: 4, maxEnergyLevel: 8, stemsAvailable: true,
+      camelotCompatible: true,
     });
     const url = String(fetchMock.mock.calls[0][0]);
     const query = new URL(url, 'http://local').searchParams;
@@ -16,6 +17,7 @@ describe('Mix Next recommendation filters', () => {
     expect(Object.fromEntries(query.entries())).toMatchObject({
       limit: '3', intent: 'hold', minBpm: '120.5', maxBpm: '132',
       minEnergyLevel: '4', maxEnergyLevel: '8', stemsAvailable: 'true',
+      camelotCompatible: 'true',
     });
   });
 });

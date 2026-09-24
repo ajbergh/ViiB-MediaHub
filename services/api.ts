@@ -230,6 +230,7 @@ export interface TransitionRecommendationFilters {
   minEnergyLevel?: number;
   maxEnergyLevel?: number;
   stemsAvailable?: boolean;
+  camelotCompatible?: boolean;
 }
 
 export interface TransitionCandidateFilterEvidence {
@@ -1588,6 +1589,7 @@ export const api = {
       if (value !== undefined) query.set(key, String(value));
     }
     if (filters.stemsAvailable !== undefined) query.set('stemsAvailable', String(filters.stemsAvailable));
+    if (filters.camelotCompatible !== undefined) query.set('camelotCompatible', String(filters.camelotCompatible));
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/recommendations?${query}`, { cache: 'no-store' });
     return handleResponse<TrackTransitionRecommendations>(response);
   },

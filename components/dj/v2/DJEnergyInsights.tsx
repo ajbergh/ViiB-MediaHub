@@ -34,6 +34,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [minEnergy, setMinEnergy] = useState('');
   const [maxEnergy, setMaxEnergy] = useState('');
   const [stemsOnly, setStemsOnly] = useState(false);
+  const [camelotOnly, setCamelotOnly] = useState(false);
   const [previewMessage, setPreviewMessage] = useState('');
   const previewRef = useRef<TestMixPreviewSession | null>(null);
   const previewTokenRef = useRef(0);
@@ -53,6 +54,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     ...(minEnergy !== '' ? { minEnergyLevel: Number(minEnergy) } : {}),
     ...(maxEnergy !== '' ? { maxEnergyLevel: Number(maxEnergy) } : {}),
     ...(stemsOnly ? { stemsAvailable: true } : {}),
+    ...(camelotOnly ? { camelotCompatible: true } : {}),
   };
   const bpmValuesValid = [minBpm, maxBpm].every(value => value === '' || (Number.isFinite(Number(value)) && Number(value) >= 60 && Number(value) <= 190));
   const energyValuesValid = [minEnergy, maxEnergy].every(value => value === '' || (Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 10));
@@ -100,7 +102,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       api.getTrackTransitionRecommendations(trackID, 3, intent, filters).then(value => live && setRecommendations(value)).catch(() => {});
     }
     return () => { live = false; };
-  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, filtersValid]);
+  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, filtersValid]);
 
   if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
   if (!features) return null;
@@ -324,6 +326,10 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       <label className="inline-flex items-center gap-1" title="Only include candidates with a registered ready stem set">
         <input aria-label="Stems available only" type="checkbox" checked={stemsOnly} onChange={event => setStemsOnly(event.target.checked)} />
         <span>Stems</span>
+      </label>
+      <label className="inline-flex items-center gap-1" title="Only include candidates with trusted keys in the same, adjacent, or relative Camelot relation">
+        <input aria-label="Compatible Camelot only" type="checkbox" checked={camelotOnly} onChange={event => setCamelotOnly(event.target.checked)} />
+        <span>Compatible Camelot only</span>
       </label>
       {!filtersValid && <span role="status" className="text-amber-400">Check ranges: BPM 60–190; Energy Level 1–10; minimum must not exceed maximum.</span>}
       {features.cueSuggestions.slice(0, 3).map((cue, index) => {

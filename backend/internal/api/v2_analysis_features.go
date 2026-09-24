@@ -108,11 +108,12 @@ type TransitionCandidateEvidence struct {
 }
 
 type TransitionRecommendationFilters struct {
-	MinBPM         *float64 `json:"minBpm,omitempty"`
-	MaxBPM         *float64 `json:"maxBpm,omitempty"`
-	MinEnergyLevel *int     `json:"minEnergyLevel,omitempty"`
-	MaxEnergyLevel *int     `json:"maxEnergyLevel,omitempty"`
-	StemsAvailable *bool    `json:"stemsAvailable,omitempty"`
+	MinBPM            *float64 `json:"minBpm,omitempty"`
+	MaxBPM            *float64 `json:"maxBpm,omitempty"`
+	MinEnergyLevel    *int     `json:"minEnergyLevel,omitempty"`
+	MaxEnergyLevel    *int     `json:"maxEnergyLevel,omitempty"`
+	StemsAvailable    *bool    `json:"stemsAvailable,omitempty"`
+	CamelotCompatible *bool    `json:"camelotCompatible,omitempty"`
 }
 
 type TransitionRecommendationsResponse struct {
@@ -445,6 +446,11 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 			respondError(w, http.StatusBadRequest, scoreErr.Error())
 			return
 		}
+		if filters.CamelotCompatible != nil && *filters.CamelotCompatible {
+			if !validTransitionKey(analysisByID[songID], overrides[songID]) || !validTransitionKey(analysisByID[artifact.SongID], overrides[artifact.SongID]) || !transitionCamelotCompatible(score.Vector.CamelotRelation) {
+				continue
+			}
+		}
 		evidence := TransitionCandidateEvidence{BPM: metadata.BPM, EnergyLevel: metadata.EnergyLevel}
 		if filters.StemsAvailable != nil {
 			evidence.StemsAvailable = &stemAvailable
@@ -522,6 +528,20 @@ func parseTransitionRecommendationFilters(values url.Values) (TransitionRecommen
 		}
 		filters.StemsAvailable = &parsed
 	}
+	if value, present, err := singleQueryValue(values, "camelotCompatible"); err != nil {
+		return filters, err
+	} else if present {
+		var parsed bool
+		switch value {
+		case "true":
+			parsed = true
+		case "false":
+			parsed = false
+		default:
+			return filters, errors.New("camelotCompatible must be true or false")
+		}
+		filters.CamelotCompatible = &parsed
+	}
 	return filters, nil
 }
 
@@ -553,6 +573,23 @@ func transitionCandidateMatchesFilters(metadata features.TransitionMetadata, ste
 		return false
 	}
 	return true
+}
+
+func transitionCamelotCompatible(relation string) bool {
+	switch relation {
+	case "same", "adjacent", "relative":
+		return true
+	default:
+		return false
+	}
+}
+
+func validTransitionKey(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) bool {
+	key := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis})
+	if key.Tonic == nil || key.Mode == nil || *key.Tonic < 0 || *key.Tonic > 11 {
+		return false
+	}
+	return *key.Mode == analysiskey.ModeMajor || *key.Mode == analysiskey.ModeMinor
 }
 
 func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) features.TransitionMetadata {

@@ -356,6 +356,7 @@ func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
 	for _, query := range []string{
 		"minBpm=59", "maxBpm=191", "minBpm=NaN", "minEnergyLevel=0", "maxEnergyLevel=11",
 		"minBpm=130&maxBpm=120", "minEnergyLevel=8&maxEnergyLevel=4", "stemsAvailable=yes", "minBpm=120&minBpm=121",
+		"camelotCompatible=yes", "camelotCompatible=true&camelotCompatible=false",
 	} {
 		t.Run(query, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
@@ -364,6 +365,141 @@ func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
 				t.Fatalf("status=%d, want 400: %s", recorder.Code, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestV2CamelotCompatibleRecommendationFilter(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	candidates := []struct {
+		id         string
+		status     string
+		tonic      *int
+		mode       *string
+		keySource  string
+		confidence float64
+	}{
+		{id: "same", status: db.TrackAnalysisComplete, tonic: intPointer(0), mode: stringPointer("major"), keySource: "measured", confidence: .9},
+		{id: "adjacent", status: db.TrackAnalysisComplete, tonic: intPointer(7), mode: stringPointer("major"), keySource: "measured", confidence: .9},
+		{id: "relative", status: db.TrackAnalysisComplete, tonic: intPointer(9), mode: stringPointer("minor"), keySource: "measured", confidence: .9},
+		{id: "other", status: db.TrackAnalysisComplete, tonic: intPointer(2), mode: stringPointer("major"), keySource: "measured", confidence: .9},
+		{id: "missing", status: db.TrackAnalysisComplete},
+		{id: "low-confidence", status: db.TrackAnalysisComplete, tonic: intPointer(0), mode: stringPointer("major"), keySource: "measured", confidence: .2},
+		{id: "imported", status: db.TrackAnalysisComplete, tonic: intPointer(0), mode: stringPointer("major"), keySource: "imported", confidence: .9},
+		{id: "unsettled", status: db.TrackAnalysisPending, tonic: intPointer(0), mode: stringPointer("major"), keySource: "measured", confidence: .9},
+	}
+	allIDs := make([]string, 0, len(candidates)+1)
+	allIDs = append(allIDs, "source")
+	for _, candidate := range candidates {
+		allIDs = append(allIDs, candidate.id)
+	}
+	for _, id := range allIDs {
+		if err := database.SaveSong(&db.Song{ID: id, Title: id, Artist: "Artist", Album: "Album", FilePath: id + ".mp3", AddedAt: 1}); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := (features.Result{IntegratedLUFS: -12, Energy: []features.EnergyPoint{{Value: .4}, {Value: .7}}}).Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id + ":energy", SongID: id, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Data: encoded}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	measured := "measured"
+	confidence := .9
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "source", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: "source", KeyTonic: intPointer(0), KeyMode: stringPointer("major"), KeyConfidence: &confidence, KeySource: &measured}); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range candidates {
+		keyConfidence, keySource := candidate.confidence, candidate.keySource
+		analysis := db.TrackAnalysis{SongID: candidate.id, Status: candidate.status, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: candidate.id, KeyTonic: candidate.tonic, KeyMode: candidate.mode}
+		if candidate.tonic != nil && candidate.mode != nil {
+			analysis.KeyConfidence, analysis.KeySource = &keyConfidence, &keySource
+		}
+		if err := database.UpsertTrackAnalysis(analysis); err != nil {
+			t.Fatalf("save analysis %s: %v", candidate.id, err)
+		}
+	}
+
+	get := func(query string) TransitionRecommendationsResponse {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations"+query, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("GET recommendations%s = %d: %s", query, recorder.Code, recorder.Body.String())
+		}
+		var response TransitionRecommendationsResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+
+	filtered := get("?camelotCompatible=true")
+	accepted := map[string]bool{}
+	for _, recommendation := range filtered.Recommendations {
+		accepted[recommendation.SongID] = true
+	}
+	for _, id := range []string{"same", "adjacent", "relative"} {
+		if !accepted[id] {
+			t.Errorf("compatible candidate %q was filtered out; recommendations=%v", id, accepted)
+		}
+	}
+	if len(accepted) != 3 {
+		t.Errorf("compatible filter accepted %d candidates, want same/adjacent/relative only: %v", len(accepted), accepted)
+	}
+	if filtered.CandidatesBeforeFilters != len(candidates) || filtered.CandidatesAfterFilters != 3 || filtered.Filters.CamelotCompatible == nil || !*filtered.Filters.CamelotCompatible {
+		t.Errorf("camelot filter echo/counts = before %d after %d filters %#v", filtered.CandidatesBeforeFilters, filtered.CandidatesAfterFilters, filtered.Filters)
+	}
+	for _, query := range []string{"", "?camelotCompatible=false"} {
+		unfiltered := get(query)
+		if unfiltered.CandidatesBeforeFilters != len(candidates) || unfiltered.CandidatesAfterFilters != len(candidates) || len(unfiltered.Recommendations) != len(candidates) {
+			t.Errorf("query %q changed unfiltered result/counts: before %d after %d recommendations %d", query, unfiltered.CandidatesBeforeFilters, unfiltered.CandidatesAfterFilters, len(unfiltered.Recommendations))
+		}
+		if query == "" && unfiltered.Filters.CamelotCompatible != nil {
+			t.Errorf("omitted camelotCompatible echoed as %#v", unfiltered.Filters.CamelotCompatible)
+		}
+		if query != "" && (unfiltered.Filters.CamelotCompatible == nil || *unfiltered.Filters.CamelotCompatible) {
+			t.Errorf("false camelotCompatible echo = %#v", unfiltered.Filters.CamelotCompatible)
+		}
+	}
+
+	lowSourceConfidence := .2
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "source", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: "source", KeyTonic: intPointer(0), KeyMode: stringPointer("major"), KeyConfidence: &lowSourceConfidence, KeySource: &measured}); err != nil {
+		t.Fatal(err)
+	}
+	withoutTrustedSource := get("?camelotCompatible=true")
+	if withoutTrustedSource.CandidatesAfterFilters != 0 || len(withoutTrustedSource.Recommendations) != 0 {
+		t.Fatalf("compatible filter used candidates without a trusted source key: %#v", withoutTrustedSource)
+	}
+}
+
+func intPointer(value int) *int { return &value }
+
+func stringPointer(value string) *string { return &value }
+
+func TestValidTransitionKeyRejectsMalformedEffectiveKey(t *testing.T) {
+	measured, major := "measured", "major"
+	invalidTonic := db.TrackAnalysis{Status: db.TrackAnalysisComplete, KeyTonic: intPointer(-1), KeyMode: &major, KeySource: &measured}
+	invalidMode := db.TrackAnalysis{Status: db.TrackAnalysisComplete, KeyTonic: intPointer(0), KeyMode: stringPointer("unknown-mode"), KeySource: &measured}
+	validTonic := db.TrackAnalysis{Status: db.TrackAnalysisComplete, KeyTonic: intPointer(0), KeyMode: &major, KeySource: &measured}
+	inferred := "inferred"
+	untrusted := db.TrackAnalysis{Status: db.TrackAnalysisComplete, KeyTonic: intPointer(0), KeyMode: &major, KeySource: &inferred}
+	if validTransitionKey(invalidTonic, db.TrackAnalysisOverride{}) {
+		t.Fatal("out-of-range effective key was accepted")
+	}
+	if validTransitionKey(invalidMode, db.TrackAnalysisOverride{}) {
+		t.Fatal("unknown effective key mode was accepted")
+	}
+	if !validTransitionKey(validTonic, db.TrackAnalysisOverride{}) {
+		t.Fatal("valid measured effective key was rejected")
+	}
+	if validTransitionKey(untrusted, db.TrackAnalysisOverride{}) {
+		t.Fatal("inferred effective key was accepted")
 	}
 }
 
