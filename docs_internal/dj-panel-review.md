@@ -4,7 +4,7 @@ Date: 2026-09-23
 
 ## Fix Progress
 
-Current status: Implementation complete and pushed on `djv2/panel-review-fixes`; TypeScript verification passed. PR creation is blocked by unavailable GitHub CLI/Git credential-helper authentication, and minimized-window loop behavior needs Wails runtime confirmation.
+Current status: Implementation is pushed on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. TypeScript verification passed. Minimized-window loop behavior still needs Wails runtime confirmation.
 
 | Finding | Status | Progress |
 |---|---|---|
@@ -28,6 +28,7 @@ Implementation log:
 - 2026-09-23: Pushed implementation commit `833ca11` to `origin/djv2/panel-review-fixes`. `gh auth status` reports an invalid saved token, and Git Credential Manager returned no reusable credential even with the repository marked safe, so I could not create the PR. `git push` printed the branch's GitHub PR creation link.
 - 2026-09-23: Tightened finding 7's worker/fallback interval to 5 ms and added fallback on worker errors. Pushed commit `2a3d864`; `npm run typecheck` passed after the change. Wails minimized-window runtime confirmation remains outstanding.
 - 2026-09-23: Added media `timeupdate` listeners as a second loop-wrap trigger alongside the worker ticker, removed on engine disposal. `npm run typecheck` passed, and commit `9365a40` is pushed. Wails minimized-window behavior still requires runtime confirmation.
+- 2026-09-23: Created [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) using the host GitHub CLI after confirming host authentication. This supersedes the earlier sandbox authentication blockage; minimized-window Wails runtime confirmation remains outstanding.
 
 ## Scope
 
