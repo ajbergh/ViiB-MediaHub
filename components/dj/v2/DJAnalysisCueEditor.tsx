@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, type AnalysisCueApplyMode, type AnalysisCueList } from '../../../services/api';
 import { useStore } from '../../../store';
-import type { DeckId, HotCue } from '../../../slices/djMixerSlice';
+import { DEFAULT_HOT_CUE_COLOR, type DeckId, type HotCue } from '../../../slices/djMixerSlice';
 import { quantizeHotCuePosition, type HotCueQuantizeMode } from '../../../lib/hotCueQuantization';
 import { convertHotCueToManual, moveHotCueToPosition, recolorHotCue, renameHotCue } from '../../../lib/hotCueEditor';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
@@ -144,7 +144,7 @@ export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps)
           </label>
           <label className="flex items-center gap-1" title="Change cue color while preserving its provenance">
             <span className="sr-only">Recolor cue {cue.slot}</span>
-            <input type="color" aria-label={`Recolor cue ${cue.slot}`} value={/^#[\da-f]{6}$/i.test(cue.color) ? cue.color : '#FF5500'}
+            <input type="color" aria-label={`Recolor cue ${cue.slot}`} value={/^#[\da-f]{6}$/i.test(cue.color) ? cue.color : DEFAULT_HOT_CUE_COLOR}
               disabled={!!cue.locked || isApplying} onChange={event => updateCue(cue.slot, current => recolorHotCue(current, event.target.value))}
               className="h-5 w-6 cursor-pointer rounded border border-neutral-700 bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-40" />
           </label>

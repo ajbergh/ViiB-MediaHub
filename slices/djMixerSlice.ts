@@ -55,6 +55,8 @@ export interface HotCue {
   updatedAt?: number;
 }
 
+export const DEFAULT_HOT_CUE_COLOR = '#FF5500';
+
 export interface Loop {
   enabled: boolean;
   start: number;     // seconds
@@ -822,7 +824,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         slot,
         position,
         label,
-        color: color || '#FF5500',
+        color: color || DEFAULT_HOT_CUE_COLOR,
         origin: 'user'
       };
       
@@ -894,7 +896,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         slot: hc.slot,
         position: hc.position,
         label: hc.label || '',
-        color: hc.color || '#FF5500',
+        color: hc.color || DEFAULT_HOT_CUE_COLOR,
         origin: hc.origin || 'user',
         generatorVersion: hc.generatorVersion,
         confidence: hc.confidence,
