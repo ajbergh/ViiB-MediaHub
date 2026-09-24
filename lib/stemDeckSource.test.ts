@@ -42,6 +42,7 @@ function response(status: boolean, start: number, count: number, sampleRate = 10
 }
 
 function fixture(frameRequestOk = true, statusAvailable = true) {
+  let currentFrameRequestOk = frameRequestOk;
   const gains: GainNode[] = [];
   const context = { currentTime: 0, createGain: vi.fn(() => { const node = fakeGain(); gains.push(node); return node; }) } as unknown as AudioContext;
   const fallback = fakeDeckSource();
@@ -54,7 +55,7 @@ function fixture(frameRequestOk = true, statusAvailable = true) {
     const query = new URL(url, 'http://local').searchParams;
     const start = Number(query.get('startFrame'));
     const count = Number(query.get('frameCount'));
-    return response(frameRequestOk, start, count);
+    return response(currentFrameRequestOk, start, count);
   }) as unknown as typeof fetch;
   const source = new StemDeckSource(context, {
     fetch: fetcher,
@@ -63,7 +64,7 @@ function fixture(frameRequestOk = true, statusAvailable = true) {
     chunkFrames: 1024,
     targetBufferSeconds: 2,
   });
-  return { source, fallback, worklet, fetcher, gains };
+  return { source, fallback, worklet, fetcher, gains, setFrameRequestOk: (ok: boolean) => { currentFrameRequestOk = ok; } };
 }
 
 describe('StemDeckSource', () => {
@@ -102,6 +103,28 @@ describe('StemDeckSource', () => {
     expect(worklet.port.close).toHaveBeenCalledOnce();
   });
 
+  it('applies independent gain, mute, and solo state to the four stem buses', async () => {
+    const { source, gains } = fixture();
+    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    await vi.waitFor(() => expect(source.getStemStatus().bufferedSeconds).toBeGreaterThan(0));
+    await source.setStemMode('stems');
+
+    source.setStemGain('vocals', 0.4);
+    source.setStemMuted('drums', true);
+    source.setStemSolo('bass', true);
+    expect(gains[2].gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0, 0.01);
+    expect(gains[3].gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0, 0.01);
+    expect(gains[4].gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 0, 0.01);
+    expect(gains[5].gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0, 0.01);
+
+    source.setStemSolo('bass', false);
+    expect(gains[2].gain.setTargetAtTime).toHaveBeenLastCalledWith(0.4, 0, 0.01);
+    expect(gains[3].gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0, 0.01);
+    expect(gains[4].gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 0, 0.01);
+    expect(gains[5].gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 0, 0.01);
+    source.dispose();
+  });
+
   it('falls back safely when frame serving fails and reports the error', async () => {
     const { source, fallback } = fixture(false);
     await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
@@ -111,6 +134,25 @@ describe('StemDeckSource', () => {
     await source.setStemMode('stems');
     expect(source.getStemStatus().mode).toBe('fallback');
     expect(fallback.isLoaded()).toBe(true);
+  });
+
+  it('preserves the current stem position when frame loading falls back to the full-track source', async () => {
+    const { source, worklet, fallback, setFrameRequestOk } = fixture();
+    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    await vi.waitFor(() => expect(worklet.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'frames' }), expect.any(Array)));
+    await source.setStemMode('stems');
+    await vi.waitFor(() => expect(source.getStemStatus().bufferedSeconds).toBeGreaterThan(1));
+    await source.play();
+    worklet.port.onmessage?.({ data: { type: 'position', frame: 2345 } } as MessageEvent);
+    source.setStemGain('vocals', 0.7);
+    setFrameRequestOk(false);
+    worklet.port.onmessage?.({ data: { type: 'underrun', frame: 2345 } } as MessageEvent);
+    await vi.waitFor(() => expect(source.getStemStatus().mode).toBe('fallback'));
+
+    expect(source.getStemStatus()).toMatchObject({ mode: 'fallback', error: 'Stem frame request failed (409)' });
+    expect(fallback.seek).toHaveBeenLastCalledWith(2.345);
+    expect(source.getPosition()).toBe(2.345);
+    source.dispose();
   });
 
   it('counts a worklet underrun and schedules another bounded prefetch', async () => {
@@ -134,5 +176,39 @@ describe('StemDeckSource', () => {
     expect(f.fallback.dispose).toHaveBeenCalledOnce();
     expect(f.worklet.port.close).not.toHaveBeenCalled();
     expect(f.worklet.node.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('cancels stale frame responses, then unloads and reloads with fresh stem state', async () => {
+    let releaseFrameResponse: ((response: Response) => void) | undefined;
+    const base = fixture();
+    const controlledFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/frames?')) return await new Promise<Response>(resolve => { releaseFrameResponse = resolve; });
+      return base.fetcher(input, init);
+    }) as unknown as typeof fetch;
+    const source = new StemDeckSource({
+      currentTime: 0, createGain: () => fakeGain(),
+    } as unknown as AudioContext, {
+      fetch: controlledFetch,
+      createFallback: () => base.fallback,
+      createWorklet: async () => base.worklet.node,
+      chunkFrames: 1024,
+      targetBufferSeconds: 2,
+    });
+
+    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    await vi.waitFor(() => expect(releaseFrameResponse).toBeTypeOf('function'));
+    source.cancelLoad();
+    releaseFrameResponse?.(response(true, 0, 1024));
+    await vi.waitFor(() => expect(source.getStemStatus().bufferedSeconds).toBe(0));
+    expect(base.worklet.port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'frames' }), expect.any(Array));
+
+    source.unload();
+    expect(source.getStemStatus()).toMatchObject({ available: false, mode: 'fallback' });
+    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    expect(source.getStemState()).toEqual({
+      vocals: { gain: 1, muted: false, solo: false }, drums: { gain: 1, muted: false, solo: false },
+      bass: { gain: 1, muted: false, solo: false }, music: { gain: 1, muted: false, solo: false },
+    });
+    source.dispose();
   });
 });
