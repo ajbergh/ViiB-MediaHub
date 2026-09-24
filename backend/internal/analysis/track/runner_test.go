@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
@@ -67,6 +68,24 @@ func TestRunAnalyzesEveryTrackOnce(t *testing.T) {
 		if record.BPM == nil {
 			t.Fatalf("%s: no measured BPM persisted", id)
 		}
+	}
+}
+
+func TestRunThreadsAutomaticCueModeIntoPersistence(t *testing.T) {
+	database, ids := runnerCatalog(t, 1)
+	progress, err := Run(context.Background(), database, analysis.NewDefaultDecoderRegistry(), ids, RunOptions{AutoCueMode: db.AutomaticCuePointsOff})
+	if err != nil || progress.Analyzed != 1 {
+		t.Fatalf("run = %#v err=%v", progress, err)
+	}
+	cues, err := database.GetDJHotCues(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cues) != 0 {
+		t.Fatalf("off mode persisted generated cues: %#v", cues)
+	}
+	if _, err := database.GetTrackAnalysisArtifact(ids[0], features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion); err != nil {
+		t.Fatalf("off mode did not persist suggestion artifacts: %v", err)
 	}
 }
 

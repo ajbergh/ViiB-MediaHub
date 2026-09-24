@@ -1,7 +1,7 @@
 import type { DeckAnalysisPatch, DeckState } from '../slices/djMixerSlice';
 import type { TrackAnalysisFeature, TrackBeatGrid } from '../services/api';
 
-export type BeatGridSource = 'unknown' | 'generated' | 'measured' | 'manual';
+export type BeatGridSource = 'unknown' | 'generated' | 'measured' | 'inferred-from-meter' | 'manual';
 export function validBeatGrid(beats: number[] | null | undefined): boolean {
   return !!beats && beats.length >= 2 && beats.every((beat, i) => Number.isFinite(beat) && beat >= 0 && (i === 0 || beat > beats[i - 1]));
 }
@@ -19,7 +19,7 @@ export function resolvedGridPatch(feature: TrackAnalysisFeature | null, grid: Tr
     patch.downbeatIndices = grid.downbeatIndices;
     patch.beatGridLocked = grid.locked;
     // Older servers have no provenance. Locked grids were saved by the manual editor.
-    patch.beatGridSource = grid.source ?? (grid.locked ? 'manual' : 'unknown');
+    patch.beatGridSource = grid.provenance ?? grid.source ?? (grid.locked ? 'manual' : 'unknown');
   } else {
     // BPM alone is never enough to manufacture a performance grid in the
     // browser. The backend analyzer persists phase-aligned grids atomically.

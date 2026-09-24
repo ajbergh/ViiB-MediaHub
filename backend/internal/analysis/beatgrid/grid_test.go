@@ -18,6 +18,9 @@ func TestBuildStraightPreservesFirstDownbeatAndMeter(t *testing.T) {
 	if !reflect.DeepEqual(grid.DownbeatIndices, []int{0, 4}) {
 		t.Fatalf("downbeats = %#v, want [0 4]", grid.DownbeatIndices)
 	}
+	if grid.Provenance != ProvenanceInferredFromMeter {
+		t.Fatalf("provenance = %q, want %q", grid.Provenance, ProvenanceInferredFromMeter)
+	}
 }
 
 func TestEncodeDecodeRoundTripIsDeterministic(t *testing.T) {

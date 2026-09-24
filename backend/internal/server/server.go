@@ -21,7 +21,9 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	r.Use(middleware.Compress(5))
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if requestID := middleware.GetReqID(req.Context()); requestID != "" { w.Header().Set("X-Request-ID", requestID) }
+			if requestID := middleware.GetReqID(req.Context()); requestID != "" {
+				w.Header().Set("X-Request-ID", requestID)
+			}
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Referrer-Policy", "no-referrer")
 			w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
@@ -31,12 +33,12 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	})
 
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://wails.localhost", "http://wails.localhost:*", "https://wails.localhost", "https://wails.localhost:*"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "Last-Event-ID", "Range", "X-Request-ID"},
-		ExposedHeaders: []string{"X-Request-ID", "Content-Range", "Accept-Ranges", "Content-Length"},
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://wails.localhost", "http://wails.localhost:*", "https://wails.localhost", "https://wails.localhost:*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Last-Event-ID", "Range", "X-Request-ID"},
+		ExposedHeaders:   []string{"X-Request-ID", "Content-Range", "Accept-Ranges", "Content-Length"},
 		AllowCredentials: true,
-		MaxAge: 300,
+		MaxAge:           300,
 	}))
 
 	r.Use(middleware.Throttle(100))
@@ -64,6 +66,7 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	r.Mount("/api/v2/plex", apiHandler.PlexRoutes())
 
 	r.Mount("/api/v2/operations", apiHandler.V2LibraryOperationRoutes())
+	r.Mount("/api/v2/stems", apiHandler.V2StemRoutes())
 	r.Mount("/api/v2/jobs", apiHandler.V2JobRoutes())
 	r.Mount("/api/v2/performance", apiHandler.V2PerformanceRoutes())
 	r.Mount("/api/v2", apiHandler.V2Routes())
@@ -72,9 +75,19 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(frontendFS))
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
-		if path == "" { path = "index.html" }
-		if f, err := frontendFS.Open(path); err == nil { f.Close(); fileServer.ServeHTTP(w, r); return }
-		if !strings.Contains(path, ".") { r.URL.Path = "/"; fileServer.ServeHTTP(w, r); return }
+		if path == "" {
+			path = "index.html"
+		}
+		if f, err := frontendFS.Open(path); err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		if !strings.Contains(path, ".") {
+			r.URL.Path = "/"
+			fileServer.ServeHTTP(w, r)
+			return
+		}
 		http.NotFound(w, r)
 	})
 	return r

@@ -9,7 +9,6 @@ by ViiB.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib.metadata
 import json
 import math
@@ -18,6 +17,12 @@ from pathlib import Path
 import statistics
 import time
 from typing import Any
+
+from rhythm_benchmark_common import (
+    apply_overlap_audit, evidence_class, file_hash, normalized_result, normalized_row,
+    write_result,
+    validate_canonical_wav,
+)
 
 
 # Beat This emits ticks at 50 FPS. A one-beat interval alone is quantized in
@@ -35,20 +40,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--allow-held-out", action="store_true", help="required acknowledgement before evaluating held-out audio")
     parser.add_argument("--path-base", type=Path, default=Path.cwd(), help="base for relative manifest paths (default: current directory)")
     parser.add_argument("--checkpoint", type=Path, required=True, help="local final0 checkpoint; adapter never downloads model weights")
+    parser.add_argument("--overlap-audit", type=Path, help="matching training_overlap_audit.py report; exact manifest hash is enforced")
     return parser.parse_args()
-
-
-def file_hash(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for block in iter(lambda: source.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-def resolve_path(value: str, path_base: Path) -> Path:
-    candidate = Path(value.replace("\\", "/"))
-    return candidate if candidate.is_absolute() else path_base / candidate
 
 
 def finite_ticks(values: Any) -> list[float]:
@@ -92,34 +85,51 @@ def main() -> int:
 
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     path_base = args.path_base.resolve()
+    overlap_audit_sha256 = apply_overlap_audit(manifest, args.manifest, args.overlap_audit)
     # Disable the optional madmom DBN to keep this reference path self-contained
     # and retain Beat This's published minimal postprocessor behavior.
     detector = File2Beats(checkpoint_path=os.fspath(args.checkpoint), device="cpu", dbn=False)
-    rows: list[dict[str, Any]] = []
+    audio_timing: dict[str, Any] = {
+        "inputRequirement": "ViiB-decoded canonical WAV path and timing record supplied by manifest",
+        "timestampOrigin": "ViiB canonical decoded source frame 0; adapter performs no decoding or offset",
+        "timingRecords": {},
+    }
+    result_rows: list[dict[str, Any]] = []
     for track in manifest.get("tracks", []):
         if track.get("split") != args.split:
             continue
-        row: dict[str, Any] = {"id": track["id"]}
+        row: dict[str, Any]
         try:
-            beats, _downbeats = detector(os.fspath(resolve_path(track["path"], path_base)))
-            ticks = finite_ticks(beats)
-            bpm = bpm_from_ticks(ticks)
-            if bpm is None:
-                row["status"] = "unknown"
-            else:
-                row.update(status="partial", bpm=bpm, beatPositions=ticks)
+            canonical, timing = validate_canonical_wav(track, path_base)
+            beats, downbeats = detector(os.fspath(canonical))
+            beat_ticks = finite_ticks(beats)
+            downbeat_ticks = finite_ticks(downbeats)
+            bpm = bpm_from_ticks(beat_ticks)
+            audio_timing["timingRecords"][track["id"]] = timing
+            row = normalized_row(
+                track["id"], status="partial" if bpm is not None or beat_ticks else "unknown",
+                bpm=bpm, beats=beat_ticks, downbeats=downbeat_ticks,
+                evidence_class=evidence_class(track),
+            )
+        except ValueError as error:
+            row = normalized_row(track["id"], status="blocked", error="canonical_audio_unavailable",
+                                 error_message=str(error), evidence_class=evidence_class(track))
         except FileNotFoundError as error:
-            row.update(status="failed", error="reference_source_unavailable", errorMessage=str(error))
+            row = normalized_row(track["id"], status="failed", error="reference_source_unavailable",
+                                 error_message=str(error), evidence_class=evidence_class(track))
         except RuntimeError as error:
-            row.update(status="failed", error="reference_analysis_failed", errorMessage=str(error))
+            row = normalized_row(track["id"], status="failed", error="reference_analysis_failed",
+                                 error_message=str(error), evidence_class=evidence_class(track))
         except Exception as error:  # Preserve every external-tool failure as evidence.
-            row.update(status="failed", error="reference_analysis_failed", errorMessage=f"{type(error).__name__}: {error}")
-        rows.append(row)
-    if not rows:
+            row = normalized_row(track["id"], status="failed", error="reference_analysis_failed",
+                                 error_message=f"{type(error).__name__}: {error}",
+                                 evidence_class=evidence_class(track))
+        result_rows.append(row)
+    if not result_rows:
         raise SystemExit(f"manifest has no {args.split!r} tracks")
-    result_set = {
-        "algorithm": f"beat-this-{importlib.metadata.version('beat-this')}-final0-minimal",
-        "configuration": {
+    result_set = normalized_result(
+        algorithm=f"beat-this-{importlib.metadata.version('beat-this')}-final0-minimal",
+        configuration={
             "tool": "beat_this.inference.File2Beats",
             "toolVersion": importlib.metadata.version("beat-this"),
             "model": "final0",
@@ -137,18 +147,19 @@ def main() -> int:
             "split": args.split,
             "manifest": args.manifest.name,
             "manifestSHA256": file_hash(args.manifest),
+            "overlapAudit": args.overlap_audit.name if args.overlap_audit else None,
+            "overlapAuditSHA256": overlap_audit_sha256,
             "pathBase": os.fspath(path_base),
             "audioDurationPolicy": "full track",
             "wallSeconds": round(time.monotonic() - started, 6),
             "license": "MIT reference process only; model weights remain external development artifacts",
             "purpose": "development-only external reference; not shipped or used by ViiB production analysis",
         },
-        "results": rows,
-    }
-    with args.out.open("x", encoding="utf-8", newline="\n") as destination:
-        json.dump(result_set, destination, indent=2)
-        destination.write("\n")
-    print(json.dumps({"out": os.fspath(args.out), "tracks": len(rows), "split": args.split}, indent=2))
+        timing=audio_timing,
+        results=result_rows,
+    )
+    write_result(args.out, result_set)
+    print(json.dumps({"out": os.fspath(args.out), "tracks": len(result_rows), "split": args.split}, indent=2))
     return 0
 
 

@@ -1,4 +1,6 @@
 import { canSyncBeatGrid } from './beatGridConfidence';
+import type { DeckSource } from './deckSource';
+import { StemDeckSource, type StemBus, type StemDeckState, type StemDeckStatus } from './stemDeckSource';
 /**
  * ViiB MediaHub - DJ Audio Engine
  * 
@@ -65,13 +67,9 @@ export class DJAudioEngine {
   private audioContext: AudioContext | null = null;
   private isInitialized = false;
 
-  // Audio elements (source)
-  private audioElementA: HTMLAudioElement | null = null;
-  private audioElementB: HTMLAudioElement | null = null;
-
-  // Media element source nodes
-  private sourceNodeA: MediaElementAudioSourceNode | null = null;
-  private sourceNodeB: MediaElementAudioSourceNode | null = null;
+  // Deck transport sources; mixer processing remains independent of transport.
+  private deckSourceA: DeckSource | null = null;
+  private deckSourceB: DeckSource | null = null;
 
   // Gain nodes for volume control
   private gainNodeA: GainNode | null = null;
@@ -199,8 +197,6 @@ export class DJAudioEngine {
   
   private trackLoadGenerationA = 0;
   private trackLoadGenerationB = 0;
-  private pendingTrackLoadCancelA: (() => void) | null = null;
-  private pendingTrackLoadCancelB: (() => void) | null = null;
 
   // Callbacks
   private onTrackEnd: ((deck: DeckId) => void) | null = null;
@@ -261,15 +257,9 @@ export class DJAudioEngine {
         await this.audioContext.resume();
       }
 
-      // Create audio elements
-      this.audioElementA = new Audio();
-      this.audioElementB = new Audio();
-      this.audioElementA.crossOrigin = 'anonymous';
-      this.audioElementB.crossOrigin = 'anonymous';
-
-      // Create source nodes from audio elements
-      this.sourceNodeA = this.audioContext.createMediaElementSource(this.audioElementA);
-      this.sourceNodeB = this.audioContext.createMediaElementSource(this.audioElementB);
+      // Create transport sources; their graph outputs connect to the existing mixer.
+      this.deckSourceA = new StemDeckSource(this.audioContext);
+      this.deckSourceB = new StemDeckSource(this.audioContext);
 
       // Create the audio graph
       this.createAudioGraph();
@@ -303,7 +293,7 @@ export class DJAudioEngine {
    * Create the Web Audio API graph for mixing
    */
   private createAudioGraph(): void {
-    if (!this.audioContext || !this.sourceNodeA || !this.sourceNodeB) return;
+    if (!this.audioContext || !this.deckSourceA || !this.deckSourceB) return;
 
     const ctx = this.audioContext;
 
@@ -341,7 +331,7 @@ export class DJAudioEngine {
     this.createDeckFXChain('A', ctx);
 
     // Connect deck A chain: Source → Volume → EQ → FX → Crossfader → Analyser
-    this.sourceNodeA
+    this.deckSourceA.outputNode
       .connect(this.gainNodeA)
       .connect(this.eqLowA)
       .connect(this.eqMidA)
@@ -381,7 +371,7 @@ export class DJAudioEngine {
     this.createDeckFXChain('B', ctx);
 
     // Connect deck B chain: Source → Volume → EQ → FX → Crossfader → Analyser
-    this.sourceNodeB
+    this.deckSourceB.outputNode
       .connect(this.gainNodeB)
       .connect(this.eqLowB)
       .connect(this.eqMidB)
@@ -735,29 +725,75 @@ export class DJAudioEngine {
    * Set up event listeners for audio elements
    */
   private setupEventListeners(): void {
-    if (this.audioElementA) {
-      this.audioElementA.addEventListener('ended', () => {
+    if (this.deckSourceA) {
+      this.deckSourceA.addEventListener('ended', () => {
         this.onTrackEnd?.('A');
         useStore.getState().setDeckPlaying('A', false);
       });
-      this.audioElementA.addEventListener('loadedmetadata', () => {
-        const duration = this.audioElementA?.duration || 0;
+      this.deckSourceA.addEventListener('loadedmetadata', () => {
+        const duration = this.deckSourceA?.getDuration() || 0;
         console.log(`🎧 djAudio: Deck A loadedmetadata, duration=${duration}`);
         useStore.getState().setDeckDuration('A', duration);
       });
     }
 
-    if (this.audioElementB) {
-      this.audioElementB.addEventListener('ended', () => {
+    if (this.deckSourceB) {
+      this.deckSourceB.addEventListener('ended', () => {
         this.onTrackEnd?.('B');
         useStore.getState().setDeckPlaying('B', false);
       });
-      this.audioElementB.addEventListener('loadedmetadata', () => {
-        const duration = this.audioElementB?.duration || 0;
+      this.deckSourceB.addEventListener('loadedmetadata', () => {
+        const duration = this.deckSourceB?.getDuration() || 0;
         console.log(`🎧 djAudio: Deck B loadedmetadata, duration=${duration}`);
         useStore.getState().setDeckDuration('B', duration);
       });
     }
+  }
+
+  private getDeckSource(deck: DeckId): DeckSource | null {
+    return deck === 'A' ? this.deckSourceA : this.deckSourceB;
+  }
+
+  private getStemDeckSource(deck: DeckId): StemDeckSource | null {
+    const source = this.getDeckSource(deck);
+    return source instanceof StemDeckSource ? source : null;
+  }
+
+  async setStemMode(deck: DeckId, mode: 'full' | 'stems'): Promise<void> {
+    const source = this.getStemDeckSource(deck);
+    if (!source) return;
+    if (mode === 'stems') {
+      this.clearScratchAudio(deck);
+      this.setDeckLoopOnSource(deck);
+    }
+    await source.setStemMode(mode);
+    const stemStatus = source.getStemStatus();
+    if (stemStatus.mode !== 'stems') return;
+    this.setDeckLoopOnSource(deck);
+    if (this.audioContext?.state === 'suspended' && this.isPlaying(deck)) await this.audioContext.resume();
+  }
+
+  setStemGain(deck: DeckId, bus: StemBus, gain: number): void { this.getStemDeckSource(deck)?.setStemGain(bus, gain); }
+  setStemMuted(deck: DeckId, bus: StemBus, muted: boolean): void { this.getStemDeckSource(deck)?.setStemMuted(bus, muted); }
+  setStemSolo(deck: DeckId, bus: StemBus, solo: boolean): void { this.getStemDeckSource(deck)?.setStemSolo(bus, solo); }
+  getStemState(deck: DeckId): StemDeckState {
+    return this.getStemDeckSource(deck)?.getStemState() ?? {
+      vocals: { gain: 1, muted: false, solo: false }, drums: { gain: 1, muted: false, solo: false },
+      bass: { gain: 1, muted: false, solo: false }, music: { gain: 1, muted: false, solo: false },
+    };
+  }
+  getStemStatus(deck: DeckId): StemDeckStatus {
+    return this.getStemDeckSource(deck)?.getStemStatus() ?? {
+      mode: 'fallback', available: false, bufferedSeconds: 0, underruns: 0,
+      supportsKeyLock: true, supportsScratch: true, supportsSampleAccurateLoop: false,
+    };
+  }
+
+  private setDeckLoopOnSource(deck: DeckId): void {
+    const source = this.getDeckSource(deck);
+    if (!source) return;
+    const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+    source.setLoop(deckState.loop.start, deckState.loop.end, deckState.loop.enabled);
   }
 
   // ============================================================================
@@ -768,109 +804,33 @@ export class DJAudioEngine {
    * Load a track to a deck
    */
   async loadTrack(deck: DeckId, track: Song): Promise<void> {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audioElement) {
-      console.error(`🎧 DJ Audio: Audio element for Deck ${deck} not available`);
+    const source = this.getDeckSource(deck);
+    if (!source) {
+      console.error(`🎧 DJ Audio: Deck source for Deck ${deck} not available`);
       throw new Error('Audio engine not initialized');
     }
 
-    const previousCancel = deck === 'A' ? this.pendingTrackLoadCancelA : this.pendingTrackLoadCancelB;
-    previousCancel?.();
     const generation = deck === 'A' ? ++this.trackLoadGenerationA : ++this.trackLoadGenerationB;
 
     this.clearScratchAudio(deck);
-
-    // Stop current playback
-    audioElement.pause();
-    audioElement.currentTime = 0;
-
-    // Set source - use the track's URL (should be /api/audio/{id})
     const audioUrl = track.url || `/api/audio/${track.id}`;
     console.log(`🎧 DJ Audio: Loading track to Deck ${deck}: ${track.title}, URL: ${audioUrl}`);
-    audioElement.src = audioUrl;
-
-    // Load the audio
-    let cancelThisLoad: (() => void) | null = null;
-    try {
-      await new Promise<void>((resolve, reject) => {
-        let timeoutId: ReturnType<typeof setTimeout>;
-        let settled = false;
-        const cleanup = () => {
-          clearTimeout(timeoutId);
-          audioElement.removeEventListener('canplay', onCanPlay);
-          audioElement.removeEventListener('error', onError);
-          if (deck === 'A' && this.pendingTrackLoadCancelA === cancelThisLoad) this.pendingTrackLoadCancelA = null;
-          if (deck === 'B' && this.pendingTrackLoadCancelB === cancelThisLoad) this.pendingTrackLoadCancelB = null;
-        };
-
-        const checkGeneration = () => {
-          const currentGen = deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
-          return currentGen === generation;
-        };
-
-        const superseded = () => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          const error = new Error(`Track load superseded: ${track.title}`);
-          error.name = 'AbortError';
-          reject(error);
-        };
-        cancelThisLoad = superseded;
-        if (deck === 'A') this.pendingTrackLoadCancelA = superseded;
-        else this.pendingTrackLoadCancelB = superseded;
-
-        timeoutId = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          if (checkGeneration()) {
-            console.error(`🎧 DJ Audio: Timeout loading track to Deck ${deck}`);
-            reject(new Error(`Timeout loading track: ${track.title}`));
-          } else {
-            const error = new Error(`Track load superseded: ${track.title}`);
-            error.name = 'AbortError';
-            reject(error);
-          }
-        }, 30000); // 30 second timeout
-
-        const onCanPlay = () => {
-          if (settled) return;
-          if (!checkGeneration()) { superseded(); return; }
-          settled = true;
-          cleanup();
-          console.log(`🎧 DJ Audio: Track ready on Deck ${deck}`);
-          resolve();
-        };
-
-        const onError = (e: Event) => {
-          if (settled) return;
-          if (!checkGeneration()) { superseded(); return; }
-          settled = true;
-          cleanup();
-          const errorMsg = audioElement.error?.message || 'Unknown error';
-          console.error(`🎧 DJ Audio: Error loading track to Deck ${deck}: ${errorMsg}`, e);
-          reject(new Error(`Failed to load track: ${track.title} - ${errorMsg}`));
-        };
-
-        audioElement.addEventListener('canplay', onCanPlay);
-        audioElement.addEventListener('error', onError);
-
-        // If readyState is already enough, resolve immediately
-        if (audioElement.readyState >= 3) { // HAVE_FUTURE_DATA
-          onCanPlay();
-        } else {
-          audioElement.load();
-        }
-      });
-    } finally {
-      if (deck === 'A' && this.pendingTrackLoadCancelA === cancelThisLoad) this.pendingTrackLoadCancelA = null;
-      if (deck === 'B' && this.pendingTrackLoadCancelB === cancelThisLoad) this.pendingTrackLoadCancelB = null;
+    const loadPromise = source.load(track);
+    try { await loadPromise; }
+    catch (error) {
+      if ((error as Error).name === 'AbortError') throw error;
+      if (String((error as Error).message).startsWith('Timeout loading track:')) {
+        console.error(`🎧 DJ Audio: Timeout loading track to Deck ${deck}`);
+      } else {
+        console.error(`🎧 DJ Audio: Error loading track to Deck ${deck}: ${(error as Error).message}`, error);
+      }
+      throw error;
     }
 
     console.log(`🎧 Loaded track to Deck ${deck}: ${track.title}`);
 
     if (generation !== (deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB)) return;
+    if (source instanceof StemDeckSource && !source.getStemStatus().supportsScratch) return;
     void this.prepareScratchAudio(deck, audioUrl, generation);
 
     // Auto-gain: analyze track loudness and compute normalization factor
@@ -962,16 +922,14 @@ export class DJAudioEngine {
    * Unload a deck
    */
   unloadDeck(deck: DeckId): void {
-    const cancelPending = deck === 'A' ? this.pendingTrackLoadCancelA : this.pendingTrackLoadCancelB;
-    cancelPending?.();
     if (deck === 'A') ++this.trackLoadGenerationA; else ++this.trackLoadGenerationB;
     this.clearScratchAudio(deck);
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (audioElement) {
-      audioElement.pause();
-      audioElement.src = '';
-      audioElement.currentTime = 0;
-    }
+    this.getDeckSource(deck)?.unload();
+  }
+
+  /** Monotonic operation epoch used by reversible off-air preview sessions. */
+  getDeckLoadGeneration(deck: DeckId): number {
+    return deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
   }
 
   /**
@@ -980,13 +938,13 @@ export class DJAudioEngine {
   async play(deck: DeckId): Promise<void> {
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (scratch) { scratch.wasPlaying = true; return; }
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (audioElement && audioElement.src) {
+    const source = this.getDeckSource(deck);
+    if (source?.isLoaded()) {
       // Resume audio context if needed
       if (this.audioContext?.state === 'suspended') {
         await this.audioContext.resume();
       }
-      await audioElement.play();
+      await source.play();
     }
   }
 
@@ -997,21 +955,18 @@ export class DJAudioEngine {
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (scratch) scratch.wasPlaying = false;
     if (scratch?.coasting) this.endScratch(deck, 0, false);
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (audioElement) {
-      audioElement.pause();
-    }
+    this.getDeckSource(deck)?.pause();
   }
 
   /**
    * Toggle play/pause
    */
   async togglePlay(deck: DeckId): Promise<boolean> {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audioElement || !audioElement.src) return false;
+    const source = this.getDeckSource(deck);
+    if (!source?.isLoaded()) return false;
 
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
-    if (scratch ? !scratch.wasPlaying : audioElement.paused) {
+    if (scratch ? !scratch.wasPlaying : !source.isPlaying()) {
       await this.play(deck);
       return true;
     } else {
@@ -1025,10 +980,7 @@ export class DJAudioEngine {
    */
   seek(deck: DeckId, position: number): void {
     this.endScratch(deck);
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (audioElement && audioElement.duration) {
-      audioElement.currentTime = Math.max(0, Math.min(position, audioElement.duration));
-    }
+    this.getDeckSource(deck)?.seek(position);
   }
 
   // ============================================================================
@@ -1042,6 +994,7 @@ export class DJAudioEngine {
   private scratchToken = 0;
 
   canScratch(deck: DeckId): boolean {
+    if (!this.getStemStatus(deck).supportsScratch) return false;
     return !!this.scratchReady[deck] && !!this.scratchNodes[deck];
   }
 
@@ -1130,8 +1083,8 @@ export class DJAudioEngine {
 
   /** Grab the vinyl: the normal transport stops immediately. */
   startScratch(deck: DeckId): boolean {
-    const audio = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audio?.src || !this.canScratch(deck)) return false;
+    const source = this.getDeckSource(deck);
+    if (!source?.isLoaded() || !this.canScratch(deck)) return false;
     const previous = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (previous?.coasting) {
       previous.coasting = false;
@@ -1141,17 +1094,17 @@ export class DJAudioEngine {
       return true;
     }
     if (previous) return false;
-    const scratch = { active: true, position: audio.currentTime, wasPlaying: !audio.paused,
+    const scratch = { active: true, position: source.getPosition(), wasPlaying: source.isPlaying(),
       coasting: false, token: ++this.scratchToken };
     if (deck === 'A') this.scratchStateA = scratch;
     else this.scratchStateB = scratch;
     const mixer = useStore.getState().djMixer;
     if (scratch.wasPlaying && (deck === 'A' ? mixer.slipModeA : mixer.slipModeB)) {
-      const shadow = { startRealTime: performance.now(), startPosition: audio.currentTime, tempo: audio.playbackRate };
+      const shadow = { startRealTime: performance.now(), startPosition: source.getPosition(), tempo: deck === 'A' ? useStore.getState().djDeckA.tempo : useStore.getState().djDeckB.tempo };
       if (deck === 'A') this.slipShadowA = shadow;
       else this.slipShadowB = shadow;
     }
-    audio.pause();
+    source.pause();
     void this.audioContext?.resume().catch(() => {});
     this.scratchNodes[deck]?.port.postMessage({ type: 'start', position: scratch.position, token: scratch.token });
     return true;
@@ -1159,18 +1112,19 @@ export class DJAudioEngine {
 
   /** Position is controlled solely by the hand; the audio thread smooths signed motion. */
   updateScratch(deck: DeckId, deltaTime: number, _velocity: number): void {
-    const audio = deck === 'A' ? this.audioElementA : this.audioElementB;
+    const source = this.getDeckSource(deck);
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
-    if (!audio || !scratch || !Number.isFinite(deltaTime)) return;
-    scratch.position = Math.max(0, Math.min(Number.isFinite(audio.duration) ? audio.duration : 0, scratch.position + deltaTime));
+    if (!source || !scratch || !Number.isFinite(deltaTime)) return;
+    const duration = source.getDuration();
+    scratch.position = Math.max(0, Math.min(Number.isFinite(duration) ? duration : 0, scratch.position + deltaTime));
     this.scratchNodes[deck]?.port.postMessage({ type: 'move', delta: deltaTime });
   }
 
   /** Release returns to the deck transport, preserving paused state and slip time. */
   endScratch(deck: DeckId, finalVelocity = 0, resumePlayback = true): void {
-    const audio = deck === 'A' ? this.audioElementA : this.audioElementB;
+    const source = this.getDeckSource(deck);
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
-    if (!audio || !scratch) return;
+    if (!source || !scratch) return;
     if (resumePlayback && this.canScratch(deck) && Number.isFinite(finalVelocity) && Math.abs(finalVelocity) > 0.15) {
       const state = useStore.getState();
       scratch.coasting = true;
@@ -1188,14 +1142,14 @@ export class DJAudioEngine {
     const position = shadow ? shadow.startPosition + (performance.now() - shadow.startRealTime) / 1000 * shadow.tempo : scratch.position;
     if (deck === 'A') { this.scratchStateA = null; this.slipShadowA = null; }
     else { this.scratchStateB = null; this.slipShadowB = null; }
-    audio.currentTime = Math.max(0, Math.min(Number.isFinite(audio.duration) ? audio.duration : 0, position));
+    source.seek(position);
     const state = useStore.getState();
-    audio.playbackRate = deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo;
-    state.setDeckPosition(deck, audio.currentTime);
+    source.setTempo(deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo);
+    state.setDeckPosition(deck, source.getPosition());
     if (resumePlayback && scratch.wasPlaying) {
-      audio.play().catch(() => state.setDeckPlaying(deck, false));
+      source.play().catch(() => state.setDeckPlaying(deck, false));
     } else {
-      audio.pause();
+      source.pause();
     }
   }
 
@@ -1211,17 +1165,16 @@ export class DJAudioEngine {
    * Get current position (in seconds)
    */
   getPosition(deck: DeckId): number {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
+    const source = this.getDeckSource(deck);
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
-    return scratch?.position ?? (audioElement?.currentTime || 0);
+    return scratch?.position ?? (source?.getPosition() || 0);
   }
 
   /**
    * Get duration (in seconds)
    */
   getDuration(deck: DeckId): number {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    return audioElement?.duration || 0;
+    return this.getDeckSource(deck)?.getDuration() || 0;
   }
 
   // ============================================================================
@@ -1691,10 +1644,7 @@ export class DJAudioEngine {
    * Note: This changes pitch along with tempo (no time-stretching)
    */
   setTempo(deck: DeckId, tempo: number): void {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (audioElement) {
-      audioElement.playbackRate = Math.max(0.5, Math.min(1.5, tempo));
-    }
+    this.getDeckSource(deck)?.setTempo(tempo);
   }
 
   /**
@@ -1702,10 +1652,7 @@ export class DJAudioEngine {
    * When ON, tempo changes don't affect pitch. When OFF, pitch follows tempo.
    */
   setKeyLock(deck: DeckId, enabled: boolean): void {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (audioElement) {
-      audioElement.preservesPitch = enabled;
-    }
+    this.getDeckSource(deck)?.setKeyLock(enabled);
   }
 
   /**
@@ -1714,14 +1661,14 @@ export class DJAudioEngine {
    * @param offsetMs - Offset in milliseconds (positive = forward, negative = backward)
    */
   nudgePosition(deck: DeckId, offsetMs: number): void {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audioElement) return;
+    const source = this.getDeckSource(deck);
+    if (!source) return;
     
-    const currentTime = audioElement.currentTime;
+    const currentTime = source.getPosition();
     const offsetSeconds = offsetMs / 1000;
     const newTime = Math.max(0, currentTime + offsetSeconds);
     
-    audioElement.currentTime = newTime;
+    source.seek(newTime);
     
     if (DJ_DEBUG) console.log(`🎯 Deck ${deck} nudged by ${offsetMs.toFixed(1)}ms`);
   }
@@ -1741,13 +1688,13 @@ export class DJAudioEngine {
   ): void {
     const state = useStore.getState();
     if (!canSyncBeatGrid(state.djDeckA) || !canSyncBeatGrid(state.djDeckB)) return;
-    const targetElement = targetDeck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!targetElement || !sourceBeatGrid.length || !targetBeatGrid.length) {
-      console.warn('Beat-phase sync: Missing audio element or beat grids');
+    const targetSource = this.getDeckSource(targetDeck);
+    if (!targetSource || !sourceBeatGrid.length || !targetBeatGrid.length) {
+      console.warn('Beat-phase sync: Missing deck source or beat grids');
       return;
     }
     
-    const targetPosition = targetElement.currentTime;
+    const targetPosition = targetSource.getPosition();
     
     // Find current beat in source
     let sourceBeatIndex = 0;
@@ -2168,17 +2115,18 @@ export class DJAudioEngine {
    * Set loop points for a deck
    */
   setLoop(deck: DeckId, startTime: number, endTime: number): void {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audioElement) return;
+    const source = this.getDeckSource(deck);
+    if (!source) return;
     
     // Validate loop points
-    if (startTime >= endTime || startTime < 0 || endTime > audioElement.duration) {
+    if (startTime >= endTime || startTime < 0 || endTime > source.getDuration()) {
       console.warn(`⚠️ Invalid loop points for deck ${deck}: ${startTime} - ${endTime}`);
       return;
     }
     
     // Update store
     useStore.getState().setLoop(deck, startTime, endTime);
+    this.setDeckLoopOnSource(deck);
     if (DJ_DEBUG) console.log(`🔁 Loop set for deck ${deck}: ${startTime.toFixed(2)}s - ${endTime.toFixed(2)}s`);
   }
 
@@ -2189,12 +2137,13 @@ export class DJAudioEngine {
     const state = useStore.getState();
     const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
     if (!(deckState.loop.end > deckState.loop.start)) {
-      const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-      if (!audioElement || !Number.isFinite(audioElement.duration)) return;
+      const source = this.getDeckSource(deck);
+      if (!source || !Number.isFinite(source.getDuration())) return;
       this.setLoopBeats(deck, 4);
       return;
     }
     state.toggleLoop(deck);
+    this.setDeckLoopOnSource(deck);
     const updated = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     if (DJ_DEBUG) console.log(`🔁 Loop ${deck}: ${updated.loop.enabled ? 'ON' : 'OFF'}`);
   }
@@ -2204,6 +2153,7 @@ export class DJAudioEngine {
    */
   clearLoop(deck: DeckId): void {
     useStore.getState().clearLoop(deck);
+    this.setDeckLoopOnSource(deck);
     if (DJ_DEBUG) console.log(`🔁 Loop cleared for deck ${deck}`);
   }
 
@@ -2211,15 +2161,16 @@ export class DJAudioEngine {
    * Set loop-in point (start of loop at current position)
    */
   setLoopIn(deck: DeckId): void {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audioElement) return;
+    const source = this.getDeckSource(deck);
+    if (!source) return;
     
-    const position = audioElement.currentTime;
+    const position = source.getPosition();
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     
     // Editing an active loop moves its start; otherwise store a pending in-point.
     if (deckState.loop.enabled && deckState.loop.end > position) {
       useStore.getState().setLoop(deck, position, deckState.loop.end, true);
+      this.setDeckLoopOnSource(deck);
     } else {
       useStore.getState().setPendingLoopIn(deck, position);
     }
@@ -2230,16 +2181,17 @@ export class DJAudioEngine {
    * Set loop-out point (end of loop at current position) and enable loop
    */
   setLoopOut(deck: DeckId): void {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audioElement) return;
+    const source = this.getDeckSource(deck);
+    if (!source) return;
     
-    const position = audioElement.currentTime;
+    const position = source.getPosition();
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     
     // Validate against start point
     const start = deckState.loop.pendingIn ?? deckState.loop.start;
     if (position > start) {
       useStore.getState().setLoop(deck, start, position, true);
+      this.setDeckLoopOnSource(deck);
     } else {
       console.warn(`⚠️ Loop OUT must be after loop IN point`);
     }
@@ -2250,8 +2202,8 @@ export class DJAudioEngine {
    * Set a beat-synced loop of specified length (in beats)
    */
   setLoopBeats(deck: DeckId, beats: number): void {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audioElement) return;
+    const source = this.getDeckSource(deck);
+    if (!source) return;
     
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     const bpm = deckState.effectiveBpm || deckState.originalBpm || 120;
@@ -2259,7 +2211,7 @@ export class DJAudioEngine {
     const state = useStore.getState();
     const latestDeck = deck === 'A' ? state.djDeckA : state.djDeckB;
     const beatGrid = latestDeck.beatGrid;
-    let start = audioElement.currentTime;
+    let start = source.getPosition();
     let end = start + beats * (60 / bpm);
     if (state.djMixer.quantize && beatGrid?.length) {
       const offset = latestDeck.beatGridOffset || 0;
@@ -2276,7 +2228,7 @@ export class DJAudioEngine {
         ? beatAt(whole) + (whole + 1 < beatGrid.length ? (beatAt(whole + 1) - beatAt(whole)) * fraction : 0)
         : start + beats * (60 / bpm);
     }
-    end = Math.min(end, audioElement.duration);
+    end = Math.min(end, source.getDuration());
     
     this.setLoop(deck, start, end);
     if (DJ_DEBUG) console.log(`🔁 ${beats}-beat loop set for deck ${deck}: ${(end - start).toFixed(2)}s @ ${bpm.toFixed(1)} BPM`);
@@ -2287,14 +2239,15 @@ export class DJAudioEngine {
    */
   doubleLoop(deck: DeckId): void {
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    if (!audioElement || !deckState.loop.enabled || !(deckState.loop.end > deckState.loop.start)) return;
+    const source = this.getDeckSource(deck);
+    if (!source || !deckState.loop.enabled || !(deckState.loop.end > deckState.loop.start)) return;
     
     const currentLength = deckState.loop.end - deckState.loop.start;
-    const newEnd = Math.min(deckState.loop.start + currentLength * 2, audioElement.duration);
+    const newEnd = Math.min(deckState.loop.start + currentLength * 2, source.getDuration());
     
     if (newEnd <= deckState.loop.start) return;
     useStore.getState().setLoop(deck, deckState.loop.start, newEnd, true);
+    this.setDeckLoopOnSource(deck);
     if (DJ_DEBUG) console.log(`🔁 Loop doubled for deck ${deck}: ${(newEnd - deckState.loop.start).toFixed(2)}s`);
   }
 
@@ -2311,6 +2264,7 @@ export class DJAudioEngine {
     const newEnd = deckState.loop.start + Math.max(currentLength / 2, minLength);
     
     useStore.getState().setLoop(deck, deckState.loop.start, newEnd, true);
+    this.setDeckLoopOnSource(deck);
     if (DJ_DEBUG) console.log(`🔁 Loop halved for deck ${deck}: ${(newEnd - deckState.loop.start).toFixed(2)}s`);
   }
 
@@ -2319,13 +2273,13 @@ export class DJAudioEngine {
   // ============================================================================
 
   private startPositionTracking(): void {
-    if (this.audioElementA && !this.loopWrapOnTimeUpdateA) {
+    if (this.deckSourceA && !this.loopWrapOnTimeUpdateA) {
       this.loopWrapOnTimeUpdateA = () => this.wrapActiveLoops();
-      this.audioElementA.addEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
+      this.deckSourceA.addEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
     }
-    if (this.audioElementB && !this.loopWrapOnTimeUpdateB) {
+    if (this.deckSourceB && !this.loopWrapOnTimeUpdateB) {
       this.loopWrapOnTimeUpdateB = () => this.wrapActiveLoops();
-      this.audioElementB.addEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
+      this.deckSourceB.addEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
     }
     if (typeof Worker !== 'undefined' && !this.loopWorker) {
       try {
@@ -2344,13 +2298,13 @@ export class DJAudioEngine {
     const updatePositions = () => {
       const storeState = useStore.getState();
       const now = performance.now();
-      const aPaused = !this.audioElementA || this.audioElementA.paused;
-      const bPaused = !this.audioElementB || this.audioElementB.paused;
+      const aPaused = !this.deckSourceA || !this.deckSourceA.isPlaying();
+      const bPaused = !this.deckSourceB || !this.deckSourceB.isPlaying();
       const aScratch = this.scratchStateA?.active ?? false;
       const bScratch = this.scratchStateB?.active ?? false;
       
       // Deck A position and loop handling — also update during scratch even when paused
-      if (this.audioElementA && (!aPaused || aScratch)) {
+      if (this.deckSourceA && (!aPaused || aScratch)) {
         const currentTime = this.getPosition('A');
         
         // Throttle state updates to reduce React re-renders (~15 fps)
@@ -2362,7 +2316,7 @@ export class DJAudioEngine {
       }
       
       // Deck B position and loop handling — also update during scratch even when paused
-      if (this.audioElementB && (!this.audioElementB.paused || bScratch)) {
+      if (this.deckSourceB && (!bPaused || bScratch)) {
         const currentTime = this.getPosition('B');
         
         // Throttle state updates to reduce React re-renders (~15 fps)
@@ -2393,13 +2347,18 @@ export class DJAudioEngine {
   private wrapActiveLoops(): void {
     const state = useStore.getState();
     for (const deck of ['A', 'B'] as const) {
-      const audio = deck === 'A' ? this.audioElementA : this.audioElementB;
+      const source = this.getDeckSource(deck);
       const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
-      if (!audio || audio.paused || (this.scratchStateA?.active && deck === 'A') || (this.scratchStateB?.active && deck === 'B')) continue;
+      if (source instanceof StemDeckSource && source.getStemStatus().supportsSampleAccurateLoop) {
+        source.setLoop(loop.start, loop.end, loop.enabled);
+        continue;
+      }
+      if (!source || !source.isPlaying() || (this.scratchStateA?.active && deck === 'A') || (this.scratchStateB?.active && deck === 'B')) continue;
       const length = loop.end - loop.start;
-      if (!loop.enabled || length <= 0 || audio.currentTime < loop.end) continue;
-      const overshoot = (audio.currentTime - loop.start) % length;
-      audio.currentTime = loop.start + overshoot;
+      const position = source.getPosition();
+      if (!loop.enabled || length <= 0 || position < loop.end) continue;
+      const overshoot = (position - loop.start) % length;
+      source.seek(loop.start + overshoot);
     }
   }
 
@@ -2418,8 +2377,8 @@ export class DJAudioEngine {
 
     const updateVU = () => {
       // When both decks are paused, skip expensive FFT and throttle to ~4fps
-      const aPaused = !this.audioElementA || this.audioElementA.paused;
-      const bPaused = !this.audioElementB || this.audioElementB.paused;
+      const aPaused = !this.deckSourceA || !this.deckSourceA.isPlaying();
+      const bPaused = !this.deckSourceB || !this.deckSourceB.isPlaying();
       if (aPaused && bPaused && !this.isScratching('A') && !this.isScratching('B')) {
         this.vuLevels = {
           deckA: { left: 0, right: 0 },
@@ -2503,10 +2462,6 @@ export class DJAudioEngine {
    * Clean up and release resources
    */
   dispose(): void {
-    this.pendingTrackLoadCancelA?.();
-    this.pendingTrackLoadCancelB?.();
-    this.pendingTrackLoadCancelA = null;
-    this.pendingTrackLoadCancelB = null;
     ++this.trackLoadGenerationA;
     ++this.trackLoadGenerationB;
     this.clearScratchAudio('A');
@@ -2525,8 +2480,8 @@ export class DJAudioEngine {
     }
     this.loopWorker?.terminate();
     this.loopWorker = null;
-    if (this.audioElementA && this.loopWrapOnTimeUpdateA) this.audioElementA.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
-    if (this.audioElementB && this.loopWrapOnTimeUpdateB) this.audioElementB.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
+    if (this.deckSourceA && this.loopWrapOnTimeUpdateA) this.deckSourceA.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
+    if (this.deckSourceB && this.loopWrapOnTimeUpdateB) this.deckSourceB.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
     this.loopWrapOnTimeUpdateA = null;
     this.loopWrapOnTimeUpdateB = null;
     if (this.loopCheckTimer) {
@@ -2538,15 +2493,11 @@ export class DJAudioEngine {
       this.vuIdleTimer = null;
     }
 
-    // Stop and clean up audio elements
-    if (this.audioElementA) {
-      this.audioElementA.pause();
-      this.audioElementA.src = '';
-    }
-    if (this.audioElementB) {
-      this.audioElementB.pause();
-      this.audioElementB.src = '';
-    }
+    // Stop and clean up deck transports.
+    this.deckSourceA?.dispose();
+    this.deckSourceB?.dispose();
+    this.deckSourceA = null;
+    this.deckSourceB = null;
 
     // Clean up routed main output audio element
     if (this.mainOutputAudioElement) {
@@ -2584,14 +2535,12 @@ export class DJAudioEngine {
   }
 
   isPlaying(deck: DeckId): boolean {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
-    return scratch?.wasPlaying ?? (audioElement ? !audioElement.paused : false);
+    return scratch?.wasPlaying ?? (this.getDeckSource(deck)?.isPlaying() ?? false);
   }
 
   isLoaded(deck: DeckId): boolean {
-    const audioElement = deck === 'A' ? this.audioElementA : this.audioElementB;
-    return audioElement ? !!audioElement.src && audioElement.readyState >= 2 : false;
+    return this.getDeckSource(deck)?.isLoaded() ?? false;
   }
 
   /**

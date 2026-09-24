@@ -29,6 +29,25 @@ func TestV2TrackTempoEvidenceUsesMeasuredValuesOnly(t *testing.T) {
 	}
 }
 
+func TestV2TrackAnalysisExposesOnlyCurrentSettledEnergyLevel(t *testing.T) {
+	level, confidence, version := 8, .8, features.EnergyLevelAlgorithmVersion
+	analysis := db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisPartial, EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
+	response := trackAnalysisFeatureResponse(analysis, db.TrackAnalysisOverride{})
+	if response.EnergyLevel == nil || *response.EnergyLevel != level || response.EnergyLevelConfidence == nil || *response.EnergyLevelConfidence != confidence || response.EnergyAlgorithmVersion == nil || *response.EnergyAlgorithmVersion != version {
+		t.Fatalf("energy score/version missing from API response: %#v", response)
+	}
+	analysis.Status = db.TrackAnalysisRunning
+	if running := trackAnalysisFeatureResponse(analysis, db.TrackAnalysisOverride{}); running.EnergyLevel != nil {
+		t.Fatalf("running analysis exposed stale Energy Level: %#v", running)
+	}
+	analysis.Status = db.TrackAnalysisComplete
+	staleVersion := "energy-level-v0"
+	analysis.EnergyAlgorithmVersion = &staleVersion
+	if stale := trackAnalysisFeatureResponse(analysis, db.TrackAnalysisOverride{}); stale.EnergyLevel != nil {
+		t.Fatalf("stale algorithm score was exposed: %#v", stale)
+	}
+}
+
 func TestV2TrackAnalysisFeatureResolvesManualValues(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
@@ -146,8 +165,12 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Source != "manual" || !response.Locked || len(response.Beats) != 4 || response.Beats[0] != .125 {
+	if response.Source != "manual" || response.Provenance != "manual" || !response.Locked || len(response.Beats) != 4 || response.Beats[0] != .125 {
 		t.Fatalf("beatgrid = %#v", response)
+	}
+	artifact, err := database.GetTrackAnalysisArtifact("song", beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion)
+	if err != nil || artifact.Provenance != string(beatgrid.ProvenanceManual) {
+		t.Fatalf("manual artifact provenance = %q, err=%v", artifact.Provenance, err)
 	}
 	override, err := database.GetTrackAnalysisOverride("song")
 	if err != nil || override.BPM == nil || *override.BPM != manual || !override.BPMLocked {
@@ -260,6 +283,20 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	measuredSource, keyMode := "measured", "major"
+	energyVersion := features.EnergyLevelAlgorithmVersion
+	confidence := .9
+	for _, metadata := range []struct {
+		id    string
+		bpm   float64
+		key   int
+		level int
+	}{{id: "source", bpm: 128, key: 0, level: 5}, {id: "compatible", bpm: 130, key: 0, level: 6}, {id: "incompatible", bpm: 150, key: 5, level: 2}} {
+		bpm, tonic, level := metadata.bpm, metadata.key, metadata.level
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: metadata.id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: metadata.id, BPM: &bpm, BPMConfidence: &confidence, BPMSource: &measuredSource, KeyTonic: &tonic, KeyMode: &keyMode, KeyConfidence: &confidence, KeySource: &measuredSource, EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &energyVersion}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	recorder := httptest.NewRecorder()
 	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations?limit=1", nil))
 	if recorder.Code != http.StatusOK {
@@ -269,19 +306,73 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "compatible" || len(response.Recommendations[0].Components) != 3 {
+	if len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "compatible" || len(response.Recommendations[0].Components) != 6 || response.Intent != features.TransitionIntentHold || response.AlgorithmVersion != features.TransitionAlgorithmVersion || response.Recommendations[0].Vector.CamelotRelation != "same" || response.Recommendations[0].Vector.BPMDelta == nil {
 		t.Fatalf("recommendations = %#v", response)
+	}
+	unsupported := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(unsupported, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations?intent=vocal-safe", nil))
+	if unsupported.Code != http.StatusBadRequest {
+		t.Fatalf("unsupported vocal-safe intent status=%d, want 400", unsupported.Code)
+	}
+	if err := database.UpsertStemSet(db.StemSet{ID: "compatible-stems", SongID: "compatible", Status: "ready", PackagePath: "compatible.stems"}); err != nil {
+		t.Fatal(err)
+	}
+	filtered := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(filtered, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations?minBpm=129&maxBpm=131&minEnergyLevel=6&maxEnergyLevel=6&stemsAvailable=true", nil))
+	if filtered.Code != http.StatusOK {
+		t.Fatalf("GET filtered recommendations = %d: %s", filtered.Code, filtered.Body.String())
+	}
+	if err := json.NewDecoder(filtered.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.CandidatesBeforeFilters != 2 || response.CandidatesAfterFilters != 1 || len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "compatible" {
+		t.Fatalf("filtered recommendation counts/results = %#v", response)
+	}
+	if response.Filters.MinBPM == nil || *response.Filters.MinBPM != 129 || response.Recommendations[0].FilterEvidence.BPM == nil || *response.Recommendations[0].FilterEvidence.BPM != 130 || response.Recommendations[0].FilterEvidence.StemsAvailable == nil || !*response.Recommendations[0].FilterEvidence.StemsAvailable {
+		t.Fatalf("filter evidence not echoed: %#v", response)
+	}
+	withoutStems := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(withoutStems, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations?stemsAvailable=false", nil))
+	if withoutStems.Code != http.StatusOK {
+		t.Fatalf("GET no-stems recommendations = %d: %s", withoutStems.Code, withoutStems.Body.String())
+	}
+	if err := json.NewDecoder(withoutStems.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "incompatible" {
+		t.Fatalf("stemsAvailable=false results = %#v", response.Recommendations)
+	}
+}
+
+func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for _, query := range []string{
+		"minBpm=59", "maxBpm=191", "minBpm=NaN", "minEnergyLevel=0", "maxEnergyLevel=11",
+		"minBpm=130&maxBpm=120", "minEnergyLevel=8&maxEnergyLevel=4", "stemsAvailable=yes", "minBpm=120&minBpm=121",
+	} {
+		t.Run(query, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations?"+query, nil))
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d, want 400: %s", recorder.Code, recorder.Body.String())
+			}
+		})
 	}
 }
 
 func TestV2BeatGridProvenance(t *testing.T) {
 	for _, test := range []struct {
-		name     string
-		override bool
-		locked   bool
-		source   string
+		name       string
+		override   bool
+		locked     bool
+		provenance string
 	}{
-		{"measured", false, false, "measured"},
+		{"native phase grid", false, false, "inferred-from-meter"},
+		{"future measured detector", false, false, "measured"},
 		{"unlocked legacy edit", true, false, "unknown"},
 		{"reviewed manual", true, true, "manual"},
 	} {
@@ -300,7 +391,7 @@ func TestV2BeatGridProvenance(t *testing.T) {
 				t.Fatal(err)
 			}
 			id := "song:" + beatgrid.AlgorithmVersion
-			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id, SongID: "song", Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Data: encoded}); err != nil {
+			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id, SongID: "song", Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: test.provenance, Data: encoded}); err != nil {
 				t.Fatal(err)
 			}
 			if test.override {
@@ -317,8 +408,8 @@ func TestV2BeatGridProvenance(t *testing.T) {
 			if err := json.NewDecoder(response.Body).Decode(&gridResponse); err != nil {
 				t.Fatal(err)
 			}
-			if gridResponse.Source != test.source {
-				t.Fatalf("source=%s, want %s", gridResponse.Source, test.source)
+			if gridResponse.Provenance != test.provenance || gridResponse.Source != test.provenance {
+				t.Fatalf("source=%s provenance=%s, want %s", gridResponse.Source, gridResponse.Provenance, test.provenance)
 			}
 		})
 	}

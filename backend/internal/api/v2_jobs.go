@@ -40,13 +40,15 @@ func schedulerWorkerCount(cpuCount int) int {
 // supportedJobTypes is the create allowlist. The dispatch switch in
 // runClaimedJob must stay in step with it.
 var supportedJobTypes = map[string]bool{
-	"full_scan":           true,
-	"quick_scan":          true,
-	"refresh_genre_stats": true,
-	JobTypeAnalyzeTracks:  true,
+	"full_scan":             true,
+	"quick_scan":            true,
+	"refresh_genre_stats":   true,
+	JobTypeAnalyzeTracks:    true,
+	"stem_registry_refresh": true,
+	"stem_package_link":     true,
 }
 
-const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, and " + JobTypeAnalyzeTracks
+const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, " + JobTypeAnalyzeTracks + ", stem_registry_refresh, and stem_package_link"
 
 type createJobRequest struct {
 	Type       string          `json:"type"`
@@ -126,12 +128,33 @@ func (a *API) createJobV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if request.Type == JobTypeAnalyzeTracks {
+		var cueModeRequest struct {
+			AutoCueMode *string `json:"autoCueMode"`
+		}
+		if len(request.Parameters) > 0 {
+			if err := json.Unmarshal(request.Parameters, &cueModeRequest); err != nil {
+				respondV2Error(w, r, http.StatusBadRequest, "invalid_analysis_selection", "The analysis parameters are not valid JSON", false, nil)
+				return
+			}
+		}
 		// Reject an unexpandable selection before it becomes a durable job row
 		// that can only ever fail.
-		if _, err := db.ParseAnalysisSelection(request.Parameters); err != nil {
+		selection, err := db.ParseAnalysisSelection(request.Parameters)
+		if err != nil {
 			respondV2Error(w, r, http.StatusBadRequest, "invalid_analysis_selection", err.Error(), false, nil)
 			return
 		}
+		// Snapshot the installation-wide preference unless a validated explicit
+		// job mode was supplied. Either way, retries retain this exact value.
+		if cueModeRequest.AutoCueMode == nil {
+			selection.AutoCueMode = a.analysisAutoCueMode()
+		} else if mode, valid := db.ParseAutomaticCuePointMode(*cueModeRequest.AutoCueMode); valid {
+			selection.AutoCueMode = mode
+		} else {
+			respondV2Error(w, r, http.StatusBadRequest, "invalid_auto_cue_mode", "autoCueMode must be off, suggest, fill-empty, or replace-generated", false, nil)
+			return
+		}
+		request.Parameters = autoAnalysisParameters(selection)
 	}
 	if request.Priority < minJobPriority || request.Priority > maxJobPriority {
 		respondV2Error(w, r, http.StatusBadRequest, "invalid_job_priority", "Job priority must be between -100 and 100", false, nil)
@@ -255,6 +278,8 @@ func (a *API) runClaimedJob(job db.Job) {
 		a.runQuickScanJob(id)
 	case JobTypeAnalyzeTracks:
 		a.runAnalyzeTracksJob(job)
+	case "stem_registry_refresh", "stem_package_link":
+		a.runStemRegistryJob(job)
 	case "refresh_genre_stats":
 		if err := a.db.UpdateGenreStats(); err != nil {
 			_ = a.db.FailJob(id, "genre_stats_failed", err.Error())

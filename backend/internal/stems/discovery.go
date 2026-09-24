@@ -1,0 +1,232 @@
+package stems
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+)
+
+const packageDirectorySuffix = ".viibstems"
+
+// CandidateSource identifies how a stem package was found. Adjacent packages
+// always precede packages found in configured library directories.
+type CandidateSource string
+
+const (
+	CandidateAdjacent CandidateSource = "adjacent"
+	CandidateLibrary  CandidateSource = "library"
+)
+
+// PackageCandidate contains a fully validated package and its discovery path.
+// Validation is retained so callers can use the already checked file paths.
+type PackageCandidate struct {
+	Path       string
+	Source     CandidateSource
+	Validation Validation
+}
+
+// DiscoveryResult keeps valid candidates and rejected package diagnostics.
+// Candidate order is deterministic: adjacent first, then library paths in
+// lexical order.
+type DiscoveryResult struct {
+	Candidates []PackageCandidate
+	Rejected   []RejectedPackage
+}
+
+type RejectedPackage struct {
+	Path   string
+	Source CandidateSource
+	Err    error
+}
+
+// DiscoverPackages inspects the source-adjacent package and every direct
+// .viibstems child of each configured library directory. An adjacent package
+// is named after the source without its media extension, for example
+// song.flac -> song.viibstems. Package validity is always checked by
+// ValidatePackage; discovery alone does not establish source identity.
+func DiscoverPackages(sourcePath string, libraryDirs []string) DiscoveryResult {
+	result := DiscoveryResult{}
+	adjacent := adjacentPackagePath(sourcePath)
+	seen := make(map[string]bool)
+	appendCandidate := func(path string, source CandidateSource) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: path, Source: source, Err: err})
+			return
+		}
+		abs = filepath.Clean(abs)
+		key := pathKey(abs)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		info, err := os.Stat(abs)
+		if err != nil {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: abs, Source: source, Err: err})
+			return
+		}
+		if !info.IsDir() {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: abs, Source: source, Err: errors.New("package candidate is not a directory")})
+			return
+		}
+		validation, err := ValidatePackage(abs)
+		if err != nil {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: abs, Source: source, Err: err})
+			return
+		}
+		result.Candidates = append(result.Candidates, PackageCandidate{Path: abs, Source: source, Validation: validation})
+	}
+
+	if adjacent != "" {
+		appendCandidate(adjacent, CandidateAdjacent)
+	}
+
+	var libraryCandidates []string
+	for _, library := range libraryDirs {
+		entries, err := os.ReadDir(library)
+		if err != nil {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: library, Source: CandidateLibrary, Err: fmt.Errorf("read stem library: %w", err)})
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() && strings.EqualFold(filepath.Ext(entry.Name()), packageDirectorySuffix) {
+				libraryCandidates = append(libraryCandidates, filepath.Join(library, entry.Name()))
+			}
+		}
+	}
+	sort.Slice(libraryCandidates, func(i, j int) bool {
+		a, b := filepath.Clean(libraryCandidates[i]), filepath.Clean(libraryCandidates[j])
+		if strings.EqualFold(a, b) {
+			return a < b
+		}
+		return strings.ToLower(a) < strings.ToLower(b)
+	})
+	for _, path := range libraryCandidates {
+		appendCandidate(path, CandidateLibrary)
+	}
+	return result
+}
+
+// ResolvePackage discovers and validates packages, then returns the first
+// candidate whose manifest source SHA-256 matches the complete source file.
+// Adjacent packages have priority over configured Stem Libraries. Invalid
+// packages and packages for other source files are skipped.
+func ResolvePackage(sourcePath string, libraryDirs []string, hashes *SourceHashCache) (PackageCandidate, error) {
+	if hashes == nil {
+		hashes = NewSourceHashCache()
+	}
+	discovery := DiscoverPackages(sourcePath, libraryDirs)
+	if len(discovery.Candidates) == 0 {
+		if len(discovery.Rejected) > 0 {
+			return PackageCandidate{}, fmt.Errorf("no valid stem package found (%d rejected candidate(s))", len(discovery.Rejected))
+		}
+		return PackageCandidate{}, errors.New("no stem package found")
+	}
+	sourceHash, err := hashes.SHA256(sourcePath)
+	if err != nil {
+		return PackageCandidate{}, fmt.Errorf("hash source audio: %w", err)
+	}
+	for _, candidate := range discovery.Candidates {
+		if strings.EqualFold(candidate.Validation.Manifest.Source.SHA256, sourceHash) {
+			return candidate, nil
+		}
+	}
+	return PackageCandidate{}, errors.New("no stem package matches the source audio SHA-256")
+}
+
+func adjacentPackagePath(sourcePath string) string {
+	if sourcePath == "" {
+		return ""
+	}
+	ext := filepath.Ext(sourcePath)
+	base := strings.TrimSuffix(sourcePath, ext)
+	return base + packageDirectorySuffix
+}
+
+func pathKey(path string) string {
+	if os.PathSeparator == '\\' {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
+type sourceHashEntry struct {
+	size    int64
+	modTime int64
+	hash    string
+}
+
+// SourceHashCache lazily hashes full source files and reuses the digest while
+// path, size, and modification time remain unchanged. A changed signature
+// replaces that path's prior entry.
+type SourceHashCache struct {
+	mu      sync.Mutex
+	entries map[string]sourceHashEntry
+}
+
+func NewSourceHashCache() *SourceHashCache {
+	return &SourceHashCache{entries: make(map[string]sourceHashEntry)}
+}
+
+func (c *SourceHashCache) SHA256(path string) (string, error) {
+	if c == nil {
+		return "", errors.New("nil source hash cache")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve source path: %w", err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("source audio is not a regular file")
+	}
+	key := pathKey(filepath.Clean(abs))
+	size, modTime := info.Size(), info.ModTime().UnixNano()
+	c.mu.Lock()
+	if c.entries == nil {
+		c.entries = make(map[string]sourceHashEntry)
+	}
+	if cached, ok := c.entries[key]; ok && cached.size == size && cached.modTime == modTime {
+		c.mu.Unlock()
+		return cached.hash, nil
+	}
+	c.mu.Unlock()
+
+	f, err := os.Open(abs)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	_, copyErr := io.Copy(h, f)
+	closeErr := f.Close()
+	if copyErr != nil {
+		return "", fmt.Errorf("read source audio: %w", copyErr)
+	}
+	if closeErr != nil {
+		return "", fmt.Errorf("close source audio: %w", closeErr)
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	// Re-stat before caching so a file changed while it was being read does not
+	// poison the cache with a digest under the earlier metadata signature.
+	after, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	if after.Size() != size || after.ModTime().UnixNano() != modTime {
+		return "", errors.New("source audio changed while hashing")
+	}
+	c.mu.Lock()
+	c.entries[key] = sourceHashEntry{size: size, modTime: modTime, hash: got}
+	c.mu.Unlock()
+	return got, nil
+}

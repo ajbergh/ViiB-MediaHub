@@ -39,6 +39,22 @@ export const ANALYSIS_FOREGROUND_PRIORITY = 50;
 /** Setting key for queueing analysis of tracks a scan just added. */
 export const SETTING_AUTO_ANALYZE_NEW_TRACKS = 'analysis_auto_analyze_new';
 
+export type AutomaticCuePointMode = 'off' | 'suggest' | 'fill-empty' | 'replace-generated';
+export const SETTING_AUTO_CUE_MODE = 'analysis_auto_cue_mode';
+export const AUTOMATIC_CUE_POINT_MODES: { value: AutomaticCuePointMode; label: string }[] = [
+  { value: 'off', label: 'Off' },
+  { value: 'suggest', label: 'Suggest only' },
+  { value: 'fill-empty', label: 'Fill empty slots' },
+  { value: 'replace-generated', label: 'Refresh generated cues' },
+];
+
+export function normalizeAutomaticCuePointMode(value: string): AutomaticCuePointMode {
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'off' || normalized === 'suggest' || normalized === 'replace-generated'
+    ? normalized
+    : 'fill-empty';
+}
+
 export interface OperationJob {
   id: string;
   type: JobType | string;

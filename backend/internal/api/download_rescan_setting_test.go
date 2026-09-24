@@ -10,6 +10,7 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
+	"github.com/ajbergh/viib-mediahub/internal/validation"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -82,6 +83,51 @@ func TestSetAutoAnalyzeNewTracksPersists(t *testing.T) {
 	}
 	if value != "true" {
 		t.Fatalf("persisted auto-analyze setting = %q, want true", value)
+	}
+}
+
+func TestAutomaticCuePointsSettingDefaultsAndValidatesServerSide(t *testing.T) {
+	tempDir := t.TempDir()
+	database, err := db.New(filepath.Join(tempDir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	a := &API{db: database, dataDir: tempDir}
+	if !validation.IsValidSettingKey(SettingAutoCueMode) {
+		t.Fatal("automatic cue mode key is not allowlisted")
+	}
+
+	get := func() *httptest.ResponseRecorder {
+		routeContext := chi.NewRouteContext()
+		routeContext.URLParams.Add("key", SettingAutoCueMode)
+		req := httptest.NewRequest(http.MethodGet, "/settings/"+SettingAutoCueMode, nil)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeContext))
+		response := httptest.NewRecorder()
+		a.getSetting(response, req)
+		return response
+	}
+	if response := get(); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"value":"fill-empty"`) {
+		t.Fatalf("unset automatic cue setting = %d %s, want fill-empty", response.Code, response.Body.String())
+	}
+	for _, mode := range []string{"off", "suggest", "fill-empty", "replace-generated"} {
+		response := setSettingForTest(a, SettingAutoCueMode, mode)
+		if response.Code != http.StatusOK {
+			t.Fatalf("set mode %q = %d %s", mode, response.Code, response.Body.String())
+		}
+		stored, err := database.GetSetting(SettingAutoCueMode)
+		if err != nil || stored != mode {
+			t.Fatalf("stored mode = %q, %v; want %q", stored, err, mode)
+		}
+	}
+	if response := setSettingForTest(a, SettingAutoCueMode, "replace-all"); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid mode write = %d, want 400: %s", response.Code, response.Body.String())
+	}
+	if err := database.SetSetting(SettingAutoCueMode, "corrupt-legacy-value"); err != nil {
+		t.Fatal(err)
+	}
+	if response := get(); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"value":"fill-empty"`) {
+		t.Fatalf("invalid stored value = %d %s, want fill-empty fallback", response.Code, response.Body.String())
 	}
 }
 

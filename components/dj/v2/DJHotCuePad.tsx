@@ -65,7 +65,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
     
     const currentPosition = useStore.getState()[deck === 'A' ? 'djDeckA' : 'djDeckB'].position;
     const color = HOT_CUE_COLORS[slot - 1] || '#22c55e';
-    setHotCue(deck, slot, currentPosition, color);
+    setHotCue(deck, slot, currentPosition, undefined, color);
   }, [deck, track, setHotCue]);
 
   const handleMouseDown = useCallback((slot: number) => {
@@ -100,6 +100,8 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
         const isPressed = pressedSlot === slot;
         const color = hotCue?.color || HOT_CUE_COLORS[slot - 1] || '#22c55e';
         const displayNum = slot;
+        const isAnalysis = hotCue?.origin === 'analysis';
+        const lowConfidence = isAnalysis && (hotCue.confidence ?? 1) < .5;
         
         const buttonSize = singleRow ? 'w-12 h-11 text-[12px]' : compact ? 'w-8 h-8 text-[10px]' : 'w-14 h-12 text-[13px]';
         
@@ -118,7 +120,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
               ${!track 
                 ? 'bg-[#1f1f1f] text-neutral-700 border-[#2a2a2a] cursor-not-allowed' 
                 : isActive
-                  ? 'text-white border-transparent'
+                  ? `text-white ${lowConfidence ? 'border-dashed border-white/70' : 'border-transparent'}`
                   : 'bg-[#252525] text-neutral-500 border-[#333] hover:bg-[#2d2d2d] hover:border-[#444]'}
               ${isLongPress ? 'scale-90 opacity-50' : ''}
               ${isPressed && !isLongPress ? 'scale-95' : ''}
@@ -129,11 +131,13 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
             } : undefined}
             title={
               hotCue 
-                ? `Hot Cue ${displayNum}: ${formatTime(hotCue.position)}\nClick=Jump, Hold=Delete`
+                ? `Hot Cue ${displayNum}: ${formatTime(hotCue.position)}\n${isAnalysis ? `Auto · ${hotCue.kind || 'cue'} · ${Math.round((hotCue.confidence ?? 0) * 100)}% · ${hotCue.rationale || hotCue.generatorVersion || 'analysis'}` : 'User cue'}${hotCue.downbeatAligned ? '\nMeasured/manual downbeat aligned' : ''}${hotCue.locked ? '\nLocked against refresh' : ''}\nClick=Jump, Hold=Delete`
                 : `Hot Cue ${displayNum}: Empty\nRight-click to set`
             }
           >
             {displayNum}
+            {isAnalysis && <span className="absolute -right-0.5 -top-1 rounded bg-neutral-950 px-0.5 text-[7px] leading-3 text-white">A</span>}
+            {hotCue?.locked && <span className="absolute -bottom-0.5 -right-0.5 rounded bg-neutral-950 px-0.5 text-[7px] leading-3 text-white">L</span>}
           </button>
         );
       })}

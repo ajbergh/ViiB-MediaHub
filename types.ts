@@ -88,6 +88,7 @@ export interface Song {
   // metadata is only for source-aware UI such as AI DJ.
   source?: 'local' | 'plex';
   sourceName?: string;
+  stemStatus?: 'none' | 'discovered' | 'validating' | 'ready' | 'stale' | 'invalid' | 'unavailable';
 }
 
 export interface Album {

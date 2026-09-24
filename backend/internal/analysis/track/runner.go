@@ -27,6 +27,9 @@ func (p RunProgress) Done() int { return p.Processed }
 // RunOptions configures one pass over a work list.
 type RunOptions struct {
 	Analysis Options
+	// AutoCueMode is snapshotted on durable jobs. A zero/invalid value retains
+	// the public runner's historical fill-empty behavior.
+	AutoCueMode db.AutomaticCuePointMode
 	// ResolveSource optionally supplies an authenticated or otherwise remote
 	// stream source. Local catalog analysis uses ResolveLocalSource by default.
 	ResolveSource func(context.Context, string) (analysis.ResolvedSource, error)
@@ -50,6 +53,7 @@ func Run(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistr
 	if opts.Analysis == (Options{}) {
 		opts.Analysis = DefaultOptions()
 	}
+	opts.AutoCueMode = db.NormalizeAutomaticCuePointMode(string(opts.AutoCueMode))
 	for _, songID := range songIDs {
 		if err := ctx.Err(); err != nil {
 			return progress, err
@@ -62,7 +66,7 @@ func Run(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistr
 				return progress, err
 			}
 		}
-		settled := analyzeOne(ctx, database, registry, songID, opts.Analysis, opts.ResolveSource)
+		settled := analyzeOne(ctx, database, registry, songID, opts.Analysis, opts.AutoCueMode, opts.ResolveSource)
 		// A cancellation that arrived mid-decode leaves the track outstanding
 		// rather than failed, so it must not be counted before returning.
 		if err := ctx.Err(); err != nil {
@@ -95,7 +99,7 @@ const (
 
 // analyzeOne settles exactly one track. Every terminal condition is persisted,
 // so a source that cannot be analyzed is not retried on the next run.
-func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options, resolveSource func(context.Context, string) (analysis.ResolvedSource, error)) outcome {
+func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options, autoCueMode db.AutomaticCuePointMode, resolveSource func(context.Context, string) (analysis.ResolvedSource, error)) outcome {
 	if resolveSource == nil {
 		resolveSource = func(_ context.Context, id string) (analysis.ResolvedSource, error) {
 			return analysis.ResolveLocalSource(database, id)
@@ -147,7 +151,7 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		}
 		return outcomeFailed
 	}
-	if err := Persist(database, result); err != nil {
+	if err := PersistWithAutoCueMode(database, result, autoCueMode); err != nil {
 		_ = database.ReleaseTrackAnalysis(songID)
 		logger.Analysis("track persistence failed song_id=%q path=%q status=%q error=%q", songID, source.Path, result.Status, err)
 		return outcomeFailed

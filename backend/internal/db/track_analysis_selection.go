@@ -31,16 +31,47 @@ const (
 	AnalysisSourceAll   = "all"
 )
 
+// Automatic cue modes are captured in durable analysis job parameters so a
+// queued or resumed run keeps the behavior selected when it was created.
+type AutomaticCuePointMode string
+
+const (
+	AutomaticCuePointsOff              AutomaticCuePointMode = "off"
+	AutomaticCuePointsSuggest          AutomaticCuePointMode = "suggest"
+	AutomaticCuePointsFillEmpty        AutomaticCuePointMode = "fill-empty"
+	AutomaticCuePointsReplaceGenerated AutomaticCuePointMode = "replace-generated"
+)
+
+// ParseAutomaticCuePointMode accepts a canonical setting value. The separate
+// normalizer is used for legacy jobs and invalid values already in storage.
+func ParseAutomaticCuePointMode(raw string) (AutomaticCuePointMode, bool) {
+	mode := AutomaticCuePointMode(strings.ToLower(strings.TrimSpace(raw)))
+	switch mode {
+	case AutomaticCuePointsOff, AutomaticCuePointsSuggest, AutomaticCuePointsFillEmpty, AutomaticCuePointsReplaceGenerated:
+		return mode, true
+	default:
+		return "", false
+	}
+}
+
+func NormalizeAutomaticCuePointMode(raw string) AutomaticCuePointMode {
+	if mode, ok := ParseAutomaticCuePointMode(raw); ok {
+		return mode
+	}
+	return AutomaticCuePointsFillEmpty
+}
+
 // maxAnalysisSelection bounds one job's work list so a pathological catalog
 // cannot produce an unbounded in-memory slice.
 const maxAnalysisSelection = 200000
 
 // AnalysisSelection describes which tracks a job covers.
 type AnalysisSelection struct {
-	Mode       string   `json:"mode"`
-	Source     string   `json:"source,omitempty"`
-	SongIDs    []string `json:"songIds,omitempty"`
-	PlaylistID string   `json:"playlistId,omitempty"`
+	Mode        string                `json:"mode"`
+	Source      string                `json:"source,omitempty"`
+	SongIDs     []string              `json:"songIds,omitempty"`
+	PlaylistID  string                `json:"playlistId,omitempty"`
+	AutoCueMode AutomaticCuePointMode `json:"autoCueMode,omitempty"`
 }
 
 // ParseAnalysisSelection reads a selection from persisted job parameters.
@@ -61,6 +92,7 @@ func ParseAnalysisSelection(parameters json.RawMessage) (AnalysisSelection, erro
 	if selection.Source == "" {
 		selection.Source = AnalysisSourceLocal
 	}
+	selection.AutoCueMode = NormalizeAutomaticCuePointMode(string(selection.AutoCueMode))
 	return selection, selection.Validate()
 }
 

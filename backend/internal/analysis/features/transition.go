@@ -3,18 +3,49 @@ package features
 import (
 	"math"
 	"strconv"
+
+	analysiskey "github.com/ajbergh/viib-mediahub/internal/analysis/key"
 )
+
+const TransitionAlgorithmVersion = "transition-v2-bpm-key-energy-v1"
+
+type TransitionIntent string
+
+const (
+	TransitionIntentHold     TransitionIntent = "hold"
+	TransitionIntentLift     TransitionIntent = "lift"
+	TransitionIntentReset    TransitionIntent = "reset"
+	TransitionIntentHarmonic TransitionIntent = "harmonic"
+)
+
+// TransitionMetadata carries optional, provenance-resolved measurements.
+// Nil or low-confidence dimensions are omitted from the score rather than
+// treated as compatible or incompatible.
+type TransitionMetadata struct {
+	BPM                   *float64 `json:"bpm,omitempty"`
+	BPMSource             string   `json:"bpmSource,omitempty"`
+	BPMConfidence         *float64 `json:"bpmConfidence,omitempty"`
+	CamelotKey            *string  `json:"camelotKey,omitempty"`
+	KeySource             string   `json:"keySource,omitempty"`
+	KeyConfidence         *float64 `json:"keyConfidence,omitempty"`
+	EnergyLevel           *int     `json:"energyLevel,omitempty"`
+	EnergyLevelConfidence *float64 `json:"energyLevelConfidence,omitempty"`
+}
 
 // TransitionVector is the compact, audio-derived evidence used to compare an
 // outgoing track with an incoming one.  It remains separate from the score so
 // callers can explain or override every recommendation dimension.
 type TransitionVector struct {
-	OutgoingTailEnergy float64 `json:"outgoingTailEnergy"`
-	IncomingHeadEnergy float64 `json:"incomingHeadEnergy"`
-	EnergyDelta        float64 `json:"energyDelta"`
-	LoudnessDeltaLU    float64 `json:"loudnessDeltaLu"`
-	OutgoingMixOut     float64 `json:"outgoingMixOutConfidence"`
-	IncomingMixIn      float64 `json:"incomingMixInConfidence"`
+	OutgoingTailEnergy float64  `json:"outgoingTailEnergy"`
+	IncomingHeadEnergy float64  `json:"incomingHeadEnergy"`
+	EnergyDelta        float64  `json:"energyDelta"`
+	LoudnessDeltaLU    float64  `json:"loudnessDeltaLu"`
+	OutgoingMixOut     float64  `json:"outgoingMixOutConfidence"`
+	IncomingMixIn      float64  `json:"incomingMixInConfidence"`
+	BPMDelta           *float64 `json:"bpmDelta,omitempty"`
+	RequiredTempoShift *float64 `json:"requiredTempoShiftPercent,omitempty"`
+	CamelotRelation    string   `json:"camelotRelation,omitempty"`
+	EnergyLevelDelta   *int     `json:"energyLevelDelta,omitempty"`
 }
 
 // TransitionComponent is one transparent contribution to a recommendation.
@@ -63,6 +94,149 @@ func ScoreTransition(outgoing, incoming Result) TransitionScore {
 		score += component.Score * component.Weight
 	}
 	return TransitionScore{Score: clamp01(score), Vector: vector, Components: components}
+}
+
+// ScoreTransitionWithMetadata adds only evidence available at usable
+// confidence. Optional evidence weights are renormalized with the established
+// energy/loudness/phrase components, so a missing key or BPM never penalizes a
+// candidate. Direction intents express preferences, not mixing instructions.
+func ScoreTransitionWithMetadata(outgoing, incoming Result, outgoingMeta, incomingMeta TransitionMetadata, intent TransitionIntent) (TransitionScore, error) {
+	if intent == "" {
+		intent = TransitionIntentHold
+	}
+	if intent != TransitionIntentHold && intent != TransitionIntentLift && intent != TransitionIntentReset && intent != TransitionIntentHarmonic {
+		return TransitionScore{}, ErrUnsupportedTransitionIntent
+	}
+	base := ScoreTransition(outgoing, incoming)
+	vector := base.Vector
+	components := append([]TransitionComponent(nil), base.Components...)
+	weights := []float64{.55, .20, .25}
+	if transitionEvidenceUsable(outgoingMeta.BPM, outgoingMeta.BPMConfidence, outgoingMeta.BPMSource) && transitionEvidenceUsable(incomingMeta.BPM, incomingMeta.BPMConfidence, incomingMeta.BPMSource) {
+		outBPM, inBPM := *outgoingMeta.BPM, *incomingMeta.BPM
+		delta := inBPM - outBPM
+		shift := (outBPM/inBPM - 1) * 100
+		vector.BPMDelta, vector.RequiredTempoShift = &delta, &shift
+		confidence := math.Min(evidenceConfidence(outgoingMeta.BPMConfidence, outgoingMeta.BPMSource), evidenceConfidence(incomingMeta.BPMConfidence, incomingMeta.BPMSource))
+		score := clamp01(1 - math.Abs(shift)/15)
+		components = append(components, TransitionComponent{Name: "tempo-compatibility", Score: score, Weight: .12 * confidence, Rationale: "Matching the incoming tempo to the outgoing track requires " + signedRounded(shift) + "% tempo change"})
+		weights = append(weights, .12*confidence)
+	}
+	if validCamelot(outgoingMeta.CamelotKey) && validCamelot(incomingMeta.CamelotKey) && evidenceConfidence(outgoingMeta.KeyConfidence, outgoingMeta.KeySource) >= .5 && evidenceConfidence(incomingMeta.KeyConfidence, incomingMeta.KeySource) >= .5 {
+		relation, _ := analysiskey.HarmonicRelation(*outgoingMeta.CamelotKey, *incomingMeta.CamelotKey)
+		vector.CamelotRelation = relation
+		confidence := math.Min(evidenceConfidence(outgoingMeta.KeyConfidence, outgoingMeta.KeySource), evidenceConfidence(incomingMeta.KeyConfidence, incomingMeta.KeySource))
+		score := harmonicScore(relation)
+		weight := .12
+		if intent == TransitionIntentHarmonic {
+			weight = .30
+		}
+		components = append(components, TransitionComponent{Name: "harmonic-compatibility", Score: score, Weight: weight * confidence, Rationale: "Camelot relation is " + relation + " (advisory; intentional dissonance may be useful)"})
+		weights = append(weights, weight*confidence)
+	}
+	if validEnergyLevel(outgoingMeta) && validEnergyLevel(incomingMeta) {
+		confidence := math.Min(*outgoingMeta.EnergyLevelConfidence, *incomingMeta.EnergyLevelConfidence)
+		if confidence >= .5 {
+			delta := *incomingMeta.EnergyLevel - *outgoingMeta.EnergyLevel
+			vector.EnergyLevelDelta = &delta
+			target := 0
+			name := "energy-level-hold"
+			switch intent {
+			case TransitionIntentLift:
+				target, name = 1, "energy-level-lift"
+			case TransitionIntentReset:
+				target, name = -1, "energy-level-reset"
+			case TransitionIntentHarmonic:
+				name = "energy-level-balance"
+			}
+			score := 1 - math.Min(1, math.Abs(float64(delta-target))/3)
+			components = append(components, TransitionComponent{Name: name, Score: score, Weight: .12 * confidence, Rationale: "Incoming Energy Level changes by " + signedInt(delta) + " from the outgoing track"})
+			weights = append(weights, .12*confidence)
+		}
+	}
+	totalWeight, weightedScore := 0.0, 0.0
+	for i, component := range components {
+		weight := component.Weight
+		if i < len(weights) {
+			weight = weights[i]
+			component.Weight = weight
+			components[i] = component
+		}
+		totalWeight += weight
+		weightedScore += component.Score * weight
+	}
+	if totalWeight > 0 {
+		for i := range components {
+			components[i].Weight /= totalWeight
+		}
+		weightedScore /= totalWeight
+	}
+	return TransitionScore{Score: clamp01(weightedScore), Vector: vector, Components: components}, nil
+}
+
+var ErrUnsupportedTransitionIntent = &transitionIntentError{}
+
+type transitionIntentError struct{}
+
+func (*transitionIntentError) Error() string { return "unsupported transition intent" }
+
+func transitionEvidenceUsable(value, confidence *float64, source string) bool {
+	if value == nil || !finiteNumber(*value) || *value <= 0 {
+		return false
+	}
+	return evidenceConfidence(confidence, source) >= .5
+}
+
+func evidenceConfidence(confidence *float64, source string) float64 {
+	if source == "manual" {
+		return 1
+	}
+	if source != "measured" || confidence == nil || !finiteNumber(*confidence) {
+		return 0
+	}
+	return clamp01(*confidence)
+}
+
+func validCamelot(value *string) bool {
+	if value == nil || len(*value) < 2 || (*value)[len(*value)-1] != 'A' && (*value)[len(*value)-1] != 'B' {
+		return false
+	}
+	number, err := strconv.Atoi((*value)[:len(*value)-1])
+	return err == nil && number >= 1 && number <= 12
+}
+
+func harmonicScore(relation string) float64 {
+	switch relation {
+	case "same":
+		return 1
+	case "adjacent":
+		return .9
+	case "relative":
+		return .85
+	case "other":
+		return .25
+	default:
+		return .5
+	}
+}
+
+func validEnergyLevel(meta TransitionMetadata) bool {
+	return meta.EnergyLevel != nil && *meta.EnergyLevel >= 1 && *meta.EnergyLevel <= 10 && meta.EnergyLevelConfidence != nil && finiteNumber(*meta.EnergyLevelConfidence) && *meta.EnergyLevelConfidence >= 0 && *meta.EnergyLevelConfidence <= 1
+}
+
+func finiteNumber(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
+
+func signedRounded(value float64) string {
+	if value > 0 {
+		return "+" + rounded(value)
+	}
+	return rounded(value)
+}
+
+func signedInt(value int) string {
+	if value > 0 {
+		return "+" + strconv.Itoa(value)
+	}
+	return strconv.Itoa(value)
 }
 
 func headEnergy(points []EnergyPoint) float64 { return meanEnergy(points[:min(len(points), 8)]) }

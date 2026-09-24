@@ -31,6 +31,7 @@ import { DJDualWaveform } from '../components/dj/v2/DJDualWaveform';
 import { DJWebGLWaveform } from '../components/dj/v2/webgl';
 import { DJJogWheel } from '../components/dj/v2/DJJogWheel';
 import { DJHotCuePad } from '../components/dj/v2/DJHotCuePad';
+import { DJAnalysisCueEditor } from '../components/dj/v2/DJAnalysisCueEditor';
 import { DJTransportButtons } from '../components/dj/v2/DJTransportButtons';
 import { DJLoopSection } from '../components/dj/v2/DJLoopSection';
 import { DJHeadphoneMix } from '../components/dj/v2/DJHeadphoneMix';
@@ -46,6 +47,7 @@ import { DJAudioSetup } from '../components/dj/v2/DJAudioSetup';
 import { DJErrorBoundary } from '../components/dj/v2/DJErrorBoundary';
 import { DJScopeView } from '../components/dj/v2/DJScopeView';
 import { DJDeckStatusBar } from '../components/dj/v2/DJDeckStatusBar';
+import { DJStemControls } from '../components/dj/v2/DJStemControls';
 import { DJStereoVUMeter } from '../components/dj/v2/DJVUMeter';
 import { DJLibraryDrawer, type DJLibraryDrawerHandle } from '../components/dj/v2/DJLibraryDrawer';
 import { DeckTimeDisplay, DeckHasTrack, DeckBpmBadge, DeckHorizontalVU } from '../components/dj/v2/DJDeckComponents';
@@ -664,9 +666,11 @@ const DJModeV2Inner: React.FC = () => {
                   <div className='flex items-center gap-3 px-3 py-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
                       <DJLoopSection deck='A' />
                       <DJBeatJump deck='A' compact />
+                      <DJStemControls deck='A' />
                       {deckAHasGrid && <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='A' /> · Edit Grid</summary><div><DJBeatGridEdit deck='A' /></div></details>}
                   </div>
                   <DJEnergyInsights trackID={deckATrack?.id} deck='A' />
+                  <DJAnalysisCueEditor trackID={deckATrack?.id} deck='A' />
                   {viewMode === 'racks' && <DJDeckOverview deck='A' />}
             </div>
 
@@ -914,9 +918,11 @@ const DJModeV2Inner: React.FC = () => {
                   <div className='flex items-center gap-3 px-3 py-1 justify-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
                       {deckBHasGrid && <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='B' /> · Edit Grid</summary><div><DJBeatGridEdit deck='B' /></div></details>}
                       <DJBeatJump deck='B' compact />
+                      <DJStemControls deck='B' />
                       <DJLoopSection deck='B' />
                   </div>
                   <DJEnergyInsights trackID={deckBTrack?.id} deck='B' />
+                      <DJAnalysisCueEditor trackID={deckBTrack?.id} deck='B' />
                   {viewMode === 'racks' && <DJDeckOverview deck='B' />}
             </div>
 

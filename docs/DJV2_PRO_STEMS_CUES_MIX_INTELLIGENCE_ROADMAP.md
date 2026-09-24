@@ -1,15 +1,83 @@
 # DJv2 Pro Stems, Cue Intelligence & Mix Planning Roadmap
 
-**Status:** Proposed implementation roadmap  
-**Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md  
+**Status:** In progress — roadmap reviewed and implementation started on 2026-09-24<br>
+**Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md<br>
+**Execution branch:** `codex/djv2-pro-roadmap`<br>
+**Review PR:** [#61 — DJv2 stem, cue and mix intelligence slices](https://github.com/ajbergh/ViiB-MediaHub/pull/61) (draft)<br>
+**StemLab repository status:** Repository exists; generation work remains outside this MediaHub roadmap.<br>
 **Repository snapshot reviewed:** originally main at d02ad01 (v1.0.0-rc3); baseline claims re-verified against main at 956bf02 (includes 65cc49f DJ loop/waveform fixes) on 2026-09-24  
 **Research snapshot:** 2026-09-24 (external references re-checked the same day)  
 **Primary goals:** professional-grade stem playback, scan-time cue creation, Camelot-first library UX, 1-10 energy analysis, structure-aware transition planning, mashup auditioning, and high-quality DJ preparation workflows.  
-**Stem-generation architecture decision:** stem generation is an ahead-of-time workflow owned by a separate future application/repository named **ViiB-StemLab**. ViiB MediaHub detects, validates, indexes and plays pre-generated stem packages; it does not embed Demucs/PyTorch or perform neural stem separation during DJ playback. The ViiB-StemLab repository will be created later, after the package contract in this roadmap is stable.
+**Stem-generation architecture decision:** stem generation is an ahead-of-time workflow owned by the separate **ViiB-StemLab** application/repository ([repository](https://github.com/ajbergh/ViiB-StemLab)). ViiB MediaHub detects, validates, indexes and plays pre-generated stem packages; it does not embed Demucs/PyTorch or perform neural stem separation during DJ playback. This roadmap covers MediaHub's consumer side; StemLab generation work is tracked separately and depends on stabilizing the package contract here.
 
 > This roadmap uses public behavior from Mixed In Key Pro (v11) as product inspiration and StemDeck as an open-source implementation reference. It does not attempt to reproduce proprietary Mixed In Key algorithms or visual trade dress. Where StemDeck code is reused directly, Apache-2.0 attribution and third-party notices must be preserved.
 
 ---
+
+## Execution status
+
+The full roadmap (sections 1–52) was reviewed on 2026-09-24 against repository commit `48f8d3b`. Implementation is underway on the branch above. The work is divided into independently reviewable slices; completed items will be checked off here with links to their changes and validation evidence.
+
+| Slice | Status | Notes |
+| --- | --- | --- |
+| PR 1 — Camelot visual system | Complete | Palette, reusable chip, library integration; included in the 104-test frontend pass. |
+| PR 2 — Cue provenance model | Complete | Corrected pad argument order; added durable provenance, legacy-safe migration, full-set round-trip and server-side slot validation; backend tests and all 104 frontend tests passed. |
+| PR 3 — Rhythm/downbeat benchmark and provenance | In progress | Canonical WAV exporter, reference adapters, overlap audit, and persistent provenance are implemented. No measured detector or reference-model predictions: runtimes/checkpoints and complete training annotations are unavailable. |
+| PR 4 — Auto-cue generator V1 | Complete | Scan-time fill-empty generation, eight-slot policy, confidence/rationale/source fingerprint, provenance-aware alignment, and deletion suppressions; focused Go checks passed. |
+| PR 5 — Energy Level V1 | Complete | Versioned deterministic 1–10 score, confidence/API and sortable/filterable library column; silence is unscored and corpus calibration remains outstanding; included in the 104-test frontend pass. |
+| PR 6 — ViiB Stem Package v1 | Complete | Contract, bounded manifest parser, WAV-only validator, safe path/checksum/geometry checks and deterministic fixtures; Go tests and vet passed. |
+| PR 7 — MediaHub stem discovery and registry | Complete | Discovery, persistence, locations, async link/refresh, status/unlink APIs, and PCM32 `audioSha256` matching for exact decoder geometry; Go checks passed. Geometry conversion remains unsupported. |
+| PR 8 — DeckSource refactor | Complete | Source-neutral transport and regression coverage for play/seek/loop/cue/sync/scratch; typecheck and all 104 frontend tests passed. |
+| PR 9 — Stem package preview/audio serving | Complete | Registered frame endpoint and single-stem WAV preview/export are implemented; full endpoint checks pass, with symlink creation tests skipped by Windows permissions. |
+| PR 10 — Stem deck transport | Complete — V1 | One-clock four-bus worklet, bounded prefetch, source-rate resampling, switching, gains, fallback and loop capability reporting; full typecheck and deck/worklet regression tests pass. Key-lock, scratch/slip, long sample-accurate loops and production device qualification remain open. |
+| PR 11 — Four-button stem UI | Complete | Per-deck full/stems mode, four bus mutes, expanded gain/solo controls, buffering/fallback/underrun diagnostics, and FULL/ACAPELLA/INSTRUMENTAL mute presets with restore-on-toggle and gain preservation; focused tests and frontend typecheck passed. |
+| PR 12 — Cue API and preparation editor | Complete — V1 | Typed candidate/list/apply routes, fill-empty/refresh/selected-only policies, installation-wide automatic cue mode, provenance/lock/rationale display and candidate actions; focused Go/API/frontend checks pass. Waveform marker styling, quantization controls and richer editing remain open. |
+| PR 13 — DJ library Stem Status | Complete | Snapshot/change song rows carry a batched, path-free registry summary; the optional library badge supports sorting and status search. Full Go, DB, typecheck and frontend checks pass. |
+| PR 14 — Mix Next candidate filters V1 | Complete | Inclusive BPM/Energy ranges and registered-ready stem availability filters expose validated active filters, resolved evidence and before/after counts; API/UI tests pass. |
+| Mix/Mashup planning and interoperability | In progress | Mix Next scores confidence-gated BPM/Camelot/Energy Level evidence with Hold/Lift/Reset/Harmonic intents. A guarded top-candidate headphone preview is implemented for an empty opposite deck; atomic restoration of occupied decks, sync/beatmatch audition, structure/vocal evidence and Mashup Mode remain outstanding. |
+
+Current release gates and follow-on work:
+
+- Rhythm: benchmark adapters and provenance are ready, but no measured Beat This/All-In-One predictions or qualified production downbeat detector are available. The configured runtimes/checkpoints and complete lawful training annotations are absent; generated cues therefore do not claim measured musical bar-one alignment.
+- Structure: analysis still has energy-only sections; semantic intro/drop/breakdown/outro labels, confidence, local-tempo/bar metadata and a structure API are not implemented.
+- Energy/loudness: Energy Level is deterministic V1 with heuristic confidence and no curated-corpus calibration. The displayed loudness is explicitly an unweighted RMS proxy, not BS.1770 integrated LUFS or true peak.
+- Stems: V1 supports WAV packages and exact decoder/package geometry. Key-lock/time-stretch, scratch/slip, loops beyond the bounded sample buffer, browser/device performance qualification, six-stem editing/export, FLAC and NI `.stem.mp4` interoperability remain gated. StemLab generation remains owned by the separate repository.
+- Mix planning: a 10-second candidate-only headphone preview is guarded by an empty/pristine opposite deck, fully off-air crossfader, separate headphone device, disabled master cue and disabled auto-gain. It relinquishes the deck when load generation, routing or preview controls change. Atomic restore of an occupied deck, reference/incoming synchronized audition, beatmatch/key-shift preview and acceptance-to-load remain unimplemented. Structure/vocal-safe evidence is not available; Surprise and Vocal-safe intents stay disabled.
+- Mashup/interoperability: stem-aware pairing, independent pitch-shift/key recalculation, phrase-window and loop audition, saved ideas, DJ metadata export and controller/MIDI/accessibility polish remain future slices.
+
+Progress log:
+
+- 2026-09-24 — Reviewed the complete roadmap and confirmed the MediaHub/StemLab boundary. Began PR 1, PR 2 and PR 6 in parallel; PR 3 remains the gate before generated cues can be advertised as downbeat-aligned.
+- 2026-09-24 — Completed PR 1's Camelot palette, chip and DJ library integration. Started PR 8 independently while PR 2 and PR 6 continued.
+- 2026-09-24 — Completed PR 2's provenance model and hot-cue argument fix. `go test ./internal/api ./internal/db` and `npm run typecheck` passed; legacy cue timestamps migrate as Unix milliseconds.
+- 2026-09-24 — Completed PR 6's v1 package contract and validator foundation. `go test ./internal/stems` and `go vet ./internal/stems` passed; WAV PCM16/float32 is the supported v1 encoding until decoder coverage changes.
+- 2026-09-24 — Began PR 7's package discovery and source-resolution layer after PR 6 established the validator boundary; adjacent-first and deterministic library resolution plus full-file hash caching pass `go test ./internal/stems`.
+- 2026-09-24 — Completed PR 5's versioned Energy Level score, confidence/API and library sort/range filter. Go feature/track/DB/API tests and TypeScript typecheck passed; confidence is heuristic and the score is not corpus-calibrated.
+- 2026-09-24 — Started PR 3's benchmark harness foundation separately from production beatgrid code; generated cues remain gated until rhythm provenance is validated.
+- 2026-09-24 — Added a Go canonical WAV exporter (`backend/cmd/canonicalwav`) backed by the MediaHub decoder registry; reference adapters now require its timing/hash/frame metadata and never independently decode source files. External model runtimes/checkpoints remain unavailable.
+- 2026-09-24 — Completed the PR 3 reference harness slice: normalized raw result schema, Beat This and All-In-One adapters, canonical WAV verification and exact-metadata overlap audit. Python compilation and focused tests (5/5) passed; model predictions remain unrun because runtimes/checkpoints and complete training annotations are unavailable.
+- 2026-09-24 — Completed PR 13's DJ library Stem Status column. V2 snapshot/change pages batch path-free registry statuses for returned songs and feed a local-sort/searchable badge; `go test ./...`, frontend typecheck and all 115 frontend tests pass.
+- 2026-09-24 — Started the production rhythm-grid provenance portion of PR 3; current native grids must report `inferred-from-meter` until a qualified measured detector exists.
+- 2026-09-24 — Completed PR 8's source-neutral deck transport and regression tests for load/play, seek, loop, cue, sync and scratch. `npm run typecheck` and `npx vitest run --configLoader runner` passed (23 files, 104 tests).
+- 2026-09-24 — Completed PR 3's MediaHub provenance path: native phase grids persist as `inferred-from-meter`, editor changes persist as `manual`, and legacy artifacts resolve through an effective provenance rule. No measured detector or external model inference was available.
+- 2026-09-24 — Completed PR 4's scan-time fill-empty cue generation and lifecycle policy. Generated cues persist version, confidence, kind, rationale, source fingerprint and downbeat-alignment state; user/locked cues survive refreshes, and deleted generated cues receive per-track/slot/kind suppressions. Focused Go tests passed.
+- 2026-09-24 — Completed PR 7's registry persistence, locations, async link/refresh jobs, path-free per-track status, DB-only unlink, discovery and source identity checks. Full-file SHA-256 is preferred; canonical PCM32 audio SHA supports retag matching only at exact decoder/package geometry. Focused API/DB/stem checks passed.
+- 2026-09-24 — Implemented PR 9's registered frame-serving endpoint with 4 MiB range bounds, `dj4`/`six` bus packing and `f32le`/`s16le` output. Focused tests and `go vet ./internal/api ./internal/stems` passed. The simple single-stem preview/export route remains outstanding; Windows denied symlink creation, so traversal tests run while symlink tests skip.
+- 2026-09-24 — Completed PR 9's single-stem WAV preview/export route with HTTP byte ranges and registered-source validation. Frame and preview API tests, DB checks, server compilation and `go vet ./internal/api ./internal/stems` passed. Symlink tests are skipped on this Windows sandbox because it denies symlink creation; traversal rejection is covered.
+- 2026-09-24 — Started PR 10's synchronized multi-stem deck source and PR 11's four-button controls in parallel against a shared proposed API contract.
+- 2026-09-24 — Started the first sections 20–21 Mix Next v2 scoring slice: add confidence-gated tempo, Camelot and Energy Level components plus explicit Hold/Lift/Reset/Harmonic intent; vocal-safe and surprise remain unsupported without evidence.
+- 2026-09-24 — Completed PR 14's Mix Next inclusive BPM (60–190), Energy Level (1–10), and registered-ready stem availability filters. The API validates bounds, excludes candidates missing requested measurements, and echoes active filters, candidate evidence and before/after counts; DJEnergyInsights exposes compact controls. Full API and frontend checks pass; structure/vocal-safe filters remain unsupported.
+- 2026-09-24 — Completed PR 11's four-button DJ stem controls and diagnostics against the new deck actions API. `npm run typecheck` and `npx vitest run --configLoader runner` passed (24 files, 106 tests); palette/raw-color checks passed with no new violations. Key-lock/time-stretch and scratch/slip are reported unsupported in stem mode.
+- 2026-09-24 — Added per-deck FULL/ACAPELLA/INSTRUMENTAL stem mix presets. Presets alter mute states only, retain user gains, and restore the pre-preset mute snapshot when toggled off; source and playback-mode changes clear stale preset state. Focused component tests (5/5) and `npm run typecheck` passed.
+- 2026-09-24 — The DJ energy panel labels its existing unweighted RMS estimate `Loudness proxy` and clarifies it is not BS.1770 LUFS. Standards-correct BS.1770 measurement remains future work; no component-level test harness exists for this view, and TypeScript typecheck passed.
+- 2026-09-24 — Completed PR 10 transport V1 with a four-bus shared-clock AudioWorklet, bounded frame fetches, fallback and loop capability reporting. Fixed source-rate/output-rate mismatch with linear interpolation and added an executable worklet regression test. Deck tests passed (27 tests), then the focused worklet/deck suite passed (5 tests).
+- 2026-09-24 — Completed PR 12 cue API/editor V1: fresh candidate listing and apply endpoints support fill-empty, replace-generated and selected-only modes; the DJ view displays cue provenance/confidence/rationale/lock state and applies candidates. Selected-only writes preserve other slots.
+- 2026-09-24 — Updated the cue API freshness guard to reject analysis results whose source fingerprint no longer matches the local file; fixed the API fixture to use a real source file. Cue-specific API tests passed.
+- 2026-09-24 — Combined validation passed: `go test ./...`, `go vet ./...`, `npm run typecheck`, serial `npx vitest run --configLoader runner` (27 files, 115 tests), benchmark Python compilation and unit tests (5/5), and `git diff --check`.
+- 2026-09-24 — Committed as `0ede940` and opened draft PR #61 for review; roadmap implementation remains in progress pending the release gates above.
+- 2026-09-24 — Completed section 12.6's installation-wide automatic cue policy. New and scan-triggered analysis jobs snapshot `off`, `suggest`, `fill-empty` or `replace-generated`; retries preserve the snapshot, legacy wrappers default to fill-empty, and refresh preserves manual cues, locks and suppression tombstones. A Library Analysis selector exposes the choice. Unset/invalid persisted values default to fill-empty; per-user settings are unsupported by the current settings store.
+- 2026-09-24 — Added guarded Test Mix for only the top filtered candidate. It uses a pristine empty opposite deck, keeps that deck fully off-air, requires a distinct headphone route with master cue and auto-gain off, and cleans up only while its load generation and deck controls remain owned. An occupied-deck atomic snapshot/restore API is not available, so that capability remains gated.
+- 2026-09-24 — Follow-on validation passed: `go test ./...`, `go vet ./...`, `npm run typecheck`, serial `npx vitest run --configLoader runner` (28 files, 120 tests), Python compilation, rhythm benchmark unit tests (5/5), and `git diff --check`. Automatic cue mode, job snapshots/retries and guarded Test Mix are included in the working follow-on patch for PR #61.
 
 ## 1. Product vision
 
@@ -19,7 +87,7 @@ The target experience is:
 
 1. Import or scan music once.
 2. Analyze BPM, beatgrid, key, Camelot/Open Key, loudness, energy, song structure and up to eight useful cue points.
-3. Prepare stems ahead of time with the separate **ViiB-StemLab** application (future repository), or import a compatible ViiB Stem Package generated elsewhere; MediaHub detects when a valid package is available.
+3. Prepare stems ahead of time with the separate **ViiB-StemLab** application (https://github.com/ajbergh/ViiB-StemLab), or import a compatible ViiB Stem Package generated elsewhere; MediaHub detects when a valid package is available.
 4. Load a track and immediately see:
    - BPM and confidence;
    - musical key and color-coded Camelot notation;
@@ -353,7 +421,7 @@ MediaHub must **not** ship or embed the stem-generation ML runtime. Demucs/PyTor
 
 Stem separation is an ahead-of-time preparation workflow.
 
-**ViiB-StemLab** will be a separate application and future repository. Its responsibilities will be:
+**ViiB-StemLab** is a separate application and repository. Its responsibilities are:
 
 - select and manage stem models;
 - select CUDA, Apple MPS or CPU execution;
@@ -497,9 +565,9 @@ Add the following MediaHub components:
 
 MediaHub does **not** contain a Python worker, model runtime or separation job implementation.
 
-### 5.1 Future ViiB-StemLab repository
+### 5.1 Separate ViiB-StemLab repository
 
-A separate repository will be created later for **ViiB-StemLab**. That repository is expected to contain the heavy stem-generation stack, potentially including:
+The separate **ViiB-StemLab** repository owns the heavy stem-generation stack, potentially including:
 
     ViiB-StemLab/
         app/
@@ -824,11 +892,11 @@ Never provide a destructive replace-all mode that can overwrite user cues withou
 
 ## 8. ViiB-StemLab architecture
 
-### 8.1 Separate application and future repository
+### 8.1 Separate application and repository
 
 Stem generation will be implemented in a separate application named **ViiB-StemLab**.
 
-The repository is intentionally **not being created as part of this roadmap update**. Once the ViiB Stem Package v1 contract is stable, create a dedicated repository, expected to be named:
+The repository already exists. Once the ViiB Stem Package v1 contract is stable, align its package writer with this contract:
 
     ajbergh/ViiB-StemLab
 
@@ -1397,10 +1465,13 @@ Add Setting:
 
 Recommended default: Fill empty slots.
 
+The current settings store is installation-wide. New durable analysis jobs snapshot the selected policy, including scan-triggered jobs, and retries retain that snapshot. Unset or invalid stored values fall back to Fill empty slots. Existing direct analysis wrappers retain their historical fill-empty default.
+
 Rules:
 
 - user cues are never replaced;
 - generated cues may be replaced by newer generated cues;
+- Refresh generated cues replaces only unlocked generated cues and respects deletion tombstones;
 - moving or renaming a generated cue makes it user-owned;
 - deleting a generated cue can optionally create a do-not-regenerate tombstone for that slot/track.
 
@@ -2045,7 +2116,7 @@ B6. DeckSource refactor
 B7. Stem transport worklet  
 B8. Four-button DJ stem UI  
 B9. Scratch/loop/sync/key-lock parity  
-B10. Future ViiB-StemLab repository: generator UI/CLI, htdemucs_6s, batch queue and package writer
+B10. ViiB-StemLab: generator UI/CLI, htdemucs_6s, batch queue and package writer
 
 ### Workstream C — Mix intelligence
 
@@ -2085,7 +2156,7 @@ Exit criteria:
 - the same package fixture resolves on Windows, macOS and Linux;
 - stale source-hash packages are rejected or marked stale;
 - source/stem frame counts validate;
-- the v1 schema is stable enough to implement in the future ViiB-StemLab repo.
+- the v1 schema is stable enough to implement in ViiB-StemLab.
 
 ### Phase 1 — Camelot UX and Energy Level
 
@@ -2150,9 +2221,9 @@ Exit criteria:
 - packages become stale when the source audio hash changes;
 - duplicate candidate packages resolve deterministically.
 
-### External project milestone — Create ViiB-StemLab repository
+### External project milestone — Align ViiB-StemLab with the package contract
 
-After the ViiB Stem Package v1 contract is stable, create the separate **ViiB-StemLab** repository.
+The repository already exists. The remaining milestone is to implement or align its package writer with the stabilized MediaHub contract; that work is tracked in ViiB-StemLab, not as a MediaHub PR.
 
 Initial StemLab deliverables should include:
 
@@ -2166,7 +2237,7 @@ Initial StemLab deliverables should include:
 - atomic ViiB Stem Package v1 writer;
 - configurable output Stem Library.
 
-This milestone is a dependency for convenient first-party stem creation, but it is **not** a MediaHub backend subsystem and should be planned/tracked in its own repository once created.
+This milestone is a dependency for convenient first-party stem creation, but it is **not** a MediaHub backend subsystem and should be implemented and tracked in the existing ViiB-StemLab repository.
 
 ### Phase 4 — DeckSource refactor
 
@@ -2689,7 +2760,7 @@ Suggested MediaHub files:
     lib/camelotColors.ts
     lib/djPitch.ts
 
-Files for model execution, PyTorch/Demucs integration, generation queues and package writing belong in the future **ViiB-StemLab** repository and should not be added to ViiB-MediaHub.
+Files for model execution, PyTorch/Demucs integration, generation queues and package writing belong in the separate **ViiB-StemLab** repository and should not be added to ViiB-MediaHub.
 
 ---
 
@@ -2758,9 +2829,9 @@ Keep early PRs small and independently reviewable.
 - link/unlink API
 - stem status badge
 
-### Future repo kickoff — ViiB-StemLab
+### External project milestone — ViiB-StemLab package writer
 
-Once the ViiB Stem Package PR stabilizes the package contract, create the separate ViiB-StemLab repository and implement the first-party generator there.
+Once the ViiB Stem Package PR stabilizes the package contract, align the separate ViiB-StemLab implementation with it and build the first-party generator there.
 
 This is not a MediaHub PR.
 
@@ -2807,7 +2878,7 @@ MediaHub stem functionality is release-ready only when:
 - user-facing package errors are actionable;
 - normal DJ mode remains unchanged when no stems are available.
 
-First-party generation readiness is defined separately in the future ViiB-StemLab repository and should include complete six-stem generation, device transparency, reliable cancellation, atomic package finalization and storage controls.
+First-party generation readiness is defined separately in the ViiB-StemLab repository and should include complete six-stem generation, device transparency, reliable cancellation, atomic package finalization and storage controls.
 
 ---
 
@@ -2876,7 +2947,7 @@ For the next DJv2 development cycle, prioritize in this order:
 3. **Camelot visual system**
 4. **Standards-correct loudness foundation + Energy Level 1-10**
 5. **ViiB Stem Package v1 + MediaHub discovery/registry**
-6. **Create the separate ViiB-StemLab repository and first-party generator**
+6. **Align the existing ViiB-StemLab repository with the package contract and build the first-party generator**
 7. **Four-group stem deck playback**
 8. **Mix Next v2**
 9. **Pitch-shift/mashup planning**

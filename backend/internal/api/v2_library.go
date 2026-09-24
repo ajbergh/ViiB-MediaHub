@@ -36,6 +36,8 @@ func (a *API) V2Routes() chi.Router {
 	r.Delete("/analysis/{songID}/beatgrid", a.resetBeatGridV2)
 	r.Get("/analysis/{songID}/energy", a.getEnergyFeaturesV2)
 	r.Get("/analysis/{songID}/recommendations", a.getTransitionRecommendationsV2)
+	r.Get("/analysis/{songID}/cues", a.listAnalysisCuesV2)
+	r.Post("/analysis/{songID}/cues/apply", a.applyAnalysisCuesV2)
 	return r
 }
 
@@ -77,6 +79,22 @@ func transformLibrarySongsForAPI(songs []db.Song) {
 		transformLibrarySongForAPI(&songs[i])
 	}
 }
+
+func (a *API) attachLibraryStemStatuses(songs []db.Song) error {
+	ids := make([]string, len(songs))
+	for i := range songs {
+		ids[i] = songs[i].ID
+	}
+	statuses, err := a.db.ListStemStatuses(ids)
+	if err != nil {
+		return err
+	}
+	for i := range songs {
+		songs[i].StemStatus = statuses[songs[i].ID]
+	}
+	return nil
+}
+
 func (a *API) getLibrarySnapshotV2(w http.ResponseWriter, r *http.Request) {
 	if err := a.db.EnsureLibrarySyncSchema(); err != nil {
 		respondError(w, 500, err.Error())
@@ -84,6 +102,10 @@ func (a *API) getLibrarySnapshotV2(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := a.db.ListSongsPage(r.URL.Query().Get("cursor"), parseBoundedInt(r.URL.Query().Get("limit"), 500, 2000))
 	if err != nil {
+		respondError(w, 500, err.Error())
+		return
+	}
+	if err := a.attachLibraryStemStatuses(page.Songs); err != nil {
 		respondError(w, 500, err.Error())
 		return
 	}
@@ -102,6 +124,10 @@ func (a *API) getLibraryChangesV2(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := a.db.GetLibraryChanges(since, parseBoundedInt(r.URL.Query().Get("limit"), 500, 2000))
 	if err != nil {
+		respondError(w, 500, err.Error())
+		return
+	}
+	if err := a.attachLibraryStemStatuses(page.Songs); err != nil {
 		respondError(w, 500, err.Error())
 		return
 	}

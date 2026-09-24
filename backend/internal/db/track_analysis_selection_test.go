@@ -37,6 +37,29 @@ func TestParseAnalysisSelectionDefaultsToMissing(t *testing.T) {
 	if selection.Source != AnalysisSourceLocal {
 		t.Fatalf("source = %q, want %q", selection.Source, AnalysisSourceLocal)
 	}
+	if selection.AutoCueMode != AutomaticCuePointsFillEmpty {
+		t.Fatalf("automatic cue mode = %q, want default %q", selection.AutoCueMode, AutomaticCuePointsFillEmpty)
+	}
+}
+
+func TestParseAnalysisSelectionNormalizesAutomaticCueMode(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  AutomaticCuePointMode
+	}{
+		{value: "replace-generated", want: AutomaticCuePointsReplaceGenerated},
+		{value: " SUGGEST ", want: AutomaticCuePointsSuggest},
+		{value: "invalid", want: AutomaticCuePointsFillEmpty},
+		{value: "", want: AutomaticCuePointsFillEmpty},
+	} {
+		selection, err := ParseAnalysisSelection(json.RawMessage(`{"mode":"missing","autoCueMode":"` + test.value + `"}`))
+		if err != nil {
+			t.Fatalf("parse %q: %v", test.value, err)
+		}
+		if selection.AutoCueMode != test.want {
+			t.Errorf("mode %q normalized to %q, want %q", test.value, selection.AutoCueMode, test.want)
+		}
+	}
 }
 
 func TestParseAnalysisSelectionRejectsIncompleteSelections(t *testing.T) {

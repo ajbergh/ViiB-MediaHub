@@ -4,14 +4,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	analysiskey "github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/dj"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -19,20 +24,23 @@ import (
 // snapshot for one song. It intentionally omits diagnostic and source-path
 // fields, leaving the library UI with only values it can safely display.
 type TrackAnalysisFeatureResponse struct {
-	BPMAltCandidate *float64 `json:"bpmAltCandidate,omitempty"`
-	TempoStability  *float64 `json:"tempoStability,omitempty"`
-	TempoKind       *string  `json:"tempoKind,omitempty"`
-	SongID          string   `json:"songId"`
-	Status          string   `json:"status"`
-	BPM             *float64 `json:"bpm,omitempty"`
-	BPMConfidence   *float64 `json:"bpmConfidence,omitempty"`
-	BPMSource       string   `json:"bpmSource"`
-	SyncAllowed     bool     `json:"syncAllowed"`
-	Key             *string  `json:"key,omitempty"`
-	CamelotKey      *string  `json:"camelotKey,omitempty"`
-	OpenKey         *string  `json:"openKey,omitempty"`
-	KeyConfidence   *float64 `json:"keyConfidence,omitempty"`
-	KeySource       string   `json:"keySource"`
+	BPMAltCandidate        *float64 `json:"bpmAltCandidate,omitempty"`
+	TempoStability         *float64 `json:"tempoStability,omitempty"`
+	TempoKind              *string  `json:"tempoKind,omitempty"`
+	SongID                 string   `json:"songId"`
+	Status                 string   `json:"status"`
+	BPM                    *float64 `json:"bpm,omitempty"`
+	BPMConfidence          *float64 `json:"bpmConfidence,omitempty"`
+	BPMSource              string   `json:"bpmSource"`
+	SyncAllowed            bool     `json:"syncAllowed"`
+	Key                    *string  `json:"key,omitempty"`
+	CamelotKey             *string  `json:"camelotKey,omitempty"`
+	OpenKey                *string  `json:"openKey,omitempty"`
+	KeyConfidence          *float64 `json:"keyConfidence,omitempty"`
+	KeySource              string   `json:"keySource"`
+	EnergyLevel            *int     `json:"energyLevel,omitempty"`
+	EnergyLevelConfidence  *float64 `json:"energyLevelConfidence,omitempty"`
+	EnergyAlgorithmVersion *string  `json:"energyAlgorithmVersion,omitempty"`
 }
 
 // BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
@@ -40,6 +48,7 @@ type TrackAnalysisFeatureResponse struct {
 // tempo interpolation behavior.
 type BeatGridResponse struct {
 	Source           string    `json:"source"`
+	Provenance       string    `json:"provenance"`
 	SongID           string    `json:"songId"`
 	Beats            []float64 `json:"beats"`
 	DownbeatIndices  []int     `json:"downbeatIndices"`
@@ -74,18 +83,40 @@ type EnergyFeaturesResponse struct {
 // candidate for the track currently leaving a deck.  It is advisory only;
 // callers retain full control over cue and track selection.
 type TransitionRecommendationResponse struct {
-	SongID     string                         `json:"songId"`
-	Title      string                         `json:"title"`
-	Artist     string                         `json:"artist"`
-	Score      float64                        `json:"score"`
-	Vector     features.TransitionVector      `json:"vector"`
-	Components []features.TransitionComponent `json:"components"`
+	SongID         string                         `json:"songId"`
+	Title          string                         `json:"title"`
+	Artist         string                         `json:"artist"`
+	Score          float64                        `json:"score"`
+	Intent         features.TransitionIntent      `json:"intent"`
+	Vector         features.TransitionVector      `json:"vector"`
+	Components     []features.TransitionComponent `json:"components"`
+	FilterEvidence TransitionCandidateEvidence    `json:"filterEvidence"`
+}
+
+// TransitionCandidateEvidence echoes the resolved measurements used by the
+// optional Mix Next filters. Stem availability means a registered ready set.
+type TransitionCandidateEvidence struct {
+	BPM            *float64 `json:"bpm,omitempty"`
+	EnergyLevel    *int     `json:"energyLevel,omitempty"`
+	StemsAvailable *bool    `json:"stemsAvailable,omitempty"`
+}
+
+type TransitionRecommendationFilters struct {
+	MinBPM         *float64 `json:"minBpm,omitempty"`
+	MaxBPM         *float64 `json:"maxBpm,omitempty"`
+	MinEnergyLevel *int     `json:"minEnergyLevel,omitempty"`
+	MaxEnergyLevel *int     `json:"maxEnergyLevel,omitempty"`
+	StemsAvailable *bool    `json:"stemsAvailable,omitempty"`
 }
 
 type TransitionRecommendationsResponse struct {
-	SongID           string                             `json:"songId"`
-	AlgorithmVersion string                             `json:"algorithmVersion"`
-	Recommendations  []TransitionRecommendationResponse `json:"recommendations"`
+	SongID                  string                             `json:"songId"`
+	Intent                  features.TransitionIntent          `json:"intent"`
+	AlgorithmVersion        string                             `json:"algorithmVersion"`
+	Filters                 TransitionRecommendationFilters    `json:"filters"`
+	CandidatesBeforeFilters int                                `json:"candidatesBeforeFilters"`
+	CandidatesAfterFilters  int                                `json:"candidatesAfterFilters"`
+	Recommendations         []TransitionRecommendationResponse `json:"recommendations"`
 }
 
 func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +174,16 @@ func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAn
 		SyncAllowed: effectiveBPM.SyncAllowed,
 		KeySource:   effectiveKey.Source,
 	}
+	// Scores from a running row may refer to an older source fingerprint. Only
+	// expose a settled score whose own algorithm provenance is present.
+	switch analysis.Status {
+	case db.TrackAnalysisComplete, db.TrackAnalysisPartial, db.TrackAnalysisFailed:
+		if analysis.EnergyLevel != nil && analysis.EnergyLevelConfidence != nil && analysis.EnergyAlgorithmVersion != nil && *analysis.EnergyAlgorithmVersion == features.EnergyLevelAlgorithmVersion {
+			response.EnergyLevel = analysis.EnergyLevel
+			response.EnergyLevelConfidence = analysis.EnergyLevelConfidence
+			response.EnergyAlgorithmVersion = analysis.EnergyAlgorithmVersion
+		}
+	}
 	if effectiveBPM.Source == db.EffectiveBPMMeasured {
 		response.BPMConfidence = analysis.BPMConfidence
 		response.BPMAltCandidate = analysis.BPMAltCandidate
@@ -186,16 +227,15 @@ func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	source := "measured"
-	if override.BeatgridArtifactID != nil {
-		// Unlocked historical artifacts may have been replaced by automatic analysis.
-		// Their ownership is ambiguous until explicitly reviewed and locked again.
-		source = "unknown"
-		if override.BeatgridLocked {
-			source = "manual"
-		}
+	provenance := beatgrid.Provenance(artifact.Provenance)
+	if artifact.Provenance == "" {
+		provenance = grid.EffectiveProvenance()
+	} else if !provenance.Valid() {
+		provenance = beatgrid.ProvenanceUnknown
 	}
-	respondJSON(w, BeatGridResponse{Source: source, SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: override.BeatgridLocked, AlgorithmVersion: artifact.AlgorithmVersion})
+	// Preserve the legacy source property while making its value truthful for
+	// existing clients; provenance is the preferred, explicit field.
+	respondJSON(w, BeatGridResponse{Source: string(provenance), Provenance: string(provenance), SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: override.BeatgridLocked, AlgorithmVersion: artifact.AlgorithmVersion})
 }
 
 func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +261,7 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	artifactID := songID + ":" + beatgrid.AlgorithmVersion
-	if err := a.db.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: artifactID, SongID: songID, Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Data: encoded}); err != nil {
+	if err := a.db.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: artifactID, SongID: songID, Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: string(beatgrid.ProvenanceManual), Data: encoded}); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -242,7 +282,7 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, BeatGridResponse{Source: "manual", SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion})
+	respondJSON(w, BeatGridResponse{Source: string(beatgrid.ProvenanceManual), Provenance: string(beatgrid.ProvenanceManual), SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion})
 }
 
 // resetBeatGridV2 clears an explicit grid edit and its lock.  A later normal
@@ -299,6 +339,19 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 // box number.
 func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Request) {
 	songID := chi.URLParam(r, "songID")
+	filters, err := parseTransitionRecommendationFilters(r.URL.Query())
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	intent := features.TransitionIntent(r.URL.Query().Get("intent"))
+	if intent == "" {
+		intent = features.TransitionIntentHold
+	}
+	if intent != features.TransitionIntentHold && intent != features.TransitionIntentLift && intent != features.TransitionIntentReset && intent != features.TransitionIntentHarmonic {
+		respondError(w, http.StatusBadRequest, "intent must be one of hold, lift, reset, or harmonic; surprise and vocal-safe require evidence not yet available")
+		return
+	}
 	sourceArtifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		respondError(w, http.StatusNotFound, "energy features not found")
@@ -327,7 +380,42 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	for _, song := range songs {
 		songByID[song.ID] = song
 	}
+	analyses, err := a.db.ListTrackAnalysis()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	analysisByID := make(map[string]db.TrackAnalysis, len(analyses))
+	for _, record := range analyses {
+		analysisByID[record.SongID] = record
+	}
+	overrides, err := a.db.ListTrackAnalysisOverrides()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	metadataByID := make(map[string]features.TransitionMetadata, len(analysisByID))
+	for id, record := range analysisByID {
+		metadataByID[id] = resolvedTransitionMetadata(record, overrides[id])
+	}
+	stemStatuses := map[string]string{}
+	if filters.StemsAvailable != nil {
+		candidateIDs := make([]string, 0, len(artifacts))
+		for _, artifact := range artifacts {
+			if artifact.SongID != songID {
+				if _, exists := songByID[artifact.SongID]; exists {
+					candidateIDs = append(candidateIDs, artifact.SongID)
+				}
+			}
+		}
+		stemStatuses, err = a.db.ListStemStatuses(candidateIDs)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	recommendations := make([]TransitionRecommendationResponse, 0, len(artifacts))
+	candidatesBeforeFilters := 0
 	for _, artifact := range artifacts {
 		if artifact.SongID == songID {
 			continue
@@ -340,8 +428,22 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		if !exists {
 			continue
 		}
-		score := features.ScoreTransition(source, candidate)
-		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Vector: score.Vector, Components: score.Components})
+		candidatesBeforeFilters++
+		metadata := metadataByID[artifact.SongID]
+		stemAvailable := stemStatuses[artifact.SongID] == "ready"
+		if !transitionCandidateMatchesFilters(metadata, stemAvailable, filters) {
+			continue
+		}
+		score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[artifact.SongID], intent)
+		if scoreErr != nil {
+			respondError(w, http.StatusBadRequest, scoreErr.Error())
+			return
+		}
+		evidence := TransitionCandidateEvidence{BPM: metadata.BPM, EnergyLevel: metadata.EnergyLevel}
+		if filters.StemsAvailable != nil {
+			evidence.StemsAvailable = &stemAvailable
+		}
+		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components, FilterEvidence: evidence})
 	}
 	sort.Slice(recommendations, func(i, j int) bool {
 		if recommendations[i].Score == recommendations[j].Score {
@@ -349,11 +451,111 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		}
 		return recommendations[i].Score > recommendations[j].Score
 	})
+	candidatesAfterFilters := len(recommendations)
 	limit := parseBoundedInt(r.URL.Query().Get("limit"), 10, 50)
 	if len(recommendations) > limit {
 		recommendations = recommendations[:limit]
 	}
-	respondJSON(w, TransitionRecommendationsResponse{SongID: songID, AlgorithmVersion: features.AlgorithmVersion, Recommendations: recommendations})
+	respondJSON(w, TransitionRecommendationsResponse{SongID: songID, Intent: intent, AlgorithmVersion: features.TransitionAlgorithmVersion, Filters: filters, CandidatesBeforeFilters: candidatesBeforeFilters, CandidatesAfterFilters: candidatesAfterFilters, Recommendations: recommendations})
+}
+
+func parseTransitionRecommendationFilters(values url.Values) (TransitionRecommendationFilters, error) {
+	var filters TransitionRecommendationFilters
+	parseFloat := func(name string) (*float64, error) {
+		value, present, err := singleQueryValue(values, name)
+		if err != nil || !present {
+			return nil, err
+		}
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < float64(dj.MinValidBPM) || n > float64(dj.MaxValidBPM) {
+			return nil, fmt.Errorf("%s must be a number between %d and %d", name, dj.MinValidBPM, dj.MaxValidBPM)
+		}
+		return &n, nil
+	}
+	parseEnergy := func(name string) (*int, error) {
+		value, present, err := singleQueryValue(values, name)
+		if err != nil || !present {
+			return nil, err
+		}
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 1 || n > 10 {
+			return nil, fmt.Errorf("%s must be an integer between 1 and 10", name)
+		}
+		return &n, nil
+	}
+	var err error
+	if filters.MinBPM, err = parseFloat("minBpm"); err != nil {
+		return filters, err
+	}
+	if filters.MaxBPM, err = parseFloat("maxBpm"); err != nil {
+		return filters, err
+	}
+	if filters.MinEnergyLevel, err = parseEnergy("minEnergyLevel"); err != nil {
+		return filters, err
+	}
+	if filters.MaxEnergyLevel, err = parseEnergy("maxEnergyLevel"); err != nil {
+		return filters, err
+	}
+	if filters.MinBPM != nil && filters.MaxBPM != nil && *filters.MinBPM > *filters.MaxBPM {
+		return filters, errors.New("minBpm must be less than or equal to maxBpm")
+	}
+	if filters.MinEnergyLevel != nil && filters.MaxEnergyLevel != nil && *filters.MinEnergyLevel > *filters.MaxEnergyLevel {
+		return filters, errors.New("minEnergyLevel must be less than or equal to maxEnergyLevel")
+	}
+	if value, present, err := singleQueryValue(values, "stemsAvailable"); err != nil {
+		return filters, err
+	} else if present {
+		var parsed bool
+		switch value {
+		case "true":
+			parsed = true
+		case "false":
+			parsed = false
+		default:
+			return filters, errors.New("stemsAvailable must be true or false")
+		}
+		filters.StemsAvailable = &parsed
+	}
+	return filters, nil
+}
+
+func singleQueryValue(values url.Values, key string) (string, bool, error) {
+	items, present := values[key]
+	if !present {
+		return "", false, nil
+	}
+	if len(items) != 1 || strings.TrimSpace(items[0]) == "" {
+		return "", true, fmt.Errorf("%s must be supplied once with a value", key)
+	}
+	return strings.TrimSpace(items[0]), true, nil
+}
+
+func transitionCandidateMatchesFilters(metadata features.TransitionMetadata, stemsAvailable bool, filters TransitionRecommendationFilters) bool {
+	if filters.MinBPM != nil && (metadata.BPM == nil || *metadata.BPM < *filters.MinBPM) {
+		return false
+	}
+	if filters.MaxBPM != nil && (metadata.BPM == nil || *metadata.BPM > *filters.MaxBPM) {
+		return false
+	}
+	if filters.MinEnergyLevel != nil && (metadata.EnergyLevel == nil || *metadata.EnergyLevel < *filters.MinEnergyLevel) {
+		return false
+	}
+	if filters.MaxEnergyLevel != nil && (metadata.EnergyLevel == nil || *metadata.EnergyLevel > *filters.MaxEnergyLevel) {
+		return false
+	}
+	if filters.StemsAvailable != nil && stemsAvailable != *filters.StemsAvailable {
+		return false
+	}
+	return true
+}
+
+func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) features.TransitionMetadata {
+	resolved := trackAnalysisFeatureResponse(analysis, override)
+	return features.TransitionMetadata{
+		BPM: resolved.BPM, BPMSource: resolved.BPMSource, BPMConfidence: resolved.BPMConfidence,
+		CamelotKey: resolved.CamelotKey, KeySource: resolved.KeySource, KeyConfidence: resolved.KeyConfidence,
+		EnergyLevel: resolved.EnergyLevel, EnergyLevelConfidence: resolved.EnergyLevelConfidence,
+	}
 }
 
 // measuredEnergyForDJ returns the same persisted curve summary exposed to the

@@ -16,6 +16,7 @@ import { generateClientWaveform } from '../lib/clientWaveform';
 import { createLogger } from '../services/loggerService';
 import type { BeatFXTarget, DeckId } from '../slices/djMixerSlice';
 import type { Song } from '../types';
+import type { StemBus, StemDeckState, StemDeckStatus } from '../lib/stemDeckSource';
 
 const logger = createLogger('DJAudioEngine');
 
@@ -71,6 +72,12 @@ export interface UseDJAudioEngineReturn {
   setTempo: (deck: DeckId, tempo: number) => void;
   /** Set key lock (preserve pitch when tempo changes) */
   setKeyLock: (deck: DeckId, enabled: boolean) => void;
+  setStemMode: (deck: DeckId, mode: 'full' | 'stems') => Promise<void>;
+  setStemGain: (deck: DeckId, bus: StemBus, gain: number) => void;
+  setStemMuted: (deck: DeckId, bus: StemBus, muted: boolean) => void;
+  setStemSolo: (deck: DeckId, bus: StemBus, solo: boolean) => void;
+  getStemState: (deck: DeckId) => StemDeckState;
+  getStemStatus: (deck: DeckId) => StemDeckStatus;
   /** Start vinyl scratch mode */
   startScratch: (deck: DeckId) => void;
   /** Update scratch position during drag */
@@ -322,12 +329,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           if (!isTrackStillLoaded()) return;
           
           if (response && response.hotCues && response.hotCues.length > 0) {
-            loadHotCues(deck, response.hotCues.map(hc => ({
-              slot: hc.slot,
-              position: hc.position,
-              label: hc.label,
-              color: hc.color
-            })));
+            loadHotCues(deck, response.hotCues.map(hc => ({ ...hc })));
             logger.debug(`Loaded ${response.hotCues.length} hot cues for Deck ${deck}`);
           } else {
             // Clear any previous hot cues when loading new track with no saved cues
@@ -439,6 +441,13 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
     const engine = getDJAudioEngine();
     engine.setKeyLock(deck, enabled);
   }, []);
+
+  const setStemMode = useCallback((deck: DeckId, mode: 'full' | 'stems') => getDJAudioEngine().setStemMode(deck, mode), []);
+  const setStemGain = useCallback((deck: DeckId, bus: StemBus, gain: number) => getDJAudioEngine().setStemGain(deck, bus, gain), []);
+  const setStemMuted = useCallback((deck: DeckId, bus: StemBus, muted: boolean) => getDJAudioEngine().setStemMuted(deck, bus, muted), []);
+  const setStemSolo = useCallback((deck: DeckId, bus: StemBus, solo: boolean) => getDJAudioEngine().setStemSolo(deck, bus, solo), []);
+  const getStemState = useCallback((deck: DeckId) => getDJAudioEngine().getStemState(deck), []);
+  const getStemStatus = useCallback((deck: DeckId) => getDJAudioEngine().getStemStatus(deck), []);
 
   // Dispose
   const dispose = useCallback(() => {
@@ -761,6 +770,12 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
     setEQ,
     setTempo,
     setKeyLock,
+    setStemMode,
+    setStemGain,
+    setStemMuted,
+    setStemSolo,
+    getStemState,
+    getStemStatus,
     startScratch,
     updateScratch,
     endScratch,
@@ -1059,7 +1074,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
         const resp = await api.getDJHotCues(track.id);
         if (!isTrackStillLoaded()) return;
         const cues = resp?.hotCues?.length
-          ? resp.hotCues.map((hc: any) => ({ slot: hc.slot, position: hc.position, label: hc.label, color: hc.color }))
+          ? resp.hotCues.map(hc => ({ ...hc }))
           : [];
         useStore.getState().loadHotCues(deck, cues);
       } catch { 
@@ -1143,6 +1158,18 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     useStore.getState().setKeyLock(deck, enabled);
     getDJAudioEngine().setKeyLock(deck, enabled);
   }, []);
+
+  const setStemMode = useCallback(async (deck: DeckId, mode: 'full' | 'stems') => {
+    const engine = getDJAudioEngine();
+    if (!engine.initialized) return;
+    await engine.setStemMode(deck, mode);
+    useStore.getState().setDeckPosition(deck, engine.getPosition(deck));
+  }, []);
+  const setStemGain = useCallback((deck: DeckId, bus: StemBus, gain: number) => getDJAudioEngine().setStemGain(deck, bus, gain), []);
+  const setStemMuted = useCallback((deck: DeckId, bus: StemBus, muted: boolean) => getDJAudioEngine().setStemMuted(deck, bus, muted), []);
+  const setStemSolo = useCallback((deck: DeckId, bus: StemBus, solo: boolean) => getDJAudioEngine().setStemSolo(deck, bus, solo), []);
+  const getStemState = useCallback((deck: DeckId) => getDJAudioEngine().getStemState(deck), []);
+  const getStemStatus = useCallback((deck: DeckId) => getDJAudioEngine().getStemStatus(deck), []);
 
   // ---- Scratch ----
 
@@ -1247,6 +1274,12 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     setEQ,
     setTempo,
     setKeyLock,
+    setStemMode,
+    setStemGain,
+    setStemMuted,
+    setStemSolo,
+    getStemState,
+    getStemStatus,
     startScratch,
     updateScratch,
     endScratch,

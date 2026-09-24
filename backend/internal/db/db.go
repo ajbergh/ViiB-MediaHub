@@ -36,6 +36,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -129,6 +130,7 @@ type Song struct {
 	// plex_tracks, while songs remains the unified catalog.
 	Source     string `json:"source,omitempty"`     // "local" or "plex"
 	SourceName string `json:"sourceName,omitempty"` // Friendly Plex server name
+	StemStatus string `json:"stemStatus,omitempty"` // Path-free registry summary added to v2 library rows
 }
 
 // Playlist represents a user-defined playlist persisted in the database.
@@ -654,6 +656,15 @@ func (d *DB) migrateColumns() error {
 		position REAL NOT NULL,
 		label TEXT,
 		color TEXT DEFAULT '#FF5500',
+		origin TEXT NOT NULL DEFAULT 'user',
+		generator_version TEXT,
+		confidence REAL,
+		kind TEXT,
+		locked INTEGER NOT NULL DEFAULT 0,
+		rationale TEXT,
+		source_fingerprint TEXT,
+		downbeat_aligned INTEGER NOT NULL DEFAULT 0,
+		updated_at INTEGER NOT NULL DEFAULT 0,
 		created_at INTEGER NOT NULL,
 		FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE,
 		UNIQUE(song_id, slot)
@@ -670,6 +681,37 @@ func (d *DB) migrateColumns() error {
 				// Log but don't fail
 			}
 		}
+	}
+	// Additive provenance migration for databases created before cue provenance.
+	// Existing cues are user-authored and inherit their original creation time.
+	djHotCueMigrations := []string{
+		`ALTER TABLE dj_hot_cues ADD COLUMN origin TEXT NOT NULL DEFAULT 'user'`,
+		`ALTER TABLE dj_hot_cues ADD COLUMN generator_version TEXT`,
+		`ALTER TABLE dj_hot_cues ADD COLUMN confidence REAL`,
+		`ALTER TABLE dj_hot_cues ADD COLUMN kind TEXT`,
+		`ALTER TABLE dj_hot_cues ADD COLUMN locked INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE dj_hot_cues ADD COLUMN rationale TEXT`,
+		`ALTER TABLE dj_hot_cues ADD COLUMN source_fingerprint TEXT`,
+		`ALTER TABLE dj_hot_cues ADD COLUMN downbeat_aligned INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE dj_hot_cues ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`,
+	}
+	for _, migration := range djHotCueMigrations {
+		if _, err := d.conn.Exec(migration); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
+	}
+	if _, err := d.conn.Exec(`CREATE TABLE IF NOT EXISTS dj_hot_cue_suppressions (
+		song_id TEXT NOT NULL,
+		slot INTEGER NOT NULL CHECK(slot BETWEEN 1 AND 8),
+		kind TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY(song_id, slot, kind),
+		FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+	)`); err != nil {
+		return err
+	}
+	if _, err := d.conn.Exec(`UPDATE dj_hot_cues SET updated_at = created_at * 1000 WHERE updated_at = 0`); err != nil {
+		return err
 	}
 
 	return nil
@@ -4839,16 +4881,25 @@ func decompressWaveformPeaks(data []byte, peakCount int) ([]float64, error) {
 
 // DJHotCue represents a hot cue point.
 type DJHotCue struct {
-	Slot     int
-	Position float64
-	Label    string
-	Color    string
+	Slot              int
+	Position          float64
+	Label             string
+	Color             string
+	Origin            string
+	GeneratorVersion  string
+	Confidence        *float64
+	Kind              string
+	Locked            bool
+	Rationale         string
+	SourceFingerprint string
+	DownbeatAligned   bool
+	UpdatedAt         int64
 }
 
 // GetDJHotCues retrieves hot cues for a track.
 func (d *DB) GetDJHotCues(songID string) ([]DJHotCue, error) {
 	rows, err := d.conn.Query(`
-		SELECT slot, position, label, color
+		SELECT slot, position, label, color, origin, generator_version, confidence, kind, locked, rationale, source_fingerprint, downbeat_aligned, updated_at
 		FROM dj_hot_cues
 		WHERE song_id = ?
 		ORDER BY slot
@@ -4861,12 +4912,24 @@ func (d *DB) GetDJHotCues(songID string) ([]DJHotCue, error) {
 	var hotCues []DJHotCue
 	for rows.Next() {
 		var hc DJHotCue
-		var label sql.NullString
-		if err := rows.Scan(&hc.Slot, &hc.Position, &label, &hc.Color); err != nil {
+		var label, generatorVersion, kind, rationale, sourceFingerprint sql.NullString
+		var confidence sql.NullFloat64
+		var locked, downbeatAligned int
+		if err := rows.Scan(&hc.Slot, &hc.Position, &label, &hc.Color, &hc.Origin, &generatorVersion, &confidence, &kind, &locked, &rationale, &sourceFingerprint, &downbeatAligned, &hc.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if label.Valid {
 			hc.Label = label.String
+		}
+		hc.GeneratorVersion = generatorVersion.String
+		hc.Kind = kind.String
+		hc.Locked = locked != 0
+		hc.Rationale = rationale.String
+		hc.SourceFingerprint = sourceFingerprint.String
+		hc.DownbeatAligned = downbeatAligned != 0
+		if confidence.Valid {
+			value := confidence.Float64
+			hc.Confidence = &value
 		}
 		hotCues = append(hotCues, hc)
 	}
@@ -4876,11 +4939,111 @@ func (d *DB) GetDJHotCues(songID string) ([]DJHotCue, error) {
 
 // SaveDJHotCues saves hot cues for a track, replacing any existing.
 func (d *DB) SaveDJHotCues(songID string, hotCues []DJHotCue) error {
+	if songID == "" {
+		return fmt.Errorf("hot cues require a song ID")
+	}
+	seenSlots := make(map[int]struct{}, len(hotCues))
+	for _, hc := range hotCues {
+		if hc.Slot < 1 || hc.Slot > 8 {
+			return fmt.Errorf("hot cue slot must be between 1 and 8: %d", hc.Slot)
+		}
+		if _, exists := seenSlots[hc.Slot]; exists {
+			return fmt.Errorf("duplicate hot cue slot: %d", hc.Slot)
+		}
+		seenSlots[hc.Slot] = struct{}{}
+		if hc.Origin != "" && hc.Origin != "user" && hc.Origin != "analysis" {
+			return fmt.Errorf("invalid hot cue origin: %s", hc.Origin)
+		}
+		if hc.Origin == "analysis" && hc.DownbeatAligned && hc.Rationale != "qualified-measured-downbeat" && hc.Rationale != "qualified-manual-downbeat" {
+			return fmt.Errorf("analysis cue downbeat alignment requires measured or manual provenance")
+		}
+	}
 	tx, err := d.conn.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+
+	// A full-set save that omits an analysis-owned cue is an explicit deletion.
+	// Persist a slot/kind tombstone before replacing rows so analysis cannot
+	// silently put the deleted generated cue back on the next scan.
+	rows, err := tx.Query(`SELECT slot, COALESCE(kind, ''), COALESCE(rationale, ''), COALESCE(source_fingerprint, ''), downbeat_aligned FROM dj_hot_cues WHERE song_id = ? AND origin = 'analysis'`, songID)
+	if err != nil {
+		return err
+	}
+	var generatedExisting []struct {
+		slot              int
+		kind              string
+		rationale         string
+		sourceFingerprint string
+		downbeatAligned   int
+	}
+	for rows.Next() {
+		var item struct {
+			slot              int
+			kind              string
+			rationale         string
+			sourceFingerprint string
+			downbeatAligned   int
+		}
+		if err := rows.Scan(&item.slot, &item.kind, &item.rationale, &item.sourceFingerprint, &item.downbeatAligned); err != nil {
+			rows.Close()
+			return err
+		}
+		generatedExisting = append(generatedExisting, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, existing := range generatedExisting {
+		if _, remains := seenSlots[existing.slot]; remains {
+			continue
+		}
+		if existing.kind == "" {
+			existing.kind = "section"
+		}
+		if _, err := tx.Exec(`INSERT INTO dj_hot_cue_suppressions(song_id, slot, kind, created_at)
+			VALUES (?, ?, ?, ?) ON CONFLICT(song_id, slot, kind) DO UPDATE SET created_at = excluded.created_at`,
+			songID, existing.slot, existing.kind, time.Now().UnixMilli()); err != nil {
+			return err
+		}
+	}
+	for _, cue := range hotCues {
+		if cue.Origin == "" || cue.Origin == "user" {
+			if _, err := tx.Exec(`DELETE FROM dj_hot_cue_suppressions WHERE song_id = ? AND slot = ?`, songID, cue.Slot); err != nil {
+				return err
+			}
+		}
+	}
+	metadataBySlot := make(map[int]struct {
+		rationale         string
+		sourceFingerprint string
+		downbeatAligned   bool
+	}, len(generatedExisting))
+	for _, cue := range generatedExisting {
+		metadataBySlot[cue.slot] = struct {
+			rationale         string
+			sourceFingerprint string
+			downbeatAligned   bool
+		}{cue.rationale, cue.sourceFingerprint, cue.downbeatAligned != 0}
+	}
+	for index := range hotCues {
+		cue := &hotCues[index]
+		if cue.Origin != "analysis" {
+			continue
+		}
+		if existing, found := metadataBySlot[cue.Slot]; found {
+			if cue.Rationale == "" {
+				cue.Rationale = existing.rationale
+			}
+			if cue.SourceFingerprint == "" {
+				cue.SourceFingerprint = existing.sourceFingerprint
+			}
+			cue.DownbeatAligned = cue.DownbeatAligned || existing.downbeatAligned
+		}
+	}
 
 	// Delete existing hot cues
 	_, err = tx.Exec("DELETE FROM dj_hot_cues WHERE song_id = ?", songID)
@@ -4890,10 +5053,16 @@ func (d *DB) SaveDJHotCues(songID string, hotCues []DJHotCue) error {
 
 	// Insert new hot cues
 	for _, hc := range hotCues {
+		if hc.Origin == "" {
+			hc.Origin = "user"
+		}
+		if hc.UpdatedAt == 0 {
+			hc.UpdatedAt = time.Now().UnixMilli()
+		}
 		_, err = tx.Exec(`
-			INSERT INTO dj_hot_cues (song_id, slot, position, label, color, created_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, songID, hc.Slot, hc.Position, hc.Label, hc.Color, time.Now().Unix())
+			INSERT INTO dj_hot_cues (song_id, slot, position, label, color, origin, generator_version, confidence, kind, locked, rationale, source_fingerprint, downbeat_aligned, updated_at, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, songID, hc.Slot, hc.Position, hc.Label, hc.Color, hc.Origin, nullableCueText(hc.GeneratorVersion), hc.Confidence, nullableCueText(hc.Kind), boolToInt(hc.Locked), nullableCueText(hc.Rationale), nullableCueText(hc.SourceFingerprint), boolToInt(hc.DownbeatAligned), hc.UpdatedAt, time.Now().Unix())
 		if err != nil {
 			return err
 		}
@@ -4902,8 +5071,166 @@ func (d *DB) SaveDJHotCues(songID string, hotCues []DJHotCue) error {
 	return tx.Commit()
 }
 
+// DJHotCueSuppression records a user-deleted generated cue. Suppression is
+// scoped to the cue slot and kind so a later policy can intentionally change
+// the generated meaning of that slot without erasing the user's cue history.
+type DJHotCueSuppression struct {
+	Slot int
+	Kind string
+}
+
+type GeneratedCueMode string
+
+const (
+	GeneratedCueFillEmpty        GeneratedCueMode = "fill-empty"
+	GeneratedCueReplaceGenerated GeneratedCueMode = "replace-generated"
+	GeneratedCueSelectedOnly     GeneratedCueMode = "selected-only"
+)
+
+func (d *DB) GetDJHotCueSuppressions(songID string) ([]DJHotCueSuppression, error) {
+	rows, err := d.conn.Query(`SELECT slot, kind FROM dj_hot_cue_suppressions WHERE song_id = ? ORDER BY slot, kind`, songID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var suppressions []DJHotCueSuppression
+	for rows.Next() {
+		var item DJHotCueSuppression
+		if err := rows.Scan(&item.Slot, &item.Kind); err != nil {
+			return nil, err
+		}
+		suppressions = append(suppressions, item)
+	}
+	return suppressions, rows.Err()
+}
+
+// ClearDJHotCueSuppression explicitly allows analysis to regenerate a deleted
+// cue in one slot. Saving a user-owned cue in that slot clears its tombstones
+// automatically; generation never clears them.
+func (d *DB) ClearDJHotCueSuppression(songID string, slot int) error {
+	if songID == "" || slot < 1 || slot > 8 {
+		return fmt.Errorf("cue suppression requires a song ID and slot from 1 to 8")
+	}
+	_, err := d.conn.Exec(`DELETE FROM dj_hot_cue_suppressions WHERE song_id = ? AND slot = ?`, songID, slot)
+	return err
+}
+
+// ApplyGeneratedDJHotCues applies candidates while preserving user-owned and
+// locked rows. Existing analysis rows are only replaced in refresh mode, and
+// matching deletion tombstones always win.
+func (d *DB) ApplyGeneratedDJHotCues(songID string, cues []DJHotCue, mode GeneratedCueMode) error {
+	if songID == "" || (mode != GeneratedCueFillEmpty && mode != GeneratedCueReplaceGenerated && mode != GeneratedCueSelectedOnly) {
+		return fmt.Errorf("generated cues require a song ID and valid apply mode")
+	}
+	seen := make(map[int]struct{}, len(cues))
+	for _, cue := range cues {
+		if cue.Slot < 1 || cue.Slot > 8 || cue.Origin != "analysis" || cue.GeneratorVersion == "" || cue.Kind == "" || cue.Confidence == nil || math.IsNaN(*cue.Confidence) || math.IsInf(*cue.Confidence, 0) || *cue.Confidence < 0 || *cue.Confidence > 1 || math.IsNaN(cue.Position) || math.IsInf(cue.Position, 0) || cue.Position < 0 || (cue.DownbeatAligned && cue.Rationale != "qualified-measured-downbeat" && cue.Rationale != "qualified-manual-downbeat") {
+			return fmt.Errorf("generated cue has invalid slot or provenance")
+		}
+		if _, exists := seen[cue.Slot]; exists {
+			return fmt.Errorf("duplicate generated cue slot: %d", cue.Slot)
+		}
+		seen[cue.Slot] = struct{}{}
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if mode == GeneratedCueReplaceGenerated {
+		eligible := make(map[int]string, len(cues))
+		for _, cue := range cues {
+			var suppressed int
+			if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM dj_hot_cue_suppressions WHERE song_id = ? AND slot = ? AND kind = ?)`, songID, cue.Slot, cue.Kind).Scan(&suppressed); err != nil {
+				return err
+			}
+			if suppressed == 0 {
+				eligible[cue.Slot] = cue.Kind
+			}
+		}
+		rows, err := tx.Query(`SELECT slot, COALESCE(kind, '') FROM dj_hot_cues WHERE song_id = ? AND origin = 'analysis' AND locked = 0`, songID)
+		if err != nil {
+			return err
+		}
+		var staleSlots []int
+		for rows.Next() {
+			var slot int
+			var kind string
+			if err := rows.Scan(&slot, &kind); err != nil {
+				rows.Close()
+				return err
+			}
+			if eligible[slot] != kind {
+				staleSlots = append(staleSlots, slot)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		rows.Close()
+		for _, slot := range staleSlots {
+			if _, err := tx.Exec(`DELETE FROM dj_hot_cues WHERE song_id = ? AND slot = ?`, songID, slot); err != nil {
+				return err
+			}
+		}
+	}
+	for _, cue := range cues {
+		var suppressed int
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM dj_hot_cue_suppressions WHERE song_id = ? AND slot = ? AND kind = ?)`, songID, cue.Slot, cue.Kind).Scan(&suppressed); err != nil {
+			return err
+		}
+		if suppressed != 0 {
+			continue
+		}
+		var origin string
+		var locked int
+		queryErr := tx.QueryRow(`SELECT origin, locked FROM dj_hot_cues WHERE song_id = ? AND slot = ?`, songID, cue.Slot).Scan(&origin, &locked)
+		if queryErr != nil && queryErr != sql.ErrNoRows {
+			return queryErr
+		}
+		if queryErr == nil {
+			if origin != "analysis" || locked != 0 || mode == GeneratedCueFillEmpty {
+				continue
+			}
+			if _, err := tx.Exec(`UPDATE dj_hot_cues SET position = ?, label = ?, color = ?, origin = 'analysis', generator_version = ?, confidence = ?, kind = ?, locked = 0, rationale = ?, source_fingerprint = ?, downbeat_aligned = ?, updated_at = ? WHERE song_id = ? AND slot = ?`,
+				cue.Position, cue.Label, cue.Color, cue.GeneratorVersion, cue.Confidence, nullableCueText(cue.Kind), nullableCueText(cue.Rationale), nullableCueText(cue.SourceFingerprint), boolToInt(cue.DownbeatAligned), time.Now().UnixMilli(), songID, cue.Slot); err != nil {
+				return err
+			}
+			continue
+		}
+		_, err = tx.Exec(`INSERT INTO dj_hot_cues(song_id, slot, position, label, color, origin, generator_version, confidence, kind, locked, rationale, source_fingerprint, downbeat_aligned, updated_at, created_at)
+			VALUES (?, ?, ?, ?, ?, 'analysis', ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+			songID, cue.Slot, cue.Position, cue.Label, cue.Color, cue.GeneratorVersion, cue.Confidence, nullableCueText(cue.Kind), nullableCueText(cue.Rationale), nullableCueText(cue.SourceFingerprint), boolToInt(cue.DownbeatAligned), time.Now().UnixMilli(), time.Now().Unix())
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func nullableCueText(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
 // DeleteDJHotCue deletes a specific hot cue.
 func (d *DB) DeleteDJHotCue(songID string, slot int) error {
-	_, err := d.conn.Exec("DELETE FROM dj_hot_cues WHERE song_id = ? AND slot = ?", songID, slot)
-	return err
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO dj_hot_cue_suppressions(song_id, slot, kind, created_at)
+		SELECT song_id, slot, COALESCE(kind, 'section'), ? FROM dj_hot_cues
+		WHERE song_id = ? AND slot = ? AND origin = 'analysis'
+		ON CONFLICT(song_id, slot, kind) DO UPDATE SET created_at = excluded.created_at`, time.Now().UnixMilli(), songID, slot); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM dj_hot_cues WHERE song_id = ? AND slot = ?", songID, slot); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

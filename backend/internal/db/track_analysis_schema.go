@@ -37,6 +37,9 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 			key_source TEXT CHECK(key_source IS NULL OR key_source IN ('measured', 'imported', 'manual')),
 			camelot_key TEXT,
 			open_key TEXT,
+			energy_level INTEGER CHECK(energy_level IS NULL OR energy_level BETWEEN 1 AND 10),
+			energy_level_confidence REAL CHECK(energy_level_confidence IS NULL OR energy_level_confidence BETWEEN 0 AND 1),
+			energy_algorithm_version TEXT,
 			analyzed_at INTEGER,
 			error_code TEXT,
 			error_message TEXT
@@ -51,6 +54,7 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 			format_version INTEGER NOT NULL,
 			algorithm_version TEXT NOT NULL,
 			encoding TEXT NOT NULL,
+			provenance TEXT NOT NULL DEFAULT 'unknown' CHECK(provenance IN ('measured', 'inferred-from-meter', 'manual', 'unknown')),
 			data BLOB NOT NULL,
 			created_at INTEGER NOT NULL,
 			UNIQUE(song_id, kind, format_version, algorithm_version)
@@ -69,10 +73,102 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 			updated_at INTEGER NOT NULL
 		);
 	`)
+	if err == nil {
+		err = ensureTrackAnalysisEnergyColumns(d)
+	}
+	if err == nil {
+		err = ensureTrackAnalysisArtifactProvenanceColumn(d)
+	}
 	result := trackAnalysisSchemaResult{err: err}
 	actual, loaded := trackAnalysisSchemas.LoadOrStore(d, result)
 	if loaded {
 		return actual.(trackAnalysisSchemaResult).err
 	}
 	return err
+}
+
+// ensureTrackAnalysisArtifactProvenanceColumn upgrades pre-provenance installs.
+// Existing generated beat grids used phase-derived beats with assumed 4/4 bar
+// starts, so they are inferred-from-meter. Locked editor artifacts are manual;
+// unlocked overrides remain unknown because their ownership was ambiguous.
+func ensureTrackAnalysisArtifactProvenanceColumn(d *DB) error {
+	rows, err := d.conn.Query(`PRAGMA table_info(track_analysis_artifacts)`)
+	if err != nil {
+		return err
+	}
+	hasColumn := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "provenance" {
+			hasColumn = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	if _, err := d.conn.Exec(`ALTER TABLE track_analysis_artifacts ADD COLUMN provenance TEXT NOT NULL DEFAULT 'unknown' CHECK(provenance IN ('measured', 'inferred-from-meter', 'manual', 'unknown'))`); err != nil {
+		return err
+	}
+	_, err = d.conn.Exec(`UPDATE track_analysis_artifacts
+		SET provenance = CASE
+			WHEN EXISTS (SELECT 1 FROM track_analysis_overrides o WHERE o.song_id = track_analysis_artifacts.song_id AND o.beatgrid_artifact_id = track_analysis_artifacts.id AND o.beatgrid_locked = 1) THEN 'manual'
+			WHEN EXISTS (SELECT 1 FROM track_analysis_overrides o WHERE o.song_id = track_analysis_artifacts.song_id AND o.beatgrid_artifact_id = track_analysis_artifacts.id) THEN 'unknown'
+			ELSE 'inferred-from-meter'
+		END
+		WHERE kind = 'beatgrid'`)
+	return err
+}
+
+// ensureTrackAnalysisEnergyColumns upgrades installations created before the
+// Energy Level fields existed. SQLite ALTER TABLE ADD COLUMN is additive and
+// safe to rerun when guarded by PRAGMA table_info.
+func ensureTrackAnalysisEnergyColumns(d *DB) error {
+	rows, err := d.conn.Query(`PRAGMA table_info(track_analysis)`)
+	if err != nil {
+		return err
+	}
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, column := range []struct{ name, definition string }{
+		{"energy_level", "INTEGER CHECK(energy_level IS NULL OR energy_level BETWEEN 1 AND 10)"},
+		{"energy_level_confidence", "REAL CHECK(energy_level_confidence IS NULL OR energy_level_confidence BETWEEN 0 AND 1)"},
+		{"energy_algorithm_version", "TEXT"},
+	} {
+		if columns[column.name] {
+			continue
+		}
+		if _, err := d.conn.Exec(`ALTER TABLE track_analysis ADD COLUMN ` + column.name + ` ` + column.definition); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -12,9 +12,13 @@ import {
   AnalysisJobResult,
   AnalysisSelectionMode,
   AnalysisSource,
+  AutomaticCuePointMode,
+  AUTOMATIC_CUE_POINT_MODES,
   OperationJob,
+  SETTING_AUTO_CUE_MODE,
   SETTING_AUTO_ANALYZE_NEW_TRACKS,
   jobsV2,
+  normalizeAutomaticCuePointMode,
 } from '../services/jobsV2';
 import { api } from '../services/api';
 
@@ -42,6 +46,7 @@ const analysisResultOf = (job: OperationJob | null): AnalysisJobResult | null =>
 export const LibraryAnalysisPanel: React.FC = () => {
   const [jobs, setJobs] = useState<OperationJob[]>([]);
   const [autoAnalyze, setAutoAnalyze] = useState(false);
+  const [autoCueMode, setAutoCueMode] = useState<AutomaticCuePointMode>('fill-empty');
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -87,6 +92,14 @@ export const LibraryAnalysisPanel: React.FC = () => {
     return () => { canceled = true; };
   }, []);
 
+  useEffect(() => {
+    let canceled = false;
+    void api.getSetting(SETTING_AUTO_CUE_MODE)
+      .then(value => { if (!canceled) setAutoCueMode(normalizeAutomaticCuePointMode(value)); })
+      .catch(() => { if (!canceled) setAutoCueMode('fill-empty'); });
+    return () => { canceled = true; };
+  }, []);
+
   const run = async (label: string, operation: () => Promise<string>) => {
     setBusy(label); setError(''); setMessage('');
     try { setMessage(await operation()); }
@@ -127,6 +140,12 @@ export const LibraryAnalysisPanel: React.FC = () => {
     return next
       ? 'New tracks found by a scan will be analyzed in the background.'
       : 'Scans will no longer queue analysis automatically.';
+  });
+
+  const changeAutoCueMode = (mode: AutomaticCuePointMode) => run('auto-cue-mode', async () => {
+    await api.setSetting(SETTING_AUTO_CUE_MODE, mode);
+    setAutoCueMode(mode);
+    return `Automatic DJ Cue Points set to ${AUTOMATIC_CUE_POINT_MODES.find(option => option.value === mode)?.label || mode}.`;
   });
 
   const progressPercent = activeJob && activeJob.progressTotal > 0
@@ -220,6 +239,22 @@ export const LibraryAnalysisPanel: React.FC = () => {
           <span className="block text-text-secondary">Queue a background analysis run after a scan finds new tracks. It runs below anything you start yourself and yields while DJ playback is active.</span>
         </span>
       </label>
+
+      <div className="mt-5 grid gap-2 sm:grid-cols-[minmax(12rem,1fr)_minmax(18rem,2fr)] sm:items-center">
+        <label htmlFor="automatic-dj-cue-points" className="text-sm font-semibold">Automatic DJ Cue Points</label>
+        <select
+          id="automatic-dj-cue-points"
+          className="rounded-lg border border-surface-highlight bg-surface-2 px-3 py-2 text-sm text-text-main"
+          value={autoCueMode}
+          disabled={busy !== null}
+          onChange={event => changeAutoCueMode(event.target.value as AutomaticCuePointMode)}
+        >
+          {AUTOMATIC_CUE_POINT_MODES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+        <p className="text-xs text-text-secondary sm:col-start-2">
+          Installation-wide setting. New analysis jobs snapshot this choice. “Off” and “Suggest only” keep generated suggestions available in the cue editor without saving generated cues; fill-empty preserves occupied slots, while refresh replaces unlocked generated cues and preserves user cues and locks.
+        </p>
+      </div>
     </section>
   );
 };

@@ -115,6 +115,50 @@ func TestAnalyzeTracksJobIsAcceptedAndDrained(t *testing.T) {
 	}
 }
 
+func TestCreateAnalysisJobSnapshotsAndValidatesAutomaticCueMode(t *testing.T) {
+	database, _, _ := analysisCatalog(t, 1)
+	api := &API{db: database, jobSchedulerOn: true}
+	if err := database.SetSetting(SettingAutoCueMode, "replace-generated"); err != nil {
+		t.Fatal(err)
+	}
+	create := func(parameters string) (int, db.Job) {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"type":"analyze_tracks","parameters":`+parameters+`}`))
+		recorder := httptest.NewRecorder()
+		api.createJobV2(recorder, request)
+		var created db.Job
+		if recorder.Code == http.StatusAccepted {
+			if err := json.Unmarshal(recorder.Body.Bytes(), &created); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return recorder.Code, created
+	}
+
+	status, created := create(`{"mode":"missing"}`)
+	if status != http.StatusAccepted {
+		t.Fatalf("create analysis job = %d, want 202", status)
+	}
+	selection, err := db.ParseAnalysisSelection(created.Parameters)
+	if err != nil || selection.AutoCueMode != db.AutomaticCuePointsReplaceGenerated {
+		t.Fatalf("missing job mode did not snapshot setting: %#v err=%v", selection, err)
+	}
+	if err := database.SetSetting(SettingAutoCueMode, "off"); err != nil {
+		t.Fatal(err)
+	}
+	status, created = create(`{"mode":"missing","autoCueMode":"suggest"}`)
+	if status != http.StatusAccepted {
+		t.Fatalf("create explicit analysis job = %d, want 202", status)
+	}
+	selection, err = db.ParseAnalysisSelection(created.Parameters)
+	if err != nil || selection.AutoCueMode != db.AutomaticCuePointsSuggest {
+		t.Fatalf("explicit job mode was not retained: %#v err=%v", selection, err)
+	}
+	if status, _ = create(`{"mode":"missing","autoCueMode":"refresh-all"}`); status != http.StatusBadRequest {
+		t.Fatalf("invalid explicit mode create = %d, want 400", status)
+	}
+}
+
 func TestAnalyzeTracksJobStreamsAvailablePlexSource(t *testing.T) {
 	fixture, err := analysisbench.NewClickTrack("plex-clicks", 128, 3, 22050, 1)
 	if err != nil {

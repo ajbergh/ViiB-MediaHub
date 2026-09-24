@@ -23,6 +23,10 @@ import (
 // JobTypeAnalyzeTracks is the durable job type for library track analysis.
 const JobTypeAnalyzeTracks = "analyze_tracks"
 
+// SettingAutoCueMode controls automatic generated cue persistence for newly
+// created analysis jobs. It is installation-wide in the current settings store.
+const SettingAutoCueMode = "analysis_auto_cue_mode"
+
 // errAnalysisDeferred signals that a run must yield its worker rather than
 // fail. It never reaches the caller of a route; the job returns to the queue.
 var errAnalysisDeferred = errors.New("analysis deferred to reduce pressure during playback")
@@ -83,6 +87,7 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 
 	progress, runErr := track.Run(ctx, a.db, decoderRegistry(), songIDs, track.RunOptions{
 		ResolveSource: a.resolveAnalysisSource,
+		AutoCueMode:   selection.AutoCueMode,
 		Canceled:      func() bool { return a.jobCancellationRequested(job.ID) },
 		Throttle: func(context.Context) error {
 			// Consulted between tracks. Yielding releases the worker so scans
@@ -104,12 +109,13 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 	})
 
 	result := map[string]any{
-		"mode":     selection.Mode,
-		"source":   selection.Source,
-		"total":    progress.Total,
-		"analyzed": progress.Analyzed,
-		"skipped":  progress.Skipped,
-		"failed":   progress.Failed,
+		"mode":        selection.Mode,
+		"source":      selection.Source,
+		"autoCueMode": selection.AutoCueMode,
+		"total":       progress.Total,
+		"analyzed":    progress.Analyzed,
+		"skipped":     progress.Skipped,
+		"failed":      progress.Failed,
 	}
 	if runErr != nil {
 		if errors.Is(runErr, errAnalysisDeferred) {
@@ -169,13 +175,29 @@ func (a *API) queueAutoAnalysis(trigger string) {
 	}
 	job := db.Job{
 		ID: uuid.NewString(), Type: JobTypeAnalyzeTracks, Status: db.JobStatusQueued,
-		Parameters: json.RawMessage(`{"mode":"missing"}`), Priority: autoAnalyzePriority,
+		Parameters: autoAnalysisParameters(db.AnalysisSelection{Mode: db.AnalysisSelectionMissing, AutoCueMode: a.analysisAutoCueMode()}), Priority: autoAnalyzePriority,
 		Message: "Queued automatically after " + trigger,
 	}
 	if err := a.db.CreateJob(job); err != nil {
 		return
 	}
 	a.wakeJobScheduler()
+}
+
+func (a *API) analysisAutoCueMode() db.AutomaticCuePointMode {
+	value, err := a.db.GetSetting(SettingAutoCueMode)
+	if err != nil {
+		return db.AutomaticCuePointsFillEmpty
+	}
+	return db.NormalizeAutomaticCuePointMode(value)
+}
+
+func autoAnalysisParameters(selection db.AnalysisSelection) json.RawMessage {
+	parameters, err := json.Marshal(selection)
+	if err != nil {
+		return json.RawMessage(`{"mode":"missing","autoCueMode":"fill-empty"}`)
+	}
+	return parameters
 }
 
 // isEnabledSetting accepts the several truthy spellings the settings store has

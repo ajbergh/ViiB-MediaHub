@@ -72,7 +72,7 @@ export const DJHotCues: React.FC<DJHotCuesProps> = ({ deck }) => {
     }
     
     const color = HOT_CUE_COLORS[slot - 1] || '#ffffff';
-    setHotCue(deck, slot, currentPosition, color);
+    setHotCue(deck, slot, currentPosition, undefined, color);
     console.log(`🎯 DJHotCues: Set hot cue at slot ${slot}, position ${currentPosition}, color ${color}`);
   }, [deck, track, setHotCue]);
 

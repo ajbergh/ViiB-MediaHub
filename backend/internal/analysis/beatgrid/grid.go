@@ -29,6 +29,37 @@ var artifactMagic = [4]byte{'V', 'B', 'G', 1}
 type Grid struct {
 	Beats           []float64
 	DownbeatIndices []int
+	Provenance      Provenance
+}
+
+// Provenance identifies how beat positions and bar starts were authored.
+// The native phase grid measures beat timing but infers the bar origin and
+// meter, so its provenance is inferred-from-meter rather than measured.
+type Provenance string
+
+const (
+	ProvenanceMeasured          Provenance = "measured"
+	ProvenanceInferredFromMeter Provenance = "inferred-from-meter"
+	ProvenanceManual            Provenance = "manual"
+	ProvenanceUnknown           Provenance = "unknown"
+)
+
+func (p Provenance) Valid() bool {
+	switch p {
+	case ProvenanceMeasured, ProvenanceInferredFromMeter, ProvenanceManual, ProvenanceUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// EffectiveProvenance preserves compatibility with older callers that build
+// grids without setting provenance; the native grid has always inferred bars.
+func (g Grid) EffectiveProvenance() Provenance {
+	if g.Provenance == "" {
+		return ProvenanceInferredFromMeter
+	}
+	return g.Provenance
 }
 
 // BuildStraight constructs a constant-tempo grid beginning at firstDownbeat.
@@ -45,7 +76,7 @@ func BuildStraight(bpm, firstDownbeat, duration float64, beatsPerBar int) (Grid,
 		return Grid{}, errors.New("beatgrid beats per bar must be between 1 and 32")
 	}
 	interval := 60 / bpm
-	grid := Grid{Beats: make([]float64, 0, int((duration-firstDownbeat)/interval)+1)}
+	grid := Grid{Beats: make([]float64, 0, int((duration-firstDownbeat)/interval)+1), Provenance: ProvenanceInferredFromMeter}
 	for beat := firstDownbeat; beat < duration; beat += interval {
 		grid.Beats = append(grid.Beats, beat)
 		if (len(grid.Beats)-1)%beatsPerBar == 0 {
@@ -61,6 +92,9 @@ func BuildStraight(bpm, firstDownbeat, duration float64, beatsPerBar int) (Grid,
 // Validate rejects malformed grids before they reach rendering or Sync. A
 // strict ascending order makes the current-beat search unambiguous.
 func (g Grid) Validate() error {
+	if !g.EffectiveProvenance().Valid() {
+		return errors.New("invalid beatgrid provenance")
+	}
 	if len(g.Beats) == 0 {
 		return errors.New("beatgrid requires at least one beat")
 	}

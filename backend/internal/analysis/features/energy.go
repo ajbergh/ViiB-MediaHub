@@ -15,10 +15,11 @@ import (
 )
 
 const (
-	ArtifactKind     = "energy-structure"
-	FormatVersion    = 1
-	AlgorithmVersion = "energy-structure-v1"
-	Encoding         = "gzip-json-v1"
+	ArtifactKind                = "energy-structure"
+	FormatVersion               = 1
+	AlgorithmVersion            = "energy-structure-v1"
+	EnergyLevelAlgorithmVersion = "energy-level-v1-fixed-reference"
+	Encoding                    = "gzip-json-v1"
 )
 
 // EnergyPoint is a fixed-time, normalized intensity sample.  Time is the
@@ -55,27 +56,88 @@ type Result struct {
 	CueSuggestions []CueSuggestion `json:"cueSuggestions"`
 }
 
+// EnergyLevelInputs are fixed-reference, absolute features used for the
+// sortable track-level score. LoudnessProxyDB is the existing unweighted RMS
+// proxy (not BS.1770 LUFS); PeakDBFS is a sample/interpolated peak proxy (not
+// BS.1770 true peak). OnsetCrestFactor is a dimensionless rhythmic activity
+// measure. These inputs and weights are versioned by EnergyLevelAlgorithmVersion.
+type EnergyLevelInputs struct {
+	LoudnessProxyDB  float64
+	PeakDBFS         float64
+	OnsetCrestFactor float64
+	HasAudio         bool
+}
+
+// EnergyLevelEstimate is deterministic given the same inputs. Confidence is
+// an evidence-availability heuristic, not a statistically calibrated
+// probability. The fixed reference ranges deliberately avoid per-library
+// normalization. This first version is a navigation aid and has not been
+// calibrated against a lawful, genre-diverse reference corpus.
+type EnergyLevelEstimate struct {
+	Level            int
+	Confidence       float64
+	AlgorithmVersion string
+}
+
+func EstimateEnergyLevel(input EnergyLevelInputs) (EnergyLevelEstimate, bool) {
+	if !input.HasAudio || math.IsNaN(input.LoudnessProxyDB) || math.IsInf(input.LoudnessProxyDB, 0) || math.IsNaN(input.PeakDBFS) || math.IsInf(input.PeakDBFS, 0) {
+		return EnergyLevelEstimate{}, false
+	}
+	// Fixed broad reference transforms; loudness has only 15% influence.
+	loudness := energyClamp01((input.LoudnessProxyDB + 48) / 38)
+	peak := energyClamp01((input.PeakDBFS + 36) / 30)
+	crestDB := math.Max(0, input.PeakDBFS-input.LoudnessProxyDB-0.691)
+	transient := energyClamp01(crestDB / 18)
+	rhythmic := 0.0
+	if !math.IsNaN(input.OnsetCrestFactor) && !math.IsInf(input.OnsetCrestFactor, 0) && input.OnsetCrestFactor > 0 {
+		rhythmic = energyClamp01(math.Log1p(input.OnsetCrestFactor) / math.Log1p(300))
+	}
+	score := 0.15*loudness + 0.35*peak + 0.20*transient + 0.30*rhythmic
+	level := 1 + int(math.Round(score*9))
+	if level < 1 {
+		level = 1
+	}
+	if level > 10 {
+		level = 10
+	}
+	confidence := energyClamp01(0.35 + 0.25*boolFloat(input.OnsetCrestFactor > 0) + 0.20*boolFloat(input.PeakDBFS > -36) + 0.20*boolFloat(input.LoudnessProxyDB > -48))
+	return EnergyLevelEstimate{Level: level, Confidence: confidence, AlgorithmVersion: EnergyLevelAlgorithmVersion}, true
+}
+
+func energyClamp01(value float64) float64 { return math.Max(0, math.Min(1, value)) }
+func boolFloat(value bool) float64 {
+	if value {
+		return 1
+	}
+	return 0
+}
+
 // AddCueSuggestions derives compact mix-in, section, and mix-out suggestions.
-// Every position is snapped to a detected downbeat when a grid is available;
-// absent a reliable grid it intentionally returns no cues rather than faking
-// beat alignment.
+// It uses measured/manual downbeats only when the grid provenance supports
+// that claim. Inferred grids fall back to nearest-beat suggestions with lower
+// confidence and explicit rationale.
 func (r *Result) AddCueSuggestions(grid *beatgrid.Grid) {
 	r.CueSuggestions = []CueSuggestion{}
-	if grid == nil || len(grid.DownbeatIndices) == 0 || len(r.Sections) == 0 {
+	if grid == nil || len(grid.Beats) == 0 || len(r.Sections) == 0 {
 		return
 	}
-	downbeats := make([]float64, 0, len(grid.DownbeatIndices))
-	for _, index := range grid.DownbeatIndices {
-		if index >= 0 && index < len(grid.Beats) {
-			downbeats = append(downbeats, grid.Beats[index])
+	qualifiedDownbeats := (grid.EffectiveProvenance() == beatgrid.ProvenanceMeasured || grid.EffectiveProvenance() == beatgrid.ProvenanceManual) && len(grid.DownbeatIndices) > 0
+	anchors := make([]float64, 0, len(grid.Beats))
+	if qualifiedDownbeats {
+		for _, index := range grid.DownbeatIndices {
+			if index >= 0 && index < len(grid.Beats) {
+				anchors = append(anchors, grid.Beats[index])
+			}
 		}
+	} else {
+		anchors = append(anchors, grid.Beats...)
 	}
-	if len(downbeats) == 0 {
+	if len(anchors) == 0 {
 		return
 	}
 	snap := func(time float64) float64 {
-		best := downbeats[0]
-		for _, candidate := range downbeats[1:] {
+		best := anchors[0]
+		for _, candidate := range anchors[1:] {
 			if math.Abs(candidate-time) < math.Abs(best-time) {
 				best = candidate
 			}
@@ -83,12 +145,16 @@ func (r *Result) AddCueSuggestions(grid *beatgrid.Grid) {
 		return best
 	}
 	first, last := r.Sections[0], r.Sections[len(r.Sections)-1]
+	detail, mixInConfidence, mixOutConfidence, sectionConfidence := "nearest beat; downbeat provenance unavailable", .46, .42, .38
+	if qualifiedDownbeats {
+		detail, mixInConfidence, mixOutConfidence, sectionConfidence = "measured/manual downbeat", .70, .65, .60
+	}
 	r.CueSuggestions = append(r.CueSuggestions,
-		CueSuggestion{Position: snap(first.Start), Kind: "mix-in", Confidence: .70, Rationale: "First measured section, snapped to detected downbeat"},
-		CueSuggestion{Position: snap(last.End), Kind: "mix-out", Confidence: .65, Rationale: "Final measured section boundary, snapped to detected downbeat"},
+		CueSuggestion{Position: snap(first.Start), Kind: "mix-in", Confidence: mixInConfidence, Rationale: "First measured section, snapped to " + detail},
+		CueSuggestion{Position: snap(last.End), Kind: "mix-out", Confidence: mixOutConfidence, Rationale: "Final measured section boundary, snapped to " + detail},
 	)
 	for _, section := range r.Sections[1:] {
-		r.CueSuggestions = append(r.CueSuggestions, CueSuggestion{Position: snap(section.Start), Kind: "section", Confidence: .60, Rationale: "Measured energy novelty boundary, snapped to detected downbeat"})
+		r.CueSuggestions = append(r.CueSuggestions, CueSuggestion{Position: snap(section.Start), Kind: "section", Confidence: sectionConfidence, Rationale: "Measured energy novelty boundary, snapped to " + detail})
 	}
 }
 
