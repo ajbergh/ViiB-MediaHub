@@ -3,7 +3,7 @@
 **Status:** Proposed implementation roadmap  
 **Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md  
 **Repository snapshot reviewed:** main at d02ad01dd5d384a77383b70f2669f9dd1c6c1761 (v1.0.0-rc3)  
-**Research snapshot:** 2026-09-23  
+**Research snapshot:** 2026-09-24  
 **Primary goals:** professional-grade stem playback, scan-time cue creation, Camelot-first library UX, 1-10 energy analysis, structure-aware transition planning, mashup auditioning, and high-quality DJ preparation workflows.  
 **Stem-generation architecture decision:** stem generation is an ahead-of-time workflow owned by a separate future application/repository named **ViiB-StemLab**. ViiB MediaHub detects, validates, indexes and plays pre-generated stem packages; it does not embed Demucs/PyTorch or perform neural stem separation during DJ playback. The ViiB-StemLab repository will be created later, after the package contract in this roadmap is stable.
 
@@ -49,7 +49,7 @@ ViiB already persists and exposes:
 - Camelot and Open Key notation;
 - beat positions and downbeats;
 - beatgrid manual edits;
-- integrated LUFS and true peak;
+- a current streaming loudness proxy stored as `IntegratedLUFS` and a peak-level proxy stored as `TruePeakDBFS` (these names must not be interpreted as full BS.1770 integrated loudness / oversampled true-peak compliance yet);
 - track energy curves;
 - section-like energy regions;
 - advisory mix-in, mix-out and section cue suggestions;
@@ -194,6 +194,67 @@ These references define product behavior only. ViiB should implement its own ana
 
 ---
 
+
+### 3.3 Open-source MIR reference stack and current ViiB evidence
+
+The current ViiB analysis stack is already strong enough that these projects should be treated as **reference analyzers and targeted capability candidates**, not automatic replacements for the native Go implementation.
+
+**Beat This! (CPJKU)**
+
+- predicts timestamped beats and downbeats with a transformer-based model;
+- code and published model weights are MIT licensed;
+- supports CPU/GPU inference and exposes framewise beat/downbeat activations;
+- is particularly relevant to ViiB because true musical downbeat inference is a larger current gap than scalar BPM estimation.
+
+ViiB has already run the `final0` model as a development-only reference. Deriving scalar BPM from a fixed 16-beat median over its timestamp grid reached **111/122 strict BPM matches (90.98%)** on the r5 tuning set. That result is **diagnostic only**: the repository's overlap audit found tracks in the ViiB corpus that also occur in Beat This training material. Do not use that result as independent release evidence or promote the model without a clean, overlap-audited evaluation.
+
+Reference:
+https://github.com/CPJKU/beat_this
+
+**All-In-One / All-In-One-Infer**
+
+The All-In-One research family jointly predicts:
+
+- tempo;
+- beats;
+- downbeats;
+- functional segment boundaries;
+- functional labels such as intro, verse, chorus, bridge and outro.
+
+This is unusually well aligned with ViiB's cue-intelligence problem because one model can provide both rhythmic landmarks and semantic structure. The original project is MIT licensed. A maintained packaging fork, `all-in-one-infer`, was renamed at v3.0.0 in July 2026 and removes several older installation barriers while retaining the upstream analysis behavior.
+
+References:
+
+- https://github.com/mir-aidj/all-in-one
+- https://github.com/openmirlab/all-in-one-infer
+
+**BeatNet**
+
+BeatNet jointly estimates beats, downbeats, tempo and meter and remains useful as an independent rhythmic reference. Its repository is CC-BY-4.0 and its offline path carries a Python/PyTorch/madmom-style dependency footprint, so it is a weaker default packaging fit for MediaHub than a native implementation. It is still valuable for benchmark diversity because it uses a different CRNN/particle-filtering approach.
+
+Reference:
+https://github.com/mjhydri/BeatNet
+
+**Essentia**
+
+Essentia remains a valuable MIR laboratory and reference implementation, but it is AGPLv3 and should stay outside the shipping MediaHub dependency graph unless a separate licensing decision is made.
+
+ViiB has already benchmarked Essentia `RhythmExtractor2013` as an isolated development process. Its production-aligned tuning configuration reached **99/122 strict BPM (81.15%)**, but only **39/54 strict (72.22%)** on the independent r5 held-out subset. That evidence does not justify replacing ViiB's native tempo engine with Essentia.
+
+Reference:
+https://github.com/MTG/essentia
+
+### 3.4 Research conclusion: improve weak dimensions, do not replace the stack wholesale
+
+The recommended direction is:
+
+1. keep ViiB's native Go tempo, key, persistence, scheduler, provenance and DJ workflow as the production foundation;
+2. improve **true beat/downbeat/meter inference** before relying heavily on phrase-aligned automatic cues;
+3. evaluate **semantic structure models** separately from the existing energy-novelty sections;
+4. keep Essentia, Beat This, BeatNet and All-In-One behind benchmark/reference adapters until an explicit promotion gate is passed;
+5. if a neural model is ever promoted to shipping use, make packaging/runtime/licensing a separate architecture decision rather than silently adding PyTorch to MediaHub.
+
+
 # PART I — TARGET ARCHITECTURE
 
 ## 4. Architectural principles
@@ -298,6 +359,41 @@ A package contains:
 This keeps MediaHub independent from the implementation language or ML framework used by ViiB-StemLab and also allows future third-party generators to produce compatible packages.
 
 ---
+
+
+### 4.7 Native-first analysis with swappable reference providers
+
+The native Go analyzer remains authoritative unless a replacement wins a documented quality gate.
+
+External/reference analyzers should use a narrow normalized result contract rather than writing directly to production tables. Suggested development result fields:
+
+- analyzer name/version/model;
+- source audio hash;
+- canonical sample rate/input identity;
+- beats[];
+- downbeats[];
+- meter when known;
+- BPM and confidence when supplied;
+- structure boundaries/labels when supplied;
+- per-output confidence when available;
+- runtime and device metadata.
+
+Development adapters should emit benchmark artifacts first. Promotion to production requires a separate decision covering accuracy, deterministic behavior, cross-platform runtime, packaging, model-weight licensing and rollback/fallback behavior.
+
+### 4.8 Canonical audio timing is mandatory for rhythm/structure comparisons
+
+Beat and downbeat evaluation is sensitive to decoder offsets. External tools must not independently decode MP3/AAC and then be compared naively against ViiB timestamps.
+
+For benchmark and optional companion analysis:
+
+1. resolve the source through ViiB;
+2. decode once through the canonical ViiB path where practical;
+3. provide normalized PCM or a deterministic temporary WAV to the reference analyzer;
+4. record any resampling delay or trim explicitly;
+5. map returned timestamps back to the canonical ViiB track timeline before scoring or persisting them.
+
+This avoids tens-of-milliseconds decoder-origin shifts being misdiagnosed as beat-tracker error.
+
 
 ## 5. Proposed backend components
 
@@ -499,6 +595,32 @@ Initial labels:
 Do not force a semantic label when confidence is weak. A phrase-boundary-only result is preferable to a wrong label.
 
 ---
+
+
+### 6.6 Rhythm-grid provenance and musical-downbeat semantics
+
+The current beatgrid representation is useful and should be preserved, but future analysis must distinguish:
+
+- **beat phase**: where the repeating beat pulse falls;
+- **musical downbeat**: which beat is bar position 1;
+- **meter**: how beats group into bars;
+- **phrase boundary**: higher-level 4/8/16/32-beat musical grouping.
+
+A phase-aligned straight grid that marks every fourth beat as a downbeat is not equivalent to learned musical-downbeat detection.
+
+Extend rhythm artifact metadata with:
+
+- detector / model / algorithm version;
+- beat confidence or aggregate beat confidence;
+- downbeat confidence;
+- meter and meter confidence;
+- whether downbeats are `measured`, `inferred-from-meter`, or `manual`;
+- source audio hash;
+- edited/locked state;
+- optional local-tempo anchors.
+
+Cue and phrase logic must be able to tell the difference between a true measured downbeat and a meter-derived placeholder.
+
 
 ## 7. Proposed API surface
 
@@ -992,6 +1114,37 @@ Mixed In Key publicly describes up to eight automatically generated cue points a
 
 ---
 
+
+### 11.1 Rhythm prerequisite: beat phase is not the same as bar-one detection
+
+The existing ViiB beatgrid is already a good persistence and playback contract, but the current native detector primarily estimates global tempo plus beat phase. It then constructs a straight grid and assigns downbeat indices from the configured meter.
+
+That means the system can have an accurately phased beat grid while still choosing the wrong musical bar-one offset.
+
+This matters for:
+
+- automatic cue placement;
+- 8/16/32-beat phrase grids;
+- intro/drop/breakdown labeling;
+- transition alignment;
+- stem-aware mashups;
+- automatic loop suggestions.
+
+Before calling a generated cue "downbeat aligned", the cue engine must know the downbeat provenance.
+
+Recommended hierarchy:
+
+1. manually confirmed/locked downbeat;
+2. qualified learned downbeat detector;
+3. qualified deterministic musical-downbeat detector;
+4. meter-derived grid position with reduced confidence;
+5. nearest beat when no downbeat evidence is reliable.
+
+The first reference candidate to benchmark for this gap is **Beat This!** because it directly emits beats and downbeats and has already shown strong diagnostic tempo evidence in the ViiB harness. **All-In-One** is a second high-value candidate because it jointly emits beats, downbeats and functional structure.
+
+The native Go path remains the fallback until an external/native candidate passes the release gate.
+
+
 ## 12. Cue generation pipeline
 
 ### 12.1 Inputs
@@ -999,7 +1152,8 @@ Mixed In Key publicly describes up to eight automatically generated cue points a
 Use:
 
 - beatgrid;
-- downbeats;
+- downbeats **with provenance/confidence**;
+- meter/bar position when reliably measured;
 - BPM;
 - structural boundaries;
 - energy curve;
@@ -1062,9 +1216,10 @@ When a track lacks eight distinct sections, fill remaining slots using high-conf
 
 Default generated cues should snap to:
 
-1. detected downbeat when confidence is strong;
-2. otherwise nearest beat;
-3. optional 1/4-beat editing resolution in the UI.
+1. manually confirmed or qualified measured downbeat when confidence is strong;
+2. otherwise nearest beat, with lower cue confidence;
+3. never promote a meter-derived placeholder to "measured downbeat" in rationale/provenance;
+4. optional 1/4-beat editing resolution in the UI.
 
 Manual movement should support:
 
@@ -1244,6 +1399,16 @@ It must not simply be loudness divided into ten buckets.
 
 ## 17. Candidate features
 
+### 17.0 Fix loudness semantics before making it a major Energy input
+
+The existing streaming feature is useful as a loudness proxy, but a future field presented as standards-compliant integrated LUFS should implement the required K-weighting and gating behavior from ITU-R BS.1770 / EBU-style measurement. A user-facing "true peak" claim should likewise use an oversampled inter-sample peak detector rather than ordinary sample peak.
+
+Until that work lands:
+
+- keep the existing proxy versioned;
+- do not market it as broadcast-compliant integrated loudness or true peak;
+- avoid giving the proxy disproportionate weight in Energy Level calibration.
+
 Evaluate a weighted model using:
 
 - integrated loudness;
@@ -1258,9 +1423,13 @@ Evaluate a weighted model using:
 - dynamic range;
 - proportion of track at high normalized energy;
 - drop/chorus peak intensity;
-- optional vocal activity.
+- optional vocal activity;
+- optional learned arousal/danceability descriptors if they independently improve held-out DJ ordering;
+- stem-aware drum/bass activity when validated stem packages exist.
 
 Normalize features over a lawful calibration corpus.
+
+Do **not** make the absolute 1-10 value depend only on the user's current library distribution. A score that changes when unrelated tracks are added is poor durable metadata. Calibrate the absolute score against a fixed reference corpus; if useful, expose a separate library percentile as UI-only context.
 
 The output should include confidence and algorithm version.
 
@@ -1331,18 +1500,46 @@ This improves labels such as:
 - drop;
 - mix-safe intro/outro.
 
-### 18.3 Optional model evaluation
+### 18.3 Model evaluation matrix
 
-StemDeck currently references an All-In-One-derived inference package for section labeling. It may be evaluated as an optional worker-side experiment.
+Do not evaluate structure in isolation from rhythm. The most useful candidates produce timestamps that can directly strengthen the cue pipeline.
 
-Before adoption:
+**Primary semantic-structure candidate: All-In-One / All-In-One-Infer**
 
-- verify code license;
-- verify model-weight license;
-- benchmark runtime;
-- benchmark native packaging;
-- confirm deterministic output;
-- ensure it does not become a mandatory dependency for basic DJ analysis.
+Evaluate:
+
+- beat F-measure;
+- downbeat F-measure;
+- bar-position/meter usefulness;
+- segment-boundary precision/recall/F1;
+- functional-label macro-F1;
+- cue-quality lift when its output feeds the ViiB cue generator;
+- runtime on CPU and available accelerators;
+- cross-platform install/package burden.
+
+All-In-One is particularly attractive because it jointly predicts beats, downbeats, boundaries and labels. The maintained `all-in-one-infer` packaging should be evaluated alongside upstream rather than assuming the older install constraints still apply.
+
+**Primary beat/downbeat candidate: Beat This!**
+
+Evaluate its beat/downbeat timestamps independently of scalar BPM. The key question is whether it materially improves ViiB's musical bar-one and phrase alignment on an overlap-audited corpus.
+
+**Secondary rhythmic reference: BeatNet**
+
+Use as an independent architecture reference for beat/downbeat/tempo/meter, not as a presumed production dependency.
+
+**DSP reference: Essentia**
+
+Keep as a benchmark/reference implementation. Existing ViiB evidence does not justify promoting its BPM path over the native Go implementation, and AGPL licensing makes direct shipping a separate decision.
+
+Before any model adoption:
+
+- verify code license and model-weight license separately;
+- audit evaluation tracks against known/public model training corpora;
+- benchmark runtime and memory;
+- confirm deterministic/repeatable output within declared tolerances;
+- standardize input timing through canonical PCM/WAV;
+- ensure failure falls back to the native ViiB path;
+- require measurable downstream improvement to cue/downbeat/structure quality, not merely an attractive demo.
 
 ---
 
@@ -1644,12 +1841,14 @@ The fastest route is three parallel tracks.
 
 ### Workstream A — Preparation intelligence
 
-A1. Camelot color system  
-A2. Scalar Energy Level 1-10  
-A3. Structure timeline V1  
-A4. Eight-cue generator  
-A5. Scan-time fill-empty cue policy  
-A6. Cue editor and waveform markers
+A0. Reference-adapter contract and overlap-audited rhythm/structure benchmark  
+A1. True beat/downbeat/meter provenance and rhythm-grid v2 semantics  
+A2. Camelot color system  
+A3. Standards-correct loudness upgrade + Scalar Energy Level 1-10  
+A4. Structure timeline V1  
+A5. Eight-cue generator  
+A6. Scan-time fill-empty cue policy  
+A7. Cue editor and waveform markers
 
 ### Workstream B — Stem platform
 
@@ -1717,10 +1916,15 @@ Exit criteria:
 - color mapping unit tests for all 24 keys;
 - Energy Level reproducible on supported platforms.
 
-### Phase 2 — Structure and automatic cues
+### Phase 2 — Rhythm intelligence, structure and automatic cues
 
 Deliver:
 
+- canonical reference-adapter schema for beat/downbeat/structure experiments;
+- Beat This development benchmark adapter;
+- All-In-One / All-In-One-Infer development benchmark adapter;
+- overlap audit against known model training corpora;
+- rhythm-grid provenance that distinguishes measured/manual downbeats from meter-derived placeholders;
 - structure artifact V1;
 - eight-cue candidate generator;
 - cue provenance migration;
@@ -1732,7 +1936,9 @@ Exit criteria:
 
 - user cues survive reanalysis unchanged;
 - every generated cue lands on valid track time;
+- "downbeat-aligned" cues use measured/manual downbeats rather than an unlabeled meter-derived assumption;
 - high-confidence cues quantize to expected beat/downbeat;
+- reference-model benchmark results clearly separate tuning, held-out, and training-overlap-contaminated material;
 - generated cues are reproducible for identical analysis inputs.
 
 ### Phase 3 — MediaHub stem package registry
@@ -1963,6 +2169,37 @@ The scalar Energy Level is a navigation aid, not an objective truth.
 
 ---
 
+
+## 37.1 Rhythm and semantic-structure quality
+
+Maintain an overlap-audited annotated rhythm/structure corpus separate from the scalar BPM/key gate.
+
+Measure at minimum:
+
+- beat precision/recall/F-measure using a declared timing tolerance;
+- downbeat precision/recall/F-measure;
+- bar-one offset error;
+- meter accuracy where annotated;
+- segment-boundary precision/recall/F1 at both tight and musically tolerant windows;
+- functional-label macro-F1 where labels exist;
+- downstream cue hit rate and median boundary distance in beats.
+
+A model must not be promoted because it improves scalar BPM while producing poor downbeat placement.
+
+### 37.2 Third-party model overlap gate
+
+Before using a pretrained model result as release evidence:
+
+1. record model/checkpoint identity;
+2. document known training datasets;
+3. search the evaluation manifest for exact and metadata-derived overlaps;
+4. exclude or separately report contaminated tracks;
+5. never tune thresholds on the held-out split;
+6. preserve the raw prediction artifact and overlap audit.
+
+The existing Beat This r5 result is the motivating example: it is useful diagnostic evidence, but known training-set overlap means it is not independent qualification evidence.
+
+
 # PART XIII — TEST PLAN
 
 ## 38. Backend tests
@@ -1981,7 +2218,11 @@ Add tests for:
 - generated cue overwrite policy;
 - user cue preservation;
 - Energy Level determinism;
+- rhythm-grid provenance serialization;
+- measured-vs-derived downbeat behavior;
+- canonical timestamp mapping for external adapters;
 - structure serialization;
+- third-party model overlap-audit reports;
 - recommendation score components.
 
 ---
@@ -2108,6 +2349,20 @@ MediaHub's package consumer should use its own existing supported decode path wh
 
 ---
 
+
+## 44.3 Open-source MIR references
+
+Current license posture for the main research candidates:
+
+- **Beat This!** — MIT code and published model weights; training-data provenance still requires evaluation-overlap review.
+- **All-In-One** — MIT upstream; verify the exact fork/package and every bundled dependency/model before distribution.
+- **All-In-One-Infer** — MIT integration layer; still review transitive model/runtime licenses before shipping.
+- **BeatNet** — CC-BY-4.0 repository; attribution and dependency review required.
+- **Essentia** — AGPLv3; keep benchmark-only unless an explicit product/licensing decision approves otherwise.
+
+A permissive code license is necessary but not sufficient. Model weights, bundled DSP libraries, training-data implications, and transitive runtime licenses need separate review.
+
+
 ## 45. Mixed In Key
 
 Do not copy:
@@ -2202,6 +2457,10 @@ Suggested MediaHub files:
     backend/internal/analysis/structure/analyzer.go
     backend/internal/analysis/energy/level.go
 
+    scripts/beat_this_rhythm_benchmark.py
+    scripts/allinone_structure_benchmark.py
+    docs/REFERENCE_RHYTHM_STRUCTURE_BENCHMARK.md
+
     components/dj/v2/DJStemControls.tsx
     components/dj/v2/DJCueEditor.tsx
     components/dj/v2/DJMixNext.tsx
@@ -2238,20 +2497,30 @@ Keep early PRs small and independently reviewable.
 - backward compatibility
 - no generator yet
 
-### PR 3 — Auto-cue generator V1
+### PR 3 — Rhythm/downbeat benchmark and provenance
 
-- consume existing beatgrid/energy features
+- normalized benchmark result schema
+- Beat This reference adapter
+- All-In-One reference adapter
+- canonical PCM/WAV timing path
+- training-set overlap audit
+- measured/manual/derived downbeat provenance
+- no shipping ML runtime
+
+### PR 4 — Auto-cue generator V1
+
+- consume existing beatgrid/energy/structure features
 - generate up to eight cues
 - fill-empty policy
 - tests
 
-### PR 4 — Energy Level V1
+### PR 5 — Energy Level V1
 
 - scalar 1-10
 - versioned persistence
 - column/filter
 
-### PR 5 — ViiB Stem Package v1
+### PR 6 — ViiB Stem Package v1
 
 - versioned manifest specification
 - source-hash identity
@@ -2260,7 +2529,7 @@ Keep early PRs small and independently reviewable.
 - deterministic fixture packages
 - no generator runtime
 
-### PR 6 — MediaHub stem discovery and registry
+### PR 7 — MediaHub stem discovery and registry
 
 - adjacent/configured-location discovery
 - manifest validation
@@ -2271,24 +2540,24 @@ Keep early PRs small and independently reviewable.
 
 ### Future repo kickoff — ViiB-StemLab
 
-Once PR 5 stabilizes the package contract, create the separate ViiB-StemLab repository and implement the first-party generator there.
+Once the ViiB Stem Package PR stabilizes the package contract, create the separate ViiB-StemLab repository and implement the first-party generator there.
 
 This is not a MediaHub PR.
 
-### PR 7 — DeckSource refactor
+### PR 8 — DeckSource refactor
 
 - preserve existing behavior only
 
-### PR 8 — Stem package preview/audio serving
+### PR 9 — Stem package preview/audio serving
 
 - prove package resolution and audio APIs before real-time deck integration
 
-### PR 9 — Stem deck transport
+### PR 10 — Stem deck transport
 
 - worklet/frame streaming
 - no advanced UI yet
 
-### PR 10 — Four-button stem UI
+### PR 11 — Four-button stem UI
 
 - Vocal/Drums/Bass/Music
 - Full/Acapella/Instrumental
@@ -2326,9 +2595,11 @@ Cue/Energy/Camelot preparation is release-ready only when:
 
 - generated cues never destroy manual cues;
 - cues are beat/downbeat aligned where evidence supports it;
+- musical downbeat provenance is explicit and meter-derived placeholders are not mislabeled as measured downbeats;
 - cue provenance is visible;
 - all 24 Camelot keys have deterministic colors;
 - Energy Level is versioned and reproducible;
+- any user-facing standards-compliant LUFS/true-peak claim uses a qualified implementation rather than the current proxy;
 - library sort/filter is fast on large catalogs;
 - analysis can be re-run safely.
 
@@ -2376,16 +2647,17 @@ After the core roadmap lands, high-value extensions include:
 
 For the next DJv2 development cycle, prioritize in this order:
 
-1. **Automatic cue points + provenance**
-2. **Camelot visual system**
-3. **Energy Level 1-10**
-4. **ViiB Stem Package v1 + MediaHub discovery/registry**
-5. **Create the separate ViiB-StemLab repository and first-party generator**
-6. **Four-group stem deck playback**
-7. **Mix Next v2**
-8. **Pitch-shift/mashup planning**
-9. **Third-party DJ export**
+1. **True beat/downbeat provenance + overlap-audited Beat This / All-In-One benchmark**
+2. **Automatic cue points + provenance**
+3. **Camelot visual system**
+4. **Standards-correct loudness foundation + Energy Level 1-10**
+5. **ViiB Stem Package v1 + MediaHub discovery/registry**
+6. **Create the separate ViiB-StemLab repository and first-party generator**
+7. **Four-group stem deck playback**
+8. **Mix Next v2**
+9. **Pitch-shift/mashup planning**
+10. **Third-party DJ export**
 
-This order produces visible DJ-preparation value early, stabilizes the package boundary before creating the generator repository, and lets the more difficult real-time stem transport work proceed independently from ML/runtime packaging.
+This order fixes the most important prerequisite for trustworthy cue/phrase intelligence first: distinguishing a true musical downbeat from a merely phase-aligned meter grid. It then produces visible DJ-preparation value early, stabilizes the package boundary before creating the generator repository, and lets the more difficult real-time stem transport work proceed independently from ML/runtime packaging.
 
 The most important architectural constraint is now explicit: **separate ahead of time; perform in real time**. ViiB-StemLab owns separation. ViiB MediaHub owns package discovery and performance. Demucs or any future model can evolve independently as long as StemLab continues to emit a compatible package.
