@@ -4,7 +4,7 @@ Date: 2026-09-23
 
 ## Fix Progress
 
-Current status: Fixes for findings 1–27, including the DJ load crash regression, are on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. Analysis state, MIDI mapping behavior/status, WebGL overview loop shading, superseded track loads, and the PERF FX/sampler layout have been corrected. Finding 28's left-deck rack alignment change was reverted at the user's request. Minimized-window loop behavior still needs Wails runtime confirmation.
+Current status: Fixes for findings 1–27 and 29–30, including the DJ load crash regression and PR #59's raw-color CI failure, are on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. Analysis state, MIDI mapping behavior/status, WebGL overview loop shading, superseded track loads, the PERF FX/sampler layout, Deck A FX alignment, and the raw-color regression have been corrected. Finding 28's left-deck rack alignment change was reverted at the user's request. Minimized-window loop behavior still needs Wails runtime confirmation.
 
 | Finding | Status | Progress |
 |---|---|---|
@@ -23,6 +23,7 @@ Current status: Fixes for findings 1–27, including the DJ load crash regressio
 | 27 | Fixed | PERF now renders full v2 FX parameter controls. Sampler pads use a fixed compact height with their mode/volume controls overlaid inside each pad, keeping all eight pads accessible without adding vertical overflow. |
 | 28 | Reverted | Deck A's TRIM/HIGH/MID/LOW/FILT rack alignment was restored to its prior centered position at the user's request. |
 | 29 | Fixed | Deck A's FX units are right-aligned toward the center FX pad. Full-size FX knobs have more spacing and dedicated label/readout sizing, preventing their text from colliding. |
+| 30 | Fixed | PR #59 frontend CI failed the raw-color regression check on a new `#111` WebGL toolbar color. Replaced it with the existing `bg-surface-0` token. |
 
 Implementation log:
 
@@ -44,6 +45,7 @@ Implementation log:
 - 2026-09-23: Reverted the Deck A rack alignment change from commit `59500d6`; the controls are centered as before. Updated finding 28 to record the user-requested revert.
 - 2026-09-23: Started finding 29: anchored Deck A's FX units to the panel's right edge, increased the full FX knob size and spacing, and reduced only the FX knob label/readout font sizing so long labels and values remain separated.
 - 2026-09-23: Completed finding 29. Deck A's FX rack now sits against the center pad; the FX knobs are wider with more spacing, and FX-only typography keeps labels and numeric readouts distinct. Changes are ready for PR #59; no test suite was run for this visual-only adjustment.
+- 2026-09-24: Fixed PR #59 frontend CI finding 30 by replacing the WebGL waveform toolbar's new raw `#111` color with `bg-surface-0`. The raw-color check and TypeScript check pass locally; Vitest could not start in the restricted shell because esbuild was denied reads above the workspace. The PR's remote CI will rerun the full suite after push.
 
 ## Scope
 

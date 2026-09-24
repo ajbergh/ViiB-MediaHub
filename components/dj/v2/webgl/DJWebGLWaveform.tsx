@@ -322,7 +322,7 @@ export const DJWebGLWaveform: React.FC<DJWebGLWaveformProps> = ({
   
   return (
     <div ref={containerRef} className="w-full bg-surface-0 relative" style={{ height: surfaceHeight }} onWheel={handleWheelZoom}>
-      <div className="h-8 flex items-center justify-end gap-1 px-2 bg-[#111]">
+      <div className="h-8 flex items-center justify-end gap-1 px-2 bg-surface-0">
         {(['Gradient', 'Level', 'Solid'] as const).map((label, index) => (
           <button key={label} onClick={() => setColorMode(index as 0 | 1 | 2)} aria-pressed={colorMode === index}
             className={`px-2 h-6 rounded text-[9px] font-bold ${colorMode === index ? 'bg-brand/30 text-brand' : 'text-neutral-500 hover:text-neutral-200'}`}
