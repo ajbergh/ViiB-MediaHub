@@ -3,6 +3,7 @@ package features
 import (
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -35,6 +36,15 @@ func TestScoreTransitionIsDeterministicAndBounded(t *testing.T) {
 	first, second := ScoreTransition(result, result), ScoreTransition(result, result)
 	if !reflect.DeepEqual(first, second) || first.Score < 0 || first.Score > 1 {
 		t.Fatalf("transition score must be stable and normalized: %#v / %#v", first, second)
+	}
+	var loudness *TransitionComponent
+	for index := range first.Components {
+		if strings.Contains(first.Components[index].Name, "loudness") {
+			loudness = &first.Components[index]
+		}
+	}
+	if loudness == nil || loudness.Name != "loudness-proxy-match" || !strings.Contains(strings.ToLower(loudness.Rationale), "unweighted mono rms loudness proxy") || !strings.HasSuffix(loudness.Rationale, "dB") || strings.Contains(loudness.Rationale, "Integrated loudness") || strings.Contains(loudness.Rationale, " LU") {
+		t.Fatalf("transition rationale still overstates loudness standard: %#v", loudness)
 	}
 }
 

@@ -37,6 +37,12 @@ func TestEnergyResultAndArtifactAreDeterministic(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(decoded, result) {
 		t.Fatalf("Decode() = %#v, %v; want %#v", decoded, err, result)
 	}
+	if decoded.LoudnessKind != LoudnessKind || decoded.PeakKind != PeakKind || decoded.ChannelScope != "mono" || decoded.Standard != "none" {
+		t.Fatalf("artifact does not state measurement semantics: %#v", decoded)
+	}
+	if decoded.IntegratedLUFS != result.IntegratedLUFS || decoded.TruePeakDBFS != result.TruePeakDBFS {
+		t.Fatalf("compatibility numeric aliases changed: %#v", decoded)
+	}
 }
 
 func TestCueSuggestionsSnapToDownbeats(t *testing.T) {

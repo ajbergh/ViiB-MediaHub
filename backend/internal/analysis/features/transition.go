@@ -86,7 +86,7 @@ func ScoreTransition(outgoing, incoming Result) TransitionScore {
 	phrase := (defaultConfidence(vector.OutgoingMixOut) + defaultConfidence(vector.IncomingMixIn)) / 2
 	components := []TransitionComponent{
 		{Name: "energy-continuity", Score: energy, Weight: .55, Rationale: "Outgoing tail and incoming head differ by " + rounded(vector.EnergyDelta) + " normalized energy"},
-		{Name: "loudness-match", Score: loudness, Weight: .20, Rationale: "Integrated loudness differs by " + rounded(vector.LoudnessDeltaLU) + " LU"},
+		{Name: "loudness-proxy-match", Score: loudness, Weight: .20, Rationale: "Unweighted mono RMS loudness proxy differs by " + rounded(vector.LoudnessDeltaLU) + " dB"},
 		{Name: "phrase-preparation", Score: phrase, Weight: .25, Rationale: "Measured mix-out/mix-in hints are advisory and can be accepted, moved, or ignored"},
 	}
 	score := 0.0
