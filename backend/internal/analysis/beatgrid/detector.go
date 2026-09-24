@@ -34,7 +34,7 @@ func BuildDynamic(anchors []TempoAnchor, duration float64, beatsPerBar int) (Gri
 		}
 	}
 
-	grid := Grid{Beats: make([]float64, 0), DownbeatIndices: make([]int, 0)}
+	grid := Grid{Beats: make([]float64, 0), DownbeatIndices: make([]int, 0), Provenance: ProvenanceInferredFromMeter}
 	beat := anchors[0].Time
 	anchorIndex := 0
 	for beat < duration {

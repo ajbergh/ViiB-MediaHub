@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { getDJAudioEngine } from '../../../lib/djAudio';
-import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations } from '../../../services/api';
+import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent } from '../../../services/api';
 
 interface DJEnergyInsightsProps {
   trackID?: string;
@@ -13,6 +13,7 @@ interface DJEnergyInsightsProps {
 export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [features, setFeatures] = useState<TrackEnergyFeatures | null>(null);
   const [recommendations, setRecommendations] = useState<TrackTransitionRecommendations | null>(null);
+  const [intent, setIntent] = useState<TransitionIntent>('hold');
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
   const analysisStatus = useStore(state => deck === 'A' ? state.djDeckA.analysisStatus : state.djDeckB.analysisStatus);
   const setHotCue = useStore(state => state.setHotCue);
@@ -47,10 +48,18 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     setRecommendations(null);
     if (trackID && analysisStatus === 'available') {
       api.getTrackEnergyFeatures(trackID).then(value => live && setFeatures(value)).catch(() => {});
-      api.getTrackTransitionRecommendations(trackID).then(value => live && setRecommendations(value)).catch(() => {});
     }
     return () => { live = false; };
   }, [trackID, analysisStatus]);
+
+  useEffect(() => {
+    let live = true;
+    setRecommendations(null);
+    if (trackID && analysisStatus === 'available') {
+      api.getTrackTransitionRecommendations(trackID, 3, intent).then(value => live && setRecommendations(value)).catch(() => {});
+    }
+    return () => { live = false; };
+  }, [trackID, analysisStatus, intent]);
 
   if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
   if (!features) return null;
@@ -73,8 +82,18 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       </div>}
     </div>
     <div className="mt-1 flex flex-wrap items-center gap-2">
-      <span>{features.integratedLufs.toFixed(1)} LUFS</span>
+      <span title="Unweighted RMS-based estimate; not BS.1770 LUFS">Loudness proxy: {features.integratedLufs.toFixed(1)} dB</span>
       <span>{features.cueSuggestions.length} advisory cues</span>
+      <label className="inline-flex items-center gap-1">
+        <span>Mix Next</span>
+        <select aria-label="Mix Next direction" value={intent} onChange={event => setIntent(event.target.value as TransitionIntent)}
+          className="rounded border border-violet-500/30 bg-neutral-950 px-1 text-violet-200">
+          <option value="hold">Hold</option>
+          <option value="lift">Lift (+1 energy)</option>
+          <option value="reset">Reset (-1 energy)</option>
+          <option value="harmonic">Harmonic</option>
+        </select>
+      </label>
       {features.cueSuggestions.slice(0, 3).map((cue, index) => {
         const accepted = hotCues.some(hotCue => Math.abs(hotCue.position - cue.position) < .01);
         return <button key={`${cue.kind}-${index}`} disabled={!deck || accepted} onClick={() => acceptCue(cue.position, cue.kind)} title={cue.rationale}

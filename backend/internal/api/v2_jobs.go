@@ -40,13 +40,15 @@ func schedulerWorkerCount(cpuCount int) int {
 // supportedJobTypes is the create allowlist. The dispatch switch in
 // runClaimedJob must stay in step with it.
 var supportedJobTypes = map[string]bool{
-	"full_scan":           true,
-	"quick_scan":          true,
-	"refresh_genre_stats": true,
-	JobTypeAnalyzeTracks:  true,
+	"full_scan":             true,
+	"quick_scan":            true,
+	"refresh_genre_stats":   true,
+	JobTypeAnalyzeTracks:    true,
+	"stem_registry_refresh": true,
+	"stem_package_link":     true,
 }
 
-const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, and " + JobTypeAnalyzeTracks
+const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, " + JobTypeAnalyzeTracks + ", stem_registry_refresh, and stem_package_link"
 
 type createJobRequest struct {
 	Type       string          `json:"type"`
@@ -255,6 +257,8 @@ func (a *API) runClaimedJob(job db.Job) {
 		a.runQuickScanJob(id)
 	case JobTypeAnalyzeTracks:
 		a.runAnalyzeTracksJob(job)
+	case "stem_registry_refresh", "stem_package_link":
+		a.runStemRegistryJob(job)
 	case "refresh_genre_stats":
 		if err := a.db.UpdateGenreStats(); err != nil {
 			_ = a.db.FailJob(id, "genre_stats_failed", err.Error())

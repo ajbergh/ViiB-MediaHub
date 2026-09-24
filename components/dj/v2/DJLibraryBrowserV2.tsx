@@ -16,6 +16,7 @@ import { TableVirtuoso, type TableComponents } from 'react-virtuoso';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getKeyCompatibility } from '../../../lib/keyDetection';
+import { CamelotChip } from './CamelotChip';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
@@ -33,11 +34,11 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 
-type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre';
+type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy';
 type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
-type OptionalColumn = 'bpm' | 'key' | 'album' | 'time' | 'genre';
+type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre';
 type ResizableColumn = 'title' | 'artist' | 'album';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'viib.dj.library.columnVisibility';
@@ -46,6 +47,7 @@ const COLUMN_WIDTHS_STORAGE_KEY = 'viib.dj.library.columnWidths';
 const DEFAULT_COLUMN_VISIBILITY: Record<OptionalColumn, boolean> = {
   bpm: true,
   key: true,
+  energy: true,
   album: true,
   time: true,
   genre: true,
@@ -230,24 +232,36 @@ const TrackRowCells = memo(({
         </td>
       )}
 
-      {/* Key with harmonic compatibility */}
+      {/* Deterministic Camelot color with harmonic compatibility as a secondary ring */}
       {columnVisibility.key && (
         <td className="px-2 py-1.5 w-14 text-center">
           {displayKey ? (
-            <span className={`font-mono text-[10px] px-1 py-0.5 rounded ${
-              keyCompatibility === null ? 'text-emerald-400'
-              : keyCompatibility >= 0.85 ? 'text-green-300 bg-green-500/20 font-bold'
-              : keyCompatibility >= 0.7 ? 'text-yellow-300 bg-yellow-500/15'
-              : keyCompatibility >= 0.5 ? 'text-orange-400 bg-orange-500/10'
-              : 'text-neutral-600'
-            }`}
-              title={`${songKey || displayKey}${analysis ? ` — ${analysis.keySource}${analysis.keyConfidence !== undefined ? ` (${Math.round(analysis.keyConfidence * 100)}% confidence)` : ''}` : ''}${keyCompatibility !== null ? `; harmonic compatibility: ${Math.round(keyCompatibility * 100)}%` : ''}`}
-            >
-              {displayKey}
-            </span>
+            <CamelotChip
+              camelotKey={analysis?.camelotKey}
+              fallbackLabel={displayKey}
+              compatibility={keyCompatibility}
+              title={[
+                songKey || displayKey,
+                analysis ? `${analysis.keySource}${analysis.keyConfidence !== undefined ? ` · ${Math.round(analysis.keyConfidence * 100)}% confidence` : ''}` : undefined,
+                analysis?.camelotKey ? `Camelot ${analysis.camelotKey}` : undefined,
+                keyCompatibility !== null ? `Harmonic compatibility · ${Math.round(keyCompatibility * 100)}%` : undefined,
+              ].filter(Boolean).join('\n')}
+            />
           ) : (
             <span className="text-neutral-600">-</span>
           )}
+        </td>
+      )}
+
+      {/* Energy Level */}
+      {columnVisibility.energy && (
+        <td className="px-2 py-1.5 w-14 text-center">
+          {analysis?.energyLevel !== undefined ? (
+            <span className="inline-flex min-w-6 justify-center rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11px] text-amber-300"
+              title={`Energy Level ${analysis.energyLevel}/10 · ${Math.round((analysis.energyLevelConfidence ?? 0) * 100)}% confidence · ${analysis.energyAlgorithmVersion ?? 'unknown version'}`}>
+              {analysis.energyLevel}
+            </span>
+          ) : <span className="text-neutral-600">-</span>}
         </td>
       )}
 
@@ -386,6 +400,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [energyMin, setEnergyMin] = useState('');
+  const [energyMax, setEnergyMax] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('title');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [colorVersion, setColorVersion] = useState(0); // Force re-render on color change
@@ -563,6 +579,15 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
       );
     }
 
+    const minEnergy = energyMin === '' ? undefined : Number(energyMin);
+    const maxEnergy = energyMax === '' ? undefined : Number(energyMax);
+    if (minEnergy !== undefined || maxEnergy !== undefined) {
+      result = result.filter(song => {
+        const value = analysisBySongID[song.id]?.energyLevel;
+        return value !== undefined && (minEnergy === undefined || value >= minEnergy) && (maxEnergy === undefined || value <= maxEnergy);
+      });
+    }
+
     // Sort
     result.sort((a, b) => {
       let comparison = 0;
@@ -589,13 +614,22 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         case 'genre':
           comparison = (a.genre?.[0] || '').localeCompare(b.genre?.[0] || '');
           break;
+        case 'energy':
+          comparison = (analysisBySongID[a.id]?.energyLevel ?? 0) - (analysisBySongID[b.id]?.energyLevel ?? 0);
+          break;
+      }
+
+      if (sortKey === 'energy') {
+        const aUnknown = analysisBySongID[a.id]?.energyLevel === undefined;
+        const bUnknown = analysisBySongID[b.id]?.energyLevel === undefined;
+        if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
       }
 
       return sortDirection === 'asc' ? comparison : -comparison;
     });
 
     return result;
-  }, [categoryFilteredSongs, searchQuery, sortKey, sortDirection, analysisBySongID]);
+  }, [categoryFilteredSongs, searchQuery, sortKey, sortDirection, analysisBySongID, energyMin, energyMax]);
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -744,6 +778,12 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
           <div className="text-[11px] text-neutral-500">
             {filteredSongs.length} tracks
           </div>
+          <label className="flex items-center gap-1 text-[10px] text-neutral-500" title="Inclusive Energy Level range">
+            Energy
+            <input aria-label="Minimum Energy Level" type="number" min={1} max={10} value={energyMin} onChange={event => setEnergyMin(event.target.value)} placeholder="1" className="w-10 rounded border border-white/10 bg-surface-2 px-1 py-1 text-center text-neutral-200" />
+            –
+            <input aria-label="Maximum Energy Level" type="number" min={1} max={10} value={energyMax} onChange={event => setEnergyMax(event.target.value)} placeholder="10" className="w-10 rounded border border-white/10 bg-surface-2 px-1 py-1 text-center text-neutral-200" />
+          </label>
           <button
             type="button"
             onClick={() => setColumnMenuOpen(open => !open)}
@@ -763,6 +803,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
               {([
                 ['bpm', 'BPM'],
                 ['key', 'Key'],
+                ['energy', 'Energy'],
                 ['album', 'Album'],
                 ['time', 'Time'],
                 ['genre', 'Genre'],
@@ -804,6 +845,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Artist" sortKeyValue="artist" width={columnWidths.artist} resizable="artist" />
                   {columnVisibility.bpm && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="BPM" sortKeyValue="bpm" className="w-12 text-right" />}
                   {columnVisibility.key && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Key" sortKeyValue="key" className="w-14 text-center" />}
+                  {columnVisibility.energy && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Energy" sortKeyValue="energy" className="w-14 text-center" />}
                   {columnVisibility.album && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Album" sortKeyValue="album" className="hidden xl:table-cell" width={columnWidths.album} resizable="album" />}
                   {columnVisibility.time && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Time" sortKeyValue="duration" className="w-14 text-right" />}
                   {columnVisibility.genre && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Genre" sortKeyValue="genre" className="w-20 hidden lg:table-cell" />}

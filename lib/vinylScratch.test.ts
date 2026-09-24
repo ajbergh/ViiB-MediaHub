@@ -54,13 +54,22 @@ describe('vinyl sample transport', () => {
 
 function deck(paused: boolean) {
   const engine = new DJAudioEngine();
-  const audio = { src: 'track.mp3', currentTime: 20, duration: 100, playbackRate: 1, paused,
+  const audio = { position: 20, duration: 100, loaded: true, paused,
     pause: vi.fn(function () { audio.paused = true; }),
     play: vi.fn(async function () { audio.paused = false; }),
   };
+  const source = {
+    outputNode: {} as AudioNode, load: vi.fn(async () => 'track.mp3'), cancelLoad: vi.fn(), unload: vi.fn(),
+    pause: audio.pause, play: audio.play,
+    seek: vi.fn((position: number) => { audio.position = Math.max(0, Math.min(position, audio.duration)); }),
+    setTempo: vi.fn(), setKeyLock: vi.fn(), setLoop: vi.fn(),
+    getPosition: vi.fn(() => audio.position), getDuration: vi.fn(() => audio.duration),
+    isPlaying: vi.fn(() => !audio.paused), isLoaded: vi.fn(() => audio.loaded),
+    addEventListener: vi.fn(), removeEventListener: vi.fn(), dispose: vi.fn(),
+  };
   const port = { postMessage: vi.fn() };
-  Object.assign(engine, { audioElementA: audio, scratchNodes: { A: { port } }, scratchReady: { A: true } });
-  return { engine, audio, port };
+  Object.assign(engine, { deckSourceA: source, scratchNodes: { A: { port } }, scratchReady: { A: true } });
+  return { engine, audio, source, port };
 }
 
 describe('scratch deck handoff', () => {
@@ -122,7 +131,7 @@ describe('scratch deck handoff', () => {
     const coast = port.postMessage.mock.calls.at(-1)![0];
     expect(coast.targetRate).toBe(0);
     message(engine, { type: 'settled', token: coast.token, position: 21, rate: 0, time: 1 });
-    expect(audio.currentTime).toBe(21);
+    expect(audio.position).toBe(21);
     expect(audio.play).not.toHaveBeenCalled();
   });
 
@@ -131,11 +140,11 @@ describe('scratch deck handoff', () => {
     engine.startScratch('A');
     expect(audio.paused).toBe(true);
     engine.updateScratch('A', -0.5, -1);
-    expect(audio.currentTime).toBe(20);
+    expect(audio.position).toBe(20);
     expect(engine.getPosition('A')).toBe(19.5);
     expect(port.postMessage).toHaveBeenLastCalledWith({ type: 'move', delta: -0.5 });
     engine.endScratch('A');
-    expect(audio.currentTime).toBe(19.5);
+    expect(audio.position).toBe(19.5);
     expect(audio.play).toHaveBeenCalledTimes(paused ? 0 : 1);
     expect(audio.paused).toBe(paused);
   });
@@ -163,7 +172,7 @@ describe('scratch deck handoff', () => {
       engine.updateScratch('A', -2, -1);
       now.mockReturnValue(2000);
       engine.endScratch('A');
-      expect(audio.currentTime).toBe(paused ? 18 : 21);
+      expect(audio.position).toBe(paused ? 18 : 21);
     }
     state.djMixer.slipModeA = false;
     now.mockRestore();

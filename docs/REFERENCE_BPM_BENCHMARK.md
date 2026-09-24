@@ -92,18 +92,24 @@ python3 -m venv /tmp/viib-beat-this-venv
 /tmp/viib-beat-this-venv/bin/pip install -r ../tools/reference-beat-this-requirements.txt
 
 /tmp/viib-beat-this-venv/bin/python ../scripts/beat_this_bpm_benchmark.py \
-  --manifest '../sample_media/Test Corpus/phase0-spotify-manifest-r5.json' \
+  --manifest '/private/research/canonical-r5.json' \
+  --path-base '/private/research' \
   --checkpoint ~/.cache/torch/hub/checkpoints/beat_this-final0.ckpt \
+  --overlap-audit '/private/research/beat-this-r5-overlap-audit.json' \
   --split tuning \
-  --out '../sample_media/Test Corpus/reference-beat-this-final0-tuning-YYYYMMDD-v1.json'
+  --out '/private/research/reference-beat-this-final0-tuning-YYYYMMDD-v1.json'
 ```
 
-The adapter refuses model downloads and artifact overwrites. It records the
-checkpoint hash, Beat This/Torch/Torchaudio versions, CPU device, `dbn=false`,
-minimal postprocessor, 22.05 kHz target rate, BPM derivation, manifest hash,
-and wall time. Its first run is tuning only; use `--allow-held-out` only after
-freezing this exact configuration. Keep model files and generated artifacts out
-of Git.
+The adapter refuses model downloads and artifact overwrites. It requires a
+ViiB-decoded canonical WAV and matching timing metadata for each manifest
+track; it does not independently decode the original source. It records the
+canonical PCM/WAV hashes, checkpoint hash, Beat This/Torch/Torchaudio versions,
+CPU device, `dbn=false`, minimal postprocessor, BPM derivation, manifest hash,
+and wall time. The normalized output includes raw beat and downbeat timestamps.
+Use the companion [rhythm/structure benchmark contract](REFERENCE_RHYTHM_STRUCTURE_BENCHMARK.md)
+for the manifest timing fields and overlap audit. Its first run is tuning only;
+use `--allow-held-out` only after freezing this exact configuration. Keep model
+files and generated artifacts out of Git.
 
 `final0` was trained on most data used by the upstream project. Its authors
 warn that measurements can be unfairly high on training material. The required

@@ -1,0 +1,2 @@
+# Isolated development-only All-In-One reference. Never add to app dependencies.
+all-in-one-infer==3.0.0

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/tempo"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
@@ -84,6 +85,9 @@ func tonalClickTrack(t *testing.T, name string, bpm float64, tonic int, minor bo
 func TestAnalyzeAndPersistRecordsBothDimensionsInOneRecord(t *testing.T) {
 	fixture := tonalClickTrack(t, "song", 128, 9, true, 12, 22050)
 	database := catalogSong(t, fixture, "song")
+	if err := database.SaveDJHotCues("song", []db.DJHotCue{{Slot: 1, Position: 1.25, Label: "Manual intro", Color: "#123456", Origin: "user"}}); err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := AnalyzeAndPersist(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "song", DefaultOptions())
 	if err != nil {
@@ -123,8 +127,34 @@ func TestAnalyzeAndPersistRecordsBothDimensionsInOneRecord(t *testing.T) {
 	if record.SourceFingerprint == "" {
 		t.Fatal("record must carry the decoded source fingerprint")
 	}
+	if result.EnergyLevel == nil || record.EnergyLevel == nil || *record.EnergyLevel != result.EnergyLevel.Level || record.EnergyLevelConfidence == nil || record.EnergyAlgorithmVersion == nil || *record.EnergyAlgorithmVersion != features.EnergyLevelAlgorithmVersion {
+		t.Fatalf("energy level result/persistence mismatch: result=%#v record=%#v", result.EnergyLevel, record)
+	}
 	if record.ErrorCode != nil {
 		t.Fatalf("complete record must not carry an error code, got %q", *record.ErrorCode)
+	}
+	hotCues, err := database.GetDJHotCues("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hotCues) < 2 || hotCues[0].Origin != "user" || hotCues[0].Position != 1.25 {
+		t.Fatalf("analysis did not preserve user cue and add generated cues: %#v", hotCues)
+	}
+	generatedCount := 0
+	for _, cue := range hotCues {
+		if cue.Origin != "analysis" {
+			continue
+		}
+		generatedCount++
+		if cue.GeneratorVersion != "auto-cues-v1" || cue.Confidence == nil || cue.Kind == "" || cue.Locked || cue.SourceFingerprint != record.SourceFingerprint || cue.Rationale == "" {
+			t.Fatalf("generated cue provenance incomplete: %#v", cue)
+		}
+		if cue.DownbeatAligned {
+			t.Fatalf("native inferred grid was incorrectly advertised as measured downbeat: %#v", cue)
+		}
+	}
+	if generatedCount == 0 {
+		t.Fatal("analysis pass did not persist generated cue candidates")
 	}
 }
 
@@ -221,6 +251,9 @@ func TestAnalyzeAndPersistRecordsFailureForSilence(t *testing.T) {
 	}
 	if record.ErrorCode == nil || *record.ErrorCode != ErrorInsufficientAudio {
 		t.Fatalf("error code = %#v, want %q", record.ErrorCode, ErrorInsufficientAudio)
+	}
+	if record.EnergyLevel != nil {
+		t.Fatalf("silence must not receive a falsely loud scalar score: %d", *record.EnergyLevel)
 	}
 }
 

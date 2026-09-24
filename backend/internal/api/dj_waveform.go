@@ -39,10 +39,19 @@ type WaveformResponse struct {
 
 // HotCue represents a saved position in a track.
 type HotCue struct {
-	Slot     int     `json:"slot"`     // 1-8
-	Position float64 `json:"position"` // Position in seconds
-	Label    string  `json:"label,omitempty"`
-	Color    string  `json:"color"` // Hex color code
+	Slot              int      `json:"slot"`     // 1-8
+	Position          float64  `json:"position"` // Position in seconds
+	Label             string   `json:"label,omitempty"`
+	Color             string   `json:"color"` // Hex color code
+	Origin            string   `json:"origin,omitempty"`
+	GeneratorVersion  string   `json:"generatorVersion,omitempty"`
+	Confidence        *float64 `json:"confidence,omitempty"`
+	Kind              string   `json:"kind,omitempty"`
+	Locked            bool     `json:"locked,omitempty"`
+	Rationale         string   `json:"rationale,omitempty"`
+	SourceFingerprint string   `json:"sourceFingerprint,omitempty"`
+	DownbeatAligned   bool     `json:"downbeatAligned,omitempty"`
+	UpdatedAt         int64    `json:"updatedAt,omitempty"`
 }
 
 // HotCuesResponse contains hot cue data for a track.
@@ -133,10 +142,19 @@ func (a *API) getDJHotCues(w http.ResponseWriter, r *http.Request) {
 
 	for _, hc := range hotCues {
 		response.HotCues = append(response.HotCues, HotCue{
-			Slot:     hc.Slot,
-			Position: hc.Position,
-			Label:    hc.Label,
-			Color:    hc.Color,
+			Slot:              hc.Slot,
+			Position:          hc.Position,
+			Label:             hc.Label,
+			Color:             hc.Color,
+			Origin:            hc.Origin,
+			GeneratorVersion:  hc.GeneratorVersion,
+			Confidence:        hc.Confidence,
+			Kind:              hc.Kind,
+			Locked:            hc.Locked,
+			Rationale:         hc.Rationale,
+			SourceFingerprint: hc.SourceFingerprint,
+			DownbeatAligned:   hc.DownbeatAligned,
+			UpdatedAt:         hc.UpdatedAt,
 		})
 	}
 
@@ -160,12 +178,42 @@ func (a *API) saveDJHotCues(w http.ResponseWriter, r *http.Request) {
 
 	// Convert to database format
 	dbHotCues := make([]db.DJHotCue, 0, len(req.HotCues))
+	seenSlots := make(map[int]struct{}, len(req.HotCues))
 	for _, hc := range req.HotCues {
+		if hc.Slot < 1 || hc.Slot > 8 {
+			respondError(w, http.StatusBadRequest, "Hot cue slots must be between 1 and 8")
+			return
+		}
+		if _, exists := seenSlots[hc.Slot]; exists {
+			respondError(w, http.StatusBadRequest, "Hot cue slots must be unique")
+			return
+		}
+		seenSlots[hc.Slot] = struct{}{}
+		if hc.Origin != "" && hc.Origin != "user" && hc.Origin != "analysis" {
+			respondError(w, http.StatusBadRequest, "Hot cue origin must be user or analysis")
+			return
+		}
+		if hc.Origin == "" {
+			hc.Origin = "user"
+		}
+		if hc.Origin == "analysis" && hc.DownbeatAligned && hc.Rationale != "qualified-measured-downbeat" && hc.Rationale != "qualified-manual-downbeat" {
+			respondError(w, http.StatusBadRequest, "Analysis cue downbeat alignment requires measured or manual provenance")
+			return
+		}
 		dbHotCues = append(dbHotCues, db.DJHotCue{
-			Slot:     hc.Slot,
-			Position: hc.Position,
-			Label:    hc.Label,
-			Color:    hc.Color,
+			Slot:              hc.Slot,
+			Position:          hc.Position,
+			Label:             hc.Label,
+			Color:             hc.Color,
+			Origin:            hc.Origin,
+			GeneratorVersion:  hc.GeneratorVersion,
+			Confidence:        hc.Confidence,
+			Kind:              hc.Kind,
+			Locked:            hc.Locked,
+			Rationale:         hc.Rationale,
+			SourceFingerprint: hc.SourceFingerprint,
+			DownbeatAligned:   hc.DownbeatAligned,
+			UpdatedAt:         hc.UpdatedAt,
 		})
 	}
 

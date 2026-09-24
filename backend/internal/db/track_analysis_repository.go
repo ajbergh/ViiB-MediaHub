@@ -16,6 +16,7 @@ type TrackAnalysisArtifact struct {
 	FormatVersion    int
 	AlgorithmVersion string
 	Encoding         string
+	Provenance       string
 	Data             []byte
 	CreatedAt        int64
 }
@@ -162,30 +163,33 @@ func measuredKey(analysis *TrackAnalysis) (*int, *string) {
 // TrackAnalysis is the durable scalar result for one canonical song. Nullable
 // measured values use pointers so zero is never confused with unknown.
 type TrackAnalysis struct {
-	SongID            string
-	Status            string
-	AnalysisVersion   int
-	AlgorithmVersion  string
-	DecoderID         *string
-	SourceFingerprint string
-	SourceSize        *int64
-	SourceMtime       *int64
-	SourceRevision    *string
-	BPM               *float64
-	BPMConfidence     *float64
-	BPMAltCandidate   *float64
-	TempoStability    *float64
-	TempoKind         *string
-	BPMSource         *string
-	KeyTonic          *int
-	KeyMode           *string
-	KeyConfidence     *float64
-	KeySource         *string
-	CamelotKey        *string
-	OpenKey           *string
-	AnalyzedAt        *int64
-	ErrorCode         *string
-	ErrorMessage      *string
+	SongID                 string
+	Status                 string
+	AnalysisVersion        int
+	AlgorithmVersion       string
+	DecoderID              *string
+	SourceFingerprint      string
+	SourceSize             *int64
+	SourceMtime            *int64
+	SourceRevision         *string
+	BPM                    *float64
+	BPMConfidence          *float64
+	BPMAltCandidate        *float64
+	TempoStability         *float64
+	TempoKind              *string
+	BPMSource              *string
+	KeyTonic               *int
+	KeyMode                *string
+	KeyConfidence          *float64
+	KeySource              *string
+	CamelotKey             *string
+	OpenKey                *string
+	EnergyLevel            *int
+	EnergyLevelConfidence  *float64
+	EnergyAlgorithmVersion *string
+	AnalyzedAt             *int64
+	ErrorCode              *string
+	ErrorMessage           *string
 }
 
 // UpsertTrackAnalysis atomically replaces one song's scalar analysis result.
@@ -204,8 +208,9 @@ func (d *DB) UpsertTrackAnalysis(analysis TrackAnalysis) error {
 			source_fingerprint, source_size, source_mtime, source_revision,
 			bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
 			key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
+			energy_level, energy_level_confidence, energy_algorithm_version,
 			analyzed_at, error_code, error_message
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(song_id) DO UPDATE SET
 			status=excluded.status, analysis_version=excluded.analysis_version,
 			algorithm_version=excluded.algorithm_version, decoder_id=excluded.decoder_id,
@@ -217,6 +222,8 @@ func (d *DB) UpsertTrackAnalysis(analysis TrackAnalysis) error {
 			key_tonic=excluded.key_tonic, key_mode=excluded.key_mode,
 			key_confidence=excluded.key_confidence, key_source=excluded.key_source,
 			camelot_key=excluded.camelot_key, open_key=excluded.open_key,
+			energy_level=excluded.energy_level, energy_level_confidence=excluded.energy_level_confidence,
+			energy_algorithm_version=excluded.energy_algorithm_version,
 			analyzed_at=excluded.analyzed_at, error_code=excluded.error_code,
 			error_message=excluded.error_message`,
 		analysis.SongID, analysis.Status, analysis.AnalysisVersion, analysis.AlgorithmVersion,
@@ -224,7 +231,8 @@ func (d *DB) UpsertTrackAnalysis(analysis TrackAnalysis) error {
 		analysis.SourceRevision, analysis.BPM, analysis.BPMConfidence, analysis.BPMAltCandidate,
 		analysis.TempoStability, analysis.TempoKind, analysis.BPMSource, analysis.KeyTonic,
 		analysis.KeyMode, analysis.KeyConfidence, analysis.KeySource, analysis.CamelotKey,
-		analysis.OpenKey, analysis.AnalyzedAt, analysis.ErrorCode, analysis.ErrorMessage)
+		analysis.OpenKey, analysis.EnergyLevel, analysis.EnergyLevelConfidence, analysis.EnergyAlgorithmVersion,
+		analysis.AnalyzedAt, analysis.ErrorCode, analysis.ErrorMessage)
 	return err
 }
 
@@ -237,6 +245,7 @@ func (d *DB) GetTrackAnalysis(songID string) (TrackAnalysis, error) {
 		source_fingerprint, source_size, source_mtime, source_revision,
 		bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
 		key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
+		energy_level, energy_level_confidence, energy_algorithm_version,
 		analyzed_at, error_code, error_message FROM track_analysis WHERE song_id = ?`, songID)
 	return scanTrackAnalysis(row)
 }
@@ -252,6 +261,7 @@ func (d *DB) ListTrackAnalysis() ([]TrackAnalysis, error) {
 		source_fingerprint, source_size, source_mtime, source_revision,
 		bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
 		key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
+		energy_level, energy_level_confidence, energy_algorithm_version,
 		analyzed_at, error_code, error_message FROM track_analysis ORDER BY song_id`)
 	if err != nil {
 		return nil, err
@@ -290,14 +300,22 @@ func (d *DB) UpsertTrackAnalysisArtifact(artifact TrackAnalysisArtifact) error {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return err
 	}
+	if artifact.Provenance == "" {
+		artifact.Provenance = "unknown"
+	}
+	switch artifact.Provenance {
+	case "measured", "inferred-from-meter", "manual", "unknown":
+	default:
+		return errors.New("invalid track analysis artifact provenance")
+	}
 	if artifact.CreatedAt == 0 {
 		artifact.CreatedAt = time.Now().UnixMilli()
 	}
-	_, err := d.conn.Exec(`INSERT INTO track_analysis_artifacts(id, song_id, kind, format_version, algorithm_version, encoding, data, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := d.conn.Exec(`INSERT INTO track_analysis_artifacts(id, song_id, kind, format_version, algorithm_version, encoding, provenance, data, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(song_id, kind, format_version, algorithm_version) DO UPDATE SET
-			id=excluded.id, encoding=excluded.encoding, data=excluded.data, created_at=excluded.created_at`,
-		artifact.ID, artifact.SongID, artifact.Kind, artifact.FormatVersion, artifact.AlgorithmVersion, artifact.Encoding, artifact.Data, artifact.CreatedAt)
+			id=excluded.id, encoding=excluded.encoding, provenance=excluded.provenance, data=excluded.data, created_at=excluded.created_at`,
+		artifact.ID, artifact.SongID, artifact.Kind, artifact.FormatVersion, artifact.AlgorithmVersion, artifact.Encoding, artifact.Provenance, artifact.Data, artifact.CreatedAt)
 	return err
 }
 
@@ -307,9 +325,9 @@ func (d *DB) GetTrackAnalysisArtifact(songID, kind string, formatVersion int, al
 		return TrackAnalysisArtifact{}, err
 	}
 	var artifact TrackAnalysisArtifact
-	err := d.conn.QueryRow(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, data, created_at
+	err := d.conn.QueryRow(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, data, created_at
 		FROM track_analysis_artifacts WHERE song_id = ? AND kind = ? AND format_version = ? AND algorithm_version = ?`, songID, kind, formatVersion, algorithmVersion).
-		Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Data, &artifact.CreatedAt)
+		Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.Data, &artifact.CreatedAt)
 	return artifact, err
 }
 
@@ -320,7 +338,7 @@ func (d *DB) ListTrackAnalysisArtifacts(kind string, formatVersion int, algorith
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
-	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, data, created_at
+	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, data, created_at
 		FROM track_analysis_artifacts WHERE kind = ? AND format_version = ? AND algorithm_version = ? ORDER BY song_id`, kind, formatVersion, algorithmVersion)
 	if err != nil {
 		return nil, err
@@ -329,7 +347,7 @@ func (d *DB) ListTrackAnalysisArtifacts(kind string, formatVersion int, algorith
 	artifacts := make([]TrackAnalysisArtifact, 0)
 	for rows.Next() {
 		var artifact TrackAnalysisArtifact
-		if err := rows.Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Data, &artifact.CreatedAt); err != nil {
+		if err := rows.Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.Data, &artifact.CreatedAt); err != nil {
 			return nil, err
 		}
 		artifacts = append(artifacts, artifact)
@@ -470,14 +488,15 @@ type trackAnalysisScanner interface{ Scan(dest ...any) error }
 
 func scanTrackAnalysis(row trackAnalysisScanner) (TrackAnalysis, error) {
 	var analysis TrackAnalysis
-	var decoderID, sourceRevision, tempoKind, bpmSource, keyMode, keySource, camelotKey, openKey, errorCode, errorMessage sql.NullString
+	var decoderID, sourceRevision, tempoKind, bpmSource, keyMode, keySource, camelotKey, openKey, energyAlgorithmVersion, errorCode, errorMessage sql.NullString
 	var sourceSize, sourceMtime, analyzedAt sql.NullInt64
-	var bpm, bpmConfidence, bpmAltCandidate, tempoStability, keyConfidence sql.NullFloat64
-	var keyTonic sql.NullInt64
+	var bpm, bpmConfidence, bpmAltCandidate, tempoStability, keyConfidence, energyLevelConfidence sql.NullFloat64
+	var keyTonic, energyLevel sql.NullInt64
 	err := row.Scan(&analysis.SongID, &analysis.Status, &analysis.AnalysisVersion, &analysis.AlgorithmVersion,
 		&decoderID, &analysis.SourceFingerprint, &sourceSize, &sourceMtime, &sourceRevision,
 		&bpm, &bpmConfidence, &bpmAltCandidate, &tempoStability, &tempoKind, &bpmSource,
 		&keyTonic, &keyMode, &keyConfidence, &keySource, &camelotKey, &openKey,
+		&energyLevel, &energyLevelConfidence, &energyAlgorithmVersion,
 		&analyzedAt, &errorCode, &errorMessage)
 	if err != nil {
 		return TrackAnalysis{}, err
@@ -501,6 +520,12 @@ func scanTrackAnalysis(row trackAnalysisScanner) (TrackAnalysis, error) {
 	analysis.KeySource = optionalString(keySource)
 	analysis.CamelotKey = optionalString(camelotKey)
 	analysis.OpenKey = optionalString(openKey)
+	if energyLevel.Valid {
+		value := int(energyLevel.Int64)
+		analysis.EnergyLevel = &value
+	}
+	analysis.EnergyLevelConfidence = optionalFloat64(energyLevelConfidence)
+	analysis.EnergyAlgorithmVersion = optionalString(energyAlgorithmVersion)
 	analysis.AnalyzedAt = optionalInt64(analyzedAt)
 	analysis.ErrorCode = optionalString(errorCode)
 	analysis.ErrorMessage = optionalString(errorMessage)
@@ -539,6 +564,15 @@ func boolToInt(value bool) int {
 func validateTrackAnalysis(analysis TrackAnalysis) error {
 	if analysis.SongID == "" || analysis.SourceFingerprint == "" || analysis.AlgorithmVersion == "" || analysis.AnalysisVersion <= 0 {
 		return errors.New("track analysis requires song ID, source fingerprint, and versions")
+	}
+	if analysis.EnergyLevel != nil && (*analysis.EnergyLevel < 1 || *analysis.EnergyLevel > 10) {
+		return errors.New("energy level must be between 1 and 10")
+	}
+	if analysis.EnergyLevelConfidence != nil && (math.IsNaN(*analysis.EnergyLevelConfidence) || math.IsInf(*analysis.EnergyLevelConfidence, 0) || *analysis.EnergyLevelConfidence < 0 || *analysis.EnergyLevelConfidence > 1) {
+		return errors.New("energy level confidence must be between 0 and 1")
+	}
+	if (analysis.EnergyLevel != nil || analysis.EnergyLevelConfidence != nil) && (analysis.EnergyLevel == nil || analysis.EnergyLevelConfidence == nil || analysis.EnergyAlgorithmVersion == nil || *analysis.EnergyAlgorithmVersion == "") {
+		return errors.New("energy level, confidence and algorithm version must be stored together")
 	}
 	switch analysis.Status {
 	case TrackAnalysisPending, TrackAnalysisRunning, TrackAnalysisComplete, TrackAnalysisPartial, TrackAnalysisFailed, TrackAnalysisUnsupported:

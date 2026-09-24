@@ -37,6 +37,76 @@ func TestTrackAnalysisSchemaPreservesLegacySongBPM(t *testing.T) {
 	}
 }
 
+func TestTrackAnalysisEnergyColumnsMigrateExistingSchema(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "legacy.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.conn.Exec(`CREATE TABLE track_analysis(song_id TEXT PRIMARY KEY, status TEXT NOT NULL, source_fingerprint TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.EnsureTrackAnalysisSchema(); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{"energy_level", "energy_level_confidence", "energy_algorithm_version"} {
+		var count int
+		if err := database.conn.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('track_analysis') WHERE name = ?`, column).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("migration column %q count=%d err=%v", column, count, err)
+		}
+	}
+}
+
+func TestBeatGridArtifactProvenanceMigration(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "legacy-grid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.SaveSong(&Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	// Recreate the pre-provenance artifact and override tables to exercise the
+	// additive migration path rather than only testing a fresh database.
+	if _, err := database.conn.Exec(`DROP TABLE IF EXISTS track_analysis_overrides;
+		DROP TABLE IF EXISTS track_analysis_artifacts;
+		CREATE TABLE track_analysis_artifacts (
+		id TEXT PRIMARY KEY, song_id TEXT NOT NULL, kind TEXT NOT NULL, format_version INTEGER NOT NULL,
+		algorithm_version TEXT NOT NULL, encoding TEXT NOT NULL, data BLOB NOT NULL, created_at INTEGER NOT NULL,
+		UNIQUE(song_id, kind, format_version, algorithm_version));
+		CREATE TABLE track_analysis_overrides (
+		song_id TEXT PRIMARY KEY, beatgrid_artifact_id TEXT, beatgrid_locked INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL);
+		INSERT INTO track_analysis_artifacts VALUES ('native', 'song', 'beatgrid', 1, 'v1', 'bin', X'01', 1);
+		INSERT INTO track_analysis_artifacts VALUES ('manual', 'song', 'beatgrid', 1, 'v2', 'bin', X'02', 1);
+		INSERT INTO track_analysis_artifacts VALUES ('ambiguous', 'song', 'beatgrid', 1, 'v3', 'bin', X'03', 1);
+		INSERT INTO track_analysis_overrides (song_id, beatgrid_artifact_id, beatgrid_locked, updated_at) VALUES ('song', 'manual', 1, 1);`); err != nil {
+		t.Fatal(err)
+	}
+	// The unlocked legacy ownership case is represented by a separate song
+	// override so that it does not supersede the locked artifact above.
+	if err := database.SaveSong(&Song{ID: "song-ambiguous", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song2.mp3", AddedAt: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.conn.Exec(`UPDATE track_analysis_artifacts SET song_id = 'song-ambiguous' WHERE id = 'ambiguous';
+		INSERT INTO track_analysis_overrides (song_id, beatgrid_artifact_id, beatgrid_locked, updated_at) VALUES ('song-ambiguous', 'ambiguous', 0, 1);`); err != nil {
+		t.Fatal(err)
+	}
+	trackAnalysisSchemas.Delete(database)
+	if err := database.EnsureTrackAnalysisSchema(); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ songID, id, want string }{
+		{"song", "native", "inferred-from-meter"},
+		{"song", "manual", "manual"},
+		{"song-ambiguous", "ambiguous", "unknown"},
+	} {
+		artifact, err := database.GetTrackAnalysisArtifact(test.songID, "beatgrid", 1, map[string]string{"native": "v1", "manual": "v2", "ambiguous": "v3"}[test.id])
+		if err != nil || artifact.Provenance != test.want {
+			t.Fatalf("artifact %s provenance=%q err=%v, want %q", test.id, artifact.Provenance, err, test.want)
+		}
+	}
+}
+
 func TestTrackAnalysisSchemaCascadesArtifactsAndOverrides(t *testing.T) {
 	database, err := New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
@@ -104,6 +174,29 @@ func TestTrackAnalysisRepositoryPersistsAndDetectsSourceChanges(t *testing.T) {
 	}
 }
 
+func TestTrackAnalysisEnergyLevelRoundTripsAndValidates(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.SaveSong(&Song{ID: "energy-song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	level, confidence, version := 7, .75, "energy-level-v1-fixed-reference"
+	if err := database.UpsertTrackAnalysis(TrackAnalysis{SongID: "energy-song", Status: TrackAnalysisPartial, AnalysisVersion: 1, AlgorithmVersion: "track-v1", SourceFingerprint: "sha256:test", EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := database.GetTrackAnalysis("energy-song")
+	if err != nil || loaded.EnergyLevel == nil || *loaded.EnergyLevel != level || loaded.EnergyLevelConfidence == nil || *loaded.EnergyLevelConfidence != confidence || loaded.EnergyAlgorithmVersion == nil || *loaded.EnergyAlgorithmVersion != version {
+		t.Fatalf("energy level did not round-trip: %#v, %v", loaded, err)
+	}
+	invalid := 11
+	if err := database.UpsertTrackAnalysis(TrackAnalysis{SongID: "energy-song", Status: TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "track-v1", SourceFingerprint: "sha256:test", EnergyLevel: &invalid, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}); err == nil {
+		t.Fatal("accepted Energy Level outside 1–10")
+	}
+}
+
 func TestTrackAnalysisArtifactAndOverrideRepositories(t *testing.T) {
 	database, err := New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
@@ -113,11 +206,11 @@ func TestTrackAnalysisArtifactAndOverrideRepositories(t *testing.T) {
 	if _, err := database.conn.Exec(`INSERT INTO songs(id, title, artist, album, file_path, added_at) VALUES ('song', 'Song', 'Artist', 'Album', 'song.mp3', 1)`); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.UpsertTrackAnalysisArtifact(TrackAnalysisArtifact{ID: "grid-v1", SongID: "song", Kind: "beatgrid", FormatVersion: 1, AlgorithmVersion: "grid-v1", Encoding: "binary-v1", Data: []byte{1, 2, 3}}); err != nil {
+	if err := database.UpsertTrackAnalysisArtifact(TrackAnalysisArtifact{ID: "grid-v1", SongID: "song", Kind: "beatgrid", FormatVersion: 1, AlgorithmVersion: "grid-v1", Encoding: "binary-v1", Provenance: "inferred-from-meter", Data: []byte{1, 2, 3}}); err != nil {
 		t.Fatal(err)
 	}
 	artifact, err := database.GetTrackAnalysisArtifact("song", "beatgrid", 1, "grid-v1")
-	if err != nil || artifact.ID != "grid-v1" || string(artifact.Data) != string([]byte{1, 2, 3}) {
+	if err != nil || artifact.ID != "grid-v1" || artifact.Provenance != "inferred-from-meter" || string(artifact.Data) != string([]byte{1, 2, 3}) {
 		t.Fatalf("artifact = %#v, %v", artifact, err)
 	}
 	bpm, tonic := 127.5, 2

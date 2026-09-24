@@ -18,6 +18,7 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
+	analysiscues "github.com/ajbergh/viib-mediahub/internal/analysis/cues"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/tempo"
@@ -31,7 +32,7 @@ const AnalysisVersion = 1
 // AlgorithmVersion identifies the exact analyzer combination that produced a
 // row. It is composite because one row carries both dimensions; a change in
 // either analyzer must invalidate the record.
-const AlgorithmVersion = "track-v1;" + tempo.AlgorithmVersion + ";" + key.AlgorithmVersion
+const AlgorithmVersion = "track-v1;" + tempo.AlgorithmVersion + ";" + key.AlgorithmVersion + ";" + features.EnergyLevelAlgorithmVersion
 
 // Stable failure codes from the analysis lifecycle contract. They are part of
 // the persisted record and must not be reworded per call site.
@@ -48,15 +49,17 @@ const (
 // Result is the combined outcome of one analysis pass. Tempo and key carry
 // their own Known flags, so an unmeasured dimension is never mistaken for zero.
 type Result struct {
-	SongID string
-	Status string
-	Tempo  tempo.Estimate
-	Key    key.Estimate
+	SongID          string
+	Status          string
+	Tempo           tempo.Estimate
+	Key             key.Estimate
+	DurationSeconds float64
 	// BeatGrid is optional: scalar analysis remains useful when audio has no
 	// sufficiently periodic onset evidence for safe phase alignment.
-	BeatGrid *beatgrid.Grid
-	Features *features.Result
-	Source   analysis.ResolvedSource
+	BeatGrid    *beatgrid.Grid
+	Features    *features.Result
+	EnergyLevel *features.EnergyLevelEstimate
+	Source      analysis.ResolvedSource
 }
 
 // Options selects analyzer priors for a pass.
@@ -150,7 +153,7 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		return Result{SongID: songID}, timing, err
 	}
 
-	result := Result{SongID: songID}
+	result := Result{SongID: songID, DurationSeconds: timing.AudioSeconds}
 	dspStarted := time.Now()
 	if onsets == nil {
 		// A decodable source that yielded no PCM at all.
@@ -167,6 +170,16 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		if measured, featureErr := energy.Result(); featureErr == nil {
 			measured.AddCueSuggestions(result.BeatGrid)
 			result.Features = &measured
+			hasSignal := false
+			for _, point := range measured.Energy {
+				if point.Value > 0 {
+					hasSignal = true
+					break
+				}
+			}
+			if level, ok := features.EstimateEnergyLevel(features.EnergyLevelInputs{LoudnessProxyDB: measured.IntegratedLUFS, PeakDBFS: measured.TruePeakDBFS, OnsetCrestFactor: result.Tempo.OnsetCrestFactor, HasAudio: hasSignal}); ok {
+				result.EnergyLevel = &level
+			}
 		}
 	}
 	timing.DSPSeconds += time.Since(dspStarted).Seconds()
@@ -221,6 +234,11 @@ func Persist(database *db.DB, result Result) error {
 		SourceFingerprint: result.Source.Fingerprint,
 		AnalyzedAt:        ptr(time.Now().UnixMilli()),
 	}
+	if result.EnergyLevel != nil {
+		record.EnergyLevel = &result.EnergyLevel.Level
+		record.EnergyLevelConfidence = &result.EnergyLevel.Confidence
+		record.EnergyAlgorithmVersion = &result.EnergyLevel.AlgorithmVersion
+	}
 	if result.Source.Size > 0 {
 		record.SourceSize = ptr(result.Source.Size)
 	}
@@ -264,7 +282,29 @@ func Persist(database *db.DB, result Result) error {
 	if err := persistBeatGrid(database, result); err != nil {
 		return err
 	}
-	return persistFeatures(database, result)
+	if err := persistFeatures(database, result); err != nil {
+		return err
+	}
+	if result.Features != nil && result.DurationSeconds > 0 && result.Source.Fingerprint != "" {
+		generated, err := analysiscues.Generate(result.DurationSeconds, result.BeatGrid, *result.Features, result.Source.Fingerprint)
+		if err != nil {
+			return fmt.Errorf("generate DJ hot cues: %w", err)
+		}
+		hotCues := make([]db.DJHotCue, 0, len(generated))
+		for _, cue := range generated {
+			confidence := cue.Confidence
+			hotCues = append(hotCues, db.DJHotCue{
+				Slot: cue.Slot, Position: cue.Position, Label: cue.Label, Color: cue.Color,
+				Origin: cue.Origin, GeneratorVersion: cue.GeneratorVersion, Confidence: &confidence,
+				Kind: cue.Kind, Locked: cue.Locked, Rationale: cue.Rationale,
+				SourceFingerprint: cue.SourceFingerprint, DownbeatAligned: cue.DownbeatAligned,
+			})
+		}
+		if err := database.ApplyGeneratedDJHotCues(result.SongID, hotCues, db.GeneratedCueFillEmpty); err != nil {
+			return fmt.Errorf("persist generated DJ hot cues: %w", err)
+		}
+	}
+	return nil
 }
 
 // resultIssue returns the same stable diagnostics Persist writes, allowing
@@ -307,6 +347,7 @@ func persistBeatGrid(database *db.DB, result Result) error {
 		FormatVersion:    beatgrid.FormatVersion,
 		AlgorithmVersion: beatgrid.AlgorithmVersion,
 		Encoding:         beatgrid.Encoding,
+		Provenance:       string(result.BeatGrid.EffectiveProvenance()),
 		Data:             encoded,
 	})
 }

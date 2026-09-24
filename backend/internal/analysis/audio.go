@@ -73,6 +73,20 @@ func (r *DecoderRegistry) Supports(name string) bool {
 	return r.byExtension[normalizeExtension(filepath.Ext(name))] != nil
 }
 
+// IDFor returns the registered decoder identity for a source filename. The
+// identity includes the implementation version where the decoder provides
+// one, and is empty when the extension is unsupported.
+func (r *DecoderRegistry) IDFor(name string) string {
+	if r == nil {
+		return ""
+	}
+	decoder := r.byExtension[normalizeExtension(filepath.Ext(name))]
+	if decoder == nil {
+		return ""
+	}
+	return decoder.ID()
+}
+
 func normalizeExtension(extension string) string {
 	extension = strings.TrimSpace(strings.ToLower(extension))
 	if extension == "" {

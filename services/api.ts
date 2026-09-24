@@ -130,6 +130,9 @@ export interface TrackAnalysisFeature {
   openKey?: string;
   keyConfidence?: number;
   keySource: 'unknown' | 'manual' | 'measured';
+  energyLevel?: number;
+  energyLevelConfidence?: number;
+  energyAlgorithmVersion?: string;
 }
 
 // Persisted phase-aligned timing data. It is distinct from the scalar BPM so
@@ -141,7 +144,9 @@ export interface TrackBeatGrid {
   downbeatIndices: number[];
   locked: boolean;
   algorithmVersion: string;
-  source?: 'unknown' | 'measured' | 'manual';
+  /** Legacy alias retained for clients that predate explicit provenance. */
+  source?: 'unknown' | 'measured' | 'inferred-from-meter' | 'manual';
+  provenance?: 'unknown' | 'measured' | 'inferred-from-meter' | 'manual';
 }
 
 export interface TrackBeatGridUpdate {
@@ -164,6 +169,38 @@ export interface TrackEnergyFeatures {
   algorithmVersion: string;
 }
 
+export type AnalysisCueApplyMode = 'fill-empty' | 'replace-generated' | 'selected-only';
+
+export interface AnalysisCueCandidate extends DJHotCue {
+  origin: 'analysis';
+  generatorVersion: string;
+  confidence: number;
+  kind: string;
+  rationale: string;
+  sourceFingerprint: string;
+  downbeatAligned: boolean;
+}
+
+export interface AnalysisCueSuppression {
+  slot: number;
+  kind: string;
+}
+
+export interface AnalysisCueList {
+  songId: string;
+  generatorVersion: string;
+  sourceFingerprint: string;
+  defaultApplyMode: AnalysisCueApplyMode;
+  hotCues: DJHotCue[];
+  generatedCandidates: AnalysisCueCandidate[];
+  suppressions: AnalysisCueSuppression[];
+}
+
+export interface AnalysisCueApplyResult extends AnalysisCueList {
+  appliedSlots: number[];
+  blockedSlots: number[];
+}
+
 export interface TransitionVector {
   outgoingTailEnergy: number;
   incomingHeadEnergy: number;
@@ -171,7 +208,13 @@ export interface TransitionVector {
   loudnessDeltaLu: number;
   outgoingMixOutConfidence: number;
   incomingMixInConfidence: number;
+  bpmDelta?: number;
+  requiredTempoShiftPercent?: number;
+  camelotRelation?: string;
+  energyLevelDelta?: number;
 }
+
+export type TransitionIntent = 'hold' | 'lift' | 'reset' | 'harmonic';
 
 export interface TransitionComponent {
   name: string;
@@ -185,12 +228,14 @@ export interface TransitionRecommendation {
   title: string;
   artist: string;
   score: number;
+  intent: TransitionIntent;
   vector: TransitionVector;
   components: TransitionComponent[];
 }
 
 export interface TrackTransitionRecommendations {
   songId: string;
+  intent: TransitionIntent;
   algorithmVersion: string;
   recommendations: TransitionRecommendation[];
 }
@@ -1503,8 +1548,23 @@ export const api = {
     return handleResponse<TrackEnergyFeatures>(response);
   },
 
-  async getTrackTransitionRecommendations(trackId: string, limit = 3): Promise<TrackTransitionRecommendations> {
-    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/recommendations?limit=${Math.max(1, Math.min(50, limit))}`, { cache: 'no-store' });
+  async getAnalysisCues(trackId: string): Promise<AnalysisCueList> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/cues`, { cache: 'no-store' });
+    return handleResponse<AnalysisCueList>(response);
+  },
+
+  async applyAnalysisCues(trackId: string, request: { mode: AnalysisCueApplyMode; selectedSlots?: number[] }): Promise<AnalysisCueApplyResult> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/cues/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    return handleResponse<AnalysisCueApplyResult>(response);
+  },
+
+  async getTrackTransitionRecommendations(trackId: string, limit = 3, intent: TransitionIntent = 'hold'): Promise<TrackTransitionRecommendations> {
+    const query = new URLSearchParams({ limit: String(Math.max(1, Math.min(50, limit))), intent });
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/recommendations?${query}`, { cache: 'no-store' });
     return handleResponse<TrackTransitionRecommendations>(response);
   },
 
@@ -1758,6 +1818,15 @@ export interface DJHotCue {
   position: number;      // Position in seconds
   label?: string;        // Optional user label
   color: string;         // Hex color (e.g., "#ef4444")
+  origin?: 'user' | 'analysis';
+  generatorVersion?: string;
+  confidence?: number;
+  kind?: string;
+  locked?: boolean;
+  rationale?: string;
+  sourceFingerprint?: string;
+  downbeatAligned?: boolean;
+  updatedAt?: number;
 }
 
 /**

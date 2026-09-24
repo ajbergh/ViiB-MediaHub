@@ -19,20 +19,23 @@ import (
 // snapshot for one song. It intentionally omits diagnostic and source-path
 // fields, leaving the library UI with only values it can safely display.
 type TrackAnalysisFeatureResponse struct {
-	BPMAltCandidate *float64 `json:"bpmAltCandidate,omitempty"`
-	TempoStability  *float64 `json:"tempoStability,omitempty"`
-	TempoKind       *string  `json:"tempoKind,omitempty"`
-	SongID          string   `json:"songId"`
-	Status          string   `json:"status"`
-	BPM             *float64 `json:"bpm,omitempty"`
-	BPMConfidence   *float64 `json:"bpmConfidence,omitempty"`
-	BPMSource       string   `json:"bpmSource"`
-	SyncAllowed     bool     `json:"syncAllowed"`
-	Key             *string  `json:"key,omitempty"`
-	CamelotKey      *string  `json:"camelotKey,omitempty"`
-	OpenKey         *string  `json:"openKey,omitempty"`
-	KeyConfidence   *float64 `json:"keyConfidence,omitempty"`
-	KeySource       string   `json:"keySource"`
+	BPMAltCandidate        *float64 `json:"bpmAltCandidate,omitempty"`
+	TempoStability         *float64 `json:"tempoStability,omitempty"`
+	TempoKind              *string  `json:"tempoKind,omitempty"`
+	SongID                 string   `json:"songId"`
+	Status                 string   `json:"status"`
+	BPM                    *float64 `json:"bpm,omitempty"`
+	BPMConfidence          *float64 `json:"bpmConfidence,omitempty"`
+	BPMSource              string   `json:"bpmSource"`
+	SyncAllowed            bool     `json:"syncAllowed"`
+	Key                    *string  `json:"key,omitempty"`
+	CamelotKey             *string  `json:"camelotKey,omitempty"`
+	OpenKey                *string  `json:"openKey,omitempty"`
+	KeyConfidence          *float64 `json:"keyConfidence,omitempty"`
+	KeySource              string   `json:"keySource"`
+	EnergyLevel            *int     `json:"energyLevel,omitempty"`
+	EnergyLevelConfidence  *float64 `json:"energyLevelConfidence,omitempty"`
+	EnergyAlgorithmVersion *string  `json:"energyAlgorithmVersion,omitempty"`
 }
 
 // BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
@@ -40,6 +43,7 @@ type TrackAnalysisFeatureResponse struct {
 // tempo interpolation behavior.
 type BeatGridResponse struct {
 	Source           string    `json:"source"`
+	Provenance       string    `json:"provenance"`
 	SongID           string    `json:"songId"`
 	Beats            []float64 `json:"beats"`
 	DownbeatIndices  []int     `json:"downbeatIndices"`
@@ -78,12 +82,14 @@ type TransitionRecommendationResponse struct {
 	Title      string                         `json:"title"`
 	Artist     string                         `json:"artist"`
 	Score      float64                        `json:"score"`
+	Intent     features.TransitionIntent      `json:"intent"`
 	Vector     features.TransitionVector      `json:"vector"`
 	Components []features.TransitionComponent `json:"components"`
 }
 
 type TransitionRecommendationsResponse struct {
 	SongID           string                             `json:"songId"`
+	Intent           features.TransitionIntent          `json:"intent"`
 	AlgorithmVersion string                             `json:"algorithmVersion"`
 	Recommendations  []TransitionRecommendationResponse `json:"recommendations"`
 }
@@ -143,6 +149,16 @@ func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAn
 		SyncAllowed: effectiveBPM.SyncAllowed,
 		KeySource:   effectiveKey.Source,
 	}
+	// Scores from a running row may refer to an older source fingerprint. Only
+	// expose a settled score whose own algorithm provenance is present.
+	switch analysis.Status {
+	case db.TrackAnalysisComplete, db.TrackAnalysisPartial, db.TrackAnalysisFailed:
+		if analysis.EnergyLevel != nil && analysis.EnergyLevelConfidence != nil && analysis.EnergyAlgorithmVersion != nil && *analysis.EnergyAlgorithmVersion == features.EnergyLevelAlgorithmVersion {
+			response.EnergyLevel = analysis.EnergyLevel
+			response.EnergyLevelConfidence = analysis.EnergyLevelConfidence
+			response.EnergyAlgorithmVersion = analysis.EnergyAlgorithmVersion
+		}
+	}
 	if effectiveBPM.Source == db.EffectiveBPMMeasured {
 		response.BPMConfidence = analysis.BPMConfidence
 		response.BPMAltCandidate = analysis.BPMAltCandidate
@@ -186,16 +202,15 @@ func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	source := "measured"
-	if override.BeatgridArtifactID != nil {
-		// Unlocked historical artifacts may have been replaced by automatic analysis.
-		// Their ownership is ambiguous until explicitly reviewed and locked again.
-		source = "unknown"
-		if override.BeatgridLocked {
-			source = "manual"
-		}
+	provenance := beatgrid.Provenance(artifact.Provenance)
+	if artifact.Provenance == "" {
+		provenance = grid.EffectiveProvenance()
+	} else if !provenance.Valid() {
+		provenance = beatgrid.ProvenanceUnknown
 	}
-	respondJSON(w, BeatGridResponse{Source: source, SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: override.BeatgridLocked, AlgorithmVersion: artifact.AlgorithmVersion})
+	// Preserve the legacy source property while making its value truthful for
+	// existing clients; provenance is the preferred, explicit field.
+	respondJSON(w, BeatGridResponse{Source: string(provenance), Provenance: string(provenance), SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: override.BeatgridLocked, AlgorithmVersion: artifact.AlgorithmVersion})
 }
 
 func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +236,7 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	artifactID := songID + ":" + beatgrid.AlgorithmVersion
-	if err := a.db.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: artifactID, SongID: songID, Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Data: encoded}); err != nil {
+	if err := a.db.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: artifactID, SongID: songID, Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: string(beatgrid.ProvenanceManual), Data: encoded}); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -242,7 +257,7 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, BeatGridResponse{Source: "manual", SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion})
+	respondJSON(w, BeatGridResponse{Source: string(beatgrid.ProvenanceManual), Provenance: string(beatgrid.ProvenanceManual), SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion})
 }
 
 // resetBeatGridV2 clears an explicit grid edit and its lock.  A later normal
@@ -299,6 +314,14 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 // box number.
 func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Request) {
 	songID := chi.URLParam(r, "songID")
+	intent := features.TransitionIntent(r.URL.Query().Get("intent"))
+	if intent == "" {
+		intent = features.TransitionIntentHold
+	}
+	if intent != features.TransitionIntentHold && intent != features.TransitionIntentLift && intent != features.TransitionIntentReset && intent != features.TransitionIntentHarmonic {
+		respondError(w, http.StatusBadRequest, "intent must be one of hold, lift, reset, or harmonic; surprise and vocal-safe require evidence not yet available")
+		return
+	}
 	sourceArtifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		respondError(w, http.StatusNotFound, "energy features not found")
@@ -327,6 +350,24 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	for _, song := range songs {
 		songByID[song.ID] = song
 	}
+	analyses, err := a.db.ListTrackAnalysis()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	analysisByID := make(map[string]db.TrackAnalysis, len(analyses))
+	for _, record := range analyses {
+		analysisByID[record.SongID] = record
+	}
+	overrides, err := a.db.ListTrackAnalysisOverrides()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	metadataByID := make(map[string]features.TransitionMetadata, len(analysisByID))
+	for id, record := range analysisByID {
+		metadataByID[id] = resolvedTransitionMetadata(record, overrides[id])
+	}
 	recommendations := make([]TransitionRecommendationResponse, 0, len(artifacts))
 	for _, artifact := range artifacts {
 		if artifact.SongID == songID {
@@ -340,8 +381,12 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		if !exists {
 			continue
 		}
-		score := features.ScoreTransition(source, candidate)
-		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Vector: score.Vector, Components: score.Components})
+		score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[artifact.SongID], intent)
+		if scoreErr != nil {
+			respondError(w, http.StatusBadRequest, scoreErr.Error())
+			return
+		}
+		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components})
 	}
 	sort.Slice(recommendations, func(i, j int) bool {
 		if recommendations[i].Score == recommendations[j].Score {
@@ -353,7 +398,16 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	if len(recommendations) > limit {
 		recommendations = recommendations[:limit]
 	}
-	respondJSON(w, TransitionRecommendationsResponse{SongID: songID, AlgorithmVersion: features.AlgorithmVersion, Recommendations: recommendations})
+	respondJSON(w, TransitionRecommendationsResponse{SongID: songID, Intent: intent, AlgorithmVersion: features.TransitionAlgorithmVersion, Recommendations: recommendations})
+}
+
+func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) features.TransitionMetadata {
+	resolved := trackAnalysisFeatureResponse(analysis, override)
+	return features.TransitionMetadata{
+		BPM: resolved.BPM, BPMSource: resolved.BPMSource, BPMConfidence: resolved.BPMConfidence,
+		CamelotKey: resolved.CamelotKey, KeySource: resolved.KeySource, KeyConfidence: resolved.KeyConfidence,
+		EnergyLevel: resolved.EnergyLevel, EnergyLevelConfidence: resolved.EnergyLevelConfidence,
+	}
 }
 
 // measuredEnergyForDJ returns the same persisted curve summary exposed to the

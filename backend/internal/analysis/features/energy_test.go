@@ -46,4 +46,12 @@ func TestCueSuggestionsSnapToDownbeats(t *testing.T) {
 	if len(result.CueSuggestions) != 3 || result.CueSuggestions[0].Position != .1 || result.CueSuggestions[2].Position != 4.1 {
 		t.Fatalf("cue suggestions = %#v", result.CueSuggestions)
 	}
+	if result.CueSuggestions[0].Confidence >= .5 || result.CueSuggestions[0].Rationale == "" {
+		t.Fatalf("inferred grid cue did not carry conservative rationale/confidence: %#v", result.CueSuggestions[0])
+	}
+	grid.Provenance = beatgrid.ProvenanceManual
+	result.AddCueSuggestions(grid)
+	if result.CueSuggestions[0].Confidence < .5 {
+		t.Fatalf("manual downbeat cue confidence unexpectedly low: %#v", result.CueSuggestions[0])
+	}
 }

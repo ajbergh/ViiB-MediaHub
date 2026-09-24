@@ -44,6 +44,15 @@ export interface HotCue {
   position: number;  // seconds
   label?: string;
   color: string;     // hex color
+  origin?: 'user' | 'analysis';
+  generatorVersion?: string;
+  confidence?: number;
+  kind?: string;
+  locked?: boolean;
+  rationale?: string;
+  sourceFingerprint?: string;
+  downbeatAligned?: boolean;
+  updatedAt?: number;
 }
 
 export interface Loop {
@@ -813,7 +822,8 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         slot,
         position,
         label,
-        color: color || '#FF5500'
+        color: color || '#FF5500',
+        origin: 'user'
       };
       
       if (existingIndex >= 0) {
@@ -884,7 +894,16 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         slot: hc.slot,
         position: hc.position,
         label: hc.label || '',
-        color: hc.color || '#FF5500'
+        color: hc.color || '#FF5500',
+        origin: hc.origin || 'user',
+        generatorVersion: hc.generatorVersion,
+        confidence: hc.confidence,
+        kind: hc.kind,
+        locked: hc.locked || false,
+        rationale: hc.rationale,
+        sourceFingerprint: hc.sourceFingerprint,
+        downbeatAligned: hc.downbeatAligned || false,
+        updatedAt: hc.updatedAt
       }));
       
       await api.saveDJHotCues(deckState.track.id, hotCuesToSave);
