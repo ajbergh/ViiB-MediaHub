@@ -25,7 +25,7 @@ export function isPristineEmptyPreviewDeck(deck: DeckState): boolean {
 }
 
 export function isPreviewDeckOffAir(deck: DeckId, crossfader: number): boolean {
-  return deck === 'A' ? crossfader >= 0.98 : crossfader <= -0.98;
+  return deck === 'A' ? crossfader === 1 : crossfader === -1;
 }
 
 export function hasSeparateHeadphoneRoute(headphoneDeviceId: string, masterDeviceId: string): boolean {
