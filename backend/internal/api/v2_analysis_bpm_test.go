@@ -198,3 +198,96 @@ func TestV2TrackBPMCanBeSetBeforeAnalysisAndRequiresCurrentSource(t *testing.T) 
 		t.Fatalf("stale reset changed BPM override: %#v, %v", override, err)
 	}
 }
+
+func TestV2TrackBPMAndMeasuredTempoAreHiddenAfterSourceReplacement(t *testing.T) {
+	api, mediaPath := newBPMRouteTestAPI(t, true)
+	handler := api.V2Routes()
+	oldFingerprint := getBPMSourceFingerprint(t, handler)
+	manual := 126.75
+	put := httptest.NewRecorder()
+	putRequest := httptest.NewRequest(http.MethodPut, "/analysis/song/bpm", strings.NewReader(`{"bpm":126.75}`))
+	putRequest.Header.Set("If-Match", strconv.Quote(oldFingerprint))
+	handler.ServeHTTP(put, putRequest)
+	if put.Code != http.StatusOK {
+		t.Fatalf("PUT BPM = %d: %s", put.Code, put.Body.String())
+	}
+	override, err := api.db.GetTrackAnalysisOverride("song")
+	if err != nil || override.BPM == nil || *override.BPM != manual || override.BPMSourceFingerprint != oldFingerprint {
+		t.Fatalf("source-scoped override = %#v, %v", override, err)
+	}
+
+	if err := os.WriteFile(mediaPath, []byte("replacement source has different bytes and a different length"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	newFingerprint := getBPMSourceFingerprint(t, handler)
+	if newFingerprint == oldFingerprint {
+		t.Fatal("replacement media kept the old source fingerprint")
+	}
+	for _, path := range []string{"/analysis/song/bpm", "/analysis/song"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d: %s", path, recorder.Code, recorder.Body.String())
+		}
+		var response TrackAnalysisFeatureResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		if response.BPM != nil || response.BPMSource != db.EffectiveBPMUnknown || response.SyncAllowed {
+			t.Fatalf("GET %s exposed BPM from the previous source: %#v", path, response)
+		}
+	}
+	list := httptest.NewRecorder()
+	handler.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/analysis", nil))
+	if list.Code != http.StatusOK {
+		t.Fatalf("GET /analysis = %d: %s", list.Code, list.Body.String())
+	}
+	var listed []TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(list.Body).Decode(&listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].BPM != nil || listed[0].BPMSource != db.EffectiveBPMUnknown {
+		t.Fatalf("analysis list exposed previous-source BPM: %#v", listed)
+	}
+	effective, err := api.db.ListEffectiveBPM(map[string]string{"song": newFingerprint})
+	if err != nil || len(effective) != 0 {
+		t.Fatalf("effective BPM after replacement = %#v, %v; want unknown", effective, err)
+	}
+
+	reset := httptest.NewRecorder()
+	resetRequest := httptest.NewRequest(http.MethodDelete, "/analysis/song/bpm", nil)
+	resetRequest.Header.Set("If-Match", strconv.Quote(newFingerprint))
+	handler.ServeHTTP(reset, resetRequest)
+	if reset.Code != http.StatusOK {
+		t.Fatalf("DELETE BPM on replacement source = %d: %s", reset.Code, reset.Body.String())
+	}
+	var resetResponse TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(reset.Body).Decode(&resetResponse); err != nil {
+		t.Fatal(err)
+	}
+	if resetResponse.BPM != nil || resetResponse.BPMSource != db.EffectiveBPMUnknown {
+		t.Fatalf("reset resurrected measured BPM from the previous source: %#v", resetResponse)
+	}
+}
+
+func TestV2TrackBPMConditionalWriteRejectsConcurrentSourceRevision(t *testing.T) {
+	api, _ := newBPMRouteTestAPI(t, false)
+	handler := api.V2Routes()
+	fingerprint := getBPMSourceFingerprint(t, handler)
+	if err := api.db.RefreshTrackAnalysisSourceRevision("song", "concurrent-source-revision"); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := api.db.SetTrackAnalysisBPMOverrideIfSourceCurrent("song", 123.5, fingerprint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated {
+		t.Fatal("conditional BPM write succeeded after the stored source revision changed")
+	}
+	if _, err := api.db.GetTrackAnalysisOverride("song"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("rejected conditional BPM write left an override: %v", err)
+	}
+	if reset, err := api.db.ResetTrackAnalysisBPMOverrideIfSourceCurrent("song", fingerprint); err != nil || reset {
+		t.Fatalf("conditional reset after concurrent source revision = %t, %v; want false", reset, err)
+	}
+}

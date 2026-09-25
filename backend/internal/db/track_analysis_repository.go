@@ -47,15 +47,16 @@ type TrackAnalysisArtifactPayload struct {
 // TrackAnalysisOverride records explicit user choices independently of
 // measured facts, so re-analysis never overwrites a locked value.
 type TrackAnalysisOverride struct {
-	SongID             string
-	BPM                *float64
-	KeyTonic           *int
-	KeyMode            *string
-	BeatgridArtifactID *string
-	BPMLocked          bool
-	KeyLocked          bool
-	BeatgridLocked     bool
-	UpdatedAt          int64
+	SongID               string
+	BPM                  *float64
+	BPMSourceFingerprint string
+	KeyTonic             *int
+	KeyMode              *string
+	BeatgridArtifactID   *string
+	BPMLocked            bool
+	KeyLocked            bool
+	BeatgridLocked       bool
+	UpdatedAt            int64
 }
 
 const (
@@ -124,6 +125,22 @@ func ResolveEffectiveBPM(inputs EffectiveBPMInputs) EffectiveBPM {
 		return EffectiveBPM{Value: measured, Source: EffectiveBPMMeasured, SyncAllowed: true}
 	}
 	return EffectiveBPM{Source: EffectiveBPMUnknown}
+}
+
+// ResolveEffectiveBPMForSource only exposes values bound to the live source
+// revision. Legacy manual overrides without a fingerprint and measured rows
+// from a previous revision remain unknown.
+func ResolveEffectiveBPMForSource(inputs EffectiveBPMInputs, currentFingerprint string) EffectiveBPM {
+	if currentFingerprint == "" {
+		return EffectiveBPM{Source: EffectiveBPMUnknown}
+	}
+	if inputs.Override != nil && inputs.Override.BPMLocked && inputs.Override.BPM != nil && inputs.Override.BPMSourceFingerprint == currentFingerprint {
+		return EffectiveBPM{Value: inputs.Override.BPM, Source: EffectiveBPMManual, SyncAllowed: true}
+	}
+	if inputs.Analysis == nil || inputs.Analysis.SourceFingerprint != currentFingerprint {
+		return EffectiveBPM{Source: EffectiveBPMUnknown}
+	}
+	return ResolveEffectiveBPM(EffectiveBPMInputs{Analysis: inputs.Analysis})
 }
 
 // ResolveEffectiveKey applies the same manual-over-measured precedence as
@@ -490,15 +507,83 @@ func (d *DB) UpsertTrackAnalysisOverride(override TrackAnalysisOverride) error {
 	if override.UpdatedAt == 0 {
 		override.UpdatedAt = time.Now().UnixMilli()
 	}
-	_, err := d.conn.Exec(`INSERT INTO track_analysis_overrides(song_id, bpm, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(song_id) DO UPDATE SET bpm=excluded.bpm, key_tonic=excluded.key_tonic,
+	_, err := d.conn.Exec(`INSERT INTO track_analysis_overrides(song_id, bpm, bpm_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(song_id) DO UPDATE SET bpm=excluded.bpm, bpm_source_fingerprint=excluded.bpm_source_fingerprint, key_tonic=excluded.key_tonic,
 			key_mode=excluded.key_mode, beatgrid_artifact_id=excluded.beatgrid_artifact_id,
 			bpm_locked=excluded.bpm_locked, key_locked=excluded.key_locked,
 			beatgrid_locked=excluded.beatgrid_locked, updated_at=excluded.updated_at`,
-		override.SongID, override.BPM, override.KeyTonic, override.KeyMode, override.BeatgridArtifactID,
+		override.SongID, override.BPM, override.BPMSourceFingerprint, override.KeyTonic, override.KeyMode, override.BeatgridArtifactID,
 		boolToInt(override.BPMLocked), boolToInt(override.KeyLocked), boolToInt(override.BeatgridLocked), override.UpdatedAt)
 	return err
+}
+
+// RefreshTrackAnalysisSourceRevision stores the fingerprint just resolved from
+// the current local/Plex source. BPM writes compare against it atomically.
+func (d *DB) RefreshTrackAnalysisSourceRevision(songID, fingerprint string) error {
+	if songID == "" || fingerprint == "" {
+		return errors.New("track source revision requires song ID and fingerprint")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	_, err := d.conn.Exec(`INSERT INTO track_analysis_source_revisions(song_id, source_fingerprint, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(song_id) DO UPDATE SET source_fingerprint=excluded.source_fingerprint, updated_at=excluded.updated_at`,
+		songID, fingerprint, time.Now().UnixMilli())
+	return err
+}
+
+// SetTrackAnalysisBPMOverrideIfSourceCurrent atomically compares the request's
+// source token with the latest source revision observed by an API resolver and
+// updates only BPM columns, preserving concurrent key/grid edits.
+func (d *DB) SetTrackAnalysisBPMOverrideIfSourceCurrent(songID string, bpm float64, fingerprint string) (bool, error) {
+	if songID == "" || fingerprint == "" {
+		return false, errors.New("BPM override requires song ID and source fingerprint")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return false, err
+	}
+	result, err := d.conn.Exec(`INSERT INTO track_analysis_overrides(song_id, bpm, bpm_source_fingerprint, bpm_locked, updated_at)
+		SELECT ?, ?, ?, 1, ? WHERE EXISTS (
+			SELECT 1 FROM track_analysis_source_revisions WHERE song_id = ? AND source_fingerprint = ?
+		)
+		ON CONFLICT(song_id) DO UPDATE SET bpm=excluded.bpm, bpm_source_fingerprint=excluded.bpm_source_fingerprint,
+			bpm_locked=1, updated_at=excluded.updated_at`,
+		songID, bpm, fingerprint, time.Now().UnixMilli(), songID, fingerprint)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows > 0, nil
+}
+
+// ResetTrackAnalysisBPMOverrideIfSourceCurrent conditionally clears only BPM
+// state. Key and beat-grid override fields are left untouched.
+func (d *DB) ResetTrackAnalysisBPMOverrideIfSourceCurrent(songID, fingerprint string) (bool, error) {
+	if songID == "" || fingerprint == "" {
+		return false, errors.New("BPM reset requires song ID and source fingerprint")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return false, err
+	}
+	result, err := d.conn.Exec(`INSERT INTO track_analysis_overrides(song_id, bpm, bpm_source_fingerprint, bpm_locked, updated_at)
+		SELECT ?, NULL, '', 0, ? WHERE EXISTS (
+			SELECT 1 FROM track_analysis_source_revisions WHERE song_id = ? AND source_fingerprint = ?
+		)
+		ON CONFLICT(song_id) DO UPDATE SET bpm=NULL, bpm_source_fingerprint='', bpm_locked=0, updated_at=excluded.updated_at`,
+		songID, time.Now().UnixMilli(), songID, fingerprint)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows > 0, nil
 }
 
 // GetTrackAnalysisOverride returns a song's manual analysis choices.
@@ -511,9 +596,9 @@ func (d *DB) GetTrackAnalysisOverride(songID string) (TrackAnalysisOverride, err
 	var keyTonic sql.NullInt64
 	var keyMode, artifactID sql.NullString
 	var bpmLocked, keyLocked, gridLocked int
-	err := d.conn.QueryRow(`SELECT song_id, bpm, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
+	err := d.conn.QueryRow(`SELECT song_id, bpm, bpm_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
 		FROM track_analysis_overrides WHERE song_id = ?`, songID).
-		Scan(&result.SongID, &bpm, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt)
+		Scan(&result.SongID, &bpm, &result.BPMSourceFingerprint, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt)
 	if err != nil {
 		return TrackAnalysisOverride{}, err
 	}
@@ -536,7 +621,7 @@ func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, err
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
-	rows, err := d.conn.Query(`SELECT song_id, bpm, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
+	rows, err := d.conn.Query(`SELECT song_id, bpm, bpm_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
 		FROM track_analysis_overrides`)
 	if err != nil {
 		return nil, err
@@ -549,7 +634,7 @@ func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, err
 		var keyTonic sql.NullInt64
 		var keyMode, artifactID sql.NullString
 		var bpmLocked, keyLocked, gridLocked int
-		if err := rows.Scan(&result.SongID, &bpm, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt); err != nil {
+		if err := rows.Scan(&result.SongID, &bpm, &result.BPMSourceFingerprint, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt); err != nil {
 			return nil, err
 		}
 		result.BPM = optionalFloat64(bpm)
@@ -569,7 +654,7 @@ func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, err
 
 // ListEffectiveBPM returns only manual or locally measured tempo rounded for
 // AI-DJ scoring. A missing entry deliberately remains unknown.
-func (d *DB) ListEffectiveBPM() (map[string]int, error) {
+func (d *DB) ListEffectiveBPM(currentFingerprints map[string]string) (map[string]int, error) {
 	analyses, err := d.ListTrackAnalysis()
 	if err != nil {
 		return nil, err
@@ -580,7 +665,7 @@ func (d *DB) ListEffectiveBPM() (map[string]int, error) {
 	}
 	results := make(map[string]int, len(analyses))
 	for _, analysis := range analyses {
-		effective := ResolveEffectiveBPM(EffectiveBPMInputs{Override: ptrTrackAnalysisOverride(overrides, analysis.SongID), Analysis: &analysis})
+		effective := ResolveEffectiveBPMForSource(EffectiveBPMInputs{Override: ptrTrackAnalysisOverride(overrides, analysis.SongID), Analysis: &analysis}, currentFingerprints[analysis.SongID])
 		if effective.Value != nil && effective.SyncAllowed {
 			results[analysis.SongID] = int(math.Round(*effective.Value))
 		}

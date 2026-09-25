@@ -23,12 +23,12 @@ import (
 func TestV2TrackTempoEvidenceUsesMeasuredValuesOnly(t *testing.T) {
 	bpm, alternate, stability, confidence := 128.5, 64.25, .8, .36
 	source, kind := "measured", "dynamic-candidate"
-	record := db.TrackAnalysis{Status: db.TrackAnalysisComplete, BPM: &bpm, BPMSource: &source, BPMAltCandidate: &alternate, TempoStability: &stability, BPMConfidence: &confidence, TempoKind: &kind}
-	result := trackAnalysisFeatureResponse(record, db.TrackAnalysisOverride{})
+	record := db.TrackAnalysis{Status: db.TrackAnalysisComplete, SourceFingerprint: "source-v1", BPM: &bpm, BPMSource: &source, BPMAltCandidate: &alternate, TempoStability: &stability, BPMConfidence: &confidence, TempoKind: &kind}
+	result := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{}, "source-v1")
 	if result.BPMAltCandidate == nil || *result.BPMAltCandidate != alternate || result.TempoStability == nil || *result.TempoStability != stability || result.TempoKind == nil || *result.TempoKind != kind {
 		t.Fatalf("missing measured tempo evidence: %#v", result)
 	}
-	result = trackAnalysisFeatureResponse(record, db.TrackAnalysisOverride{BPM: &bpm, BPMLocked: true})
+	result = trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{BPM: &bpm, BPMSourceFingerprint: "source-v1", BPMLocked: true}, "source-v1")
 	if result.BPMAltCandidate != nil || result.TempoStability != nil || result.BPMConfidence != nil || result.TempoKind != nil {
 		t.Fatalf("measured evidence attributed to manual tempo: %#v", result)
 	}
@@ -52,19 +52,19 @@ func saveAnalysisTestSong(t *testing.T, database *db.DB, id, title string, genre
 
 func TestV2TrackAnalysisExposesOnlyCurrentSettledEnergyLevel(t *testing.T) {
 	level, confidence, version := 8, .8, features.EnergyLevelAlgorithmVersion
-	analysis := db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisPartial, EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
-	response := trackAnalysisFeatureResponse(analysis, db.TrackAnalysisOverride{})
+	analysis := db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisPartial, SourceFingerprint: "source-v1", EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
+	response := trackAnalysisFeatureResponseWithCurrentSource(analysis, db.TrackAnalysisOverride{}, "source-v1")
 	if response.EnergyLevel == nil || *response.EnergyLevel != level || response.EnergyLevelConfidence == nil || *response.EnergyLevelConfidence != confidence || response.EnergyAlgorithmVersion == nil || *response.EnergyAlgorithmVersion != version {
 		t.Fatalf("energy score/version missing from API response: %#v", response)
 	}
 	analysis.Status = db.TrackAnalysisRunning
-	if running := trackAnalysisFeatureResponse(analysis, db.TrackAnalysisOverride{}); running.EnergyLevel != nil {
+	if running := trackAnalysisFeatureResponseWithCurrentSource(analysis, db.TrackAnalysisOverride{}, "source-v1"); running.EnergyLevel != nil {
 		t.Fatalf("running analysis exposed stale Energy Level: %#v", running)
 	}
 	analysis.Status = db.TrackAnalysisComplete
 	staleVersion := "energy-level-v0"
 	analysis.EnergyAlgorithmVersion = &staleVersion
-	if stale := trackAnalysisFeatureResponse(analysis, db.TrackAnalysisOverride{}); stale.EnergyLevel != nil {
+	if stale := trackAnalysisFeatureResponseWithCurrentSource(analysis, db.TrackAnalysisOverride{}, "source-v1"); stale.EnergyLevel != nil {
 		t.Fatalf("stale algorithm score was exposed: %#v", stale)
 	}
 }
@@ -75,13 +75,11 @@ func TestV2TrackAnalysisFeatureResolvesManualValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
-		t.Fatal(err)
-	}
+	currentFingerprint := saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
 	measuredBPM, measuredTonic := 128.25, 0
 	measuredMode, measuredSource := "major", "measured"
 	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{
-		SongID: "song", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: "source-v1",
+		SongID: "song", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: currentFingerprint,
 		BPM: &measuredBPM, BPMSource: &measuredSource, KeyTonic: &measuredTonic, KeyMode: &measuredMode, KeySource: &measuredSource,
 	}); err != nil {
 		t.Fatal(err)
@@ -89,7 +87,7 @@ func TestV2TrackAnalysisFeatureResolvesManualValues(t *testing.T) {
 	manualBPM, manualTonic := 127.5, 9
 	manualMode := "minor"
 	if err := database.UpsertTrackAnalysisOverride(db.TrackAnalysisOverride{
-		SongID: "song", BPM: &manualBPM, BPMLocked: true, KeyTonic: &manualTonic, KeyMode: &manualMode, KeyLocked: true,
+		SongID: "song", BPM: &manualBPM, BPMSourceFingerprint: currentFingerprint, BPMLocked: true, KeyTonic: &manualTonic, KeyMode: &manualMode, KeyLocked: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +461,11 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
+	mediaPath := filepath.Join(t.TempDir(), "song.wav")
+	if err := os.WriteFile(mediaPath, []byte("grid edit source"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: mediaPath, AddedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	manual := 126.0

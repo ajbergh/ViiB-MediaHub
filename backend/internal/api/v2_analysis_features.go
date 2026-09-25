@@ -173,7 +173,12 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	respondJSON(w, trackAnalysisFeatureResponse(analysis, override))
+	currentFingerprints, err := a.currentAnalysisSourceFingerprints([]string{songID})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID]))
 }
 
 func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request) {
@@ -198,8 +203,10 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		return
 	}
 	analysisBySongID := make(map[string]db.TrackAnalysis, len(analyses))
+	allAnalysisIDs := make([]string, 0, len(analyses))
 	for _, analysis := range analyses {
 		analysisBySongID[analysis.SongID] = analysis
+		allAnalysisIDs = append(allAnalysisIDs, analysis.SongID)
 	}
 	metadataBySongID := make(map[string]db.TrackAnalysisArtifactMetadata, len(structureMetadata))
 	candidateIDs := make([]string, 0, len(structureMetadata))
@@ -225,16 +232,7 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		loudnessMetadataBySongID[metadata.SongID] = metadata
 		loudnessCandidateIDs = append(loudnessCandidateIDs, metadata.SongID)
 	}
-	sourceCandidateIDs := make([]string, 0, len(candidateIDs)+len(loudnessCandidateIDs))
-	sourceCandidateSeen := make(map[string]struct{}, cap(sourceCandidateIDs))
-	for _, candidateID := range append(candidateIDs, loudnessCandidateIDs...) {
-		if _, exists := sourceCandidateSeen[candidateID]; exists {
-			continue
-		}
-		sourceCandidateSeen[candidateID] = struct{}{}
-		sourceCandidateIDs = append(sourceCandidateIDs, candidateID)
-	}
-	currentFingerprints, err := a.currentAnalysisSourceFingerprints(sourceCandidateIDs)
+	currentFingerprints, err := a.currentAnalysisSourceFingerprints(allAnalysisIDs)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -291,7 +289,7 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 	}
 	response := make([]TrackAnalysisFeatureResponse, 0, len(analyses))
 	for _, analysis := range analyses {
-		feature := trackAnalysisFeatureResponse(analysis, overrides[analysis.SongID])
+		feature := trackAnalysisFeatureResponseWithCurrentSource(analysis, overrides[analysis.SongID], currentFingerprints[analysis.SongID])
 		feature.StructureAvailable = readyStructureBySongID[analysis.SongID]
 		if value, exists := lufsBySongID[analysis.SongID]; exists {
 			feature.IntegratedLUFSBS1770 = &value
@@ -428,8 +426,11 @@ func trackBS1770ListMeasurements(analysis db.TrackAnalysis, currentFingerprint s
 	return lufs, truePeak
 }
 
-func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) TrackAnalysisFeatureResponse {
-	effectiveBPM := db.ResolveEffectiveBPM(db.EffectiveBPMInputs{Override: &override, Analysis: &analysis})
+func trackAnalysisFeatureResponseWithCurrentSource(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string) TrackAnalysisFeatureResponse {
+	return trackAnalysisFeatureResponseResolved(analysis, override, db.ResolveEffectiveBPMForSource(db.EffectiveBPMInputs{Override: &override, Analysis: &analysis}, currentFingerprint))
+}
+
+func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, effectiveBPM db.EffectiveBPM) TrackAnalysisFeatureResponse {
 	effectiveKey := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis})
 	response := TrackAnalysisFeatureResponse{
 		SongID:      analysis.SongID,
@@ -509,7 +510,13 @@ func (a *API) getTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	response := trackAnalysisFeatureResponse(trackAnalysis, override)
+	if current := currentFingerprints[songID]; current != "" {
+		if err := a.db.RefreshTrackAnalysisSourceRevision(songID, current); err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, currentFingerprints[songID])
 	response.SourceFingerprint = currentFingerprints[songID]
 	if response.SourceFingerprint != "" {
 		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
@@ -547,20 +554,25 @@ func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	updated, err := a.db.SetTrackAnalysisBPMOverrideIfSourceCurrent(songID, *update.BPM, currentFingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !updated {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload BPM details before editing")
+		return
+	}
+	if err := a.revalidateBPMSourceAfterWrite(songID, currentFingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload BPM details before editing")
+		return
+	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
-	if errors.Is(err, sql.ErrNoRows) {
-		override = db.TrackAnalysisOverride{SongID: songID}
-	} else if err != nil {
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	override.BPM = update.BPM
-	override.BPMLocked = true
-	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	response := trackAnalysisFeatureResponse(trackAnalysis, override)
+	response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, currentFingerprint)
 	response.SourceFingerprint = currentFingerprint
 	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
 	respondJSON(w, response)
@@ -585,6 +597,19 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	reset, err := a.db.ResetTrackAnalysisBPMOverrideIfSourceCurrent(songID, currentFingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !reset {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload BPM details before editing")
+		return
+	}
+	if err := a.revalidateBPMSourceAfterWrite(songID, currentFingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload BPM details before editing")
+		return
+	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
 	if errors.Is(err, sql.ErrNoRows) {
 		override = db.TrackAnalysisOverride{SongID: songID}
@@ -592,13 +617,7 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	override.BPM = nil
-	override.BPMLocked = false
-	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	response := trackAnalysisFeatureResponse(trackAnalysis, override)
+	response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, currentFingerprint)
 	response.SourceFingerprint = currentFingerprint
 	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
 	respondJSON(w, response)
@@ -616,11 +635,34 @@ func (a *API) requireCurrentBPMSource(w http.ResponseWriter, r *http.Request, so
 		return "", err
 	}
 	actual := current[songID]
+	if actual != "" {
+		if err := a.db.RefreshTrackAnalysisSourceRevision(songID, actual); err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return "", err
+		}
+	}
 	if actual == "" || strconv.Quote(actual) != expected {
 		respondError(w, http.StatusPreconditionFailed, "song source changed or is unavailable; reload BPM details before editing")
 		return "", errors.New("source fingerprint precondition failed")
 	}
 	return actual, nil
+}
+
+func (a *API) revalidateBPMSourceAfterWrite(songID, expected string) error {
+	current, err := a.currentAnalysisSourceFingerprints([]string{songID})
+	if err != nil {
+		return err
+	}
+	actual := current[songID]
+	if actual != "" {
+		if err := a.db.RefreshTrackAnalysisSourceRevision(songID, actual); err != nil {
+			return err
+		}
+	}
+	if actual == "" || actual != expected {
+		return errors.New("source changed during BPM write")
+	}
+	return nil
 }
 
 func (a *API) trackAnalysisOrUnanalyzed(songID string) (db.TrackAnalysis, error) {
@@ -683,7 +725,12 @@ func (a *API) putTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, trackAnalysisFeatureResponse(analysis, override))
+	currentFingerprints, err := a.currentAnalysisSourceFingerprints([]string{songID})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID]))
 }
 
 func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
@@ -715,7 +762,12 @@ func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, trackAnalysisFeatureResponse(analysis, override))
+	currentFingerprints, err := a.currentAnalysisSourceFingerprints([]string{songID})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID]))
 }
 
 func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
@@ -774,6 +826,31 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if update.BPM != nil {
+		current, err := a.currentAnalysisSourceFingerprints([]string{songID})
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		currentFingerprint := current[songID]
+		if currentFingerprint == "" {
+			respondError(w, http.StatusConflict, "current source is unavailable; cannot save BPM")
+			return
+		}
+		if err := a.db.RefreshTrackAnalysisSourceRevision(songID, currentFingerprint); err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		updated, err := a.db.SetTrackAnalysisBPMOverrideIfSourceCurrent(songID, *update.BPM, currentFingerprint)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !updated || a.revalidateBPMSourceAfterWrite(songID, currentFingerprint) != nil {
+			respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload before editing")
+			return
+		}
+	}
 	artifactID := songID + ":" + beatgrid.AlgorithmVersion
 	if err := a.db.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: artifactID, SongID: songID, Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: string(beatgrid.ProvenanceManual), Data: encoded}); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -788,10 +865,6 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 	}
 	override.BeatgridArtifactID = &artifactID
 	override.BeatgridLocked = update.Locked
-	if update.BPM != nil {
-		override.BPM = update.BPM
-		override.BPMLocked = true
-	}
 	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1008,7 +1081,7 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	}
 	metadataByID := make(map[string]features.TransitionMetadata, len(analysisByID))
 	for id, record := range analysisByID {
-		metadataByID[id] = resolvedTransitionMetadata(record, overrides[id])
+		metadataByID[id] = resolvedTransitionMetadata(record, overrides[id], currentFingerprints[id])
 	}
 	stemStatuses := map[string]string{}
 	if filters.StemsAvailable != nil {
@@ -1277,8 +1350,8 @@ func validTransitionKey(analysis db.TrackAnalysis, override db.TrackAnalysisOver
 	return *key.Mode == analysiskey.ModeMajor || *key.Mode == analysiskey.ModeMinor
 }
 
-func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) features.TransitionMetadata {
-	resolved := trackAnalysisFeatureResponse(analysis, override)
+func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string) features.TransitionMetadata {
+	resolved := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprint)
 	return features.TransitionMetadata{
 		BPM: resolved.BPM, BPMSource: resolved.BPMSource, BPMConfidence: resolved.BPMConfidence,
 		CamelotKey: resolved.CamelotKey, KeySource: resolved.KeySource, KeyConfidence: resolved.KeyConfidence,
