@@ -151,4 +151,107 @@ describe('DJAudioEngine DeckSource integration', () => {
     expect(source.setKeyLock).not.toHaveBeenCalled();
     expect(source.setLoop).not.toHaveBeenCalled();
   });
+
+  it('keeps the active source untouched during delayed or failed detached preparation', async () => {
+    const engine = new DJAudioEngine();
+    const active = fakeSource(5);
+    let rejectLoad: ((reason?: unknown) => void) | undefined;
+    const prepared = fakeSource(0);
+    prepared.source.load = vi.fn(() => new Promise<string>((_resolve, reject) => { rejectLoad = reject; }));
+    Object.assign(engine, {
+      audioContext: {} as AudioContext, deckSourceA: active.source, gainNodeA: { connect: vi.fn() }, loadedTrackIdA: 'original',
+      createPreparedSource: () => prepared.source,
+    });
+    const pending = engine.prepareTrack('A', { id: 'candidate', title: 'Candidate' } as never);
+    expect(active.source.pause).not.toHaveBeenCalled();
+    expect(active.source.unload).not.toHaveBeenCalled();
+    expect(engine.getDeckLoadGeneration('A')).toBe(0);
+    expect(engine.getDeckLoadedTrackId('A')).toBe('original');
+    rejectLoad?.(new Error('failed detached preparation'));
+    await expect(pending).rejects.toThrow('failed detached preparation');
+    expect(prepared.source.dispose).toHaveBeenCalledOnce();
+    expect(active.source.pause).not.toHaveBeenCalled();
+    expect(engine.getDeckLoadGeneration('A')).toBe(0);
+    expect(engine.getDeckLoadedTrackId('A')).toBe('original');
+  });
+
+  it('discards a prepared candidate when ownership changes before the synchronous commit', async () => {
+    const engine = new DJAudioEngine();
+    const active = fakeSource(5);
+    const prepared = fakeSource(0);
+    const gain = { connect: vi.fn() } as unknown as GainNode;
+    Object.assign(prepared.source, { outputNode: { connect: vi.fn(), disconnect: vi.fn() } });
+    Object.assign(active.source, { outputNode: { connect: vi.fn(), disconnect: vi.fn() } });
+    Object.assign(engine, {
+      audioContext: {} as AudioContext, deckSourceA: active.source, gainNodeA: gain, loadedTrackIdA: 'original',
+      createPreparedSource: () => prepared.source,
+    });
+    const candidate = await engine.prepareTrack('A', { id: 'candidate', title: 'Candidate' } as never);
+    expect(engine.commitPreparedTrack(candidate, () => false)).toBeNull();
+    expect(candidate.state).toBe('discarded');
+    expect(prepared.source.dispose).toHaveBeenCalledOnce();
+    expect(active.source.pause).not.toHaveBeenCalled();
+    expect(engine.getDeckLoadGeneration('A')).toBe(0);
+    expect(engine.getDeckLoadedTrackId('A')).toBe('original');
+    expect((engine as unknown as { deckSourceA: unknown }).deckSourceA).toBe(active.source);
+  });
+
+  it('swaps to a prepared source and restores the retained source at the captured position', async () => {
+    const engine = new DJAudioEngine();
+    const active = fakeSource(8);
+    const prepared = fakeSource(0);
+    const gain = {} as GainNode;
+    Object.assign(prepared.source, { outputNode: { connect: vi.fn(), disconnect: vi.fn() } });
+    Object.assign(active.source, { outputNode: { connect: vi.fn(), disconnect: vi.fn() } });
+    Object.assign(engine, {
+      audioContext: {} as AudioContext, deckSourceA: active.source, gainNodeA: gain, loadedTrackIdA: 'original',
+      createPreparedSource: () => prepared.source,
+    });
+    (engine as unknown as { setupEventListeners: () => void }).setupEventListeners();
+    const staleEnded = (active.source.addEventListener as ReturnType<typeof vi.fn>).mock.calls
+      .find(([type]) => type === 'ended')?.[1] as (() => void) | undefined;
+    const candidate = await engine.prepareTrack('A', { id: 'candidate', title: 'Candidate' } as never);
+    const retained = engine.commitPreparedTrack(candidate, () => true, { position: 2.25, wasPlaying: true });
+    expect(retained).not.toBeNull();
+    expect(engine.getDeckLoadedTrackId('A')).toBe('candidate');
+    expect(engine.getDeckLoadGeneration('A')).toBe(1);
+    expect(active.source.pause).toHaveBeenCalledOnce();
+    expect((engine as unknown as { deckSourceA: unknown }).deckSourceA).toBe(prepared.source);
+    state.setDeckPlaying.mockClear();
+    staleEnded?.();
+    expect(state.setDeckPlaying).not.toHaveBeenCalled();
+
+    let snapshotPublished = false;
+    expect(engine.restoreRetainedDeckSource(retained!, () => true, () => { snapshotPublished = true; })).toBe(true);
+    expect(snapshotPublished).toBe(true);
+    expect(engine.getDeckLoadedTrackId('A')).toBe('original');
+    expect(engine.getDeckLoadGeneration('A')).toBe(2);
+    expect((engine as unknown as { deckSourceA: unknown }).deckSourceA).toBe(active.source);
+    expect(active.source.seek).toHaveBeenCalledWith(2.25);
+    expect(active.source.play).toHaveBeenCalledOnce();
+    expect(prepared.source.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('discards the retained original on late handoff without changing the active candidate', async () => {
+    const engine = new DJAudioEngine();
+    const active = fakeSource(8);
+    const prepared = fakeSource(0);
+    const gain = {} as GainNode;
+    Object.assign(prepared.source, { outputNode: { connect: vi.fn(), disconnect: vi.fn() } });
+    Object.assign(active.source, { outputNode: { connect: vi.fn(), disconnect: vi.fn() } });
+    Object.assign(engine, {
+      audioContext: {} as AudioContext, deckSourceA: active.source, gainNodeA: gain, loadedTrackIdA: 'original',
+      createPreparedSource: () => prepared.source,
+    });
+    const candidate = await engine.prepareTrack('A', { id: 'candidate', title: 'Candidate' } as never);
+    const retained = engine.commitPreparedTrack(candidate, () => true);
+    expect(retained).not.toBeNull();
+    expect(engine.restoreRetainedDeckSource(retained!, () => false)).toBe(false);
+    expect(retained!.state).toBe('discarded');
+    expect(active.source.dispose).toHaveBeenCalledOnce();
+    expect(prepared.source.dispose).not.toHaveBeenCalled();
+    expect(engine.getDeckLoadedTrackId('A')).toBe('candidate');
+    expect(engine.getDeckLoadGeneration('A')).toBe(1);
+    expect((engine as unknown as { deckSourceA: unknown }).deckSourceA).toBe(prepared.source);
+  });
 });
