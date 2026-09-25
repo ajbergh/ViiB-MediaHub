@@ -6,6 +6,16 @@
 **Status:** Proposed refactor plan  
 **Scope:** UI composition, layout, responsive behavior, visual hierarchy, waveform presentation, and regression coverage. Audio-engine behavior should remain functionally unchanged unless explicitly called out.
 
+## Design reference
+
+The implementation target for this refactor is the approved DJv2 UI mock-up committed at:
+
+`docs/assets/djv2-ui-target.png`
+
+![DJv2 target UI mock-up](assets/djv2-ui-target.png)
+
+**Reference image:** 1720×914 desktop composition. The image is a visual target for hierarchy, density, palette, component styling, and deck/mixer balance; it is not a literal pixel-coordinate specification. Structural acceptance criteria in this document take precedence when adapting the design to supported resolutions.
+
 ---
 
 ## 1. Objective
@@ -510,6 +520,470 @@ Avoid broad selectors such as `.dj-deck-info + div` for critical layout behavior
 
 ---
 
+## 10A. Visual Design Specification
+
+This section converts the approved mock-up into implementation-level visual rules. The goal is not to copy every rendered pixel; the goal is to reproduce the same visual hierarchy, color language, density, and professional DJ-console feel using reusable tokens and stateful components.
+
+### 10A.1 Overall visual language
+
+The target is a **dark cinematic / premium DJ workstation** rather than a flat admin dashboard.
+
+Key characteristics visible in the mock-up:
+
+- near-black application canvas;
+- subtly lighter deck, mixer, waveform, and library surfaces;
+- thin cool-gray borders instead of heavy card outlines;
+- restrained radii, generally 4–7px;
+- shallow inset/highlight treatment on buttons and panels;
+- high-contrast white primary text;
+- muted blue-gray secondary text;
+- strong Deck A blue and Deck B violet identity colors;
+- saturated state colors reserved for actions and live status;
+- dense but ordered control spacing;
+- minimal decorative gradients except where they communicate deck identity, waveform energy, or active state.
+
+Avoid:
+- large soft cards;
+- oversized rounded corners;
+- glassmorphism blur;
+- large drop shadows;
+- pastel surfaces;
+- multiple unrelated accent colors competing inside the same control group.
+
+### 10A.2 Core color tokens
+
+The following tokens should be introduced or mapped onto the existing DJ token system. Values are derived from the approved mock-up and may be tuned slightly for contrast after implementation screenshots are compared against the reference.
+
+```css
+[data-dj-canvas] {
+  /* Canvas and surfaces */
+  --dj-bg: #090b0e;
+  --dj-bg-elevated: #0e1116;
+  --dj-surface-1: #10141a;
+  --dj-surface-2: #161a22;
+  --dj-surface-3: #22272e;
+  --dj-border: #2b313a;
+  --dj-border-subtle: #1c222b;
+
+  /* Typography */
+  --dj-text: #f3f6fb;
+  --dj-text-secondary: #aab4c2;
+  --dj-text-muted: #6f7b89;
+  --dj-text-disabled: #4f5966;
+
+  /* Deck identity */
+  --dj-deck-a: #0868f8;
+  --dj-deck-a-bright: #2088f8;
+  --dj-deck-a-dim: #084098;
+
+  --dj-deck-b: #8030f8;
+  --dj-deck-b-bright: #8838f8;
+  --dj-deck-b-dim: #53316b;
+
+  /* Semantic/live states */
+  --dj-play: #00c868;
+  --dj-play-hover: #00d873;
+  --dj-hotcue: #f85800;
+  --dj-hotcue-hover: #ff6a12;
+  --dj-key-active: #00b978;
+  --dj-warning: #f0a000;
+  --dj-danger: #ff3b45;
+
+  /* Navigation / global accent */
+  --dj-primary: #7b2cf5;
+  --dj-primary-hover: #8b3cff;
+}
+```
+
+Deck identity colors are not generic decoration. They should consistently identify which side owns a control, waveform, meter, jog ring, selected tab, or active indicator.
+
+### 10A.3 Surface hierarchy
+
+Use four visually distinct elevation levels:
+
+1. **Application canvas** — `--dj-bg`
+2. **Primary panels** — decks, mixer, library, waveform shell using `--dj-bg-elevated`
+3. **Nested control groups** — FX modules, track header control rows, sampler using `--dj-surface-1` / `--dj-surface-2`
+4. **Interactive controls** — buttons, select fields, segmented controls using `--dj-surface-3`
+
+Panel separation should come primarily from border and luminance contrast, not shadow.
+
+Recommended panel treatment:
+
+```css
+.dj-panel {
+  background: var(--dj-bg-elevated);
+  border: 1px solid var(--dj-border-subtle);
+  border-radius: 6px;
+}
+
+.dj-control-group {
+  background: var(--dj-surface-1);
+  border: 1px solid var(--dj-border);
+  border-radius: 5px;
+}
+```
+
+### 10A.4 Top navigation
+
+The mock-up establishes a compact global navigation strip.
+
+Requirements:
+
+- approximately 46–50px authored height;
+- app mark at far left;
+- mode buttons grouped immediately after the mark;
+- utility controls aligned right;
+- active mode uses the global violet accent rather than Deck A/B color;
+- inactive buttons are dark with subtle borders;
+- MIDI connected state may use a small green status dot;
+- no full-height bright border around the entire header.
+
+Mode button states:
+
+- inactive: dark neutral surface;
+- hover: one luminance step lighter;
+- active: violet fill or violet-accented gradient with white text;
+- focus-visible: 2px high-contrast focus ring that does not alter geometry.
+
+### 10A.5 Waveforms
+
+The waveform region is the strongest source of color in the upper workspace.
+
+**Geometry**
+
+- Deck A owns exactly the left 50%.
+- Deck B owns exactly the right 50%.
+- Each deck has one main scrolling waveform and one compact overview below it.
+- A thin neutral divider marks the center boundary.
+- Controls such as GRID / BEAT / PHRASE / zoom live within the corresponding deck lane, not across both decks.
+
+**Deck A waveform palette**
+
+Use a cool spectral progression dominated by:
+- blue;
+- cyan;
+- teal;
+- green;
+- occasional yellow cue/energy highlights.
+
+**Deck B waveform palette**
+
+Use a warm/violet spectral progression dominated by:
+- violet;
+- magenta;
+- pink;
+- orange highlights.
+
+The waveform should remain legible against near-black without using opaque rectangular fills behind every sample.
+
+Playhead:
+- bright red or high-contrast red-orange;
+- 2–3px authored width;
+- extends through the primary waveform lane;
+- cue/beat markers remain visually secondary.
+
+Overview:
+- lower contrast than the primary waveform;
+- selection/viewport region gets a deck-colored translucent outline/fill;
+- overview height approximately 20–24px.
+
+### 10A.6 Deck frames and identity
+
+Each deck uses a narrow identity accent rather than flooding the whole panel with color.
+
+Deck A:
+- blue left edge/accent line;
+- blue deck badge;
+- blue jog ring;
+- blue tempo/fader highlights;
+- blue selected/active deck states.
+
+Deck B:
+- violet right edge/accent line;
+- violet deck badge;
+- violet jog ring;
+- violet tempo/fader highlights;
+- violet selected/active deck states.
+
+Recommended deck treatment:
+
+```css
+.dj-deck[data-deck="A"] {
+  border-left: 3px solid var(--dj-deck-a);
+}
+
+.dj-deck[data-deck="B"] {
+  border-right: 3px solid var(--dj-deck-b);
+}
+```
+
+Do not put a bright blue/purple border around every sub-panel. Accent color should communicate ownership and active state, not become background chrome.
+
+### 10A.7 Track identity header
+
+The mock-up uses a dense two-line metadata hierarchy:
+
+Primary:
+- title, semibold/bold, white;
+- time remaining, monospaced or tabular numerals, white.
+
+Secondary:
+- artist, muted;
+- BPM, Camelot/key, musical key, muted-to-medium contrast;
+- elapsed/total time smaller than remaining time.
+
+Artwork:
+- approximately 52–58px square;
+- 4px radius;
+- no heavy shadow;
+- preserve cover aspect ratio.
+
+Deck badge:
+- approximately 50–58px square;
+- strong deck color;
+- white A/B label;
+- should remain visually aligned with artwork height.
+
+Overflow actions should use a compact ellipsis button rather than adding permanent labels.
+
+### 10A.8 Buttons and segmented controls
+
+Buttons should feel like hardware-console controls translated to a desktop UI.
+
+Base:
+- height 30–34px for compact secondary controls;
+- 38–44px for primary transport controls;
+- radius 4–6px;
+- 1px border;
+- dark neutral fill;
+- small vertical highlight or inset edge is acceptable;
+- no pill-shaped controls except where semantically useful.
+
+States:
+- hover: surface lightens;
+- pressed/selected: accent fill or accent border;
+- disabled: reduced text contrast, no glow;
+- focus-visible: explicit ring;
+- toggles use `aria-pressed`.
+
+Deck-colored selection:
+- blue for A-owned controls;
+- violet for B-owned controls.
+
+Global selection:
+- violet primary accent.
+
+Semantic actions:
+- Play = green;
+- Hot Cue pads = orange;
+- Key/analysis confirmed state = green;
+- Record/critical destructive action = red.
+
+### 10A.9 Transport and hot cues
+
+The bottom of each deck should visually resemble the mock-up:
+
+- eight hot-cue pads in one horizontal row;
+- cue pads use saturated orange with white numerals;
+- cue-pad spacing approximately 4–6px;
+- transport row immediately below;
+- Play is the strongest control and uses green;
+- Cue / previous / Sync remain dark neutral unless active;
+- settings and overflow controls remain visually secondary.
+
+Primary transport target height: 42–46px.
+
+Avoid using deck blue/violet as the Play color. The green Play state is intentionally cross-deck and semantic.
+
+### 10A.10 Jog wheels
+
+The jog wheels should become a visual anchor, but not exceed the deck's available height.
+
+Target styling:
+
+- dark platter body;
+- concentric neutral rings;
+- Deck A blue illuminated outer/progress ring;
+- Deck B violet illuminated outer/progress ring;
+- large centered BPM;
+- smaller pitch percentage / beat-length line;
+- elapsed/current time as a third hierarchy level;
+- small deck-color position marker on the ring;
+- subtle inner shadow for depth;
+- no photorealistic metal texture.
+
+The jog renderer/component should take deck color from tokens, not hard-code separate bespoke styling.
+
+### 10A.11 Tempo, EQ, gain and meters
+
+Faders:
+- narrow dark track;
+- light gray/silver handle;
+- active fill uses deck identity color where appropriate;
+- scale labels are subdued.
+
+EQ/gain knobs:
+- dark rotary body;
+- thin silver/gray outer ring;
+- white indicator line;
+- deck accent may be used only for active/focused state.
+
+Meters:
+- preserve conventional green → yellow → orange/red level progression;
+- background meter slots should remain near-black;
+- labels use tabular numerals where practical.
+
+### 10A.12 FX modules
+
+Each deck-local FX row should match the mock-up's compact modular hardware aesthetic.
+
+Core modules:
+- Filter;
+- Delay;
+- Reverb;
+- Flanger.
+
+Each module:
+- shared dark surface;
+- small uppercase label;
+- 2–3 rotary knobs;
+- parameter labels beneath knobs;
+- 1px separation between modules;
+- selected/engaged effect may use a deck-colored top border or label accent.
+
+Do not render every FX module as an independent floating card with large margins.
+
+### 10A.13 Mixer styling
+
+The mixer is a neutral center anchor between two colored decks.
+
+Rules:
+
+- primarily neutral dark surfaces;
+- A channel labeling/highlights in blue;
+- B channel labeling/highlights in violet;
+- master controls remain neutral;
+- meters supply their own semantic color;
+- crossfader track visually transitions from A blue to B violet;
+- cue-mix row uses A/MIX/B labeling and headphone icons;
+- selected center mode/tab is clear but not brighter than Play;
+- sampler pads are compact and visually subordinate to deck transport.
+
+The mixer should never visually compete with the two jog wheels for dominance.
+
+### 10A.14 Library
+
+The mock-up's library is a dense professional media table, not a consumer card browser.
+
+Target:
+
+- very dark table background;
+- left navigation rail;
+- compact search bar;
+- 30–34px row height;
+- small artwork thumbnails;
+- sortable column headers;
+- subtle alternating/hover row state;
+- selected row uses restrained deck/global accent treatment;
+- BPM, key, Camelot, time aligned for scanning;
+- stems represented by small colored availability indicators;
+- library surface must overlay/open without moving deck geometry.
+
+### 10A.15 Typography
+
+Use the application's existing sans-serif stack unless a bundled UI font already exists. Do not introduce a new external runtime font dependency solely for this refactor.
+
+Recommended hierarchy at authored size:
+
+- top navigation: 12–13px / 600;
+- track title: 18–20px / 700;
+- artist: 12–13px / 500;
+- remaining time: 18–20px / 700, tabular numerals;
+- deck metadata: 12–13px / 500;
+- control labels: 10–12px / 600;
+- FX parameter labels: 9–10px / 600;
+- mixer labels: 10–12px / 600;
+- library rows: 11–12px / 400–500.
+
+Use:
+```css
+font-variant-numeric: tabular-nums;
+```
+for BPM, time, meter scales, tempo values, and other rapidly changing numeric readouts.
+
+### 10A.16 Spacing and density
+
+Use a 4px base spacing unit for DJv2.
+
+Recommended authored spacing:
+- 4px: internal micro-gap;
+- 6–8px: control-to-control;
+- 8px: panel padding in dense regions;
+- 10–12px: track identity padding;
+- 12px: major component group separation.
+
+Do not use generic application spacing such as 20–24px inside performance controls unless required for touch/accessibility.
+
+### 10A.17 Borders, shadows and glow
+
+Borders:
+- 1px neutral borders for most components;
+- 2–3px deck accent only on major identity edges/active controls.
+
+Shadows:
+- shallow inset or 1–2px depth cues only;
+- avoid large blurred floating-card shadows.
+
+Glow:
+- reserve for small active indicators, jog rings, and focus/selected state;
+- avoid persistent neon glow around whole panels.
+
+### 10A.18 Interaction animation
+
+Keep motion short and functional:
+
+- hover/press transitions: 80–120ms;
+- drawer/popover: 120–180ms;
+- no spring/bounce animation on primary DJ controls;
+- meters, playheads and waveform animation follow real-time engine state;
+- respect `prefers-reduced-motion`.
+
+### 10A.19 Visual acceptance criteria
+
+A visual-regression pass should compare implementation screenshots to `docs/assets/djv2-ui-target.png`.
+
+The implementation should be considered visually converged when:
+
+- canvas remains near-black, with clearly tiered dark surfaces;
+- Deck A reads blue and Deck B reads violet without oversaturating entire panels;
+- the top waveform region is visually split at exactly the mixer centerline;
+- the waveform is the dominant color field above the decks;
+- Play controls are green and hot cues orange on both decks;
+- track headers, FX racks, jogs, mixer and library have the same relative hierarchy as the reference;
+- controls look compact and hardware-inspired rather than generic web cards;
+- mixer remains neutral and narrower than either deck;
+- both decks are visually symmetric;
+- the library remains dense and table-oriented;
+- no legacy styling override introduces incompatible radii, spacing, background colors, or typography.
+
+### 10A.20 Implementation guidance
+
+Prefer implementing these rules through shared variables and primitives rather than one-off utility-class overrides.
+
+Recommended additions:
+
+- `DJButton` variants: neutral, global-primary, deck, play, hotcue, danger;
+- `DJPanel` / shared panel utility;
+- `DJKnob` token-driven deck accent;
+- `DJFader` token-driven accent;
+- `DJDeckThemeProvider` or simple CSS data-attribute inheritance if needed;
+- waveform palette constants shared by Canvas and WebGL renderers.
+
+The visual token layer should live close to the existing DJ tokens in `index.css`. Renderer-specific waveform colors should reference a shared TypeScript palette module when CSS variables cannot be consumed efficiently from the render loop.
+
+---
+
 ## 11. Responsive and resolution behavior
 
 Keep the existing fixed authored canvas and proportional scaling approach for now. It is already regression-tested and provides predictable geometry.
@@ -628,12 +1102,18 @@ Preserve these patterns:
 
 ### Phase 5 — Visual polish
 
-1. Normalize typography.
-2. Normalize button heights and radii.
-3. Simplify color hierarchy.
-4. Align jog, hot cues, transport, and deck identity colors.
-5. Remove obsolete global CSS overrides.
-6. Tighten mixer layout and crossfader settings.
+Implement against the committed reference image and Section 10A, not against ad-hoc component defaults.
+
+1. Introduce/migrate the shared DJ color tokens.
+2. Normalize typography and tabular numeric readouts.
+3. Normalize button heights, borders, radii, hover, active and focus states.
+4. Apply consistent Deck A blue / Deck B violet ownership styling.
+5. Apply green Play and orange Hot Cue semantic styling.
+6. Align waveform palettes, jog rings, tempo/fader accents, and mixer channel identity.
+7. Normalize dark-surface elevation across decks, mixer, FX and library.
+8. Remove obsolete/conflicting global CSS overrides.
+9. Tighten mixer layout and crossfader settings.
+10. Capture screenshots against `docs/assets/djv2-ui-target.png` at supported resolutions.
 
 ### Phase 6 — Regression hardening
 
