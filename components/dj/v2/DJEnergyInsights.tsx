@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { getDJAudioEngine, type SynchronizedPreviewSources } from '../../../lib/djAudio';
 import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsDeckSnapshot, stillOwnsPreviewRoute } from '../../../lib/testMixPreviewGuard';
+import { canAcceptMixNextCandidate, stillOwnsMixNextAcceptance, type MixNextAcceptanceOwnership } from '../../../lib/mixNextAcceptanceGuard';
+import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
 import type { DeckState } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
@@ -81,8 +83,15 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [genre, setGenre] = useState('');
   const [notRecentlyPlayedHours, setNotRecentlyPlayedHours] = useState('');
   const [previewMessage, setPreviewMessage] = useState('');
+  const [acceptanceMessage, setAcceptanceMessage] = useState('');
+  const [acceptanceBusy, setAcceptanceBusy] = useState(false);
+  const acceptanceBusyRef = useRef(false);
   const previewRef = useRef<TestMixPreviewSession | null>(null);
   const previewTokenRef = useRef(0);
+  const acceptanceTokenRef = useRef(0);
+  const acceptanceMountedRef = useRef(false);
+  const acceptanceViewRef = useRef<{ deck?: 'A' | 'B'; trackID?: string; candidateId: string | null }>({ candidateId: null });
+  const loadTrack = useDJAudioEngineActions().loadTrack;
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
   const analysisStatus = useStore(state => deck === 'A' ? state.djDeckA.analysisStatus : state.djDeckB.analysisStatus);
   const setHotCue = useStore(state => state.setHotCue);
@@ -165,6 +174,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   };
   const top = recommendations?.recommendations[0];
   const candidateTrack = top ? librarySongs.find(song => song.id === top.songId) : undefined;
+  acceptanceViewRef.current = { deck, trackID, candidateId: candidateTrack?.id ?? null };
   const engine = getDJAudioEngine();
   const headphoneDeviceId = engine.getHeadphoneOutputDeviceId();
   const mainDeviceId = engine.getMainOutputDeviceId();
@@ -185,6 +195,25 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
           : masterCueEnabled || engine.getMasterCueEnabled() ? 'Turn off master monitoring in headphones first.'
             : autoGainEnabled ? 'Turn off auto-gain for the preview deck first.'
               : !hasSeparateHeadphoneRoute(headphoneDeviceId, mainDeviceId) ? 'Select a separate headphone output device first.' : '';
+
+  const acceptanceTargetState = previewDeckState;
+  const acceptanceAllowed = !!deck && !!candidateTrack && engine.initialized
+    && canAcceptMixNextCandidate({
+      targetDeck: previewDeckID, targetState: acceptanceTargetState,
+      loadedTrackId: engine.getDeckLoadedTrackId(previewDeckID), engineLoading: engine.isDeckLoading(previewDeckID),
+      engineLoaded: engine.isLoaded(previewDeckID),
+      enginePlaying: engine.isPlaying(previewDeckID), engineCueEnabled: engine.getCueEnabled(previewDeckID),
+      crossfader, masterCueEnabled: masterCueEnabled || engine.getMasterCueEnabled(),
+    });
+  const acceptanceReason = !deck ? 'A loaded reference deck is required.'
+    : !candidateTrack ? 'Candidate is no longer in the local library.'
+      : !engine.initialized ? 'Initialize audio before loading a candidate.'
+        : engine.isDeckLoading(previewDeckID) ? 'Another load is already in progress on the opposite deck.'
+          : !isPristineEmptyPreviewDeck(acceptanceTargetState) || engine.isLoaded(previewDeckID)
+          || engine.getDeckLoadedTrackId(previewDeckID) !== null ? 'The opposite deck must be empty and unused.'
+          : !isPreviewDeckOffAir(previewDeckID, crossfader) ? 'Move the opposite deck fully off the master crossfader.'
+            : acceptanceTargetState.cueEnabled || engine.getCueEnabled(previewDeckID) ? 'Turn off headphone cue on the opposite deck.'
+              : masterCueEnabled || engine.getMasterCueEnabled() ? 'Turn off master monitoring before loading.' : '';
 
   const discardPreviewSession = (session: TestMixPreviewSession) => {
     if (session.timeout !== undefined) window.clearTimeout(session.timeout);
@@ -243,10 +272,109 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const finishPreviewRef = useRef(finishPreview);
   finishPreviewRef.current = finishPreview;
 
+  useEffect(() => {
+    acceptanceMountedRef.current = true;
+    return () => {
+      acceptanceMountedRef.current = false;
+      ++acceptanceTokenRef.current;
+    };
+  }, []);
+
   useEffect(() => () => {
     const session = previewRef.current;
     if (session) finishPreviewRef.current(session.token, 'Test Mix stopped.');
   }, []);
+
+  const acceptCandidate = async () => {
+    if (acceptanceBusyRef.current) return;
+    if (previewRef.current) { setAcceptanceMessage('Stop Test Mix before loading a candidate.'); return; }
+    const audio = getDJAudioEngine();
+    const state = useStore.getState();
+    const latest = acceptanceViewRef.current;
+    const target = previewDeckID;
+    const targetState = target === 'A' ? state.djDeckA : state.djDeckB;
+    const referenceState = deck === 'A' ? state.djDeckA : deck === 'B' ? state.djDeckB : null;
+    const candidate = candidateTrack && state.songs.find(song => song.id === candidateTrack.id);
+    if (!deck || !trackID || !candidate || latest.deck !== deck || latest.trackID !== trackID || latest.candidateId !== candidate.id) {
+      setAcceptanceMessage('Candidate or reference changed. Refresh recommendations and choose the current top result.');
+      return;
+    }
+    if (!audio.initialized || !canAcceptMixNextCandidate({
+      targetDeck: target, targetState,
+      loadedTrackId: audio.getDeckLoadedTrackId(target), engineLoading: audio.isDeckLoading(target),
+      engineLoaded: audio.isLoaded(target),
+      enginePlaying: audio.isPlaying(target), engineCueEnabled: audio.getCueEnabled(target),
+      crossfader: state.djMixer.crossfader,
+      masterCueEnabled: state.djMixer.masterCueEnabled || audio.getMasterCueEnabled(),
+    })) {
+      setAcceptanceMessage(acceptanceReason || 'The opposite deck is no longer available for acceptance.');
+      return;
+    }
+    if (!referenceState?.track || referenceState.track.id !== trackID || !audio.isLoaded(deck)
+      || audio.getDeckLoadedTrackId(deck) !== trackID) {
+      setAcceptanceMessage('The selected reference track is no longer loaded on its deck.');
+      return;
+    }
+
+    const ownership: MixNextAcceptanceOwnership = {
+      targetDeck: target, referenceTrackId: trackID, candidateId: candidate.id,
+      crossfader: state.djMixer.crossfader,
+      targetCueEnabled: audio.getCueEnabled(target),
+      masterCueEnabled: state.djMixer.masterCueEnabled || audio.getMasterCueEnabled(),
+    };
+    const generationBeforeLoad = audio.getDeckLoadGeneration(target);
+    const targetBaseline = copyDeckSnapshot(targetState);
+    const token = ++acceptanceTokenRef.current;
+    acceptanceBusyRef.current = true;
+    setAcceptanceBusy(true);
+    setAcceptanceMessage(`Loading ${candidate.title} to Deck ${target}…`);
+
+    const stillOwned = () => {
+      if (!acceptanceMountedRef.current || acceptanceTokenRef.current !== token) return false;
+      const current = useStore.getState();
+      const currentReference = deck === 'A' ? current.djDeckA : current.djDeckB;
+      const currentTarget = target === 'A' ? current.djDeckA : current.djDeckB;
+      const currentMixerCue = current.djMixer.masterCueEnabled || audio.getMasterCueEnabled();
+      const live = acceptanceViewRef.current;
+      const routeAndIdentityStillOwned = live.deck === deck && live.trackID === trackID && live.candidateId === candidate.id
+        && current.songs.some(song => song.id === candidate.id)
+        && currentReference.track?.id === ownership.referenceTrackId
+        && audio.isLoaded(deck) && audio.getDeckLoadedTrackId(deck) === ownership.referenceTrackId
+        && stillOwnsMixNextAcceptance({
+          ownership,
+          referenceTrackId: currentReference.track?.id ?? null,
+          candidateId: live.candidateId,
+          crossfader: current.djMixer.crossfader,
+          targetCueEnabled: audio.getCueEnabled(target) || currentTarget.cueEnabled,
+          masterCueEnabled: currentMixerCue,
+          targetIsStillEmpty: currentTarget.track === null && !currentTarget.isPlaying && !currentTarget.cueEnabled
+            && stillOwnsDeckSnapshot(currentTarget, targetBaseline),
+        });
+      return routeAndIdentityStillOwned;
+    };
+
+    try {
+      await loadTrack(target, candidate, { expectedLoadGeneration: generationBeforeLoad, shouldCommit: stillOwned });
+      const after = useStore.getState();
+      const loadedTarget = target === 'A' ? after.djDeckA : after.djDeckB;
+      if (loadedTarget.track?.id === candidate.id && audio.getDeckLoadedTrackId(target) === candidate.id) {
+        if (acceptanceMountedRef.current && acceptanceTokenRef.current === token) {
+          setAcceptanceMessage(`Loaded ${candidate.title} on Deck ${target}. It remains stopped and ready when you are.`);
+        }
+      } else if (acceptanceMountedRef.current && acceptanceTokenRef.current === token) {
+        setAcceptanceMessage('Load canceled: the candidate, route, or deck ownership changed before it could be committed.');
+      }
+    } catch {
+      if (acceptanceMountedRef.current && acceptanceTokenRef.current === token) {
+        setAcceptanceMessage('Could not load the candidate. The opposite deck was left in its current state.');
+      }
+    } finally {
+      if (acceptanceTokenRef.current === token) {
+        acceptanceBusyRef.current = false;
+        if (acceptanceMountedRef.current) setAcceptanceBusy(false);
+      }
+    }
+  };
 
   const testCandidate = async () => {
     if (!deck || !candidateTrack || !previewAllowed || previewRef.current) {
@@ -464,11 +592,18 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     {top && <details className="mt-1 text-neutral-500">
       <summary className="cursor-pointer text-violet-300">Recommended next: {top.title} — {top.artist} ({Math.round(top.score * 100)}%)</summary>
       <div className="mt-2 flex items-center gap-2 text-neutral-300">
+        <button type="button" disabled={!acceptanceAllowed || acceptanceBusy || !!previewRef.current}
+          onClick={() => void acceptCandidate()}
+          title={acceptanceBusy ? 'Candidate load is in progress.' : !acceptanceAllowed ? acceptanceReason : 'Load this candidate onto the empty, off-air opposite deck. It will remain stopped.'}
+          className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50">
+          {acceptanceBusy ? 'Loading candidate…' : `Load to Deck ${previewDeckID}`}
+        </button>
         {previewRef.current ? <button type="button" onClick={() => finishPreview(previewRef.current!.token, 'Test Mix stopped; both original decks remain unchanged.')}
           className="rounded border border-amber-500/40 px-2 py-1 text-amber-200">Stop Test Mix</button>
           : <button type="button" disabled={!previewAllowed || !!previewRef.current} onClick={() => void testCandidate()}
             title={previewRef.current ? 'Another Test Mix preview is active.' : !previewAllowed ? previewReason : 'Detached headphone copies audition both cue regions; browser-coordinated start is not sample-accurate, and both live deck states remain untouched.'}
             className="rounded border border-violet-500/40 px-2 py-1 text-violet-200 disabled:cursor-not-allowed disabled:opacity-50">Test Mix in headphones</button>}
+        {acceptanceMessage && <span role="status">{acceptanceMessage}</span>}
         {previewMessage && <span role="status">{previewMessage}</span>}
       </div>
       <ul className="mt-1 space-y-0.5 pl-3">

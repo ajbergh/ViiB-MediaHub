@@ -95,6 +95,24 @@ describe('DJAudioEngine DeckSource integration', () => {
     expect(engine.getDeckLoadedTrackId('A')).toBeNull();
   });
 
+  it('marks a pending load as unavailable and ignores it after ownership is unloaded', async () => {
+    const engine = new DJAudioEngine();
+    const { source } = fakeSource();
+    let resolveLoad: ((url: string) => void) | undefined;
+    source.load = vi.fn(() => new Promise<string>(resolve => { resolveLoad = resolve; }));
+    Object.assign(engine, { deckSourceB: source });
+
+    const pending = engine.loadTrack('B', { id: 'candidate', title: 'Candidate' } as never);
+    expect(engine.isDeckLoading('B')).toBe(true);
+    expect(engine.getDeckLoadedTrackId('B')).toBeNull();
+    engine.unloadDeck('B');
+    expect(engine.isDeckLoading('B')).toBe(false);
+    resolveLoad?.('/candidate.mp3');
+    await pending;
+    expect(engine.getDeckLoadedTrackId('B')).toBeNull();
+    expect(engine.isDeckLoading('B')).toBe(false);
+  });
+
   it('advances the stem-control ownership epoch for user mixer edits', async () => {
     const engine = new DJAudioEngine();
     expect(engine.getStemControlGeneration('B')).toBe(0);

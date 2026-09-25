@@ -45,13 +45,20 @@ function isSupersededTrackLoad(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
+export interface GuardedDeckLoad {
+  /** Generation observed before the explicit load action started. */
+  expectedLoadGeneration: number;
+  /** Rechecked immediately before and after audio loading, before store commit. */
+  shouldCommit: () => boolean;
+}
+
 export interface UseDJAudioEngineReturn {
   /** Initialize the audio engine (must be called after user interaction) */
   initialize: () => Promise<void>;
   /** Whether the engine is initialized */
   isInitialized: boolean;
   /** Load a track to a deck */
-  loadTrack: (deck: DeckId, track: Song) => Promise<void>;
+  loadTrack: (deck: DeckId, track: Song, guard?: GuardedDeckLoad) => Promise<void>;
   /** Toggle play/pause for a deck */
   togglePlay: (deck: DeckId) => Promise<void>;
   /** Seek to position in seconds */
@@ -1014,15 +1021,35 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     );
   }, []);
 
-  const loadTrack = useCallback(async (deck: DeckId, track: Song) => {
+  const loadTrack = useCallback(async (deck: DeckId, track: Song, guard?: GuardedDeckLoad) => {
     const engine = getDJAudioEngine();
+    if (guard && (!engine.initialized || engine.getDeckLoadGeneration(deck) !== guard.expectedLoadGeneration || !guard.shouldCommit())) return;
     if (!engine.initialized) await initialize();
 
     try {
       await engine.loadTrack(deck, track);
     } catch (error) {
+      if (guard) {
+        if (engine.getDeckLoadGeneration(deck) === guard.expectedLoadGeneration + 1
+          && engine.getDeckLoadedTrackId(deck) === null) {
+          engine.unloadDeck(deck);
+          const current = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+          if (current.track === null) useStore.getState().setDeckDuration(deck, 0);
+        }
+        if (isSupersededTrackLoad(error)) return;
+      }
       if (isSupersededTrackLoad(error)) return;
       throw error;
+    }
+    if (guard && (engine.getDeckLoadGeneration(deck) !== guard.expectedLoadGeneration + 1
+      || engine.getDeckLoadedTrackId(deck) !== track.id || !engine.isLoaded(deck) || !guard.shouldCommit())) {
+      if (engine.getDeckLoadGeneration(deck) === guard.expectedLoadGeneration + 1
+        && engine.getDeckLoadedTrackId(deck) === track.id) {
+        engine.unloadDeck(deck);
+        const current = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+        if (current.track === null) useStore.getState().setDeckDuration(deck, 0);
+      }
+      return;
     }
     useStore.getState().loadTrackToDeck(deck, track);
 

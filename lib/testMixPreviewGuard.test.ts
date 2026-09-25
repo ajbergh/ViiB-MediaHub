@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckState } from '../slices/djMixerSlice';
 import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsDeckSnapshot, stillOwnsOccupiedPreviewBaseline, stillOwnsPreviewDeck, stillOwnsPreviewRoute, stillOwnsPreviewTransport } from './testMixPreviewGuard';
+import { canAcceptMixNextCandidate, stillOwnsMixNextAcceptance, type MixNextAcceptanceOwnership } from './mixNextAcceptanceGuard';
 
 function deck(overrides: Partial<DeckState> = {}): DeckState {
   return {
@@ -82,6 +83,37 @@ describe('Test Mix preview guards', () => {
   it('retains preview ownership only while no explicit transport command has changed', () => {
     expect(stillOwnsPreviewTransport(12, 12)).toBe(true);
     expect(stillOwnsPreviewTransport(12, 13)).toBe(false);
+  });
+
+  it('allows Mix Next acceptance only into an empty, unloaded, off-air and uncued target', () => {
+    const safe = {
+      targetDeck: 'B' as const, targetState: deck(), loadedTrackId: null, engineLoaded: false,
+      engineLoading: false, enginePlaying: false, engineCueEnabled: false, crossfader: -1, masterCueEnabled: false,
+    };
+    expect(canAcceptMixNextCandidate(safe)).toBe(true);
+    expect(canAcceptMixNextCandidate({ ...safe, targetState: deck({ track: { id: 'occupied' } as DeckState['track'] }) })).toBe(false);
+    expect(canAcceptMixNextCandidate({ ...safe, loadedTrackId: 'unpublished-source', engineLoaded: true })).toBe(false);
+    expect(canAcceptMixNextCandidate({ ...safe, engineLoading: true })).toBe(false);
+    expect(canAcceptMixNextCandidate({ ...safe, targetState: deck({ cueEnabled: true }) })).toBe(false);
+    expect(canAcceptMixNextCandidate({ ...safe, engineCueEnabled: true })).toBe(false);
+    expect(canAcceptMixNextCandidate({ ...safe, crossfader: -0.99 })).toBe(false);
+  });
+
+  it('aborts Mix Next acceptance when candidate, reference, route or cue ownership changes during load', () => {
+    const ownership: MixNextAcceptanceOwnership = {
+      targetDeck: 'B', referenceTrackId: 'reference', candidateId: 'candidate',
+      crossfader: -1, targetCueEnabled: false, masterCueEnabled: false,
+    };
+    const current = {
+      ownership, referenceTrackId: 'reference', candidateId: 'candidate', crossfader: -1,
+      targetCueEnabled: false, masterCueEnabled: false, targetIsStillEmpty: true,
+    };
+    expect(stillOwnsMixNextAcceptance(current)).toBe(true);
+    expect(stillOwnsMixNextAcceptance({ ...current, crossfader: 0 })).toBe(false);
+    expect(stillOwnsMixNextAcceptance({ ...current, candidateId: 'new-top-candidate' })).toBe(false);
+    expect(stillOwnsMixNextAcceptance({ ...current, referenceTrackId: 'replacement-reference' })).toBe(false);
+    expect(stillOwnsMixNextAcceptance({ ...current, targetCueEnabled: true })).toBe(false);
+    expect(stillOwnsMixNextAcceptance({ ...current, targetIsStillEmpty: false })).toBe(false);
   });
 
   it('ignores natural transport progress but detects either deck changing controls or source', () => {
