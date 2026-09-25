@@ -668,11 +668,15 @@ const DJModeV2Inner: React.FC = () => {
                       <DJLoopSection deck='A' />
                       <DJBeatJump deck='A' compact />
                       <DJStemControls deck='A' />
-                      {deckAHasGrid && <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='A' /> · Edit Grid</summary><div><DJBeatGridEdit deck='A' /></div></details>}
+                      {deckAHasGrid && <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='A' /> · Edit Grid</summary><div><DJErrorBoundary componentName='Deck A beat grid editor'><DJBeatGridEdit deck='A' /></DJErrorBoundary></div></details>}
                   </div>
-                  <DJEnergyInsights trackID={deckATrack?.id} deck='A' />
-                  <DJKeyVerificationKeyboard trackID={deckATrack?.id} deck='A' />
-                  <DJAnalysisCueEditor trackID={deckATrack?.id} deck='A' />
+                  <DJErrorBoundary componentName='Deck A analysis widgets'>
+                      <>
+                          <DJEnergyInsights trackID={deckATrack?.id} deck='A' />
+                          <DJKeyVerificationKeyboard trackID={deckATrack?.id} deck='A' />
+                          <DJAnalysisCueEditor trackID={deckATrack?.id} deck='A' />
+                      </>
+                  </DJErrorBoundary>
                   {viewMode === 'racks' && <DJDeckOverview deck='A' />}
             </div>
 
@@ -918,14 +922,18 @@ const DJModeV2Inner: React.FC = () => {
                   </div>
                   {/* Controls Row: Grid + Beat Jump + Loop (mirrored, icon-only) */}
                   <div className='flex items-center gap-3 px-3 py-1 justify-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
-                      {deckBHasGrid && <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='B' /> · Edit Grid</summary><div><DJBeatGridEdit deck='B' /></div></details>}
+                      {deckBHasGrid && <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='B' /> · Edit Grid</summary><div><DJErrorBoundary componentName='Deck B beat grid editor'><DJBeatGridEdit deck='B' /></DJErrorBoundary></div></details>}
                       <DJBeatJump deck='B' compact />
                       <DJStemControls deck='B' />
                       <DJLoopSection deck='B' />
                   </div>
-                  <DJEnergyInsights trackID={deckBTrack?.id} deck='B' />
-                  <DJKeyVerificationKeyboard trackID={deckBTrack?.id} deck='B' />
-                      <DJAnalysisCueEditor trackID={deckBTrack?.id} deck='B' />
+                  <DJErrorBoundary componentName='Deck B analysis widgets'>
+                      <>
+                          <DJEnergyInsights trackID={deckBTrack?.id} deck='B' />
+                          <DJKeyVerificationKeyboard trackID={deckBTrack?.id} deck='B' />
+                          <DJAnalysisCueEditor trackID={deckBTrack?.id} deck='B' />
+                      </>
+                  </DJErrorBoundary>
                   {viewMode === 'racks' && <DJDeckOverview deck='B' />}
             </div>
 

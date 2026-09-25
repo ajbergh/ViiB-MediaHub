@@ -685,7 +685,19 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	response := EnergyFeaturesResponse{SongID: songID, LoudnessKind: result.LoudnessKind, PeakKind: result.PeakKind, ChannelScope: result.ChannelScope, Standard: result.Standard, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: result.Energy, Sections: result.Sections, CueSuggestions: result.CueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion}
+	energy := result.Energy
+	if energy == nil {
+		energy = []features.EnergyPoint{}
+	}
+	sections := result.Sections
+	if sections == nil {
+		sections = []features.Section{}
+	}
+	cueSuggestions := result.CueSuggestions
+	if cueSuggestions == nil {
+		cueSuggestions = []features.CueSuggestion{}
+	}
+	response := EnergyFeaturesResponse{SongID: songID, LoudnessKind: result.LoudnessKind, PeakKind: result.PeakKind, ChannelScope: result.ChannelScope, Standard: result.Standard, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: energy, Sections: sections, CueSuggestions: cueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion}
 	measurement, measurementErr := a.db.GetTrackAnalysisArtifact(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
 	if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) {
 		respondError(w, http.StatusInternalServerError, measurementErr.Error())

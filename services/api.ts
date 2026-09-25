@@ -196,6 +196,15 @@ export interface TrackEnergyFeatures {
   algorithmVersion: string;
 }
 
+export function normalizeTrackEnergyFeatures(value: TrackEnergyFeatures): TrackEnergyFeatures {
+  return {
+    ...value,
+    energy: Array.isArray(value?.energy) ? value.energy : [],
+    sections: Array.isArray(value?.sections) ? value.sections : [],
+    cueSuggestions: Array.isArray(value?.cueSuggestions) ? value.cueSuggestions : [],
+  };
+}
+
 export type AnalysisCueApplyMode = 'fill-empty' | 'replace-generated' | 'selected-only';
 
 export interface AnalysisCueCandidate extends DJHotCue {
@@ -1610,7 +1619,7 @@ export const api = {
 
   async getTrackEnergyFeatures(trackId: string): Promise<TrackEnergyFeatures> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/energy`, { cache: 'no-store' });
-    return handleResponse<TrackEnergyFeatures>(response);
+    return normalizeTrackEnergyFeatures(await handleResponse<TrackEnergyFeatures>(response));
   },
 
   async getAnalysisCues(trackId: string): Promise<AnalysisCueList> {
