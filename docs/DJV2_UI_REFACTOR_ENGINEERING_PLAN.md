@@ -10,11 +10,11 @@
 
 The implementation target for this refactor is the approved DJv2 UI mock-up committed at:
 
-`docs/assets/djv2-ui-target.png`
+`docs/assets/djv2-ui-target.jpg`
 
-![DJv2 target UI mock-up](assets/djv2-ui-target.png)
+![DJv2 target UI mock-up](assets/djv2-ui-target.jpg)
 
-**Reference image:** 1720×914 desktop composition. The image is a visual target for hierarchy, density, palette, component styling, and deck/mixer balance; it is not a literal pixel-coordinate specification. Structural acceptance criteria in this document take precedence when adapting the design to supported resolutions.
+**Reference image:** the approved source mock-up is 1720×914. The repository copy is an optimized documentation preview to keep the repo lightweight. Use it as the visual target for hierarchy, density, palette, component styling, and deck/mixer balance; it is not a literal pixel-coordinate specification. Structural acceptance criteria in this document take precedence when adapting the design to supported resolutions.
 
 ---
 
@@ -951,7 +951,7 @@ Keep motion short and functional:
 
 ### 10A.19 Visual acceptance criteria
 
-A visual-regression pass should compare implementation screenshots to `docs/assets/djv2-ui-target.png`.
+A visual-regression pass should compare implementation screenshots to `docs/assets/djv2-ui-target.jpg`.
 
 The implementation should be considered visually converged when:
 
@@ -1113,7 +1113,7 @@ Implement against the committed reference image and Section 10A, not against ad-
 7. Normalize dark-surface elevation across decks, mixer, FX and library.
 8. Remove obsolete/conflicting global CSS overrides.
 9. Tighten mixer layout and crossfader settings.
-10. Capture screenshots against `docs/assets/djv2-ui-target.png` at supported resolutions.
+10. Capture screenshots against `docs/assets/djv2-ui-target.jpg` at supported resolutions.
 
 ### Phase 6 — Regression hardening
 
