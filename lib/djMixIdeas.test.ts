@@ -3,6 +3,7 @@ import {
   deleteDJMixIdea,
   djMixIdeaKey,
   DJ_MIX_IDEAS_LIMIT,
+  DJ_MIX_IDEAS_MAX_STORAGE_CHARS,
   DJ_MIX_IDEAS_STORAGE_KEY,
   listDJMixIdeas,
   saveDJMixIdea,
@@ -74,6 +75,15 @@ describe('saved DJ Mix Next ideas', () => {
       { ...makeIdea(), schemaVersion: 1, createdAt: new Date(1000).toISOString() },
     ] }));
     expect(listDJMixIdeas(storage)).toHaveLength(1);
+  });
+
+  it('rejects oversized localStorage payloads before reading their saved records', () => {
+    const storage = new MemoryStorage();
+    const valid = JSON.stringify({ schemaVersion: 1, ideas: [
+      { ...makeIdea(), schemaVersion: 1, createdAt: new Date(1000).toISOString() },
+    ] });
+    storage.setItem(DJ_MIX_IDEAS_STORAGE_KEY, `${' '.repeat(DJ_MIX_IDEAS_MAX_STORAGE_CHARS)}${valid}`);
+    expect(listDJMixIdeas(storage)).toEqual([]);
   });
 
   it('keeps storage within the configured idea limit', () => {

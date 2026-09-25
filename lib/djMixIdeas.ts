@@ -8,6 +8,7 @@ import type {
 export const DJ_MIX_IDEAS_STORAGE_KEY = 'viib.dj.mix-ideas.v1';
 export const DJ_MIX_IDEAS_SCHEMA_VERSION = 1;
 export const DJ_MIX_IDEAS_LIMIT = 50;
+export const DJ_MIX_IDEAS_MAX_STORAGE_CHARS = 1_000_000;
 
 export interface MixIdeaTrackSnapshot {
   trackId: string;
@@ -131,12 +132,12 @@ function readVector(value: unknown): TransitionVector | null {
 }
 
 function readComponents(value: unknown): TransitionComponent[] | null {
-  if (!Array.isArray(value) || value.length > 32) return null;
+  if (!Array.isArray(value) || value.length > 16) return null;
   const result: TransitionComponent[] = [];
   for (const raw of value) {
     const item = record(raw);
     const name = boundedText(item?.name, 64);
-    const rationale = boundedText(item?.rationale, 1024);
+    const rationale = boundedText(item?.rationale, 512);
     const score = finite(item?.score, 0, 1);
     const weight = finite(item?.weight, 0, 1);
     if (!name || !rationale || score === undefined || weight === undefined) return null;
@@ -193,7 +194,9 @@ export function sanitizeDJMixIdea(value: unknown): SavedDJMixIdea | null {
 
 export function listDJMixIdeas(storage: MixIdeaStorage): SavedDJMixIdea[] {
   try {
-    const parsed: unknown = JSON.parse(storage.getItem(DJ_MIX_IDEAS_STORAGE_KEY) ?? 'null');
+    const raw = storage.getItem(DJ_MIX_IDEAS_STORAGE_KEY);
+    if (!raw || raw.length > DJ_MIX_IDEAS_MAX_STORAGE_CHARS) return [];
+    const parsed: unknown = JSON.parse(raw);
     const root = record(parsed);
     if (!root || root.schemaVersion !== DJ_MIX_IDEAS_SCHEMA_VERSION || !Array.isArray(root.ideas)) return [];
     return root.ideas.slice(0, DJ_MIX_IDEAS_LIMIT).map(sanitizeDJMixIdea).filter((idea): idea is SavedDJMixIdea => !!idea);
@@ -203,7 +206,9 @@ export function listDJMixIdeas(storage: MixIdeaStorage): SavedDJMixIdea[] {
 }
 
 function writeDJMixIdeas(storage: MixIdeaStorage, ideas: SavedDJMixIdea[]): void {
-  storage.setItem(DJ_MIX_IDEAS_STORAGE_KEY, JSON.stringify({ schemaVersion: DJ_MIX_IDEAS_SCHEMA_VERSION, ideas: ideas.slice(0, DJ_MIX_IDEAS_LIMIT) }));
+  const serialized = JSON.stringify({ schemaVersion: DJ_MIX_IDEAS_SCHEMA_VERSION, ideas: ideas.slice(0, DJ_MIX_IDEAS_LIMIT) });
+  if (serialized.length > DJ_MIX_IDEAS_MAX_STORAGE_CHARS) throw new RangeError('Saved mix ideas exceed the storage limit');
+  storage.setItem(DJ_MIX_IDEAS_STORAGE_KEY, serialized);
 }
 
 function ideaKey(idea: Pick<SavedDJMixIdea, 'source' | 'candidate' | 'intent'>): string {

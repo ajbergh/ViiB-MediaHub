@@ -63,10 +63,10 @@ export function DJSavedMixIdeas({ currentIdea }: DJSavedMixIdeasProps) {
 
   return <section aria-label="Saved Mix Next ideas" className="mt-2 space-y-1 text-neutral-300">
     <div className="flex items-center gap-2">
-      <button type="button" disabled={!currentIdea || alreadySaved} onClick={save}
+      <button type="button" disabled={!currentIdea} onClick={save}
         title="Save a local snapshot of this recommendation and its evidence; no audio or deck state is stored."
         className="rounded border border-cyan-500/40 px-2 py-1 text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50">
-        {alreadySaved ? 'Idea saved' : 'Save mix idea'}
+        {alreadySaved ? 'Update saved idea' : 'Save mix idea'}
       </button>
       <span className="text-neutral-500">{ideas.length} saved on this device</span>
       {message && <span role="status" className="text-neutral-400">{message}</span>}
