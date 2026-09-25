@@ -129,6 +129,10 @@ export interface TrackAnalysisFeature {
   key?: string;
   camelotKey?: string;
   openKey?: string;
+  keyTonic?: number;
+  keyMode?: 'major' | 'minor';
+  measuredKeyTonic?: number;
+  measuredKeyMode?: 'major' | 'minor';
   keyConfidence?: number;
   keySource: 'unknown' | 'manual' | 'measured';
   energyLevel?: number;
@@ -1558,6 +1562,20 @@ export const api = {
    */
   async getTrackAnalysisFeature(trackId: string): Promise<TrackAnalysisFeature> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}`, { cache: 'no-store' });
+    return handleResponse<TrackAnalysisFeature>(response);
+  },
+
+  async updateTrackKey(trackId: string, key: { tonic: number; mode: 'major' | 'minor' }): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(key),
+    });
+    return handleResponse<TrackAnalysisFeature>(response);
+  },
+
+  async resetTrackKey(trackId: string): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, { method: 'DELETE' });
     return handleResponse<TrackAnalysisFeature>(response);
   },
 

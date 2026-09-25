@@ -32,6 +32,7 @@ import { DJWebGLWaveform } from '../components/dj/v2/webgl';
 import { DJJogWheel } from '../components/dj/v2/DJJogWheel';
 import { DJHotCuePad } from '../components/dj/v2/DJHotCuePad';
 import { DJAnalysisCueEditor } from '../components/dj/v2/DJAnalysisCueEditor';
+import { DJKeyVerificationKeyboard } from '../components/dj/v2/DJKeyVerificationKeyboard';
 import { DJTransportButtons } from '../components/dj/v2/DJTransportButtons';
 import { DJLoopSection } from '../components/dj/v2/DJLoopSection';
 import { DJHeadphoneMix } from '../components/dj/v2/DJHeadphoneMix';
@@ -670,6 +671,7 @@ const DJModeV2Inner: React.FC = () => {
                       {deckAHasGrid && <details className='dj-grid-editor'><summary><DJBeatGridStatus deck='A' /> · Edit Grid</summary><div><DJBeatGridEdit deck='A' /></div></details>}
                   </div>
                   <DJEnergyInsights trackID={deckATrack?.id} deck='A' />
+                  <DJKeyVerificationKeyboard trackID={deckATrack?.id} deck='A' />
                   <DJAnalysisCueEditor trackID={deckATrack?.id} deck='A' />
                   {viewMode === 'racks' && <DJDeckOverview deck='A' />}
             </div>
@@ -922,6 +924,7 @@ const DJModeV2Inner: React.FC = () => {
                       <DJLoopSection deck='B' />
                   </div>
                   <DJEnergyInsights trackID={deckBTrack?.id} deck='B' />
+                  <DJKeyVerificationKeyboard trackID={deckBTrack?.id} deck='B' />
                       <DJAnalysisCueEditor trackID={deckBTrack?.id} deck='B' />
                   {viewMode === 'racks' && <DJDeckOverview deck='B' />}
             </div>
