@@ -38,6 +38,30 @@ export function isPristineEmptyPreviewDeck(deck: DeckState): boolean {
     && deck.hotCues.length === 0 && !deck.cueEnabled && hasDefaultFX(deck);
 }
 
+/** Occupied preview is limited to a loaded, un-cued deck with a stable track identity. */
+export function isRestorableOccupiedPreviewDeck(deck: DeckState, loadedTrackId: string | null): boolean {
+  return !!deck.track && deck.track.id === loadedTrackId && !deck.cueEnabled && deck.analysisStatus !== 'loading';
+}
+
+/** Detect changes to user-owned mixer controls while the original deck is snapshotted. */
+export function stillOwnsOccupiedPreviewBaseline(deck: DeckState, baseline: DeckState): boolean {
+  return deck.track === baseline.track
+    && deck.volume === baseline.volume
+    && deck.eq.low === baseline.eq.low && deck.eq.mid === baseline.eq.mid && deck.eq.high === baseline.eq.high
+    && deck.cuePoint === baseline.cuePoint && deck.tempo === baseline.tempo
+    && deck.filter.enabled === baseline.filter.enabled && deck.filter.value === baseline.filter.value
+    && deck.loop.enabled === baseline.loop.enabled && deck.loop.start === baseline.loop.start
+    && deck.loop.end === baseline.loop.end && deck.loop.pendingIn === baseline.loop.pendingIn
+    && JSON.stringify(deck.hotCues) === JSON.stringify(baseline.hotCues)
+    && JSON.stringify(deck.fx) === JSON.stringify(baseline.fx)
+    && deck.cueEnabled === baseline.cueEnabled;
+}
+
+/** Transport commands are user ownership changes; natural position updates are not. */
+export function stillOwnsPreviewTransport(startedAtGeneration: number, currentGeneration: number): boolean {
+  return startedAtGeneration === currentGeneration;
+}
+
 export function isPreviewDeckOffAir(deck: DeckId, crossfader: number): boolean {
   return deck === 'A' ? crossfader === 1 : crossfader === -1;
 }

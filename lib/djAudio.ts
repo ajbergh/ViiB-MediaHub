@@ -53,6 +53,26 @@ export interface DeckAudioState {
   };
 }
 
+export interface PreparedDeckTrack {
+  readonly deck: DeckId;
+  readonly track: Song;
+  readonly source: StemDeckSource;
+  readonly expectedSource: DeckSource;
+  readonly expectedLoadGeneration: number;
+  state: 'prepared' | 'committed' | 'discarded';
+}
+
+export interface RetainedDeckSource {
+  readonly deck: DeckId;
+  readonly source: DeckSource;
+  readonly trackId: string | null;
+  readonly position: number;
+  readonly wasPlaying: boolean;
+  readonly committedSource: DeckSource;
+  readonly committedLoadGeneration: number;
+  state: 'retained' | 'restored' | 'discarded';
+}
+
 export interface VULevels {
   deckA: { left: number; right: number };
   deckB: { left: number; right: number };
@@ -70,6 +90,13 @@ export class DJAudioEngine {
   // Deck transport sources; mixer processing remains independent of transport.
   private deckSourceA: DeckSource | null = null;
   private deckSourceB: DeckSource | null = null;
+  private loadedTrackIdA: string | null = null;
+  private loadedTrackIdB: string | null = null;
+  private stemControlGenerationA = 0;
+  private stemControlGenerationB = 0;
+  private transportControlGenerationA = 0;
+  private transportControlGenerationB = 0;
+  private createPreparedSource: (context: AudioContext) => StemDeckSource = context => new StemDeckSource(context);
 
   // Gain nodes for volume control
   private gainNodeA: GainNode | null = null;
@@ -210,8 +237,12 @@ export class DJAudioEngine {
   private positionIdleTimer: ReturnType<typeof setTimeout> | null = null;
   private loopWorker: Worker | null = null;
   private loopCheckTimer: ReturnType<typeof setInterval> | null = null;
-  private loopWrapOnTimeUpdateA: (() => void) | null = null;
-  private loopWrapOnTimeUpdateB: (() => void) | null = null;
+  private sourceListeners: Partial<Record<DeckId, {
+    source: DeckSource;
+    ended: () => void;
+    loadedmetadata: () => void;
+    timeupdate: () => void;
+  }>> = {};
 
   // VU metering state
   private vuLevels: VULevels = { deckA: { left: 0, right: 0 }, deckB: { left: 0, right: 0 }, master: { left: 0, right: 0 } };
@@ -725,29 +756,30 @@ export class DJAudioEngine {
    * Set up event listeners for audio elements
    */
   private setupEventListeners(): void {
-    if (this.deckSourceA) {
-      this.deckSourceA.addEventListener('ended', () => {
-        this.onTrackEnd?.('A');
-        useStore.getState().setDeckPlaying('A', false);
-      });
-      this.deckSourceA.addEventListener('loadedmetadata', () => {
-        const duration = this.deckSourceA?.getDuration() || 0;
-        console.log(`🎧 djAudio: Deck A loadedmetadata, duration=${duration}`);
-        useStore.getState().setDeckDuration('A', duration);
-      });
-    }
+    this.bindDeckSourceListeners('A', this.deckSourceA);
+    this.bindDeckSourceListeners('B', this.deckSourceB);
+  }
 
-    if (this.deckSourceB) {
-      this.deckSourceB.addEventListener('ended', () => {
-        this.onTrackEnd?.('B');
-        useStore.getState().setDeckPlaying('B', false);
-      });
-      this.deckSourceB.addEventListener('loadedmetadata', () => {
-        const duration = this.deckSourceB?.getDuration() || 0;
-        console.log(`🎧 djAudio: Deck B loadedmetadata, duration=${duration}`);
-        useStore.getState().setDeckDuration('B', duration);
-      });
+  private bindDeckSourceListeners(deck: DeckId, source: DeckSource | null): void {
+    const prior = this.sourceListeners[deck];
+    if (prior) {
+      prior.source.removeEventListener('ended', prior.ended);
+      prior.source.removeEventListener('loadedmetadata', prior.loadedmetadata);
+      prior.source.removeEventListener('timeupdate', prior.timeupdate);
+      delete this.sourceListeners[deck];
     }
+    if (!source) return;
+    const isCurrent = () => this.getDeckSource(deck) === source;
+    const listeners = {
+      source,
+      ended: () => { if (isCurrent()) { this.onTrackEnd?.(deck); useStore.getState().setDeckPlaying(deck, false); } },
+      loadedmetadata: () => { if (isCurrent()) useStore.getState().setDeckDuration(deck, source.getDuration() || 0); },
+      timeupdate: () => { if (isCurrent()) this.wrapActiveLoops(); },
+    };
+    source.addEventListener('ended', listeners.ended);
+    source.addEventListener('loadedmetadata', listeners.loadedmetadata);
+    source.addEventListener('timeupdate', listeners.timeupdate);
+    this.sourceListeners[deck] = listeners;
   }
 
   private getDeckSource(deck: DeckId): DeckSource | null {
@@ -760,6 +792,7 @@ export class DJAudioEngine {
   }
 
   async setStemMode(deck: DeckId, mode: 'full' | 'stems'): Promise<void> {
+    if (deck === 'A') ++this.stemControlGenerationA; else ++this.stemControlGenerationB;
     const source = this.getStemDeckSource(deck);
     if (!source) return;
     if (mode === 'stems') {
@@ -773,9 +806,10 @@ export class DJAudioEngine {
     if (this.audioContext?.state === 'suspended' && this.isPlaying(deck)) await this.audioContext.resume();
   }
 
-  setStemGain(deck: DeckId, bus: StemBus, gain: number): void { this.getStemDeckSource(deck)?.setStemGain(bus, gain); }
-  setStemMuted(deck: DeckId, bus: StemBus, muted: boolean): void { this.getStemDeckSource(deck)?.setStemMuted(bus, muted); }
-  setStemSolo(deck: DeckId, bus: StemBus, solo: boolean): void { this.getStemDeckSource(deck)?.setStemSolo(bus, solo); }
+  setStemGain(deck: DeckId, bus: StemBus, gain: number): void { if (deck === 'A') ++this.stemControlGenerationA; else ++this.stemControlGenerationB; this.getStemDeckSource(deck)?.setStemGain(bus, gain); }
+  setStemMuted(deck: DeckId, bus: StemBus, muted: boolean): void { if (deck === 'A') ++this.stemControlGenerationA; else ++this.stemControlGenerationB; this.getStemDeckSource(deck)?.setStemMuted(bus, muted); }
+  setStemSolo(deck: DeckId, bus: StemBus, solo: boolean): void { if (deck === 'A') ++this.stemControlGenerationA; else ++this.stemControlGenerationB; this.getStemDeckSource(deck)?.setStemSolo(bus, solo); }
+  getStemControlGeneration(deck: DeckId): number { return deck === 'A' ? this.stemControlGenerationA : this.stemControlGenerationB; }
   getStemState(deck: DeckId): StemDeckState {
     return this.getStemDeckSource(deck)?.getStemState() ?? {
       vocals: { gain: 1, muted: false, solo: false }, drums: { gain: 1, muted: false, solo: false },
@@ -787,6 +821,60 @@ export class DJAudioEngine {
       mode: 'fallback', available: false, bufferedSeconds: 0, underruns: 0,
       supportsKeyLock: true, supportsScratch: true, supportsSampleAccurateLoop: false,
     };
+  }
+
+  /** Track identity belonging to the currently loaded source, independent of Zustand. */
+  getDeckLoadedTrackId(deck: DeckId): string | null {
+    return deck === 'A' ? this.loadedTrackIdA : this.loadedTrackIdB;
+  }
+
+  /** Restore non-transport engine controls after a guarded source reload. */
+  async restoreDeckMixState(
+    deck: DeckId,
+    deckState: DeckState,
+    keyLock: boolean,
+    stemMode: StemDeckStatus['mode'],
+    stemState: StemDeckState,
+    expectedStemControlGeneration: number,
+    stillOwned: () => boolean,
+  ): Promise<void> {
+    const source = this.getDeckSource(deck);
+    if (!source?.isLoaded()) throw new Error(`Deck ${deck} source is not loaded`);
+    if (this.getStemControlGeneration(deck) !== expectedStemControlGeneration || !stillOwned()) throw new Error('Deck restore ownership changed');
+
+    const stemSource = this.getStemDeckSource(deck);
+    const currentStemStatus = stemSource?.getStemStatus();
+    if (stemMode === 'stems' || stemMode === 'full') {
+      if (!stemSource || !currentStemStatus?.available) throw new Error(`Deck ${deck} stem source is unavailable`);
+      await stemSource.setStemMode(stemMode);
+      if (this.getStemControlGeneration(deck) !== expectedStemControlGeneration || !stillOwned()) throw new Error('Deck restore ownership changed');
+      if (stemSource.getStemStatus().mode !== stemMode) throw new Error(`Deck ${deck} could not restore ${stemMode} mode`);
+    } else if (currentStemStatus?.mode !== 'fallback') {
+      throw new Error(`Deck ${deck} fallback source mode was not restored`);
+    }
+
+    // The async stem transition is the last yield point. Recheck ownership
+    // before touching any synchronous mixer or transport controls.
+    if (this.getStemControlGeneration(deck) !== expectedStemControlGeneration || !stillOwned()) throw new Error('Deck restore ownership changed');
+
+    this.setVolume(deck, deckState.volume);
+    this.setEQ(deck, 'low', deckState.eq.low);
+    this.setEQ(deck, 'mid', deckState.eq.mid);
+    this.setEQ(deck, 'high', deckState.eq.high);
+    this.setTempo(deck, deckState.tempo);
+
+    this.setFilterFX(deck, deckState.fx.filter.enabled, deckState.fx.filter.type, deckState.fx.filter.frequency, deckState.fx.filter.resonance);
+    this.setDelayFX(deck, deckState.fx.delay.enabled, deckState.fx.delay.time, deckState.fx.delay.feedback, deckState.fx.delay.mix);
+    this.setFlangerFX(deck, deckState.fx.flanger.enabled, deckState.fx.flanger.rate, deckState.fx.flanger.depth, deckState.fx.flanger.feedback);
+    this.setReverbFX(deck, deckState.fx.reverb.enabled, deckState.fx.reverb.roomSize, deckState.fx.reverb.damping, deckState.fx.reverb.mix);
+    source.setLoop(deckState.loop.start, deckState.loop.end, deckState.loop.enabled);
+    source.setKeyLock(keyLock);
+    this.setCueEnabled(deck, deckState.cueEnabled);
+    for (const bus of ['vocals', 'drums', 'bass', 'music'] as const) {
+      stemSource?.setStemGain(bus, stemState[bus].gain);
+      stemSource?.setStemMuted(bus, stemState[bus].muted);
+      stemSource?.setStemSolo(bus, stemState[bus].solo);
+    }
   }
 
   private setDeckLoopOnSource(deck: DeckId): void {
@@ -811,6 +899,7 @@ export class DJAudioEngine {
     }
 
     const generation = deck === 'A' ? ++this.trackLoadGenerationA : ++this.trackLoadGenerationB;
+    if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
 
     this.clearScratchAudio(deck);
     const audioUrl = track.url || `/api/audio/${track.id}`;
@@ -830,6 +919,7 @@ export class DJAudioEngine {
     console.log(`🎧 Loaded track to Deck ${deck}: ${track.title}`);
 
     if (generation !== (deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB)) return;
+    if (deck === 'A') this.loadedTrackIdA = track.id; else this.loadedTrackIdB = track.id;
     if (source instanceof StemDeckSource && !source.getStemStatus().supportsScratch) return;
     void this.prepareScratchAudio(deck, audioUrl, generation);
 
@@ -923,6 +1013,7 @@ export class DJAudioEngine {
    */
   unloadDeck(deck: DeckId): void {
     if (deck === 'A') ++this.trackLoadGenerationA; else ++this.trackLoadGenerationB;
+    if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
     this.clearScratchAudio(deck);
     this.getDeckSource(deck)?.unload();
   }
@@ -932,10 +1023,189 @@ export class DJAudioEngine {
     return deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
   }
 
+  /** Fully load a candidate into a detached source without mutating the active deck. */
+  async prepareTrack(deck: DeckId, track: Song): Promise<PreparedDeckTrack> {
+    const context = this.audioContext;
+    const expectedSource = this.getDeckSource(deck);
+    if (!context || !expectedSource) throw new Error('Audio engine is not initialized');
+    const prepared: PreparedDeckTrack = {
+      deck, track, source: this.createPreparedSource(context), expectedSource,
+      expectedLoadGeneration: this.getDeckLoadGeneration(deck), state: 'prepared',
+    };
+    try {
+      await prepared.source.load(track);
+      return prepared;
+    } catch (error) {
+      prepared.state = 'discarded';
+      prepared.source.dispose();
+      throw error;
+    }
+  }
+
+  /** Copy source-local mix state onto a detached candidate before it is audible. */
+  async configurePreparedTrack(
+    prepared: PreparedDeckTrack,
+    deckState: DeckState,
+    keyLock: boolean,
+    stemMode: StemDeckStatus['mode'],
+    stemState: StemDeckState,
+  ): Promise<void> {
+    if (prepared.state !== 'prepared') throw new Error('Prepared source is no longer available');
+    const stem = prepared.source;
+    if (stemMode === 'stems' || stemMode === 'full') {
+      const status = stem.getStemStatus();
+      if (!status.available) throw new Error(`Prepared source cannot restore ${stemMode} mode`);
+      await stem.setStemMode(stemMode);
+      if (prepared.state !== 'prepared' || stem.getStemStatus().mode !== stemMode) throw new Error('Prepared source mode changed');
+    }
+    stem.setTempo(deckState.tempo);
+    stem.setKeyLock(keyLock);
+    stem.setLoop(deckState.loop.start, deckState.loop.end, deckState.loop.enabled);
+    for (const bus of ['vocals', 'drums', 'bass', 'music'] as const) {
+      stem.setStemGain(bus, stemState[bus].gain);
+      stem.setStemMuted(bus, stemState[bus].muted);
+      stem.setStemSolo(bus, stemState[bus].solo);
+    }
+  }
+
+  /**
+   * Atomically install a detached source after a synchronous final ownership check.
+   * Returns the exact prior source so it can be restored without reloading it.
+   */
+  commitPreparedTrack(
+    prepared: PreparedDeckTrack,
+    stillOwned: () => boolean,
+    originalTransport?: { position: number; wasPlaying: boolean },
+  ): RetainedDeckSource | null {
+    const { deck, source } = prepared;
+    const current = this.getDeckSource(deck);
+    if (prepared.state !== 'prepared' || current !== prepared.expectedSource
+      || this.getDeckLoadGeneration(deck) !== prepared.expectedLoadGeneration || !stillOwned()) {
+      this.discardPreparedTrack(prepared);
+      return null;
+    }
+    const gain = deck === 'A' ? this.gainNodeA : this.gainNodeB;
+    if (!gain) { this.discardPreparedTrack(prepared); return null; }
+    const retained: RetainedDeckSource = {
+      deck, source: current, trackId: this.getDeckLoadedTrackId(deck),
+      position: originalTransport?.position ?? current.getPosition(),
+      wasPlaying: originalTransport?.wasPlaying ?? current.isPlaying(),
+      committedSource: source, committedLoadGeneration: this.getDeckLoadGeneration(deck) + 1, state: 'retained',
+    };
+    current.pause();
+    this.clearScratchAudio(deck);
+    this.bindDeckSourceListeners(deck, null);
+    try {
+      current.outputNode.disconnect(gain);
+      source.outputNode.connect(gain);
+    } catch (error) {
+      try { source.outputNode.disconnect(gain); } catch { /* no connection */ }
+      try { current.outputNode.connect(gain); } catch { /* engine is no longer safely swappable */ }
+      this.bindDeckSourceListeners(deck, current);
+      if (retained.wasPlaying) void current.play();
+      this.discardPreparedTrack(prepared);
+      console.error(`Unable to connect prepared source for Deck ${deck}`, error);
+      return null;
+    }
+    this.setActiveDeckSource(deck, source);
+    this.bindDeckSourceListeners(deck, source);
+    if (deck === 'A') { ++this.trackLoadGenerationA; this.loadedTrackIdA = prepared.track.id; }
+    else { ++this.trackLoadGenerationB; this.loadedTrackIdB = prepared.track.id; }
+    prepared.state = 'committed';
+    void this.prepareScratchAudio(deck, prepared.track.url || `/api/audio/${prepared.track.id}`, this.getDeckLoadGeneration(deck));
+    return retained;
+  }
+
+  discardPreparedTrack(prepared: PreparedDeckTrack): void {
+    if (prepared.state !== 'prepared') return;
+    prepared.state = 'discarded';
+    prepared.source.dispose();
+  }
+
+  /** Restore the retained source synchronously, or discard it if ownership moved. */
+  restoreRetainedDeckSource(retained: RetainedDeckSource, stillOwned: () => boolean, beforeResume?: () => void): boolean {
+    const { deck, source } = retained;
+    const current = this.getDeckSource(deck);
+    if (retained.state !== 'retained') return false;
+    if (current !== retained.committedSource || this.getDeckLoadGeneration(deck) !== retained.committedLoadGeneration || !stillOwned()) {
+      this.discardRetainedDeckSource(retained);
+      return false;
+    }
+    const gain = deck === 'A' ? this.gainNodeA : this.gainNodeB;
+    if (!gain) { this.discardRetainedDeckSource(retained); return false; }
+    current.pause();
+    this.bindDeckSourceListeners(deck, null);
+    try {
+      current.outputNode.disconnect(gain);
+      source.outputNode.connect(gain);
+    } catch (error) {
+      try { source.outputNode.disconnect(gain); } catch { /* no connection */ }
+      try { current.outputNode.connect(gain); } catch { /* preserve current reference */ }
+      this.bindDeckSourceListeners(deck, current);
+      console.error(`Unable to restore retained source for Deck ${deck}`, error);
+      this.discardRetainedDeckSource(retained);
+      return false;
+    }
+    this.setActiveDeckSource(deck, source);
+    this.bindDeckSourceListeners(deck, source);
+    source.seek(retained.position);
+    if (deck === 'A') { ++this.trackLoadGenerationA; this.loadedTrackIdA = retained.trackId; }
+    else { ++this.trackLoadGenerationB; this.loadedTrackIdB = retained.trackId; }
+    retained.state = 'restored';
+    beforeResume?.();
+    current.dispose();
+    if (retained.wasPlaying) void source.play();
+    return true;
+  }
+
+  applyDeckMixSnapshot(deck: DeckId, state: DeckState, keyLock: boolean, stems: StemDeckState): void {
+    const source = this.getDeckSource(deck);
+    if (!source) throw new Error(`Deck ${deck} source is unavailable`);
+    this.setVolume(deck, state.volume);
+    this.setEQ(deck, 'low', state.eq.low);
+    this.setEQ(deck, 'mid', state.eq.mid);
+    this.setEQ(deck, 'high', state.eq.high);
+    this.setTempo(deck, state.tempo);
+    this.setFilterFX(deck, state.fx.filter.enabled, state.fx.filter.type, state.fx.filter.frequency, state.fx.filter.resonance);
+    this.setDelayFX(deck, state.fx.delay.enabled, state.fx.delay.time, state.fx.delay.feedback, state.fx.delay.mix);
+    this.setFlangerFX(deck, state.fx.flanger.enabled, state.fx.flanger.rate, state.fx.flanger.depth, state.fx.flanger.feedback);
+    this.setReverbFX(deck, state.fx.reverb.enabled, state.fx.reverb.roomSize, state.fx.reverb.damping, state.fx.reverb.mix);
+    source.setLoop(state.loop.start, state.loop.end, state.loop.enabled);
+    source.setKeyLock(keyLock);
+    this.setCueEnabled(deck, state.cueEnabled);
+    const stem = this.getStemDeckSource(deck);
+    for (const bus of ['vocals', 'drums', 'bass', 'music'] as const) {
+      stem?.setStemGain(bus, stems[bus].gain);
+      stem?.setStemMuted(bus, stems[bus].muted);
+      stem?.setStemSolo(bus, stems[bus].solo);
+    }
+  }
+
+  discardRetainedDeckSource(retained: RetainedDeckSource): void {
+    if (retained.state !== 'retained') return;
+    retained.state = 'discarded';
+    retained.source.dispose();
+  }
+
+  private setActiveDeckSource(deck: DeckId, source: DeckSource): void {
+    if (deck === 'A') this.deckSourceA = source;
+    else this.deckSourceB = source;
+  }
+
+  /** User-visible transport actions, separate from natural playback position updates. */
+  getDeckTransportControlGeneration(deck: DeckId): number {
+    return deck === 'A' ? this.transportControlGenerationA : this.transportControlGenerationB;
+  }
+
+  private bumpTransportControlGeneration(deck: DeckId): void {
+    if (deck === 'A') ++this.transportControlGenerationA; else ++this.transportControlGenerationB;
+  }
+
   /**
    * Play a deck
    */
   async play(deck: DeckId): Promise<void> {
+    this.bumpTransportControlGeneration(deck);
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (scratch) { scratch.wasPlaying = true; return; }
     const source = this.getDeckSource(deck);
@@ -952,6 +1222,7 @@ export class DJAudioEngine {
    * Pause a deck
    */
   pause(deck: DeckId): void {
+    this.bumpTransportControlGeneration(deck);
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (scratch) scratch.wasPlaying = false;
     if (scratch?.coasting) this.endScratch(deck, 0, false);
@@ -979,6 +1250,7 @@ export class DJAudioEngine {
    * Seek to position (in seconds)
    */
   seek(deck: DeckId, position: number): void {
+    this.bumpTransportControlGeneration(deck);
     this.endScratch(deck);
     this.getDeckSource(deck)?.seek(position);
   }
@@ -1083,6 +1355,7 @@ export class DJAudioEngine {
 
   /** Grab the vinyl: the normal transport stops immediately. */
   startScratch(deck: DeckId): boolean {
+    this.bumpTransportControlGeneration(deck);
     const source = this.getDeckSource(deck);
     if (!source?.isLoaded() || !this.canScratch(deck)) return false;
     const previous = deck === 'A' ? this.scratchStateA : this.scratchStateB;
@@ -1661,6 +1934,7 @@ export class DJAudioEngine {
    * @param offsetMs - Offset in milliseconds (positive = forward, negative = backward)
    */
   nudgePosition(deck: DeckId, offsetMs: number): void {
+    this.bumpTransportControlGeneration(deck);
     const source = this.getDeckSource(deck);
     if (!source) return;
     
@@ -2273,14 +2547,6 @@ export class DJAudioEngine {
   // ============================================================================
 
   private startPositionTracking(): void {
-    if (this.deckSourceA && !this.loopWrapOnTimeUpdateA) {
-      this.loopWrapOnTimeUpdateA = () => this.wrapActiveLoops();
-      this.deckSourceA.addEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
-    }
-    if (this.deckSourceB && !this.loopWrapOnTimeUpdateB) {
-      this.loopWrapOnTimeUpdateB = () => this.wrapActiveLoops();
-      this.deckSourceB.addEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
-    }
     if (typeof Worker !== 'undefined' && !this.loopWorker) {
       try {
         this.loopWorker = new Worker(new URL('./djLoopTicker.worker.ts', import.meta.url), { type: 'module' });
@@ -2480,10 +2746,8 @@ export class DJAudioEngine {
     }
     this.loopWorker?.terminate();
     this.loopWorker = null;
-    if (this.deckSourceA && this.loopWrapOnTimeUpdateA) this.deckSourceA.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateA);
-    if (this.deckSourceB && this.loopWrapOnTimeUpdateB) this.deckSourceB.removeEventListener('timeupdate', this.loopWrapOnTimeUpdateB);
-    this.loopWrapOnTimeUpdateA = null;
-    this.loopWrapOnTimeUpdateB = null;
+    this.bindDeckSourceListeners('A', null);
+    this.bindDeckSourceListeners('B', null);
     if (this.loopCheckTimer) {
       clearInterval(this.loopCheckTimer);
       this.loopCheckTimer = null;

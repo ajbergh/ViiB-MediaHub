@@ -272,6 +272,8 @@ export interface DJMixerSlice {
   // Deck loading
   loadTrackToDeck: (deck: DeckId, track: Song) => void;
   unloadDeck: (deck: DeckId) => void;
+  /** Commit a guarded Test Mix restoration as one Zustand update. */
+  restoreDeckSnapshot: (deck: DeckId, snapshot: DeckState, keyLock: boolean) => void;
   
   // Transport
   playDeck: (deck: DeckId) => void;
@@ -503,6 +505,17 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         volume: state[deckKey].volume,
         eq: state[deckKey].eq,
       }
+    }));
+  },
+
+  restoreDeckSnapshot: (deck, snapshot, keyLock) => {
+    const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    set((state) => ({
+      [deckKey]: snapshot,
+      djMixer: {
+        ...state.djMixer,
+        [deck === 'A' ? 'keyLockA' : 'keyLockB']: keyLock,
+      },
     }));
   },
   

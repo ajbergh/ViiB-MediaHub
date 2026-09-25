@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckState } from '../slices/djMixerSlice';
-import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, stillOwnsPreviewDeck, stillOwnsPreviewRoute } from './testMixPreviewGuard';
+import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsOccupiedPreviewBaseline, stillOwnsPreviewDeck, stillOwnsPreviewRoute, stillOwnsPreviewTransport } from './testMixPreviewGuard';
 
 function deck(overrides: Partial<DeckState> = {}): DeckState {
   return {
@@ -56,6 +56,20 @@ describe('Test Mix preview guards', () => {
     expect(isPristineEmptyPreviewDeck(deck({ track: { id: 'occupied' } as DeckState['track'] }))).toBe(false);
   });
 
+  it('accepts occupied preview only for the verified loaded source and keeps ownership tied to controls', () => {
+    const original = deck({ track: { id: 'original' } as DeckState['track'], isPlaying: true, position: 23, tempo: 1.04,
+      cuePoint: 4, loop: { enabled: true, start: 8, end: 12, pendingIn: null },
+      fx: { ...deck().fx, delay: { enabled: true, time: .25, feedback: .4, mix: .2 } } });
+    expect(isRestorableOccupiedPreviewDeck(original, 'original')).toBe(true);
+    expect(isRestorableOccupiedPreviewDeck(original, 'different-source')).toBe(false);
+    expect(isRestorableOccupiedPreviewDeck({ ...original, cueEnabled: true }, 'original')).toBe(false);
+
+    expect(stillOwnsOccupiedPreviewBaseline(original, original)).toBe(true);
+    expect(stillOwnsOccupiedPreviewBaseline({ ...original, volume: .5 }, original)).toBe(false);
+    expect(stillOwnsOccupiedPreviewBaseline({ ...original, loop: { ...original.loop, end: 16 } }, original)).toBe(false);
+    expect(stillOwnsOccupiedPreviewBaseline({ ...original, fx: { ...original.fx, delay: { ...original.fx.delay, mix: .8 } } }, original)).toBe(false);
+  });
+
   it('detects user changes before cleanup so preview does not overwrite their deck', () => {
     const baseline = { volume: 0.75, eq: { low: 0, mid: 0, high: 0 } };
     const previewDeck = deck({ track: { id: 'candidate' } as DeckState['track'], isPlaying: true, cueEnabled: true, duration: 120, position: 8 });
@@ -63,5 +77,10 @@ describe('Test Mix preview guards', () => {
     expect(stillOwnsPreviewDeck(deck({ ...previewDeck, volume: 0.5 }), 'candidate', baseline)).toBe(false);
     expect(stillOwnsPreviewDeck(deck({ ...previewDeck, track: { id: 'user-track' } as DeckState['track'] }), 'candidate', baseline)).toBe(false);
     expect(stillOwnsPreviewDeck(deck({ ...previewDeck, tempo: 1.05 }), 'candidate', baseline)).toBe(false);
+  });
+
+  it('retains preview ownership only while no explicit transport command has changed', () => {
+    expect(stillOwnsPreviewTransport(12, 12)).toBe(true);
+    expect(stillOwnsPreviewTransport(12, 13)).toBe(false);
   });
 });
