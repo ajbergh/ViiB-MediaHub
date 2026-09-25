@@ -81,4 +81,26 @@ describe('DJAudioEngine DeckSource integration', () => {
     expect(engine.getDeckLoadGeneration('B')).toBe(1);
     expect(source.unload).toHaveBeenCalledOnce();
   });
+
+  it('tracks the loaded source identity separately from deck store state', async () => {
+    const engine = new DJAudioEngine();
+    const { source } = fakeSource();
+    Object.assign(engine, { deckSourceA: source });
+    expect(engine.getDeckLoadedTrackId('A')).toBeNull();
+    await engine.loadTrack('A', { id: 'source-one', title: 'Source', url: '/source' } as never);
+    expect(engine.getDeckLoadedTrackId('A')).toBe('source-one');
+    engine.unloadDeck('A');
+    expect(engine.getDeckLoadedTrackId('A')).toBeNull();
+  });
+
+  it('advances the stem-control ownership epoch for user mixer edits', async () => {
+    const engine = new DJAudioEngine();
+    expect(engine.getStemControlGeneration('B')).toBe(0);
+    engine.setStemGain('B', 'vocals', .5);
+    expect(engine.getStemControlGeneration('B')).toBe(1);
+    engine.setStemMuted('B', 'drums', true);
+    engine.setStemSolo('B', 'bass', true);
+    await engine.setStemMode('B', 'stems');
+    expect(engine.getStemControlGeneration('B')).toBe(4);
+  });
 });

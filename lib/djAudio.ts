@@ -70,6 +70,10 @@ export class DJAudioEngine {
   // Deck transport sources; mixer processing remains independent of transport.
   private deckSourceA: DeckSource | null = null;
   private deckSourceB: DeckSource | null = null;
+  private loadedTrackIdA: string | null = null;
+  private loadedTrackIdB: string | null = null;
+  private stemControlGenerationA = 0;
+  private stemControlGenerationB = 0;
 
   // Gain nodes for volume control
   private gainNodeA: GainNode | null = null;
@@ -760,6 +764,7 @@ export class DJAudioEngine {
   }
 
   async setStemMode(deck: DeckId, mode: 'full' | 'stems'): Promise<void> {
+    if (deck === 'A') ++this.stemControlGenerationA; else ++this.stemControlGenerationB;
     const source = this.getStemDeckSource(deck);
     if (!source) return;
     if (mode === 'stems') {
@@ -773,9 +778,10 @@ export class DJAudioEngine {
     if (this.audioContext?.state === 'suspended' && this.isPlaying(deck)) await this.audioContext.resume();
   }
 
-  setStemGain(deck: DeckId, bus: StemBus, gain: number): void { this.getStemDeckSource(deck)?.setStemGain(bus, gain); }
-  setStemMuted(deck: DeckId, bus: StemBus, muted: boolean): void { this.getStemDeckSource(deck)?.setStemMuted(bus, muted); }
-  setStemSolo(deck: DeckId, bus: StemBus, solo: boolean): void { this.getStemDeckSource(deck)?.setStemSolo(bus, solo); }
+  setStemGain(deck: DeckId, bus: StemBus, gain: number): void { if (deck === 'A') ++this.stemControlGenerationA; else ++this.stemControlGenerationB; this.getStemDeckSource(deck)?.setStemGain(bus, gain); }
+  setStemMuted(deck: DeckId, bus: StemBus, muted: boolean): void { if (deck === 'A') ++this.stemControlGenerationA; else ++this.stemControlGenerationB; this.getStemDeckSource(deck)?.setStemMuted(bus, muted); }
+  setStemSolo(deck: DeckId, bus: StemBus, solo: boolean): void { if (deck === 'A') ++this.stemControlGenerationA; else ++this.stemControlGenerationB; this.getStemDeckSource(deck)?.setStemSolo(bus, solo); }
+  getStemControlGeneration(deck: DeckId): number { return deck === 'A' ? this.stemControlGenerationA : this.stemControlGenerationB; }
   getStemState(deck: DeckId): StemDeckState {
     return this.getStemDeckSource(deck)?.getStemState() ?? {
       vocals: { gain: 1, muted: false, solo: false }, drums: { gain: 1, muted: false, solo: false },
@@ -787,6 +793,57 @@ export class DJAudioEngine {
       mode: 'fallback', available: false, bufferedSeconds: 0, underruns: 0,
       supportsKeyLock: true, supportsScratch: true, supportsSampleAccurateLoop: false,
     };
+  }
+
+  /** Track identity belonging to the currently loaded source, independent of Zustand. */
+  getDeckLoadedTrackId(deck: DeckId): string | null {
+    return deck === 'A' ? this.loadedTrackIdA : this.loadedTrackIdB;
+  }
+
+  /** Restore non-transport engine controls after a guarded source reload. */
+  async restoreDeckMixState(
+    deck: DeckId,
+    deckState: DeckState,
+    keyLock: boolean,
+    stemMode: StemDeckStatus['mode'],
+    stemState: StemDeckState,
+    expectedStemControlGeneration: number,
+    stillOwned: () => boolean,
+  ): Promise<void> {
+    const source = this.getDeckSource(deck);
+    if (!source?.isLoaded()) throw new Error(`Deck ${deck} source is not loaded`);
+    if (this.getStemControlGeneration(deck) !== expectedStemControlGeneration || !stillOwned()) throw new Error('Deck restore ownership changed');
+
+    this.setVolume(deck, deckState.volume);
+    this.setEQ(deck, 'low', deckState.eq.low);
+    this.setEQ(deck, 'mid', deckState.eq.mid);
+    this.setEQ(deck, 'high', deckState.eq.high);
+    this.setTempo(deck, deckState.tempo);
+    source.setKeyLock(keyLock);
+    source.setLoop(deckState.loop.start, deckState.loop.end, deckState.loop.enabled);
+    this.setCueEnabled(deck, deckState.cueEnabled);
+
+    this.setFilterFX(deck, deckState.fx.filter.enabled, deckState.fx.filter.type, deckState.fx.filter.frequency, deckState.fx.filter.resonance);
+    this.setDelayFX(deck, deckState.fx.delay.enabled, deckState.fx.delay.time, deckState.fx.delay.feedback, deckState.fx.delay.mix);
+    this.setFlangerFX(deck, deckState.fx.flanger.enabled, deckState.fx.flanger.rate, deckState.fx.flanger.depth, deckState.fx.flanger.feedback);
+    this.setReverbFX(deck, deckState.fx.reverb.enabled, deckState.fx.reverb.roomSize, deckState.fx.reverb.damping, deckState.fx.reverb.mix);
+
+    const stemSource = this.getStemDeckSource(deck);
+    const currentStemStatus = stemSource?.getStemStatus();
+    if (stemMode === 'stems' || stemMode === 'full') {
+      if (!stemSource || !currentStemStatus?.available) throw new Error(`Deck ${deck} stem source is unavailable`);
+      if (stemMode === 'stems') this.clearScratchAudio(deck);
+      await stemSource.setStemMode(stemMode);
+      if (this.getStemControlGeneration(deck) !== expectedStemControlGeneration || !stillOwned()) throw new Error('Deck restore ownership changed');
+      if (stemSource.getStemStatus().mode !== stemMode) throw new Error(`Deck ${deck} could not restore ${stemMode} mode`);
+    } else if (currentStemStatus?.mode !== 'fallback') {
+      throw new Error(`Deck ${deck} fallback source mode was not restored`);
+    }
+    for (const bus of ['vocals', 'drums', 'bass', 'music'] as const) {
+      stemSource?.setStemGain(bus, stemState[bus].gain);
+      stemSource?.setStemMuted(bus, stemState[bus].muted);
+      stemSource?.setStemSolo(bus, stemState[bus].solo);
+    }
   }
 
   private setDeckLoopOnSource(deck: DeckId): void {
@@ -811,6 +868,7 @@ export class DJAudioEngine {
     }
 
     const generation = deck === 'A' ? ++this.trackLoadGenerationA : ++this.trackLoadGenerationB;
+    if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
 
     this.clearScratchAudio(deck);
     const audioUrl = track.url || `/api/audio/${track.id}`;
@@ -830,6 +888,7 @@ export class DJAudioEngine {
     console.log(`🎧 Loaded track to Deck ${deck}: ${track.title}`);
 
     if (generation !== (deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB)) return;
+    if (deck === 'A') this.loadedTrackIdA = track.id; else this.loadedTrackIdB = track.id;
     if (source instanceof StemDeckSource && !source.getStemStatus().supportsScratch) return;
     void this.prepareScratchAudio(deck, audioUrl, generation);
 
@@ -923,6 +982,7 @@ export class DJAudioEngine {
    */
   unloadDeck(deck: DeckId): void {
     if (deck === 'A') ++this.trackLoadGenerationA; else ++this.trackLoadGenerationB;
+    if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
     this.clearScratchAudio(deck);
     this.getDeckSource(deck)?.unload();
   }

@@ -36,6 +36,27 @@ describe('deck analysis patches', () => {
   });
 });
 
+describe('guarded deck snapshot restoration', () => {
+  it('restores the complete deck and key-lock value in one store action', () => {
+    const state = createTestMixerState();
+    const snapshot = {
+      ...state.djDeckB,
+      track: { id: 'original', title: 'Original' } as DJMixerSlice['djDeckB']['track'],
+      position: 42,
+      duration: 180,
+      isPlaying: true,
+      cuePoint: 8,
+      tempo: 1.06,
+      loop: { enabled: true, start: 32, end: 48, pendingIn: null },
+      hotCues: [{ slot: 1, position: 64, label: 'drop', color: '#f97316' }],
+      fx: { ...state.djDeckB.fx, reverb: { ...state.djDeckB.fx.reverb, enabled: true, mix: .6 } },
+    };
+    state.restoreDeckSnapshot('B', snapshot, true);
+    expect(state.djDeckB).toEqual(snapshot);
+    expect(state.djMixer.keyLockB).toBe(true);
+  });
+});
+
 
 describe('reviewed beat grids', () => {
   it('invalidates stale evidence after edits and protects reviewed evidence from automatic updates', () => {
