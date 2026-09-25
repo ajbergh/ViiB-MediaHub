@@ -55,8 +55,6 @@ export interface HotCue {
   updatedAt?: number;
 }
 
-export const DEFAULT_HOT_CUE_COLOR = '#FF5500';
-
 export interface Loop {
   enabled: boolean;
   start: number;     // seconds
@@ -192,6 +190,8 @@ export const DEFAULT_PAD_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', 
   '#3b82f6', '#a855f7', '#ec4899', '#06b6d4'
 ] as const;
+
+export const DEFAULT_HOT_CUE_COLOR = DEFAULT_PAD_COLORS[1];
 
 export function createDefaultSamplerPad(id: number): SamplerPad {
   return {
