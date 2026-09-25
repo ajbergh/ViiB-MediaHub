@@ -55,6 +55,7 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 			algorithm_version TEXT NOT NULL,
 			encoding TEXT NOT NULL,
 			provenance TEXT NOT NULL DEFAULT 'unknown' CHECK(provenance IN ('measured', 'inferred-from-meter', 'manual', 'unknown')),
+			source_fingerprint TEXT NOT NULL DEFAULT '',
 			data BLOB NOT NULL,
 			created_at INTEGER NOT NULL,
 			UNIQUE(song_id, kind, format_version, algorithm_version)
@@ -79,11 +80,49 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 	if err == nil {
 		err = ensureTrackAnalysisArtifactProvenanceColumn(d)
 	}
+	if err == nil {
+		err = ensureTrackAnalysisArtifactSourceFingerprintColumn(d)
+	}
 	result := trackAnalysisSchemaResult{err: err}
 	actual, loaded := trackAnalysisSchemas.LoadOrStore(d, result)
 	if loaded {
 		return actual.(trackAnalysisSchemaResult).err
 	}
+	return err
+}
+
+// ensureTrackAnalysisArtifactSourceFingerprintColumn upgrades legacy opaque
+// artifacts conservatively: old rows remain unbound to a source and therefore
+// cannot be presented as current evidence.
+func ensureTrackAnalysisArtifactSourceFingerprintColumn(d *DB) error {
+	rows, err := d.conn.Query(`PRAGMA table_info(track_analysis_artifacts)`)
+	if err != nil {
+		return err
+	}
+	hasColumn := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "source_fingerprint" {
+			hasColumn = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	_, err = d.conn.Exec(`ALTER TABLE track_analysis_artifacts ADD COLUMN source_fingerprint TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 

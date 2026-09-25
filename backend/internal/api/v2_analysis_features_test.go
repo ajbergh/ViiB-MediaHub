@@ -139,6 +139,114 @@ func TestV2TrackAnalysisFeaturesListsResolvedRecords(t *testing.T) {
 	}
 }
 
+func TestV2TrackAnalysisFeatureListReportsOnlyCurrentSettledStructure(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	const analyzedAt = int64(1000)
+	base, err := (features.Result{
+		Energy:   []features.EnergyPoint{{Time: 0, Value: .5}},
+		Sections: []features.Section{{Start: 0, End: 1, Energy: .5, Label: features.StructureUnknown, Confidence: .2}},
+	}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := (features.Result{
+		Energy:   []features.EnergyPoint{{Time: 0, Value: .5}},
+		Sections: []features.Section{{Start: 0, End: 1, Energy: .5}},
+	}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid, err := (features.Result{
+		Energy:   []features.EnergyPoint{{Time: 0, Value: .5}},
+		Sections: []features.Section{{Start: 1, End: 1, Energy: .5, Label: features.StructureUnknown}},
+	}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		id                  string
+		status              string
+		artifact            []byte
+		artifactFingerprint string
+		legacyFingerprint   bool
+		artifactFormat      int
+		artifactAlgorithm   string
+		withArtifact        bool
+		artifactAt          int64
+		wantAvailable       bool
+	}{
+		{id: "complete", status: db.TrackAnalysisComplete, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, wantAvailable: true},
+		{id: "partial", status: db.TrackAnalysisPartial, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, wantAvailable: true},
+		{id: "pending", status: db.TrackAnalysisPending, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "running", status: db.TrackAnalysisRunning, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "failed-current-source", status: db.TrackAnalysisFailed, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, wantAvailable: true},
+		{id: "failed-old-source", status: db.TrackAnalysisFailed, artifact: base, artifactFingerprint: "old-source", withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "unsupported", status: db.TrackAnalysisUnsupported, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "missing", status: db.TrackAnalysisComplete},
+		{id: "corrupt", status: db.TrackAnalysisComplete, artifact: []byte("not gzip"), withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "stale-source", status: db.TrackAnalysisComplete, artifact: base, artifactFingerprint: "old-source", withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "legacy-no-fingerprint", status: db.TrackAnalysisComplete, artifact: base, legacyFingerprint: true, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "legacy-structure", status: db.TrackAnalysisComplete, artifact: legacy, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "invalid-section", status: db.TrackAnalysisComplete, artifact: invalid, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "unsupported-version", status: db.TrackAnalysisComplete, artifact: base, artifactFormat: features.FormatVersion + 1, withArtifact: true, artifactAt: analyzedAt + 1},
+	}
+	for _, test := range cases {
+		if err := database.SaveSong(&db.Song{ID: test.id, Title: test.id, Artist: "Artist", Album: "Album", FilePath: test.id + ".mp3", AddedAt: 1}); err != nil {
+			t.Fatalf("save song %s: %v", test.id, err)
+		}
+		analyzed := analyzedAt
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: test.id, Status: test.status, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: test.id, AnalyzedAt: &analyzed}); err != nil {
+			t.Fatalf("save analysis %s: %v", test.id, err)
+		}
+		if test.withArtifact {
+			fingerprint := test.artifactFingerprint
+			formatVersion := test.artifactFormat
+			algorithmVersion := test.artifactAlgorithm
+			if fingerprint == "" && !test.legacyFingerprint {
+				fingerprint = test.id
+			}
+			if formatVersion == 0 {
+				formatVersion = features.FormatVersion
+			}
+			if algorithmVersion == "" {
+				algorithmVersion = features.AlgorithmVersion
+			}
+			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+				ID: test.id + ":" + features.AlgorithmVersion, SongID: test.id, Kind: features.ArtifactKind,
+				FormatVersion: formatVersion, AlgorithmVersion: algorithmVersion,
+				Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: test.artifact, CreatedAt: test.artifactAt,
+			}); err != nil {
+				t.Fatalf("save artifact %s: %v", test.id, err)
+			}
+		}
+	}
+
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /analysis = %d, want %d: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response []TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]bool, len(response))
+	for _, feature := range response {
+		got[feature.SongID] = feature.StructureAvailable
+	}
+	for _, test := range cases {
+		if got[test.id] != test.wantAvailable {
+			t.Errorf("structureAvailable[%s] = %v, want %v", test.id, got[test.id], test.wantAvailable)
+		}
+	}
+}
+
 func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {

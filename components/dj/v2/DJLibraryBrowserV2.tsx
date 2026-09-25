@@ -40,7 +40,7 @@ type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
 type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'stemStatus' | 'analysis' | 'dateAnalyzed';
-type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed' | 'analysisConfidence';
+type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed' | 'analysisConfidence' | 'structureStatus';
 type ResizableColumn = 'title' | 'artist' | 'album';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'viib.dj.library.columnVisibility';
@@ -57,6 +57,7 @@ const DEFAULT_COLUMN_VISIBILITY: Record<OptionalColumn, boolean> = {
   analysis: false,
   dateAnalyzed: false,
   analysisConfidence: false,
+  structureStatus: false,
 };
 
 const STEM_STATUS_LABELS: Record<NonNullable<Song['stemStatus']>, string> = {
@@ -365,6 +366,16 @@ const TrackRowCells = memo(({
             <span aria-label={`Key confidence: ${formatConfidenceEvidence(confidenceEvidence.key)}`}>Key · {formatConfidenceEvidence(confidenceEvidence.key)}</span>
             <span aria-label={`Energy confidence: ${formatConfidenceEvidence(confidenceEvidence.energy)}`}>Energy · {formatConfidenceEvidence(confidenceEvidence.energy)}</span>
           </div>
+        </td>
+      )}
+
+      {columnVisibility.structureStatus && (
+        <td className="px-2 py-1.5 w-24 text-center">
+          {analysis?.structureAvailable ? (
+            <span className="text-[10px] text-emerald-300" aria-label="Structure available" title="Current energy-structure artifact is available for this source">Available</span>
+          ) : (
+            <span className="text-[10px] text-neutral-600" aria-label="Structure not ready" title="Current energy-structure evidence is not ready or cannot be verified">—</span>
+          )}
         </td>
       )}
     </>
@@ -910,6 +921,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                 ['analysis', 'Analysis'],
                 ['dateAnalyzed', 'Date Analyzed'],
                 ['analysisConfidence', 'Analysis Confidence'],
+                ['structureStatus', 'Structure Status'],
               ] as Array<[OptionalColumn, string]>).map(([column, label]) => (
                 <label
                   key={column}
@@ -956,6 +968,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   {columnVisibility.analysis && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Analysis" sortKeyValue="analysis" className="w-28 text-center" />}
                   {columnVisibility.dateAnalyzed && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Date Analyzed" sortKeyValue="dateAnalyzed" className="w-24 text-center" />}
                   {columnVisibility.analysisConfidence && <th className="w-40 px-2 py-1.5 text-center text-[10px] font-medium text-neutral-500" title="BPM and Key show detector scores only for measured values. Energy confidence is an evidence-availability heuristic, not a probability. These independent dimensions have no combined sort order.">Analysis Confidence</th>}
+                  {columnVisibility.structureStatus && <th className="w-24 px-2 py-1.5 text-center text-[10px] font-medium text-neutral-500" title="Available means a current, valid energy-structure artifact exists; it is not a quality score.">Structure Status</th>}
                 </tr>
               )}
               itemContent={(index, song) => (

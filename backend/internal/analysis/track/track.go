@@ -372,14 +372,15 @@ func persistBeatGrid(database *db.DB, result Result) error {
 		return err
 	}
 	return database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
-		ID:               result.SongID + ":" + beatgrid.AlgorithmVersion,
-		SongID:           result.SongID,
-		Kind:             beatgrid.ArtifactKind,
-		FormatVersion:    beatgrid.FormatVersion,
-		AlgorithmVersion: beatgrid.AlgorithmVersion,
-		Encoding:         beatgrid.Encoding,
-		Provenance:       string(result.BeatGrid.EffectiveProvenance()),
-		Data:             encoded,
+		ID:                result.SongID + ":" + beatgrid.AlgorithmVersion,
+		SongID:            result.SongID,
+		Kind:              beatgrid.ArtifactKind,
+		FormatVersion:     beatgrid.FormatVersion,
+		AlgorithmVersion:  beatgrid.AlgorithmVersion,
+		Encoding:          beatgrid.Encoding,
+		Provenance:        string(result.BeatGrid.EffectiveProvenance()),
+		SourceFingerprint: result.Source.Fingerprint,
+		Data:              encoded,
 	})
 }
 
@@ -390,14 +391,15 @@ func persistFeatures(database *db.DB, result Result) error {
 			return err
 		}
 		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
-			ID:               result.SongID + ":" + features.AlgorithmVersion,
-			SongID:           result.SongID,
-			Kind:             features.ArtifactKind,
-			FormatVersion:    features.FormatVersion,
-			AlgorithmVersion: features.AlgorithmVersion,
-			Encoding:         features.Encoding,
-			Provenance:       "measured",
-			Data:             encoded,
+			ID:                result.SongID + ":" + features.AlgorithmVersion,
+			SongID:            result.SongID,
+			Kind:              features.ArtifactKind,
+			FormatVersion:     features.FormatVersion,
+			AlgorithmVersion:  features.AlgorithmVersion,
+			Encoding:          features.Encoding,
+			Provenance:        "measured",
+			SourceFingerprint: result.Source.Fingerprint,
+			Data:              encoded,
 		}); err != nil {
 			return err
 		}
@@ -408,14 +410,15 @@ func persistFeatures(database *db.DB, result Result) error {
 			return err
 		}
 		return database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
-			ID:               result.SongID + ":" + features.BS1770AlgorithmVersion,
-			SongID:           result.SongID,
-			Kind:             features.BS1770ArtifactKind,
-			FormatVersion:    features.BS1770FormatVersion,
-			AlgorithmVersion: features.BS1770AlgorithmVersion,
-			Encoding:         features.BS1770Encoding,
-			Provenance:       "measured",
-			Data:             encoded,
+			ID:                result.SongID + ":" + features.BS1770AlgorithmVersion,
+			SongID:            result.SongID,
+			Kind:              features.BS1770ArtifactKind,
+			FormatVersion:     features.BS1770FormatVersion,
+			AlgorithmVersion:  features.BS1770AlgorithmVersion,
+			Encoding:          features.BS1770Encoding,
+			Provenance:        "measured",
+			SourceFingerprint: result.Source.Fingerprint,
+			Data:              encoded,
 		})
 	}
 	return nil

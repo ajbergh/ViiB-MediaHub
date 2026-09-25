@@ -46,6 +46,7 @@ type TrackAnalysisFeatureResponse struct {
 	EnergyLevel            *int     `json:"energyLevel,omitempty"`
 	EnergyLevelConfidence  *float64 `json:"energyLevelConfidence,omitempty"`
 	EnergyAlgorithmVersion *string  `json:"energyAlgorithmVersion,omitempty"`
+	StructureAvailable     bool     `json:"structureAvailable"`
 }
 
 // BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
@@ -182,11 +183,83 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	structureMetadata, err := a.db.ListTrackAnalysisArtifactMetadata(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	analysisBySongID := make(map[string]db.TrackAnalysis, len(analyses))
+	for _, analysis := range analyses {
+		analysisBySongID[analysis.SongID] = analysis
+	}
+	metadataBySongID := make(map[string]db.TrackAnalysisArtifactMetadata, len(structureMetadata))
+	eligiblePayloadIDs := make([]string, 0, len(structureMetadata))
+	for _, metadata := range structureMetadata {
+		analysis, exists := analysisBySongID[metadata.SongID]
+		if !exists || !trackStructureSourceEligible(analysis) || metadata.SourceFingerprint == "" || metadata.SourceFingerprint != analysis.SourceFingerprint ||
+			metadata.Kind != features.ArtifactKind || metadata.FormatVersion != features.FormatVersion || metadata.AlgorithmVersion != features.AlgorithmVersion ||
+			metadata.Encoding != features.Encoding || metadata.Provenance != "measured" {
+			continue
+		}
+		metadataBySongID[metadata.SongID] = metadata
+		eligiblePayloadIDs = append(eligiblePayloadIDs, metadata.SongID)
+	}
+	structurePayloads, err := a.db.GetTrackAnalysisArtifactPayloads(eligiblePayloadIDs, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	response := make([]TrackAnalysisFeatureResponse, 0, len(analyses))
 	for _, analysis := range analyses {
-		response = append(response, trackAnalysisFeatureResponse(analysis, overrides[analysis.SongID]))
+		feature := trackAnalysisFeatureResponse(analysis, overrides[analysis.SongID])
+		metadata, exists := metadataBySongID[analysis.SongID]
+		if exists {
+			feature.StructureAvailable = trackStructureAvailable(analysis, metadata, structurePayloads[analysis.SongID])
+		}
+		response = append(response, feature)
 	}
 	respondJSON(w, response)
+}
+
+func trackStructureSourceEligible(analysis db.TrackAnalysis) bool {
+	if analysis.SourceFingerprint == "" {
+		return false
+	}
+	switch analysis.Status {
+	case db.TrackAnalysisComplete, db.TrackAnalysisPartial, db.TrackAnalysisFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// trackStructureAvailable only exposes a valid artifact bound to the exact
+// source fingerprint of a settled analysis. Legacy artifacts without a source
+// identity remain unknown rather than being treated as current.
+func trackStructureAvailable(analysis db.TrackAnalysis, artifact db.TrackAnalysisArtifactMetadata, payload db.TrackAnalysisArtifactPayload) bool {
+	if !trackStructureSourceEligible(analysis) || artifact.SongID != analysis.SongID || artifact.SourceFingerprint == "" || artifact.SourceFingerprint != analysis.SourceFingerprint ||
+		artifact.Kind != features.ArtifactKind || artifact.FormatVersion != features.FormatVersion || artifact.AlgorithmVersion != features.AlgorithmVersion || artifact.Encoding != features.Encoding || artifact.Provenance != "measured" ||
+		payload.SourceFingerprint == "" || payload.SourceFingerprint != artifact.SourceFingerprint || len(payload.Data) == 0 {
+		return false
+	}
+	result, err := features.Decode(payload.Data)
+	if err != nil || len(result.Sections) == 0 {
+		return false
+	}
+	for _, section := range result.Sections {
+		if math.IsNaN(section.Start) || math.IsInf(section.Start, 0) || section.Start < 0 ||
+			math.IsNaN(section.End) || math.IsInf(section.End, 0) || section.End <= section.Start ||
+			math.IsNaN(section.Energy) || math.IsInf(section.Energy, 0) || section.Energy < 0 || section.Energy > 1 ||
+			math.IsNaN(section.Confidence) || math.IsInf(section.Confidence, 0) || section.Confidence < 0 || section.Confidence > 1 {
+			return false
+		}
+		switch section.Label {
+		case features.StructureIntro, features.StructureBuild, features.StructureDrop, features.StructureBreakdown, features.StructureOutro, features.StructureUnknown:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) TrackAnalysisFeatureResponse {

@@ -207,8 +207,8 @@ func TestPersistHonorsAutomaticCuePointModesAndRefreshPolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("mode %q did not retain suggestion artifact: %v", mode, err)
 			}
-			if artifact.Provenance != "measured" {
-				t.Fatalf("energy artifact provenance=%q, want measured", artifact.Provenance)
+			if artifact.Provenance != "measured" || artifact.SourceFingerprint != "source-fingerprint" {
+				t.Fatalf("energy artifact provenance/source=%q/%q, want measured/source-fingerprint", artifact.Provenance, artifact.SourceFingerprint)
 			}
 		})
 	}
