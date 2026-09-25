@@ -119,6 +119,7 @@ export interface ApiSong {
 export interface TrackAnalysisFeature {
   songId: string;
   status: 'pending' | 'running' | 'complete' | 'partial' | 'failed' | 'unsupported';
+  analyzedAt?: number;
   bpm?: number;
   bpmConfidence?: number;
   bpmAltCandidate?: number;

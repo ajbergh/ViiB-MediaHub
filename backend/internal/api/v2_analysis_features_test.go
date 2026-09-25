@@ -118,9 +118,10 @@ func TestV2TrackAnalysisFeaturesListsResolvedRecords(t *testing.T) {
 		}
 	}
 	bpm, tonic := 128.0, 0
+	analyzedAt := int64(1720000000123)
 	mode, source := "major", "measured"
 	for _, id := range []string{"second", "first"} {
-		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: id, BPM: &bpm, BPMSource: &source, KeyTonic: &tonic, KeyMode: &mode, KeySource: &source}); err != nil {
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: id, AnalyzedAt: &analyzedAt, BPM: &bpm, BPMSource: &source, KeyTonic: &tonic, KeyMode: &mode, KeySource: &source}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -133,7 +134,7 @@ func TestV2TrackAnalysisFeaturesListsResolvedRecords(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response) != 2 || response[0].SongID != "first" || response[1].SongID != "second" || response[0].CamelotKey == nil || *response[0].CamelotKey != "8B" {
+	if len(response) != 2 || response[0].SongID != "first" || response[1].SongID != "second" || response[0].CamelotKey == nil || *response[0].CamelotKey != "8B" || response[0].AnalyzedAt == nil || *response[0].AnalyzedAt != analyzedAt {
 		t.Fatalf("feature list = %#v, want sorted resolved records", response)
 	}
 }

@@ -35,11 +35,11 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 
-type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'stemStatus' | 'analysis';
 type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
-type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis';
+type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'stemStatus' | 'analysis' | 'dateAnalyzed';
+type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed';
 type ResizableColumn = 'title' | 'artist' | 'album';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'viib.dj.library.columnVisibility';
@@ -54,6 +54,7 @@ const DEFAULT_COLUMN_VISIBILITY: Record<OptionalColumn, boolean> = {
   genre: true,
   stemStatus: true,
   analysis: false,
+  dateAnalyzed: false,
 };
 
 const STEM_STATUS_LABELS: Record<NonNullable<Song['stemStatus']>, string> = {
@@ -63,6 +64,10 @@ const STEM_STATUS_LABELS: Record<NonNullable<Song['stemStatus']>, string> = {
 
 function stemStatusLabel(status: Song['stemStatus']): string {
   return STEM_STATUS_LABELS[status || 'none'] || 'Unknown';
+}
+
+function hasAnalysisTimestamp(timestamp?: number): timestamp is number {
+  return timestamp !== undefined && Number.isFinite(timestamp) && timestamp > 0;
 }
 
 const DEFAULT_COLUMN_WIDTHS: Record<ResizableColumn, number> = {
@@ -143,6 +148,7 @@ const TrackRowCells = memo(({
   const songKey = analysis?.key;
   const displayKey = analysis?.camelotKey ?? songKey;
   const analysisReadiness = getAnalysisReadiness(analysis?.status, analysisListState);
+  const analyzedAt = analysis?.analyzedAt;
 
   return (
     <>
@@ -334,6 +340,15 @@ const TrackRowCells = memo(({
             title={analysisReadiness.description} aria-label={`Analysis readiness: ${analysisReadiness.label}`}>
             <span aria-hidden="true">{analysisReadiness.symbol}</span>
             {analysisReadiness.label}
+          </span>
+        </td>
+      )}
+
+      {columnVisibility.dateAnalyzed && (
+        <td className="px-2 py-1.5 w-24 text-center">
+          <span className="text-[10px] text-neutral-400"
+            title={hasAnalysisTimestamp(analyzedAt) ? `Most recent analysis result or failure · ${new Date(analyzedAt).toLocaleString()}` : 'No analysis timestamp'}>
+            {hasAnalysisTimestamp(analyzedAt) ? new Date(analyzedAt).toLocaleDateString() : '—'}
           </span>
         </td>
       )}
@@ -675,11 +690,22 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         case 'analysis':
           comparison = compareAnalysisReadiness(analysisBySongID[a.id]?.status, analysisBySongID[b.id]?.status, analysisListState);
           break;
+        case 'dateAnalyzed': {
+          const aDate = analysisBySongID[a.id]?.analyzedAt;
+          const bDate = analysisBySongID[b.id]?.analyzedAt;
+          comparison = (hasAnalysisTimestamp(aDate) ? aDate : 0) - (hasAnalysisTimestamp(bDate) ? bDate : 0);
+          break;
+        }
       }
 
       if (sortKey === 'energy') {
         const aUnknown = analysisBySongID[a.id]?.energyLevel === undefined;
         const bUnknown = analysisBySongID[b.id]?.energyLevel === undefined;
+        if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
+      }
+      if (sortKey === 'dateAnalyzed') {
+        const aUnknown = !hasAnalysisTimestamp(analysisBySongID[a.id]?.analyzedAt);
+        const bUnknown = !hasAnalysisTimestamp(analysisBySongID[b.id]?.analyzedAt);
         if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
       }
 
@@ -867,6 +893,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                 ['genre', 'Genre'],
                 ['stemStatus', 'Stem Status'],
                 ['analysis', 'Analysis'],
+                ['dateAnalyzed', 'Date Analyzed'],
               ] as Array<[OptionalColumn, string]>).map(([column, label]) => (
                 <label
                   key={column}
@@ -911,6 +938,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   {columnVisibility.genre && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Genre" sortKeyValue="genre" className="w-20 hidden lg:table-cell" />}
                   {columnVisibility.stemStatus && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Stem Status" sortKeyValue="stemStatus" className="w-24 text-center" />}
                   {columnVisibility.analysis && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Analysis" sortKeyValue="analysis" className="w-28 text-center" />}
+                  {columnVisibility.dateAnalyzed && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Date Analyzed" sortKeyValue="dateAnalyzed" className="w-24 text-center" />}
                 </tr>
               )}
               itemContent={(index, song) => (
