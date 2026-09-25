@@ -4,7 +4,8 @@ import { getDJAudioEngine, type SynchronizedPreviewSources } from '../../../lib/
 import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsDeckSnapshot, stillOwnsPreviewRoute } from '../../../lib/testMixPreviewGuard';
 import { canAcceptMixNextCandidate, stillOwnsMixNextAcceptance, type MixNextAcceptanceOwnership } from '../../../lib/mixNextAcceptanceGuard';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
-import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
+import { api, type TrackBeatGrid, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
+import { describeTestMixPhaseEvidence } from '../../../lib/testMixPhaseReadiness';
 import type { DeckState } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
 
@@ -72,6 +73,7 @@ function copyDeckSnapshot(deck: DeckState): DeckState {
 export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [features, setFeatures] = useState<TrackEnergyFeatures | null>(null);
   const [recommendations, setRecommendations] = useState<TrackTransitionRecommendations | null>(null);
+  const [candidatePhaseGrid, setCandidatePhaseGrid] = useState<{ trackId: string; grid: TrackBeatGrid | null; loaded: boolean } | null>(null);
   const [intent, setIntent] = useState<TransitionIntent>('hold');
   const [minBpm, setMinBpm] = useState('');
   const [maxBpm, setMaxBpm] = useState('');
@@ -101,6 +103,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     .map(value => value.trim().replace(/\s+/g, ' ')).filter(Boolean).map(value => [value.toLocaleLowerCase(), value] as const))).values()).sort((a, b) => a.localeCompare(b)), [librarySongs]);
   const previewDeckID = deck === 'A' ? 'B' : 'A';
   const previewDeckState = useStore(state => previewDeckID === 'A' ? state.djDeckA : state.djDeckB);
+  const phaseReferenceState = useStore(state => deck === 'B' ? state.djDeckB : state.djDeckA);
   const crossfader = useStore(state => state.djMixer.crossfader);
   const masterCueEnabled = useStore(state => state.djMixer.masterCueEnabled);
   const autoGainEnabled = useStore(state => previewDeckID === 'A' ? state.djMixer.autoGainA : state.djMixer.autoGainB);
@@ -164,6 +167,22 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     return () => { live = false; };
   }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistId, genre, notRecentlyPlayedHours, filtersValid]);
 
+  const phaseCandidateId = recommendations?.recommendations[0]?.songId ?? null;
+  useEffect(() => {
+    let live = true;
+    if (!phaseCandidateId) {
+      setCandidatePhaseGrid(null);
+      return () => { live = false; };
+    }
+    setCandidatePhaseGrid({ trackId: phaseCandidateId, grid: null, loaded: false });
+    api.getTrackBeatGrid(phaseCandidateId).then(grid => {
+      if (live) setCandidatePhaseGrid({ trackId: phaseCandidateId, grid, loaded: true });
+    }).catch(() => {
+      if (live) setCandidatePhaseGrid({ trackId: phaseCandidateId, grid: null, loaded: true });
+    });
+    return () => { live = false; };
+  }, [phaseCandidateId]);
+
   if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
   if (!features) return null;
   const acceptCue = (position: number, kind: string) => {
@@ -174,6 +193,26 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   };
   const top = recommendations?.recommendations[0];
   const candidateTrack = top ? librarySongs.find(song => song.id === top.songId) : undefined;
+  const phaseGridState = candidateTrack && candidatePhaseGrid?.trackId === candidateTrack.id ? candidatePhaseGrid : undefined;
+  const phaseGrid = !phaseGridState || !phaseGridState.loaded ? undefined
+    : phaseGridState.grid?.songId === candidateTrack.id ? phaseGridState.grid : null;
+  const phaseEvidenceStatus = !deck || phaseReferenceState.track?.id !== trackID
+    ? 'Downbeat evidence unavailable: selected reference is not loaded on its deck.'
+    : !candidateTrack
+    ? 'Downbeat evidence unavailable: no current candidate.'
+    : phaseGrid === undefined
+      ? 'Checking manual downbeat evidence…'
+      : describeTestMixPhaseEvidence({
+        beats: phaseReferenceState.beatGrid,
+        downbeatIndices: phaseReferenceState.downbeatIndices,
+        locked: phaseReferenceState.beatGridLocked,
+        source: phaseReferenceState.beatGridSource,
+      }, phaseGrid ? {
+        beats: phaseGrid.beats,
+        downbeatIndices: phaseGrid.downbeatIndices,
+        locked: phaseGrid.locked,
+        source: phaseGrid.provenance ?? phaseGrid.source ?? 'unknown',
+      } : null);
   acceptanceViewRef.current = { deck, trackID, candidateId: candidateTrack?.id ?? null };
   const engine = getDJAudioEngine();
   const headphoneDeviceId = engine.getHeadphoneOutputDeviceId();
@@ -603,6 +642,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
           : <button type="button" disabled={!previewAllowed || !!previewRef.current} onClick={() => void testCandidate()}
             title={previewRef.current ? 'Another Test Mix preview is active.' : !previewAllowed ? previewReason : 'Detached headphone copies audition both cue regions; browser-coordinated start is not sample-accurate, and both live deck states remain untouched.'}
             className="rounded border border-violet-500/40 px-2 py-1 text-violet-200 disabled:cursor-not-allowed disabled:opacity-50">Test Mix in headphones</button>}
+        <span role="status" title="This checks only reviewed downbeat evidence. Current HTML-media sources cannot share a scheduled start, and phrase length is not part of the grid metadata."
+          className="text-neutral-500">{phaseEvidenceStatus}</span>
         {acceptanceMessage && <span role="status">{acceptanceMessage}</span>}
         {previewMessage && <span role="status">{previewMessage}</span>}
       </div>
