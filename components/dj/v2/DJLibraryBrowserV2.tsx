@@ -16,6 +16,7 @@ import { TableVirtuoso, type TableComponents } from 'react-virtuoso';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getKeyCompatibility } from '../../../lib/keyDetection';
+import { compareAnalysisReadiness, getAnalysisReadiness, type AnalysisListLoadState } from '../../../lib/analysisReadiness';
 import { CamelotChip } from './CamelotChip';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -34,11 +35,11 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 
-type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'stemStatus';
+type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'stemStatus' | 'analysis';
 type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
-type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus';
+type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis';
 type ResizableColumn = 'title' | 'artist' | 'album';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'viib.dj.library.columnVisibility';
@@ -52,6 +53,7 @@ const DEFAULT_COLUMN_VISIBILITY: Record<OptionalColumn, boolean> = {
   time: true,
   genre: true,
   stemStatus: true,
+  analysis: false,
 };
 
 const STEM_STATUS_LABELS: Record<NonNullable<Song['stemStatus']>, string> = {
@@ -117,6 +119,7 @@ const TrackRowCells = memo(({
   trackColor,
   onSetTrackColor,
   analysis,
+  analysisListState,
   stemStatus,
   keyCompatibility,
   columnVisibility,
@@ -129,6 +132,7 @@ const TrackRowCells = memo(({
   trackColor: string | undefined;
   onSetTrackColor: (songId: string, color: string | null) => void;
   analysis?: TrackAnalysisFeature;  // Durable resolved analysis from the backend
+  analysisListState: AnalysisListLoadState;
   stemStatus?: Song['stemStatus'];
   keyCompatibility: number | null;  // 0-1 score, null if no key data
   columnVisibility: Record<OptionalColumn, boolean>;
@@ -138,6 +142,7 @@ const TrackRowCells = memo(({
   const displayBPM = analysis?.bpm;
   const songKey = analysis?.key;
   const displayKey = analysis?.camelotKey ?? songKey;
+  const analysisReadiness = getAnalysisReadiness(analysis?.status, analysisListState);
 
   return (
     <>
@@ -321,6 +326,17 @@ const TrackRowCells = memo(({
           </span>
         </td>
       )}
+
+      {/* Analysis status communicates preparation readiness, not track quality. */}
+      {columnVisibility.analysis && (
+        <td className="px-2 py-1.5 w-28 text-center">
+          <span className={`inline-flex items-center gap-1 text-[10px] ${analysisReadiness.className}`}
+            title={analysisReadiness.description} aria-label={`Analysis readiness: ${analysisReadiness.label}`}>
+            <span aria-hidden="true">{analysisReadiness.symbol}</span>
+            {analysisReadiness.label}
+          </span>
+        </td>
+      )}
     </>
   );
 });
@@ -439,6 +455,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   const [columnVisibility, setColumnVisibility] = useState<Record<OptionalColumn, boolean>>(loadColumnVisibility);
   const [columnWidths, setColumnWidths] = useState<Record<ResizableColumn, number>>(loadColumnWidths);
   const [analysisBySongID, setAnalysisBySongID] = useState<Record<string, TrackAnalysisFeature>>({});
+  const [analysisListState, setAnalysisListState] = useState<AnalysisListLoadState>('loading');
 
   // Determine active deck key for harmonic compatibility
   // Prefer playing deck, fall back to whichever has a track loaded
@@ -462,10 +479,14 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
       .then(features => {
         if (!active) return;
         setAnalysisBySongID(Object.fromEntries(features.map(feature => [feature.songId, feature])));
+        setAnalysisListState('loaded');
       })
       .catch(() => {
         // Analysis is additive; legacy library rendering remains available.
-        if (active) setAnalysisBySongID({});
+        if (active) {
+          setAnalysisBySongID({});
+          setAnalysisListState('failed');
+        }
       });
     return () => { active = false; };
   }, []);
@@ -651,6 +672,9 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         case 'stemStatus':
           comparison = stemStatusLabel(a.stemStatus).localeCompare(stemStatusLabel(b.stemStatus));
           break;
+        case 'analysis':
+          comparison = compareAnalysisReadiness(analysisBySongID[a.id]?.status, analysisBySongID[b.id]?.status, analysisListState);
+          break;
       }
 
       if (sortKey === 'energy') {
@@ -663,7 +687,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     });
 
     return result;
-  }, [categoryFilteredSongs, searchQuery, sortKey, sortDirection, analysisBySongID, energyMin, energyMax]);
+  }, [categoryFilteredSongs, searchQuery, sortKey, sortDirection, analysisBySongID, analysisListState, energyMin, energyMax]);
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -842,6 +866,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                 ['time', 'Time'],
                 ['genre', 'Genre'],
                 ['stemStatus', 'Stem Status'],
+                ['analysis', 'Analysis'],
               ] as Array<[OptionalColumn, string]>).map(([column, label]) => (
                 <label
                   key={column}
@@ -885,6 +910,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   {columnVisibility.time && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Time" sortKeyValue="duration" className="w-14 text-right" />}
                   {columnVisibility.genre && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Genre" sortKeyValue="genre" className="w-20 hidden lg:table-cell" />}
                   {columnVisibility.stemStatus && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Stem Status" sortKeyValue="stemStatus" className="w-24 text-center" />}
+                  {columnVisibility.analysis && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Analysis" sortKeyValue="analysis" className="w-28 text-center" />}
                 </tr>
               )}
               itemContent={(index, song) => (
@@ -896,6 +922,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   trackColor={trackColorMap.get(song.id)}
                   onSetTrackColor={handleSetTrackColor}
                   analysis={analysisBySongID[song.id]}
+                  analysisListState={analysisListState}
                   stemStatus={song.stemStatus}
                   keyCompatibility={computeKeyCompat(analysisBySongID[song.id]?.key)}
                   columnVisibility={columnVisibility}
