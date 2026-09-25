@@ -50,6 +50,7 @@ type TrackAnalysisFeatureResponse struct {
 	StructureAvailable     bool     `json:"structureAvailable"`
 	IntegratedLUFSBS1770   *float64 `json:"integratedLufsBs1770,omitempty"`
 	TruePeakDBTP           *float64 `json:"truePeakDbtp,omitempty"`
+	SourceFingerprint      string   `json:"sourceFingerprint,omitempty"`
 }
 
 // BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
@@ -474,6 +475,166 @@ func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAn
 		response.OpenKey = &openKey
 	}
 	return response
+}
+
+// TrackBPMUpdate stores a user-corrected scalar tempo independently of the beat grid.
+type TrackBPMUpdate struct {
+	BPM *float64 `json:"bpm"`
+}
+
+func (a *API) getTrackBPMV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	if songID == "" {
+		respondError(w, http.StatusBadRequest, "song ID is required")
+		return
+	}
+	trackAnalysis, err := a.trackAnalysisOrUnanalyzed(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(w, http.StatusNotFound, "song not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override, err := a.db.GetTrackAnalysisOverride(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		override = db.TrackAnalysisOverride{SongID: songID}
+	} else if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	currentFingerprints, err := a.currentAnalysisSourceFingerprints([]string{songID})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response := trackAnalysisFeatureResponse(trackAnalysis, override)
+	response.SourceFingerprint = currentFingerprints[songID]
+	if response.SourceFingerprint != "" {
+		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
+	}
+	respondJSON(w, response)
+}
+
+func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	if songID == "" {
+		respondError(w, http.StatusBadRequest, "song ID is required")
+		return
+	}
+	var update TrackBPMUpdate
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&update); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid BPM update")
+		return
+	}
+	if update.BPM == nil || math.IsNaN(*update.BPM) || math.IsInf(*update.BPM, 0) || *update.BPM <= 0 || *update.BPM > 1000 {
+		respondError(w, http.StatusBadRequest, "BPM must be a finite number greater than 0 and at most 1000")
+		return
+	}
+	trackAnalysis, err := a.trackAnalysisOrUnanalyzed(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(w, http.StatusNotFound, "song not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	currentFingerprint, err := a.requireCurrentBPMSource(w, r, songID)
+	if err != nil {
+		return
+	}
+	override, err := a.db.GetTrackAnalysisOverride(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		override = db.TrackAnalysisOverride{SongID: songID}
+	} else if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override.BPM = update.BPM
+	override.BPMLocked = true
+	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response := trackAnalysisFeatureResponse(trackAnalysis, override)
+	response.SourceFingerprint = currentFingerprint
+	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
+	respondJSON(w, response)
+}
+
+func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	if songID == "" {
+		respondError(w, http.StatusBadRequest, "song ID is required")
+		return
+	}
+	trackAnalysis, err := a.trackAnalysisOrUnanalyzed(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(w, http.StatusNotFound, "song not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	currentFingerprint, err := a.requireCurrentBPMSource(w, r, songID)
+	if err != nil {
+		return
+	}
+	override, err := a.db.GetTrackAnalysisOverride(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		override = db.TrackAnalysisOverride{SongID: songID}
+	} else if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override.BPM = nil
+	override.BPMLocked = false
+	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response := trackAnalysisFeatureResponse(trackAnalysis, override)
+	response.SourceFingerprint = currentFingerprint
+	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
+	respondJSON(w, response)
+}
+
+func (a *API) requireCurrentBPMSource(w http.ResponseWriter, r *http.Request, songID string) (string, error) {
+	expected := strings.TrimSpace(r.Header.Get("If-Match"))
+	if expected == "" {
+		respondError(w, http.StatusPreconditionRequired, "current source fingerprint is required")
+		return "", errors.New("source fingerprint precondition missing")
+	}
+	current, err := a.currentAnalysisSourceFingerprints([]string{songID})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return "", err
+	}
+	actual := current[songID]
+	if actual == "" || strconv.Quote(actual) != expected {
+		respondError(w, http.StatusPreconditionFailed, "song source changed or is unavailable; reload BPM details before editing")
+		return "", errors.New("source fingerprint precondition failed")
+	}
+	return actual, nil
+}
+
+func (a *API) trackAnalysisOrUnanalyzed(songID string) (db.TrackAnalysis, error) {
+	trackAnalysis, err := a.db.GetTrackAnalysis(songID)
+	if err == nil {
+		return trackAnalysis, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return db.TrackAnalysis{}, err
+	}
+	if _, err := a.db.GetSongByID(songID); err != nil {
+		return db.TrackAnalysis{}, err
+	}
+	return db.TrackAnalysis{SongID: songID, Status: "not_analyzed"}, nil
 }
 
 // TrackKeyUpdate stores an explicitly verified tonic and mode.

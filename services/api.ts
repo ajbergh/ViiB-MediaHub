@@ -144,6 +144,8 @@ export interface TrackAnalysisFeature {
   integratedLufsBs1770?: number;
   /** Current measured ITU-R BS.1770-5 Annex 2 true peak in dBTP, if available. */
   truePeakDbtp?: number;
+  /** Opaque fingerprint for the source revision currently available to BPM edits. */
+  sourceFingerprint?: string;
 }
 
 // Persisted phase-aligned timing data. It is distinct from the scalar BPM so
@@ -1606,6 +1608,28 @@ export const api = {
    */
   async getTrackAnalysisFeature(trackId: string): Promise<TrackAnalysisFeature> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}`, { cache: 'no-store' });
+    return handleResponse<TrackAnalysisFeature>(response);
+  },
+
+  async getTrackBPM(trackId: string): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/bpm`, { cache: 'no-store' });
+    return handleResponse<TrackAnalysisFeature>(response);
+  },
+
+  async updateTrackBPM(trackId: string, bpm: number, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/bpm`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'If-Match': JSON.stringify(sourceFingerprint) },
+      body: JSON.stringify({ bpm }),
+    });
+    return handleResponse<TrackAnalysisFeature>(response);
+  },
+
+  async resetTrackBPM(trackId: string, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/bpm`, {
+      method: 'DELETE',
+      headers: { 'If-Match': JSON.stringify(sourceFingerprint) },
+    });
     return handleResponse<TrackAnalysisFeature>(response);
   },
 

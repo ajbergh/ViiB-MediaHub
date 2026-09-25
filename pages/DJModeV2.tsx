@@ -33,6 +33,7 @@ import { DJJogWheel } from '../components/dj/v2/DJJogWheel';
 import { DJHotCuePad } from '../components/dj/v2/DJHotCuePad';
 import { DJAnalysisCueEditor } from '../components/dj/v2/DJAnalysisCueEditor';
 import { DJKeyVerificationKeyboard } from '../components/dj/v2/DJKeyVerificationKeyboard';
+import { DJBpmEditor } from '../components/dj/v2/DJBpmEditor';
 import { DJTransportButtons } from '../components/dj/v2/DJTransportButtons';
 import { DJLoopSection } from '../components/dj/v2/DJLoopSection';
 import { DJHeadphoneMix } from '../components/dj/v2/DJHeadphoneMix';
@@ -674,6 +675,7 @@ const DJModeV2Inner: React.FC = () => {
                       <>
                           <DJEnergyInsights trackID={deckATrack?.id} deck='A' />
                           <DJKeyVerificationKeyboard trackID={deckATrack?.id} deck='A' />
+                          <DJBpmEditor track={deckATrack} deck='A' />
                           <DJAnalysisCueEditor trackID={deckATrack?.id} deck='A' />
                       </>
                   </DJErrorBoundary>
@@ -931,6 +933,7 @@ const DJModeV2Inner: React.FC = () => {
                       <>
                           <DJEnergyInsights trackID={deckBTrack?.id} deck='B' />
                           <DJKeyVerificationKeyboard trackID={deckBTrack?.id} deck='B' />
+                          <DJBpmEditor track={deckBTrack} deck='B' />
                           <DJAnalysisCueEditor trackID={deckBTrack?.id} deck='B' />
                       </>
                   </DJErrorBoundary>
