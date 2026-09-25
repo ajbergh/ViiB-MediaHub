@@ -78,14 +78,14 @@ func TestScoreTransitionWithMetadataScoresOnlyConfidentStructureBoundaries(t *te
 	base := Result{IntegratedLUFS: -12, Energy: []EnergyPoint{{Value: .5}, {Value: .5}}}
 	outgoing := base
 	outgoing.Sections = []Section{
-		{Label: StructureUnknown, Confidence: .9},
-		{Label: StructureBuild, Confidence: .8},
-		{Label: StructureOutro, Confidence: .8},
+		{Start: 0, End: 10, Label: StructureUnknown, Confidence: .9},
+		{Start: 10, End: 20, Label: StructureBuild, Confidence: .4},
+		{Start: 20, End: 30, Label: StructureOutro, Confidence: .48},
 	}
 	incoming := base
 	incoming.Sections = []Section{
-		{Label: StructureIntro, Confidence: .9},
-		{Label: StructureOutro, Confidence: .99},
+		{Start: 0, End: 10, Label: StructureIntro, Confidence: .48},
+		{Start: 10, End: 20, Label: StructureOutro, Confidence: .42},
 	}
 
 	compatible, err := ScoreTransitionWithMetadata(outgoing, incoming, TransitionMetadata{}, TransitionMetadata{}, TransitionIntentHold)
@@ -105,9 +105,9 @@ func TestScoreTransitionWithMetadataScoresOnlyConfidentStructureBoundaries(t *te
 	}
 
 	incompatibleOutgoing := base
-	incompatibleOutgoing.Sections = []Section{{Label: StructureOutro, Confidence: .9}, {Label: StructureBreakdown, Confidence: .7}}
+	incompatibleOutgoing.Sections = []Section{{Start: 0, End: 10, Label: StructureOutro, Confidence: .48}, {Start: 10, End: 20, Label: StructureBreakdown, Confidence: .42}}
 	incompatibleIncoming := base
-	incompatibleIncoming.Sections = []Section{{Label: StructureBuild, Confidence: .8}, {Label: StructureIntro, Confidence: .9}}
+	incompatibleIncoming.Sections = []Section{{Start: 0, End: 10, Label: StructureBuild, Confidence: .4}, {Start: 10, End: 20, Label: StructureIntro, Confidence: .48}}
 	incompatible, err := ScoreTransitionWithMetadata(incompatibleOutgoing, incompatibleIncoming, TransitionMetadata{}, TransitionMetadata{}, TransitionIntentHold)
 	if err != nil {
 		t.Fatal(err)
@@ -120,12 +120,17 @@ func TestScoreTransitionWithMetadataScoresOnlyConfidentStructureBoundaries(t *te
 	for name, pair := range map[string][2]Result{
 		"unknown": {func() Result {
 			value := base
-			value.Sections = []Section{{Label: StructureUnknown, Confidence: .9}}
+			value.Sections = []Section{{Start: 0, End: 10, Label: StructureUnknown, Confidence: .48}}
 			return value
 		}(), incoming},
 		"low confidence": {func() Result {
 			value := base
-			value.Sections = []Section{{Label: StructureOutro, Confidence: .49}}
+			value.Sections = []Section{{Start: 0, End: 10, Label: StructureOutro, Confidence: .39}}
+			return value
+		}(), incoming},
+		"invalid timing": {func() Result {
+			value := base
+			value.Sections = []Section{{Start: math.NaN(), End: 10, Label: StructureOutro, Confidence: .48}}
 			return value
 		}(), incoming},
 		"missing section": {base, incoming},

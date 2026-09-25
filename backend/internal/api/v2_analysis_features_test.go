@@ -316,9 +316,9 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 		t.Fatal(err)
 	}
 	results := map[string]features.Result{
-		"source":       {IntegratedLUFS: -10, Energy: []features.EnergyPoint{{Value: .2}, {Value: .8}}, Sections: []features.Section{{Label: features.StructureIntro, Confidence: .8}, {Label: features.StructureOutro, Confidence: .8}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-out", Confidence: .8}}},
-		"compatible":   {IntegratedLUFS: -10.5, Energy: []features.EnergyPoint{{Value: .75}, {Value: .7}}, Sections: []features.Section{{Label: features.StructureIntro, Confidence: .8}, {Label: features.StructureOutro, Confidence: .8}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-in", Confidence: .8}}},
-		"incompatible": {IntegratedLUFS: -25, Energy: []features.EnergyPoint{{Value: .05}, {Value: .1}}, Sections: []features.Section{{Label: features.StructureBreakdown, Confidence: .8}}},
+		"source":       {IntegratedLUFS: -10, Energy: []features.EnergyPoint{{Value: .2}, {Value: .8}}, Sections: []features.Section{{Start: 0, End: 30, Label: features.StructureIntro, Confidence: .48}, {Start: 30, End: 60, Label: features.StructureOutro, Confidence: .48}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-out", Confidence: .8}}},
+		"compatible":   {IntegratedLUFS: -10.5, Energy: []features.EnergyPoint{{Value: .75}, {Value: .7}}, Sections: []features.Section{{Start: 0, End: 30, Label: features.StructureIntro, Confidence: .48}, {Start: 30, End: 60, Label: features.StructureOutro, Confidence: .48}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-in", Confidence: .8}}},
+		"incompatible": {IntegratedLUFS: -25, Energy: []features.EnergyPoint{{Value: .05}, {Value: .1}}, Sections: []features.Section{{Start: 0, End: 30, Label: features.StructureBreakdown, Confidence: .42}}},
 	}
 	for id, result := range results {
 		encoded, err := result.Encode()
