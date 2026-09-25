@@ -955,7 +955,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   {columnVisibility.stemStatus && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Stem Status" sortKeyValue="stemStatus" className="w-24 text-center" />}
                   {columnVisibility.analysis && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Analysis" sortKeyValue="analysis" className="w-28 text-center" />}
                   {columnVisibility.dateAnalyzed && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Date Analyzed" sortKeyValue="dateAnalyzed" className="w-24 text-center" />}
-                  {columnVisibility.analysisConfidence && <th className="w-40 px-2 py-1.5 text-center text-[10px] font-medium text-neutral-500 bg-[#1a1a1a]" title="BPM and Key show detector scores only for measured values. Energy confidence is an evidence-availability heuristic, not a probability. These independent dimensions have no combined sort order.">Analysis Confidence</th>}
+                  {columnVisibility.analysisConfidence && <th className="w-40 px-2 py-1.5 text-center text-[10px] font-medium text-neutral-500" title="BPM and Key show detector scores only for measured values. Energy confidence is an evidence-availability heuristic, not a probability. These independent dimensions have no combined sort order.">Analysis Confidence</th>}
                 </tr>
               )}
               itemContent={(index, song) => (
