@@ -38,6 +38,7 @@ import { useStore } from '../store';
 import { HomeLayoutVariant, VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
 import { api } from '../services/api';
+import { jobsV2, type OperationJob } from '../services/jobsV2';
 import { Button } from '../components/ui/Button';
 import { Page } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
@@ -296,7 +297,12 @@ export const Settings: React.FC = () => {
   
   // Folder browser state
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+  const [folderBrowserPurpose, setFolderBrowserPurpose] = useState<'music' | 'stems'>('music');
   const [browserPath, setBrowserPath] = useState('');
+  const [stemLibraryLocations, setStemLibraryLocations] = useState<import('../services/api').StemLibraryLocation[]>([]);
+  const [stemLibraryError, setStemLibraryError] = useState('');
+  const [stemScanJob, setStemScanJob] = useState<OperationJob | null>(null);
+  const [savingStemLocations, setSavingStemLocations] = useState(false);
   
   // Enrichment State
   const [isEnriching, setIsEnriching] = useState(false);
@@ -601,8 +607,22 @@ export const Settings: React.FC = () => {
   useEffect(() => {
       if (backendAvailable) {
           loadScanFolders();
+          void api.getStemLibraryLocations().then(setStemLibraryLocations).catch(error => {
+              console.error('Failed to load Stem Library locations', error);
+              setStemLibraryError('Unable to load Stem Library locations.');
+          });
       }
   }, [backendAvailable]);
+
+  useEffect(() => {
+      if (!stemScanJob || ['succeeded', 'failed', 'canceled', 'interrupted'].includes(stemScanJob.status)) return;
+      const timer = window.setInterval(() => {
+          void jobsV2.get(stemScanJob.id).then(setStemScanJob).catch(error => {
+              console.error('Failed to refresh Stem Library scan progress', error);
+          });
+      }, 1200);
+      return () => window.clearInterval(timer);
+  }, [stemScanJob?.id, stemScanJob?.status]);
 
   // Load Spotify download and conversion settings
   useEffect(() => {
@@ -771,7 +791,8 @@ export const Settings: React.FC = () => {
   };
 
   // Folder browser functions
-  const openFolderBrowser = async () => {
+  const openFolderBrowserFor = async (purpose: 'music' | 'stems') => {
+      setFolderBrowserPurpose(purpose);
       setShowFolderBrowser(true);
       setLoadingBrowser(true);
       setBrowserPath('');
@@ -791,6 +812,9 @@ export const Settings: React.FC = () => {
       }
   };
 
+  const openFolderBrowser = () => openFolderBrowserFor('music');
+  const openStemFolderBrowser = () => openFolderBrowserFor('stems');
+
   const navigateFolder = async (path: string) => {
       setLoadingBrowser(true);
       try {
@@ -808,8 +832,46 @@ export const Settings: React.FC = () => {
 
   const selectCurrentFolder = async () => {
       if (browserPath && browserPath !== 'Drives' && !loadingBrowser) {
-          await addScanFolder(browserPath);
+          if (folderBrowserPurpose === 'music') {
+              await addScanFolder(browserPath);
+          } else {
+              const nextPaths = [...stemLibraryLocations.map(location => location.path), browserPath];
+              setSavingStemLocations(true);
+              setStemLibraryError('');
+              try {
+                  setStemLibraryLocations(await api.setStemLibraryLocations(nextPaths));
+              } catch (error) {
+                  console.error('Failed to save Stem Library location', error);
+                  setStemLibraryError('Unable to save this Stem Library location.');
+                  return;
+              } finally {
+                  setSavingStemLocations(false);
+              }
+          }
           setShowFolderBrowser(false);
+      }
+  };
+
+  const removeStemLibraryLocation = async (path: string) => {
+      setSavingStemLocations(true);
+      setStemLibraryError('');
+      try {
+          setStemLibraryLocations(await api.setStemLibraryLocations(stemLibraryLocations.filter(location => location.path !== path).map(location => location.path)));
+      } catch (error) {
+          console.error('Failed to remove Stem Library location', error);
+          setStemLibraryError('Unable to remove this Stem Library location.');
+      } finally {
+          setSavingStemLocations(false);
+      }
+  };
+
+  const startStemLibraryScan = async () => {
+      try {
+          const accepted = await api.scanStemLibraries();
+          setStemScanJob(await jobsV2.get(accepted.jobId));
+      } catch (error) {
+          console.error('Unable to start Stem Library scan', error);
+          setStemLibraryError(error instanceof Error ? error.message : 'Unable to start Stem Library scan.');
       }
   };
 
@@ -1295,6 +1357,36 @@ export const Settings: React.FC = () => {
                     <div className="text-xs text-text-subtle mt-2">
                         Uses File System Access API where available. Fallback to standard upload in restricted environments.
                     </div>
+                </div>
+            )}
+
+            {backendAvailable && (
+                <div className="mt-8 border-t border-surface-border pt-6" aria-label="Stem Library settings">
+                    <div className="flex items-center gap-2 mb-2 text-text-main">
+                        <Layers size={18} className="text-brand" />
+                        <h3 className="text-sm font-bold">Stem Libraries</h3>
+                    </div>
+                    <p className="text-sm text-text-secondary mb-4">
+                        Choose separate roots for stem packages. You can organize them in Artist/Album subfolders; each named <code>.viibstems</code> folder is treated as one package. Adjacent packages beside a matching music file are also checked. Scanning validates packages for tracks already in your music library and never adds stem audio as songs. If a previous scan added package audio to Music Folders, run Full Rescan once to remove those old catalog entries.
+                    </p>
+                    <div className="space-y-2 mb-4">
+                        {stemLibraryLocations.length === 0 ? (
+                            <div className="text-text-subtle text-sm italic p-4 bg-surface-1 rounded-lg text-center">No Stem Libraries added yet.</div>
+                        ) : stemLibraryLocations.map(location => (
+                            <div key={location.id} className="flex items-center justify-between bg-surface-1 p-3 rounded-lg border border-surface-border">
+                                <div className="font-mono text-sm text-text-main truncate" title={location.path}>{location.path}</div>
+                                <Button variant="ghost" onClick={() => void removeStemLibraryLocation(location.path)} disabled={savingStemLocations} className="p-2 text-text-subtle hover:text-error" title="Remove Stem Library" aria-label={`Remove Stem Library ${location.path}`}>
+                                    <X size={18} />
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <Button variant="secondary" onClick={openStemFolderBrowser} disabled={savingStemLocations} leftIcon={<Plus size={18} />} className="font-bold">Add Stem Library</Button>
+                        <Button variant="primary" accent="brand" onClick={() => void startStemLibraryScan()} disabled={stemLibraryLocations.length === 0 || savingStemLocations || Boolean(stemScanJob && !['succeeded', 'failed', 'canceled', 'interrupted'].includes(stemScanJob.status))} leftIcon={stemScanJob && ['queued', 'running'].includes(stemScanJob.status) ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />} className="font-bold">Scan Stem Libraries</Button>
+                    </div>
+                    {stemLibraryError && <p role="alert" className="text-sm text-error mt-3">{stemLibraryError}</p>}
+                    {stemScanJob && <p role="status" className="text-sm text-brand font-mono mt-3">{stemScanJob.message}{stemScanJob.progressTotal > 0 ? ` (${stemScanJob.progressCurrent}/${stemScanJob.progressTotal})` : ''}</p>}
                 </div>
             )}
           </section>
@@ -3160,11 +3252,11 @@ export const Settings: React.FC = () => {
               <div
                   role="dialog"
                   aria-modal="true"
-                  aria-labelledby="music-folder-browser-title"
+                  aria-labelledby="library-folder-browser-title"
                   className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[80vh] flex flex-col"
               >
                   <div className="flex items-center justify-between mb-4">
-                      <h2 id="music-folder-browser-title" className="text-xl font-bold text-white">Select Music Folder</h2>
+                      <h2 id="library-folder-browser-title" className="text-xl font-bold text-white">{folderBrowserPurpose === 'music' ? 'Select Music Folder' : 'Select Stem Library Folder'}</h2>
                       <Button
                           variant="ghost"
                           onClick={() => setShowFolderBrowser(false)}
@@ -3222,11 +3314,11 @@ export const Settings: React.FC = () => {
                           variant="primary"
                           accent="brand"
                           onClick={selectCurrentFolder}
-                          disabled={!browserPath || browserPath === 'Drives' || loadingBrowser}
+                          disabled={!browserPath || browserPath === 'Drives' || loadingBrowser || savingStemLocations}
                           leftIcon={<Plus size={16} />}
                           className="px-6 py-2 font-bold"
                       >
-                          Add This Folder
+                          {folderBrowserPurpose === 'music' ? 'Add This Folder' : 'Use This Folder'}
                       </Button>
                   </div>
               </div>

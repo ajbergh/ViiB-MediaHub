@@ -1,6 +1,7 @@
 package stems
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -77,6 +78,68 @@ func TestDiscoverPackagesRetainsInvalidPackageDiagnostics(t *testing.T) {
 	result := DiscoverPackages(source, nil)
 	if len(result.Candidates) != 0 || len(result.Rejected) != 1 {
 		t.Fatalf("expected invalid package diagnostic, got %+v", result)
+	}
+}
+
+func TestDiscoverLibraryPackagesFindsNestedPackagesAndTreatsPackagesAsLeaves(t *testing.T) {
+	library := t.TempDir()
+	nested := filepath.Join(library, "Artist", "Album", "album-stems.viibstems")
+	writeDiscoveryFixture(t, nested, sha256Hex([]byte("source")))
+	// A nested folder inside a package is package data, never another package root.
+	writeDiscoveryFixture(t, filepath.Join(nested, "nested.viibstems"), sha256Hex([]byte("nested")))
+
+	result := DiscoverLibraryPackages([]string{library})
+	if len(result.Candidates) != 1 {
+		t.Fatalf("expected one validated leaf package, got %d candidates and %d rejected: %+v", len(result.Candidates), len(result.Rejected), result)
+	}
+	if filepath.Clean(result.Candidates[0].Path) != filepath.Clean(nested) {
+		t.Fatalf("candidate path = %q, want %q", result.Candidates[0].Path, nested)
+	}
+}
+
+func TestDiscoverPackagesRejectsSymlinkedAdjacentPackageRoot(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "track.wav")
+	sourceBytes := []byte("source")
+	if err := os.WriteFile(source, sourceBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	realPackage := filepath.Join(root, "real.viibstems")
+	writeDiscoveryFixture(t, realPackage, sha256Hex(sourceBytes))
+	adjacent := filepath.Join(root, "track.viibstems")
+	if err := os.Symlink(realPackage, adjacent); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	result := DiscoverPackages(source, nil)
+	if len(result.Candidates) != 0 || len(result.Rejected) != 1 {
+		t.Fatalf("symlinked adjacent package became a candidate: %+v", result)
+	}
+}
+
+func TestDiscoverLibraryPackagesReportsSymlinkedPackageRootAsRejected(t *testing.T) {
+	root := t.TempDir()
+	realPackage := filepath.Join(root, "real.viibstems")
+	writeDiscoveryFixture(t, realPackage, sha256Hex([]byte("source")))
+	alias := filepath.Join(root, "alias.viibstems")
+	if err := os.Symlink(realPackage, alias); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	result := DiscoverLibraryPackages([]string{root})
+	if len(result.Candidates) != 1 || filepath.Clean(result.Candidates[0].Path) != filepath.Clean(realPackage) {
+		t.Fatalf("real package candidate missing or symlink was followed: %+v", result)
+	}
+	if len(result.Rejected) != 1 || filepath.Clean(result.Rejected[0].Path) != filepath.Clean(alias) {
+		t.Fatalf("symlinked package root was not retained as invalid diagnostics: %+v", result.Rejected)
+	}
+}
+
+func TestDiscoverLibraryPackagesObservesCancellation(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, err := DiscoverLibraryPackagesContext(ctx, []string{root})
+	if err != context.Canceled || len(result.Candidates) != 0 {
+		t.Fatalf("canceled discovery returned candidates=%d err=%v", len(result.Candidates), err)
 	}
 }
 

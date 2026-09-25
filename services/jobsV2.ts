@@ -8,7 +8,7 @@ import { getEventStreamURL } from './eventStreamURL';
 const JOBS_BASE = '/api/v2/jobs';
 
 export type JobStatus = 'queued' | 'running' | 'paused' | 'succeeded' | 'failed' | 'canceling' | 'canceled' | 'interrupted';
-export type JobType = 'full_scan' | 'quick_scan' | 'refresh_genre_stats' | 'analyze_tracks';
+export type JobType = 'full_scan' | 'quick_scan' | 'refresh_genre_stats' | 'analyze_tracks' | 'stem_library_scan' | 'stem_registry_refresh' | 'stem_package_link';
 
 /** Which tracks an analysis job covers. Recorded in the job's parameters so a
  * resumed job re-expands the identical selection. */

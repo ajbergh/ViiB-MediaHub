@@ -71,6 +71,7 @@ var skipDirectoryPrefixes = []string{
 
 // Directories to skip during scanning (exact name match, case-insensitive)
 var skipDirectoryNames = map[string]bool{
+	".viibstems":                true,
 	"$recycle.bin":              true,
 	"system volume information": true,
 	"recycler":                  true,
@@ -90,6 +91,9 @@ var skipDirectoryNames = map[string]bool{
 // shouldSkipDirectory checks if a directory should be skipped during scanning
 func shouldSkipDirectory(dirName string) bool {
 	lowerName := strings.ToLower(dirName)
+	if strings.EqualFold(filepath.Ext(lowerName), ".viibstems") {
+		return true
+	}
 
 	// Check exact name matches
 	if skipDirectoryNames[lowerName] {
@@ -119,6 +123,27 @@ func pathContainsSkippedDirectory(filePath string) bool {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break // Reached root
+		}
+		dir = parent
+	}
+	return false
+}
+
+// pathContainsStemPackageDirectory is intentionally explicit even though
+// .viibstems is also hidden on most platforms. Stem package audio must never
+// enter the music catalog through a full scan, quick scan, or watcher event.
+func pathContainsStemPackageDirectory(filePath string) bool {
+	if strings.TrimSpace(filePath) == "" {
+		return false
+	}
+	clean := filepath.Clean(filePath)
+	for dir := filepath.Dir(clean); dir != "" && dir != "." && dir != string(filepath.Separator); {
+		if strings.EqualFold(filepath.Ext(filepath.Base(dir)), ".viibstems") {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
 		}
 		dir = parent
 	}
@@ -732,6 +757,9 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		} else {
 			result.RemovedSongs = removed
 			logger.Scanner("Removed %d songs that no longer exist", removed)
+			if cacheErr := s.db.DeleteFileMetadataCacheBatch(pathsToRemove); cacheErr != nil {
+				logger.Scanner("Error removing metadata cache for deleted songs: %v", cacheErr)
+			}
 		}
 	}
 

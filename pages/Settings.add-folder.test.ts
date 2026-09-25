@@ -7,6 +7,10 @@ const mocks = vi.hoisted(() => ({
   browseFolder: vi.fn(),
   addScanFolder: vi.fn(),
   loadScanFolders: vi.fn(),
+  getStemLibraryLocations: vi.fn(),
+  setStemLibraryLocations: vi.fn(),
+  scanStemLibraries: vi.fn(),
+  getJob: vi.fn(),
 }));
 
 vi.mock('../store', () => ({
@@ -29,8 +33,13 @@ vi.mock('../services/api', () => ({
     getLastFMSettings: vi.fn().mockResolvedValue({ apiKey: '', enabled: false, username: '' }),
     getLastFMStatus: vi.fn().mockResolvedValue({ connected: false, canScrobble: false }),
     getSetting: vi.fn().mockResolvedValue(''),
+    getStemLibraryLocations: mocks.getStemLibraryLocations,
+    setStemLibraryLocations: mocks.setStemLibraryLocations,
+    scanStemLibraries: mocks.scanStemLibraries,
   },
 }));
+
+vi.mock('../services/jobsV2', () => ({ jobsV2: { get: mocks.getJob } }));
 
 vi.mock('react-router', () => ({ useLocation: () => ({ state: null }) }));
 vi.mock('../components/PlexMusicSourceSettings', () => ({ PlexMusicSourceSettings: () => null }));
@@ -48,6 +57,10 @@ describe('Settings Add Folder browser', () => {
     mocks.browseFolder.mockReset();
     mocks.addScanFolder.mockReset().mockResolvedValue(undefined);
     mocks.loadScanFolders.mockReset();
+    mocks.getStemLibraryLocations.mockReset().mockResolvedValue([]);
+    mocks.setStemLibraryLocations.mockReset().mockImplementation(async (paths: string[]) => paths.map((path, index) => ({ id: `stem-${index}`, path, enabled: true, createdAt: 1 })));
+    mocks.scanStemLibraries.mockReset().mockResolvedValue({ jobId: 'stem-scan-job', status: 'accepted' });
+    mocks.getJob.mockReset().mockResolvedValue({ id: 'stem-scan-job', type: 'stem_library_scan', status: 'queued', progressCurrent: 0, progressTotal: 0, message: 'Queued Stem Library scan', attempts: 1, createdAt: 1, updatedAt: 1 });
     mocks.browseFolder.mockImplementation(async (path?: string) => {
       if (path === 'C:\\') {
         return { currentPath: 'C:\\', entries: [{ name: 'Music', path: 'C:\\Music', isDir: true }] };
@@ -134,5 +147,26 @@ describe('Settings Add Folder browser', () => {
     expect(container.querySelector('[role="dialog"]')?.textContent).not.toContain('C:\\Music');
     consoleError.mockRestore();
     expect(mocks.addScanFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores Stem Library roots separately and starts an independent scan job', async () => {
+    await act(async () => root.render(React.createElement(Settings)));
+    await click(buttonNamed('Add Stem Library'));
+    await act(async () => {
+      resolveInitialBrowse({ currentPath: 'Drives', entries: [{ name: 'C:', path: 'C:\\', isDir: true }] });
+      await Promise.resolve();
+    });
+    await click(buttonNamed('C: drive'));
+    await click(buttonNamed('Use This Folder'));
+
+    expect(mocks.setStemLibraryLocations).toHaveBeenCalledWith(['C:\\']);
+    expect(mocks.addScanFolder).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Artist/Album subfolders');
+    expect(container.textContent).toContain('run Full Rescan once');
+
+    await click(buttonNamed('Scan Stem Libraries'));
+    expect(mocks.scanStemLibraries).toHaveBeenCalledTimes(1);
+    expect(mocks.getJob).toHaveBeenCalledWith('stem-scan-job');
+    expect(mocks.addScanFolder).not.toHaveBeenCalled();
   });
 });

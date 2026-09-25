@@ -123,6 +123,10 @@ func (a *API) createJobV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.Type = strings.ToLower(strings.TrimSpace(request.Type))
+	if request.Type == "stem_library_scan" {
+		respondV2Error(w, r, http.StatusBadRequest, "dedicated_stem_scan_required", "Create Stem Library scans through /v2/stems/scan so the job can only use configured locations", false, nil)
+		return
+	}
 	if !supportedJobTypes[request.Type] {
 		respondV2Error(w, r, http.StatusBadRequest, "unsupported_job_type", "Supported job types are "+supportedJobTypeList, false, map[string]any{"type": request.Type})
 		return
@@ -278,6 +282,8 @@ func (a *API) runClaimedJob(job db.Job) {
 		a.runQuickScanJob(id)
 	case JobTypeAnalyzeTracks:
 		a.runAnalyzeTracksJob(job)
+	case "stem_library_scan":
+		a.runStemLibraryScanJob(job)
 	case "stem_registry_refresh", "stem_package_link":
 		a.runStemRegistryJob(job)
 	case "refresh_genre_stats":

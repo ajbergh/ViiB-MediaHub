@@ -89,6 +89,32 @@ func TestJobCancellationAndRetryStates(t *testing.T) {
 	}
 }
 
+func TestCompleteJobIfRunningDoesNotOverwriteCancellation(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	job := Job{ID: "cancel-race", Type: "stem_library_scan", Status: JobStatusQueued}
+	if err := database.CreateJob(job); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.StartJob(job.ID, "Running"); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := database.RequestJobCancellation(job.ID); err != nil || !changed {
+		t.Fatalf("request cancellation: changed=%v err=%v", changed, err)
+	}
+	completed, err := database.CompleteJobIfRunning(job.ID, map[string]string{"done": "yes"}, "Done")
+	if err != nil || completed {
+		t.Fatalf("late completion overwrote canceling state: completed=%v err=%v", completed, err)
+	}
+	current, err := database.GetJob(job.ID)
+	if err != nil || current.Status != JobStatusCanceling {
+		t.Fatalf("late completion changed status: %+v err=%v", current, err)
+	}
+}
+
 func TestClaimNextQueuedJobUsesPriorityAndIsSingleFlight(t *testing.T) {
 	database, err := New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {

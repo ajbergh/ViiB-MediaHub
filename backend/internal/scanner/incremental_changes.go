@@ -28,6 +28,9 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 	filesToDelete := make([]string, 0)
 	filesToProcess := make([]FileChange, 0, len(changes))
 	for _, change := range changes {
+		if pathContainsStemPackageDirectory(change.Path) && change.ChangeType != ChangeTypeDeleted {
+			continue
+		}
 		switch change.ChangeType {
 		case ChangeTypeDeleted:
 			filesToDelete = append(filesToDelete, filepath.Clean(change.Path))
