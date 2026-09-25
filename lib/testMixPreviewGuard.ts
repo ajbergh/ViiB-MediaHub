@@ -57,6 +57,11 @@ export function stillOwnsOccupiedPreviewBaseline(deck: DeckState, baseline: Deck
     && deck.cueEnabled === baseline.cueEnabled;
 }
 
+/** Transport commands are user ownership changes; natural position updates are not. */
+export function stillOwnsPreviewTransport(startedAtGeneration: number, currentGeneration: number): boolean {
+  return startedAtGeneration === currentGeneration;
+}
+
 export function isPreviewDeckOffAir(deck: DeckId, crossfader: number): boolean {
   return deck === 'A' ? crossfader === 1 : crossfader === -1;
 }

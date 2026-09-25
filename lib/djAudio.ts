@@ -74,6 +74,8 @@ export class DJAudioEngine {
   private loadedTrackIdB: string | null = null;
   private stemControlGenerationA = 0;
   private stemControlGenerationB = 0;
+  private transportControlGenerationA = 0;
+  private transportControlGenerationB = 0;
 
   // Gain nodes for volume control
   private gainNodeA: GainNode | null = null;
@@ -814,31 +816,34 @@ export class DJAudioEngine {
     if (!source?.isLoaded()) throw new Error(`Deck ${deck} source is not loaded`);
     if (this.getStemControlGeneration(deck) !== expectedStemControlGeneration || !stillOwned()) throw new Error('Deck restore ownership changed');
 
-    this.setVolume(deck, deckState.volume);
-    this.setEQ(deck, 'low', deckState.eq.low);
-    this.setEQ(deck, 'mid', deckState.eq.mid);
-    this.setEQ(deck, 'high', deckState.eq.high);
-    this.setTempo(deck, deckState.tempo);
-    source.setKeyLock(keyLock);
-    source.setLoop(deckState.loop.start, deckState.loop.end, deckState.loop.enabled);
-    this.setCueEnabled(deck, deckState.cueEnabled);
-
-    this.setFilterFX(deck, deckState.fx.filter.enabled, deckState.fx.filter.type, deckState.fx.filter.frequency, deckState.fx.filter.resonance);
-    this.setDelayFX(deck, deckState.fx.delay.enabled, deckState.fx.delay.time, deckState.fx.delay.feedback, deckState.fx.delay.mix);
-    this.setFlangerFX(deck, deckState.fx.flanger.enabled, deckState.fx.flanger.rate, deckState.fx.flanger.depth, deckState.fx.flanger.feedback);
-    this.setReverbFX(deck, deckState.fx.reverb.enabled, deckState.fx.reverb.roomSize, deckState.fx.reverb.damping, deckState.fx.reverb.mix);
-
     const stemSource = this.getStemDeckSource(deck);
     const currentStemStatus = stemSource?.getStemStatus();
     if (stemMode === 'stems' || stemMode === 'full') {
       if (!stemSource || !currentStemStatus?.available) throw new Error(`Deck ${deck} stem source is unavailable`);
-      if (stemMode === 'stems') this.clearScratchAudio(deck);
       await stemSource.setStemMode(stemMode);
       if (this.getStemControlGeneration(deck) !== expectedStemControlGeneration || !stillOwned()) throw new Error('Deck restore ownership changed');
       if (stemSource.getStemStatus().mode !== stemMode) throw new Error(`Deck ${deck} could not restore ${stemMode} mode`);
     } else if (currentStemStatus?.mode !== 'fallback') {
       throw new Error(`Deck ${deck} fallback source mode was not restored`);
     }
+
+    // The async stem transition is the last yield point. Recheck ownership
+    // before touching any synchronous mixer or transport controls.
+    if (this.getStemControlGeneration(deck) !== expectedStemControlGeneration || !stillOwned()) throw new Error('Deck restore ownership changed');
+
+    this.setVolume(deck, deckState.volume);
+    this.setEQ(deck, 'low', deckState.eq.low);
+    this.setEQ(deck, 'mid', deckState.eq.mid);
+    this.setEQ(deck, 'high', deckState.eq.high);
+    this.setTempo(deck, deckState.tempo);
+
+    this.setFilterFX(deck, deckState.fx.filter.enabled, deckState.fx.filter.type, deckState.fx.filter.frequency, deckState.fx.filter.resonance);
+    this.setDelayFX(deck, deckState.fx.delay.enabled, deckState.fx.delay.time, deckState.fx.delay.feedback, deckState.fx.delay.mix);
+    this.setFlangerFX(deck, deckState.fx.flanger.enabled, deckState.fx.flanger.rate, deckState.fx.flanger.depth, deckState.fx.flanger.feedback);
+    this.setReverbFX(deck, deckState.fx.reverb.enabled, deckState.fx.reverb.roomSize, deckState.fx.reverb.damping, deckState.fx.reverb.mix);
+    source.setLoop(deckState.loop.start, deckState.loop.end, deckState.loop.enabled);
+    source.setKeyLock(keyLock);
+    this.setCueEnabled(deck, deckState.cueEnabled);
     for (const bus of ['vocals', 'drums', 'bass', 'music'] as const) {
       stemSource?.setStemGain(bus, stemState[bus].gain);
       stemSource?.setStemMuted(bus, stemState[bus].muted);
@@ -992,10 +997,20 @@ export class DJAudioEngine {
     return deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
   }
 
+  /** User-visible transport actions, separate from natural playback position updates. */
+  getDeckTransportControlGeneration(deck: DeckId): number {
+    return deck === 'A' ? this.transportControlGenerationA : this.transportControlGenerationB;
+  }
+
+  private bumpTransportControlGeneration(deck: DeckId): void {
+    if (deck === 'A') ++this.transportControlGenerationA; else ++this.transportControlGenerationB;
+  }
+
   /**
    * Play a deck
    */
   async play(deck: DeckId): Promise<void> {
+    this.bumpTransportControlGeneration(deck);
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (scratch) { scratch.wasPlaying = true; return; }
     const source = this.getDeckSource(deck);
@@ -1012,6 +1027,7 @@ export class DJAudioEngine {
    * Pause a deck
    */
   pause(deck: DeckId): void {
+    this.bumpTransportControlGeneration(deck);
     const scratch = deck === 'A' ? this.scratchStateA : this.scratchStateB;
     if (scratch) scratch.wasPlaying = false;
     if (scratch?.coasting) this.endScratch(deck, 0, false);
@@ -1039,6 +1055,7 @@ export class DJAudioEngine {
    * Seek to position (in seconds)
    */
   seek(deck: DeckId, position: number): void {
+    this.bumpTransportControlGeneration(deck);
     this.endScratch(deck);
     this.getDeckSource(deck)?.seek(position);
   }
@@ -1143,6 +1160,7 @@ export class DJAudioEngine {
 
   /** Grab the vinyl: the normal transport stops immediately. */
   startScratch(deck: DeckId): boolean {
+    this.bumpTransportControlGeneration(deck);
     const source = this.getDeckSource(deck);
     if (!source?.isLoaded() || !this.canScratch(deck)) return false;
     const previous = deck === 'A' ? this.scratchStateA : this.scratchStateB;
@@ -1721,6 +1739,7 @@ export class DJAudioEngine {
    * @param offsetMs - Offset in milliseconds (positive = forward, negative = backward)
    */
   nudgePosition(deck: DeckId, offsetMs: number): void {
+    this.bumpTransportControlGeneration(deck);
     const source = this.getDeckSource(deck);
     if (!source) return;
     

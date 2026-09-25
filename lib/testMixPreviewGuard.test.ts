@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckState } from '../slices/djMixerSlice';
-import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsOccupiedPreviewBaseline, stillOwnsPreviewDeck, stillOwnsPreviewRoute } from './testMixPreviewGuard';
+import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsOccupiedPreviewBaseline, stillOwnsPreviewDeck, stillOwnsPreviewRoute, stillOwnsPreviewTransport } from './testMixPreviewGuard';
 
 function deck(overrides: Partial<DeckState> = {}): DeckState {
   return {
@@ -77,5 +77,10 @@ describe('Test Mix preview guards', () => {
     expect(stillOwnsPreviewDeck(deck({ ...previewDeck, volume: 0.5 }), 'candidate', baseline)).toBe(false);
     expect(stillOwnsPreviewDeck(deck({ ...previewDeck, track: { id: 'user-track' } as DeckState['track'] }), 'candidate', baseline)).toBe(false);
     expect(stillOwnsPreviewDeck(deck({ ...previewDeck, tempo: 1.05 }), 'candidate', baseline)).toBe(false);
+  });
+
+  it('retains preview ownership only while no explicit transport command has changed', () => {
+    expect(stillOwnsPreviewTransport(12, 12)).toBe(true);
+    expect(stillOwnsPreviewTransport(12, 13)).toBe(false);
   });
 });

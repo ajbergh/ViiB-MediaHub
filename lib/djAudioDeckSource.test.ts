@@ -10,6 +10,8 @@ const state = {
 vi.mock('../store', () => ({ useStore: { getState: () => state } }));
 
 import { DJAudioEngine } from './djAudio';
+import { StemDeckSource } from './stemDeckSource';
+import type { DeckState } from '../slices/djMixerSlice';
 
 function fakeSource(position = 3.9) {
   const state = { position, duration: 20, playing: true, loaded: true, tempo: 1, keyLock: false };
@@ -102,5 +104,51 @@ describe('DJAudioEngine DeckSource integration', () => {
     engine.setStemSolo('B', 'bass', true);
     await engine.setStemMode('B', 'stems');
     expect(engine.getStemControlGeneration('B')).toBe(4);
+  });
+
+  it('advances transport ownership for explicit seek, pause, play, and nudge commands', async () => {
+    const engine = new DJAudioEngine();
+    const { source } = fakeSource();
+    Object.assign(engine, { deckSourceA: source });
+    expect(engine.getDeckTransportControlGeneration('A')).toBe(0);
+    engine.seek('A', 7);
+    engine.pause('A');
+    await engine.play('A');
+    engine.nudgePosition('A', 20);
+    expect(engine.getDeckTransportControlGeneration('A')).toBe(4);
+  });
+
+  it('does not write mixer controls after ownership changes during async stem-mode restoration', async () => {
+    const engine = new DJAudioEngine();
+    let mode: 'full' | 'stems' = 'full';
+    let resolveMode: (() => void) | undefined;
+    const source = Object.assign(Object.create(StemDeckSource.prototype), {
+      isLoaded: () => true,
+      getStemStatus: () => ({ mode, available: true }),
+      setStemMode: () => new Promise<void>(resolve => { resolveMode = () => { mode = 'stems'; resolve(); }; }),
+      setKeyLock: vi.fn(), setLoop: vi.fn(), setStemGain: vi.fn(), setStemMuted: vi.fn(), setStemSolo: vi.fn(),
+    });
+    Object.assign(engine, { deckSourceB: source });
+    const controlWriters = [
+      vi.spyOn(engine, 'setVolume'), vi.spyOn(engine, 'setEQ'), vi.spyOn(engine, 'setTempo'),
+      vi.spyOn(engine, 'setFilterFX'), vi.spyOn(engine, 'setDelayFX'), vi.spyOn(engine, 'setFlangerFX'),
+      vi.spyOn(engine, 'setReverbFX'), vi.spyOn(engine, 'setCueEnabled'),
+    ];
+    let stillOwned = true;
+    const stemState = {
+      vocals: { gain: 1, muted: false, solo: false }, drums: { gain: 1, muted: false, solo: false },
+      bass: { gain: 1, muted: false, solo: false }, music: { gain: 1, muted: false, solo: false },
+    };
+
+    const restore = engine.restoreDeckMixState('B', {} as DeckState, false, 'stems', stemState, 0, () => stillOwned);
+    for (const writer of controlWriters) expect(writer).not.toHaveBeenCalled();
+    expect(source.setKeyLock).not.toHaveBeenCalled();
+    expect(source.setLoop).not.toHaveBeenCalled();
+    stillOwned = false;
+    resolveMode?.();
+    await expect(restore).rejects.toThrow('ownership changed');
+    for (const writer of controlWriters) expect(writer).not.toHaveBeenCalled();
+    expect(source.setKeyLock).not.toHaveBeenCalled();
+    expect(source.setLoop).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { getDJAudioEngine } from '../../../lib/djAudio';
-import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPreparedPreviewDeck, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsOccupiedPreviewBaseline, stillOwnsPreviewDeck, stillOwnsPreviewRoute, type TestMixPreviewBaseline } from '../../../lib/testMixPreviewGuard';
+import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPreparedPreviewDeck, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsOccupiedPreviewBaseline, stillOwnsPreviewDeck, stillOwnsPreviewRoute, stillOwnsPreviewTransport, type TestMixPreviewBaseline } from '../../../lib/testMixPreviewGuard';
 import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
 import type { DeckState } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
@@ -26,6 +26,9 @@ interface TestMixPreviewSession {
   previewStemMode: ReturnType<ReturnType<typeof getDJAudioEngine>['getStemStatus']>['mode'] | null;
   previewStemState: ReturnType<ReturnType<typeof getDJAudioEngine>['getStemState']> | null;
   previewStemControlGeneration: number | null;
+  originalTransportControlGeneration: number;
+  previewTransportControlGeneration: number | null;
+  originalStemControlGeneration: number;
   generationBeforeLoad: number;
   loadGeneration: number | null;
   phase: 'preparing' | 'loading' | 'ready' | 'playing';
@@ -160,7 +163,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const mainDeviceId = engine.getMainOutputDeviceId();
   const previewDeckEmpty = isPristineEmptyPreviewDeck(previewDeckState);
   const previewDeckOccupied = isRestorableOccupiedPreviewDeck(previewDeckState, engine.getDeckLoadedTrackId(previewDeckID))
-    && engine.isLoaded(previewDeckID) && previewDeckState.isPlaying === engine.isPlaying(previewDeckID);
+    && engine.isLoaded(previewDeckID) && !engine.isScratching(previewDeckID)
+    && previewDeckState.isPlaying === engine.isPlaying(previewDeckID);
   const previewAllowed = !!deck && !!candidateTrack && engine.initialized
     && (previewDeckEmpty || previewDeckOccupied)
     && isPreviewDeckOffAir(previewDeckID, crossfader)
@@ -204,7 +208,9 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     && session.previewStemMode !== null && session.previewStemState !== null
     && audio.getStemStatus(session.targetDeck).mode === session.previewStemMode
     && JSON.stringify(audio.getStemState(session.targetDeck)) === JSON.stringify(session.previewStemState)
-    && session.previewStemControlGeneration === audio.getStemControlGeneration(session.targetDeck);
+    && session.previewStemControlGeneration === audio.getStemControlGeneration(session.targetDeck)
+    && session.previewTransportControlGeneration !== null
+    && stillOwnsPreviewTransport(session.previewTransportControlGeneration, audio.getDeckTransportControlGeneration(session.targetDeck));
 
   const restoreOccupiedPreview = async (session: TestMixPreviewSession, audio: ReturnType<typeof getDJAudioEngine>, message: string) => {
     const target = session.targetDeck;
@@ -215,6 +221,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       : ownsOccupiedPreviewControls(session, targetBeforeRestore, audio);
     if (!baselineStillOwned || audio.getDeckLoadGeneration(target) !== session.loadGeneration
       || (session.phase !== 'loading' && audio.getDeckLoadedTrackId(target) !== session.candidateId)
+      || (session.phase === 'loading' && !stillOwnsPreviewTransport(session.originalTransportControlGeneration, audio.getDeckTransportControlGeneration(target)))
+      || (session.phase === 'loading' && audio.getStemControlGeneration(target) !== session.originalStemControlGeneration)
       || !ownsCurrentPreviewRoute(session, stateBeforeRestore, audio)) {
       setPreviewMessage('Test Mix handed off: deck, source, or cue routing changed; the current state was left untouched.');
       return;
@@ -232,7 +240,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         return;
       }
 
-      const stillCandidateOwned = () => {
+      const stillCandidateOwned = (expectedTransportControlGeneration = session.phase === 'loading'
+        ? session.originalTransportControlGeneration : session.previewTransportControlGeneration) => {
         const current = useStore.getState();
         const currentDeck = target === 'A' ? current.djDeckA : current.djDeckB;
         const deckOwned = session.phase === 'loading'
@@ -241,15 +250,20 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         return deckOwned && ownsCurrentPreviewRoute(session, current, audio)
           && audio.getDeckLoadGeneration(target) === restoreLoadGeneration
           && audio.getDeckLoadedTrackId(target) === session.originalDeck.track!.id
-          && audio.getStemControlGeneration(target) === session.previewStemControlGeneration;
+          && audio.getStemControlGeneration(target) === (session.phase === 'loading'
+            ? session.originalStemControlGeneration : session.previewStemControlGeneration)
+          && expectedTransportControlGeneration !== null
+          && stillOwnsPreviewTransport(expectedTransportControlGeneration, audio.getDeckTransportControlGeneration(target));
       };
       if (!stillCandidateOwned()) {
         setPreviewMessage('Test Mix handed off during restore; user changes were kept.');
         return;
       }
 
+      const expectedStemControlGeneration = session.phase === 'loading'
+        ? session.originalStemControlGeneration : session.previewStemControlGeneration!;
       await audio.restoreDeckMixState(target, session.originalDeck, session.originalKeyLock, session.originalStemMode, session.originalStemState,
-        session.previewStemControlGeneration!, () => {
+        expectedStemControlGeneration, () => {
           const current = useStore.getState();
           const currentDeck = target === 'A' ? current.djDeckA : current.djDeckB;
           const deckOwned = session.phase === 'loading'
@@ -257,16 +271,32 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
             : currentDeck.track === session.candidateTrack && isPreparedPreviewDeck(currentDeck, session.candidateId, session.baseline);
           return deckOwned && ownsCurrentPreviewRoute(session, current, audio)
             && audio.getDeckLoadGeneration(target) === restoreLoadGeneration
-            && audio.getDeckLoadedTrackId(target) === session.originalDeck.track!.id;
+            && audio.getDeckLoadedTrackId(target) === session.originalDeck.track!.id
+            && audio.getStemControlGeneration(target) === expectedStemControlGeneration
+            && stillOwnsPreviewTransport(session.phase === 'loading'
+              ? session.originalTransportControlGeneration : session.previewTransportControlGeneration!, audio.getDeckTransportControlGeneration(target));
         });
       if (!stillCandidateOwned()) {
         setPreviewMessage('Test Mix handed off during restore; user changes were kept.');
         return;
       }
+      let restoredTransportGeneration = session.phase === 'loading'
+        ? session.originalTransportControlGeneration : session.previewTransportControlGeneration!;
       audio.seek(target, session.originalPosition);
-      if (session.originalDeck.isPlaying) await audio.play(target);
-      else audio.pause(target);
-      if (!stillCandidateOwned()) {
+      restoredTransportGeneration += 1;
+      if (audio.getDeckTransportControlGeneration(target) !== restoredTransportGeneration) {
+        setPreviewMessage('Test Mix handed off during restore; user changes were kept.');
+        return;
+      }
+      if (session.originalDeck.isPlaying) {
+        const restorePlay = audio.play(target);
+        restoredTransportGeneration += 1;
+        await restorePlay;
+      } else {
+        audio.pause(target);
+        restoredTransportGeneration += 1;
+      }
+      if (!stillCandidateOwned(restoredTransportGeneration)) {
         setPreviewMessage('Test Mix handed off during restore; user changes were kept.');
         return;
       }
@@ -362,6 +392,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       originalKeyLock, originalStemMode: audio.getStemStatus(target).mode, originalStemState: audio.getStemState(target),
       previewStemMode: null, previewStemState: null,
       previewStemControlGeneration: null,
+      originalTransportControlGeneration: audio.getDeckTransportControlGeneration(target), previewTransportControlGeneration: null,
+      originalStemControlGeneration: audio.getStemControlGeneration(target),
       generationBeforeLoad: audio.getDeckLoadGeneration(target), loadGeneration: null, phase: 'preparing',
       startedAtCrossfader: state.djMixer.crossfader, startedAtKeyLock: originalKeyLock,
       startedAtHeadphoneDeviceId, startedAtMasterDeviceId,
@@ -376,6 +408,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       const mixerStillSafe = ownsCurrentPreviewRoute(session, current, audio);
       const deckStillOwned = occupied
         ? stillOwnsOccupiedPreviewBaseline(currentTarget, originalDeck) && audio.getDeckLoadedTrackId(target) === originalDeck.track?.id
+          && stillOwnsPreviewTransport(session.originalTransportControlGeneration, audio.getDeckTransportControlGeneration(target))
+          && audio.getStemControlGeneration(target) === session.originalStemControlGeneration
         : isPristineEmptyPreviewDeck(currentTarget) && currentTarget.volume === baseline.volume
           && currentTarget.eq.low === baseline.eq.low && currentTarget.eq.mid === baseline.eq.mid && currentTarget.eq.high === baseline.eq.high;
       if (!mixerStillSafe || !deckStillOwned || audio.getDeckLoadGeneration(target) !== session.generationBeforeLoad) {
@@ -397,6 +431,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       }
       const baselineOwned = occupied
         ? stillOwnsOccupiedPreviewBaseline(afterTarget, originalDeck)
+          && stillOwnsPreviewTransport(session.originalTransportControlGeneration, audio.getDeckTransportControlGeneration(target))
+          && audio.getStemControlGeneration(target) === session.originalStemControlGeneration
         : afterTarget.track === null && afterTarget.volume === baseline.volume
           && afterTarget.eq.low === baseline.eq.low && afterTarget.eq.mid === baseline.eq.mid && afterTarget.eq.high === baseline.eq.high;
       if (!baselineOwned || audio.getDeckLoadedTrackId(target) !== candidateTrack.id) {
@@ -415,8 +451,13 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       audio.seek(target, startAt);
       afterLoad.setDeckPosition(target, startAt);
       session.phase = 'ready';
-      await audio.play(target);
+      const previewPlay = audio.play(target);
+      session.previewTransportControlGeneration = audio.getDeckTransportControlGeneration(target);
+      await previewPlay;
       if (previewRef.current?.token !== session.token || audio.getDeckLoadGeneration(target) !== session.loadGeneration) return;
+      if (occupied && audio.getDeckTransportControlGeneration(target) !== session.previewTransportControlGeneration) {
+        finishPreviewRef.current(session.token, 'Test Mix handed off: transport controls changed.'); return;
+      }
       if (audio.getDeckLoadedTrackId(target) !== candidateTrack.id) {
         finishPreviewRef.current(session.token, 'Test Mix handed off: the preview source changed.'); return;
       }
