@@ -87,7 +87,9 @@ export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps)
       loadHotCues(deck, result.hotCues);
       setStatus(result.appliedSlots.length
         ? `Applied slots ${result.appliedSlots.join(', ')}${result.blockedSlots.length ? ` · kept occupied ${result.blockedSlots.join(', ')}` : ''}`
-        : 'No candidates applied; occupied or suppressed slots were kept.');
+        : selectedSlots?.length === 1 && result.blockedSlots.length === 0
+          ? `No fresh candidate for slot ${selectedSlots[0]}; existing cue was kept.`
+          : 'No candidates applied; occupied or suppressed slots were kept.');
     } catch {
       setStatus('Cue suggestions could not be applied.');
     } finally {
@@ -119,7 +121,7 @@ export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps)
       Cue editor · {hotCues.filter(cue => cue.origin === 'analysis').length} auto · {hotCues.filter(cue => cue.origin !== 'analysis').length} manual
     </summary>
     <div className="space-y-2 border-t border-neutral-800 px-2 py-2">
-      {hotCues.length > 0 && <div className="grid grid-cols-[2rem_minmax(6rem,1fr)_auto_auto_auto_auto_auto_auto] items-center gap-1">
+      {hotCues.length > 0 && <div className="grid grid-cols-[2rem_minmax(6rem,1fr)_auto_auto_auto_auto_auto_auto_auto] items-center gap-1">
         {hotCues.map(cue => <React.Fragment key={cue.slot}>
           <span className="font-mono text-neutral-500">{cue.slot}</span>
           <label className="flex min-w-0 items-center gap-1">
@@ -148,6 +150,10 @@ export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps)
               disabled={!!cue.locked || isApplying} onChange={event => updateCue(cue.slot, current => recolorHotCue(current, event.target.value))}
               className="h-5 w-6 cursor-pointer rounded border border-neutral-700 bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-40" />
           </label>
+          {cue.origin === 'analysis' ? <button type="button" aria-label={`Regenerate cue ${cue.slot}`} disabled={!!cue.locked || isApplying}
+            onClick={() => void apply([cue.slot])}
+            title="Generate a fresh candidate for this slot. If none is available, the current cue stays in place."
+            className="rounded border border-cyan-500/40 px-1 py-0.5 text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40">Regenerate</button> : <span />}
           {cue.origin === 'analysis' ? <button type="button" aria-label={`Convert cue ${cue.slot} to manual`} disabled={!!cue.locked || isApplying}
             onClick={() => updateCue(cue.slot, convertHotCueToManual)} title="Keep this cue but remove generated-only metadata"
             className="rounded border border-amber-500/40 px-1 py-0.5 text-amber-200 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40">To Manual</button> : <span />}
