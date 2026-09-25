@@ -193,7 +193,7 @@ export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps)
           <button type="button" disabled={isApplying} onClick={() => void apply([candidate.slot])} className="shrink-0 rounded border border-neutral-700 px-1 py-0.5 hover:border-cyan-500 disabled:opacity-40">Apply</button>
         </li>)}
       </ul>
-      {cueList.suppressions.length > 0 && <p className="text-neutral-500">Suppressed generated slots: {cueList.suppressions.map(item => `${item.slot} ${item.kind}`).join(', ')}</p>}
+      {(cueList.suppressions ?? []).length > 0 && <p className="text-neutral-500">Suppressed generated slots: {(cueList.suppressions ?? []).map(item => `${item.slot} ${item.kind}`).join(', ')}</p>}
     </div>
   </details>;
 }
