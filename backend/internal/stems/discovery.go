@@ -1,11 +1,11 @@
 package stems
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -33,9 +33,11 @@ const (
 // PackageCandidate contains a fully validated package and its discovery path.
 // Validation is retained so callers can use the already checked file paths.
 type PackageCandidate struct {
-	Path       string
-	Source     CandidateSource
-	Validation Validation
+	Path                  string
+	Source                CandidateSource
+	Validation            Validation
+	SourceIdentityChecked bool
+	SourceIdentityMatches bool
 }
 
 // DiscoveryResult keeps valid candidates and rejected package diagnostics.
@@ -58,43 +60,61 @@ type RejectedPackage struct {
 // song.flac -> song.viibstems. Package validity is always checked by
 // ValidatePackage; discovery alone does not establish source identity.
 func DiscoverPackages(sourcePath string, libraryDirs []string) DiscoveryResult {
+	result, _ := DiscoverPackagesContext(context.Background(), sourcePath, libraryDirs)
+	return result
+}
+
+// DiscoverPackagesContext is the cancellable variant of DiscoverPackages.
+func DiscoverPackagesContext(ctx context.Context, sourcePath string, libraryDirs []string) (DiscoveryResult, error) {
 	result := DiscoveryResult{}
 	adjacent := adjacentPackagePath(sourcePath)
 	seen := make(map[string]bool)
-	appendCandidate := func(path string, source CandidateSource) {
+	appendCandidate := func(path string, source CandidateSource) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		abs, err := filepath.Abs(path)
 		if err != nil {
 			result.Rejected = append(result.Rejected, RejectedPackage{Path: path, Source: source, Err: err})
-			return
+			return nil
 		}
 		abs = filepath.Clean(abs)
 		key := pathKey(abs)
 		if seen[key] {
-			return
+			return nil
 		}
 		seen[key] = true
 		info, err := os.Stat(abs)
 		if err != nil {
 			result.Rejected = append(result.Rejected, RejectedPackage{Path: abs, Source: source, Err: err})
-			return
+			return nil
 		}
 		if !info.IsDir() {
 			result.Rejected = append(result.Rejected, RejectedPackage{Path: abs, Source: source, Err: errors.New("package candidate is not a directory")})
-			return
+			return nil
 		}
-		validation, err := ValidatePackage(abs)
+		validation, err := ValidatePlayablePackageContext(ctx, abs)
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			result.Rejected = append(result.Rejected, RejectedPackage{Path: abs, Source: source, Err: err})
-			return
+			return nil
 		}
 		result.Candidates = append(result.Candidates, PackageCandidate{Path: abs, Source: source, Validation: validation})
+		return nil
 	}
 
 	if adjacent != "" {
-		appendCandidate(adjacent, CandidateAdjacent)
+		if err := appendCandidate(adjacent, CandidateAdjacent); err != nil {
+			return result, err
+		}
 	}
 
-	libraryDiscovery := DiscoverLibraryPackages(libraryDirs)
+	libraryDiscovery, err := DiscoverLibraryPackagesContext(ctx, libraryDirs)
+	if err != nil {
+		return result, err
+	}
 	result.Rejected = append(result.Rejected, libraryDiscovery.Rejected...)
 	for _, candidate := range libraryDiscovery.Candidates {
 		key := pathKey(filepath.Clean(candidate.Path))
@@ -104,7 +124,7 @@ func DiscoverPackages(sourcePath string, libraryDirs []string) DiscoveryResult {
 			result.Candidates = append(result.Candidates, candidate)
 		}
 	}
-	return result
+	return result, nil
 }
 
 // DiscoverLibraryPackages walks each configured root once, without following
@@ -113,29 +133,46 @@ func DiscoverPackages(sourcePath string, libraryDirs []string) DiscoveryResult {
 // scans of very large roots. Results are validated once and sorted
 // deterministically.
 func DiscoverLibraryPackages(libraryDirs []string) DiscoveryResult {
+	result, _ := DiscoverLibraryPackagesContext(context.Background(), libraryDirs)
+	return result
+}
+
+// DiscoverLibraryPackagesContext walks and validates packages while observing
+// cancellation between directory entries and artifact reads.
+func DiscoverLibraryPackagesContext(ctx context.Context, libraryDirs []string) (DiscoveryResult, error) {
 	result := DiscoveryResult{}
 	seen := make(map[string]bool)
-	appendCandidate := func(path string) {
+	appendCandidate := func(path string) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		abs, err := filepath.Abs(path)
 		if err != nil {
 			result.Rejected = append(result.Rejected, RejectedPackage{Path: path, Source: CandidateLibrary, Err: err})
-			return
+			return nil
 		}
 		abs = filepath.Clean(abs)
 		key := pathKey(abs)
 		if seen[key] {
-			return
+			return nil
 		}
 		seen[key] = true
-		validation, err := ValidatePackage(abs)
+		validation, err := ValidatePlayablePackageContext(ctx, abs)
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			result.Rejected = append(result.Rejected, RejectedPackage{Path: abs, Source: CandidateLibrary, Err: err})
-			return
+			return nil
 		}
 		result.Candidates = append(result.Candidates, PackageCandidate{Path: abs, Source: CandidateLibrary, Validation: validation})
+		return nil
 	}
 
 	for _, library := range libraryDirs {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		root, err := filepath.Abs(filepath.Clean(library))
 		if err != nil {
 			result.Rejected = append(result.Rejected, RejectedPackage{Path: library, Source: CandidateLibrary, Err: err})
@@ -152,6 +189,9 @@ func DiscoverLibraryPackages(libraryDirs []string) DiscoveryResult {
 		}
 		entries := 0
 		err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			entries++
 			if walkErr != nil {
 				return walkErr
@@ -166,7 +206,9 @@ func DiscoverLibraryPackages(libraryDirs []string) DiscoveryResult {
 				return nil
 			}
 			if strings.EqualFold(filepath.Ext(entry.Name()), packageDirectorySuffix) {
-				appendCandidate(path)
+				if err := appendCandidate(path); err != nil {
+					return err
+				}
 				return filepath.SkipDir
 			}
 			rel, relErr := filepath.Rel(root, path)
@@ -180,6 +222,9 @@ func DiscoverLibraryPackages(libraryDirs []string) DiscoveryResult {
 			return nil
 		})
 		if err != nil {
+			if ctx.Err() != nil {
+				return result, ctx.Err()
+			}
 			result.Rejected = append(result.Rejected, RejectedPackage{Path: root, Source: CandidateLibrary, Err: fmt.Errorf("walk stem library: %w", err)})
 		}
 	}
@@ -190,7 +235,7 @@ func DiscoverLibraryPackages(libraryDirs []string) DiscoveryResult {
 		}
 		return strings.ToLower(a) < strings.ToLower(b)
 	})
-	return result
+	return result, nil
 }
 
 // ResolvePackage discovers and validates packages, then returns the first
@@ -255,6 +300,14 @@ func NewSourceHashCache() *SourceHashCache {
 }
 
 func (c *SourceHashCache) SHA256(path string) (string, error) {
+	return c.SHA256Context(context.Background(), path)
+}
+
+// SHA256Context hashes a source file with cancellation checks between reads.
+func (c *SourceHashCache) SHA256Context(ctx context.Context, path string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if c == nil {
 		return "", errors.New("nil source hash cache")
 	}
@@ -286,7 +339,7 @@ func (c *SourceHashCache) SHA256(path string) (string, error) {
 		return "", err
 	}
 	h := sha256.New()
-	_, copyErr := io.Copy(h, f)
+	_, copyErr := copyContext(ctx, h, f)
 	closeErr := f.Close()
 	if copyErr != nil {
 		return "", fmt.Errorf("read source audio: %w", copyErr)

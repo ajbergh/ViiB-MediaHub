@@ -38,13 +38,32 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 		_ = a.db.FailJob(job.ID, "invalid_stem_library_scan", "Stem Library scan locations are missing")
 		return
 	}
+	locations, err := a.validateStemLibraryScanRoots(params.Locations)
+	if err != nil {
+		_ = a.db.FailJob(job.ID, "stem_library_roots_invalid", err.Error())
+		return
+	}
+	ctx, stopWatchingCancellation := a.stemLibraryScanContext(job.ID)
+	defer stopWatchingCancellation()
+	if a.jobCancellationRequested(job.ID) {
+		a.cancelStemLibraryJob(job.ID, "Stem Library scan canceled before package discovery")
+		return
+	}
 	if a.analysisThrottled(job.Priority) {
-		_, _ = a.db.RequeueJob(job.ID, "Waiting for DJ playback to finish before scanning Stem Libraries", analysisDeferBackoff)
+		a.deferStemLibraryScan(job.ID)
 		return
 	}
 
 	_ = a.db.UpdateJobProgress(job.ID, 0, 0, "Discovering packages in Stem Libraries")
-	rootDiscovery := stems.DiscoverLibraryPackages(params.Locations)
+	rootDiscovery, err := stems.DiscoverLibraryPackagesContext(ctx, locations)
+	if err != nil {
+		if ctx.Err() != nil {
+			a.cancelStemLibraryJob(job.ID, "Stem Library scan canceled during package discovery")
+			return
+		}
+		_ = a.db.FailJob(job.ID, "stem_library_discovery_failed", "Unable to discover Stem Library packages")
+		return
+	}
 	bySourceHash := make(map[string][]stems.PackageCandidate)
 	byAudioIdentity := make(map[stemAudioIdentityKey][]stems.PackageCandidate)
 	geometriesSet := make(map[stemAudioGeometry]struct{})
@@ -97,17 +116,21 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 	var refreshed, failed int
 	lastProgress := time.Now()
 	for index, song := range localSongs {
-		if a.jobCancellationRequested(job.ID) {
+		if ctx.Err() != nil || a.jobCancellationRequested(job.ID) {
 			_ = a.db.CancelJob(job.ID, fmt.Sprintf("Canceled after %d of %d local tracks", index, len(localSongs)))
 			return
 		}
 		if a.analysisThrottled(job.Priority) {
-			_, _ = a.db.RequeueJob(job.ID, "Waiting for DJ playback to finish before scanning Stem Libraries", analysisDeferBackoff)
+			a.deferStemLibraryScan(job.ID)
 			return
 		}
 
-		sourceHash, hashErr := stemSourceHashes.SHA256(song.FilePath)
+		sourceHash, hashErr := stemSourceHashes.SHA256Context(ctx, song.FilePath)
 		if hashErr != nil {
+			if ctx.Err() != nil {
+				a.cancelStemLibraryJob(job.ID, fmt.Sprintf("Stem Library scan canceled while hashing track %d of %d", index+1, len(localSongs)))
+				return
+			}
 			failed++
 			if time.Since(lastProgress) >= 300*time.Millisecond || index+1 == len(localSongs) {
 				message := fmt.Sprintf("Scanned Stem Libraries for %d of %d tracks", index+1, len(localSongs))
@@ -117,33 +140,126 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 			continue
 		}
 		matches := make([]stems.PackageCandidate, 0)
-		matches = append(matches, bySourceHash[strings.ToLower(sourceHash)]...)
+		for _, candidate := range bySourceHash[strings.ToLower(sourceHash)] {
+			candidate.SourceIdentityChecked = true
+			candidate.SourceIdentityMatches = true
+			matches = append(matches, candidate)
+		}
+		existingSets, listErr := a.db.ListStemSets(song.ID)
+		if listErr != nil {
+			failed++
+			continue
+		}
+		registeredPaths := make(map[string]bool, len(existingSets))
+		for _, existing := range existingSets {
+			registeredPaths[pathKeyForOS(existing.PackagePath)] = true
+		}
 
 		// Adjacent packages retain priority and are checked once for their
 		// corresponding track. The shared matcher preserves the retagged-source
 		// PCM32 fallback only for matching decoder geometry.
-		adjacent := stems.DiscoverPackages(song.FilePath, nil)
+		adjacent, adjacentErr := stems.DiscoverPackagesContext(ctx, song.FilePath, nil)
+		if adjacentErr != nil {
+			if ctx.Err() != nil {
+				a.cancelStemLibraryJob(job.ID, fmt.Sprintf("Stem Library scan canceled while validating track %d of %d", index+1, len(localSongs)))
+				return
+			}
+			failed++
+			continue
+		}
 		for _, candidate := range adjacent.Candidates {
-			if stemSourceMatches(&song, candidate.Validation.Manifest) {
+			matched, matchErr := stemSourceMatchesContext(ctx, &song, candidate.Validation.Manifest, sourceHash)
+			if ctx.Err() != nil {
+				a.cancelStemLibraryJob(job.ID, fmt.Sprintf("Stem Library scan canceled while checking adjacent package for track %d of %d", index+1, len(localSongs)))
+				return
+			}
+			candidate.SourceIdentityChecked = true
+			candidate.SourceIdentityMatches = matchErr == nil && matched
+			if matched || registeredPaths[pathKeyForOS(candidate.Path)] {
 				candidate.Source = stems.CandidateAdjacent
 				matches = append(matches, candidate)
 			}
 		}
 
-		if len(matches) == 0 {
+		needsPCMIdentityScan := len(matches) == 0
+		if !needsPCMIdentityScan {
+			for _, existing := range existingSets {
+				if existing.ExplicitlyLinked || !pathIsWithinAnyRoot(existing.PackagePath, locations) {
+					continue
+				}
+				for _, candidate := range rootDiscovery.Candidates {
+					if pathKeyForOS(candidate.Path) != pathKeyForOS(existing.PackagePath) {
+						continue
+					}
+					manifest := candidate.Validation.Manifest
+					if strings.EqualFold(manifest.Source.SHA256, sourceHash) || manifest.Source.AudioSHA256 == "" {
+						continue
+					}
+					geometry := stemAudioGeometry{sampleRate: manifest.Audio.SampleRate, channels: manifest.Audio.Channels}
+					for _, checked := range geometries {
+						if checked == geometry {
+							needsPCMIdentityScan = true
+							break
+						}
+					}
+					if needsPCMIdentityScan {
+						break
+					}
+				}
+				if needsPCMIdentityScan {
+					break
+				}
+			}
+		}
+		if needsPCMIdentityScan {
 			resolved := analysis.ResolvedSource{Name: filepath.Base(song.FilePath), Path: song.FilePath}
 			for _, geometry := range geometries {
-				pcmHash, pcmErr := stemSourceAudioHashes.SHA256(context.Background(), decoderRegistry(), resolved, geometry.sampleRate, geometry.channels)
+				pcmHash, pcmErr := stemSourceAudioHashes.SHA256(ctx, decoderRegistry(), resolved, geometry.sampleRate, geometry.channels)
+				if ctx.Err() != nil {
+					a.cancelStemLibraryJob(job.ID, fmt.Sprintf("Stem Library scan canceled while checking track identity %d of %d", index+1, len(localSongs)))
+					return
+				}
 				if pcmErr != nil {
 					continue
 				}
 				key := stemAudioIdentityKey{geometry: geometry, hash: strings.ToLower(pcmHash)}
-				matches = append(matches, byAudioIdentity[key]...)
+				for _, candidate := range byAudioIdentity[key] {
+					candidate.SourceIdentityChecked = true
+					candidate.SourceIdentityMatches = true
+					matches = append(matches, candidate)
+				}
+			}
+		}
+		matches = dedupeAndPrioritizeStemCandidates(matches)
+		// Include only already-registered packages from the configured roots when
+		// they no longer match this source identity. This lets the registry mark a
+		// valid package stale (or an invalid package invalid) without attaching
+		// unrelated packages to every local track.
+		for _, existing := range existingSets {
+			if existing.ExplicitlyLinked || !pathIsWithinAnyRoot(existing.PackagePath, locations) {
+				continue
+			}
+			key := pathKeyForOS(existing.PackagePath)
+			for _, candidate := range rootDiscovery.Candidates {
+				if pathKeyForOS(candidate.Path) == key {
+					candidate.SourceIdentityChecked = true
+					candidate.SourceIdentityMatches = false
+					matches = append(matches, candidate)
+				}
+			}
+			for _, rejected := range rootDiscovery.Rejected {
+				if pathKeyForOS(rejected.Path) == key {
+					adjacent.Rejected = append(adjacent.Rejected, rejected)
+				}
 			}
 		}
 		matches = dedupeAndPrioritizeStemCandidates(matches)
 		discovery := stems.DiscoveryResult{Candidates: matches, Rejected: adjacent.Rejected}
-		if err := a.refreshStemRegistryWithDiscovery(song.ID, &discovery, nil); err != nil {
+		if err := a.refreshStemRegistryWithDiscoveryContext(ctx, song.ID, &discovery, nil); err != nil {
+			if ctx.Err() != nil {
+				a.cancelStemLibraryJob(job.ID, fmt.Sprintf("Stem Library scan canceled while refreshing track %d of %d", index+1, len(localSongs)))
+				return
+			}
 			failed++
 		} else {
 			refreshed++
@@ -157,6 +273,10 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 		}
 	}
 
+	if ctx.Err() != nil || a.jobCancellationRequested(job.ID) {
+		a.cancelStemLibraryJob(job.ID, "Stem Library scan canceled before completion")
+		return
+	}
 	result := map[string]any{"total": len(localSongs), "refreshed": refreshed, "failed": failed, "packages": len(rootDiscovery.Candidates), "discoveryIssues": len(rootDiscovery.Rejected)}
 	if geometryLimitReached {
 		result["audioIdentityGeometriesUnchecked"] = uncheckedGeometryCount
@@ -165,7 +285,68 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 	if geometryLimitReached {
 		message += fmt.Sprintf(". PCM32 fallback skipped %d additional package audio geometries; retagged tracks that match only those layouts may remain unmatched", uncheckedGeometryCount)
 	}
-	_ = a.db.CompleteJob(job.ID, result, message)
+	completed, completeErr := a.db.CompleteJobIfRunning(job.ID, result, message)
+	if completeErr == nil && !completed && a.jobCancellationRequested(job.ID) {
+		a.cancelStemLibraryJob(job.ID, "Stem Library scan canceled before completion")
+	}
+}
+
+func (a *API) cancelStemLibraryJob(jobID, message string) {
+	_ = a.db.CancelJob(jobID, message)
+}
+
+func (a *API) deferStemLibraryScan(jobID string) {
+	message := "Waiting for DJ playback to finish before scanning Stem Libraries"
+	if a.jobCancellationRequested(jobID) {
+		a.cancelStemLibraryJob(jobID, "Stem Library scan canceled while waiting for DJ playback")
+		return
+	}
+	requeued, _ := a.db.RequeueJob(jobID, message, analysisDeferBackoff)
+	if !requeued && a.jobCancellationRequested(jobID) {
+		a.cancelStemLibraryJob(jobID, "Stem Library scan canceled while waiting for DJ playback")
+	}
+}
+
+func (a *API) stemLibraryScanContext(jobID string) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(150 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				if a.jobCancellationRequested(jobID) {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	return ctx, func() {
+		close(stop)
+		<-done
+		cancel()
+	}
+}
+
+func pathIsWithinAnyRoot(path string, roots []string) bool {
+	for _, root := range roots {
+		if localRootsOverlap(root, path) && rootPathContainsMust(root, path) {
+			return true
+		}
+	}
+	return false
+}
+
+func rootPathContainsMust(parent, child string) bool {
+	p, err1 := normalizedLocalRoot(parent)
+	c, err2 := normalizedLocalRoot(child)
+	return err1 == nil && err2 == nil && rootPathContains(p, c)
 }
 
 func dedupeAndPrioritizeStemCandidates(candidates []stems.PackageCandidate) []stems.PackageCandidate {

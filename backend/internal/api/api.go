@@ -787,10 +787,19 @@ func (a *API) addScanFolder(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "Invalid folder path")
 		return
 	}
+	absPath, err := filepath.Abs(req.Path)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid folder path")
+		return
+	}
+	if err = a.validateMusicFolderAgainstStemRoots(absPath); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	folder := &db.ScanFolder{
 		ID:      fmt.Sprintf("folder_%d", time.Now().UnixNano()),
-		Path:    req.Path,
+		Path:    filepath.Clean(absPath),
 		AddedAt: time.Now().UnixMilli(),
 	}
 

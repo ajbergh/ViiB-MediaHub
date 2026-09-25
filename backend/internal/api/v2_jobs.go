@@ -46,10 +46,9 @@ var supportedJobTypes = map[string]bool{
 	JobTypeAnalyzeTracks:    true,
 	"stem_registry_refresh": true,
 	"stem_package_link":     true,
-	"stem_library_scan":     true,
 }
 
-const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, " + JobTypeAnalyzeTracks + ", stem_registry_refresh, stem_package_link, and stem_library_scan"
+const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, " + JobTypeAnalyzeTracks + ", stem_registry_refresh, and stem_package_link"
 
 type createJobRequest struct {
 	Type       string          `json:"type"`
@@ -124,6 +123,10 @@ func (a *API) createJobV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.Type = strings.ToLower(strings.TrimSpace(request.Type))
+	if request.Type == "stem_library_scan" {
+		respondV2Error(w, r, http.StatusBadRequest, "dedicated_stem_scan_required", "Create Stem Library scans through /v2/stems/scan so the job can only use configured locations", false, nil)
+		return
+	}
 	if !supportedJobTypes[request.Type] {
 		respondV2Error(w, r, http.StatusBadRequest, "unsupported_job_type", "Supported job types are "+supportedJobTypeList, false, map[string]any{"type": request.Type})
 		return

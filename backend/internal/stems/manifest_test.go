@@ -2,15 +2,40 @@ package stems
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+type cancelOnRead struct {
+	cancel context.CancelFunc
+	done   bool
+}
+
+func (r *cancelOnRead) Read(buffer []byte) (int, error) {
+	if r.done {
+		return 0, io.EOF
+	}
+	r.done = true
+	copy(buffer, []byte("chunk"))
+	r.cancel()
+	return len("chunk"), nil
+}
+
+func TestCopyContextStopsAfterCancellationDuringHashRead(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := &cancelOnRead{cancel: cancel}
+	if _, err := copyContext(ctx, io.Discard, reader); err != context.Canceled {
+		t.Fatalf("context-aware file copy error=%v, want context canceled", err)
+	}
+}
 
 func TestValidatePackageDeterministicWAVFixture(t *testing.T) {
 	dir := t.TempDir()

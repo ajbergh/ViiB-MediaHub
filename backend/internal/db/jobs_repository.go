@@ -168,6 +168,25 @@ func (d *DB) CompleteJob(id string, result any, message string) error {
 	return err
 }
 
+// CompleteJobIfRunning atomically prevents a late successful completion from
+// overwriting a concurrent cancellation request or another terminal state.
+func (d *DB) CompleteJobIfRunning(id string, result any, message string) (bool, error) {
+	payload, err := json.Marshal(result)
+	if err != nil {
+		return false, err
+	}
+	now := time.Now().UnixMilli()
+	updated, err := d.conn.Exec(`
+		UPDATE operation_jobs SET status = ?, result = ?, message = ?,
+		completed_at = ?, updated_at = ? WHERE id = ? AND status = ?
+	`, JobStatusSucceeded, string(payload), message, now, now, id, JobStatusRunning)
+	if err != nil {
+		return false, err
+	}
+	rows, err := updated.RowsAffected()
+	return rows > 0, err
+}
+
 // FailJob records a failed terminal state and its stable error code.
 func (d *DB) FailJob(id, code, message string) error {
 	now := time.Now().UnixMilli()

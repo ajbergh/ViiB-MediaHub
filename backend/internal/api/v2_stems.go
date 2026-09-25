@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -114,6 +115,19 @@ func (a *API) putStemLocationsV2(w http.ResponseWriter, r *http.Request) {
 		}
 		locations = append(locations, db.StemLocation{ID: uuid.NewString(), Path: abs, Enabled: true})
 	}
+	musicFolders, err := a.db.GetScanFolders()
+	if err != nil {
+		stemError(w, r, http.StatusInternalServerError, "stem_location_update_failed", "Unable to check Music Folders", true)
+		return
+	}
+	stemPaths := make([]string, 0, len(locations))
+	for _, location := range locations {
+		stemPaths = append(stemPaths, location.Path)
+	}
+	if err = validateStemLibraryRootsAgainstMusic(musicFolders, stemPaths); err != nil {
+		stemError(w, r, http.StatusBadRequest, "stem_music_root_overlap", err.Error(), false)
+		return
+	}
 	if err := a.db.SetStemLocations(locations); err != nil {
 		stemError(w, r, http.StatusInternalServerError, "stem_location_update_failed", "Unable to save Stem Library locations", true)
 		return
@@ -135,6 +149,11 @@ func (a *API) scanStemLibrariesV2(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(roots) == 0 {
 		stemError(w, r, http.StatusConflict, "stem_library_empty", "Add a Stem Library location before scanning", false)
+		return
+	}
+	roots, err = a.validateStemLibraryScanRoots(roots)
+	if err != nil {
+		stemError(w, r, http.StatusConflict, "stem_library_configuration_changed", err.Error(), false)
 		return
 	}
 	raw, err := json.Marshal(map[string][]string{"locations": roots})
@@ -272,6 +291,10 @@ func (a *API) unlinkStemPackageV2(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) refreshStemRegistry(songID string) error {
+	return a.refreshStemRegistryContext(context.Background(), songID)
+}
+
+func (a *API) refreshStemRegistryContext(ctx context.Context, songID string) error {
 	locations, err := a.db.ListStemLocations()
 	if err != nil {
 		return err
@@ -282,10 +305,14 @@ func (a *API) refreshStemRegistry(songID string) error {
 			dirs = append(dirs, location.Path)
 		}
 	}
-	return a.refreshStemRegistryWithDiscovery(songID, nil, dirs)
+	return a.refreshStemRegistryWithDiscoveryContext(ctx, songID, nil, dirs)
 }
 
 func (a *API) refreshStemRegistryWithDiscovery(songID string, knownDiscovery *stems.DiscoveryResult, libraryDirs []string) error {
+	return a.refreshStemRegistryWithDiscoveryContext(context.Background(), songID, knownDiscovery, libraryDirs)
+}
+
+func (a *API) refreshStemRegistryWithDiscoveryContext(ctx context.Context, songID string, knownDiscovery *stems.DiscoveryResult, libraryDirs []string) error {
 	song, err := a.db.GetSongByID(songID)
 	if err != nil {
 		return err
@@ -309,7 +336,7 @@ func (a *API) refreshStemRegistryWithDiscovery(songID string, knownDiscovery *st
 		}
 		return nil
 	}
-	hash, hashErr := stemSourceHashes.SHA256(song.FilePath)
+	hash, hashErr := stemSourceHashes.SHA256Context(ctx, song.FilePath)
 	if hashErr != nil {
 		return hashErr
 	}
@@ -317,21 +344,31 @@ func (a *API) refreshStemRegistryWithDiscovery(songID string, knownDiscovery *st
 	if knownDiscovery != nil {
 		discovery = *knownDiscovery
 	} else {
-		discovery = stems.DiscoverPackages(song.FilePath, libraryDirs)
+		var discoveryErr error
+		discovery, discoveryErr = stems.DiscoverPackagesContext(ctx, song.FilePath, libraryDirs)
+		if discoveryErr != nil {
+			return discoveryErr
+		}
 	}
 	existingByPath := map[string]db.StemSet{}
 	for _, s := range existing {
 		existingByPath[strings.ToLower(filepath.Clean(s.PackagePath))] = s
 	}
 	seen := map[string]bool{}
-	storeCandidate := func(path, source string, validation stems.Validation) error {
+	storeCandidate := func(candidate stems.PackageCandidate) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		path, source, validation := candidate.Path, string(candidate.Source), candidate.Validation
 		key := strings.ToLower(filepath.Clean(path))
 		seen[key] = true
 		m := validation.Manifest
 		state := "stale"
-		if strings.EqualFold(m.Source.SHA256, hash) {
-			state = "ready"
-		} else if stemAudioIdentityMatches(song, m) {
+		if candidate.SourceIdentityChecked {
+			if candidate.SourceIdentityMatches {
+				state = "ready"
+			}
+		} else if strings.EqualFold(m.Source.SHA256, hash) || stemAudioIdentityMatches(song, m) {
 			state = "ready"
 		}
 		old := existingByPath[key]
@@ -344,24 +381,40 @@ func (a *API) refreshStemRegistryWithDiscovery(songID string, knownDiscovery *st
 	// An explicitly linked package remains the top-priority candidate even when
 	// it lives outside the configured Stem Libraries.
 	for _, old := range existing {
+		if err = ctx.Err(); err != nil {
+			return err
+		}
 		if !old.ExplicitlyLinked {
 			continue
 		}
 		var validation stems.Validation
 		var validationErr error
 		validationReused := false
-		for _, candidate := range discovery.Candidates {
-			if strings.EqualFold(filepath.Clean(candidate.Path), filepath.Clean(old.PackagePath)) {
-				validation = candidate.Validation
+		var explicitCandidate stems.PackageCandidate
+		for _, existingCandidate := range discovery.Candidates {
+			if strings.EqualFold(filepath.Clean(existingCandidate.Path), filepath.Clean(old.PackagePath)) {
+				explicitCandidate = existingCandidate
+				validation = existingCandidate.Validation
 				validationReused = true
 				break
 			}
 		}
 		if !validationReused {
-			validation, validationErr = stems.ValidatePackage(old.PackagePath)
+			validation, validationErr = stems.ValidatePlayablePackageContext(ctx, old.PackagePath)
+			explicitCandidate = stems.PackageCandidate{Path: old.PackagePath, Source: stems.CandidateAdjacent, Validation: validation}
 		}
 		if validationErr == nil {
-			if err = storeCandidate(old.PackagePath, "explicit", validation); err != nil {
+			explicitCandidate.Path = old.PackagePath
+			explicitCandidate.Source = stems.CandidateAdjacent
+			if !explicitCandidate.SourceIdentityChecked {
+				matched, matchErr := stemSourceMatchesContext(ctx, song, validation.Manifest, hash)
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				explicitCandidate.SourceIdentityChecked = true
+				explicitCandidate.SourceIdentityMatches = matchErr == nil && matched
+			}
+			if err = storeCandidate(explicitCandidate); err != nil {
 				return err
 			}
 		} else {
@@ -370,14 +423,20 @@ func (a *API) refreshStemRegistryWithDiscovery(songID string, knownDiscovery *st
 		}
 	}
 	for _, candidate := range discovery.Candidates {
+		if err = ctx.Err(); err != nil {
+			return err
+		}
 		if seen[strings.ToLower(filepath.Clean(candidate.Path))] {
 			continue
 		}
-		if err = storeCandidate(candidate.Path, string(candidate.Source), candidate.Validation); err != nil {
+		if err = storeCandidate(candidate); err != nil {
 			return err
 		}
 	}
 	for _, rejected := range discovery.Rejected {
+		if err = ctx.Err(); err != nil {
+			return err
+		}
 		if !strings.HasSuffix(strings.ToLower(rejected.Path), ".viibstems") {
 			continue
 		}
@@ -396,6 +455,9 @@ func (a *API) refreshStemRegistryWithDiscovery(songID string, knownDiscovery *st
 		}
 	}
 	for key, old := range existingByPath {
+		if err = ctx.Err(); err != nil {
+			return err
+		}
 		if !seen[key] {
 			old.Status = "unavailable"
 			if err = a.db.UpsertStemSet(old); err != nil {
@@ -426,7 +488,7 @@ func (a *API) runStemRegistryJob(job db.Job) {
 			_ = a.db.FailJob(job.ID, "song_not_found", "Song was not found")
 			return
 		}
-		candidate, err := stems.ValidatePackage(params.PackagePath)
+		candidate, err := stems.ValidatePlayablePackage(params.PackagePath)
 		if err != nil {
 			_ = a.db.FailJob(job.ID, "invalid_stem_package", "Stem package validation failed")
 			return

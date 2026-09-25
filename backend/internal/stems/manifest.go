@@ -3,6 +3,7 @@
 package stems
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -182,7 +183,17 @@ func requireFields(object string, values map[string]json.RawMessage, fields ...s
 // still inside the package directory; callers should retain the returned paths
 // and avoid re-resolving untrusted manifest values when serving audio.
 func ValidatePackage(packageDir string) (Validation, error) {
+	return ValidatePackageContext(context.Background(), packageDir)
+}
+
+// ValidatePackageContext validates a package and checks cancellation between
+// artifact reads. Existing callers can use ValidatePackage when cancellation
+// is not needed.
+func ValidatePackageContext(ctx context.Context, packageDir string) (Validation, error) {
 	var result Validation
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
 	root, err := filepath.Abs(packageDir)
 	if err != nil {
 		return result, fmt.Errorf("resolve package directory: %w", err)
@@ -212,6 +223,9 @@ func ValidatePackage(packageDir string) (Validation, error) {
 	}
 	result = Validation{Manifest: m, Files: make(map[StemName]string, len(m.Stems))}
 	for name, artifact := range m.Stems {
+		if err := ctx.Err(); err != nil {
+			return Validation{}, err
+		}
 		full, err := resolveContained(root, artifact.Path)
 		if err != nil {
 			return Validation{}, fmt.Errorf("stem %q path: %w", name, err)
@@ -226,7 +240,7 @@ func ValidatePackage(packageDir string) (Validation, error) {
 		if info.Size() != artifact.SizeBytes {
 			return Validation{}, fmt.Errorf("stem %q size mismatch: manifest %d, file %d", name, artifact.SizeBytes, info.Size())
 		}
-		gotHash, err := fileSHA256(full)
+		gotHash, err := fileSHA256Context(ctx, full)
 		if err != nil {
 			return Validation{}, fmt.Errorf("stem %q checksum: %w", name, err)
 		}
@@ -246,6 +260,37 @@ func ValidatePackage(packageDir string) (Validation, error) {
 		result.Files[name] = full
 	}
 	return result, nil
+}
+
+// ValidatePlayablePackage applies the same strict no-symlink policy as stem
+// playback before returning package metadata suitable for registry readiness.
+func ValidatePlayablePackage(packageDir string) (Validation, error) {
+	return ValidatePlayablePackageContext(context.Background(), packageDir)
+}
+
+// ValidatePlayablePackageContext validates a package under the strict path
+// policy used by playback and remains cancellable during artifact hashing.
+func ValidatePlayablePackageContext(ctx context.Context, packageDir string) (Validation, error) {
+	root, err := filepath.Abs(packageDir)
+	if err != nil {
+		return Validation{}, err
+	}
+	if err = RejectSymlinkPath(root); err != nil {
+		return Validation{}, fmt.Errorf("unsafe package path: %w", err)
+	}
+	validated, err := ValidatePackageContext(ctx, root)
+	if err != nil {
+		return Validation{}, err
+	}
+	for _, artifact := range validated.Manifest.Stems {
+		if err = ctx.Err(); err != nil {
+			return Validation{}, err
+		}
+		if err = RejectSymlinkArtifact(root, artifact.Path); err != nil {
+			return Validation{}, fmt.Errorf("unsafe stem artifact path: %w", err)
+		}
+	}
+	return validated, nil
 }
 
 func ValidateManifest(m Manifest) error {
@@ -349,16 +394,47 @@ func resolveContained(root, relative string) (string, error) {
 }
 
 func fileSHA256(path string) (string, error) {
+	return fileSHA256Context(context.Background(), path)
+}
+
+func fileSHA256Context(ctx context.Context, path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	if _, err := copyContext(ctx, h, f); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func copyContext(ctx context.Context, dst io.Writer, src io.Reader) (int64, error) {
+	buf := make([]byte, 64*1024)
+	var total int64
+	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+		n, readErr := src.Read(buf)
+		if n > 0 {
+			written, writeErr := dst.Write(buf[:n])
+			total += int64(written)
+			if writeErr != nil {
+				return total, writeErr
+			}
+			if written != n {
+				return total, io.ErrShortWrite
+			}
+		}
+		if readErr == io.EOF {
+			return total, nil
+		}
+		if readErr != nil {
+			return total, readErr
+		}
+	}
 }
 
 func inspectWAV(path string) (AudioGeometry, string, error) {
