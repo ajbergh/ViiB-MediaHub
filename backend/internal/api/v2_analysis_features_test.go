@@ -237,7 +237,8 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	result := features.Result{IntegratedLUFS: -12.4, TruePeakDBFS: -.3, Energy: []features.EnergyPoint{{Time: 0, Value: .2}, {Time: .5, Value: .8}}, Sections: []features.Section{{Start: 0, End: 1, Energy: .5}}}
+	downbeat := .0
+	result := features.Result{IntegratedLUFS: -12.4, TruePeakDBFS: -.3, Energy: []features.EnergyPoint{{Time: 0, Value: .2}, {Time: .5, Value: .8}}, Sections: []features.Section{{Start: 0, End: 1, Energy: .5, Label: features.StructureIntro, Confidence: .48, TimingProvenance: features.TimingDownbeatGrid, DownbeatStart: &downbeat}}}
 	encoded, err := result.Encode()
 	if err != nil {
 		t.Fatal(err)
@@ -259,6 +260,9 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	}
 	if response.LoudnessKind != features.LoudnessKind || response.PeakKind != features.PeakKind || response.ChannelScope != "mono" || response.Standard != "none" {
 		t.Fatalf("energy API did not expose qualified measurement metadata: %#v", response)
+	}
+	if len(response.Sections) != 1 || response.Sections[0].Label != features.StructureIntro || response.Sections[0].Confidence != .48 || response.Sections[0].TimingProvenance != features.TimingDownbeatGrid || response.Sections[0].DownbeatStart == nil || *response.Sections[0].DownbeatStart != 0 {
+		t.Fatalf("energy API did not serialize structure semantics and timing provenance: %#v", response.Sections)
 	}
 }
 
