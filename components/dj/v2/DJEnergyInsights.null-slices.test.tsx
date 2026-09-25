@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   getEnergy: vi.fn(),
   getRecommendations: vi.fn(),
   state: {
-    djDeckA: { hotCues: [], analysisStatus: 'available', track: null, duration: 0, position: 0, isPlaying: false },
+    djDeckA: { hotCues: [], analysisStatus: 'not_analyzed', track: null, duration: 0, position: 0, isPlaying: false },
     djDeckB: { hotCues: [], analysisStatus: 'not_analyzed', track: null, duration: 0, position: 0, isPlaying: false },
     djMixer: { crossfader: 0, masterCueEnabled: false, autoGainA: false, autoGainB: false },
     songs: [],
@@ -92,6 +92,14 @@ describe('DJEnergyInsights energy response normalization', () => {
 
   it('renders an analyzed track when energy, section, and cue arrays are missing', async () => {
     await act(async () => {
+      root.render(<DJEnergyInsights trackID="song" deck="A" />);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    expect(container.textContent).toContain('Track not analysed yet.');
+
+    await act(async () => {
+      mocks.state.djDeckA.analysisStatus = 'available';
       root.render(<DJEnergyInsights trackID="song" deck="A" />);
       await new Promise(resolve => setTimeout(resolve, 0));
     });
