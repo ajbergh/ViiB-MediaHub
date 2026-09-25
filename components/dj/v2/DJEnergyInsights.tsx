@@ -39,6 +39,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [camelotOnly, setCamelotOnly] = useState(false);
   const [playlistId, setPlaylistId] = useState('');
   const [genre, setGenre] = useState('');
+  const [notRecentlyPlayedHours, setNotRecentlyPlayedHours] = useState('');
   const [previewMessage, setPreviewMessage] = useState('');
   const previewRef = useRef<TestMixPreviewSession | null>(null);
   const previewTokenRef = useRef(0);
@@ -64,6 +65,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     ...(camelotOnly ? { camelotCompatible: true } : {}),
     ...(playlistId ? { playlistId } : {}),
     ...(genre ? { genre } : {}),
+    ...(notRecentlyPlayedHours !== '' ? { notRecentlyPlayedHours: Number(notRecentlyPlayedHours) } : {}),
   };
   const bpmValuesValid = [minBpm, maxBpm].every(value => value === '' || (Number.isFinite(Number(value)) && Number(value) >= 60 && Number(value) <= 190));
   const energyValuesValid = [minEnergy, maxEnergy].every(value => value === '' || (Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 10));
@@ -111,7 +113,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       api.getTrackTransitionRecommendations(trackID, 3, intent, filters).then(value => live && setRecommendations(value)).catch(() => {});
     }
     return () => { live = false; };
-  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistId, genre, filtersValid]);
+  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistId, genre, notRecentlyPlayedHours, filtersValid]);
 
   if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
   if (!features) return null;
@@ -369,6 +371,15 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
           {genreOptions.map(option => <option key={option} value={option}>{option}</option>)}
         </select>
       </label>
+      <label className="inline-flex items-center gap-1" title="Exclude tracks with a completed play in this period. Skips and listening events do not update completed-play history.">
+        <span>Exclude tracks completed in the last</span>
+        <select aria-label="Exclude tracks completed in the last" value={notRecentlyPlayedHours} onChange={event => setNotRecentlyPlayedHours(event.target.value)}
+          className="rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200">
+          <option value="">Off</option>
+          {[1, 3, 6, 12, 24, 48, 72, 168].map(hours => <option key={hours} value={hours}>{hours}</option>)}
+        </select>
+        <span>hours</span>
+      </label>
       {!filtersValid && <span role="status" className="text-amber-400">Check ranges: BPM 60–190; Energy Level 1–10; minimum must not exceed maximum.</span>}
       {features.cueSuggestions.slice(0, 3).map((cue, index) => {
         const accepted = hotCues.some(hotCue => Math.abs(hotCue.position - cue.position) < .01);
@@ -389,6 +400,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         {previewMessage && <span role="status">{previewMessage}</span>}
       </div>
       <ul className="mt-1 space-y-0.5 pl-3">
+        {top.filterEvidence.lastPlayed !== undefined && <li>Last completed play: {top.filterEvidence.lastPlayed ? new Date(top.filterEvidence.lastPlayed).toLocaleString() : 'never recorded'}</li>}
         {top.components.map(component => <li key={component.name} title={component.rationale}>
           {component.name}: {Math.round(component.score * 100)}% — {component.rationale}
         </li>)}

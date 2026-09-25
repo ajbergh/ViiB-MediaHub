@@ -105,17 +105,19 @@ type TransitionCandidateEvidence struct {
 	BPM            *float64 `json:"bpm,omitempty"`
 	EnergyLevel    *int     `json:"energyLevel,omitempty"`
 	StemsAvailable *bool    `json:"stemsAvailable,omitempty"`
+	LastPlayed     *int64   `json:"lastPlayed,omitempty"`
 }
 
 type TransitionRecommendationFilters struct {
-	MinBPM            *float64 `json:"minBpm,omitempty"`
-	MaxBPM            *float64 `json:"maxBpm,omitempty"`
-	MinEnergyLevel    *int     `json:"minEnergyLevel,omitempty"`
-	MaxEnergyLevel    *int     `json:"maxEnergyLevel,omitempty"`
-	StemsAvailable    *bool    `json:"stemsAvailable,omitempty"`
-	CamelotCompatible *bool    `json:"camelotCompatible,omitempty"`
-	PlaylistID        *string  `json:"playlistId,omitempty"`
-	Genre             *string  `json:"genre,omitempty"`
+	MinBPM                 *float64 `json:"minBpm,omitempty"`
+	MaxBPM                 *float64 `json:"maxBpm,omitempty"`
+	MinEnergyLevel         *int     `json:"minEnergyLevel,omitempty"`
+	MaxEnergyLevel         *int     `json:"maxEnergyLevel,omitempty"`
+	StemsAvailable         *bool    `json:"stemsAvailable,omitempty"`
+	CamelotCompatible      *bool    `json:"camelotCompatible,omitempty"`
+	PlaylistID             *string  `json:"playlistId,omitempty"`
+	Genre                  *string  `json:"genre,omitempty"`
+	NotRecentlyPlayedHours *int     `json:"notRecentlyPlayedHours,omitempty"`
 }
 
 type TransitionRecommendationsResponse struct {
@@ -406,6 +408,17 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
+	recentlyPlayedIDs := map[string]struct{}{}
+	if filters.NotRecentlyPlayedHours != nil {
+		ids, playedErr := a.db.GetRecentlyPlayedSongIDs(*filters.NotRecentlyPlayedHours)
+		if playedErr != nil {
+			respondError(w, http.StatusInternalServerError, playedErr.Error())
+			return
+		}
+		for _, id := range ids {
+			recentlyPlayedIDs[id] = struct{}{}
+		}
+	}
 	analyses, err := a.db.ListTrackAnalysis()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -460,6 +473,11 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		if !transitionCandidateMatchesFilters(metadata, stemAvailable, filters) || !transitionLibrarySongMatchesFilters(song, playlistSongIDs, filters) {
 			continue
 		}
+		if filters.NotRecentlyPlayedHours != nil {
+			if _, playedRecently := recentlyPlayedIDs[song.ID]; playedRecently {
+				continue
+			}
+		}
 		score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[artifact.SongID], intent)
 		if scoreErr != nil {
 			respondError(w, http.StatusBadRequest, scoreErr.Error())
@@ -473,6 +491,10 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		evidence := TransitionCandidateEvidence{BPM: metadata.BPM, EnergyLevel: metadata.EnergyLevel}
 		if filters.StemsAvailable != nil {
 			evidence.StemsAvailable = &stemAvailable
+		}
+		if filters.NotRecentlyPlayedHours != nil {
+			lastPlayed := song.LastPlayed
+			evidence.LastPlayed = &lastPlayed
 		}
 		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components, FilterEvidence: evidence})
 	}
@@ -575,6 +597,15 @@ func parseTransitionRecommendationFilters(values url.Values) (TransitionRecommen
 			return filters, errors.New("genre must contain a value")
 		}
 		filters.Genre = &genre
+	}
+	if value, present, err := singleQueryValue(values, "notRecentlyPlayedHours"); err != nil {
+		return filters, err
+	} else if present {
+		hours, parseErr := strconv.Atoi(value)
+		if parseErr != nil || hours < 1 || hours > 168 {
+			return filters, errors.New("notRecentlyPlayedHours must be an integer between 1 and 168")
+		}
+		filters.NotRecentlyPlayedHours = &hours
 	}
 	return filters, nil
 }
