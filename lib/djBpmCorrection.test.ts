@@ -12,6 +12,8 @@ describe('manual DJ BPM controls', () => {
   it('formats fractional BPM without rounding to integers', () => {
     expect(formatManualBpm(127.375)).toBe('127.38');
     expect(formatManualBpm(128)).toBe('128');
+    expect(formatManualBpm(Number.NaN)).toBe('Unknown');
+    expect(formatManualBpm(Number.POSITIVE_INFINITY)).toBe('Unknown');
   });
 
   it('uses four taps and a median interval, rejecting implausible gaps', () => {

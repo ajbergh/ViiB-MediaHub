@@ -572,7 +572,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       </div>}
     </div>
     <div className="mt-1 flex flex-wrap items-center gap-2">
-      <span title="Unweighted RMS-based estimate; not BS.1770 LUFS">Loudness proxy: {features.integratedLufs.toFixed(1)} dB</span>
+      <span title="Unweighted RMS-based estimate; not BS.1770 LUFS">Loudness proxy: {typeof features.integratedLufs === 'number' && Number.isFinite(features.integratedLufs) ? `${features.integratedLufs.toFixed(1)} dB` : 'Unavailable'}</span>
       <span>{features.cueSuggestions.length} advisory cues</span>
       <label className="inline-flex items-center gap-1">
         <span>Mix Next</span>
@@ -664,7 +664,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       </div>
       <ul className="mt-1 space-y-0.5 pl-3">
         {top.filterEvidence.lastPlayed !== undefined && <li>Last completed play: {top.filterEvidence.lastPlayed ? new Date(top.filterEvidence.lastPlayed).toLocaleString() : 'never recorded'}</li>}
-        {top.components.map(component => <li key={component.name} title={component.rationale}>
+        {(Array.isArray(top.components) ? top.components : []).map(component => <li key={component.name} title={component.rationale}>
           {component.name}: {Math.round(component.score * 100)}% — {component.rationale}
         </li>)}
       </ul>

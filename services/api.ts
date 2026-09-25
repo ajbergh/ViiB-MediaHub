@@ -200,12 +200,32 @@ export interface TrackEnergyFeatures {
   algorithmVersion: string;
 }
 
-export function normalizeTrackEnergyFeatures(value: TrackEnergyFeatures): TrackEnergyFeatures {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+export function normalizeTrackEnergyFeatures(value: TrackEnergyFeatures | unknown): TrackEnergyFeatures {
+  const item = isRecord(value) ? value : {};
+  const energy = Array.isArray(item.energy) ? item.energy.filter((point): point is EnergyPoint =>
+    isRecord(point) && finiteNumber(point.time) && finiteNumber(point.value)) : [];
+  const sections = Array.isArray(item.sections) ? item.sections.filter((section): section is EnergySection =>
+    isRecord(section) && finiteNumber(section.start) && finiteNumber(section.end) && finiteNumber(section.energy)) : [];
+  const cueSuggestions = Array.isArray(item.cueSuggestions) ? item.cueSuggestions.filter((cue): cue is CueSuggestion =>
+    isRecord(cue) && finiteNumber(cue.position) && typeof cue.kind === 'string' && finiteNumber(cue.confidence)
+      && typeof cue.rationale === 'string') : [];
   return {
-    ...value,
-    energy: Array.isArray(value?.energy) ? value.energy : [],
-    sections: Array.isArray(value?.sections) ? value.sections : [],
-    cueSuggestions: Array.isArray(value?.cueSuggestions) ? value.cueSuggestions : [],
+    ...(item as unknown as TrackEnergyFeatures),
+    songId: typeof item.songId === 'string' ? item.songId : '',
+    integratedLufs: finiteNumber(item.integratedLufs) ? item.integratedLufs : Number.NaN,
+    truePeakDbfs: finiteNumber(item.truePeakDbfs) ? item.truePeakDbfs : Number.NaN,
+    algorithmVersion: typeof item.algorithmVersion === 'string' ? item.algorithmVersion : '',
+    energy,
+    sections,
+    cueSuggestions,
   };
 }
 
@@ -234,6 +254,29 @@ export interface AnalysisCueList {
   hotCues: DJHotCue[];
   generatedCandidates: AnalysisCueCandidate[];
   suppressions: AnalysisCueSuppression[];
+}
+
+export function normalizeAnalysisCueList(value: AnalysisCueList | unknown): AnalysisCueList {
+  const item = isRecord(value) ? value : {};
+  const hotCues = Array.isArray(item.hotCues) ? item.hotCues.filter((cue): cue is DJHotCue =>
+    isRecord(cue) && Number.isInteger(cue.slot) && finiteNumber(cue.position) && typeof cue.color === 'string') : [];
+  const generatedCandidates = Array.isArray(item.generatedCandidates) ? item.generatedCandidates.filter((cue): cue is AnalysisCueCandidate =>
+    isRecord(cue) && Number.isInteger(cue.slot) && finiteNumber(cue.position) && typeof cue.color === 'string'
+      && typeof cue.generatorVersion === 'string' && finiteNumber(cue.confidence) && typeof cue.kind === 'string'
+      && typeof cue.rationale === 'string' && typeof cue.sourceFingerprint === 'string' && cue.origin === 'analysis') : [];
+  const suppressions = Array.isArray(item.suppressions) ? item.suppressions.filter((suppression): suppression is AnalysisCueSuppression =>
+    isRecord(suppression) && Number.isInteger(suppression.slot) && typeof suppression.kind === 'string') : [];
+  return {
+    ...(item as unknown as AnalysisCueList),
+    songId: typeof item.songId === 'string' ? item.songId : '',
+    generatorVersion: typeof item.generatorVersion === 'string' ? item.generatorVersion : 'unknown',
+    sourceFingerprint: typeof item.sourceFingerprint === 'string' ? item.sourceFingerprint : '',
+    defaultApplyMode: item.defaultApplyMode === 'replace-generated' || item.defaultApplyMode === 'selected-only'
+      ? item.defaultApplyMode : 'fill-empty',
+    hotCues,
+    generatedCandidates,
+    suppressions,
+  };
 }
 
 export interface AnalysisCueApplyResult extends AnalysisCueList {
@@ -302,6 +345,36 @@ export interface TrackTransitionRecommendations {
   candidatesBeforeFilters: number;
   candidatesAfterFilters: number;
   recommendations: TransitionRecommendation[];
+}
+
+export function normalizeTrackTransitionRecommendations(value: TrackTransitionRecommendations | unknown): TrackTransitionRecommendations {
+  const item = isRecord(value) ? value : {};
+  const recommendations = Array.isArray(item.recommendations) ? item.recommendations.flatMap((raw): TransitionRecommendation[] => {
+    if (!isRecord(raw) || typeof raw.songId !== 'string' || typeof raw.title !== 'string' || typeof raw.artist !== 'string'
+      || !finiteNumber(raw.score) || !isRecord(raw.vector)) return [];
+    const vector = raw.vector;
+    const components = Array.isArray(raw.components) ? raw.components.filter((component): component is TransitionComponent =>
+      isRecord(component) && typeof component.name === 'string' && finiteNumber(component.score)
+        && finiteNumber(component.weight) && typeof component.rationale === 'string') : [];
+    const filterEvidence = isRecord(raw.filterEvidence) ? raw.filterEvidence as TransitionCandidateFilterEvidence : {};
+    return [{
+      ...(raw as unknown as TransitionRecommendation),
+      intent: raw.intent === 'lift' || raw.intent === 'reset' || raw.intent === 'harmonic' ? raw.intent : 'hold',
+      vector: vector as unknown as TransitionVector,
+      components,
+      filterEvidence,
+    }];
+  }) : [];
+  return {
+    ...(item as unknown as TrackTransitionRecommendations),
+    songId: typeof item.songId === 'string' ? item.songId : '',
+    intent: item.intent === 'lift' || item.intent === 'reset' || item.intent === 'harmonic' ? item.intent : 'hold',
+    algorithmVersion: typeof item.algorithmVersion === 'string' ? item.algorithmVersion : 'unknown',
+    filters: isRecord(item.filters) ? item.filters as TransitionRecommendationFilters : {},
+    candidatesBeforeFilters: finiteNumber(item.candidatesBeforeFilters) ? item.candidatesBeforeFilters : recommendations.length,
+    candidatesAfterFilters: finiteNumber(item.candidatesAfterFilters) ? item.candidatesAfterFilters : recommendations.length,
+    recommendations,
+  };
 }
 
 export interface DuplicateSong extends ApiSong {
@@ -1678,7 +1751,7 @@ export const api = {
 
   async getAnalysisCues(trackId: string): Promise<AnalysisCueList> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/cues`, { cache: 'no-store' });
-    return handleResponse<AnalysisCueList>(response);
+    return normalizeAnalysisCueList(await handleResponse<AnalysisCueList>(response));
   },
 
   async applyAnalysisCues(trackId: string, request: { mode: AnalysisCueApplyMode; selectedSlots?: number[] }): Promise<AnalysisCueApplyResult> {
@@ -1687,7 +1760,13 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
-    return handleResponse<AnalysisCueApplyResult>(response);
+    const value = await handleResponse<AnalysisCueApplyResult>(response);
+    const normalized = normalizeAnalysisCueList(value);
+    return {
+      ...normalized,
+      appliedSlots: Array.isArray(value?.appliedSlots) ? value.appliedSlots.filter(Number.isInteger) : [],
+      blockedSlots: Array.isArray(value?.blockedSlots) ? value.blockedSlots.filter(Number.isInteger) : [],
+    };
   },
 
   async getTrackTransitionRecommendations(trackId: string, limit = 3, intent: TransitionIntent = 'hold', filters: TransitionRecommendationFilters = {}): Promise<TrackTransitionRecommendations> {
@@ -1708,7 +1787,7 @@ export const api = {
     if (filters.genre) query.set('genre', filters.genre);
     if (filters.notRecentlyPlayedHours !== undefined) query.set('notRecentlyPlayedHours', String(filters.notRecentlyPlayedHours));
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/recommendations?${query}`, { cache: 'no-store' });
-    return handleResponse<TrackTransitionRecommendations>(response);
+    return normalizeTrackTransitionRecommendations(await handleResponse<TrackTransitionRecommendations>(response));
   },
 
   /**

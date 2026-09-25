@@ -28,5 +28,6 @@ export function tapTempoBpm(timestamps: number[]): number | undefined {
 }
 
 export function formatManualBpm(value: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 'Unknown';
   return value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 }
