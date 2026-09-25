@@ -443,7 +443,7 @@
 }
 .dj-fx-module { min-width: 0; display: flex; flex-direction: column; align-items: stretch; background: var(--dj-surface-1); }
 .dj-fx-module-toggle {
-  min-height: 28px;
+  min-height: 32px;
   border: 0;
   border-top: 2px solid transparent;
   background: transparent;
@@ -523,7 +523,7 @@
   border-radius: var(--dj-radius);
 }
 .dj-mixer-head { flex: 0 0 44px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 6px; padding: 6px 8px; }
-.dj-mixer-head .dj-btn { min-height: 30px; }
+.dj-mixer-head .dj-btn { min-height: 32px; }
 .dj-mixer-title { text-align: center; color: var(--dj-text-primary); font-size: 13px; font-weight: 700; letter-spacing: .08em; }
 .dj-mixer-channels { flex: 0 0 auto; display: flex; padding: 4px 6px; border-block: 1px solid var(--dj-border-subtle); background: var(--dj-surface-1); }
 .dj-mixer-master { width: 88px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0; border-inline: 1px solid var(--dj-border-subtle); }
@@ -597,7 +597,7 @@
 
 /* ── Toolbar, stems and inspector details ──────────── */
 .dj-toolbar-gap { width: 6px; flex-shrink: 0; }
-.dj-deck-toolbar .dj-btn { font-size: 11px; padding: 0 7px; }
+.dj-deck-toolbar .dj-btn { font-size: 11px; padding: 0 6px; min-width: 28px; }
 .dj-deck-toolbar .dj-btn-icon { padding: 0; }
 .dj-stems-popover { position: relative; }
 .dj-stems-popover > summary { list-style: none; cursor: pointer; }
@@ -623,15 +623,68 @@
 .dj-shortcuts-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; row-gap: 2px; font-size: 12px; color: var(--dj-text-secondary); }
 .dj-shortcuts-heading { grid-column: span 2; margin: 8px 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--dj-border); color: var(--dj-primary-hover); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 
-/* ── Legacy leaf-component floor ─────────────────────
-   Leaf components not yet migrated to the classes above still use small
-   Tailwind text sizes and neutral colors. At the 1470×825 minimum the
-   canvas scales to ~0.76, so keep a readable floor until each component is
-   tokenized (tracked in the plan's progress log). */
-[data-dj-canvas] :is(.text-\[9px\], .text-\[10px\], .text-\[11px\]) { font-size: 12px; }
-[data-dj-canvas] :is(.text-neutral-500, .text-neutral-600, .text-neutral-400) { color: var(--dj-text-secondary); }
-[data-dj-canvas] :is([class*="text-[#444]"], [class*="text-[#555]"], [class*="text-[#666]"], [class*="text-[#777]"]) { color: var(--dj-text-secondary); }
+/* ── Tempo fader (Plan §10A.11) ────────────────────── */
+.dj-fader-readout { min-width: 64px; text-align: center; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; color: var(--dj-text-secondary); }
+.dj-fader-readout [data-active="true"] { color: var(--dj-text-primary); }
+.dj-fader-unit { margin-left: 3px; color: var(--dj-text-muted); }
+.dj-fader-percent { font-weight: 700; }
+.dj-fader-track { position: relative; width: 30px; border-radius: 4px; }
+.dj-fader-track::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 6px;
+  transform: translateX(-50%);
+  border: 1px solid var(--dj-border);
+  border-radius: 3px;
+  background: var(--dj-bg);
+}
+.dj-fader-track[data-disabled="true"] { opacity: .5; }
+.dj-fader-track:focus-visible { outline: 2px solid var(--dj-text-primary); outline-offset: 3px; }
+.dj-fader-center { position: absolute; left: 4px; right: 4px; top: 50%; height: 2px; transform: translateY(-50%); background: var(--dj-border-hover); }
+.dj-fader-scale { position: absolute; left: -32px; width: 28px; text-align: right; font-family: ui-monospace, monospace; font-size: 11px; color: var(--dj-text-muted); }
+.dj-fader-tick { position: absolute; left: 7px; right: 7px; height: 1px; background: var(--dj-border); }
+.dj-fader-fill { position: absolute; left: 50%; width: 4px; transform: translateX(-50%); border-radius: 2px; }
+.dj-fader-cap {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 6px;
+  border: 1px solid var(--dj-border-hover);
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--dj-text-primary), var(--dj-text-secondary) 55%, var(--dj-text-muted));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .5);
+  transition: box-shadow var(--dj-transition-fast);
+}
+.dj-fader-cap span { height: 1px; background: var(--dj-border-light); }
+.dj-fader-cap[data-dragging="true"] { box-shadow: 0 0 10px var(--dj-fader-accent), 0 2px 4px rgba(0, 0, 0, .5); }
+
+/* ── Jog wheel (Plan §10A.10) ──────────────────────── */
+.dj-jog-ring-track { stroke: var(--dj-surface-3); }
+.dj-jog-tick { stroke: var(--dj-border-light); }
+.dj-jog-tick-major { stroke: var(--dj-text-muted); }
+.dj-jog-groove { stroke: rgba(255, 255, 255, .035); }
+.dj-jog-center { fill: var(--dj-bg-elevated); stroke: var(--dj-border); }
+.dj-jog-bpm { fill: var(--dj-text-primary); }
+.dj-jog-secondary { fill: var(--dj-text-muted); }
+.dj-jog-time { fill: var(--dj-text-secondary); }
+.dj-jog[data-loaded="false"] :is(.dj-jog-bpm, .dj-jog-time) { fill: var(--dj-text-disabled); }
+.dj-jog-status { position: absolute; bottom: 8px; left: 0; width: 100%; text-align: center; font-size: 12px; color: var(--dj-text-secondary); pointer-events: none; }
+.dj-jog-scratch { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 3px; color: var(--dj-text-primary); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+/* ── Meters ─────────────────────────────────────────── */
+.dj-meter-scale { font-family: ui-monospace, monospace; font-size: 9px; color: var(--dj-text-secondary); }
+
+/* ── Component refinements ───────────────────────────
+   Scoped sizes for leaf components that keep their own markup. */
 [data-dj-canvas] .dj-fx-knob .dj-eq-knob-label { font-size: 10px; letter-spacing: .04em; white-space: nowrap; }
 [data-dj-canvas] .dj-fx-knob .dj-eq-knob-readout { font-size: 9px; letter-spacing: 0; }
-[data-dj-canvas] .dj-tempo-bpm { min-width: 64px; font-size: 12px; }
 .dj-beat-fx-panel button { font-size: 10px; letter-spacing: 0; white-space: nowrap; }

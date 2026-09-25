@@ -96,15 +96,15 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
       style={{ width: computedWidth }}
     >
       {/* Labels */}
-      <div className="flex justify-between text-[10px] font-bold mb-1 px-2">
-        <span className="text-[#3b82f6]">A</span>
-        <span className="text-neutral-500 text-[10px] font-medium">Crossfader</span>
-        <span className="text-[#8b5cf6]">B</span>
+      <div className="flex justify-between text-[12px] font-bold mb-1 px-2">
+        <span className="text-[var(--dj-deck-a)]">A</span>
+        <span className="text-[var(--dj-text-secondary)] text-[12px] font-medium">Crossfader</span>
+        <span className="text-[var(--dj-deck-b)]">B</span>
       </div>
       
       {/* Fader track container */}
       <div
-        className="relative cursor-pointer touch-none bg-[#1a1a1a] rounded-lg p-1 dj-focus-ring"
+        className="relative cursor-pointer touch-none bg-[var(--dj-surface-2)] rounded-lg p-1 dj-focus-ring"
         style={{ width: computedWidth, height: 48 }}
         role="slider"
         tabIndex={0}
@@ -142,7 +142,7 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
             left: 28,
             right: 28,
             height: 12,
-            background: 'linear-gradient(to bottom, #0d0d0d, #1a1a1a, #0d0d0d)',
+            background: 'linear-gradient(to bottom, var(--dj-bg), var(--dj-surface-2), var(--dj-bg))',
             boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)',
           }}
         />
@@ -153,7 +153,7 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
           style={{
             width: 3,
             height: 24,
-            backgroundColor: isCentered ? '#22c55e' : '#333',
+            backgroundColor: isCentered ? 'var(--dj-play)' : 'var(--dj-border-light)',
             transition: 'background-color 0.1s',
           }}
         />
@@ -166,8 +166,8 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
               left: 28 + ((value + 1) / 2) * (computedWidth - 56),
               width: (computedWidth / 2) - 28 - ((value + 1) / 2) * (computedWidth - 56),
               height: 8,
-              background: 'linear-gradient(to right, #3b82f6, #3b82f640)',
-              boxShadow: '0 0 8px #3b82f640',
+              background: 'linear-gradient(to right, var(--dj-deck-a), color-mix(in srgb, var(--dj-deck-a) 25%, transparent))',
+              boxShadow: '0 0 8px color-mix(in srgb, var(--dj-deck-a) 25%, transparent)',
             }}
           />
         )}
@@ -178,8 +178,8 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
               left: computedWidth / 2,
               width: (value / 2) * (computedWidth - 56),
               height: 8,
-              background: 'linear-gradient(to right, #8b5cf640, #8b5cf6)',
-              boxShadow: '0 0 8px #8b5cf640',
+              background: 'linear-gradient(to right, color-mix(in srgb, var(--dj-deck-b) 25%, transparent), var(--dj-deck-b))',
+              boxShadow: '0 0 8px color-mix(in srgb, var(--dj-deck-b) 25%, transparent)',
             }}
           />
         )}
@@ -198,7 +198,7 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
             style={{
               width: 56,
               height: 36,
-              background: 'linear-gradient(to bottom, #7a7a7a, #555, #444)',
+              background: 'linear-gradient(to bottom, var(--dj-text-secondary), var(--dj-text-muted), var(--dj-border-hover))',
               boxShadow: isDragging
                 ? '0 4px 16px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.25)'
                 : '0 2px 10px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.18)',
@@ -211,7 +211,7 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
                   key={i}
                   className="w-px h-5"
                   style={{
-                    backgroundColor: i % 2 === 0 ? '#666' : '#999'
+                    backgroundColor: i % 2 === 0 ? 'var(--dj-text-muted)' : 'var(--dj-text-secondary)'
                   }}
                 />
               ))}
@@ -232,8 +232,8 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
           style={{
             width: 5,
             height: 5,
-            backgroundColor: isCentered ? '#22c55e' : '#333',
-            boxShadow: isCentered ? '0 0 6px #22c55e' : 'none',
+            backgroundColor: isCentered ? 'var(--dj-play)' : 'var(--dj-border-light)',
+            boxShadow: isCentered ? '0 0 6px var(--dj-play)' : 'none',
           }}
         />
       </div>

@@ -55,7 +55,9 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
     const updateHeight = () => {
       const parent = container.parentElement;
       if (parent) {
-        const availableHeight = parent.clientHeight - 40;
+        // Reserve the BPM readout, percent readout and range button (with gaps)
+        // so the track never pushes them into neighbouring controls.
+        const availableHeight = parent.clientHeight - 84;
         setComputedHeight(Math.max(80, Math.min(availableHeight, 580)));
       }
     };
@@ -177,34 +179,32 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
     };
   }, [isDragging, handleMove, handleMouseUp]);
 
-  const accentColor = deck === 'A' ? '#3b82f6' : '#8b5cf6';
-  const accentColorDim = deck === 'A' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(139, 92, 246, 0.3)';
-  
+  // Deck identity from tokens (Plan §10A.11): dark track, silver cap, deck-colored deviation fill.
+  const accentColor = deck === 'A' ? 'var(--dj-deck-a-bright)' : 'var(--dj-deck-b-bright)';
+
   // Calculate percentage display
-  const percentDisplay = tempoPercent >= 0 
-    ? `+${tempoPercent.toFixed(1)}%` 
+  const percentDisplay = tempoPercent >= 0
+    ? `+${tempoPercent.toFixed(1)}%`
     : `${tempoPercent.toFixed(1)}%`;
 
   return (
-    <div 
+    <div
       ref={containerRef}
-      className="flex flex-col items-center gap-1"
+      className="dj-fader flex flex-col items-center gap-1"
       onContextMenu={handleContextMenu}
     >
       {/* BPM Display */}
-      <div className="dj-tempo-bpm text-[10px] font-mono text-neutral-400 text-center whitespace-nowrap">
-        <span className={effectiveBpm ? 'text-green-400' : ''}>{bpmDisplay}</span>
-        <span className="text-neutral-500 ml-0.5">BPM</span>
+      <div className="dj-tempo-bpm dj-fader-readout">
+        <span data-active={!!effectiveBpm}>{bpmDisplay}</span>
+        <span className="dj-fader-unit">BPM</span>
       </div>
-      
+
       {/* Slider Track */}
-      <div 
+      <div
         ref={trackRef}
-        className={`
-          relative rounded-full bg-[#1a1a1a] border border-[#333]
-          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-ns-resize'}
-        `}
-        style={{ width: 30, height: computedHeight }}
+        className={`dj-fader-track ${disabled ? 'cursor-not-allowed' : 'cursor-ns-resize'}`}
+        data-disabled={disabled}
+        style={{ height: computedHeight }}
         role="slider"
         tabIndex={disabled ? -1 : 0}
         aria-label={`Deck ${deck} tempo`}
@@ -217,100 +217,58 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
       >
-        {/* Track gradient overlay */}
-        <div 
-          className="absolute inset-0 rounded-full pointer-events-none"
-          style={{
-            background: `linear-gradient(to bottom, 
-              ${accentColorDim} 0%, 
-              transparent 45%, 
-              transparent 55%, 
-              ${accentColorDim} 100%
-            )`
-          }}
-        />
-        
         {/* Center line marker */}
-        <div 
-          className="absolute left-0 right-0 h-[2px] bg-[#444]"
-          style={{ top: '50%', transform: 'translateY(-50%)' }}
-        />
-        
+        <div className="dj-fader-center" />
+
         {/* Range markers */}
-        <div className="absolute -left-8 top-0 w-7 text-right text-[10px] text-neutral-600 font-mono">
-          +{tempoRange}
-        </div>
-        <div className="absolute -left-8 bottom-0 w-7 text-right text-[10px] text-neutral-600 font-mono">
-          -{tempoRange}
-        </div>
-        
+        <div className="dj-fader-scale" style={{ top: 0 }}>+{tempoRange}</div>
+        <div className="dj-fader-scale" style={{ bottom: 0 }}>-{tempoRange}</div>
+
         {/* Tick marks */}
         {[0.125, 0.25, 0.375, 0.625, 0.75, 0.875].map((pos, i) => (
-          <div
-            key={i}
-            className="absolute left-0 right-0 h-[1px] bg-[#333]"
-            style={{ top: `${pos * 100}%` }}
-          />
+          <div key={i} className="dj-fader-tick" style={{ top: `${pos * 100}%` }} />
         ))}
-        
-        {/* Position indicator line (shows deviation from center) */}
+
+        {/* Deviation from center in deck color */}
         {value !== 1.0 && (
-          <div 
-            className="absolute left-1/2 w-[2px] -translate-x-1/2 rounded-full"
+          <div
+            className="dj-fader-fill"
             style={{
               backgroundColor: accentColor,
               top: value > 1 ? `${position * 100}%` : '50%',
               bottom: value < 1 ? `${(1 - position) * 100}%` : '50%',
               height: `${Math.abs(position - 0.5) * 100}%`,
-              boxShadow: `0 0 6px ${accentColor}`,
             }}
           />
         )}
-        
+
         {/* Slider cap */}
-        <div 
-          className={`
-            absolute left-1/2 -translate-x-1/2 w-9 h-5 rounded
-            transition-shadow duration-100
-            ${isDragging ? 'shadow-lg' : ''}
-          `}
-          style={{ 
-            top: `calc(${position * 100}% - 10px)`,
-            background: `linear-gradient(to bottom, #666 0%, #444 50%, #333 100%)`,
-            boxShadow: isDragging 
-              ? `0 0 10px ${accentColor}, 0 2px 4px rgba(0,0,0,0.5)` 
-              : '0 2px 4px rgba(0,0,0,0.5)',
-            border: '1px solid #555',
-          }}
+        <div
+          className="dj-fader-cap"
+          data-dragging={isDragging}
+          style={{ top: `calc(${position * 100}% - 10px)`, ['--dj-fader-accent' as string]: accentColor }}
         >
-          {/* Cap grip lines */}
-          <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 flex flex-col gap-[2px]">
-            <div className="h-[1px] bg-[#777]" />
-            <div className="h-[1px] bg-[#555]" />
-            <div className="h-[1px] bg-[#777]" />
-          </div>
+          <span /><span /><span />
         </div>
       </div>
-      
+
       {/* Percentage Display */}
-      <div 
-        className={`
-          text-[11px] font-mono font-bold text-center min-w-[48px]
-          ${Math.abs(tempoPercent) < 0.1 ? 'text-neutral-500' : 'text-white'}
-        `}
+      <div
+        className="dj-fader-readout dj-fader-percent"
         style={Math.abs(tempoPercent) >= 0.1 ? { color: accentColor } : undefined}
       >
         {percentDisplay}
       </div>
-      
+
       {/* Range indicator (click to change) */}
       <button
+        type="button"
         onClick={() => {
           const currentIndex = TEMPO_RANGES.indexOf(tempoRange);
           const nextIndex = (currentIndex + 1) % TEMPO_RANGES.length;
           setTempoRange(TEMPO_RANGES[nextIndex]);
         }}
-        className="px-2 min-h-[24px] flex items-center justify-center text-[10px] text-neutral-500 hover:text-neutral-300 hover:bg-[#222] rounded transition-colors"
+        className="dj-btn dj-btn-xs dj-btn-ghost"
         title={`Tempo range ±${tempoRange}% — click to cycle`}
         aria-label={`Tempo range ±${tempoRange}%, click to cycle`}
       >

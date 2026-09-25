@@ -17,28 +17,31 @@ export const DJCueButton: React.FC<DJCueButtonProps> = ({
   const isActive = useStore(state => deck === 'A' ? state.djDeckA.cueEnabled : state.djDeckB.cueEnabled);
   const toggleDeckCue = useStore(state => state.toggleDeckCue);
   
-  const activeColor = deck === 'A' ? '#f97316' : '#f59e0b';
+  const activeColor = deck === 'A' ? 'var(--dj-hotcue)' : 'var(--dj-warning)';
   
   const handleClick = useCallback(() => {
     toggleDeckCue(deck);
   }, [deck, toggleDeckCue]);
 
   const compactClasses = isActive
-    ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/40'
-    : 'bg-[#2a2a2a] text-neutral-400 hover:bg-[#333] hover:text-white';
+    ? 'bg-[var(--dj-hotcue)] text-white shadow-lg shadow-[color-mix(in_srgb,var(--dj-hotcue)_40%,transparent)]'
+    : 'bg-[var(--dj-border)] text-[var(--dj-text-secondary)] hover:bg-[var(--dj-border-light)] hover:text-white';
 
   const fullClasses = isActive
     ? 'text-white shadow-lg'
-    : 'bg-[#2a2a2a] text-neutral-400 hover:bg-[#333] hover:text-white';
+    : 'bg-[var(--dj-border)] text-[var(--dj-text-secondary)] hover:bg-[var(--dj-border-light)] hover:text-white';
 
   if (compact) {
     return (
       <button
+        type='button'
         onClick={handleClick}
+        aria-pressed={isActive}
+        aria-label={`Headphone cue Deck ${deck}`}
         className={[
           'flex items-center justify-center',
           'w-8 h-8 rounded',
-          'font-bold text-[10px] uppercase',
+          'font-bold text-[12px] uppercase',
           'transition-all duration-100',
           compactClasses,
           className
@@ -52,9 +55,12 @@ export const DJCueButton: React.FC<DJCueButtonProps> = ({
 
   return (
     <button
+      type='button'
       onClick={handleClick}
+      aria-pressed={isActive}
+      aria-label={`Headphone cue Deck ${deck}`}
       className={[
-        'flex items-center gap-1.5 px-3 py-1.5 rounded',
+        'flex items-center gap-1.5 px-3 min-h-8 rounded',
         'font-bold text-xs uppercase',
         'transition-all duration-100',
         fullClasses,
@@ -62,7 +68,7 @@ export const DJCueButton: React.FC<DJCueButtonProps> = ({
       ].join(' ')}
       style={isActive ? {
         backgroundColor: activeColor,
-        boxShadow: '0 4px 14px ' + activeColor + '40',
+        boxShadow: `0 4px 14px color-mix(in srgb, ${activeColor} 25%, transparent)`,
       } : undefined}
       title={'Headphone Cue ' + deck + ' (PFL)'}
     >

@@ -94,6 +94,22 @@ const structure = () => page.evaluate(() => {
     checkSiblings(`Deck ${deck} header`, root.querySelectorAll('.dj-deck-info > *'));
     checkSiblings(`Deck ${deck} footer`, [root.querySelector('.dj-hotcues'), root.querySelector('.dj-transport')]);
   }
+  for (const deck of ['A', 'B']) {
+    const root = q(`[data-dj-deck="${deck}"]`);
+    checkSiblings(`Deck ${deck} tempo column`, root.querySelectorAll('.dj-deck-tempo [role="group"], .dj-deck-tempo .dj-fader > *'));
+  }
+  // Interactive controls must stay inside their layout region.
+  const escapes = [];
+  for (const region of document.querySelectorAll('.dj-deck-header, .dj-deck-toolbar, .dj-deck-tempo, .dj-deck-eq, .dj-deck-footer, .dj-mixer-head, .dj-mixer-channels, .dj-mixer-section, .dj-waveform-lane-header')) {
+    const box = n(region);
+    for (const control of region.querySelectorAll('button, select, summary, [role="slider"]')) {
+      if (control.offsetParent === null || control.closest('.dj-popover, .dj-deck-inspector')) continue;
+      const c = n(control);
+      if (c.x < box.x - 1 || c.y < box.y - 1 || c.x + c.width > box.x + box.width + 1 || c.y + c.height > box.y + box.height + 1) {
+        escapes.push(`${region.className.split(' ')[0]}: ${control.getAttribute('aria-label') || control.textContent.trim().slice(0, 20)}`);
+      }
+    }
+  }
   const mixer = q('[data-dj-mixer]');
   checkSiblings('Mixer sections', mixer.querySelectorAll(':scope > *'));
   for (const deck of ['A', 'B']) {
@@ -112,6 +128,7 @@ const structure = () => page.evaluate(() => {
     partsA: deckParts('A'),
     partsB: deckParts('B'),
     overlaps,
+    escapes,
     hiddenOverflow,
     webglCanvases: document.querySelectorAll('canvas[data-dj-renderer="webgl"]').length,
   };
@@ -134,6 +151,7 @@ const assertStructure = (s, label) => {
     assert.ok(near(s.partsA[part].height, s.partsB[part].height) && near(s.partsA[part].y, s.partsB[part].y), `${label}: ${part} differs between decks`);
   }
   assert.deepEqual(s.overlaps, [], `${label}: overlapping controls`);
+  assert.deepEqual(s.escapes, [], `${label}: controls outside their region`);
   assert.deepEqual(s.hiddenOverflow, [], `${label}: rows rely on hidden horizontal overflow`);
 };
 const deckState = () => page.evaluate(async () => {

@@ -78,16 +78,16 @@ export class DJErrorBoundary extends Component<DJErrorBoundaryProps, DJErrorBoun
       const componentName = this.props.componentName || 'Component';
       
       return (
-        <div className="flex flex-col items-center justify-center p-4 bg-red-900/20 border border-red-500/30 rounded-lg">
-          <div className="text-red-400 text-sm font-medium mb-2">
+        <div className="flex flex-col items-center justify-center p-4 bg-red-900/20 border border-[color-mix(in_srgb,var(--dj-danger)_30%,transparent)] rounded-lg">
+          <div className="text-[var(--dj-danger)] text-sm font-medium mb-2">
             {componentName} encountered an error
           </div>
-          <div className="text-neutral-400 text-xs mb-3 max-w-xs text-center">
+          <div className="text-[var(--dj-text-secondary)] text-xs mb-3 max-w-xs text-center">
             {this.state.error?.message || 'Unknown error'}
           </div>
           <button
             onClick={this.handleRetry}
-            className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-medium rounded transition-colors"
+            className="px-3 py-1.5 bg-[var(--dj-danger)] hover:bg-[var(--dj-danger)] text-white text-xs font-medium rounded transition-colors"
           >
             Retry
           </button>

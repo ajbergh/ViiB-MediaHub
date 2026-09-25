@@ -39,8 +39,8 @@ All refactor work lands on the single branch `refactor/djv2-ui-workstation`. Thi
 | 2 — Split waveforms | ✅ Done | `DJSplitWaveform` with per-deck lanes (Canvas `DJCanvasWaveformDeck`, WebGL `DJWebGLWaveformDeck`), per-lane toolbar and zoom, Canvas 2D overviews below the main lane. WebGL contexts: 3 → 2. Old stacked `DJDualWaveform` / `DJWebGLWaveform` removed. |
 | 3 — Header density | ✅ Done | Fixed-height header; one-row toolbar (beat jump, loops + IN/OUT/RELOOP, compact stems); `DJDeckInspector` holds energy, key, BPM, cue and grid tools. |
 | 4 — FX integration | ✅ Done | `DJDeckFXRack` per deck; X-Y pad and Beat FX are mixer tabs; FX mode never hides the waveform. |
-| 5 — Visual polish | 🟡 Partial | Tokens retuned to §10A.2, shared palette module feeds Canvas and WebGL (shader colors are uniforms), new component classes. Remaining: tokenize leaf components (jog, tempo slider, channel strip, EQ knob, sampler, headphone mix, library browser) and remove the legacy typography floor in `index.css`. |
-| 6 — Regression hardening | 🟡 Partial | `dj-overlay-audit.mjs` updated and passing on WebGL and Canvas paths. Remaining: retire or rewrite `djv2-audit.mjs`. |
+| 5 — Visual polish | ✅ Done | Tokens retuned to §10A.2; one palette module feeds Canvas and WebGL. Jog wheel and tempo fader restyled to §10A.10–11. All rendered leaf components use DJ tokens, and the global legacy typography floor is removed. Remaining literals are deliberate (see the 2026-09-25 log entry). |
+| 6 — Regression hardening | ✅ Done | `dj-overlay-audit.mjs` (geometry, overlap, containment, renderer) and a rewritten `djv2-audit.mjs` (accessibility + visual baselines) both pass. |
 
 ### Phase 0 decisions (2026-09-25)
 
@@ -65,7 +65,26 @@ These resolve the **Decision** rows in Section 3A. They were made during impleme
 
 ### Progress log
 
-- **2026-09-25 — Phases 1–4 and structural parts of 5–6.**
+- **2026-09-25 — Phases 5–6 completed (uncommitted, awaiting review).**
+  - **Leaf tokenization.** 29 leaf components now use `var(--dj-*)` tokens instead of neutral-grey and deck/semantic hex. This covers the channel strip, EQ and FX knobs, crossfader, headphone mix, sampler, FX pad, Beat FX, status bar, library browser, inspector widgets and dialogs. `${color}NN` alpha concatenation became `color-mix()`, so it works with tokens.
+  - **Legacy floor removed.** The global typography/colour floor in `index.css` is gone. The 9–11px utility classes it enlarged are now explicit `text-[12px]`, so rendered sizes are unchanged.
+  - **Deliberate literals remain** for:
+    - persisted cue and pad colours (user data) and `<input type="color">`;
+    - canvas-drawn meters and the scope, whose conventional green→yellow→red must stay literal for `fillStyle`;
+    - non-neutral one-off hues.
+  - **Jog wheel.** A neutral rim replaces the metallic one. The progress ring is deck-coloured, with a position marker on the ring. BPM, then pitch/range, then time are all token-driven.
+  - **Tempo fader.** Narrow dark track, silver cap, deck-coloured deviation fill.
+  - **Tempo column bug fixed.** The slider reserved 40px for ~80px of readouts, so its BPM readout sat under the nudge buttons. This was pre-existing on `main`.
+  - **Accessibility fixes found by the new audit:**
+    - The headphone VOL slider had no accessible name.
+    - The CUE↔MST headphone blend was mouse-only; it is now a keyboard-operable `role="slider"`.
+    - The channel CUE toggles lacked `aria-pressed`.
+    - KEY/SLIP/AG, FX module toggles, mixer header, channel CUE and master-cue chip were raised to the 32px secondary target.
+    - Loop-size buttons got a 28px minimum width (WCAG 2.2 minimum is 24px).
+  - **`scripts/djv2-audit.mjs` rewritten.** It targets `DJ_AUDIT_URL` (default `http://localhost:3000/dj`) at the four supported geometries and captures visual baselines to `output/playwright/djv2-audit/`. It fails on unnamed controls, stateful toggles without ARIA state, primary transport under 44px, or page overflow. Controls under 32px are listed in `metrics.json` without failing; the remaining ones are the compact waveform-lane toolbar (26px, matching the mock-up) and native range inputs.
+  - **`dj-overlay-audit.mjs` gained a containment check.** Controls must stay inside their layout region, and the tempo column is checked for sibling overlap.
+  - `DJBeatJump.tsx` and `DJLoopSection.tsx` are no longer rendered (superseded by `DJDeckToolbar`) but are still exported. Remove them in a follow-up if nothing external depends on them.
+- **2026-09-25 — Phases 1–4 and structural parts of 5–6** (committed as `3bdf745`).
   - Verified with Playwright: `scripts/dj-overlay-audit.mjs` passes 3/3 runs on the default path and on `DJ_AUDIT_DISABLE_WEBGL=1`. It now also asserts the 50/50 split, mixer centerline, A/B part symmetry, no control overlaps, no hidden toolbar overflow, inspector bounds/Escape/focus return, mode changes not moving geometry, and 2 WebGL lanes vs. Canvas fallback.
   - The audit was already failing on `main` (it looked for a "Library /" button); the new affordance restores that name.
   - `npx tsc --noEmit` clean. Unit tests pass, including the DOM tests once the declared `jsdom` devDependency is installed (it was missing from local `node_modules`).

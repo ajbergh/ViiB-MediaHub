@@ -139,12 +139,12 @@ export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: D
     ? []
     : keyScalePitchClasses(feature.measuredKeyTonic, feature.measuredKeyMode);
 
-  return <details open={embedded || undefined} className="mx-2 mb-1 rounded border border-neutral-800 bg-neutral-950/70 text-[10px] text-neutral-300">
+  return <details open={embedded || undefined} className="mx-2 mb-1 rounded border border-[var(--dj-border)] bg-[color-mix(in_srgb,var(--dj-bg)_70%,transparent)] text-[12px] text-[var(--dj-text-secondary)]">
     <summary className="cursor-pointer list-none px-2 py-1">
       Key verifier · {feature.key ?? 'No measured key'} · {feature.keySource}
     </summary>
-    <div className="space-y-2 border-t border-neutral-800 px-2 py-2">
-      <p className="text-neutral-500">Select a tonic and mode, then audition the notes on your output. This reference tone does not use deck playback.</p>
+    <div className="space-y-2 border-t border-[var(--dj-border)] px-2 py-2">
+      <p className="text-[var(--dj-text-secondary)]">Select a tonic and mode, then audition the notes on your output. This reference tone does not use deck playback.</p>
       <div className="grid grid-cols-6 gap-1 sm:grid-cols-12">
         {KEY_NOTE_NAMES.map((name, pitchClass) => {
           const isTonic = feature.measuredKeyTonic === pitchClass;
@@ -153,7 +153,7 @@ export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: D
           return <button key={name} type="button" aria-label={`Audition ${name}`} aria-pressed={selected}
             title={`${name}${isTonic ? ' · measured tonic' : inScale ? ' · in measured scale' : ''}`}
             onClick={() => { setSelectedTonic(pitchClass); void play(pitchClass); }}
-            className={`rounded border px-1 py-2 font-mono ${selected ? 'border-cyan-400 text-cyan-100' : 'border-neutral-700'} ${isTonic ? 'bg-amber-950/70 text-amber-200' : inScale ? 'bg-neutral-800 text-neutral-200' : 'bg-neutral-900 text-neutral-400'} disabled:opacity-40`}>
+            className={`rounded border px-1 py-2 font-mono ${selected ? 'border-[var(--dj-info)] text-cyan-100' : 'border-[var(--dj-border-light)]'} ${isTonic ? 'bg-amber-950/70 text-amber-200' : inScale ? 'bg-[var(--dj-surface-3)] text-[var(--dj-text-primary)]' : 'bg-[var(--dj-surface-1)] text-[var(--dj-text-secondary)]'} disabled:opacity-40`}>
             {name}
           </button>;
         })}
@@ -162,17 +162,17 @@ export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: D
         <label className="flex items-center gap-1">Mode
           <select aria-label="Selected key mode" value={selectedMode} disabled={busy}
             onChange={event => setSelectedMode(event.target.value as VerifiedKeyMode)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5">
+            className="rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] px-1 py-0.5">
             <option value="major">Major</option>
             <option value="minor">Minor</option>
           </select>
         </label>
         <button type="button" disabled={busy} onClick={() => void save()}
-          className="rounded border border-cyan-500/50 px-2 py-0.5 text-cyan-200 hover:bg-cyan-950 disabled:opacity-40">Use as key</button>
+          className="rounded border border-[color-mix(in_srgb,var(--dj-info)_50%,transparent)] px-2 py-0.5 text-cyan-200 hover:bg-cyan-950 disabled:opacity-40">Use as key</button>
         <button type="button" disabled={busy || feature.keySource !== 'manual'} onClick={() => void reset()}
-          className="rounded border border-neutral-700 px-2 py-0.5 hover:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">Reset to measured</button>
-        {feature.keyConfidence != null && <span className="text-neutral-500">Measured confidence {Math.round(feature.keyConfidence * 100)}%</span>}
-        {status && <span role="status" className="text-neutral-400">{status}</span>}
+          className="rounded border border-[var(--dj-border-light)] px-2 py-0.5 hover:border-[var(--dj-info)] disabled:cursor-not-allowed disabled:opacity-40">Reset to measured</button>
+        {feature.keyConfidence != null && <span className="text-[var(--dj-text-secondary)]">Measured confidence {Math.round(feature.keyConfidence * 100)}%</span>}
+        {status && <span role="status" className="text-[var(--dj-text-secondary)]">{status}</span>}
       </div>
     </div>
   </details>;

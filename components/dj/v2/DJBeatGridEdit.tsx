@@ -7,7 +7,7 @@ import { api } from '../../../services/api';
 
 interface DJBeatGridEditProps { deck: DeckId; }
 
-const BTN = 'w-11 h-11 rounded bg-[#222] text-neutral-400 hover:text-white border border-[#333] hover:border-neutral-500 transition-colors flex items-center justify-center flex-shrink-0 disabled:cursor-not-allowed disabled:opacity-40';
+const BTN = 'w-11 h-11 rounded bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] hover:text-white border border-[var(--dj-border-light)] hover:border-[var(--dj-text-muted)] transition-colors flex items-center justify-center flex-shrink-0 disabled:cursor-not-allowed disabled:opacity-40';
 
 export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
   const deckState = useStore(state => deck === 'A' ? state.djDeckA : state.djDeckB);
@@ -69,8 +69,8 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
   if (!beats?.length) return null;
   const disabled = saving;
   return <div className='flex flex-col items-center gap-2 px-1 py-0.5' aria-live='polite'>
-    <span className='text-[10px] text-text-secondary'>{locked ? 'Reviewed grid' : 'Check intro, middle, and outro before locking.'}</span>
-    <span className='text-[10px] text-neutral-500 font-bold uppercase tracking-wider'>GRID {isDynamic ? 'DYNAMIC' : 'STRAIGHT'}</span>
+    <span className='text-[12px] text-text-secondary'>{locked ? 'Reviewed grid' : 'Check intro, middle, and outro before locking.'}</span>
+    <span className='text-[12px] text-[var(--dj-text-secondary)] font-bold uppercase tracking-wider'>GRID {isDynamic ? 'DYNAMIC' : 'STRAIGHT'}</span>
     <div className='flex items-center gap-1'>
       <button disabled={disabled || locked} onClick={() => shift(-.01)} className={BTN} aria-label='Shift beat grid -10ms'><ChevronsLeft size={18} /></button>
       <button disabled={disabled || locked} onClick={() => shift(-.001)} className={BTN} aria-label='Shift beat grid -1ms'><ChevronLeft size={18} /></button>
@@ -84,7 +84,7 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
       <button disabled={disabled} onClick={() => void reset()} className={BTN} aria-label='Reset beatgrid to library analysis'><RotateCcw size={16} /></button>
     </div>
     {!locked && <button disabled={disabled} onClick={() => void persist(beats, downbeats, true)} className='rounded border border-brand px-3 py-1.5 text-xs text-brand'>Verify & lock grid</button>}
-    {error && <span className='max-w-40 text-center text-[9px] text-red-300'>{error}</span>}
+    {error && <span className='max-w-40 text-center text-[12px] text-[var(--dj-danger)]'>{error}</span>}
   </div>;
 };
 

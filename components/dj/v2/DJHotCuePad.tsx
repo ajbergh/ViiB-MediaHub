@@ -107,7 +107,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
         const isAnalysis = hotCue?.origin === 'analysis';
         const lowConfidence = isAnalysis && (hotCue.confidence ?? 1) < .5;
         
-        const buttonSize = singleRow ? 'w-12 h-11 text-[12px]' : compact ? 'w-8 h-8 text-[10px]' : 'w-14 h-12 text-[13px]';
+        const buttonSize = singleRow ? 'w-12 h-11 text-[12px]' : compact ? 'w-8 h-8 text-[12px]' : 'w-14 h-12 text-[13px]';
         
         return (
           <button
@@ -124,16 +124,16 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
               relative ${buttonSize} rounded font-bold
               transition-all duration-75 border
               ${!track 
-                ? 'bg-[#1f1f1f] text-neutral-700 border-[#2a2a2a] cursor-not-allowed' 
+                ? 'bg-[var(--dj-surface-3)] text-[var(--dj-text-muted)] border-[var(--dj-border)] cursor-not-allowed' 
                 : isActive
                   ? `text-white ${lowConfidence ? 'border-dashed border-white/70' : 'border-transparent'}`
-                  : 'bg-[#252525] text-neutral-500 border-[#333] hover:bg-[#2d2d2d] hover:border-[#444]'}
+                  : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] hover:bg-[var(--dj-border)] hover:border-[var(--dj-border-hover)]'}
               ${isLongPress ? 'scale-90 opacity-50' : ''}
               ${isPressed && !isLongPress ? 'scale-95' : ''}
             `}
             style={isActive && track ? {
               backgroundColor: color,
-              boxShadow: `0 2px 8px ${color}50, inset 0 1px 0 rgba(255,255,255,0.25)`,
+              boxShadow: `0 2px 8px color-mix(in srgb, ${color} 31%, transparent), inset 0 1px 0 rgba(255,255,255,0.25)`,
             } : undefined}
             title={
               hotCue 
@@ -142,8 +142,8 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
             }
           >
             {displayNum}
-            {isAnalysis && <span className="absolute -right-0.5 -top-1 rounded bg-neutral-950 px-0.5 text-[7px] leading-3 text-white">A</span>}
-            {hotCue?.locked && <span className="absolute -bottom-0.5 -right-0.5 rounded bg-neutral-950 px-0.5 text-[7px] leading-3 text-white">L</span>}
+            {isAnalysis && <span className="absolute -right-0.5 -top-1 rounded bg-[var(--dj-bg)] px-0.5 text-[7px] leading-3 text-white">A</span>}
+            {hotCue?.locked && <span className="absolute -bottom-0.5 -right-0.5 rounded bg-[var(--dj-bg)] px-0.5 text-[7px] leading-3 text-white">L</span>}
           </button>
         );
       })}
