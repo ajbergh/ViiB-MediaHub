@@ -16,6 +16,9 @@ type MonoChunk struct {
 	SourceChannels int
 	DeclaredFrames int64
 	Samples        []float32
+	// Interleaved is the borrowed decoder PCM view before the compatibility
+	// downmix. It is valid only during the callback and must not be retained.
+	Interleaved []float32
 }
 
 // decodeChunkFrames bounds one decode/downmix step so memory stays
@@ -93,7 +96,7 @@ func streamMono(ctx context.Context, registry *DecoderRegistry, name string, ope
 			if err != nil {
 				return err
 			}
-			if err := consume(MonoChunk{SampleRate: info.SampleRate, SourceChannels: info.Channels, DeclaredFrames: info.DeclaredFrames, Samples: mono}); err != nil {
+			if err := consume(MonoChunk{SampleRate: info.SampleRate, SourceChannels: info.Channels, DeclaredFrames: info.DeclaredFrames, Samples: mono, Interleaved: interleaved[:count]}); err != nil {
 				return err
 			}
 		}

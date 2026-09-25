@@ -133,6 +133,14 @@ func TestAnalyzeAndPersistRecordsBothDimensionsInOneRecord(t *testing.T) {
 	if record.ErrorCode != nil {
 		t.Fatalf("complete record must not carry an error code, got %q", *record.ErrorCode)
 	}
+	standardsArtifact, err := database.GetTrackAnalysisArtifact("song", features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
+	if err != nil {
+		t.Fatalf("missing separate BS.1770 artifact: %v", err)
+	}
+	standardsMeasurement, err := features.DecodeBS1770(standardsArtifact.Data)
+	if err != nil || standardsMeasurement.Layout != "mono" || standardsMeasurement.LoudnessStatus != "available" || standardsMeasurement.IntegratedLUFS == nil || standardsMeasurement.TruePeakDBTP == nil {
+		t.Fatalf("persisted BS.1770 measurement = %#v, %v", standardsMeasurement, err)
+	}
 	hotCues, err := database.GetDJHotCues("song")
 	if err != nil {
 		t.Fatal(err)

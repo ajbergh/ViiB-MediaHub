@@ -173,6 +173,15 @@ export interface TrackEnergyFeatures {
   songId: string;
   integratedLufs: number;
   truePeakDbfs: number;
+  integratedLufsBs1770?: number;
+  truePeakDbtp?: number;
+  loudnessStandard?: string;
+  loudnessAlgorithmVersion?: string;
+  truePeakAlgorithmVersion?: string;
+  loudnessChannelLayout?: string;
+  loudnessChannelWeighting?: string;
+  loudnessStatus?: string;
+  truePeakStatus?: string;
   energy: EnergyPoint[];
   sections: EnergySection[];
   cueSuggestions: CueSuggestion[];
