@@ -158,7 +158,16 @@ export interface TrackBeatGridUpdate {
 }
 
 export interface EnergyPoint { time: number; value: number; }
-export interface EnergySection { start: number; end: number; energy: number; }
+export interface EnergySection {
+  start: number;
+  end: number;
+  energy: number;
+  label?: 'intro' | 'build' | 'drop' | 'breakdown' | 'outro' | 'unknown';
+  confidence?: number;
+  timingProvenance?: 'energy-windows' | 'energy-windows+downbeat-grid';
+  downbeatStart?: number;
+  downbeatEnd?: number;
+}
 export interface CueSuggestion { position: number; kind: 'mix-in' | 'mix-out' | 'section'; confidence: number; rationale: string; }
 export interface TrackEnergyFeatures {
   songId: string;
