@@ -191,6 +191,8 @@ export const DEFAULT_PAD_COLORS = [
   '#3b82f6', '#a855f7', '#ec4899', '#06b6d4'
 ] as const;
 
+export const DEFAULT_HOT_CUE_COLOR = DEFAULT_PAD_COLORS[1];
+
 export function createDefaultSamplerPad(id: number): SamplerPad {
   return {
     id,
@@ -822,7 +824,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         slot,
         position,
         label,
-        color: color || '#FF5500',
+        color: color || DEFAULT_HOT_CUE_COLOR,
         origin: 'user'
       };
       
@@ -894,7 +896,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
         slot: hc.slot,
         position: hc.position,
         label: hc.label || '',
-        color: hc.color || '#FF5500',
+        color: hc.color || DEFAULT_HOT_CUE_COLOR,
         origin: hc.origin || 'user',
         generatorVersion: hc.generatorVersion,
         confidence: hc.confidence,
