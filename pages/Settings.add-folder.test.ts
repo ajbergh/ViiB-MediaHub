@@ -95,16 +95,19 @@ describe('Settings Add Folder browser', () => {
     expect(container.textContent).toContain('Select Music Folder');
     expect(container.querySelector('[role="status"]')?.textContent).toContain('Loading folders');
     expect(mocks.browseFolder).toHaveBeenCalledWith('drives');
+    expect(buttonNamed('Add This Folder').disabled).toBe(true);
 
     await act(async () => {
       resolveInitialBrowse({ currentPath: 'Drives', entries: [{ name: 'C:', path: 'C:\\', isDir: true }] });
       await Promise.resolve();
     });
+    expect(buttonNamed('Add This Folder').disabled).toBe(true);
     expect(container.querySelector('button[aria-label="C: drive"]')).not.toBeNull();
 
     await click(buttonNamed('C: drive'));
     expect(container.textContent).toContain('Music');
     expect(mocks.browseFolder).toHaveBeenLastCalledWith('C:\\');
+    expect(buttonNamed('Add This Folder').disabled).toBe(false);
 
     await click(buttonNamed('Music'));
     expect(container.textContent).toContain('C:\\Music');
@@ -122,6 +125,14 @@ describe('Settings Add Folder browser', () => {
     await click(buttonNamed('Add Folder'));
     await click(buttonNamed('Cancel'));
     expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(mocks.addScanFolder).toHaveBeenCalledTimes(1);
+
+    mocks.browseFolder.mockRejectedValueOnce(new Error('browse unavailable'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await click(buttonNamed('Add Folder'));
+    expect(buttonNamed('Add This Folder').disabled).toBe(true);
+    expect(container.querySelector('[role="dialog"]')?.textContent).not.toContain('C:\\Music');
+    consoleError.mockRestore();
     expect(mocks.addScanFolder).toHaveBeenCalledTimes(1);
   });
 });

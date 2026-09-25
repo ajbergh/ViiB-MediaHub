@@ -774,6 +774,8 @@ export const Settings: React.FC = () => {
   const openFolderBrowser = async () => {
       setShowFolderBrowser(true);
       setLoadingBrowser(true);
+      setBrowserPath('');
+      setBrowserEntries([]);
       try {
           // Start from drives on Windows, home on others
           const startPath = navigator.platform.toLowerCase().includes('win') ? 'drives' : undefined;
@@ -782,8 +784,11 @@ export const Settings: React.FC = () => {
           setBrowserEntries(result.entries);
       } catch (e) {
           console.error("Failed to browse folder", e);
+          setBrowserPath('');
+          setBrowserEntries([]);
+      } finally {
+          setLoadingBrowser(false);
       }
-      setLoadingBrowser(false);
   };
 
   const navigateFolder = async (path: string) => {
@@ -794,12 +799,15 @@ export const Settings: React.FC = () => {
           setBrowserEntries(result.entries);
       } catch (e) {
           console.error("Failed to navigate to folder", e);
+          setBrowserPath('');
+          setBrowserEntries([]);
+      } finally {
+          setLoadingBrowser(false);
       }
-      setLoadingBrowser(false);
   };
 
   const selectCurrentFolder = async () => {
-      if (browserPath) {
+      if (browserPath && browserPath !== 'Drives' && !loadingBrowser) {
           await addScanFolder(browserPath);
           setShowFolderBrowser(false);
       }
@@ -3214,7 +3222,7 @@ export const Settings: React.FC = () => {
                           variant="primary"
                           accent="brand"
                           onClick={selectCurrentFolder}
-                          disabled={!browserPath}
+                          disabled={!browserPath || browserPath === 'Drives' || loadingBrowser}
                           leftIcon={<Plus size={16} />}
                           className="px-6 py-2 font-bold"
                       >
