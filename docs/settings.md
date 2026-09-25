@@ -43,7 +43,7 @@ Lists all local music directories ViiB MediaHub monitors. Each folder has:
 - **Path** — directory path
 - **Remove** button — stop watching this folder
 
-To add a folder click **Add Folder** and use the folder browser dialog.
+To add a folder click **Add Folder** and use the in-app folder browser. On Windows it starts at the available drives; select a drive or folder to navigate, then choose **Add This Folder** to add the current path. **Cancel** or the close button exits without changing the configured folders.
 
 Continuous monitoring is configured directly below local folder scanning. It checks configured folders for changes between manual scans; choose 5 seconds, 15 seconds, 30 seconds, 1 minute, or 5 minutes.
 

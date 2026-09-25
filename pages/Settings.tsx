@@ -774,6 +774,8 @@ export const Settings: React.FC = () => {
   const openFolderBrowser = async () => {
       setShowFolderBrowser(true);
       setLoadingBrowser(true);
+      setBrowserPath('');
+      setBrowserEntries([]);
       try {
           // Start from drives on Windows, home on others
           const startPath = navigator.platform.toLowerCase().includes('win') ? 'drives' : undefined;
@@ -782,8 +784,11 @@ export const Settings: React.FC = () => {
           setBrowserEntries(result.entries);
       } catch (e) {
           console.error("Failed to browse folder", e);
+          setBrowserPath('');
+          setBrowserEntries([]);
+      } finally {
+          setLoadingBrowser(false);
       }
-      setLoadingBrowser(false);
   };
 
   const navigateFolder = async (path: string) => {
@@ -794,12 +799,15 @@ export const Settings: React.FC = () => {
           setBrowserEntries(result.entries);
       } catch (e) {
           console.error("Failed to navigate to folder", e);
+          setBrowserPath('');
+          setBrowserEntries([]);
+      } finally {
+          setLoadingBrowser(false);
       }
-      setLoadingBrowser(false);
   };
 
   const selectCurrentFolder = async () => {
-      if (browserPath) {
+      if (browserPath && browserPath !== 'Drives' && !loadingBrowser) {
           await addScanFolder(browserPath);
           setShowFolderBrowser(false);
       }
@@ -3144,6 +3152,85 @@ export const Settings: React.FC = () => {
               <p className="text-[10px] text-surface-slider mt-2">Logs capture in-app enrichment progress, Spotify activity, and app events. Connection failures are shown where they occur.</p>
           </section>
         </div>
+      )}
+
+      {/* Add Folder Browser Modal */}
+      {showFolderBrowser && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+              <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="music-folder-browser-title"
+                  className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[80vh] flex flex-col"
+              >
+                  <div className="flex items-center justify-between mb-4">
+                      <h2 id="music-folder-browser-title" className="text-xl font-bold text-white">Select Music Folder</h2>
+                      <Button
+                          variant="ghost"
+                          onClick={() => setShowFolderBrowser(false)}
+                          className="p-2"
+                          aria-label="Close folder browser"
+                      >
+                          <X size={20} />
+                      </Button>
+                  </div>
+
+                  <div className="bg-surface-1 border border-surface-border rounded-lg p-3 mb-4 font-mono text-sm text-text-main truncate">
+                      {browserPath || 'Loading...'}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto bg-surface-1 border border-surface-border rounded-lg mb-4 min-h-[300px]">
+                      {loadingBrowser ? (
+                          <div className="flex items-center justify-center gap-2 h-full text-text-subtle" role="status">
+                              <Loader2 size={24} className="animate-spin text-brand" />
+                              <span>Loading folders…</span>
+                          </div>
+                      ) : (
+                          <div className="divide-y divide-surface-border">
+                              {browserEntries.map((entry, idx) => {
+                                  const isRoot = isDriveLetter(entry.name);
+                                  return (
+                                      <Button
+                                          variant="ghost"
+                                          key={`${entry.path}-${idx}`}
+                                          onClick={() => navigateFolder(entry.path)}
+                                          className="w-full justify-start gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
+                                          aria-label={isRoot ? `${entry.name} drive` : entry.name}
+                                      >
+                                          {isRoot ? (
+                                              <HardDrive size={18} className="text-brand flex-shrink-0" />
+                                          ) : (
+                                              <FolderOpen size={18} className="text-brand flex-shrink-0" />
+                                          )}
+                                          <span className="text-text-main truncate font-medium">{entry.name}</span>
+                                          {isRoot && <span className="text-xs text-text-subtle ml-auto">Drive</span>}
+                                      </Button>
+                                  );
+                              })}
+                              {browserEntries.length === 0 && (
+                                  <div className="p-4 text-center text-text-subtle">No subfolders found</div>
+                              )}
+                          </div>
+                      )}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3">
+                      <Button variant="ghost" onClick={() => setShowFolderBrowser(false)}>
+                          Cancel
+                      </Button>
+                      <Button
+                          variant="primary"
+                          accent="brand"
+                          onClick={selectCurrentFolder}
+                          disabled={!browserPath || browserPath === 'Drives' || loadingBrowser}
+                          leftIcon={<Plus size={16} />}
+                          className="px-6 py-2 font-bold"
+                      >
+                          Add This Folder
+                      </Button>
+                  </div>
+              </div>
+          </div>
       )}
 
       {/* Custom Confirmation Modal */}
