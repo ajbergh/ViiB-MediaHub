@@ -401,10 +401,6 @@ func resolveContained(root, relative string) (string, error) {
 	return current, nil
 }
 
-func fileSHA256(path string) (string, error) {
-	return fileSHA256Context(context.Background(), path)
-}
-
 func fileSHA256Context(ctx context.Context, path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {

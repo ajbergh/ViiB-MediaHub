@@ -309,10 +309,6 @@ func (a *API) refreshStemRegistryContext(ctx context.Context, songID string) err
 	return a.refreshStemRegistryWithDiscoveryContext(ctx, songID, nil, dirs)
 }
 
-func (a *API) refreshStemRegistryWithDiscovery(songID string, knownDiscovery *stems.DiscoveryResult, libraryDirs []string) error {
-	return a.refreshStemRegistryWithDiscoveryContext(context.Background(), songID, knownDiscovery, libraryDirs)
-}
-
 func (a *API) refreshStemRegistryWithDiscoveryContext(ctx context.Context, songID string, knownDiscovery *stems.DiscoveryResult, libraryDirs []string) error {
 	song, err := a.db.GetSongByID(songID)
 	if err != nil {

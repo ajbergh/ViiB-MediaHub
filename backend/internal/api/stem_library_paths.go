@@ -51,15 +51,15 @@ func localRootsOverlap(first, second string) bool {
 func validateStemLibraryRootsAgainstMusic(musicFolders []db.ScanFolder, stemRoots []string) error {
 	for _, stemRoot := range stemRoots {
 		if err := stems.RejectSymlinkPath(stemRoot); err != nil {
-			return fmt.Errorf("Stem Library root must not contain symlinks: %s", stemRoot)
+			return fmt.Errorf("stem library root must not contain symlinks: %s", stemRoot)
 		}
 		info, err := os.Stat(stemRoot)
 		if err != nil || !info.IsDir() {
-			return fmt.Errorf("Stem Library root must be an existing directory: %s", stemRoot)
+			return fmt.Errorf("stem library root must be an existing directory: %s", stemRoot)
 		}
 		for _, music := range musicFolders {
 			if localRootsOverlap(music.Path, stemRoot) {
-				return fmt.Errorf("Stem Library root %q overlaps Music Folder %q; choose separate folders", stemRoot, music.Path)
+				return fmt.Errorf("stem library root %q overlaps music folder %q; choose separate folders", stemRoot, music.Path)
 			}
 		}
 	}
@@ -73,7 +73,7 @@ func (a *API) validateMusicFolderAgainstStemRoots(musicRoot string) error {
 	}
 	for _, location := range locations {
 		if location.Enabled && localRootsOverlap(musicRoot, location.Path) {
-			return fmt.Errorf("Music Folder %q overlaps Stem Library root %q; choose separate folders", musicRoot, location.Path)
+			return fmt.Errorf("music folder %q overlaps stem library root %q; choose separate folders", musicRoot, location.Path)
 		}
 	}
 	return nil
@@ -102,31 +102,31 @@ func (a *API) validateStemLibraryScanRoots(requested []string) ([]string, error)
 		return nil, err
 	}
 	if len(requested) == 0 || len(requested) != len(enabled) {
-		return nil, fmt.Errorf("Stem Library scan roots must exactly match the currently enabled Stem Library locations")
+		return nil, fmt.Errorf("stem library scan roots must exactly match the currently enabled locations")
 	}
 	requestedKeys := make(map[string]bool, len(requested))
 	for _, root := range requested {
 		abs, normalizeErr := normalizedLocalRoot(root)
 		if normalizeErr != nil {
-			return nil, fmt.Errorf("invalid Stem Library scan root")
+			return nil, fmt.Errorf("invalid stem library scan root")
 		}
 		if requestedKeys[pathKeyForOS(abs)] {
-			return nil, fmt.Errorf("duplicate Stem Library scan root")
+			return nil, fmt.Errorf("duplicate stem library scan root")
 		}
 		requestedKeys[pathKeyForOS(abs)] = true
 	}
 	paths := make([]string, 0, len(enabled))
 	for _, location := range enabled {
 		if err = stems.RejectSymlinkPath(location.Path); err != nil {
-			return nil, fmt.Errorf("configured Stem Library root is unsafe")
+			return nil, fmt.Errorf("configured stem library root is unsafe")
 		}
 		abs, normalizeErr := normalizedLocalRoot(location.Path)
 		if normalizeErr != nil || !requestedKeys[pathKeyForOS(abs)] {
-			return nil, fmt.Errorf("Stem Library scan roots no longer match the currently enabled Stem Library locations")
+			return nil, fmt.Errorf("stem library scan roots no longer match the currently enabled locations")
 		}
 		info, statErr := os.Stat(abs)
 		if statErr != nil || !info.IsDir() {
-			return nil, fmt.Errorf("configured Stem Library root is unavailable")
+			return nil, fmt.Errorf("configured stem library root is unavailable")
 		}
 		paths = append(paths, abs)
 	}
