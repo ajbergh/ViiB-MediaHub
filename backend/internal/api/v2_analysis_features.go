@@ -49,6 +49,7 @@ type TrackAnalysisFeatureResponse struct {
 	EnergyAlgorithmVersion *string  `json:"energyAlgorithmVersion,omitempty"`
 	StructureAvailable     bool     `json:"structureAvailable"`
 	IntegratedLUFSBS1770   *float64 `json:"integratedLufsBs1770,omitempty"`
+	TruePeakDBTP           *float64 `json:"truePeakDbtp,omitempty"`
 }
 
 // BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
@@ -260,6 +261,7 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		}
 	}
 	lufsBySongID := make(map[string]float64, len(loudnessCandidateIDs))
+	truePeakBySongID := make(map[string]float64, len(loudnessCandidateIDs))
 	for start := 0; start < len(loudnessCandidateIDs); start += structureStatusBatchSize {
 		end := start + structureStatusBatchSize
 		if end > len(loudnessCandidateIDs) {
@@ -273,8 +275,12 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 				if !exists || !hasMetadata || payloadFingerprint == "" || payloadFingerprint != metadata.SourceFingerprint {
 					return nil
 				}
-				if value, available := trackIntegratedLUFSAvailable(analysis, currentFingerprints[songID], metadata, data); available {
-					lufsBySongID[songID] = value
+				lufs, truePeak := trackBS1770ListMeasurements(analysis, currentFingerprints[songID], metadata, data)
+				if lufs != nil {
+					lufsBySongID[songID] = *lufs
+				}
+				if truePeak != nil {
+					truePeakBySongID[songID] = *truePeak
 				}
 				return nil
 			}); err != nil {
@@ -288,6 +294,9 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		feature.StructureAvailable = readyStructureBySongID[analysis.SongID]
 		if value, exists := lufsBySongID[analysis.SongID]; exists {
 			feature.IntegratedLUFSBS1770 = &value
+		}
+		if value, exists := truePeakBySongID[analysis.SongID]; exists {
+			feature.TruePeakDBTP = &value
 		}
 		response = append(response, feature)
 	}
@@ -395,20 +404,27 @@ func decodeCurrentBS1770Artifact(analysis db.TrackAnalysis, currentFingerprint s
 	return result, true
 }
 
-func trackIntegratedLUFSAvailable(analysis db.TrackAnalysis, currentFingerprint string, artifact db.TrackAnalysisArtifactMetadata, data []byte) (float64, bool) {
+func trackBS1770ListMeasurements(analysis db.TrackAnalysis, currentFingerprint string, artifact db.TrackAnalysisArtifactMetadata, data []byte) (*float64, *float64) {
 	if artifact.SongID != analysis.SongID || artifact.SourceFingerprint == "" || artifact.SourceFingerprint != analysis.SourceFingerprint ||
 		artifact.Kind != features.BS1770ArtifactKind || artifact.FormatVersion != features.BS1770FormatVersion || artifact.AlgorithmVersion != features.BS1770AlgorithmVersion ||
 		artifact.Encoding != features.BS1770Encoding || artifact.Provenance != "measured" || len(data) == 0 || len(data) > features.MaxBS1770ArtifactBytes {
-		return 0, false
+		return nil, nil
 	}
 	result, err := features.DecodeBS1770(data)
-	if err != nil || result.LoudnessStatus != "available" || result.IntegratedLUFS == nil || math.IsNaN(*result.IntegratedLUFS) || math.IsInf(*result.IntegratedLUFS, 0) {
-		return 0, false
+	if err != nil {
+		return nil, nil
 	}
 	if !trackStructureSourceEligible(analysis) || currentFingerprint == "" || currentFingerprint != analysis.SourceFingerprint {
-		return 0, false
+		return nil, nil
 	}
-	return *result.IntegratedLUFS, true
+	var lufs, truePeak *float64
+	if result.LoudnessStatus == "available" && result.IntegratedLUFS != nil && !math.IsNaN(*result.IntegratedLUFS) && !math.IsInf(*result.IntegratedLUFS, 0) {
+		lufs = result.IntegratedLUFS
+	}
+	if result.TruePeakStatus == "available" && result.TruePeakDBTP != nil && !math.IsNaN(*result.TruePeakDBTP) && !math.IsInf(*result.TruePeakDBTP, 0) {
+		truePeak = result.TruePeakDBTP
+	}
+	return lufs, truePeak
 }
 
 func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) TrackAnalysisFeatureResponse {

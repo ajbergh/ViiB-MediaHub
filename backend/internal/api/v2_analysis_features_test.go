@@ -288,7 +288,7 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentSettledStructure(t *testing
 	}
 }
 
-func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770LUFS(t *testing.T) {
+func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770Measurements(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -296,15 +296,24 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770LUFS(t *testi
 	defer database.Close()
 
 	value := -14.25
+	peakValue := -0.42
 	valid := features.BS1770Result{
-		IntegratedLUFS: &value, Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion,
+		IntegratedLUFS: &value, TruePeakDBTP: &peakValue, Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion,
 		LoudnessAlgorithm: features.BS1770LoudnessAlgorithm, TruePeakAlgorithm: features.BS1770TruePeakAlgorithm,
 		Layout: "stereo", Weighting: "L=1;R=1", LoudnessStatus: "available", TruePeakStatus: "available",
 	}
 	silent := valid
 	silent.IntegratedLUFS, silent.LoudnessStatus = nil, "silence"
+	silent.TruePeakDBTP, silent.TruePeakStatus = nil, "silence"
 	short := valid
 	short.IntegratedLUFS, short.LoudnessStatus = nil, "insufficient-duration"
+	short.TruePeakDBTP, short.TruePeakStatus = nil, "insufficient-duration"
+	belowLoudnessGate := valid
+	belowLoudnessGate.IntegratedLUFS, belowLoudnessGate.LoudnessStatus = nil, "below-absolute-gate"
+	missingTruePeakValue := valid
+	missingTruePeakValue.TruePeakDBTP = nil
+	unavailableTruePeak := valid
+	unavailableTruePeak.TruePeakStatus = "insufficient-duration"
 	badMetadata := valid
 	badMetadata.Standard = "unknown standard"
 	encode := func(result features.BS1770Result) []byte {
@@ -331,10 +340,14 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770LUFS(t *testi
 		changeSource      bool
 		removeSource      bool
 		wantLufs          bool
+		wantTruePeak      bool
 	}{
-		{id: "complete", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, wantLufs: true},
-		{id: "partial", status: db.TrackAnalysisPartial, result: valid, withArtifact: true, wantLufs: true},
-		{id: "failed-settled", status: db.TrackAnalysisFailed, result: valid, withArtifact: true, wantLufs: true},
+		{id: "complete", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, wantLufs: true, wantTruePeak: true},
+		{id: "partial", status: db.TrackAnalysisPartial, result: valid, withArtifact: true, wantLufs: true, wantTruePeak: true},
+		{id: "failed-settled", status: db.TrackAnalysisFailed, result: valid, withArtifact: true, wantLufs: true, wantTruePeak: true},
+		{id: "true-peak-independent-of-loudness", status: db.TrackAnalysisComplete, result: belowLoudnessGate, withArtifact: true, wantTruePeak: true},
+		{id: "missing-true-peak-value", status: db.TrackAnalysisComplete, result: missingTruePeakValue, withArtifact: true, wantLufs: true},
+		{id: "unavailable-true-peak-status", status: db.TrackAnalysisComplete, result: unavailableTruePeak, withArtifact: true, wantLufs: true},
 		{id: "pending", status: db.TrackAnalysisPending, result: valid, withArtifact: true},
 		{id: "running", status: db.TrackAnalysisRunning, result: valid, withArtifact: true},
 		{id: "unsupported-analysis", status: db.TrackAnalysisUnsupported, result: valid, withArtifact: true},
@@ -419,18 +432,27 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770LUFS(t *testi
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatal(err)
 	}
-	got := make(map[string]*float64, len(response))
+	type measurements struct{ lufs, truePeak *float64 }
+	got := make(map[string]measurements, len(response))
 	for _, feature := range response {
-		got[feature.SongID] = feature.IntegratedLUFSBS1770
+		got[feature.SongID] = measurements{lufs: feature.IntegratedLUFSBS1770, truePeak: feature.TruePeakDBTP}
 	}
 	for _, test := range cases {
-		actual := got[test.id]
+		actual := got[test.id].lufs
 		if test.wantLufs {
 			if actual == nil || math.Abs(*actual-value) > 1e-9 {
 				t.Errorf("integratedLufsBs1770[%s] = %v, want %v", test.id, actual, value)
 			}
 		} else if actual != nil {
 			t.Errorf("integratedLufsBs1770[%s] = %v, want unavailable", test.id, *actual)
+		}
+		actualPeak := got[test.id].truePeak
+		if test.wantTruePeak {
+			if actualPeak == nil || math.Abs(*actualPeak-peakValue) > 1e-9 {
+				t.Errorf("truePeakDbtp[%s] = %v, want %v", test.id, actualPeak, peakValue)
+			}
+		} else if actualPeak != nil {
+			t.Errorf("truePeakDbtp[%s] = %v, want unavailable", test.id, *actualPeak)
 		}
 	}
 }
@@ -596,7 +618,8 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	if err := database.UpsertTrackAnalysisArtifact(standardsArtifact); err != nil {
 		t.Fatal(err)
 	}
-	monoMeasurement := features.BS1770Result{Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion, LoudnessAlgorithm: features.BS1770LoudnessAlgorithm, TruePeakAlgorithm: features.BS1770TruePeakAlgorithm, Layout: "mono", Weighting: "M=1", LoudnessStatus: "below-absolute-gate", TruePeakStatus: "silence"}
+	independentPeak := -.8
+	monoMeasurement := features.BS1770Result{TruePeakDBTP: &independentPeak, Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion, LoudnessAlgorithm: features.BS1770LoudnessAlgorithm, TruePeakAlgorithm: features.BS1770TruePeakAlgorithm, Layout: "mono", Weighting: "M=1", LoudnessStatus: "below-absolute-gate", TruePeakStatus: "available"}
 	monoEncoded, err := features.EncodeBS1770(monoMeasurement)
 	if err != nil {
 		t.Fatal(err)
@@ -607,7 +630,7 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	monoRecorder := httptest.NewRecorder()
 	(&API{db: database}).V2Routes().ServeHTTP(monoRecorder, httptest.NewRequest(http.MethodGet, "/analysis/song/energy", nil))
 	var monoResponse EnergyFeaturesResponse
-	if monoRecorder.Code != http.StatusOK || json.NewDecoder(monoRecorder.Body).Decode(&monoResponse) != nil || monoResponse.LoudnessLayout == nil || *monoResponse.LoudnessLayout != "mono" || monoResponse.LoudnessWeighting == nil || *monoResponse.LoudnessWeighting != "M=1" || monoResponse.IntegratedLUFSBS1770 != nil || monoResponse.TruePeakDBTP != nil {
+	if monoRecorder.Code != http.StatusOK || json.NewDecoder(monoRecorder.Body).Decode(&monoResponse) != nil || monoResponse.LoudnessLayout == nil || *monoResponse.LoudnessLayout != "mono" || monoResponse.LoudnessWeighting == nil || *monoResponse.LoudnessWeighting != "M=1" || monoResponse.IntegratedLUFSBS1770 != nil || monoResponse.TruePeakDBTP == nil || *monoResponse.TruePeakDBTP != independentPeak {
 		t.Fatalf("mono standards artifact/API round trip = status %d, response %#v", monoRecorder.Code, monoResponse)
 	}
 	song, err := database.GetSongByID("song")
