@@ -140,6 +140,8 @@ export interface TrackAnalysisFeature {
   energyLevelConfidence?: number;
   energyAlgorithmVersion?: string;
   structureAvailable?: boolean;
+  /** Current measured ITU-R BS.1770-5 integrated loudness, if available. */
+  integratedLufsBs1770?: number;
 }
 
 // Persisted phase-aligned timing data. It is distinct from the scalar BPM so

@@ -17,6 +17,7 @@ const (
 	BS1770AlgorithmVersion  = BS1770LoudnessAlgorithm + ";" + BS1770TruePeakAlgorithm
 	BS1770Standard          = "ITU-R BS.1770-5"
 	BS1770Encoding          = "gzip-json-v1"
+	MaxBS1770ArtifactBytes  = 2 << 20
 )
 
 // BS1770Result is a separately versioned measurement artifact. Nil values

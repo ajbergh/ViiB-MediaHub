@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -287,6 +288,153 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentSettledStructure(t *testing
 	}
 }
 
+func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770LUFS(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	value := -14.25
+	valid := features.BS1770Result{
+		IntegratedLUFS: &value, Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion,
+		LoudnessAlgorithm: features.BS1770LoudnessAlgorithm, TruePeakAlgorithm: features.BS1770TruePeakAlgorithm,
+		Layout: "stereo", Weighting: "L=1;R=1", LoudnessStatus: "available", TruePeakStatus: "available",
+	}
+	silent := valid
+	silent.IntegratedLUFS, silent.LoudnessStatus = nil, "silence"
+	short := valid
+	short.IntegratedLUFS, short.LoudnessStatus = nil, "insufficient-duration"
+	badMetadata := valid
+	badMetadata.Standard = "unknown standard"
+	encode := func(result features.BS1770Result) []byte {
+		t.Helper()
+		data, err := features.EncodeBS1770(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+
+	cases := []struct {
+		id                string
+		status            string
+		result            features.BS1770Result
+		withArtifact      bool
+		corrupt           bool
+		staleFingerprint  bool
+		legacyFingerprint bool
+		formatVersion     int
+		algorithmVersion  string
+		encoding          string
+		provenance        string
+		changeSource      bool
+		removeSource      bool
+		wantLufs          bool
+	}{
+		{id: "complete", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, wantLufs: true},
+		{id: "partial", status: db.TrackAnalysisPartial, result: valid, withArtifact: true, wantLufs: true},
+		{id: "failed-settled", status: db.TrackAnalysisFailed, result: valid, withArtifact: true, wantLufs: true},
+		{id: "pending", status: db.TrackAnalysisPending, result: valid, withArtifact: true},
+		{id: "running", status: db.TrackAnalysisRunning, result: valid, withArtifact: true},
+		{id: "unsupported-analysis", status: db.TrackAnalysisUnsupported, result: valid, withArtifact: true},
+		{id: "missing", status: db.TrackAnalysisComplete},
+		{id: "corrupt", status: db.TrackAnalysisComplete, withArtifact: true, corrupt: true},
+		{id: "unsupported-payload-metadata", status: db.TrackAnalysisComplete, result: badMetadata, withArtifact: true},
+		{id: "silent", status: db.TrackAnalysisComplete, result: silent, withArtifact: true},
+		{id: "short", status: db.TrackAnalysisComplete, result: short, withArtifact: true},
+		{id: "stale-fingerprint", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, staleFingerprint: true},
+		{id: "legacy-fingerprint", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, legacyFingerprint: true},
+		{id: "unsupported-version", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, formatVersion: features.BS1770FormatVersion + 1},
+		{id: "unsupported-algorithm", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, algorithmVersion: "old-bs1770"},
+		{id: "wrong-encoding", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, encoding: "json"},
+		{id: "wrong-provenance", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, provenance: "unknown"},
+		{id: "source-changed", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, changeSource: true},
+		{id: "source-unavailable", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, removeSource: true},
+	}
+
+	for _, test := range cases {
+		fingerprint := saveAnalysisTestSong(t, database, test.id, test.id, nil, 1, 0)
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: test.id, Status: test.status, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprint}); err != nil {
+			t.Fatalf("save analysis %s: %v", test.id, err)
+		}
+		if test.withArtifact {
+			artifactFingerprint := fingerprint
+			if test.staleFingerprint {
+				artifactFingerprint = "previous-source"
+			}
+			if test.legacyFingerprint {
+				artifactFingerprint = ""
+			}
+			formatVersion := test.formatVersion
+			if formatVersion == 0 {
+				formatVersion = features.BS1770FormatVersion
+			}
+			algorithmVersion := test.algorithmVersion
+			if algorithmVersion == "" {
+				algorithmVersion = features.BS1770AlgorithmVersion
+			}
+			encoding := test.encoding
+			if encoding == "" {
+				encoding = features.BS1770Encoding
+			}
+			provenance := test.provenance
+			if provenance == "" {
+				provenance = "measured"
+			}
+			data := encode(test.result)
+			if test.corrupt {
+				data = []byte("not gzip")
+			}
+			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+				ID: test.id + ":bs1770", SongID: test.id, Kind: features.BS1770ArtifactKind,
+				FormatVersion: formatVersion, AlgorithmVersion: algorithmVersion, Encoding: encoding,
+				Provenance: provenance, SourceFingerprint: artifactFingerprint, Data: data,
+			}); err != nil {
+				t.Fatalf("save artifact %s: %v", test.id, err)
+			}
+		}
+		song, err := database.GetSongByID(test.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if test.changeSource {
+			if err := os.WriteFile(song.FilePath, []byte("changed source identity"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if test.removeSource {
+			if err := os.Remove(song.FilePath); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /analysis = %d, want %d: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response []TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]*float64, len(response))
+	for _, feature := range response {
+		got[feature.SongID] = feature.IntegratedLUFSBS1770
+	}
+	for _, test := range cases {
+		actual := got[test.id]
+		if test.wantLufs {
+			if actual == nil || math.Abs(*actual-value) > 1e-9 {
+				t.Errorf("integratedLufsBs1770[%s] = %v, want %v", test.id, actual, value)
+			}
+		} else if actual != nil {
+			t.Errorf("integratedLufsBs1770[%s] = %v, want unavailable", test.id, *actual)
+		}
+	}
+}
+
 func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
@@ -429,6 +577,24 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	}
 	if len(response.Sections) != 1 || response.Sections[0].Label != features.StructureIntro || response.Sections[0].Confidence != .48 || response.Sections[0].TimingProvenance != features.TimingDownbeatGrid || response.Sections[0].DownbeatStart == nil || *response.Sections[0].DownbeatStart != 0 {
 		t.Fatalf("energy API did not serialize structure semantics and timing provenance: %#v", response.Sections)
+	}
+	standardsArtifact, err := database.GetTrackAnalysisArtifact("song", features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standardsArtifact.SourceFingerprint = "previous-source"
+	if err := database.UpsertTrackAnalysisArtifact(standardsArtifact); err != nil {
+		t.Fatal(err)
+	}
+	staleStandardsRecorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(staleStandardsRecorder, httptest.NewRequest(http.MethodGet, "/analysis/song/energy", nil))
+	var staleStandardsResponse EnergyFeaturesResponse
+	if staleStandardsRecorder.Code != http.StatusOK || json.NewDecoder(staleStandardsRecorder.Body).Decode(&staleStandardsResponse) != nil || staleStandardsResponse.IntegratedLUFSBS1770 != nil || staleStandardsResponse.LoudnessStatus != nil {
+		t.Fatalf("stale BS.1770 artifact leaked through energy detail: status=%d response=%#v", staleStandardsRecorder.Code, staleStandardsResponse)
+	}
+	standardsArtifact.SourceFingerprint = fingerprint
+	if err := database.UpsertTrackAnalysisArtifact(standardsArtifact); err != nil {
+		t.Fatal(err)
 	}
 	monoMeasurement := features.BS1770Result{Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion, LoudnessAlgorithm: features.BS1770LoudnessAlgorithm, TruePeakAlgorithm: features.BS1770TruePeakAlgorithm, Layout: "mono", Weighting: "M=1", LoudnessStatus: "below-absolute-gate", TruePeakStatus: "silence"}
 	monoEncoded, err := features.EncodeBS1770(monoMeasurement)

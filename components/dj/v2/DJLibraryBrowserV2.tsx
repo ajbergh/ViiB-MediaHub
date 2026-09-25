@@ -18,6 +18,7 @@ import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getKeyCompatibility } from '../../../lib/keyDetection';
 import { compareAnalysisReadiness, getAnalysisReadiness, type AnalysisListLoadState } from '../../../lib/analysisReadiness';
 import { formatConfidenceEvidence, getAnalysisConfidenceEvidence } from '../../../lib/analysisConfidence';
+import { compareIntegratedLUFS, formatIntegratedLUFS, isFiniteIntegratedLUFS } from '../../../lib/djLibraryLUFS';
 import { CamelotChip } from './CamelotChip';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -39,8 +40,8 @@ import {
 type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
-type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'stemStatus' | 'analysis' | 'dateAnalyzed';
-type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed' | 'analysisConfidence' | 'structureStatus';
+type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'lufs' | 'stemStatus' | 'analysis' | 'dateAnalyzed';
+type OptionalColumn = 'bpm' | 'key' | 'energy' | 'lufs' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed' | 'analysisConfidence' | 'structureStatus';
 type ResizableColumn = 'title' | 'artist' | 'album';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'viib.dj.library.columnVisibility';
@@ -50,6 +51,7 @@ const DEFAULT_COLUMN_VISIBILITY: Record<OptionalColumn, boolean> = {
   bpm: true,
   key: true,
   energy: true,
+  lufs: false,
   album: true,
   time: true,
   genre: true,
@@ -289,6 +291,18 @@ const TrackRowCells = memo(({
               {analysis.energyLevel}
             </span>
           ) : <span className="text-neutral-600">-</span>}
+        </td>
+      )}
+
+      {columnVisibility.lufs && (
+        <td className="px-2 py-1.5 w-16 text-center">
+          {isFiniteIntegratedLUFS(analysis?.integratedLufsBs1770) ? (
+            <span className="font-mono text-[10px] text-neutral-300"
+              aria-label={`Integrated loudness ${formatIntegratedLUFS(analysis.integratedLufsBs1770)} LUFS`}
+              title="Measured ITU-R BS.1770-5 integrated loudness">
+              {formatIntegratedLUFS(analysis.integratedLufsBs1770)}
+            </span>
+          ) : <span className="text-neutral-600" aria-label="LUFS unavailable" title="Current BS.1770 integrated loudness is unavailable">—</span>}
         </td>
       )}
 
@@ -724,6 +738,10 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         }
       }
 
+      if (sortKey === 'lufs') {
+        return compareIntegratedLUFS(analysisBySongID[a.id]?.integratedLufsBs1770, analysisBySongID[b.id]?.integratedLufsBs1770, sortDirection);
+      }
+
       if (sortKey === 'energy') {
         const aUnknown = analysisBySongID[a.id]?.energyLevel === undefined;
         const bUnknown = analysisBySongID[b.id]?.energyLevel === undefined;
@@ -914,6 +932,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                 ['bpm', 'BPM'],
                 ['key', 'Key'],
                 ['energy', 'Energy'],
+                ['lufs', 'LUFS'],
                 ['album', 'Album'],
                 ['time', 'Time'],
                 ['genre', 'Genre'],
@@ -961,6 +980,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   {columnVisibility.bpm && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="BPM" sortKeyValue="bpm" className="w-12 text-right" />}
                   {columnVisibility.key && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Key" sortKeyValue="key" className="w-14 text-center" />}
                   {columnVisibility.energy && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Energy" sortKeyValue="energy" className="w-14 text-center" />}
+                  {columnVisibility.lufs && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="LUFS" sortKeyValue="lufs" className="w-16 text-center" />}
                   {columnVisibility.album && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Album" sortKeyValue="album" className="hidden xl:table-cell" width={columnWidths.album} resizable="album" />}
                   {columnVisibility.time && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Time" sortKeyValue="duration" className="w-14 text-right" />}
                   {columnVisibility.genre && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Genre" sortKeyValue="genre" className="w-20 hidden lg:table-cell" />}

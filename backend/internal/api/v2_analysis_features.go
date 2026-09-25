@@ -48,6 +48,7 @@ type TrackAnalysisFeatureResponse struct {
 	EnergyLevelConfidence  *float64 `json:"energyLevelConfidence,omitempty"`
 	EnergyAlgorithmVersion *string  `json:"energyAlgorithmVersion,omitempty"`
 	StructureAvailable     bool     `json:"structureAvailable"`
+	IntegratedLUFSBS1770   *float64 `json:"integratedLufsBs1770,omitempty"`
 }
 
 // BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
@@ -189,6 +190,11 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	loudnessMetadata, err := a.db.ListTrackAnalysisArtifactMetadata(features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	analysisBySongID := make(map[string]db.TrackAnalysis, len(analyses))
 	for _, analysis := range analyses {
 		analysisBySongID[analysis.SongID] = analysis
@@ -205,7 +211,28 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		metadataBySongID[metadata.SongID] = metadata
 		candidateIDs = append(candidateIDs, metadata.SongID)
 	}
-	currentFingerprints, err := a.currentAnalysisSourceFingerprints(candidateIDs)
+	loudnessMetadataBySongID := make(map[string]db.TrackAnalysisArtifactMetadata, len(loudnessMetadata))
+	loudnessCandidateIDs := make([]string, 0, len(loudnessMetadata))
+	for _, metadata := range loudnessMetadata {
+		analysis, exists := analysisBySongID[metadata.SongID]
+		if !exists || !trackStructureSourceEligible(analysis) || metadata.SourceFingerprint == "" || metadata.SourceFingerprint != analysis.SourceFingerprint ||
+			metadata.Kind != features.BS1770ArtifactKind || metadata.FormatVersion != features.BS1770FormatVersion || metadata.AlgorithmVersion != features.BS1770AlgorithmVersion ||
+			metadata.Encoding != features.BS1770Encoding || metadata.Provenance != "measured" || metadata.PayloadBytes <= 0 || metadata.PayloadBytes > features.MaxBS1770ArtifactBytes {
+			continue
+		}
+		loudnessMetadataBySongID[metadata.SongID] = metadata
+		loudnessCandidateIDs = append(loudnessCandidateIDs, metadata.SongID)
+	}
+	sourceCandidateIDs := make([]string, 0, len(candidateIDs)+len(loudnessCandidateIDs))
+	sourceCandidateSeen := make(map[string]struct{}, cap(sourceCandidateIDs))
+	for _, candidateID := range append(candidateIDs, loudnessCandidateIDs...) {
+		if _, exists := sourceCandidateSeen[candidateID]; exists {
+			continue
+		}
+		sourceCandidateSeen[candidateID] = struct{}{}
+		sourceCandidateIDs = append(sourceCandidateIDs, candidateID)
+	}
+	currentFingerprints, err := a.currentAnalysisSourceFingerprints(sourceCandidateIDs)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -232,10 +259,36 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
+	lufsBySongID := make(map[string]float64, len(loudnessCandidateIDs))
+	for start := 0; start < len(loudnessCandidateIDs); start += structureStatusBatchSize {
+		end := start + structureStatusBatchSize
+		if end > len(loudnessCandidateIDs) {
+			end = len(loudnessCandidateIDs)
+		}
+		chunk := loudnessCandidateIDs[start:end]
+		if err := a.db.VisitTrackAnalysisArtifactPayloads(chunk, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion,
+			func(songID, payloadFingerprint string, data []byte) error {
+				analysis, exists := analysisBySongID[songID]
+				metadata, hasMetadata := loudnessMetadataBySongID[songID]
+				if !exists || !hasMetadata || payloadFingerprint == "" || payloadFingerprint != metadata.SourceFingerprint {
+					return nil
+				}
+				if value, available := trackIntegratedLUFSAvailable(analysis, currentFingerprints[songID], metadata, data); available {
+					lufsBySongID[songID] = value
+				}
+				return nil
+			}); err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	response := make([]TrackAnalysisFeatureResponse, 0, len(analyses))
 	for _, analysis := range analyses {
 		feature := trackAnalysisFeatureResponse(analysis, overrides[analysis.SongID])
 		feature.StructureAvailable = readyStructureBySongID[analysis.SongID]
+		if value, exists := lufsBySongID[analysis.SongID]; exists {
+			feature.IntegratedLUFSBS1770 = &value
+		}
 		response = append(response, feature)
 	}
 	respondJSON(w, response)
@@ -326,6 +379,36 @@ func trackStructureAvailable(analysis db.TrackAnalysis, currentFingerprint strin
 		}
 	}
 	return true
+}
+
+func decodeCurrentBS1770Artifact(analysis db.TrackAnalysis, currentFingerprint string, artifact db.TrackAnalysisArtifact) (features.BS1770Result, bool) {
+	if !trackStructureSourceEligible(analysis) || currentFingerprint == "" || currentFingerprint != analysis.SourceFingerprint ||
+		artifact.SongID != analysis.SongID || artifact.SourceFingerprint == "" || artifact.SourceFingerprint != analysis.SourceFingerprint ||
+		artifact.Kind != features.BS1770ArtifactKind || artifact.FormatVersion != features.BS1770FormatVersion || artifact.AlgorithmVersion != features.BS1770AlgorithmVersion ||
+		artifact.Encoding != features.BS1770Encoding || artifact.Provenance != "measured" || len(artifact.Data) == 0 || len(artifact.Data) > features.MaxBS1770ArtifactBytes {
+		return features.BS1770Result{}, false
+	}
+	result, err := features.DecodeBS1770(artifact.Data)
+	if err != nil {
+		return features.BS1770Result{}, false
+	}
+	return result, true
+}
+
+func trackIntegratedLUFSAvailable(analysis db.TrackAnalysis, currentFingerprint string, artifact db.TrackAnalysisArtifactMetadata, data []byte) (float64, bool) {
+	if artifact.SongID != analysis.SongID || artifact.SourceFingerprint == "" || artifact.SourceFingerprint != analysis.SourceFingerprint ||
+		artifact.Kind != features.BS1770ArtifactKind || artifact.FormatVersion != features.BS1770FormatVersion || artifact.AlgorithmVersion != features.BS1770AlgorithmVersion ||
+		artifact.Encoding != features.BS1770Encoding || artifact.Provenance != "measured" || len(data) == 0 || len(data) > features.MaxBS1770ArtifactBytes {
+		return 0, false
+	}
+	result, err := features.DecodeBS1770(data)
+	if err != nil || result.LoudnessStatus != "available" || result.IntegratedLUFS == nil || math.IsNaN(*result.IntegratedLUFS) || math.IsInf(*result.IntegratedLUFS, 0) {
+		return 0, false
+	}
+	if !trackStructureSourceEligible(analysis) || currentFingerprint == "" || currentFingerprint != analysis.SourceFingerprint {
+		return 0, false
+	}
+	return *result.IntegratedLUFS, true
 }
 
 func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) TrackAnalysisFeatureResponse {
@@ -609,20 +692,17 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if measurementErr == nil {
-		standards, decodeErr := features.DecodeBS1770(measurement.Data)
-		if decodeErr != nil {
-			respondError(w, http.StatusInternalServerError, decodeErr.Error())
-			return
+		if standards, valid := decodeCurrentBS1770Artifact(analysis, currentFingerprints[songID], measurement); valid {
+			response.IntegratedLUFSBS1770 = standards.IntegratedLUFS
+			response.TruePeakDBTP = standards.TruePeakDBTP
+			response.LoudnessStandard = &standards.Standard
+			response.LoudnessAlgorithm = &standards.LoudnessAlgorithm
+			response.TruePeakAlgorithm = &standards.TruePeakAlgorithm
+			response.LoudnessLayout = &standards.Layout
+			response.LoudnessWeighting = &standards.Weighting
+			response.LoudnessStatus = &standards.LoudnessStatus
+			response.TruePeakStatus = &standards.TruePeakStatus
 		}
-		response.IntegratedLUFSBS1770 = standards.IntegratedLUFS
-		response.TruePeakDBTP = standards.TruePeakDBTP
-		response.LoudnessStandard = &standards.Standard
-		response.LoudnessAlgorithm = &standards.LoudnessAlgorithm
-		response.TruePeakAlgorithm = &standards.TruePeakAlgorithm
-		response.LoudnessLayout = &standards.Layout
-		response.LoudnessWeighting = &standards.Weighting
-		response.LoudnessStatus = &standards.LoudnessStatus
-		response.TruePeakStatus = &standards.TruePeakStatus
 	}
 	respondJSON(w, response)
 }
