@@ -4,7 +4,7 @@ import { getDJAudioEngine, type SynchronizedPreviewSources } from '../../../lib/
 import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsDeckSnapshot, stillOwnsPreviewRoute } from '../../../lib/testMixPreviewGuard';
 import { canAcceptMixNextCandidate, stillOwnsMixNextAcceptance, type MixNextAcceptanceOwnership } from '../../../lib/mixNextAcceptanceGuard';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
-import { api, type TrackBeatGrid, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
+import { api, normalizeTrackEnergyFeatures, type TrackBeatGrid, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
 import { describeTestMixPhaseEvidence } from '../../../lib/testMixPhaseReadiness';
 import type { DeckState } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
@@ -153,7 +153,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     setFeatures(null);
     setRecommendations(null);
     if (trackID && analysisStatus === 'available') {
-      api.getTrackEnergyFeatures(trackID).then(value => live && setFeatures(value)).catch(() => {});
+      api.getTrackEnergyFeatures(trackID).then(value => live && setFeatures(normalizeTrackEnergyFeatures(value))).catch(() => {});
     }
     return () => { live = false; };
   }, [trackID, analysisStatus]);
@@ -183,8 +183,6 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     return () => { live = false; };
   }, [phaseCandidateId]);
 
-  if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
-  if (!features) return null;
   const acceptCue = (position: number, kind: string) => {
     if (!deck) return;
     const slot = Array.from({ length: 8 }, (_, index) => index + 1).find(candidate => !hotCues.some(cue => cue.slot === candidate));
@@ -323,6 +321,9 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     const session = previewRef.current;
     if (session) finishPreviewRef.current(session.token, 'Test Mix stopped.');
   }, []);
+
+  if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
+  if (!features) return null;
 
   const acceptCandidate = async () => {
     if (acceptanceBusyRef.current) return;
@@ -491,7 +492,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         return;
       }
       const mixOut = features.cueSuggestions.find(cue => cue.kind === 'mix-out')?.position;
-      const mixIn = candidateFeatures?.cueSuggestions.find(cue => cue.kind === 'mix-in')?.position;
+      const mixIn = candidateFeatures && normalizeTrackEnergyFeatures(candidateFeatures).cueSuggestions.find(cue => cue.kind === 'mix-in')?.position;
       if (mixOut === undefined || !Number.isFinite(mixOut) || mixOut < 0) {
         finishPreviewRef.current(session.token, 'Test Mix needs a valid recommended mix-out cue on the reference track.');
         return;

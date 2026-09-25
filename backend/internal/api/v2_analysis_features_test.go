@@ -458,6 +458,43 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	}
 }
 
+func TestV2EnergyFeaturesNormalizesNilSlices(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	fingerprint := saveAnalysisTestSong(t, database, "nil-slices", "Nil Slices", nil, 1, 0)
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "nil-slices", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprint}); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := (features.Result{Energy: []features.EnergyPoint{{Time: 0, Value: .5}}}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+		ID: "nil-slices:energy", SongID: "nil-slices", Kind: features.ArtifactKind,
+		FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion,
+		Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: encoded,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/nil-slices/energy", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET energy = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response EnergyFeaturesResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Energy == nil || response.Sections == nil || response.CueSuggestions == nil {
+		t.Fatalf("nil energy response slices: energy=%#v sections=%#v cues=%#v", response.Energy, response.Sections, response.CueSuggestions)
+	}
+}
+
 func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {

@@ -8,7 +8,7 @@ const SCALE_STEPS: Record<VerifiedKeyMode, readonly number[]> = {
 };
 
 export function keyScalePitchClasses(tonic: number, mode: VerifiedKeyMode): number[] {
-  if (!Number.isInteger(tonic) || tonic < 0 || tonic > 11) return [];
+  if (!Number.isInteger(tonic) || tonic < 0 || tonic > 11 || (mode !== 'major' && mode !== 'minor')) return [];
   return SCALE_STEPS[mode].map(step => (tonic + step) % 12);
 }
 

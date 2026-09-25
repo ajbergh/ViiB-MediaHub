@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { keyReferenceFrequency, keyScalePitchClasses, startKeyReferenceTone } from './keyVerificationKeyboard';
+import { keyReferenceFrequency, keyScalePitchClasses, startKeyReferenceTone, type VerifiedKeyMode } from './keyVerificationKeyboard';
 
 describe('key verification keyboard helpers', () => {
   it('maps selected tonic and mode to their seven scale pitch classes', () => {
@@ -7,6 +7,7 @@ describe('key verification keyboard helpers', () => {
     expect(keyScalePitchClasses(9, 'minor')).toEqual([9, 11, 0, 2, 4, 5, 7]);
     expect(keyScalePitchClasses(12, 'major')).toEqual([]);
     expect(keyScalePitchClasses(1.5, 'minor')).toEqual([]);
+    expect(keyScalePitchClasses(0, 'dorian' as unknown as VerifiedKeyMode)).toEqual([]);
   });
 
   it('maps note buttons to frequencies in the middle-C octave', () => {
