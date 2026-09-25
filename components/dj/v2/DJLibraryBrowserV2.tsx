@@ -17,6 +17,7 @@ import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getKeyCompatibility } from '../../../lib/keyDetection';
 import { compareAnalysisReadiness, getAnalysisReadiness, type AnalysisListLoadState } from '../../../lib/analysisReadiness';
+import { formatConfidenceEvidence, getAnalysisConfidenceEvidence } from '../../../lib/analysisConfidence';
 import { CamelotChip } from './CamelotChip';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -39,7 +40,7 @@ type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
 type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'stemStatus' | 'analysis' | 'dateAnalyzed';
-type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed';
+type OptionalColumn = 'bpm' | 'key' | 'energy' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed' | 'analysisConfidence';
 type ResizableColumn = 'title' | 'artist' | 'album';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'viib.dj.library.columnVisibility';
@@ -55,6 +56,7 @@ const DEFAULT_COLUMN_VISIBILITY: Record<OptionalColumn, boolean> = {
   stemStatus: true,
   analysis: false,
   dateAnalyzed: false,
+  analysisConfidence: false,
 };
 
 const STEM_STATUS_LABELS: Record<NonNullable<Song['stemStatus']>, string> = {
@@ -149,6 +151,7 @@ const TrackRowCells = memo(({
   const displayKey = analysis?.camelotKey ?? songKey;
   const analysisReadiness = getAnalysisReadiness(analysis?.status, analysisListState);
   const analyzedAt = analysis?.analyzedAt;
+  const confidenceEvidence = getAnalysisConfidenceEvidence(analysis);
 
   return (
     <>
@@ -350,6 +353,18 @@ const TrackRowCells = memo(({
             title={hasAnalysisTimestamp(analyzedAt) ? `Most recent analysis result or failure · ${new Date(analyzedAt).toLocaleString()}` : 'No analysis timestamp'}>
             {hasAnalysisTimestamp(analyzedAt) ? new Date(analyzedAt).toLocaleDateString() : '—'}
           </span>
+        </td>
+      )}
+
+      {/* Three source-aware raw scores; this is evidence, not a combined quality grade. */}
+      {columnVisibility.analysisConfidence && (
+        <td className="px-2 py-1.5 w-40 text-center">
+          <div className="flex flex-col items-center font-mono text-[9px] leading-3 text-neutral-400"
+            title="BPM and Key show detector evidence only for measured values. Energy confidence is an evidence-availability heuristic, not a probability. Manual values do not inherit detector scores.">
+            <span aria-label={`BPM confidence: ${formatConfidenceEvidence(confidenceEvidence.bpm)}`}>BPM · {formatConfidenceEvidence(confidenceEvidence.bpm)}</span>
+            <span aria-label={`Key confidence: ${formatConfidenceEvidence(confidenceEvidence.key)}`}>Key · {formatConfidenceEvidence(confidenceEvidence.key)}</span>
+            <span aria-label={`Energy confidence: ${formatConfidenceEvidence(confidenceEvidence.energy)}`}>Energy · {formatConfidenceEvidence(confidenceEvidence.energy)}</span>
+          </div>
         </td>
       )}
     </>
@@ -894,6 +909,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                 ['stemStatus', 'Stem Status'],
                 ['analysis', 'Analysis'],
                 ['dateAnalyzed', 'Date Analyzed'],
+                ['analysisConfidence', 'Analysis Confidence'],
               ] as Array<[OptionalColumn, string]>).map(([column, label]) => (
                 <label
                   key={column}
@@ -939,6 +955,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   {columnVisibility.stemStatus && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Stem Status" sortKeyValue="stemStatus" className="w-24 text-center" />}
                   {columnVisibility.analysis && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Analysis" sortKeyValue="analysis" className="w-28 text-center" />}
                   {columnVisibility.dateAnalyzed && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Date Analyzed" sortKeyValue="dateAnalyzed" className="w-24 text-center" />}
+                  {columnVisibility.analysisConfidence && <th className="w-40 px-2 py-1.5 text-center text-[10px] font-medium text-neutral-500" title="BPM and Key show detector scores only for measured values. Energy confidence is an evidence-availability heuristic, not a probability. These independent dimensions have no combined sort order.">Analysis Confidence</th>}
                 </tr>
               )}
               itemContent={(index, song) => (
