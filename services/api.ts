@@ -254,6 +254,7 @@ export interface TransitionRecommendationFilters {
   stemsAvailable?: boolean;
   camelotCompatible?: boolean;
   playlistId?: string;
+  playlistIds?: string[];
   genre?: string;
   notRecentlyPlayedHours?: number;
 }
@@ -1630,7 +1631,13 @@ export const api = {
     }
     if (filters.stemsAvailable !== undefined) query.set('stemsAvailable', String(filters.stemsAvailable));
     if (filters.camelotCompatible !== undefined) query.set('camelotCompatible', String(filters.camelotCompatible));
-    if (filters.playlistId) query.set('playlistId', filters.playlistId);
+    if (filters.playlistIds?.length) {
+      for (const playlistId of filters.playlistIds) {
+        query.append('playlistIds', playlistId);
+      }
+    } else if (filters.playlistId) {
+      query.set('playlistId', filters.playlistId);
+    }
     if (filters.genre) query.set('genre', filters.genre);
     if (filters.notRecentlyPlayedHours !== undefined) query.set('notRecentlyPlayedHours', String(filters.notRecentlyPlayedHours));
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/recommendations?${query}`, { cache: 'no-store' });

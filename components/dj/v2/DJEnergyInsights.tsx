@@ -81,7 +81,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [maxEnergy, setMaxEnergy] = useState('');
   const [stemsOnly, setStemsOnly] = useState(false);
   const [camelotOnly, setCamelotOnly] = useState(false);
-  const [playlistId, setPlaylistId] = useState('');
+  const [playlistIds, setPlaylistIds] = useState<string[]>([]);
   const [genre, setGenre] = useState('');
   const [notRecentlyPlayedHours, setNotRecentlyPlayedHours] = useState('');
   const [previewMessage, setPreviewMessage] = useState('');
@@ -115,7 +115,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     ...(maxEnergy !== '' ? { maxEnergyLevel: Number(maxEnergy) } : {}),
     ...(stemsOnly ? { stemsAvailable: true } : {}),
     ...(camelotOnly ? { camelotCompatible: true } : {}),
-    ...(playlistId ? { playlistId } : {}),
+    ...(playlistIds.length ? { playlistIds } : {}),
     ...(genre ? { genre } : {}),
     ...(notRecentlyPlayedHours !== '' ? { notRecentlyPlayedHours: Number(notRecentlyPlayedHours) } : {}),
   };
@@ -165,7 +165,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       api.getTrackTransitionRecommendations(trackID, 3, intent, filters).then(value => live && setRecommendations(value)).catch(() => {});
     }
     return () => { live = false; };
-  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistId, genre, notRecentlyPlayedHours, filtersValid]);
+  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistIds, genre, notRecentlyPlayedHours, filtersValid]);
 
   const phaseCandidateId = recommendations?.recommendations[0]?.songId ?? null;
   useEffect(() => {
@@ -594,13 +594,14 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         <input aria-label="Compatible Camelot only" type="checkbox" checked={camelotOnly} onChange={event => setCamelotOnly(event.target.checked)} />
         <span>Compatible Camelot only</span>
       </label>
-      <label className="inline-flex items-center gap-1" title="Optionally limit candidates to one saved playlist">
-        <span>Playlist</span>
-        <select aria-label="Mix Next playlist" value={playlistId} onChange={event => setPlaylistId(event.target.value)}
-          className="max-w-32 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200">
-          <option value="">All playlists</option>
+      <label className="inline-flex items-center gap-1" title="Include candidates that belong to any selected playlist; this filter combines with the other filters using AND.">
+        <span>Playlists</span>
+        <select aria-label="Mix Next playlists (any selected)" multiple size={3} value={playlistIds}
+          onChange={event => setPlaylistIds(Array.from(event.currentTarget.selectedOptions, option => option.value))}
+          className="max-w-36 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200">
           {libraryPlaylists.map(playlist => <option key={playlist.id} value={playlist.id}>{playlist.name}</option>)}
         </select>
+        {playlistIds.length > 0 && <button type="button" onClick={() => setPlaylistIds([])} className="rounded border border-neutral-700 px-1">All</button>}
       </label>
       <label className="inline-flex items-center gap-1" title="Exact normalized genre membership; candidates without this genre are excluded">
         <span>Genre</span>
