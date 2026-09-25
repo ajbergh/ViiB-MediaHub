@@ -34,6 +34,25 @@ describe('Mix Next recommendation filters', () => {
     expect(query.has('genre')).toBe(false);
   });
 
+  it('serializes multi-playlist selection as repeated OR filter values', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ recommendations: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await api.getTrackTransitionRecommendations('song', 3, 'hold', {
+      playlistIds: ['playlist-1', 'playlist-2'],
+    });
+    const query = new URL(String(fetchMock.mock.calls[0][0]), 'http://local').searchParams;
+    expect(query.getAll('playlistIds')).toEqual(['playlist-1', 'playlist-2']);
+    expect(query.has('playlistId')).toBe(false);
+  });
+
+  it('preserves an empty multi-playlist value so the API can reject it instead of widening to all playlists', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ recommendations: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await api.getTrackTransitionRecommendations('song', 3, 'hold', { playlistIds: [''] });
+    const query = new URL(String(fetchMock.mock.calls[0][0]), 'http://local').searchParams;
+    expect(query.getAll('playlistIds')).toEqual(['']);
+  });
+
   it('omits recency filtering unless the user selects an interval', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ recommendations: [] }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

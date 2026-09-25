@@ -129,6 +129,7 @@ type TransitionRecommendationFilters struct {
 	StemsAvailable         *bool    `json:"stemsAvailable,omitempty"`
 	CamelotCompatible      *bool    `json:"camelotCompatible,omitempty"`
 	PlaylistID             *string  `json:"playlistId,omitempty"`
+	PlaylistIDs            []string `json:"playlistIds,omitempty"`
 	Genre                  *string  `json:"genre,omitempty"`
 	NotRecentlyPlayedHours *int     `json:"notRecentlyPlayedHours,omitempty"`
 }
@@ -515,19 +516,25 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		songByID[song.ID] = song
 	}
 	var playlistSongIDs map[string]struct{}
-	if filters.PlaylistID != nil {
+	if filters.PlaylistID != nil || len(filters.PlaylistIDs) > 0 {
 		playlists, playlistErr := a.db.GetAllPlaylists()
 		if playlistErr != nil {
 			respondError(w, http.StatusInternalServerError, playlistErr.Error())
 			return
 		}
 		playlistSongIDs = make(map[string]struct{})
+		selectedPlaylistIDs := make(map[string]struct{}, len(filters.PlaylistIDs)+1)
+		if filters.PlaylistID != nil {
+			selectedPlaylistIDs[*filters.PlaylistID] = struct{}{}
+		}
+		for _, id := range filters.PlaylistIDs {
+			selectedPlaylistIDs[id] = struct{}{}
+		}
 		for _, playlist := range playlists {
-			if playlist.ID == *filters.PlaylistID {
+			if _, selected := selectedPlaylistIDs[playlist.ID]; selected {
 				for _, id := range playlist.SongIDs {
 					playlistSongIDs[id] = struct{}{}
 				}
-				break
 			}
 		}
 	}
@@ -711,6 +718,27 @@ func parseTransitionRecommendationFilters(values url.Values) (TransitionRecommen
 	} else if present {
 		filters.PlaylistID = &value
 	}
+	if playlistIDs, present := values["playlistIds"]; present {
+		if _, singularPresent := values["playlistId"]; singularPresent {
+			return filters, errors.New("playlistId and playlistIds cannot be combined")
+		}
+		if len(playlistIDs) == 0 || len(playlistIDs) > 20 {
+			return filters, errors.New("playlistIds must contain between 1 and 20 playlist IDs")
+		}
+		seen := make(map[string]struct{}, len(playlistIDs))
+		filters.PlaylistIDs = make([]string, 0, len(playlistIDs))
+		for _, rawID := range playlistIDs {
+			id := strings.TrimSpace(rawID)
+			if id == "" {
+				return filters, errors.New("playlistIds cannot contain an empty ID")
+			}
+			if _, duplicate := seen[id]; duplicate {
+				return filters, errors.New("playlistIds cannot contain duplicate IDs")
+			}
+			seen[id] = struct{}{}
+			filters.PlaylistIDs = append(filters.PlaylistIDs, id)
+		}
+	}
 	if value, present, err := singleQueryValue(values, "genre"); err != nil {
 		return filters, err
 	} else if present {
@@ -764,7 +792,7 @@ func transitionCandidateMatchesFilters(metadata features.TransitionMetadata, ste
 }
 
 func transitionLibrarySongMatchesFilters(song db.Song, playlistSongIDs map[string]struct{}, filters TransitionRecommendationFilters) bool {
-	if filters.PlaylistID != nil {
+	if filters.PlaylistID != nil || len(filters.PlaylistIDs) > 0 {
 		if _, ok := playlistSongIDs[song.ID]; !ok {
 			return false
 		}

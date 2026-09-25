@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -315,6 +316,9 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	if err := database.SavePlaylist(&db.Playlist{ID: "mix", Name: "Mix", SongIDs: []string{"compatible", "stale-song-id"}, CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
+	if err := database.SavePlaylist(&db.Playlist{ID: "warmup", Name: "Warmup", SongIDs: []string{"incompatible"}, CreatedAt: 2}); err != nil {
+		t.Fatal(err)
+	}
 	results := map[string]features.Result{
 		"source":       {IntegratedLUFS: -10, Energy: []features.EnergyPoint{{Value: .2}, {Value: .8}}, Sections: []features.Section{{Start: 0, End: 30, Label: features.StructureIntro, Confidence: .48}, {Start: 30, End: 60, Label: features.StructureOutro, Confidence: .48}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-out", Confidence: .8}}},
 		"compatible":   {IntegratedLUFS: -10.5, Energy: []features.EnergyPoint{{Value: .75}, {Value: .7}}, Sections: []features.Section{{Start: 0, End: 30, Label: features.StructureIntro, Confidence: .48}, {Start: 30, End: 60, Label: features.StructureOutro, Confidence: .48}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-in", Confidence: .8}}},
@@ -418,6 +422,22 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	if libraryFiltered.Filters.PlaylistID == nil || *libraryFiltered.Filters.PlaylistID != "mix" || libraryFiltered.Filters.Genre == nil || *libraryFiltered.Filters.Genre != "Rock" {
 		t.Fatalf("library filter echo = %#v", libraryFiltered.Filters)
 	}
+	multiPlaylist := getFiltered("?playlistIds=mix&playlistIds=warmup")
+	if multiPlaylist.CandidatesBeforeFilters != 2 || multiPlaylist.CandidatesAfterFilters != 2 || len(multiPlaylist.Recommendations) != 2 || multiPlaylist.Filters.PlaylistID != nil || len(multiPlaylist.Filters.PlaylistIDs) != 2 {
+		t.Fatalf("OR playlist membership = %#v", multiPlaylist)
+	}
+	playlistAndGenre := getFiltered("?playlistIds=mix&playlistIds=warmup&genre=rock")
+	if playlistAndGenre.CandidatesAfterFilters != 1 || len(playlistAndGenre.Recommendations) != 1 || playlistAndGenre.Recommendations[0].SongID != "compatible" {
+		t.Fatalf("playlist OR set should remain ANDed with genre: %#v", playlistAndGenre)
+	}
+	validAndUnknownPlaylist := getFiltered("?playlistIds=unknown&playlistIds=mix")
+	if validAndUnknownPlaylist.CandidatesAfterFilters != 1 || validAndUnknownPlaylist.Recommendations[0].SongID != "compatible" {
+		t.Fatalf("unknown playlist should add no members to the OR set: %#v", validAndUnknownPlaylist)
+	}
+	unknownPlaylists := getFiltered("?playlistIds=unknown&playlistIds=missing")
+	if unknownPlaylists.CandidatesAfterFilters != 0 || len(unknownPlaylists.Recommendations) != 0 {
+		t.Fatalf("unknown playlist IDs should match no candidates: %#v", unknownPlaylists)
+	}
 	if exactGenre := getFiltered("?genre=rock"); exactGenre.CandidatesAfterFilters != 1 || exactGenre.Recommendations[0].SongID != "compatible" {
 		t.Fatalf("exact normalized genre must not substring-match Rockabilly: %#v", exactGenre)
 	}
@@ -427,7 +447,7 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 		}
 	}
 	unfiltered := getFiltered("")
-	if unfiltered.CandidatesBeforeFilters != 2 || unfiltered.CandidatesAfterFilters != 2 || unfiltered.Filters.PlaylistID != nil || unfiltered.Filters.Genre != nil {
+	if unfiltered.CandidatesBeforeFilters != 2 || unfiltered.CandidatesAfterFilters != 2 || unfiltered.Filters.PlaylistID != nil || len(unfiltered.Filters.PlaylistIDs) != 0 || unfiltered.Filters.Genre != nil {
 		t.Fatalf("omitted library filters changed behavior: %#v", unfiltered)
 	}
 }
@@ -438,14 +458,21 @@ func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	for _, query := range []string{
+	tooManyPlaylists := make([]string, 21)
+	for index := range tooManyPlaylists {
+		tooManyPlaylists[index] = "playlistIds=p" + strconv.Itoa(index)
+	}
+	invalidQueries := []string{
 		"minBpm=59", "maxBpm=191", "minBpm=NaN", "minEnergyLevel=0", "maxEnergyLevel=11",
 		"minBpm=130&maxBpm=120", "minEnergyLevel=8&maxEnergyLevel=4", "stemsAvailable=yes", "minBpm=120&minBpm=121",
 		"camelotCompatible=yes", "camelotCompatible=true&camelotCompatible=false",
 		"notRecentlyPlayedHours=", "notRecentlyPlayedHours=abc", "notRecentlyPlayedHours=0", "notRecentlyPlayedHours=-1",
 		"notRecentlyPlayedHours=169", "notRecentlyPlayedHours=24.5", "notRecentlyPlayedHours=24&notRecentlyPlayedHours=48",
-		"playlistId=", "playlistId=mix&playlistId=other", "genre=", "genre=rock&genre=pop",
-	} {
+		"playlistId=", "playlistId=mix&playlistId=other", "playlistIds=", "playlistIds=mix&playlistIds=mix",
+		"playlistId=mix&playlistIds=warmup", "genre=", "genre=rock&genre=pop",
+	}
+	invalidQueries = append(invalidQueries, strings.Join(tooManyPlaylists, "&"))
+	for _, query := range invalidQueries {
 		t.Run(query, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations?"+query, nil))
