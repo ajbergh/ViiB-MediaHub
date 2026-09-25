@@ -1363,12 +1363,30 @@ func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnal
 // UI.  Corrupt individual artifacts are ignored rather than making the AI DJ
 // unavailable; that song falls back to its existing metadata score.
 func (a *API) measuredEnergyForDJ() (map[string]float64, error) {
+	analyses, err := a.db.ListTrackAnalysis()
+	if err != nil {
+		return nil, err
+	}
+	analysisBySongID := make(map[string]db.TrackAnalysis, len(analyses))
+	analysisIDs := make([]string, 0, len(analyses))
+	for _, analysis := range analyses {
+		analysisBySongID[analysis.SongID] = analysis
+		analysisIDs = append(analysisIDs, analysis.SongID)
+	}
+	currentFingerprints, err := a.currentAnalysisSourceFingerprints(analysisIDs)
+	if err != nil {
+		return nil, err
+	}
 	artifacts, err := a.db.ListTrackAnalysisArtifacts(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
 	if err != nil {
 		return nil, err
 	}
 	values := make(map[string]float64, len(artifacts))
 	for _, artifact := range artifacts {
+		analysis, exists := analysisBySongID[artifact.SongID]
+		if !exists || !currentEnergyArtifactMatchesSource(analysis, currentFingerprints[artifact.SongID], artifact) {
+			continue
+		}
 		result, err := features.Decode(artifact.Data)
 		if err != nil || len(result.Energy) == 0 {
 			continue

@@ -649,6 +649,60 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	}
 }
 
+func TestMeasuredEnergyForDJUsesOnlyCurrentSourceArtifacts(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	const currentSongID = "current-source"
+	const replacedSongID = "replaced-source"
+	currentFingerprint := saveAnalysisTestSong(t, database, currentSongID, "Current", nil, 1, 0)
+	replacedFingerprint := saveAnalysisTestSong(t, database, replacedSongID, "Replaced", nil, 2, 0)
+	for _, item := range []struct {
+		id          string
+		fingerprint string
+	}{{currentSongID, currentFingerprint}, {replacedSongID, replacedFingerprint}} {
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{
+			SongID: item.id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1,
+			AlgorithmVersion: "test-v1", SourceFingerprint: item.fingerprint,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := (features.Result{Energy: []features.EnergyPoint{{Time: 0, Value: .2}, {Time: 1, Value: .8}}}).Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+			ID: item.id + ":energy", SongID: item.id, Kind: features.ArtifactKind,
+			FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion,
+			Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: item.fingerprint, Data: encoded,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	replacedSong, err := database.GetSongByID(replacedSongID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(replacedSong.FilePath, []byte("replacement media with a different byte length"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := (&API{db: database}).measuredEnergyForDJ()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := got[currentSongID]; !ok || math.Abs(value-.5) > 1e-9 {
+		t.Errorf("current-source energy = %v, present %v; want .5", value, ok)
+	}
+	if value, ok := got[replacedSongID]; ok {
+		t.Errorf("replaced-source energy = %v; want stale measurement omitted", value)
+	}
+}
+
 func TestV2EnergyFeaturesNormalizesNilSlices(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
