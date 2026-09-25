@@ -74,6 +74,89 @@ func TestScoreTransitionWithMetadataGatesEvidenceAndRenormalizes(t *testing.T) {
 	}
 }
 
+func TestScoreTransitionWithMetadataScoresOnlyConfidentStructureBoundaries(t *testing.T) {
+	base := Result{IntegratedLUFS: -12, Energy: []EnergyPoint{{Value: .5}, {Value: .5}}}
+	outgoing := base
+	outgoing.Sections = []Section{
+		{Start: 0, End: 10, Label: StructureUnknown, Confidence: .9},
+		{Start: 10, End: 20, Label: StructureBuild, Confidence: .4},
+		{Start: 20, End: 30, Label: StructureOutro, Confidence: .48},
+	}
+	incoming := base
+	incoming.Sections = []Section{
+		{Start: 0, End: 10, Label: StructureIntro, Confidence: .48},
+		{Start: 10, End: 20, Label: StructureOutro, Confidence: .42},
+	}
+
+	compatible, err := ScoreTransitionWithMetadata(outgoing, incoming, TransitionMetadata{}, TransitionMetadata{}, TransitionIntentHold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	component, ok := findTransitionComponent(compatible, "intro-outro-compatibility")
+	if !ok || component.Score != 1 || component.Weight <= 0 || !strings.Contains(component.Rationale, "outgoing outro to opening incoming intro") || !strings.Contains(component.Rationale, "no vocal or phrase evidence") {
+		t.Fatalf("compatible terminal outro/opening intro was not explained: %#v", compatible)
+	}
+	totalWeight := 0.0
+	for _, component := range compatible.Components {
+		totalWeight += component.Weight
+	}
+	if math.Abs(totalWeight-1) > 1e-9 {
+		t.Fatalf("structure component weights sum to %f, want 1", totalWeight)
+	}
+
+	incompatibleOutgoing := base
+	incompatibleOutgoing.Sections = []Section{{Start: 0, End: 10, Label: StructureOutro, Confidence: .48}, {Start: 10, End: 20, Label: StructureBreakdown, Confidence: .42}}
+	incompatibleIncoming := base
+	incompatibleIncoming.Sections = []Section{{Start: 0, End: 10, Label: StructureBuild, Confidence: .4}, {Start: 10, End: 20, Label: StructureIntro, Confidence: .48}}
+	incompatible, err := ScoreTransitionWithMetadata(incompatibleOutgoing, incompatibleIncoming, TransitionMetadata{}, TransitionMetadata{}, TransitionIntentHold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	component, ok = findTransitionComponent(incompatible, "intro-outro-compatibility")
+	if !ok || component.Score != 0 || !strings.Contains(component.Rationale, "outgoing breakdown to opening incoming build") {
+		t.Fatalf("only terminal/opening labels should determine an incompatible pair: %#v", incompatible)
+	}
+
+	for name, pair := range map[string][2]Result{
+		"unknown": {func() Result {
+			value := base
+			value.Sections = []Section{{Start: 0, End: 10, Label: StructureUnknown, Confidence: .48}}
+			return value
+		}(), incoming},
+		"low confidence": {func() Result {
+			value := base
+			value.Sections = []Section{{Start: 0, End: 10, Label: StructureOutro, Confidence: .39}}
+			return value
+		}(), incoming},
+		"invalid timing": {func() Result {
+			value := base
+			value.Sections = []Section{{Start: math.NaN(), End: 10, Label: StructureOutro, Confidence: .48}}
+			return value
+		}(), incoming},
+		"missing section": {base, incoming},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := ScoreTransitionWithMetadata(pair[0], pair[1], TransitionMetadata{}, TransitionMetadata{}, TransitionIntentHold)
+			if err != nil {
+				t.Fatal(err)
+			}
+			legacy := ScoreTransition(pair[0], pair[1])
+			if _, ok := findTransitionComponent(got, "intro-outro-compatibility"); ok || got.Score != legacy.Score || len(got.Components) != len(legacy.Components) {
+				t.Fatalf("missing or weak structure evidence changed ranking: got=%#v legacy=%#v", got, legacy)
+			}
+		})
+	}
+}
+
+func findTransitionComponent(score TransitionScore, name string) (TransitionComponent, bool) {
+	for _, component := range score.Components {
+		if component.Name == name {
+			return component, true
+		}
+	}
+	return TransitionComponent{}, false
+}
+
 func TestScoreTransitionWithMetadataRanksTempoHarmonicAndDirection(t *testing.T) {
 	base := Result{IntegratedLUFS: -12, Energy: []EnergyPoint{{Value: .5}, {Value: .5}}}
 	confidence := .9
