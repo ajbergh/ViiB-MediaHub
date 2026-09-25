@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +15,11 @@ import (
 )
 
 const packageDirectorySuffix = ".viibstems"
+
+const (
+	maxLibraryWalkDepth   = 16
+	maxLibraryWalkEntries = 100_000
+)
 
 // CandidateSource identifies how a stem package was found. Adjacent packages
 // always precede packages found in configured library directories.
@@ -46,8 +52,8 @@ type RejectedPackage struct {
 	Err    error
 }
 
-// DiscoverPackages inspects the source-adjacent package and every direct
-// .viibstems child of each configured library directory. An adjacent package
+// DiscoverPackages inspects the source-adjacent package and every bounded nested
+// .viibstems package under each configured library directory. An adjacent package
 // is named after the source without its media extension, for example
 // song.flac -> song.viibstems. Package validity is always checked by
 // ValidatePackage; discovery alone does not establish source identity.
@@ -88,29 +94,102 @@ func DiscoverPackages(sourcePath string, libraryDirs []string) DiscoveryResult {
 		appendCandidate(adjacent, CandidateAdjacent)
 	}
 
-	var libraryCandidates []string
-	for _, library := range libraryDirs {
-		entries, err := os.ReadDir(library)
-		if err != nil {
-			result.Rejected = append(result.Rejected, RejectedPackage{Path: library, Source: CandidateLibrary, Err: fmt.Errorf("read stem library: %w", err)})
-			continue
-		}
-		for _, entry := range entries {
-			if entry.IsDir() && strings.EqualFold(filepath.Ext(entry.Name()), packageDirectorySuffix) {
-				libraryCandidates = append(libraryCandidates, filepath.Join(library, entry.Name()))
-			}
+	libraryDiscovery := DiscoverLibraryPackages(libraryDirs)
+	result.Rejected = append(result.Rejected, libraryDiscovery.Rejected...)
+	for _, candidate := range libraryDiscovery.Candidates {
+		key := pathKey(filepath.Clean(candidate.Path))
+		if !seen[key] {
+			seen[key] = true
+			candidate.Source = CandidateLibrary
+			result.Candidates = append(result.Candidates, candidate)
 		}
 	}
-	sort.Slice(libraryCandidates, func(i, j int) bool {
-		a, b := filepath.Clean(libraryCandidates[i]), filepath.Clean(libraryCandidates[j])
+	return result
+}
+
+// DiscoverLibraryPackages walks each configured root once, without following
+// symlinked directories. A `.viibstems` directory is a leaf package, and its
+// contents are left to ValidatePackage. Depth and entry limits bound accidental
+// scans of very large roots. Results are validated once and sorted
+// deterministically.
+func DiscoverLibraryPackages(libraryDirs []string) DiscoveryResult {
+	result := DiscoveryResult{}
+	seen := make(map[string]bool)
+	appendCandidate := func(path string) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: path, Source: CandidateLibrary, Err: err})
+			return
+		}
+		abs = filepath.Clean(abs)
+		key := pathKey(abs)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		validation, err := ValidatePackage(abs)
+		if err != nil {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: abs, Source: CandidateLibrary, Err: err})
+			return
+		}
+		result.Candidates = append(result.Candidates, PackageCandidate{Path: abs, Source: CandidateLibrary, Validation: validation})
+	}
+
+	for _, library := range libraryDirs {
+		root, err := filepath.Abs(filepath.Clean(library))
+		if err != nil {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: library, Source: CandidateLibrary, Err: err})
+			continue
+		}
+		rootInfo, err := os.Lstat(root)
+		if err != nil {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: root, Source: CandidateLibrary, Err: fmt.Errorf("read stem library: %w", err)})
+			continue
+		}
+		if !rootInfo.IsDir() || rootInfo.Mode()&fs.ModeSymlink != 0 {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: root, Source: CandidateLibrary, Err: errors.New("stem library root must be a real directory")})
+			continue
+		}
+		entries := 0
+		err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			entries++
+			if walkErr != nil {
+				return walkErr
+			}
+			if entries > maxLibraryWalkEntries {
+				return fmt.Errorf("stem library entry limit (%d) exceeded", maxLibraryWalkEntries)
+			}
+			if path == root || !entry.IsDir() {
+				return nil
+			}
+			if entry.Type()&fs.ModeSymlink != 0 {
+				return nil
+			}
+			if strings.EqualFold(filepath.Ext(entry.Name()), packageDirectorySuffix) {
+				appendCandidate(path)
+				return filepath.SkipDir
+			}
+			rel, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				return relErr
+			}
+			depth := strings.Count(rel, string(filepath.Separator)) + 1
+			if depth >= maxLibraryWalkDepth {
+				return filepath.SkipDir
+			}
+			return nil
+		})
+		if err != nil {
+			result.Rejected = append(result.Rejected, RejectedPackage{Path: root, Source: CandidateLibrary, Err: fmt.Errorf("walk stem library: %w", err)})
+		}
+	}
+	sort.Slice(result.Candidates, func(i, j int) bool {
+		a, b := filepath.Clean(result.Candidates[i].Path), filepath.Clean(result.Candidates[j].Path)
 		if strings.EqualFold(a, b) {
 			return a < b
 		}
 		return strings.ToLower(a) < strings.ToLower(b)
 	})
-	for _, path := range libraryCandidates {
-		appendCandidate(path, CandidateLibrary)
-	}
 	return result
 }
 

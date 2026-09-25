@@ -58,6 +58,7 @@ func (a *API) V2StemRoutes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/locations", a.listStemLocationsV2)
 	r.Put("/locations", a.putStemLocationsV2)
+	r.Post("/scan", a.scanStemLibrariesV2)
 	r.Get("/{songID}/{stemSetID}/frames", a.getStemFramesV2)
 	r.Get("/{songID}/{stemSetID}/{stemName}", a.getStemPreviewV2)
 	r.Get("/{songID}", a.getStemStatusV2)
@@ -118,6 +119,36 @@ func (a *API) putStemLocationsV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondV2JSON(w, http.StatusOK, map[string]any{"locations": locations})
+}
+
+func (a *API) scanStemLibrariesV2(w http.ResponseWriter, r *http.Request) {
+	locations, err := a.db.ListStemLocations()
+	if err != nil {
+		stemError(w, r, http.StatusInternalServerError, "stem_registry_unavailable", "Unable to load Stem Library locations", true)
+		return
+	}
+	roots := make([]string, 0, len(locations))
+	for _, location := range locations {
+		if location.Enabled {
+			roots = append(roots, location.Path)
+		}
+	}
+	if len(roots) == 0 {
+		stemError(w, r, http.StatusConflict, "stem_library_empty", "Add a Stem Library location before scanning", false)
+		return
+	}
+	raw, err := json.Marshal(map[string][]string{"locations": roots})
+	if err != nil {
+		stemError(w, r, http.StatusInternalServerError, "stem_job_create_failed", "Unable to prepare Stem Library scan", true)
+		return
+	}
+	job := db.Job{ID: uuid.NewString(), Type: "stem_library_scan", Parameters: raw, Priority: 10, Message: "Queued Stem Library scan"}
+	if err = a.db.CreateJob(job); err != nil {
+		stemError(w, r, http.StatusInternalServerError, "stem_job_create_failed", "Unable to queue Stem Library scan", true)
+		return
+	}
+	a.wakeJobScheduler()
+	respondV2JSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID, "status": "accepted"})
 }
 
 func (a *API) getStemStatusV2(w http.ResponseWriter, r *http.Request) {
@@ -241,6 +272,20 @@ func (a *API) unlinkStemPackageV2(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) refreshStemRegistry(songID string) error {
+	locations, err := a.db.ListStemLocations()
+	if err != nil {
+		return err
+	}
+	dirs := make([]string, 0, len(locations))
+	for _, location := range locations {
+		if location.Enabled {
+			dirs = append(dirs, location.Path)
+		}
+	}
+	return a.refreshStemRegistryWithDiscovery(songID, nil, dirs)
+}
+
+func (a *API) refreshStemRegistryWithDiscovery(songID string, knownDiscovery *stems.DiscoveryResult, libraryDirs []string) error {
 	song, err := a.db.GetSongByID(songID)
 	if err != nil {
 		return err
@@ -264,21 +309,16 @@ func (a *API) refreshStemRegistry(songID string) error {
 		}
 		return nil
 	}
-	locations, err := a.db.ListStemLocations()
-	if err != nil {
-		return err
-	}
-	dirs := []string{}
-	for _, l := range locations {
-		if l.Enabled {
-			dirs = append(dirs, l.Path)
-		}
-	}
 	hash, hashErr := stemSourceHashes.SHA256(song.FilePath)
 	if hashErr != nil {
 		return hashErr
 	}
-	discovery := stems.DiscoverPackages(song.FilePath, dirs)
+	var discovery stems.DiscoveryResult
+	if knownDiscovery != nil {
+		discovery = *knownDiscovery
+	} else {
+		discovery = stems.DiscoverPackages(song.FilePath, libraryDirs)
+	}
 	existingByPath := map[string]db.StemSet{}
 	for _, s := range existing {
 		existingByPath[strings.ToLower(filepath.Clean(s.PackagePath))] = s
@@ -307,7 +347,20 @@ func (a *API) refreshStemRegistry(songID string) error {
 		if !old.ExplicitlyLinked {
 			continue
 		}
-		if validation, validationErr := stems.ValidatePackage(old.PackagePath); validationErr == nil {
+		var validation stems.Validation
+		var validationErr error
+		validationReused := false
+		for _, candidate := range discovery.Candidates {
+			if strings.EqualFold(filepath.Clean(candidate.Path), filepath.Clean(old.PackagePath)) {
+				validation = candidate.Validation
+				validationReused = true
+				break
+			}
+		}
+		if !validationReused {
+			validation, validationErr = stems.ValidatePackage(old.PackagePath)
+		}
+		if validationErr == nil {
 			if err = storeCandidate(old.PackagePath, "explicit", validation); err != nil {
 				return err
 			}

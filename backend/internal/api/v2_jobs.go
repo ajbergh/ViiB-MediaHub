@@ -46,9 +46,10 @@ var supportedJobTypes = map[string]bool{
 	JobTypeAnalyzeTracks:    true,
 	"stem_registry_refresh": true,
 	"stem_package_link":     true,
+	"stem_library_scan":     true,
 }
 
-const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, " + JobTypeAnalyzeTracks + ", stem_registry_refresh, and stem_package_link"
+const supportedJobTypeList = "full_scan, quick_scan, refresh_genre_stats, " + JobTypeAnalyzeTracks + ", stem_registry_refresh, stem_package_link, and stem_library_scan"
 
 type createJobRequest struct {
 	Type       string          `json:"type"`
@@ -278,6 +279,8 @@ func (a *API) runClaimedJob(job db.Job) {
 		a.runQuickScanJob(id)
 	case JobTypeAnalyzeTracks:
 		a.runAnalyzeTracksJob(job)
+	case "stem_library_scan":
+		a.runStemLibraryScanJob(job)
 	case "stem_registry_refresh", "stem_package_link":
 		a.runStemRegistryJob(job)
 	case "refresh_genre_stats":

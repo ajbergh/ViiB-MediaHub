@@ -80,6 +80,22 @@ func TestDiscoverPackagesRetainsInvalidPackageDiagnostics(t *testing.T) {
 	}
 }
 
+func TestDiscoverLibraryPackagesFindsNestedPackagesAndTreatsPackagesAsLeaves(t *testing.T) {
+	library := t.TempDir()
+	nested := filepath.Join(library, "Artist", "Album", "album-stems.viibstems")
+	writeDiscoveryFixture(t, nested, sha256Hex([]byte("source")))
+	// A nested folder inside a package is package data, never another package root.
+	writeDiscoveryFixture(t, filepath.Join(nested, "nested.viibstems"), sha256Hex([]byte("nested")))
+
+	result := DiscoverLibraryPackages([]string{library})
+	if len(result.Candidates) != 1 {
+		t.Fatalf("expected one validated leaf package, got %d candidates and %d rejected: %+v", len(result.Candidates), len(result.Rejected), result)
+	}
+	if filepath.Clean(result.Candidates[0].Path) != filepath.Clean(nested) {
+		t.Fatalf("candidate path = %q, want %q", result.Candidates[0].Path, nested)
+	}
+}
+
 func TestSourceHashCacheUsesPathSizeAndMtimeSignature(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "source.wav")
 	first := []byte("first")

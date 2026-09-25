@@ -333,6 +333,13 @@ export interface ScanFolder {
   songCount: number;
 }
 
+export interface StemLibraryLocation {
+  id: string;
+  path: string;
+  enabled: boolean;
+  createdAt: number;
+}
+
 /**
  * Progress update from genre enrichment SSE stream
  */
@@ -619,6 +626,27 @@ export const api = {
   async removeFolder(id: string): Promise<void> {
     const response = await fetch(`${API_BASE}/folders/${id}`, { method: 'DELETE' });
     await handleResponse(response);
+  },
+
+  async getStemLibraryLocations(): Promise<StemLibraryLocation[]> {
+    const response = await fetch(`${API_BASE}/v2/stems/locations`);
+    const payload = await handleResponse<{ locations: StemLibraryLocation[] }>(response);
+    return payload.locations;
+  },
+
+  async setStemLibraryLocations(paths: string[]): Promise<StemLibraryLocation[]> {
+    const response = await fetch(`${API_BASE}/v2/stems/locations`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locations: paths }),
+    });
+    const payload = await handleResponse<{ locations: StemLibraryLocation[] }>(response);
+    return payload.locations;
+  },
+
+  async scanStemLibraries(): Promise<{ jobId: string; status: string }> {
+    const response = await fetch(`${API_BASE}/v2/stems/scan`, { method: 'POST' });
+    return handleResponse(response);
   },
 
   // Library integrity
