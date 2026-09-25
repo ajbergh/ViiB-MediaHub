@@ -18,6 +18,8 @@ interface DJHotCuePadProps {
   compact?: boolean;
   /** When true, renders all 8 slots in a single horizontal row instead of 2×4 grid */
   singleRow?: boolean;
+  /** Workstation deck footer: eight equal token-styled pads that fill the row. */
+  console?: boolean;
 }
 
 // Hot cue colors matching professional DJ software
@@ -37,6 +39,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
   slots = [1, 2, 3, 4, 5, 6, 7, 8],
   compact = false,
   singleRow = false,
+  console: consoleLayout = false,
 }) => {
   const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
@@ -92,7 +95,8 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
   }, []);
 
   return (
-    <div className={singleRow ? 'flex items-center gap-1' : 'grid grid-cols-4 gap-1'}>
+    <div className={consoleLayout ? 'dj-hotcues' : singleRow ? 'flex items-center gap-1' : 'grid grid-cols-4 gap-1'}
+      role='group' aria-label={`Deck ${deck} hot cues`}>
       {slots.map(slot => {
         const hotCue = hotCues.find(hc => hc.slot === slot);
         const isActive = !!hotCue;
@@ -114,7 +118,9 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             disabled={!track}
-            className={`
+            data-state={consoleLayout ? (!track ? 'disabled' : isActive ? 'set' : 'empty') : undefined}
+            aria-label={`Hot cue ${displayNum}${hotCue ? ` at ${formatTime(hotCue.position)}` : ', empty'}`}
+            className={consoleLayout ? `dj-hotcue ${isAnalysis && lowConfidence ? 'dj-hotcue-low' : ''} ${isLongPress ? 'dj-hotcue-longpress' : ''} ${isPressed && !isLongPress ? 'dj-hotcue-pressed' : ''}` : `
               relative ${buttonSize} rounded font-bold
               transition-all duration-75 border
               ${!track 

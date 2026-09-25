@@ -97,8 +97,10 @@ function clampGain(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-/** Compact, per-deck four-bus controls. The audio engine remains the source of truth. */
-export function DJStemControls({ deck }: { deck: DeckId }) {
+/** Compact, per-deck four-bus controls. The audio engine remains the source of truth.
+ * `compact` renders the FULL/STEMS switch plus a STEMS ▾ popover holding the
+ * bus mutes, presets and gains so the deck toolbar fits on one row. */
+export function DJStemControls({ deck, compact = false }: { deck: DeckId; compact?: boolean }) {
   const trackID = useStore(state => deck === 'A' ? state.djDeckA.track?.id : state.djDeckB.track?.id);
   const {
     setStemMode,
@@ -190,6 +192,60 @@ export function DJStemControls({ deck }: { deck: DeckId }) {
         !status.supportsSampleAccurateLoop ? 'Stem loops use standard seek timing' : '',
       ].filter(Boolean).join(' · ')
     : '';
+
+  if (compact) {
+    const statusLabel = [statusText, featureLimit].filter(Boolean).join(' · ');
+    const statusState = status.mode === 'fallback' || (stemMode && status.bufferedSeconds < 0.2) ? 'warn' : status.available ? 'ok' : undefined;
+    return (
+      <section className="dj-toolbar-cluster dj-stems-compact" aria-label={`Deck ${deck} stem controls`}>
+        <div className="dj-segmented" role="group" aria-label="Stem playback mode">
+          <button type="button" className="dj-btn" data-deck-accent={deck} aria-pressed={!stemMode} onClick={() => void chooseMode('full')}
+            disabled={changingMode} title="Play the original full track">FULL</button>
+          <button type="button" className="dj-btn" data-deck-accent={deck} aria-pressed={stemMode} onClick={() => void chooseMode('stems')}
+            disabled={changingMode || !status.available} title={status.available ? 'Play the four prepared stems' : 'No valid stem package is available for this track'}>STEMS</button>
+        </div>
+        <details className="dj-stems-popover">
+          <summary className="dj-btn" aria-label={`Stem mix controls for Deck ${deck}`} title={statusLabel}>
+            <span className="dj-status-dot" data-state={statusState} aria-hidden="true" />MIX ▾
+          </summary>
+          <div className="dj-popover dj-stems-panel" role="group" aria-label="Stem mutes, presets and levels">
+            <p className="dj-label" role="status" aria-live="polite">{statusLabel}</p>
+            <div className="dj-segmented" role="group" aria-label="Stem mute controls">
+              {BUSES.map(({ id, label }) => {
+                const busState = stemState[id];
+                return (
+                  <button key={id} type="button" className="dj-btn dj-btn-xs dj-btn-warn" aria-pressed={busState.muted}
+                    aria-label={`${busState.muted ? 'Unmute' : 'Mute'} ${label.toLowerCase()} stem on Deck ${deck}`}
+                    disabled={!canControlStems} onClick={() => toggleBusMute(id, !busState.muted)}>{label}</button>
+                );
+              })}
+            </div>
+            <div className="dj-segmented" role="group" aria-label={`Stem mix presets for Deck ${deck}`}>
+              {(['full', 'acapella', 'instrumental'] as const).map(preset => (
+                <button key={preset} type="button" className="dj-btn dj-btn-xs" data-deck-accent={deck} aria-pressed={activePreset === preset}
+                  title={activePreset === preset ? 'Click again to restore the mute state from before the preset' : `Apply ${preset} mix; bus gains stay unchanged`}
+                  disabled={!canControlStems} onClick={() => choosePreset(preset)}>{preset.toUpperCase()}</button>
+              ))}
+            </div>
+            {BUSES.map(({ id, label }) => {
+              const busState = stemState[id];
+              return (
+                <div key={id} className="dj-stem-row">
+                  <label className="dj-label" htmlFor={`stem-${deck}-${id}-gain`}>{label}</label>
+                  <input id={`stem-${deck}-${id}-gain`} type="range" min={0} max={1} step={0.01} value={clampGain(busState.gain)}
+                    disabled={!canControlStems} aria-label={`${label} stem level for Deck ${deck}`}
+                    onChange={event => setStemGain(deck, id, Number(event.currentTarget.value))} />
+                  <button type="button" className="dj-btn dj-btn-xs dj-btn-warn" aria-pressed={busState.solo}
+                    aria-label={`${busState.solo ? 'Unsolo' : 'Solo'} ${label.toLowerCase()} stem on Deck ${deck}`}
+                    disabled={!canControlStems} onClick={() => setStemSolo(deck, id, !busState.solo)}>S</button>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      </section>
+    );
+  }
 
   return (
     <section className="flex min-w-0 items-start gap-1.5" aria-label={`Deck ${deck} stem controls`}>

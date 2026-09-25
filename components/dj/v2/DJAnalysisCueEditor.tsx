@@ -9,9 +9,11 @@ import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 interface DJAnalysisCueEditorProps {
   trackID?: string;
   deck: DeckId;
+  /** Render expanded, for hosts such as the deck inspector that own disclosure. */
+  embedded?: boolean;
 }
 
-export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps) {
+export function DJAnalysisCueEditor({ trackID, deck, embedded = false }: DJAnalysisCueEditorProps) {
   const beatGrid = useStore(state => deck === 'A' ? state.djDeckA.beatGrid : state.djDeckB.beatGrid);
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
   const loadHotCues = useStore(state => state.loadHotCues);
@@ -116,7 +118,7 @@ export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps)
   };
 
   if (!trackID || !cueList) return null;
-  return <details className="mx-2 mb-1 rounded border border-neutral-800 bg-neutral-950/70 text-[10px] text-neutral-300">
+  return <details open={embedded || undefined} className="mx-2 mb-1 rounded border border-neutral-800 bg-neutral-950/70 text-[10px] text-neutral-300">
     <summary className="cursor-pointer list-none px-2 py-1 text-neutral-300">
       Cue editor · {hotCues.filter(cue => cue.origin === 'analysis').length} auto · {hotCues.filter(cue => cue.origin !== 'analysis').length} manual
     </summary>

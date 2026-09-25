@@ -8,6 +8,8 @@ import { useStore } from '../../../store';
 interface DJBpmEditorProps {
   track: Song | null;
   deck: DeckId;
+  /** Render expanded, for hosts such as the deck inspector that own disclosure. */
+  embedded?: boolean;
 }
 
 function emptyFeature(songId: string): TrackAnalysisFeature {
@@ -26,7 +28,7 @@ function parseBpm(value: string): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 1000 ? parsed : undefined;
 }
 
-export function DJBpmEditor({ track, deck }: DJBpmEditorProps) {
+export function DJBpmEditor({ track, deck, embedded = false }: DJBpmEditorProps) {
   const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
   const setDeckAnalysis = useStore(state => state.setDeckAnalysis);
   const sourceIdentity = useMemo(() => djTrackSourceIdentity(track), [track?.id, track?.source, track?.sourceName, track?.path, track?.fileHash, track?.fileHandle?.name]);
@@ -157,7 +159,7 @@ export function DJBpmEditor({ track, deck }: DJBpmEditorProps) {
 
   if (!track) return null;
 
-  return <details className="mx-2 mb-1 rounded border border-neutral-800 bg-neutral-950/70 text-[10px] text-neutral-300">
+  return <details open={embedded || undefined} className="mx-2 mb-1 rounded border border-neutral-800 bg-neutral-950/70 text-[10px] text-neutral-300">
     <summary className="cursor-pointer list-none px-2 py-1">
       BPM correction · {feature?.bpm == null ? 'Unknown BPM' : `${formatManualBpm(feature.bpm)} · ${feature.bpmSource}`}
     </summary>

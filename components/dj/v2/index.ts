@@ -7,7 +7,13 @@
  */
 
 export { DJTopBar } from './DJTopBar';
-export { DJDualWaveform } from './DJDualWaveform';
+export { DJSplitWaveform } from './DJSplitWaveform';
+export { DJPerformanceWorkspace } from './DJPerformanceWorkspace';
+export { DJDeckPanel } from './DJDeckPanel';
+export { DJMixerPanel } from './DJMixerPanel';
+export { DJDeckInspector } from './DJDeckInspector';
+export { DJDeckFXRack } from './DJDeckFXRack';
+export { DJDeckToolbar } from './DJDeckToolbar';
 export { DJJogWheel } from './DJJogWheel';
 export { DJHotCuePad } from './DJHotCuePad';
 export { DJTransportButtons } from './DJTransportButtons';
@@ -23,6 +29,6 @@ export { DJLibraryBrowserV2 } from './DJLibraryBrowserV2';
 export { DeckTimeDisplay, DeckHasTrack, DeckBpmBadge } from './DJDeckComponents';
 export { DJChannelStrip, DJMasterKnob, DJCrossfaderSelfSub, DJTempoSliderSelfSub } from './DJMixerComponents';
 
-// WebGL high-performance waveform (Phase 2)
-export { DJWebGLWaveform } from './webgl';
+// WebGL high-performance waveform lane
+export { DJWebGLWaveformDeck } from './webgl';
 export type { DJWaveformRenderState, DJWebGLRendererOptions } from './webgl';

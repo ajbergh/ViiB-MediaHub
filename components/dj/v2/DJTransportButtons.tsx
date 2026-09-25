@@ -17,11 +17,14 @@ import { Play, Pause, SkipBack } from 'lucide-react';
 interface DJTransportButtonsProps {
   deck: DeckId;
   compact?: boolean;
+  /** Workstation deck footer: CUE / PLAY / SYNC as a wide console row (Plan §10A.9). */
+  console?: boolean;
 }
 
 export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   deck,
-  compact = false
+  compact = false,
+  console: consoleLayout = false,
 }) => {
   // Granular selectors - only subscribe to what we need (NOT full deckState)
   const track = useStore(state => deck === 'A' ? state.djDeckA.track : state.djDeckB.track);
@@ -96,6 +99,30 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   const cueSize = compact ? 'w-12 h-12' : 'w-16 h-16';
   const playSize = compact ? 'w-12 h-12' : 'w-20 h-20';
   const iconSize = compact ? 18 : 28;
+
+  const syncDisabled = !track || syncMode === 'off' || (syncMode === 'beat-phase' && !gridsVerified);
+  const syncTitle = syncMode === 'beat-phase' && !gridsVerified ? 'Verify and lock both grids in Edit Grid before beat-phase sync. BPM-only sync is still available.' : syncMode === 'off' ? 'Sync disabled — set sync mode in mixer' : `Sync to other deck (${syncMode})`;
+
+  if (consoleLayout) {
+    // Play is semantic green on both decks; deck color never replaces it.
+    return (
+      <div className='dj-transport'>
+        <button type='button' className='dj-btn dj-btn-lg dj-transport-cue' onClick={handleCue} onContextMenu={handleSetCue} disabled={!track}
+          aria-label={`Cue deck ${deck}`} title='Cue: return to cue point (right-click to set)'>
+          <SkipBack size={16} aria-hidden='true' /> CUE
+        </button>
+        <button ref={playButtonRef} type='button' className='dj-btn dj-btn-lg dj-btn-play dj-transport-play' onClick={handlePlayPause} disabled={!track}
+          aria-label={isPlaying ? `Pause deck ${deck}` : `Play deck ${deck}`} data-playing={isPlaying} style={{ ['--glow' as string]: '0' }}>
+          {isPlaying ? <Pause size={22} aria-hidden='true' /> : <Play size={22} aria-hidden='true' />}
+        </button>
+        <button type='button' className='dj-btn dj-btn-lg dj-transport-sync' data-deck-accent={deck} onClick={handleSync} disabled={syncDisabled}
+          aria-label={`Sync deck ${deck} to other deck`} title={syncTitle}>
+          SYNC
+          {syncMode !== 'off' && track && <span className='dj-status-dot' data-state={syncMode === 'beat-phase' ? 'warn' : 'ok'} aria-hidden='true' />}
+        </button>
+      </div>
+    );
+  }
 
   // Press states are pure CSS — :active scales the button, no JS timer.
   return (

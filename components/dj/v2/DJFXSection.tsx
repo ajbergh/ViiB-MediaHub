@@ -31,16 +31,18 @@ interface FXUnitProps {
   enabledColor: string;
   compact?: boolean;
   expanded?: boolean;
+  /** Deck-local rack module: label toggle over 2–3 compact knobs (Plan §10A.12). */
+  rack?: boolean;
 }
 
-const FX_CONFIGS = {
+export const FX_CONFIGS = {
   filter: { label: 'FILTER', color: '#3b82f6', enabledColor: '#60a5fa' },
   delay: { label: 'DELAY', color: '#22c55e', enabledColor: '#4ade80' },
   reverb: { label: 'REVERB', color: '#a855f7', enabledColor: '#c084fc' },
   flanger: { label: 'FLANGER', color: '#f97316', enabledColor: '#fb923c' },
 } as const;
 
-const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, compact = false, expanded = false }) => {
+export const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, compact = false, expanded = false, rack = false }) => {
   const fx = useStore(state => {
     const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
     return deckState.fx[type];
@@ -236,6 +238,25 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
   const valueText2 = type === 'filter' ? `${actual.resonance.toFixed(1)} Q`
     : percent(type === 'delay' ? actual.feedback : type === 'reverb' ? actual.damping : actual.depth);
   const wetText = percent(type === 'flanger' ? actual.feedback : actual.mix);
+
+  if (rack) {
+    const knobColor = isEnabled ? `var(--dj-deck-${deck === 'A' ? 'a' : 'b'}-bright)` : 'var(--dj-text-muted)';
+    return (
+      <div className='dj-fx-module' data-enabled={isEnabled} data-fx={type}>
+        <button type='button' className='dj-fx-module-toggle' onClick={handleToggle} aria-pressed={isEnabled}
+          aria-label={`${label} on Deck ${deck}`} title={`${isEnabled ? 'Disable' : 'Enable'} ${label.toLowerCase()} on Deck ${deck}`}>
+          {label}
+        </button>
+        <div className='dj-fx-knobs'>
+          <DJEQKnob label={params.param1.label} valueText={valueText1} value={params.param1.value} onChange={handleKnobParam1} color={knobColor} size={34} compact className='dj-fx-knob' />
+          <DJEQKnob label={params.param2.label} valueText={valueText2} value={params.param2.value} onChange={handleKnobParam2} color={knobColor} size={34} compact className='dj-fx-knob' />
+          {params.hasWet && (
+            <DJEQKnob label={params.wet.label} valueText={wetText} value={params.wet.value} onChange={handleKnobWet} color={knobColor} size={34} compact className='dj-fx-knob' />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Compact mode: toggle tab + always-rendered macro knob (greyed when off,
   // so toggling does NOT shift neighbour layout — see review §2.6).

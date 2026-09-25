@@ -27,6 +27,7 @@ import {
 } from './DJWaveformShaders';
 import { getPreferredWebGLVersion } from '../../../../lib/webglSafety';
 import type { Loop } from '../../../../slices/djMixerSlice';
+import { DECK_WAVEFORM_PALETTE, WAVEFORM_CHROME, hexToRgbFloat } from '../waveform/waveformPalette';
 
 export type DeckId = 'A' | 'B';
 
@@ -69,13 +70,30 @@ export interface DJWebGLRendererOptions {
   playheadColor?: [number, number, number];
   /** Cue point color */
   cueColor?: [number, number, number];
+  /** Main waveform background */
+  backgroundColor?: [number, number, number];
+  /** Overview strip background */
+  overviewBackgroundColor?: [number, number, number];
+  /** Deck gradient stops, center → edge */
+  gradientA?: [[number, number, number], [number, number, number], [number, number, number]];
+  gradientB?: [[number, number, number], [number, number, number], [number, number, number]];
 }
 
+const deckGradient = (deck: DeckId) => {
+  const { center, mid, edge } = DECK_WAVEFORM_PALETTE[deck].gradient;
+  return [hexToRgbFloat(center), hexToRgbFloat(mid), hexToRgbFloat(edge)] as [[number, number, number], [number, number, number], [number, number, number]];
+};
+
+// Colors come from the shared waveform palette so Canvas and WebGL match.
 const DEFAULT_OPTIONS: Required<DJWebGLRendererOptions> = {
-  deckAColor: [0.231, 0.510, 0.965],     // #3b82f6 (blue)
-  deckBColor: [0.545, 0.361, 0.965],     // #8b5cf6 (purple)
-  playheadColor: [1.0, 0.2, 0.2],        // #ff3333 (red)
-  cueColor: [0.961, 0.620, 0.043],       // #f59e0b (amber)
+  deckAColor: hexToRgbFloat(DECK_WAVEFORM_PALETTE.A.deck),
+  deckBColor: hexToRgbFloat(DECK_WAVEFORM_PALETTE.B.deck),
+  playheadColor: hexToRgbFloat(WAVEFORM_CHROME.playhead),
+  cueColor: hexToRgbFloat(WAVEFORM_CHROME.cue),
+  backgroundColor: hexToRgbFloat(WAVEFORM_CHROME.background),
+  overviewBackgroundColor: hexToRgbFloat(WAVEFORM_CHROME.overviewBackground),
+  gradientA: deckGradient('A'),
+  gradientB: deckGradient('B'),
 };
 
 interface ShaderProgram {
@@ -497,7 +515,7 @@ export class DJWebGLRenderer {
     const deckColor = state.deck === 'A' ? this.options.deckAColor : this.options.deckBColor;
     
     // Clear
-    gl.clearColor(0.071, 0.071, 0.071, 1.0);
+    gl.clearColor(...this.options.backgroundColor, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     
     // Bind shader
@@ -524,6 +542,11 @@ export class DJWebGLRenderer {
     gl.uniform1f(this.getUniform(prog, 'u_loopEnd'), state.loop.end > state.loop.start ? state.loop.end / state.duration : -1);
     gl.uniform1i(this.getUniform(prog, 'u_loopEnabled'), state.loop.enabled ? 1 : 0);
     gl.uniform1i(this.getUniform(prog, 'u_colorMode'), state.colorMode);
+    const gradient = state.deck === 'A' ? this.options.gradientA : this.options.gradientB;
+    gl.uniform3fv(this.getUniform(prog, 'u_gradCenter'), gradient[0]);
+    gl.uniform3fv(this.getUniform(prog, 'u_gradMid'), gradient[1]);
+    gl.uniform3fv(this.getUniform(prog, 'u_gradEdge'), gradient[2]);
+    gl.uniform3fv(this.getUniform(prog, 'u_bgColor'), this.options.backgroundColor);
     
     // Bind texture
     gl.activeTexture(gl.TEXTURE0);
@@ -680,7 +703,7 @@ export class DJWebGLRenderer {
     const prog = this.overviewProgram;
     
     // Clear
-    gl.clearColor(0.102, 0.102, 0.102, 1.0);
+    gl.clearColor(...this.options.overviewBackgroundColor, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     
     const dpr = Math.min(window.devicePixelRatio || 1, this.isWebGL2 ? 2 : 1.5);
@@ -696,6 +719,7 @@ export class DJWebGLRenderer {
       gl.uniform2f(this.getUniform(prog, 'u_resolution'), halfWidth * dpr, this.height * dpr);
       gl.uniform1f(this.getUniform(prog, 'u_position'), deckA.position / deckA.duration);
       gl.uniform3fv(this.getUniform(prog, 'u_deckColor'), this.options.deckAColor);
+      gl.uniform3fv(this.getUniform(prog, 'u_bgColor'), this.options.overviewBackgroundColor);
       gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), deckA.peaks ? 1 : 0);
       gl.uniform1f(this.getUniform(prog, 'u_peakCount'), shape.count);
       gl.uniform1f(this.getUniform(prog, 'u_peakWidth'), shape.width);
@@ -720,6 +744,7 @@ export class DJWebGLRenderer {
       gl.uniform2f(this.getUniform(prog, 'u_resolution'), halfWidth * dpr, this.height * dpr);
       gl.uniform1f(this.getUniform(prog, 'u_position'), deckB.position / deckB.duration);
       gl.uniform3fv(this.getUniform(prog, 'u_deckColor'), this.options.deckBColor);
+      gl.uniform3fv(this.getUniform(prog, 'u_bgColor'), this.options.overviewBackgroundColor);
       gl.uniform1i(this.getUniform(prog, 'u_hasPeaks'), deckB.peaks ? 1 : 0);
       gl.uniform1f(this.getUniform(prog, 'u_peakCount'), shape.count);
       gl.uniform1f(this.getUniform(prog, 'u_peakWidth'), shape.width);

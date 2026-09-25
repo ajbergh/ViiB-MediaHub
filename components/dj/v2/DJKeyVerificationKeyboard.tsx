@@ -7,9 +7,11 @@ import { useStore } from '../../../store';
 interface DJKeyVerificationKeyboardProps {
   trackID?: string;
   deck: DeckId;
+  /** Render expanded, for hosts such as the deck inspector that own disclosure. */
+  embedded?: boolean;
 }
 
-export function DJKeyVerificationKeyboard({ trackID, deck }: DJKeyVerificationKeyboardProps) {
+export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: DJKeyVerificationKeyboardProps) {
   const setDeckAnalysis = useStore(state => state.setDeckAnalysis);
   const [feature, setFeature] = useState<TrackAnalysisFeature | null>(null);
   const [selectedTonic, setSelectedTonic] = useState(0);
@@ -137,7 +139,7 @@ export function DJKeyVerificationKeyboard({ trackID, deck }: DJKeyVerificationKe
     ? []
     : keyScalePitchClasses(feature.measuredKeyTonic, feature.measuredKeyMode);
 
-  return <details className="mx-2 mb-1 rounded border border-neutral-800 bg-neutral-950/70 text-[10px] text-neutral-300">
+  return <details open={embedded || undefined} className="mx-2 mb-1 rounded border border-neutral-800 bg-neutral-950/70 text-[10px] text-neutral-300">
     <summary className="cursor-pointer list-none px-2 py-1">
       Key verifier · {feature.key ?? 'No measured key'} · {feature.keySource}
     </summary>
