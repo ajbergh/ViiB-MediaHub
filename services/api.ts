@@ -233,12 +233,14 @@ export interface TransitionRecommendationFilters {
   camelotCompatible?: boolean;
   playlistId?: string;
   genre?: string;
+  notRecentlyPlayedHours?: number;
 }
 
 export interface TransitionCandidateFilterEvidence {
   bpm?: number;
   energyLevel?: number;
   stemsAvailable?: boolean;
+  lastPlayed?: number;
 }
 
 export interface TransitionRecommendation {
@@ -1594,6 +1596,7 @@ export const api = {
     if (filters.camelotCompatible !== undefined) query.set('camelotCompatible', String(filters.camelotCompatible));
     if (filters.playlistId) query.set('playlistId', filters.playlistId);
     if (filters.genre) query.set('genre', filters.genre);
+    if (filters.notRecentlyPlayedHours !== undefined) query.set('notRecentlyPlayedHours', String(filters.notRecentlyPlayedHours));
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/recommendations?${query}`, { cache: 'no-store' });
     return handleResponse<TrackTransitionRecommendations>(response);
   },

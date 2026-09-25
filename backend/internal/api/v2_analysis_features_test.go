@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
@@ -398,6 +399,8 @@ func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
 		"minBpm=59", "maxBpm=191", "minBpm=NaN", "minEnergyLevel=0", "maxEnergyLevel=11",
 		"minBpm=130&maxBpm=120", "minEnergyLevel=8&maxEnergyLevel=4", "stemsAvailable=yes", "minBpm=120&minBpm=121",
 		"camelotCompatible=yes", "camelotCompatible=true&camelotCompatible=false",
+		"notRecentlyPlayedHours=", "notRecentlyPlayedHours=abc", "notRecentlyPlayedHours=0", "notRecentlyPlayedHours=-1",
+		"notRecentlyPlayedHours=169", "notRecentlyPlayedHours=24.5", "notRecentlyPlayedHours=24&notRecentlyPlayedHours=48",
 		"playlistId=", "playlistId=mix&playlistId=other", "genre=", "genre=rock&genre=pop",
 	} {
 		t.Run(query, func(t *testing.T) {
@@ -407,6 +410,83 @@ func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
 				t.Fatalf("status=%d, want 400: %s", recorder.Code, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestV2NotRecentlyPlayedRecommendationFilter(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	now := time.Now().UnixMilli()
+	oldPlayedAt := now - int64((25*time.Hour)/time.Millisecond)
+	tracks := []struct {
+		id         string
+		lastPlayed int64
+	}{
+		{id: "source"},
+		{id: "recent", lastPlayed: now},
+		{id: "old", lastPlayed: oldPlayedAt},
+		{id: "never"},
+	}
+	for _, track := range tracks {
+		if err := database.SaveSong(&db.Song{ID: track.id, Title: track.id, Artist: "Artist", Album: "Album", FilePath: track.id + ".mp3", AddedAt: now, LastPlayed: track.lastPlayed}); err != nil {
+			t.Fatal(err)
+		}
+		encoded, encodeErr := (features.Result{IntegratedLUFS: -12, Energy: []features.EnergyPoint{{Value: .4}, {Value: .7}}}).Encode()
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: track.id + ":energy", SongID: track.id, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Data: encoded}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	get := func(query string) TransitionRecommendationsResponse {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations"+query, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("GET recommendations%s = %d: %s", query, recorder.Code, recorder.Body.String())
+		}
+		var response TransitionRecommendationsResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+
+	unfiltered := get("")
+	if unfiltered.CandidatesBeforeFilters != 3 || unfiltered.CandidatesAfterFilters != 3 || unfiltered.Filters.NotRecentlyPlayedHours != nil {
+		t.Fatalf("omitted recency filter changed behavior: %#v", unfiltered)
+	}
+	for _, recommendation := range unfiltered.Recommendations {
+		if recommendation.FilterEvidence.LastPlayed != nil {
+			t.Fatalf("omitted recency filter returned lastPlayed evidence: %#v", recommendation.FilterEvidence)
+		}
+	}
+
+	filtered := get("?notRecentlyPlayedHours=24")
+	if filtered.CandidatesBeforeFilters != 3 || filtered.CandidatesAfterFilters != 2 || len(filtered.Recommendations) != 2 {
+		t.Fatalf("recency filter counts before=%d after=%d recommendations=%d", filtered.CandidatesBeforeFilters, filtered.CandidatesAfterFilters, len(filtered.Recommendations))
+	}
+	if filtered.Filters.NotRecentlyPlayedHours == nil || *filtered.Filters.NotRecentlyPlayedHours != 24 {
+		t.Fatalf("recency filter was not echoed: %#v", filtered.Filters)
+	}
+	seen := map[string]TransitionCandidateEvidence{}
+	for _, recommendation := range filtered.Recommendations {
+		seen[recommendation.SongID] = recommendation.FilterEvidence
+	}
+	if _, ok := seen["recent"]; ok {
+		t.Fatal("candidate completed within the selected period was not excluded")
+	}
+	if _, ok := seen["old"]; !ok || seen["old"].LastPlayed == nil || *seen["old"].LastPlayed != oldPlayedAt {
+		t.Fatalf("old completed-play evidence missing: %#v", seen["old"])
+	}
+	if _, ok := seen["never"]; !ok || seen["never"].LastPlayed == nil || *seen["never"].LastPlayed != 0 {
+		t.Fatalf("never-played evidence missing: %#v", seen["never"])
 	}
 }
 
