@@ -7,7 +7,7 @@ import (
 	analysiskey "github.com/ajbergh/viib-mediahub/internal/analysis/key"
 )
 
-const TransitionAlgorithmVersion = "transition-v2-bpm-key-energy-v1"
+const TransitionAlgorithmVersion = "transition-v3-structure-boundary-v1"
 
 type TransitionIntent string
 
@@ -153,6 +153,11 @@ func ScoreTransitionWithMetadata(outgoing, incoming Result, outgoingMeta, incomi
 			weights = append(weights, .12*confidence)
 		}
 	}
+	if score, confidence, rationale, ok := structureBoundaryCompatibility(outgoing, incoming); ok {
+		weight := .12 * confidence
+		components = append(components, TransitionComponent{Name: "intro-outro-compatibility", Score: score, Weight: weight, Rationale: rationale})
+		weights = append(weights, weight)
+	}
 	totalWeight, weightedScore := 0.0, 0.0
 	for i, component := range components {
 		weight := component.Weight
@@ -171,6 +176,43 @@ func ScoreTransitionWithMetadata(outgoing, incoming Result, outgoingMeta, incomi
 		weightedScore /= totalWeight
 	}
 	return TransitionScore{Score: clamp01(weightedScore), Vector: vector, Components: components}, nil
+}
+
+const minimumStructureConfidence = .5
+
+// structureBoundaryCompatibility compares only the final outgoing section
+// with the initial incoming section. At confidence >= .5, its matrix is:
+// outro -> intro = 1; every other known label pair = 0. Unknown/missing labels
+// and lower-confidence pairs are omitted. Energy-derived labels are advisory;
+// this score says nothing about vocals or phrases.
+func structureBoundaryCompatibility(outgoing, incoming Result) (score, confidence float64, rationale string, ok bool) {
+	if len(outgoing.Sections) == 0 || len(incoming.Sections) == 0 {
+		return 0, 0, "", false
+	}
+	last := outgoing.Sections[len(outgoing.Sections)-1]
+	first := incoming.Sections[0]
+	if !knownStructureLabel(last.Label) || !knownStructureLabel(first.Label) ||
+		!usableStructureConfidence(last.Confidence) || !usableStructureConfidence(first.Confidence) {
+		return 0, 0, "", false
+	}
+	confidence = math.Min(last.Confidence, first.Confidence)
+	if last.Label == StructureOutro && first.Label == StructureIntro {
+		return 1, confidence, "Final outgoing outro to opening incoming intro is a structural match (energy-derived hints only; no vocal or phrase evidence)", true
+	}
+	return 0, confidence, "Final outgoing " + last.Label + " to opening incoming " + first.Label + " is not the outro-to-intro match (energy-derived hints only; no vocal or phrase evidence)", true
+}
+
+func usableStructureConfidence(confidence float64) bool {
+	return finiteNumber(confidence) && confidence >= minimumStructureConfidence && confidence <= 1
+}
+
+func knownStructureLabel(label string) bool {
+	switch label {
+	case StructureIntro, StructureBuild, StructureDrop, StructureBreakdown, StructureOutro:
+		return true
+	default:
+		return false
+	}
 }
 
 var ErrUnsupportedTransitionIntent = &transitionIntentError{}

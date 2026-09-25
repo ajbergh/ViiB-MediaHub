@@ -316,9 +316,9 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 		t.Fatal(err)
 	}
 	results := map[string]features.Result{
-		"source":       {IntegratedLUFS: -10, Energy: []features.EnergyPoint{{Value: .2}, {Value: .8}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-out", Confidence: .8}}},
-		"compatible":   {IntegratedLUFS: -10.5, Energy: []features.EnergyPoint{{Value: .75}, {Value: .7}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-in", Confidence: .8}}},
-		"incompatible": {IntegratedLUFS: -25, Energy: []features.EnergyPoint{{Value: .05}, {Value: .1}}},
+		"source":       {IntegratedLUFS: -10, Energy: []features.EnergyPoint{{Value: .2}, {Value: .8}}, Sections: []features.Section{{Label: features.StructureIntro, Confidence: .8}, {Label: features.StructureOutro, Confidence: .8}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-out", Confidence: .8}}},
+		"compatible":   {IntegratedLUFS: -10.5, Energy: []features.EnergyPoint{{Value: .75}, {Value: .7}}, Sections: []features.Section{{Label: features.StructureIntro, Confidence: .8}, {Label: features.StructureOutro, Confidence: .8}}, CueSuggestions: []features.CueSuggestion{{Kind: "mix-in", Confidence: .8}}},
+		"incompatible": {IntegratedLUFS: -25, Energy: []features.EnergyPoint{{Value: .05}, {Value: .1}}, Sections: []features.Section{{Label: features.StructureBreakdown, Confidence: .8}}},
 	}
 	for id, result := range results {
 		encoded, err := result.Encode()
@@ -352,8 +352,18 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "compatible" || len(response.Recommendations[0].Components) != 6 || response.Intent != features.TransitionIntentHold || response.AlgorithmVersion != features.TransitionAlgorithmVersion || response.Recommendations[0].Vector.CamelotRelation != "same" || response.Recommendations[0].Vector.BPMDelta == nil {
+	if len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "compatible" || len(response.Recommendations[0].Components) != 7 || response.Intent != features.TransitionIntentHold || response.AlgorithmVersion != features.TransitionAlgorithmVersion || response.Recommendations[0].Vector.CamelotRelation != "same" || response.Recommendations[0].Vector.BPMDelta == nil {
 		t.Fatalf("recommendations = %#v", response)
+	}
+	var structureComponent *features.TransitionComponent
+	for index := range response.Recommendations[0].Components {
+		if response.Recommendations[0].Components[index].Name == "intro-outro-compatibility" {
+			structureComponent = &response.Recommendations[0].Components[index]
+			break
+		}
+	}
+	if structureComponent == nil || structureComponent.Score != 1 || !strings.Contains(structureComponent.Rationale, "outro to opening incoming intro") {
+		t.Fatalf("recommendation omitted explainable structure compatibility: %#v", response.Recommendations[0].Components)
 	}
 	unsupported := httptest.NewRecorder()
 	(&API{db: database}).V2Routes().ServeHTTP(unsupported, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations?intent=vocal-safe", nil))
