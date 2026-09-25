@@ -65,12 +65,19 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 		CREATE TABLE IF NOT EXISTS track_analysis_overrides (
 			song_id TEXT PRIMARY KEY REFERENCES songs(id) ON DELETE CASCADE,
 			bpm REAL,
+			bpm_source_fingerprint TEXT NOT NULL DEFAULT '',
 			key_tonic INTEGER CHECK(key_tonic IS NULL OR key_tonic BETWEEN 0 AND 11),
 			key_mode TEXT CHECK(key_mode IS NULL OR key_mode IN ('major', 'minor')),
 			beatgrid_artifact_id TEXT,
 			bpm_locked INTEGER NOT NULL DEFAULT 0 CHECK(bpm_locked IN (0, 1)),
 			key_locked INTEGER NOT NULL DEFAULT 0 CHECK(key_locked IN (0, 1)),
 			beatgrid_locked INTEGER NOT NULL DEFAULT 0 CHECK(beatgrid_locked IN (0, 1)),
+			updated_at INTEGER NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS track_analysis_source_revisions (
+			song_id TEXT PRIMARY KEY REFERENCES songs(id) ON DELETE CASCADE,
+			source_fingerprint TEXT NOT NULL,
 			updated_at INTEGER NOT NULL
 		);
 	`)
@@ -83,11 +90,49 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 	if err == nil {
 		err = ensureTrackAnalysisArtifactSourceFingerprintColumn(d)
 	}
+	if err == nil {
+		err = ensureTrackAnalysisOverrideBPMSourceFingerprintColumn(d)
+	}
 	result := trackAnalysisSchemaResult{err: err}
 	actual, loaded := trackAnalysisSchemas.LoadOrStore(d, result)
 	if loaded {
 		return actual.(trackAnalysisSchemaResult).err
 	}
+	return err
+}
+
+// ensureTrackAnalysisOverrideBPMSourceFingerprintColumn leaves pre-existing
+// manual BPM values unbound. They remain unknown until the user saves them
+// against a current source revision.
+func ensureTrackAnalysisOverrideBPMSourceFingerprintColumn(d *DB) error {
+	rows, err := d.conn.Query(`PRAGMA table_info(track_analysis_overrides)`)
+	if err != nil {
+		return err
+	}
+	hasColumn := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "bpm_source_fingerprint" {
+			hasColumn = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	_, err = d.conn.Exec(`ALTER TABLE track_analysis_overrides ADD COLUMN bpm_source_fingerprint TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 

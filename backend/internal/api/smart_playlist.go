@@ -2080,7 +2080,19 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	scoreCtx.DiscoverMode = discoverMode
 	scoreCtx.FlowStrictness = flowStrictness
 	scoreCtx.RecentlyPlayedIDs = recentlyPlayedIDs
-	if measuredBPM, measuredErr := a.db.ListEffectiveBPM(); measuredErr != nil {
+	analysisRows, analysisErr := a.db.ListTrackAnalysis()
+	analysisIDs := make([]string, 0, len(analysisRows))
+	if analysisErr == nil {
+		for _, analysis := range analysisRows {
+			analysisIDs = append(analysisIDs, analysis.SongID)
+		}
+	}
+	currentFingerprints, fingerprintErr := a.currentAnalysisSourceFingerprints(analysisIDs)
+	if analysisErr != nil {
+		logger.API("DJ Mode: failed to load analysis source identities; tracks without verified current BPM remain unknown: %v", analysisErr)
+	} else if fingerprintErr != nil {
+		logger.API("DJ Mode: failed to resolve current source identities; tracks without verified current BPM remain unknown: %v", fingerprintErr)
+	} else if measuredBPM, measuredErr := a.db.ListEffectiveBPM(currentFingerprints); measuredErr != nil {
 		logger.API("DJ Mode: failed to load local BPM; tracks without measurements remain unknown: %v", measuredErr)
 	} else {
 		scoreCtx.EffectiveBPM = measuredBPM

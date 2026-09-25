@@ -268,6 +268,27 @@ func TestResolveEffectiveBPMUsesOnlyManualOrLocalAnalysis(t *testing.T) {
 	}
 }
 
+func TestResolveEffectiveBPMForSourceRejectsStaleAndLegacyValues(t *testing.T) {
+	measured, manual := 128.0, 127.25
+	measuredSource := "measured"
+	analysis := TrackAnalysis{SongID: "song", Status: TrackAnalysisComplete, SourceFingerprint: "source-v1", BPM: &measured, BPMSource: &measuredSource}
+	staleManual := TrackAnalysisOverride{SongID: "song", BPM: &manual, BPMSourceFingerprint: "source-v0", BPMLocked: true}
+	if result := ResolveEffectiveBPMForSource(EffectiveBPMInputs{Override: &staleManual, Analysis: &analysis}, "source-v1"); result.Value == nil || *result.Value != measured || result.Source != EffectiveBPMMeasured {
+		t.Fatalf("stale manual should fall back to current measurement: %#v", result)
+	}
+	if result := ResolveEffectiveBPMForSource(EffectiveBPMInputs{Override: &staleManual, Analysis: &analysis}, "source-v2"); result.Value != nil || result.Source != EffectiveBPMUnknown || result.SyncAllowed {
+		t.Fatalf("old manual and measured values leaked to a new source: %#v", result)
+	}
+	legacyManual := TrackAnalysisOverride{SongID: "song", BPM: &manual, BPMLocked: true}
+	if result := ResolveEffectiveBPMForSource(EffectiveBPMInputs{Override: &legacyManual, Analysis: &analysis}, "source-v1"); result.Value == nil || *result.Value != measured || result.Source != EffectiveBPMMeasured {
+		t.Fatalf("unbound legacy manual override should not win over current measurement: %#v", result)
+	}
+	currentManual := TrackAnalysisOverride{SongID: "song", BPM: &manual, BPMSourceFingerprint: "source-v2", BPMLocked: true}
+	if result := ResolveEffectiveBPMForSource(EffectiveBPMInputs{Override: &currentManual, Analysis: &analysis}, "source-v2"); result.Value == nil || *result.Value != manual || result.Source != EffectiveBPMManual {
+		t.Fatalf("current manual override was not honored: %#v", result)
+	}
+}
+
 func TestResolveEffectiveKeyPrefersLockedManualThenMeasured(t *testing.T) {
 	manualTonic, measuredTonic := 9, 0
 	manualMode, measuredMode := "minor", "major"
