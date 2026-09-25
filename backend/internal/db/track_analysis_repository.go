@@ -5,20 +5,43 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
 // TrackAnalysisArtifact stores a versioned opaque payload such as a beat grid.
 type TrackAnalysisArtifact struct {
-	ID               string
-	SongID           string
-	Kind             string
-	FormatVersion    int
-	AlgorithmVersion string
-	Encoding         string
-	Provenance       string
-	Data             []byte
-	CreatedAt        int64
+	ID                string
+	SongID            string
+	Kind              string
+	FormatVersion     int
+	AlgorithmVersion  string
+	Encoding          string
+	Provenance        string
+	SourceFingerprint string
+	Data              []byte
+	CreatedAt         int64
+}
+
+// TrackAnalysisArtifactMetadata is the bounded, payload-free view used by
+// library status listings. Callers fetch artifact payloads only for eligible
+// rows that require content validation.
+type TrackAnalysisArtifactMetadata struct {
+	ID                string
+	SongID            string
+	Kind              string
+	FormatVersion     int
+	AlgorithmVersion  string
+	Encoding          string
+	Provenance        string
+	SourceFingerprint string
+	CreatedAt         int64
+	PayloadBytes      int64
+}
+
+type TrackAnalysisArtifactPayload struct {
+	SourceFingerprint string
+	Data              []byte
 }
 
 // TrackAnalysisOverride records explicit user choices independently of
@@ -311,11 +334,11 @@ func (d *DB) UpsertTrackAnalysisArtifact(artifact TrackAnalysisArtifact) error {
 	if artifact.CreatedAt == 0 {
 		artifact.CreatedAt = time.Now().UnixMilli()
 	}
-	_, err := d.conn.Exec(`INSERT INTO track_analysis_artifacts(id, song_id, kind, format_version, algorithm_version, encoding, provenance, data, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := d.conn.Exec(`INSERT INTO track_analysis_artifacts(id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, data, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(song_id, kind, format_version, algorithm_version) DO UPDATE SET
-			id=excluded.id, encoding=excluded.encoding, provenance=excluded.provenance, data=excluded.data, created_at=excluded.created_at`,
-		artifact.ID, artifact.SongID, artifact.Kind, artifact.FormatVersion, artifact.AlgorithmVersion, artifact.Encoding, artifact.Provenance, artifact.Data, artifact.CreatedAt)
+			id=excluded.id, encoding=excluded.encoding, provenance=excluded.provenance, source_fingerprint=excluded.source_fingerprint, data=excluded.data, created_at=excluded.created_at`,
+		artifact.ID, artifact.SongID, artifact.Kind, artifact.FormatVersion, artifact.AlgorithmVersion, artifact.Encoding, artifact.Provenance, artifact.SourceFingerprint, artifact.Data, artifact.CreatedAt)
 	return err
 }
 
@@ -325,9 +348,9 @@ func (d *DB) GetTrackAnalysisArtifact(songID, kind string, formatVersion int, al
 		return TrackAnalysisArtifact{}, err
 	}
 	var artifact TrackAnalysisArtifact
-	err := d.conn.QueryRow(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, data, created_at
+	err := d.conn.QueryRow(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, data, created_at
 		FROM track_analysis_artifacts WHERE song_id = ? AND kind = ? AND format_version = ? AND algorithm_version = ?`, songID, kind, formatVersion, algorithmVersion).
-		Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.Data, &artifact.CreatedAt)
+		Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.SourceFingerprint, &artifact.Data, &artifact.CreatedAt)
 	return artifact, err
 }
 
@@ -338,7 +361,7 @@ func (d *DB) ListTrackAnalysisArtifacts(kind string, formatVersion int, algorith
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
-	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, data, created_at
+	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, data, created_at
 		FROM track_analysis_artifacts WHERE kind = ? AND format_version = ? AND algorithm_version = ? ORDER BY song_id`, kind, formatVersion, algorithmVersion)
 	if err != nil {
 		return nil, err
@@ -347,12 +370,101 @@ func (d *DB) ListTrackAnalysisArtifacts(kind string, formatVersion int, algorith
 	artifacts := make([]TrackAnalysisArtifact, 0)
 	for rows.Next() {
 		var artifact TrackAnalysisArtifact
-		if err := rows.Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.Data, &artifact.CreatedAt); err != nil {
+		if err := rows.Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.SourceFingerprint, &artifact.Data, &artifact.CreatedAt); err != nil {
 			return nil, err
 		}
 		artifacts = append(artifacts, artifact)
 	}
 	return artifacts, rows.Err()
+}
+
+// ListTrackAnalysisArtifactMetadata returns current-version artifact identity
+// without materializing compressed payload BLOBs for every library track.
+func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, algorithmVersion string) ([]TrackAnalysisArtifactMetadata, error) {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return nil, err
+	}
+	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, created_at, LENGTH(data)
+		FROM track_analysis_artifacts WHERE kind = ? AND format_version = ? AND algorithm_version = ? ORDER BY song_id`, kind, formatVersion, algorithmVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	metadata := make([]TrackAnalysisArtifactMetadata, 0)
+	for rows.Next() {
+		var artifact TrackAnalysisArtifactMetadata
+		if err := rows.Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.SourceFingerprint, &artifact.CreatedAt, &artifact.PayloadBytes); err != nil {
+			return nil, err
+		}
+		metadata = append(metadata, artifact)
+	}
+	return metadata, rows.Err()
+}
+
+// VisitTrackAnalysisArtifactPayloads loads eligible payloads in bounded SQL
+// batches and lets the caller validate each BLOB before the next is scanned.
+// The callback must not issue another query on this DB connection.
+func (d *DB) VisitTrackAnalysisArtifactPayloads(songIDs []string, kind string, formatVersion int, algorithmVersion string, visit func(songID, sourceFingerprint string, data []byte) error) error {
+	if len(songIDs) == 0 {
+		return nil
+	}
+	if visit == nil {
+		return errors.New("artifact payload visitor is required")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	unique := make([]string, 0, len(songIDs))
+	seen := make(map[string]struct{}, len(songIDs))
+	for _, songID := range songIDs {
+		if songID == "" {
+			continue
+		}
+		if _, ok := seen[songID]; ok {
+			continue
+		}
+		seen[songID] = struct{}{}
+		unique = append(unique, songID)
+	}
+	const chunkSize = 500
+	for start := 0; start < len(unique); start += chunkSize {
+		end := start + chunkSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		chunk := unique[start:end]
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(chunk)), ",")
+		args := make([]any, 0, len(chunk)+3)
+		args = append(args, kind, formatVersion, algorithmVersion)
+		for _, songID := range chunk {
+			args = append(args, songID)
+		}
+		rows, err := d.conn.Query(`SELECT song_id, source_fingerprint, data FROM track_analysis_artifacts
+			WHERE kind = ? AND format_version = ? AND algorithm_version = ? AND song_id IN (`+placeholders+`)`, args...)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var songID string
+			var payload TrackAnalysisArtifactPayload
+			if err := rows.Scan(&songID, &payload.SourceFingerprint, &payload.Data); err != nil {
+				rows.Close()
+				return err
+			}
+			if err := visit(songID, payload.SourceFingerprint, payload.Data); err != nil {
+				rows.Close()
+				return err
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DeleteTrackAnalysisArtifact removes only one versioned representation.  It

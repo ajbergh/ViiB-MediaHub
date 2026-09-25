@@ -101,8 +101,8 @@ func TestBeatGridArtifactProvenanceMigration(t *testing.T) {
 		{"song-ambiguous", "ambiguous", "unknown"},
 	} {
 		artifact, err := database.GetTrackAnalysisArtifact(test.songID, "beatgrid", 1, map[string]string{"native": "v1", "manual": "v2", "ambiguous": "v3"}[test.id])
-		if err != nil || artifact.Provenance != test.want {
-			t.Fatalf("artifact %s provenance=%q err=%v, want %q", test.id, artifact.Provenance, err, test.want)
+		if err != nil || artifact.Provenance != test.want || artifact.SourceFingerprint != "" {
+			t.Fatalf("artifact %s provenance/source=%q/%q err=%v, want %q/empty for legacy row", test.id, artifact.Provenance, artifact.SourceFingerprint, err, test.want)
 		}
 	}
 }

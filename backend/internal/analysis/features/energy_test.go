@@ -144,6 +144,20 @@ func TestDecodeLegacyArtifactWithoutStructureFields(t *testing.T) {
 	}
 }
 
+func TestDecodeBoundedRejectsOversizedDecompressedArtifact(t *testing.T) {
+	encoded, err := (Result{Energy: []EnergyPoint{{Time: 0, Value: .5}}, Sections: []Section{{Start: 0, End: 1, Energy: .5, Label: StructureUnknown}}}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeBounded(encoded, 1); err == nil {
+		t.Fatal("DecodeBounded accepted a payload larger than its decoded size limit")
+	}
+	decoded, err := DecodeBounded(encoded, MaxStructureStatusArtifactBytes)
+	if err != nil || len(decoded.Sections) != 1 {
+		t.Fatalf("DecodeBounded result=%#v err=%v", decoded, err)
+	}
+}
+
 func TestCueSuggestionsSnapToDownbeats(t *testing.T) {
 	result := Result{Energy: []EnergyPoint{{Time: 0, Value: .2}}, Sections: []Section{{Start: .12, End: 3.9, Energy: .2}, {Start: 4.13, End: 8.1, Energy: .8}}}
 	grid := &beatgrid.Grid{Beats: []float64{.1, .6, 1.1, 1.6, 2.1, 2.6, 3.1, 3.6, 4.1, 4.6, 5.1, 5.6, 6.1, 6.6, 7.1, 7.6, 8.1}, DownbeatIndices: []int{0, 8, 16}}

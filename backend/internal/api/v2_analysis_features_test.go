@@ -6,12 +6,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -29,6 +31,22 @@ func TestV2TrackTempoEvidenceUsesMeasuredValuesOnly(t *testing.T) {
 	if result.BPMAltCandidate != nil || result.TempoStability != nil || result.BPMConfidence != nil || result.TempoKind != nil {
 		t.Fatalf("measured evidence attributed to manual tempo: %#v", result)
 	}
+}
+
+func saveAnalysisTestSong(t *testing.T, database *db.DB, id, title string, genres []string, addedAt, lastPlayed int64) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), id+".mp3")
+	if err := os.WriteFile(path, []byte("test audio source for "+id), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSong(&db.Song{ID: id, Title: title, Artist: "Artist", Album: "Album", Genre: genres, FilePath: path, AddedAt: addedAt, LastPlayed: lastPlayed}); err != nil {
+		t.Fatal(err)
+	}
+	source, err := analysis.ResolveLocalSource(database, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return source.Fingerprint
 }
 
 func TestV2TrackAnalysisExposesOnlyCurrentSettledEnergyLevel(t *testing.T) {
@@ -139,6 +157,136 @@ func TestV2TrackAnalysisFeaturesListsResolvedRecords(t *testing.T) {
 	}
 }
 
+func TestV2TrackAnalysisFeatureListReportsOnlyCurrentSettledStructure(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	const analyzedAt = int64(1000)
+	base, err := (features.Result{
+		Energy:   []features.EnergyPoint{{Time: 0, Value: .5}},
+		Sections: []features.Section{{Start: 0, End: 1, Energy: .5, Label: features.StructureUnknown, Confidence: .2}},
+	}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := (features.Result{
+		Energy:   []features.EnergyPoint{{Time: 0, Value: .5}},
+		Sections: []features.Section{{Start: 0, End: 1, Energy: .5}},
+	}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid, err := (features.Result{
+		Energy:   []features.EnergyPoint{{Time: 0, Value: .5}},
+		Sections: []features.Section{{Start: 1, End: 1, Energy: .5, Label: features.StructureUnknown}},
+	}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		id                  string
+		status              string
+		artifact            []byte
+		artifactFingerprint string
+		legacyFingerprint   bool
+		artifactFormat      int
+		artifactAlgorithm   string
+		changeSource        bool
+		removeSource        bool
+		withArtifact        bool
+		artifactAt          int64
+		wantAvailable       bool
+	}{
+		{id: "complete", status: db.TrackAnalysisComplete, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, wantAvailable: true},
+		{id: "partial", status: db.TrackAnalysisPartial, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, wantAvailable: true},
+		{id: "pending", status: db.TrackAnalysisPending, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "running", status: db.TrackAnalysisRunning, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "failed-current-source", status: db.TrackAnalysisFailed, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, wantAvailable: true},
+		{id: "failed-old-source", status: db.TrackAnalysisFailed, artifact: base, artifactFingerprint: "old-source", withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "unsupported", status: db.TrackAnalysisUnsupported, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "missing", status: db.TrackAnalysisComplete},
+		{id: "corrupt", status: db.TrackAnalysisComplete, artifact: []byte("not gzip"), withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "stale-source", status: db.TrackAnalysisComplete, artifact: base, artifactFingerprint: "old-source", withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "source-changed-before-reanalysis", status: db.TrackAnalysisComplete, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, changeSource: true},
+		{id: "source-unavailable", status: db.TrackAnalysisComplete, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, removeSource: true},
+		{id: "legacy-no-fingerprint", status: db.TrackAnalysisComplete, artifact: base, legacyFingerprint: true, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "legacy-structure", status: db.TrackAnalysisComplete, artifact: legacy, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "invalid-section", status: db.TrackAnalysisComplete, artifact: invalid, withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "unsupported-version", status: db.TrackAnalysisComplete, artifact: base, artifactFormat: features.FormatVersion + 1, withArtifact: true, artifactAt: analyzedAt + 1},
+	}
+	for _, test := range cases {
+		path := filepath.Join(t.TempDir(), test.id+".mp3")
+		if err := os.WriteFile(path, []byte("source audio placeholder"), 0o600); err != nil {
+			t.Fatalf("write source %s: %v", test.id, err)
+		}
+		if err := database.SaveSong(&db.Song{ID: test.id, Title: test.id, Artist: "Artist", Album: "Album", FilePath: path, AddedAt: 1}); err != nil {
+			t.Fatalf("save song %s: %v", test.id, err)
+		}
+		resolvedSource, err := analysis.ResolveLocalSource(database, test.id)
+		if err != nil {
+			t.Fatalf("resolve source %s: %v", test.id, err)
+		}
+		analyzed := analyzedAt
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: test.id, Status: test.status, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: resolvedSource.Fingerprint, AnalyzedAt: &analyzed}); err != nil {
+			t.Fatalf("save analysis %s: %v", test.id, err)
+		}
+		if test.withArtifact {
+			fingerprint := test.artifactFingerprint
+			formatVersion := test.artifactFormat
+			algorithmVersion := test.artifactAlgorithm
+			if fingerprint == "" && !test.legacyFingerprint {
+				fingerprint = resolvedSource.Fingerprint
+			}
+			if formatVersion == 0 {
+				formatVersion = features.FormatVersion
+			}
+			if algorithmVersion == "" {
+				algorithmVersion = features.AlgorithmVersion
+			}
+			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+				ID: test.id + ":" + features.AlgorithmVersion, SongID: test.id, Kind: features.ArtifactKind,
+				FormatVersion: formatVersion, AlgorithmVersion: algorithmVersion,
+				Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: test.artifact, CreatedAt: test.artifactAt,
+			}); err != nil {
+				t.Fatalf("save artifact %s: %v", test.id, err)
+			}
+		}
+		if test.changeSource {
+			if err := os.WriteFile(path, []byte("source audio placeholder with a changed byte length"), 0o600); err != nil {
+				t.Fatalf("change source %s: %v", test.id, err)
+			}
+		}
+		if test.removeSource {
+			if err := os.Remove(path); err != nil {
+				t.Fatalf("remove source %s: %v", test.id, err)
+			}
+		}
+	}
+
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /analysis = %d, want %d: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response []TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]bool, len(response))
+	for _, feature := range response {
+		got[feature.SongID] = feature.StructureAvailable
+	}
+	for _, test := range cases {
+		if got[test.id] != test.wantAvailable {
+			t.Errorf("structureAvailable[%s] = %v, want %v", test.id, got[test.id], test.wantAvailable)
+		}
+	}
+}
+
 func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
@@ -236,7 +384,8 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
+	fingerprint := saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprint}); err != nil {
 		t.Fatal(err)
 	}
 	downbeat := .0
@@ -245,7 +394,7 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:energy", SongID: "song", Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Data: encoded}); err != nil {
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:energy", SongID: "song", Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: encoded}); err != nil {
 		t.Fatal(err)
 	}
 	standardsLoudness, standardsPeak := -11.25, -.42
@@ -254,7 +403,7 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:" + features.BS1770AlgorithmVersion, SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured", Data: standardsEncoded}); err != nil {
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:" + features.BS1770AlgorithmVersion, SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: standardsEncoded}); err != nil {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
@@ -286,7 +435,7 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:" + features.BS1770AlgorithmVersion, SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured", Data: monoEncoded}); err != nil {
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:" + features.BS1770AlgorithmVersion, SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: monoEncoded}); err != nil {
 		t.Fatal(err)
 	}
 	monoRecorder := httptest.NewRecorder()
@@ -294,6 +443,18 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	var monoResponse EnergyFeaturesResponse
 	if monoRecorder.Code != http.StatusOK || json.NewDecoder(monoRecorder.Body).Decode(&monoResponse) != nil || monoResponse.LoudnessLayout == nil || *monoResponse.LoudnessLayout != "mono" || monoResponse.LoudnessWeighting == nil || *monoResponse.LoudnessWeighting != "M=1" || monoResponse.IntegratedLUFSBS1770 != nil || monoResponse.TruePeakDBTP != nil {
 		t.Fatalf("mono standards artifact/API round trip = status %d, response %#v", monoRecorder.Code, monoResponse)
+	}
+	song, err := database.GetSongByID("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(song.FilePath, []byte("the source file changed after analysis"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	staleRecorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(staleRecorder, httptest.NewRequest(http.MethodGet, "/analysis/song/energy", nil))
+	if staleRecorder.Code != http.StatusConflict {
+		t.Fatalf("GET stale energy = %d, want %d: %s", staleRecorder.Code, http.StatusConflict, staleRecorder.Body.String())
 	}
 }
 
@@ -303,6 +464,7 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
+	fingerprints := make(map[string]string)
 	for _, id := range []string{"source", "compatible", "incompatible"} {
 		genres := []string(nil)
 		if id == "compatible" {
@@ -310,9 +472,7 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 		} else if id == "incompatible" {
 			genres = []string{"Rockabilly"}
 		}
-		if err := database.SaveSong(&db.Song{ID: id, Title: id, Artist: "Artist", Album: "Album", Genre: genres, FilePath: id + ".mp3", AddedAt: 1}); err != nil {
-			t.Fatal(err)
-		}
+		fingerprints[id] = saveAnalysisTestSong(t, database, id, id, genres, 1, 0)
 	}
 	if err := database.SavePlaylist(&db.Playlist{ID: "mix", Name: "Mix", SongIDs: []string{"compatible", "stale-song-id"}, CreatedAt: 1}); err != nil {
 		t.Fatal(err)
@@ -330,7 +490,7 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id + ":energy", SongID: id, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Data: encoded}); err != nil {
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id + ":energy", SongID: id, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprints[id], Data: encoded}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -344,7 +504,7 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 		level int
 	}{{id: "source", bpm: 128, key: 0, level: 5}, {id: "compatible", bpm: 130, key: 0, level: 6}, {id: "incompatible", bpm: 150, key: 5, level: 2}} {
 		bpm, tonic, level := metadata.bpm, metadata.key, metadata.level
-		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: metadata.id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: metadata.id, BPM: &bpm, BPMConfidence: &confidence, BPMSource: &measuredSource, KeyTonic: &tonic, KeyMode: &keyMode, KeyConfidence: &confidence, KeySource: &measuredSource, EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &energyVersion}); err != nil {
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: metadata.id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprints[metadata.id], BPM: &bpm, BPMConfidence: &confidence, BPMSource: &measuredSource, KeyTonic: &tonic, KeyMode: &keyMode, KeyConfidence: &confidence, KeySource: &measuredSource, EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &energyVersion}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -503,14 +663,15 @@ func TestV2NotRecentlyPlayedRecommendationFilter(t *testing.T) {
 		{id: "never"},
 	}
 	for _, track := range tracks {
-		if err := database.SaveSong(&db.Song{ID: track.id, Title: track.id, Artist: "Artist", Album: "Album", FilePath: track.id + ".mp3", AddedAt: now, LastPlayed: track.lastPlayed}); err != nil {
+		fingerprint := saveAnalysisTestSong(t, database, track.id, track.id, nil, now, track.lastPlayed)
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: track.id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprint}); err != nil {
 			t.Fatal(err)
 		}
 		encoded, encodeErr := (features.Result{IntegratedLUFS: -12, Energy: []features.EnergyPoint{{Value: .4}, {Value: .7}}}).Encode()
 		if encodeErr != nil {
 			t.Fatal(encodeErr)
 		}
-		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: track.id + ":energy", SongID: track.id, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Data: encoded}); err != nil {
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: track.id + ":energy", SongID: track.id, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: encoded}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -590,26 +751,25 @@ func TestV2CamelotCompatibleRecommendationFilter(t *testing.T) {
 	for _, candidate := range candidates {
 		allIDs = append(allIDs, candidate.id)
 	}
+	fingerprints := make(map[string]string)
 	for _, id := range allIDs {
-		if err := database.SaveSong(&db.Song{ID: id, Title: id, Artist: "Artist", Album: "Album", FilePath: id + ".mp3", AddedAt: 1}); err != nil {
-			t.Fatal(err)
-		}
+		fingerprints[id] = saveAnalysisTestSong(t, database, id, id, nil, 1, 0)
 		encoded, err := (features.Result{IntegratedLUFS: -12, Energy: []features.EnergyPoint{{Value: .4}, {Value: .7}}}).Encode()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id + ":energy", SongID: id, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Data: encoded}); err != nil {
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id + ":energy", SongID: id, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprints[id], Data: encoded}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	measured := "measured"
 	confidence := .9
-	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "source", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: "source", KeyTonic: intPointer(0), KeyMode: stringPointer("major"), KeyConfidence: &confidence, KeySource: &measured}); err != nil {
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "source", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprints["source"], KeyTonic: intPointer(0), KeyMode: stringPointer("major"), KeyConfidence: &confidence, KeySource: &measured}); err != nil {
 		t.Fatal(err)
 	}
 	for _, candidate := range candidates {
 		keyConfidence, keySource := candidate.confidence, candidate.keySource
-		analysis := db.TrackAnalysis{SongID: candidate.id, Status: candidate.status, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: candidate.id, KeyTonic: candidate.tonic, KeyMode: candidate.mode}
+		analysis := db.TrackAnalysis{SongID: candidate.id, Status: candidate.status, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprints[candidate.id], KeyTonic: candidate.tonic, KeyMode: candidate.mode}
 		if candidate.tonic != nil && candidate.mode != nil {
 			analysis.KeyConfidence, analysis.KeySource = &keyConfidence, &keySource
 		}
@@ -617,7 +777,6 @@ func TestV2CamelotCompatibleRecommendationFilter(t *testing.T) {
 			t.Fatalf("save analysis %s: %v", candidate.id, err)
 		}
 	}
-
 	get := func(query string) TransitionRecommendationsResponse {
 		t.Helper()
 		recorder := httptest.NewRecorder()
@@ -645,12 +804,13 @@ func TestV2CamelotCompatibleRecommendationFilter(t *testing.T) {
 	if len(accepted) != 3 {
 		t.Errorf("compatible filter accepted %d candidates, want same/adjacent/relative only: %v", len(accepted), accepted)
 	}
-	if filtered.CandidatesBeforeFilters != len(candidates) || filtered.CandidatesAfterFilters != 3 || filtered.Filters.CamelotCompatible == nil || !*filtered.Filters.CamelotCompatible {
+	eligibleCandidates := len(candidates) - 1 // the pending row is excluded by freshness gating
+	if filtered.CandidatesBeforeFilters != eligibleCandidates || filtered.CandidatesAfterFilters != 3 || filtered.Filters.CamelotCompatible == nil || !*filtered.Filters.CamelotCompatible {
 		t.Errorf("camelot filter echo/counts = before %d after %d filters %#v", filtered.CandidatesBeforeFilters, filtered.CandidatesAfterFilters, filtered.Filters)
 	}
 	for _, query := range []string{"", "?camelotCompatible=false"} {
 		unfiltered := get(query)
-		if unfiltered.CandidatesBeforeFilters != len(candidates) || unfiltered.CandidatesAfterFilters != len(candidates) || len(unfiltered.Recommendations) != len(candidates) {
+		if unfiltered.CandidatesBeforeFilters != eligibleCandidates || unfiltered.CandidatesAfterFilters != eligibleCandidates || len(unfiltered.Recommendations) != eligibleCandidates {
 			t.Errorf("query %q changed unfiltered result/counts: before %d after %d recommendations %d", query, unfiltered.CandidatesBeforeFilters, unfiltered.CandidatesAfterFilters, len(unfiltered.Recommendations))
 		}
 		if query == "" && unfiltered.Filters.CamelotCompatible != nil {
@@ -660,9 +820,20 @@ func TestV2CamelotCompatibleRecommendationFilter(t *testing.T) {
 			t.Errorf("false camelotCompatible echo = %#v", unfiltered.Filters.CamelotCompatible)
 		}
 	}
+	staleSong, err := database.GetSongByID("other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(staleSong.FilePath, []byte("candidate source changed after analysis"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withoutStaleCandidate := get("")
+	if withoutStaleCandidate.CandidatesBeforeFilters != eligibleCandidates-1 || len(withoutStaleCandidate.Recommendations) != eligibleCandidates-1 {
+		t.Fatalf("stale candidate remained eligible: before=%d recommendations=%d", withoutStaleCandidate.CandidatesBeforeFilters, len(withoutStaleCandidate.Recommendations))
+	}
 
 	lowSourceConfidence := .2
-	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "source", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: "source", KeyTonic: intPointer(0), KeyMode: stringPointer("major"), KeyConfidence: &lowSourceConfidence, KeySource: &measured}); err != nil {
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "source", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprints["source"], KeyTonic: intPointer(0), KeyMode: stringPointer("major"), KeyConfidence: &lowSourceConfidence, KeySource: &measured}); err != nil {
 		t.Fatal(err)
 	}
 	withoutTrustedSource := get("?camelotCompatible=true")

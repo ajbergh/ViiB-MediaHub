@@ -139,6 +139,7 @@ export interface TrackAnalysisFeature {
   energyLevel?: number;
   energyLevelConfidence?: number;
   energyAlgorithmVersion?: string;
+  structureAvailable?: boolean;
 }
 
 // Persisted phase-aligned timing data. It is distinct from the scalar BPM so

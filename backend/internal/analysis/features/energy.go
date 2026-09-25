@@ -8,6 +8,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"io"
 	"math"
 	"time"
 
@@ -15,15 +16,16 @@ import (
 )
 
 const (
-	ArtifactKind                = "energy-structure"
-	FormatVersion               = 1
-	AlgorithmVersion            = "energy-structure-v1"
-	EnergyLevelAlgorithmVersion = "energy-level-v1-fixed-reference"
-	Encoding                    = "gzip-json-v1"
-	LoudnessKind                = "unweighted-mono-rms-proxy"
-	PeakKind                    = "sample-plus-midpoint-peak-proxy"
-	ChannelScope                = "mono"
-	MeasurementStandard         = "none"
+	ArtifactKind                    = "energy-structure"
+	FormatVersion                   = 1
+	AlgorithmVersion                = "energy-structure-v1"
+	EnergyLevelAlgorithmVersion     = "energy-level-v1-fixed-reference"
+	Encoding                        = "gzip-json-v1"
+	LoudnessKind                    = "unweighted-mono-rms-proxy"
+	PeakKind                        = "sample-plus-midpoint-peak-proxy"
+	ChannelScope                    = "mono"
+	MeasurementStandard             = "none"
+	MaxStructureStatusArtifactBytes = 16 << 20
 )
 
 // EnergyPoint is a fixed-time, normalized intensity sample.  Time is the
@@ -444,6 +446,38 @@ func Decode(data []byte) (Result, error) {
 	defer reader.Close()
 	var result Result
 	if err := json.NewDecoder(reader).Decode(&result); err != nil {
+		return Result{}, err
+	}
+	if len(result.Energy) == 0 {
+		return Result{}, errors.New("energy artifact has no points")
+	}
+	return qualifyMeasurement(result), nil
+}
+
+// DecodeBounded decodes an energy artifact only when its decompressed payload
+// stays within maxBytes. It is intended for untrusted/bulk validation paths
+// such as library readiness, where a corrupt gzip bomb must not exhaust memory.
+func DecodeBounded(data []byte, maxBytes int64) (Result, error) {
+	if maxBytes <= 0 {
+		return Result{}, errors.New("energy artifact decoded size limit must be positive")
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return Result{}, err
+	}
+	decoded, readErr := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	closeErr := reader.Close()
+	if readErr != nil {
+		return Result{}, readErr
+	}
+	if closeErr != nil {
+		return Result{}, closeErr
+	}
+	if int64(len(decoded)) > maxBytes {
+		return Result{}, errors.New("energy artifact exceeds decoded size limit")
+	}
+	var result Result
+	if err := json.Unmarshal(decoded, &result); err != nil {
 		return Result{}, err
 	}
 	if len(result.Energy) == 0 {
