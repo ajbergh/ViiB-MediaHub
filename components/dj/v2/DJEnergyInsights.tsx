@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
-import { getDJAudioEngine, type PreparedDeckTrack, type RetainedDeckSource } from '../../../lib/djAudio';
-import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPreparedPreviewDeck, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsOccupiedPreviewBaseline, stillOwnsPreviewDeck, stillOwnsPreviewRoute, stillOwnsPreviewTransport, type TestMixPreviewBaseline } from '../../../lib/testMixPreviewGuard';
+import { getDJAudioEngine, type SynchronizedPreviewSources } from '../../../lib/djAudio';
+import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsDeckSnapshot, stillOwnsPreviewRoute } from '../../../lib/testMixPreviewGuard';
 import { api, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
 import type { DeckState } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
@@ -16,30 +16,35 @@ interface TestMixPreviewSession {
   targetDeck: 'A' | 'B';
   candidateId: string;
   candidateTrack: Song;
-  baseline: TestMixPreviewBaseline;
-  occupied: boolean;
-  originalDeck: DeckState;
-  originalPosition: number;
-  originalKeyLock: boolean;
-  originalStemMode: ReturnType<ReturnType<typeof getDJAudioEngine>['getStemStatus']>['mode'];
-  originalStemState: ReturnType<ReturnType<typeof getDJAudioEngine>['getStemState']>;
-  previewStemMode: ReturnType<ReturnType<typeof getDJAudioEngine>['getStemStatus']>['mode'] | null;
-  previewStemState: ReturnType<ReturnType<typeof getDJAudioEngine>['getStemState']> | null;
-  previewStemControlGeneration: number | null;
-  originalTransportControlGeneration: number;
-  previewTransportControlGeneration: number | null;
-  originalStemControlGeneration: number;
-  generationBeforeLoad: number;
-  loadGeneration: number | null;
-  preparedCandidate: PreparedDeckTrack | null;
-  retainedSource: RetainedDeckSource | null;
-  phase: 'preparing' | 'loading' | 'ready' | 'playing';
+  phase: 'preparing' | 'loading' | 'playing';
   startedAtCrossfader: number;
   startedAtKeyLock: boolean;
   startedAtHeadphoneDeviceId: string;
   startedAtMasterDeviceId: string;
   timeout?: number;
   interval?: number;
+  syncOwnership?: SynchronizedPreviewOwnership;
+  synchronizedSources?: SynchronizedPreviewSources;
+  abortController?: AbortController;
+}
+
+interface SynchronizedPreviewDeckBaseline {
+  deck: 'A' | 'B';
+  state: DeckState;
+  trackId: string | null;
+  loaded: boolean;
+  loadGeneration: number;
+  transportGeneration: number;
+  stemGeneration: number;
+  stemMode: ReturnType<ReturnType<typeof getDJAudioEngine>['getStemStatus']>['mode'];
+  stemState: ReturnType<ReturnType<typeof getDJAudioEngine>['getStemState']>;
+  keyLock: boolean;
+  autoGain: boolean;
+}
+
+interface SynchronizedPreviewOwnership {
+  reference: SynchronizedPreviewDeckBaseline;
+  candidate: SynchronizedPreviewDeckBaseline;
 }
 
 function copyDeckSnapshot(deck: DeckState): DeckState {
@@ -181,14 +186,13 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
             : autoGainEnabled ? 'Turn off auto-gain for the preview deck first.'
               : !hasSeparateHeadphoneRoute(headphoneDeviceId, mainDeviceId) ? 'Select a separate headphone output device first.' : '';
 
-  const discardPreviewSession = (session: TestMixPreviewSession, preserveRetained = false) => {
+  const discardPreviewSession = (session: TestMixPreviewSession) => {
     if (session.timeout !== undefined) window.clearTimeout(session.timeout);
     if (session.interval !== undefined) window.clearInterval(session.interval);
-    const audio = getDJAudioEngine();
-    if (session.preparedCandidate?.state === 'prepared') audio.discardPreparedTrack(session.preparedCandidate);
-    session.preparedCandidate = null;
-    if (!preserveRetained && session.retainedSource?.state === 'retained') audio.discardRetainedDeckSource(session.retainedSource);
-    if (!preserveRetained) session.retainedSource = null;
+    session.abortController?.abort();
+    session.abortController = undefined;
+    session.synchronizedSources?.dispose();
+    session.synchronizedSources = undefined;
     if (previewRef.current?.token === session.token) previewRef.current = null;
   };
 
@@ -209,109 +213,33 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     });
   };
 
-  const ownsOccupiedPreviewControls = (session: TestMixPreviewSession, deckState: DeckState, audio: ReturnType<typeof getDJAudioEngine>) =>
-    deckState.track === session.candidateTrack
-    && isPreparedPreviewDeck(deckState, session.candidateId, session.baseline)
-    && session.previewStemMode !== null && session.previewStemState !== null
-    && audio.getStemStatus(session.targetDeck).mode === session.previewStemMode
-    && JSON.stringify(audio.getStemState(session.targetDeck)) === JSON.stringify(session.previewStemState)
-    && session.previewStemControlGeneration === audio.getStemControlGeneration(session.targetDeck)
-    && session.previewTransportControlGeneration !== null
-    && stillOwnsPreviewTransport(session.previewTransportControlGeneration, audio.getDeckTransportControlGeneration(session.targetDeck));
-
-  const restoreOccupiedPreview = (session: TestMixPreviewSession, audio: ReturnType<typeof getDJAudioEngine>, message: string) => {
-    const target = session.targetDeck;
-    const stateBeforeRestore = useStore.getState();
-    const targetBeforeRestore = target === 'A' ? stateBeforeRestore.djDeckA : stateBeforeRestore.djDeckB;
-    const retained = session.retainedSource;
-    const baselineStillOwned = session.phase === 'loading'
-      ? stillOwnsOccupiedPreviewBaseline(targetBeforeRestore, session.originalDeck)
-      : (session.occupied ? ownsOccupiedPreviewControls(session, targetBeforeRestore, audio)
-        : targetBeforeRestore.track === session.candidateTrack && isPreparedPreviewDeck(targetBeforeRestore, session.candidateId, session.baseline));
-    if (!retained || !baselineStillOwned || audio.getDeckLoadGeneration(target) !== session.loadGeneration
-      || audio.getDeckLoadedTrackId(target) !== session.candidateId
-      || (session.phase === 'loading' && !stillOwnsPreviewTransport(session.originalTransportControlGeneration, audio.getDeckTransportControlGeneration(target)))
-      || (session.phase === 'loading' && audio.getStemControlGeneration(target) !== session.originalStemControlGeneration)
-      || !ownsCurrentPreviewRoute(session, stateBeforeRestore, audio)) {
-      if (retained) audio.discardRetainedDeckSource(retained);
-      session.retainedSource = null;
-      setPreviewMessage('Test Mix handed off: deck, source, or cue routing changed; the current state was left untouched.');
-      return;
-    }
-    const expectedTransport = session.phase === 'loading' ? session.originalTransportControlGeneration : session.previewTransportControlGeneration;
-    const expectedStem = session.phase === 'loading' ? session.originalStemControlGeneration : session.previewStemControlGeneration;
-    const stillOwned = () => {
-      const current = useStore.getState();
-      const currentDeck = target === 'A' ? current.djDeckA : current.djDeckB;
-      return (session.phase === 'loading'
-        ? stillOwnsOccupiedPreviewBaseline(currentDeck, session.originalDeck)
-        : session.occupied ? ownsOccupiedPreviewControls(session, currentDeck, audio)
-          : currentDeck.track === session.candidateTrack && isPreparedPreviewDeck(currentDeck, session.candidateId, session.baseline))
-        && ownsCurrentPreviewRoute(session, current, audio)
-        && audio.getDeckLoadGeneration(target) === session.loadGeneration
-        && audio.getDeckLoadedTrackId(target) === session.candidateId
-        && expectedStem !== null && audio.getStemControlGeneration(target) === expectedStem
-        && expectedTransport !== null && stillOwnsPreviewTransport(expectedTransport, audio.getDeckTransportControlGeneration(target));
+  const ownsSynchronizedPreview = (session: TestMixPreviewSession, state: ReturnType<typeof useStore.getState>, audio: ReturnType<typeof getDJAudioEngine>) => {
+    const ownership = session.syncOwnership;
+    if (!ownership || previewRef.current?.token !== session.token) return false;
+    const deckStillOwned = (baseline: SynchronizedPreviewDeckBaseline) => {
+      const currentDeck = baseline.deck === 'A' ? state.djDeckA : state.djDeckB;
+      const keyLock = baseline.deck === 'A' ? state.djMixer.keyLockA : state.djMixer.keyLockB;
+      const autoGain = baseline.deck === 'A' ? state.djMixer.autoGainA : state.djMixer.autoGainB;
+      return stillOwnsDeckSnapshot(currentDeck, baseline.state)
+        && audio.getDeckLoadedTrackId(baseline.deck) === baseline.trackId
+        && audio.isLoaded(baseline.deck) === baseline.loaded
+        && audio.getDeckLoadGeneration(baseline.deck) === baseline.loadGeneration
+        && audio.getDeckTransportControlGeneration(baseline.deck) === baseline.transportGeneration
+        && audio.getStemControlGeneration(baseline.deck) === baseline.stemGeneration
+        && audio.getStemStatus(baseline.deck).mode === baseline.stemMode
+        && JSON.stringify(audio.getStemState(baseline.deck)) === JSON.stringify(baseline.stemState)
+        && keyLock === baseline.keyLock && autoGain === baseline.autoGain;
     };
-    const restored = audio.restoreRetainedDeckSource(retained, stillOwned, () => {
-      audio.applyDeckMixSnapshot(target, session.originalDeck, session.originalKeyLock, session.originalStemState);
-      const restoredDeck = copyDeckSnapshot(session.originalDeck);
-      restoredDeck.duration = audio.getDuration(target);
-      restoredDeck.position = retained.position;
-      restoredDeck.isPlaying = retained.wasPlaying;
-      useStore.getState().restoreDeckSnapshot(target, restoredDeck, session.originalKeyLock);
-    });
-    session.retainedSource = null;
-    setPreviewMessage(restored ? message : 'Test Mix handed off during restore; user changes were kept.');
+    return deckStillOwned(ownership.reference) && deckStillOwned(ownership.candidate)
+      && ownsCurrentPreviewRoute(session, state, audio);
   };
 
   const finishPreview = (token: number, message: string) => {
     const session = previewRef.current;
     if (!session || session.token !== token) return;
-    discardPreviewSession(session, !!session.retainedSource);
-    const currentEngine = getDJAudioEngine();
-    const state = useStore.getState();
-    const currentDeck = session.targetDeck === 'A' ? state.djDeckA : state.djDeckB;
-    const generationMatches = session.loadGeneration !== null
-      ? currentEngine.getDeckLoadGeneration(session.targetDeck) === session.loadGeneration
-      : (session.phase === 'preparing' || session.phase === 'loading') && currentEngine.getDeckLoadGeneration(session.targetDeck) === session.generationBeforeLoad;
-
-    if (!generationMatches) {
-      if (session.retainedSource) currentEngine.discardRetainedDeckSource(session.retainedSource);
-      session.retainedSource = null;
-      setPreviewMessage('Test Mix handed off: the preview deck was loaded or unloaded elsewhere.'); return;
-    }
-    if (session.phase === 'preparing') { setPreviewMessage(message); return; }
-    if (!ownsCurrentPreviewRoute(session, state, currentEngine)) {
-      if (session.retainedSource) currentEngine.discardRetainedDeckSource(session.retainedSource);
-      session.retainedSource = null;
-      setPreviewMessage('Test Mix handed off: cue routing changed, so the preview deck was left untouched.');
-      return;
-    }
-    if (session.retainedSource) {
-      discardPreviewSession(session, true);
-      restoreOccupiedPreview(session, currentEngine, message);
-      return;
-    }
-    if (session.phase === 'loading') { setPreviewMessage(message); return; }
-    const baselineDeck = session.targetDeck === 'A' ? state.djDeckA : state.djDeckB;
-    const ownsPrepared = isPreparedPreviewDeck(baselineDeck, session.candidateId, session.baseline);
-    const ownsPlaying = stillOwnsPreviewDeck(baselineDeck, session.candidateId, session.baseline);
-    const endedNaturally = session.phase === 'playing' && !currentEngine.isPlaying(session.targetDeck)
-      && currentEngine.getPosition(session.targetDeck) >= Math.max(0, currentEngine.getDuration(session.targetDeck) - 0.15);
-    if (!ownsPrepared || currentEngine.getDeckLoadedTrackId(session.targetDeck) !== session.candidateId
-      || (session.phase === 'playing' && !ownsPlaying && !endedNaturally)) {
-      setPreviewMessage('Test Mix handed off: the preview deck changed, so its state was left untouched.');
-      return;
-    }
-    currentEngine.pause(session.targetDeck);
-    currentEngine.setCueEnabled(session.targetDeck, false);
-    currentEngine.unloadDeck(session.targetDeck);
-    state.setDeckCue(session.targetDeck, false);
-    state.unloadDeck(session.targetDeck);
+    discardPreviewSession(session);
     setPreviewMessage(message);
   };
-
   const finishPreviewRef = useRef(finishPreview);
   finishPreviewRef.current = finishPreview;
 
@@ -325,138 +253,132 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       setPreviewMessage(previewRef.current ? 'A Test Mix preview is already active.' : previewReason);
       return;
     }
-    const state = useStore.getState();
-    const target = previewDeckID;
-    const targetState = target === 'A' ? state.djDeckA : state.djDeckB;
     const audio = getDJAudioEngine();
-    const occupied = !!targetState.track;
-    if ((!isPristineEmptyPreviewDeck(targetState) && !isRestorableOccupiedPreviewDeck(targetState, audio.getDeckLoadedTrackId(target)))
-      || (occupied && (!audio.isLoaded(target) || targetState.isPlaying !== audio.isPlaying(target)))) {
-      setPreviewMessage('Test Mix needs an empty deck or a loaded, uncued opposite deck with a verified source.'); return;
+    const state = useStore.getState();
+    const referenceDeck = deck;
+    const candidateDeck = previewDeckID;
+    const referenceState = referenceDeck === 'A' ? state.djDeckA : state.djDeckB;
+    const candidateState = candidateDeck === 'A' ? state.djDeckA : state.djDeckB;
+    if (!referenceState.track || referenceState.track.id !== trackID || !audio.isLoaded(referenceDeck)
+      || audio.getDeckLoadedTrackId(referenceDeck) !== referenceState.track.id) {
+      setPreviewMessage('Test Mix needs the selected reference track loaded on its deck.');
+      return;
     }
-    const originalDeck = copyDeckSnapshot(targetState);
-    const originalKeyLock = target === 'A' ? state.djMixer.keyLockA : state.djMixer.keyLockB;
-    const baseline: TestMixPreviewBaseline = { volume: targetState.volume, eq: { ...targetState.eq } };
+    const candidateEmpty = isPristineEmptyPreviewDeck(candidateState)
+      && !audio.isLoaded(candidateDeck) && audio.getDeckLoadedTrackId(candidateDeck) === null;
+    const candidateOccupied = isRestorableOccupiedPreviewDeck(candidateState, audio.getDeckLoadedTrackId(candidateDeck))
+      && audio.isLoaded(candidateDeck) && candidateState.isPlaying === audio.isPlaying(candidateDeck);
+    if (!candidateEmpty && !candidateOccupied) {
+      setPreviewMessage('Test Mix needs an empty deck or a loaded, uncued opposite deck with a verified source.');
+      return;
+    }
+    const referenceBpm = referenceState.effectiveBpm
+      ?? (referenceState.originalBpm ? referenceState.originalBpm * referenceState.tempo : null);
+    const candidateBpm = top?.filterEvidence.bpm;
+    const requiredTempoShiftPercent = top?.vector.requiredTempoShiftPercent;
+    if (!referenceBpm || !candidateBpm || requiredTempoShiftPercent === undefined
+      || !Number.isFinite(requiredTempoShiftPercent) || !Number.isFinite(referenceBpm) || !Number.isFinite(candidateBpm)
+      || referenceBpm <= 0 || candidateBpm <= 0) {
+      setPreviewMessage('Test Mix needs confidence-qualified BPM evidence for both tracks to calculate tempo-only beatmatch.');
+      return;
+    }
+    const candidateTempo = referenceBpm / candidateBpm;
+    if (!Number.isFinite(candidateTempo) || candidateTempo < 0.5 || candidateTempo > 1.5) {
+      setPreviewMessage('The recommended tempo match is outside the supported 50%–150% playback range.');
+      return;
+    }
+    const baselineFor = (id: 'A' | 'B', deckState: DeckState): SynchronizedPreviewDeckBaseline => ({
+      deck: id,
+      state: copyDeckSnapshot(deckState),
+      trackId: audio.getDeckLoadedTrackId(id),
+      loaded: audio.isLoaded(id),
+      loadGeneration: audio.getDeckLoadGeneration(id),
+      transportGeneration: audio.getDeckTransportControlGeneration(id),
+      stemGeneration: audio.getStemControlGeneration(id),
+      stemMode: audio.getStemStatus(id).mode,
+      stemState: audio.getStemState(id),
+      keyLock: id === 'A' ? state.djMixer.keyLockA : state.djMixer.keyLockB,
+      autoGain: id === 'A' ? state.djMixer.autoGainA : state.djMixer.autoGainB,
+    });
+    const baselineReference = baselineFor(referenceDeck, referenceState);
+    const baselineCandidate = baselineFor(candidateDeck, candidateState);
     const startedAtHeadphoneDeviceId = audio.getHeadphoneOutputDeviceId();
     const startedAtMasterDeviceId = audio.getMainOutputDeviceId();
+    const abortController = new AbortController();
     const session: TestMixPreviewSession = {
-      token: ++previewTokenRef.current, targetDeck: target, candidateId: candidateTrack.id, candidateTrack, baseline,
-      occupied, originalDeck, originalPosition: occupied ? audio.getPosition(target) : targetState.position,
-      originalKeyLock, originalStemMode: audio.getStemStatus(target).mode, originalStemState: audio.getStemState(target),
-      previewStemMode: null, previewStemState: null,
-      previewStemControlGeneration: null,
-      originalTransportControlGeneration: audio.getDeckTransportControlGeneration(target), previewTransportControlGeneration: null,
-      originalStemControlGeneration: audio.getStemControlGeneration(target),
-      generationBeforeLoad: audio.getDeckLoadGeneration(target), loadGeneration: null, phase: 'preparing',
-      preparedCandidate: null, retainedSource: null,
-      startedAtCrossfader: state.djMixer.crossfader, startedAtKeyLock: originalKeyLock,
+      token: ++previewTokenRef.current, targetDeck: candidateDeck, candidateId: candidateTrack.id, candidateTrack,
+      phase: 'preparing',
+      startedAtCrossfader: state.djMixer.crossfader, startedAtKeyLock: baselineCandidate.keyLock,
       startedAtHeadphoneDeviceId, startedAtMasterDeviceId,
+      syncOwnership: { reference: baselineReference, candidate: baselineCandidate },
+      abortController,
     };
     previewRef.current = session;
-    setPreviewMessage('Preparing off-air headphone preview…');
+    setPreviewMessage('Preparing isolated headphone sources…');
+    const stillOwned = () => ownsSynchronizedPreview(session, useStore.getState(), audio);
     try {
       const candidateFeatures = await api.getTrackEnergyFeatures(candidateTrack.id).catch(() => null);
       if (previewRef.current?.token !== session.token) return;
-      const current = useStore.getState();
-      const currentTarget = target === 'A' ? current.djDeckA : current.djDeckB;
-      const mixerStillSafe = ownsCurrentPreviewRoute(session, current, audio);
-      const deckStillOwned = occupied
-        ? stillOwnsOccupiedPreviewBaseline(currentTarget, originalDeck) && audio.getDeckLoadedTrackId(target) === originalDeck.track?.id
-          && stillOwnsPreviewTransport(session.originalTransportControlGeneration, audio.getDeckTransportControlGeneration(target))
-          && audio.getStemControlGeneration(target) === session.originalStemControlGeneration
-        : isPristineEmptyPreviewDeck(currentTarget) && currentTarget.volume === baseline.volume
-          && currentTarget.eq.low === baseline.eq.low && currentTarget.eq.mid === baseline.eq.mid && currentTarget.eq.high === baseline.eq.high;
-      if (!mixerStillSafe || !deckStillOwned || audio.getDeckLoadGeneration(target) !== session.generationBeforeLoad) {
-        discardPreviewSession(session); setPreviewMessage('Test Mix stopped: deck or cue routing changed before loading.'); return;
+      if (!stillOwned()) {
+        finishPreviewRef.current(session.token, 'Test Mix handed off: a deck, control, or route changed during preparation.');
+        return;
       }
-
+      const mixOut = features.cueSuggestions.find(cue => cue.kind === 'mix-out')?.position;
+      const mixIn = candidateFeatures?.cueSuggestions.find(cue => cue.kind === 'mix-in')?.position;
+      if (mixOut === undefined || !Number.isFinite(mixOut) || mixOut < 0) {
+        finishPreviewRef.current(session.token, 'Test Mix needs a valid recommended mix-out cue on the reference track.');
+        return;
+      }
+      if (mixIn === undefined || !Number.isFinite(mixIn) || mixIn < 0) {
+        finishPreviewRef.current(session.token, 'Test Mix needs a valid recommended mix-in cue on the candidate track.');
+        return;
+      }
+      const referenceDuration = referenceState.duration || referenceState.track.duration;
+      if (referenceDuration > 0 && mixOut >= referenceDuration) {
+        finishPreviewRef.current(session.token, 'The reference mix-out cue is outside the track duration.');
+        return;
+      }
+      if (candidateTrack.duration > 0 && mixIn >= candidateTrack.duration) {
+        finishPreviewRef.current(session.token, 'The candidate mix-in cue is outside the track duration.');
+        return;
+      }
       session.phase = 'loading';
-      const prepared = await audio.prepareTrack(target, candidateTrack);
-      session.preparedCandidate = prepared;
-      if (previewRef.current?.token !== session.token) { audio.discardPreparedTrack(prepared); return; }
-      await audio.configurePreparedTrack(prepared, originalDeck, originalKeyLock, session.originalStemMode, session.originalStemState);
-      if (previewRef.current?.token !== session.token) { audio.discardPreparedTrack(prepared); return; }
-      const beforeCommit = useStore.getState();
-      const beforeCommitDeck = target === 'A' ? beforeCommit.djDeckA : beforeCommit.djDeckB;
-      const candidateCommitOwned = (occupied
-        ? stillOwnsOccupiedPreviewBaseline(beforeCommitDeck, originalDeck)
-          && audio.getDeckLoadedTrackId(target) === originalDeck.track?.id
-          && stillOwnsPreviewTransport(session.originalTransportControlGeneration, audio.getDeckTransportControlGeneration(target))
-          && audio.getStemControlGeneration(target) === session.originalStemControlGeneration
-        : isPristineEmptyPreviewDeck(beforeCommitDeck) && beforeCommitDeck.volume === baseline.volume
-          && beforeCommitDeck.eq.low === baseline.eq.low && beforeCommitDeck.eq.mid === baseline.eq.mid && beforeCommitDeck.eq.high === baseline.eq.high)
-        && audio.getDeckLoadGeneration(target) === session.generationBeforeLoad
-        && ownsCurrentPreviewRoute(session, beforeCommit, audio);
-      const retained = audio.commitPreparedTrack(prepared, () => previewRef.current?.token === session.token && candidateCommitOwned, {
-        position: audio.getPosition(target), wasPlaying: audio.isPlaying(target),
+      const synchronizedSources = await audio.startSynchronizedPreview(referenceState.track, candidateTrack, {
+        referencePosition: mixOut,
+        candidatePosition: Math.max(0, Math.min(mixIn, candidateTrack.duration || mixIn)),
+        referenceTempo: referenceState.tempo,
+        candidateTempo,
+        stillOwned,
+        signal: abortController.signal,
       });
-      session.preparedCandidate = null;
-      if (!retained) {
-        discardPreviewSession(session); setPreviewMessage('Test Mix stopped: deck or cue routing changed during load.'); return;
+      if (previewRef.current?.token !== session.token) { synchronizedSources.dispose(); return; }
+      session.synchronizedSources = synchronizedSources;
+      if (!stillOwned()) {
+        finishPreviewRef.current(session.token, 'Test Mix handed off: a deck, control, or route changed as playback began.');
+        return;
       }
-      session.retainedSource = retained;
-      session.originalPosition = retained.position;
-      session.originalDeck.position = retained.position;
-      session.originalDeck.isPlaying = retained.wasPlaying;
-      session.loadGeneration = audio.getDeckLoadGeneration(target);
-      const afterLoad = useStore.getState();
-      const afterTarget = target === 'A' ? afterLoad.djDeckA : afterLoad.djDeckB;
-      afterLoad.loadTrackToDeck(target, candidateTrack);
-      afterLoad.setDeckDuration(target, audio.getDuration(target));
-      session.previewStemMode = audio.getStemStatus(target).mode;
-      session.previewStemState = audio.getStemState(target);
-      session.previewStemControlGeneration = audio.getStemControlGeneration(target);
-      const mixIn = candidateFeatures?.cueSuggestions.find(cue => cue.kind === 'mix-in');
-      const startAt = Math.max(0, mixIn?.position ?? 0);
-      audio.setCueEnabled(target, true);
-      afterLoad.setDeckCue(target, true);
-      audio.seek(target, startAt);
-      afterLoad.setDeckPosition(target, startAt);
-      session.phase = 'ready';
-      const previewPlay = audio.play(target);
-      session.previewTransportControlGeneration = audio.getDeckTransportControlGeneration(target);
-      await previewPlay;
-      if (previewRef.current?.token !== session.token || audio.getDeckLoadGeneration(target) !== session.loadGeneration) return;
-      if (occupied && audio.getDeckTransportControlGeneration(target) !== session.previewTransportControlGeneration) {
-        finishPreviewRef.current(session.token, 'Test Mix handed off: transport controls changed.'); return;
-      }
-      if (audio.getDeckLoadedTrackId(target) !== candidateTrack.id) {
-        finishPreviewRef.current(session.token, 'Test Mix handed off: the preview source changed.'); return;
-      }
-      const started = useStore.getState();
-      const startedDeck = target === 'A' ? started.djDeckA : started.djDeckB;
-      if (occupied ? !ownsOccupiedPreviewControls(session, startedDeck, audio)
-        : startedDeck.track !== candidateTrack || !isPreparedPreviewDeck(startedDeck, candidateTrack.id, baseline)) {
-        finishPreviewRef.current(session.token, 'Test Mix stopped because the preview deck changed.'); return;
-      }
-      started.setDeckPlaying(target, true);
       session.phase = 'playing';
       session.interval = window.setInterval(() => {
         if (previewRef.current?.token !== session.token) return;
-        const currentState = useStore.getState();
-        const currentTarget = target === 'A' ? currentState.djDeckA : currentState.djDeckB;
-        const mixerChanged = !ownsCurrentPreviewRoute(session, currentState, audio);
-        if (!mixerChanged && audio.getDeckLoadGeneration(target) === session.loadGeneration
-          && currentTarget.track === candidateTrack && audio.getDeckLoadedTrackId(target) === candidateTrack.id && !audio.isPlaying(target)
-          && audio.getPosition(target) >= Math.max(0, audio.getDuration(target) - 0.15)) {
-          finishPreviewRef.current(session.token, 'Test Mix complete; the preview deck was restored.');
+        if (!stillOwned()) {
+          finishPreviewRef.current(session.token, 'Test Mix handed off: deck, source, controls, or headphone route changed; both decks were left untouched.');
           return;
         }
-        if (mixerChanged || audio.getDeckLoadGeneration(target) !== session.loadGeneration
-          || currentTarget.track !== candidateTrack || audio.getDeckLoadedTrackId(target) !== candidateTrack.id
-          || !stillOwnsPreviewDeck(currentTarget, candidateTrack.id, baseline)
-          || (occupied && !ownsOccupiedPreviewControls(session, currentTarget, audio))) {
-          discardPreviewSession(session);
-          setPreviewMessage('Test Mix handed off: the preview deck changed, so its state was left untouched.');
-          return;
+        const sources = session.synchronizedSources;
+        if (!sources || !sources.reference.isPlaying() || !sources.candidate.isPlaying()) {
+          finishPreviewRef.current(session.token, 'Test Mix complete; both original decks remain unchanged.');
         }
       }, 100);
-      session.timeout = window.setTimeout(() => finishPreviewRef.current(session.token, 'Test Mix complete; the preview deck was restored.'), 10000);
-      setPreviewMessage(`Testing ${candidateTrack.title} in headphones…`);
+      session.timeout = window.setTimeout(() => finishPreviewRef.current(session.token,
+        'Test Mix complete; both original decks remain unchanged.'), 10000);
+      setPreviewMessage(`Testing ${candidateTrack.title} against ${referenceState.track.title} in headphones; coordinated browser start is not sample-accurate…`);
     } catch {
-      finishPreviewRef.current(session.token, 'Test Mix failed and the preview deck was restored when still owned.');
+      finishPreviewRef.current(session.token, stillOwned()
+        ? 'Test Mix failed; both original decks remain unchanged.'
+        : 'Test Mix handed off: deck, source, controls, or route changed; both decks were left untouched.');
     }
   };
+
   return <section aria-label="Measured track energy" className="px-2 py-1 text-[10px] text-neutral-400">
     <div className="relative flex h-5 items-end gap-px overflow-hidden" title="Track energy · Highlight shows playback position">
       {features.energy.map((point, index) => <i key={index} className="w-1 bg-cyan-400/70" style={{ height: `${Math.max(2, point.value * 100)}%` }} />)}
@@ -542,10 +464,10 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     {top && <details className="mt-1 text-neutral-500">
       <summary className="cursor-pointer text-violet-300">Recommended next: {top.title} — {top.artist} ({Math.round(top.score * 100)}%)</summary>
       <div className="mt-2 flex items-center gap-2 text-neutral-300">
-        {previewRef.current ? <button type="button" onClick={() => finishPreview(previewRef.current!.token, 'Test Mix stopped; the preview deck was restored.')}
+        {previewRef.current ? <button type="button" onClick={() => finishPreview(previewRef.current!.token, 'Test Mix stopped; both original decks remain unchanged.')}
           className="rounded border border-amber-500/40 px-2 py-1 text-amber-200">Stop Test Mix</button>
           : <button type="button" disabled={!previewAllowed || !!previewRef.current} onClick={() => void testCandidate()}
-            title={previewRef.current ? 'Another Test Mix preview is active.' : previewDeckOccupied ? 'The off-air deck’s track, transport, mixer, FX, and stem controls will be restored after the audition if they remain under Test Mix ownership.' : previewReason}
+            title={previewRef.current ? 'Another Test Mix preview is active.' : !previewAllowed ? previewReason : 'Detached headphone copies audition both cue regions; browser-coordinated start is not sample-accurate, and both live deck states remain untouched.'}
             className="rounded border border-violet-500/40 px-2 py-1 text-violet-200 disabled:cursor-not-allowed disabled:opacity-50">Test Mix in headphones</button>}
         {previewMessage && <span role="status">{previewMessage}</span>}
       </div>

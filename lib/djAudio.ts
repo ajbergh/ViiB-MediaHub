@@ -1,6 +1,7 @@
 import { canSyncBeatGrid } from './beatGridConfidence';
 import type { DeckSource } from './deckSource';
 import { StemDeckSource, type StemBus, type StemDeckState, type StemDeckStatus } from './stemDeckSource';
+import { SingleTrackDeckSource } from './singleTrackDeckSource';
 /**
  * ViiB MediaHub - DJ Audio Engine
  * 
@@ -73,6 +74,13 @@ export interface RetainedDeckSource {
   state: 'retained' | 'restored' | 'discarded';
 }
 
+/** Two detached sources connected only to the dedicated headphone cue bus. */
+export interface SynchronizedPreviewSources {
+  readonly reference: DeckSource;
+  readonly candidate: DeckSource;
+  dispose(): void;
+}
+
 export interface VULevels {
   deckA: { left: number; right: number };
   deckB: { left: number; right: number };
@@ -97,6 +105,7 @@ export class DJAudioEngine {
   private transportControlGenerationA = 0;
   private transportControlGenerationB = 0;
   private createPreparedSource: (context: AudioContext) => StemDeckSource = context => new StemDeckSource(context);
+  private createSynchronizedPreviewSource: (context: AudioContext) => DeckSource = context => SingleTrackDeckSource.create(context);
 
   // Gain nodes for volume control
   private gainNodeA: GainNode | null = null;
@@ -1021,6 +1030,101 @@ export class DJAudioEngine {
   /** Monotonic operation epoch used by reversible off-air preview sessions. */
   getDeckLoadGeneration(deck: DeckId): number {
     return deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
+  }
+
+  /**
+   * Audition two independent sources directly through the headphone cue bus.
+   * The live deck sources and master graph are never sought, paused, or swapped.
+   */
+  async startSynchronizedPreview(
+    referenceTrack: Song,
+    candidateTrack: Song,
+    options: {
+      referencePosition: number;
+      candidatePosition: number;
+      referenceTempo: number;
+      candidateTempo: number;
+      stillOwned: () => boolean;
+      signal?: AbortSignal;
+    },
+  ): Promise<SynchronizedPreviewSources> {
+    const context = this.audioContext;
+    const cueBus = this.headphoneCueMix;
+    if (!context || !cueBus) throw new Error('Headphone preview audio is unavailable');
+
+    let reference: DeckSource | null = null;
+    let candidate: DeckSource | null = null;
+    let referenceGain: GainNode | null = null;
+    let candidateGain: GainNode | null = null;
+    let referenceConnected = false;
+    let candidateConnected = false;
+    let disposed = false;
+    const dispose = () => {
+      if (disposed) return;
+      disposed = true;
+      reference?.pause();
+      candidate?.pause();
+      if (referenceConnected && reference && referenceGain) {
+        try { reference.outputNode.disconnect(referenceGain); } catch { /* already disconnected */ }
+        try { referenceGain.disconnect(cueBus); } catch { /* already disconnected */ }
+      }
+      if (candidateConnected && candidate && candidateGain) {
+        try { candidate.outputNode.disconnect(candidateGain); } catch { /* already disconnected */ }
+        try { candidateGain.disconnect(cueBus); } catch { /* already disconnected */ }
+      }
+      referenceConnected = false;
+      candidateConnected = false;
+      reference?.dispose();
+      candidate?.dispose();
+      options.signal?.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => dispose();
+    const ensureOwned = () => {
+      if (options.signal?.aborted) {
+        const error = new Error('Test Mix preview was cancelled');
+        error.name = 'AbortError';
+        throw error;
+      }
+      if (!options.stillOwned()) throw new Error('Test Mix ownership changed during synchronized preview');
+    };
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
+    try {
+      const referenceSource = this.createSynchronizedPreviewSource(context);
+      reference = referenceSource;
+      const candidateSource = this.createSynchronizedPreviewSource(context);
+      candidate = candidateSource;
+      const referenceOutputGain = context.createGain();
+      referenceGain = referenceOutputGain;
+      const candidateOutputGain = context.createGain();
+      candidateGain = candidateOutputGain;
+      referenceOutputGain.gain.value = 0.5;
+      candidateOutputGain.gain.value = 0.5;
+      ensureOwned();
+      await Promise.all([referenceSource.load(referenceTrack), candidateSource.load(candidateTrack)]);
+      ensureOwned();
+      referenceSource.seek(options.referencePosition);
+      candidateSource.seek(options.candidatePosition);
+      referenceSource.setTempo(options.referenceTempo);
+      candidateSource.setTempo(options.candidateTempo);
+      // Do not engage time/pitch-preserving processing. Playback-rate tempo
+      // changes pitch naturally until a qualified key-lock path exists.
+      referenceSource.setKeyLock(false);
+      candidateSource.setKeyLock(false);
+      referenceSource.outputNode.connect(referenceOutputGain);
+      referenceConnected = true;
+      referenceOutputGain.connect(cueBus);
+      candidateSource.outputNode.connect(candidateOutputGain);
+      candidateConnected = true;
+      candidateOutputGain.connect(cueBus);
+      ensureOwned();
+      await Promise.all([referenceSource.play(), candidateSource.play()]);
+      ensureOwned();
+      return { reference: referenceSource, candidate: candidateSource, dispose };
+    } catch (error) {
+      dispose();
+      throw error;
+    }
   }
 
   /** Fully load a candidate into a detached source without mutating the active deck. */
