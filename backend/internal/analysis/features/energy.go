@@ -33,12 +33,18 @@ type EnergyPoint struct {
 	Value float64 `json:"value"`
 }
 
-// Section is a conservative novelty-based region.  Labels intentionally stay
-// descriptive rather than asserting genre-specific musical form.
+// Section is a conservative energy-derived region with optional structure
+// annotations. Semantic labels are low-confidence hints, not a transcription
+// of genre-specific musical form.
 type Section struct {
-	Start  float64 `json:"start"`
-	End    float64 `json:"end"`
-	Energy float64 `json:"energy"`
+	Start            float64  `json:"start"`
+	End              float64  `json:"end"`
+	Energy           float64  `json:"energy"`
+	Label            string   `json:"label,omitempty"`
+	Confidence       float64  `json:"confidence,omitempty"`
+	TimingProvenance string   `json:"timingProvenance,omitempty"`
+	DownbeatStart    *float64 `json:"downbeatStart,omitempty"`
+	DownbeatEnd      *float64 `json:"downbeatEnd,omitempty"`
 }
 
 // CueSuggestion is a non-authoritative, measured preparation hint. DJs can
@@ -177,6 +183,116 @@ func (r *Result) AddCueSuggestions(grid *beatgrid.Grid) {
 	for _, section := range r.Sections[1:] {
 		r.CueSuggestions = append(r.CueSuggestions, CueSuggestion{Position: snap(section.Start), Kind: "section", Confidence: sectionConfidence, Rationale: "Measured energy novelty boundary, snapped to " + detail})
 	}
+}
+
+// AnnotateStructure adds deterministic, conservative structure hints to the
+// existing energy sections. The current analyzer has no spectral, vocal, or
+// drum evidence, so those labels remain unknown. Labels use whole-track
+// energy context and section trend only; confidence is deliberately bounded
+// because this is not a calibrated musical-form classifier.
+func (r *Result) AnnotateStructure(grid *beatgrid.Grid) {
+	if len(r.Sections) == 0 {
+		return
+	}
+	maxEnergy := 0.0
+	for _, section := range r.Sections {
+		if section.Energy > maxEnergy {
+			maxEnergy = section.Energy
+		}
+	}
+	if maxEnergy <= 0 {
+		for i := range r.Sections {
+			r.Sections[i].Label = StructureUnknown
+			r.Sections[i].Confidence = 0
+			r.Sections[i].TimingProvenance = TimingEnergyWindows
+		}
+		return
+	}
+	for i := range r.Sections {
+		section := &r.Sections[i]
+		section.Label = StructureUnknown
+		section.Confidence = 0.20
+		section.TimingProvenance = TimingEnergyWindows
+		if len(r.Sections) == 1 || section.End <= section.Start {
+			continue
+		}
+		relative := section.Energy / maxEnergy
+		duration := section.End - section.Start
+		nextEnergy, previousEnergy := section.Energy, section.Energy
+		if i+1 < len(r.Sections) {
+			nextEnergy = r.Sections[i+1].Energy
+		}
+		if i > 0 {
+			previousEnergy = r.Sections[i-1].Energy
+		}
+		slope := (nextEnergy - previousEnergy) / maxFloat(duration, 1)
+		switch {
+		case i == 0 && relative <= .35:
+			section.Label, section.Confidence = StructureIntro, .48
+		case i == len(r.Sections)-1 && relative <= .35:
+			section.Label, section.Confidence = StructureOutro, .48
+		case relative <= .25:
+			section.Label, section.Confidence = StructureBreakdown, .42
+		case slope > .08 && relative < .8:
+			section.Label, section.Confidence = StructureBuild, .40
+		case relative >= .85 && (previousEnergy/maxEnergy < .65 || nextEnergy/maxEnergy < .65):
+			section.Label, section.Confidence = StructureDrop, .40
+		}
+		annotateDownbeatBoundaries(section, grid)
+	}
+}
+
+const (
+	StructureIntro      = "intro"
+	StructureBuild      = "build"
+	StructureDrop       = "drop"
+	StructureBreakdown  = "breakdown"
+	StructureOutro      = "outro"
+	StructureUnknown    = "unknown"
+	TimingEnergyWindows = "energy-windows"
+	TimingDownbeatGrid  = "energy-windows+downbeat-grid"
+)
+
+func annotateDownbeatBoundaries(section *Section, grid *beatgrid.Grid) {
+	if grid == nil || len(grid.DownbeatIndices) == 0 {
+		return
+	}
+	provenance := grid.EffectiveProvenance()
+	if provenance != beatgrid.ProvenanceMeasured && provenance != beatgrid.ProvenanceManual {
+		return
+	}
+	start, hasStart := nearestDownbeat(grid, section.Start)
+	end, hasEnd := nearestDownbeat(grid, section.End)
+	if hasStart {
+		section.DownbeatStart = &start
+	}
+	if hasEnd {
+		section.DownbeatEnd = &end
+	}
+	if hasStart || hasEnd {
+		section.TimingProvenance = TimingDownbeatGrid
+	}
+}
+
+func nearestDownbeat(grid *beatgrid.Grid, target float64) (float64, bool) {
+	best, distance := 0.0, math.Inf(1)
+	for _, index := range grid.DownbeatIndices {
+		if index < 0 || index >= len(grid.Beats) {
+			continue
+		}
+		candidate := grid.Beats[index]
+		if delta := math.Abs(candidate - target); delta < distance {
+			best, distance = candidate, delta
+		}
+	}
+	return best, distance <= .25
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // Accumulator keeps only 500 ms RMS windows and a few scalars; full PCM is

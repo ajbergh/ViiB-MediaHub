@@ -168,6 +168,7 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 			}
 		}
 		if measured, featureErr := energy.Result(); featureErr == nil {
+			measured.AnnotateStructure(result.BeatGrid)
 			measured.AddCueSuggestions(result.BeatGrid)
 			result.Features = &measured
 			hasSignal := false
