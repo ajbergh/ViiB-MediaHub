@@ -35,7 +35,6 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 
-type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'stemStatus' | 'analysis';
 type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
