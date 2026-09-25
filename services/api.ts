@@ -142,6 +142,8 @@ export interface TrackAnalysisFeature {
   structureAvailable?: boolean;
   /** Current measured ITU-R BS.1770-5 integrated loudness, if available. */
   integratedLufsBs1770?: number;
+  /** Current measured ITU-R BS.1770-5 Annex 2 true peak in dBTP, if available. */
+  truePeakDbtp?: number;
 }
 
 // Persisted phase-aligned timing data. It is distinct from the scalar BPM so
