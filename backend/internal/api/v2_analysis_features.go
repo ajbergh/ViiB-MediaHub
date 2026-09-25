@@ -29,6 +29,7 @@ type TrackAnalysisFeatureResponse struct {
 	TempoKind              *string  `json:"tempoKind,omitempty"`
 	SongID                 string   `json:"songId"`
 	Status                 string   `json:"status"`
+	AnalyzedAt             *int64   `json:"analyzedAt,omitempty"`
 	BPM                    *float64 `json:"bpm,omitempty"`
 	BPMConfidence          *float64 `json:"bpmConfidence,omitempty"`
 	BPMSource              string   `json:"bpmSource"`
@@ -194,6 +195,7 @@ func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAn
 	response := TrackAnalysisFeatureResponse{
 		SongID:      analysis.SongID,
 		Status:      analysis.Status,
+		AnalyzedAt:  analysis.AnalyzedAt,
 		BPM:         effectiveBPM.Value,
 		BPMSource:   effectiveBPM.Source,
 		SyncAllowed: effectiveBPM.SyncAllowed,
