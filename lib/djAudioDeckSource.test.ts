@@ -254,4 +254,172 @@ describe('DJAudioEngine DeckSource integration', () => {
     expect(engine.getDeckLoadGeneration('A')).toBe(1);
     expect((engine as unknown as { deckSourceA: unknown }).deckSourceA).toBe(prepared.source);
   });
+
+  it('plays detached reference and candidate copies through headphone-only gains', async () => {
+    const engine = new DJAudioEngine();
+    const activeA = fakeSource(22);
+    const activeB = fakeSource(31);
+    const previewReference = fakeSource();
+    const previewCandidate = fakeSource();
+    const cueBus = {} as GainNode;
+    const gains: Array<{ gain: { value: number }; connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
+    const audioContext = {
+      createGain: () => {
+        const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+        gains.push(gain);
+        return gain;
+      },
+    } as unknown as AudioContext;
+    for (const source of [activeA.source, activeB.source, previewReference.source, previewCandidate.source]) {
+      Object.assign(source, { outputNode: { connect: vi.fn(), disconnect: vi.fn() } });
+    }
+    Object.assign(engine, {
+      audioContext, headphoneCueMix: cueBus,
+      deckSourceA: activeA.source, deckSourceB: activeB.source,
+      loadedTrackIdA: 'reference', loadedTrackIdB: 'candidate',
+      createSynchronizedPreviewSource: vi.fn().mockReturnValueOnce(previewReference.source).mockReturnValueOnce(previewCandidate.source),
+    });
+
+    const handles = await engine.startSynchronizedPreview(
+      { id: 'reference' } as never, { id: 'candidate' } as never,
+      { referencePosition: 8, candidatePosition: 16, referenceTempo: 1.02, candidateTempo: 1.08, stillOwned: () => true },
+    );
+
+    expect(previewReference.source.seek).toHaveBeenCalledWith(8);
+    expect(previewCandidate.source.seek).toHaveBeenCalledWith(16);
+    expect(previewReference.source.setTempo).toHaveBeenCalledWith(1.02);
+    expect(previewCandidate.source.setTempo).toHaveBeenCalledWith(1.08);
+    expect(previewReference.source.setKeyLock).toHaveBeenCalledWith(false);
+    expect(previewCandidate.source.setKeyLock).toHaveBeenCalledWith(false);
+    expect(previewReference.source.play).toHaveBeenCalledOnce();
+    expect(previewCandidate.source.play).toHaveBeenCalledOnce();
+    expect(gains.map(gain => gain.gain.value)).toEqual([0.5, 0.5]);
+    expect((previewReference.source.outputNode as unknown as { connect: ReturnType<typeof vi.fn> }).connect).toHaveBeenCalledWith(gains[0]);
+    expect(gains[0].connect).toHaveBeenCalledWith(cueBus);
+    expect(engine.getDeckLoadedTrackId('A')).toBe('reference');
+    expect(engine.getDeckLoadedTrackId('B')).toBe('candidate');
+    expect(engine.getDeckLoadGeneration('A')).toBe(0);
+    expect(engine.getDeckLoadGeneration('B')).toBe(0);
+    expect(activeA.source.seek).not.toHaveBeenCalled();
+    expect(activeB.source.seek).not.toHaveBeenCalled();
+    for (const source of [activeA.source, activeB.source]) {
+      expect(source.play).not.toHaveBeenCalled();
+      expect(source.pause).not.toHaveBeenCalled();
+      expect(source.setTempo).not.toHaveBeenCalled();
+      expect(source.setKeyLock).not.toHaveBeenCalled();
+    }
+
+    handles.dispose();
+    expect(gains[0].disconnect).toHaveBeenCalledWith(cueBus);
+    expect(gains[1].disconnect).toHaveBeenCalledWith(cueBus);
+    expect(previewReference.source.dispose).toHaveBeenCalledOnce();
+    expect(previewCandidate.source.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('disposes a partially connected headphone pair when connection setup fails', async () => {
+    const engine = new DJAudioEngine();
+    const reference = fakeSource();
+    const candidate = fakeSource();
+    const cueBus = {} as GainNode;
+    const gains: Array<{ gain: { value: number }; connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
+    const audioContext = { createGain: () => {
+      const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      gains.push(gain);
+      return gain;
+    } } as unknown as AudioContext;
+    const referenceOutput = { connect: vi.fn(), disconnect: vi.fn() };
+    const candidateOutput = { connect: vi.fn(() => { throw new Error('connect failed'); }), disconnect: vi.fn() };
+    Object.assign(reference.source, { outputNode: referenceOutput });
+    Object.assign(candidate.source, { outputNode: candidateOutput });
+    Object.assign(engine, {
+      audioContext, headphoneCueMix: cueBus,
+      createSynchronizedPreviewSource: vi.fn().mockReturnValueOnce(reference.source).mockReturnValueOnce(candidate.source),
+    });
+
+    await expect(engine.startSynchronizedPreview(
+      { id: 'reference' } as never, { id: 'candidate' } as never,
+      { referencePosition: 0, candidatePosition: 0, referenceTempo: 1, candidateTempo: 1, stillOwned: () => true },
+    )).rejects.toThrow('connect failed');
+
+    expect(referenceOutput.disconnect).toHaveBeenCalledWith(gains[0]);
+    expect(gains[0].disconnect).toHaveBeenCalledWith(cueBus);
+    expect(reference.source.play).not.toHaveBeenCalled();
+    expect(candidate.source.play).not.toHaveBeenCalled();
+    expect(reference.source.dispose).toHaveBeenCalledOnce();
+    expect(candidate.source.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('disposes both headphone sources when ownership changes after preparation', async () => {
+    const engine = new DJAudioEngine();
+    const reference = fakeSource();
+    const candidate = fakeSource();
+    const cueBus = {} as GainNode;
+    const gains: Array<{ gain: { value: number }; connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
+    const audioContext = { createGain: () => {
+      const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      gains.push(gain);
+      return gain;
+    } } as unknown as AudioContext;
+    const referenceOutput = { connect: vi.fn(), disconnect: vi.fn() };
+    const candidateOutput = { connect: vi.fn(), disconnect: vi.fn() };
+    Object.assign(reference.source, { outputNode: referenceOutput });
+    Object.assign(candidate.source, { outputNode: candidateOutput });
+    Object.assign(engine, {
+      audioContext, headphoneCueMix: cueBus,
+      createSynchronizedPreviewSource: vi.fn().mockReturnValueOnce(reference.source).mockReturnValueOnce(candidate.source),
+    });
+    let checks = 0;
+
+    await expect(engine.startSynchronizedPreview(
+      { id: 'reference' } as never, { id: 'candidate' } as never,
+      { referencePosition: 0, candidatePosition: 0, referenceTempo: 1, candidateTempo: 1, stillOwned: () => ++checks < 3 },
+    )).rejects.toThrow('ownership changed during synchronized preview');
+
+    expect(checks).toBe(3);
+    expect(referenceOutput.disconnect).toHaveBeenCalledWith(gains[0]);
+    expect(candidateOutput.disconnect).toHaveBeenCalledWith(gains[1]);
+    expect(gains[0].disconnect).toHaveBeenCalledWith(cueBus);
+    expect(gains[1].disconnect).toHaveBeenCalledWith(cueBus);
+    expect(reference.source.play).not.toHaveBeenCalled();
+    expect(candidate.source.play).not.toHaveBeenCalled();
+    expect(reference.source.dispose).toHaveBeenCalledOnce();
+    expect(candidate.source.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('aborts pending detached source loads immediately when Stop is pressed', async () => {
+    const engine = new DJAudioEngine();
+    const reference = fakeSource();
+    const candidate = fakeSource();
+    const cueBus = {} as GainNode;
+    const audioContext = { createGain: () => ({ gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() }) } as unknown as AudioContext;
+    let rejectReference: ((error: Error) => void) | undefined;
+    let rejectCandidate: ((error: Error) => void) | undefined;
+    reference.source.load = vi.fn(() => new Promise<string>((_resolve, reject) => { rejectReference = reject; }));
+    candidate.source.load = vi.fn(() => new Promise<string>((_resolve, reject) => { rejectCandidate = reject; }));
+    reference.source.dispose = vi.fn(() => { reference.source.cancelLoad(); });
+    candidate.source.dispose = vi.fn(() => { candidate.source.cancelLoad(); });
+    reference.source.cancelLoad = vi.fn(() => { const error = new Error('aborted'); error.name = 'AbortError'; rejectReference?.(error); });
+    candidate.source.cancelLoad = vi.fn(() => { const error = new Error('aborted'); error.name = 'AbortError'; rejectCandidate?.(error); });
+    Object.assign(reference.source, { outputNode: { connect: vi.fn(), disconnect: vi.fn() } });
+    Object.assign(candidate.source, { outputNode: { connect: vi.fn(), disconnect: vi.fn() } });
+    Object.assign(engine, {
+      audioContext, headphoneCueMix: cueBus,
+      createSynchronizedPreviewSource: vi.fn().mockReturnValueOnce(reference.source).mockReturnValueOnce(candidate.source),
+    });
+    const controller = new AbortController();
+    const pending = engine.startSynchronizedPreview(
+      { id: 'reference' } as never, { id: 'candidate' } as never,
+      { referencePosition: 0, candidatePosition: 0, referenceTempo: 1, candidateTempo: 1, stillOwned: () => true, signal: controller.signal },
+    );
+
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(reference.source.cancelLoad).toHaveBeenCalledOnce();
+    expect(candidate.source.cancelLoad).toHaveBeenCalledOnce();
+    expect(reference.source.dispose).toHaveBeenCalledOnce();
+    expect(candidate.source.dispose).toHaveBeenCalledOnce();
+    expect(reference.source.play).not.toHaveBeenCalled();
+    expect(candidate.source.play).not.toHaveBeenCalled();
+  });
 });

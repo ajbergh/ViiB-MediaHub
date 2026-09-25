@@ -57,6 +57,18 @@ export function stillOwnsOccupiedPreviewBaseline(deck: DeckState, baseline: Deck
     && deck.cueEnabled === baseline.cueEnabled;
 }
 
+/**
+ * Compare all stored deck data except natural transport progress. Detached
+ * previews do not write to either deck, so any actual control/source change
+ * hands ownership back to the user without attempting restoration.
+ */
+export function stillOwnsDeckSnapshot(current: DeckState, baseline: DeckState): boolean {
+  if (current.track !== baseline.track) return false;
+  const controls = (deck: DeckState) => Object.fromEntries(Object.entries(deck)
+    .filter(([key]) => key !== 'track' && key !== 'isPlaying' && key !== 'position' && key !== 'duration'));
+  return JSON.stringify(controls(current)) === JSON.stringify(controls(baseline));
+}
+
 /** Transport commands are user ownership changes; natural position updates are not. */
 export function stillOwnsPreviewTransport(startedAtGeneration: number, currentGeneration: number): boolean {
   return startedAtGeneration === currentGeneration;
