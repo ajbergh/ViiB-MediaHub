@@ -38,6 +38,10 @@ type TrackAnalysisFeatureResponse struct {
 	OpenKey                *string  `json:"openKey,omitempty"`
 	KeyConfidence          *float64 `json:"keyConfidence,omitempty"`
 	KeySource              string   `json:"keySource"`
+	KeyTonic               *int     `json:"keyTonic,omitempty"`
+	KeyMode                *string  `json:"keyMode,omitempty"`
+	MeasuredKeyTonic       *int     `json:"measuredKeyTonic,omitempty"`
+	MeasuredKeyMode        *string  `json:"measuredKeyMode,omitempty"`
 	EnergyLevel            *int     `json:"energyLevel,omitempty"`
 	EnergyLevelConfidence  *float64 `json:"energyLevelConfidence,omitempty"`
 	EnergyAlgorithmVersion *string  `json:"energyAlgorithmVersion,omitempty"`
@@ -193,6 +197,8 @@ func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAn
 		BPMSource:   effectiveBPM.Source,
 		SyncAllowed: effectiveBPM.SyncAllowed,
 		KeySource:   effectiveKey.Source,
+		KeyTonic:    effectiveKey.Tonic,
+		KeyMode:     effectiveKey.Mode,
 	}
 	// Scores from a running row may refer to an older source fingerprint. Only
 	// expose a settled score whose own algorithm provenance is present.
@@ -213,6 +219,11 @@ func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAn
 	if effectiveKey.Source == db.EffectiveKeyMeasured {
 		response.KeyConfidence = analysis.KeyConfidence
 	}
+	measuredKey := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Analysis: &analysis})
+	if measuredKey.Tonic != nil && measuredKey.Mode != nil {
+		response.MeasuredKeyTonic = measuredKey.Tonic
+		response.MeasuredKeyMode = measuredKey.Mode
+	}
 	if effectiveKey.Tonic != nil && effectiveKey.Mode != nil {
 		keyName := analysiskey.FormatKey(*effectiveKey.Tonic, *effectiveKey.Mode)
 		camelot := analysiskey.Camelot(*effectiveKey.Tonic, *effectiveKey.Mode)
@@ -222,6 +233,87 @@ func trackAnalysisFeatureResponse(analysis db.TrackAnalysis, override db.TrackAn
 		response.OpenKey = &openKey
 	}
 	return response
+}
+
+// TrackKeyUpdate stores an explicitly verified tonic and mode.
+type TrackKeyUpdate struct {
+	Tonic *int   `json:"tonic"`
+	Mode  string `json:"mode"`
+}
+
+func (a *API) putTrackKeyV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	if songID == "" {
+		respondError(w, http.StatusBadRequest, "song ID is required")
+		return
+	}
+	var update TrackKeyUpdate
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&update); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid key update")
+		return
+	}
+	if update.Tonic == nil || *update.Tonic < 0 || *update.Tonic > 11 || (update.Mode != "major" && update.Mode != "minor") {
+		respondError(w, http.StatusBadRequest, "key tonic must be 0 through 11 and mode must be major or minor")
+		return
+	}
+	analysis, err := a.db.GetTrackAnalysis(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(w, http.StatusNotFound, "analysis not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override, err := a.db.GetTrackAnalysisOverride(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		override = db.TrackAnalysisOverride{SongID: songID}
+	} else if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override.KeyTonic = update.Tonic
+	override.KeyMode = &update.Mode
+	override.KeyLocked = true
+	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, trackAnalysisFeatureResponse(analysis, override))
+}
+
+func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
+	songID := chi.URLParam(r, "songID")
+	if songID == "" {
+		respondError(w, http.StatusBadRequest, "song ID is required")
+		return
+	}
+	analysis, err := a.db.GetTrackAnalysis(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(w, http.StatusNotFound, "analysis not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override, err := a.db.GetTrackAnalysisOverride(songID)
+	if errors.Is(err, sql.ErrNoRows) {
+		override = db.TrackAnalysisOverride{SongID: songID}
+	} else if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	override.KeyTonic = nil
+	override.KeyMode = nil
+	override.KeyLocked = false
+	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, trackAnalysisFeatureResponse(analysis, override))
 }
 
 func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
