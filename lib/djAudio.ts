@@ -233,6 +233,8 @@ export class DJAudioEngine {
   
   private trackLoadGenerationA = 0;
   private trackLoadGenerationB = 0;
+  private activeTrackLoadGenerationA: number | null = null;
+  private activeTrackLoadGenerationB: number | null = null;
 
   // Callbacks
   private onTrackEnd: ((deck: DeckId) => void) | null = null;
@@ -908,6 +910,7 @@ export class DJAudioEngine {
     }
 
     const generation = deck === 'A' ? ++this.trackLoadGenerationA : ++this.trackLoadGenerationB;
+    if (deck === 'A') this.activeTrackLoadGenerationA = generation; else this.activeTrackLoadGenerationB = generation;
     if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
 
     this.clearScratchAudio(deck);
@@ -916,6 +919,8 @@ export class DJAudioEngine {
     const loadPromise = source.load(track);
     try { await loadPromise; }
     catch (error) {
+      if (deck === 'A' && this.activeTrackLoadGenerationA === generation) this.activeTrackLoadGenerationA = null;
+      if (deck === 'B' && this.activeTrackLoadGenerationB === generation) this.activeTrackLoadGenerationB = null;
       if ((error as Error).name === 'AbortError') throw error;
       if (String((error as Error).message).startsWith('Timeout loading track:')) {
         console.error(`🎧 DJ Audio: Timeout loading track to Deck ${deck}`);
@@ -924,6 +929,9 @@ export class DJAudioEngine {
       }
       throw error;
     }
+
+    if (deck === 'A' && this.activeTrackLoadGenerationA === generation) this.activeTrackLoadGenerationA = null;
+    if (deck === 'B' && this.activeTrackLoadGenerationB === generation) this.activeTrackLoadGenerationB = null;
 
     console.log(`🎧 Loaded track to Deck ${deck}: ${track.title}`);
 
@@ -1021,7 +1029,8 @@ export class DJAudioEngine {
    * Unload a deck
    */
   unloadDeck(deck: DeckId): void {
-    if (deck === 'A') ++this.trackLoadGenerationA; else ++this.trackLoadGenerationB;
+    if (deck === 'A') { ++this.trackLoadGenerationA; this.activeTrackLoadGenerationA = null; }
+    else { ++this.trackLoadGenerationB; this.activeTrackLoadGenerationB = null; }
     if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
     this.clearScratchAudio(deck);
     this.getDeckSource(deck)?.unload();
@@ -1030,6 +1039,13 @@ export class DJAudioEngine {
   /** Monotonic operation epoch used by reversible off-air preview sessions. */
   getDeckLoadGeneration(deck: DeckId): number {
     return deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB;
+  }
+
+  /** True while the current generation is still awaiting its source load. */
+  isDeckLoading(deck: DeckId): boolean {
+    return deck === 'A'
+      ? this.activeTrackLoadGenerationA === this.trackLoadGenerationA
+      : this.activeTrackLoadGenerationB === this.trackLoadGenerationB;
   }
 
   /**
