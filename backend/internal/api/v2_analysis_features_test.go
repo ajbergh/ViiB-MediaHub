@@ -246,6 +246,15 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:energy", SongID: "song", Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Data: encoded}); err != nil {
 		t.Fatal(err)
 	}
+	standardsLoudness, standardsPeak := -11.25, -.42
+	standards := features.BS1770Result{IntegratedLUFS: &standardsLoudness, TruePeakDBTP: &standardsPeak, Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion, LoudnessAlgorithm: features.BS1770LoudnessAlgorithm, TruePeakAlgorithm: features.BS1770TruePeakAlgorithm, Layout: "stereo", Weighting: "L=1;R=1", LoudnessStatus: "available", TruePeakStatus: "available"}
+	standardsEncoded, err := features.EncodeBS1770(standards)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:" + features.BS1770AlgorithmVersion, SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured", Data: standardsEncoded}); err != nil {
+		t.Fatal(err)
+	}
 	recorder := httptest.NewRecorder()
 	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/song/energy", nil))
 	if recorder.Code != http.StatusOK {
@@ -261,8 +270,28 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	if response.LoudnessKind != features.LoudnessKind || response.PeakKind != features.PeakKind || response.ChannelScope != "mono" || response.Standard != "none" {
 		t.Fatalf("energy API did not expose qualified measurement metadata: %#v", response)
 	}
+	if response.IntegratedLUFSBS1770 == nil || *response.IntegratedLUFSBS1770 != standardsLoudness || response.TruePeakDBTP == nil || *response.TruePeakDBTP != standardsPeak || response.LoudnessStandard == nil || *response.LoudnessStandard != features.BS1770Standard || response.LoudnessAlgorithm == nil || *response.LoudnessAlgorithm != features.BS1770LoudnessAlgorithm || response.TruePeakAlgorithm == nil || *response.TruePeakAlgorithm != features.BS1770TruePeakAlgorithm || response.LoudnessLayout == nil || *response.LoudnessLayout != "stereo" || response.LoudnessWeighting == nil || *response.LoudnessWeighting != "L=1;R=1" || response.LoudnessStatus == nil || *response.LoudnessStatus != "available" || response.TruePeakStatus == nil || *response.TruePeakStatus != "available" {
+		t.Fatalf("energy API did not expose the separately versioned BS.1770 artifact: %#v", response)
+	}
+	if response.IntegratedLUFS != result.IntegratedLUFS || response.TruePeakDBFS != result.TruePeakDBFS {
+		t.Fatalf("adding the standards artifact changed legacy proxy aliases: %#v", response)
+	}
 	if len(response.Sections) != 1 || response.Sections[0].Label != features.StructureIntro || response.Sections[0].Confidence != .48 || response.Sections[0].TimingProvenance != features.TimingDownbeatGrid || response.Sections[0].DownbeatStart == nil || *response.Sections[0].DownbeatStart != 0 {
 		t.Fatalf("energy API did not serialize structure semantics and timing provenance: %#v", response.Sections)
+	}
+	monoMeasurement := features.BS1770Result{Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion, LoudnessAlgorithm: features.BS1770LoudnessAlgorithm, TruePeakAlgorithm: features.BS1770TruePeakAlgorithm, Layout: "mono", Weighting: "M=1", LoudnessStatus: "below-absolute-gate", TruePeakStatus: "silence"}
+	monoEncoded, err := features.EncodeBS1770(monoMeasurement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:" + features.BS1770AlgorithmVersion, SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured", Data: monoEncoded}); err != nil {
+		t.Fatal(err)
+	}
+	monoRecorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(monoRecorder, httptest.NewRequest(http.MethodGet, "/analysis/song/energy", nil))
+	var monoResponse EnergyFeaturesResponse
+	if monoRecorder.Code != http.StatusOK || json.NewDecoder(monoRecorder.Body).Decode(&monoResponse) != nil || monoResponse.LoudnessLayout == nil || *monoResponse.LoudnessLayout != "mono" || monoResponse.LoudnessWeighting == nil || *monoResponse.LoudnessWeighting != "M=1" || monoResponse.IntegratedLUFSBS1770 != nil || monoResponse.TruePeakDBTP != nil {
+		t.Fatalf("mono standards artifact/API round trip = status %d, response %#v", monoRecorder.Code, monoResponse)
 	}
 }
 

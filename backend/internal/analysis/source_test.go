@@ -48,14 +48,16 @@ func TestStreamLocalMonoDecodesAndDownmixesCanonicalSong(t *testing.T) {
 		t.Fatal(err)
 	}
 	var received []float32
+	var receivedInterleaved []float32
 	source, err := StreamLocalMono(context.Background(), database, NewDefaultDecoderRegistry(), "song", func(chunk MonoChunk) error {
 		received = append(received, chunk.Samples...)
+		receivedInterleaved = append(receivedInterleaved, chunk.Interleaved...)
 		if chunk.SampleRate != 22050 {
 			t.Fatalf("sample rate = %d", chunk.SampleRate)
 		}
 		return nil
 	})
-	if err != nil || source.SongID != "song" || len(received) != 2 || received[0] > .001 || received[0] < -.001 || received[1] != .5 {
-		t.Fatalf("stream = %#v, samples = %#v, err = %v", source, received, err)
+	if err != nil || source.SongID != "song" || len(received) != 2 || received[0] > .001 || received[0] < -.001 || received[1] != .5 || len(receivedInterleaved) != 4 || receivedInterleaved[0] < .99 || receivedInterleaved[1] > -.99 || receivedInterleaved[2] < .49 || receivedInterleaved[3] < .49 {
+		t.Fatalf("stream = %#v, mono = %#v, interleaved = %#v, err = %v", source, received, receivedInterleaved, err)
 	}
 }

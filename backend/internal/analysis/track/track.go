@@ -32,7 +32,7 @@ const AnalysisVersion = 1
 // AlgorithmVersion identifies the exact analyzer combination that produced a
 // row. It is composite because one row carries both dimensions; a change in
 // either analyzer must invalidate the record.
-const AlgorithmVersion = "track-v1;" + tempo.AlgorithmVersion + ";" + key.AlgorithmVersion + ";" + features.EnergyLevelAlgorithmVersion
+const AlgorithmVersion = "track-v1;" + tempo.AlgorithmVersion + ";" + key.AlgorithmVersion + ";" + features.EnergyLevelAlgorithmVersion + ";" + features.BS1770AlgorithmVersion
 
 // Stable failure codes from the analysis lifecycle contract. They are part of
 // the persisted record and must not be reworded per call site.
@@ -58,6 +58,7 @@ type Result struct {
 	// sufficiently periodic onset evidence for safe phase alignment.
 	BeatGrid    *beatgrid.Grid
 	Features    *features.Result
+	Loudness    *features.BS1770Result
 	EnergyLevel *features.EnergyLevelEstimate
 	Source      analysis.ResolvedSource
 }
@@ -121,6 +122,7 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 	var chroma *key.ChromaAccumulator
 	var phase *beatgrid.PhaseAccumulator
 	var energy *features.Accumulator
+	var loudness *features.BS1770Accumulator
 	sampleRate := 0
 
 	err := analysis.StreamMonoFileWithOpener(ctx, registry, name, open, func(chunk analysis.MonoChunk) error {
@@ -135,6 +137,11 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 			chroma = key.NewChromaAccumulatorWithOptions(chunk.SampleRate, opts.Key)
 			phase = beatgrid.NewPhaseAccumulator(chunk.SampleRate)
 			energy = features.NewAccumulator(chunk.SampleRate)
+			var loudnessErr error
+			loudness, loudnessErr = features.NewBS1770Accumulator(chunk.SampleRate, chunk.SourceChannels)
+			if loudnessErr != nil {
+				return loudnessErr
+			}
 		}
 		if sampleRate != chunk.SampleRate {
 			return fmt.Errorf("analysis stream sample rate changed")
@@ -145,6 +152,9 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		chroma.Feed(chunk.Samples)
 		phase.Feed(chunk.Samples)
 		energy.Feed(chunk.Samples)
+		if err := loudness.Feed(chunk.Interleaved); err != nil {
+			return err
+		}
 		timing.DSPSeconds += time.Since(dspStarted).Seconds()
 		return nil
 	})
@@ -160,6 +170,8 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		result.Tempo = tempo.Estimate{AlgorithmVersion: tempo.AlgorithmVersion}
 		result.Key = key.Estimate{AlgorithmVersion: key.AlgorithmVersion}
 	} else {
+		measuredLoudness := loudness.Result()
+		result.Loudness = &measuredLoudness
 		result.Tempo = onsets.Estimate()
 		result.Key = chroma.Estimate()
 		if result.Tempo.Known {
@@ -372,23 +384,41 @@ func persistBeatGrid(database *db.DB, result Result) error {
 }
 
 func persistFeatures(database *db.DB, result Result) error {
-	if result.Features == nil {
-		return nil
+	if result.Features != nil {
+		encoded, err := result.Features.Encode()
+		if err != nil {
+			return err
+		}
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+			ID:               result.SongID + ":" + features.AlgorithmVersion,
+			SongID:           result.SongID,
+			Kind:             features.ArtifactKind,
+			FormatVersion:    features.FormatVersion,
+			AlgorithmVersion: features.AlgorithmVersion,
+			Encoding:         features.Encoding,
+			Provenance:       "measured",
+			Data:             encoded,
+		}); err != nil {
+			return err
+		}
 	}
-	encoded, err := result.Features.Encode()
-	if err != nil {
-		return err
+	if result.Loudness != nil {
+		encoded, err := features.EncodeBS1770(*result.Loudness)
+		if err != nil {
+			return err
+		}
+		return database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+			ID:               result.SongID + ":" + features.BS1770AlgorithmVersion,
+			SongID:           result.SongID,
+			Kind:             features.BS1770ArtifactKind,
+			FormatVersion:    features.BS1770FormatVersion,
+			AlgorithmVersion: features.BS1770AlgorithmVersion,
+			Encoding:         features.BS1770Encoding,
+			Provenance:       "measured",
+			Data:             encoded,
+		})
 	}
-	return database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
-		ID:               result.SongID + ":" + features.AlgorithmVersion,
-		SongID:           result.SongID,
-		Kind:             features.ArtifactKind,
-		FormatVersion:    features.FormatVersion,
-		AlgorithmVersion: features.AlgorithmVersion,
-		Encoding:         features.Encoding,
-		Provenance:       "measured",
-		Data:             encoded,
-	})
+	return nil
 }
 
 // PersistFailure records a durable terminal failure so a poison source is not

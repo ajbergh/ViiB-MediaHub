@@ -77,12 +77,21 @@ type EnergyFeaturesResponse struct {
 	Standard     string `json:"standard"`
 	// Deprecated numeric compatibility aliases. Consult the metadata above for
 	// the actual unweighted RMS and sample-plus-midpoint proxy semantics.
-	IntegratedLUFS   float64                  `json:"integratedLufs"`
-	TruePeakDBFS     float64                  `json:"truePeakDbfs"`
-	Energy           []features.EnergyPoint   `json:"energy"`
-	Sections         []features.Section       `json:"sections"`
-	CueSuggestions   []features.CueSuggestion `json:"cueSuggestions"`
-	AlgorithmVersion string                   `json:"algorithmVersion"`
+	IntegratedLUFS       float64                  `json:"integratedLufs"`
+	TruePeakDBFS         float64                  `json:"truePeakDbfs"`
+	IntegratedLUFSBS1770 *float64                 `json:"integratedLufsBs1770,omitempty"`
+	TruePeakDBTP         *float64                 `json:"truePeakDbtp,omitempty"`
+	LoudnessStandard     *string                  `json:"loudnessStandard,omitempty"`
+	LoudnessAlgorithm    *string                  `json:"loudnessAlgorithmVersion,omitempty"`
+	TruePeakAlgorithm    *string                  `json:"truePeakAlgorithmVersion,omitempty"`
+	LoudnessLayout       *string                  `json:"loudnessChannelLayout,omitempty"`
+	LoudnessWeighting    *string                  `json:"loudnessChannelWeighting,omitempty"`
+	LoudnessStatus       *string                  `json:"loudnessStatus,omitempty"`
+	TruePeakStatus       *string                  `json:"truePeakStatus,omitempty"`
+	Energy               []features.EnergyPoint   `json:"energy"`
+	Sections             []features.Section       `json:"sections"`
+	CueSuggestions       []features.CueSuggestion `json:"cueSuggestions"`
+	AlgorithmVersion     string                   `json:"algorithmVersion"`
 }
 
 // TransitionRecommendationResponse is an explicitly explainable, local
@@ -341,7 +350,29 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, EnergyFeaturesResponse{SongID: songID, LoudnessKind: result.LoudnessKind, PeakKind: result.PeakKind, ChannelScope: result.ChannelScope, Standard: result.Standard, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: result.Energy, Sections: result.Sections, CueSuggestions: result.CueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion})
+	response := EnergyFeaturesResponse{SongID: songID, LoudnessKind: result.LoudnessKind, PeakKind: result.PeakKind, ChannelScope: result.ChannelScope, Standard: result.Standard, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: result.Energy, Sections: result.Sections, CueSuggestions: result.CueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion}
+	measurement, measurementErr := a.db.GetTrackAnalysisArtifact(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
+	if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) {
+		respondError(w, http.StatusInternalServerError, measurementErr.Error())
+		return
+	}
+	if measurementErr == nil {
+		standards, decodeErr := features.DecodeBS1770(measurement.Data)
+		if decodeErr != nil {
+			respondError(w, http.StatusInternalServerError, decodeErr.Error())
+			return
+		}
+		response.IntegratedLUFSBS1770 = standards.IntegratedLUFS
+		response.TruePeakDBTP = standards.TruePeakDBTP
+		response.LoudnessStandard = &standards.Standard
+		response.LoudnessAlgorithm = &standards.LoudnessAlgorithm
+		response.TruePeakAlgorithm = &standards.TruePeakAlgorithm
+		response.LoudnessLayout = &standards.Layout
+		response.LoudnessWeighting = &standards.Weighting
+		response.LoudnessStatus = &standards.LoudnessStatus
+		response.TruePeakStatus = &standards.TruePeakStatus
+	}
+	respondJSON(w, response)
 }
 
 // getTransitionRecommendationsV2 ranks only locally analyzed tracks.  It
