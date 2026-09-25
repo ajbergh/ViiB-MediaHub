@@ -211,5 +211,11 @@ func (a *API) analysisCueList(songID string) (AnalysisCueListResponse, error) {
 		})
 	}
 	response.Suppressions, err = a.db.GetDJHotCueSuppressions(songID)
-	return response, err
+	if err != nil {
+		return AnalysisCueListResponse{}, err
+	}
+	if response.Suppressions == nil {
+		response.Suppressions = []db.DJHotCueSuppression{}
+	}
+	return response, nil
 }

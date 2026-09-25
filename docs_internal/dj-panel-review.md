@@ -4,7 +4,7 @@ Date: 2026-09-23
 
 ## Fix Progress
 
-Current status: Fixes for findings 1–27 and 29–30, including the DJ load crash regression and PR #59's raw-color CI failure, are on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. Analysis state, MIDI mapping behavior/status, WebGL overview loop shading, superseded track loads, the PERF FX/sampler layout, Deck A FX alignment, and the raw-color regression have been corrected. Finding 28's left-deck rack alignment change was reverted at the user's request. Minimized-window loop behavior still needs Wails runtime confirmation.
+Current status: Fixes for findings 1–27 and 29–30, including the DJ load crash regression and PR #59's raw-color CI failure, are on `djv2/panel-review-fixes` and [PR #59](https://github.com/ajbergh/ViiB-MediaHub/pull/59) is open. Finding 31 is addressed on `codex/dj-cue-suppressions-null-fix` and under review in [PR #96](https://github.com/ajbergh/ViiB-MediaHub/pull/96). Analysis state, MIDI mapping behavior/status, WebGL overview loop shading, superseded track loads, the PERF FX/sampler layout, Deck A FX alignment, and the raw-color regression have been corrected. Finding 28's left-deck rack alignment change was reverted at the user's request. Minimized-window loop behavior still needs Wails runtime confirmation.
 
 | Finding | Status | Progress |
 |---|---|---|
@@ -24,6 +24,7 @@ Current status: Fixes for findings 1–27 and 29–30, including the DJ load cra
 | 28 | Reverted | Deck A's TRIM/HIGH/MID/LOW/FILT rack alignment was restored to its prior centered position at the user's request. |
 | 29 | Fixed | Deck A's FX units are right-aligned toward the center FX pad. Full-size FX knobs have more spacing and dedicated label/readout sizing, preventing their text from colliding. |
 | 30 | Fixed | PR #59 frontend CI failed the raw-color regression check on a new `#111` WebGL toolbar color. Replaced it with the existing `bg-surface-0` token. |
+| 31 | In review | A cue-list response could serialize `suppressions` as `null` when the database had no suppression rows; the DJ cue editor dereferenced it during render. The API now preserves the empty-array contract, and the UI guards the field. |
 
 Implementation log:
 
@@ -46,6 +47,7 @@ Implementation log:
 - 2026-09-23: Started finding 29: anchored Deck A's FX units to the panel's right edge, increased the full FX knob size and spacing, and reduced only the FX knob label/readout font sizing so long labels and values remain separated.
 - 2026-09-23: Completed finding 29. Deck A's FX rack now sits against the center pad; the FX knobs are wider with more spacing, and FX-only typography keeps labels and numeric readouts distinct. Changes are ready for PR #59; no test suite was run for this visual-only adjustment.
 - 2026-09-24: Fixed PR #59 frontend CI finding 30 by replacing the WebGL waveform toolbar's new raw `#111` color with `bg-surface-0`. The raw-color check and TypeScript check pass locally; Vitest could not start in the restricted shell because esbuild was denied reads above the workspace. GitHub Actions run `35954333373` then passed all frontend, backend, analysis, semantic, and desktop build checks on commit `c669777`.
+- 2026-09-25: Fixed finding 31 in `codex/dj-cue-suppressions-null-fix` and opened [PR #96](https://github.com/ajbergh/ViiB-MediaHub/pull/96): the cue-list API now serializes absent suppression records as an empty array, the DJ cue editor defensively handles a null field, and the existing API test asserts the empty-array contract. `go test -count=1 ./internal/api -run '^TestV2AnalysisCueListAndApplyPolicies$'`, `npm run typecheck`, and `git diff --check` passed.
 
 ## Scope
 

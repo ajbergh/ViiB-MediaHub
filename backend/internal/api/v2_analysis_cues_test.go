@@ -74,6 +74,9 @@ func TestV2AnalysisCueListAndApplyPolicies(t *testing.T) {
 	if listed.GeneratorVersion != "auto-cues-v1" || listed.SourceFingerprint != resolvedSource.Fingerprint || listed.DefaultApplyMode != "fill-empty" || len(listed.GeneratedCandidates) == 0 || len(listed.HotCues) != 1 {
 		t.Fatalf("cue list response = %#v", listed)
 	}
+	if listed.Suppressions == nil || len(listed.Suppressions) != 0 {
+		t.Fatalf("cue list suppressions = %#v, want a non-nil empty array", listed.Suppressions)
+	}
 	for _, candidate := range listed.GeneratedCandidates {
 		if !candidate.DownbeatAligned || candidate.Rationale != "qualified-manual-downbeat" || candidate.SourceFingerprint != resolvedSource.Fingerprint {
 			t.Fatalf("manual beatgrid candidate provenance = %#v", candidate)
