@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -510,11 +511,51 @@ func (a *API) runStemRegistryJob(job db.Job) {
 		return
 	}
 	_ = a.db.UpdateJobProgress(job.ID, 0, 1, "Discovering and validating stem packages")
-	if err := a.refreshStemRegistry(params.SongID); err != nil {
+	ctx := context.Background()
+	song, err := a.db.GetSongByID(params.SongID)
+	if err != nil || song == nil {
+		_ = a.db.FailJob(job.ID, "song_not_found", "Song was not found")
+		return
+	}
+	locations, err := a.db.ListStemLocations()
+	if err != nil {
 		_ = a.db.FailJob(job.ID, "stem_refresh_failed", "Stem package discovery failed")
 		return
 	}
-	_ = a.db.CompleteJob(job.ID, map[string]string{"songId": params.SongID}, "Stem package registry refreshed")
+	dirs := make([]string, 0, len(locations))
+	for _, location := range locations {
+		if location.Enabled {
+			dirs = append(dirs, location.Path)
+		}
+	}
+	var uncheckedGeometries int
+	if song.Source != "plex" && song.FilePath != "" {
+		sourceHash, hashErr := stemSourceHashes.SHA256Context(ctx, song.FilePath)
+		if hashErr != nil {
+			_ = a.db.FailJob(job.ID, "stem_refresh_failed", "Stem package discovery failed")
+			return
+		}
+		discovery, discoveryErr := stems.DiscoverPackagesContext(ctx, song.FilePath, dirs)
+		if discoveryErr != nil {
+			_ = a.db.FailJob(job.ID, "stem_refresh_failed", "Stem package discovery failed")
+			return
+		}
+		uncheckedGeometries, err = annotateStemCandidateIdentities(ctx, song.FilePath, sourceHash, discovery.Candidates)
+		if err == nil {
+			err = a.refreshStemRegistryWithDiscoveryContext(ctx, params.SongID, &discovery, dirs)
+		}
+	} else {
+		err = a.refreshStemRegistryWithDiscoveryContext(ctx, params.SongID, nil, dirs)
+	}
+	if err != nil {
+		_ = a.db.FailJob(job.ID, "stem_refresh_failed", "Stem package discovery failed")
+		return
+	}
+	message := "Stem package registry refreshed"
+	if uncheckedGeometries > 0 {
+		message = fmt.Sprintf("%s; PCM32 fallback skipped %d additional package audio geometries, so packages matching only those layouts may remain unmatched or stale", message, uncheckedGeometries)
+	}
+	_ = a.db.CompleteJob(job.ID, map[string]string{"songId": params.SongID, "audioIdentityGeometriesUnchecked": fmt.Sprint(uncheckedGeometries)}, message)
 }
 
 func stemSetFromValidation(songID, path, source string, m stems.Manifest, files map[stems.StemName]string, linked bool, status, message string) db.StemSet {

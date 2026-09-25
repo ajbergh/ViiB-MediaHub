@@ -116,6 +116,23 @@ func TestDiscoverPackagesRejectsSymlinkedAdjacentPackageRoot(t *testing.T) {
 	}
 }
 
+func TestDiscoverLibraryPackagesReportsSymlinkedPackageRootAsRejected(t *testing.T) {
+	root := t.TempDir()
+	realPackage := filepath.Join(root, "real.viibstems")
+	writeDiscoveryFixture(t, realPackage, sha256Hex([]byte("source")))
+	alias := filepath.Join(root, "alias.viibstems")
+	if err := os.Symlink(realPackage, alias); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	result := DiscoverLibraryPackages([]string{root})
+	if len(result.Candidates) != 1 || filepath.Clean(result.Candidates[0].Path) != filepath.Clean(realPackage) {
+		t.Fatalf("real package candidate missing or symlink was followed: %+v", result)
+	}
+	if len(result.Rejected) != 1 || filepath.Clean(result.Rejected[0].Path) != filepath.Clean(alias) {
+		t.Fatalf("symlinked package root was not retained as invalid diagnostics: %+v", result.Rejected)
+	}
+}
+
 func TestDiscoverLibraryPackagesObservesCancellation(t *testing.T) {
 	root := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())

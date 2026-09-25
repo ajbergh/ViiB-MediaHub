@@ -30,6 +30,67 @@ type stemAudioIdentityKey struct {
 	hash     string
 }
 
+// annotateStemCandidateIdentities checks exact source hashes first, then
+// evaluates the PCM32 fallback once per source geometry. Geometries past the
+// cap are explicitly marked checked-but-unmatched so registry refresh cannot
+// fall back to decoding once per package.
+func annotateStemCandidateIdentities(ctx context.Context, sourcePath, sourceHash string, candidates []stems.PackageCandidate) (int, error) {
+	geometriesSet := make(map[stemAudioGeometry]struct{})
+	for i := range candidates {
+		manifest := candidates[i].Validation.Manifest
+		if strings.EqualFold(sourceHash, manifest.Source.SHA256) {
+			candidates[i].SourceIdentityChecked = true
+			candidates[i].SourceIdentityMatches = true
+			continue
+		}
+		if manifest.Source.AudioSHA256 != "" && manifest.Audio.SampleRate > 0 && manifest.Audio.Channels > 0 {
+			geometriesSet[stemAudioGeometry{sampleRate: manifest.Audio.SampleRate, channels: manifest.Audio.Channels}] = struct{}{}
+		}
+	}
+	geometries := make([]stemAudioGeometry, 0, len(geometriesSet))
+	for geometry := range geometriesSet {
+		geometries = append(geometries, geometry)
+	}
+	sort.Slice(geometries, func(i, j int) bool {
+		if geometries[i].sampleRate != geometries[j].sampleRate {
+			return geometries[i].sampleRate < geometries[j].sampleRate
+		}
+		return geometries[i].channels < geometries[j].channels
+	})
+	unchecked := 0
+	if len(geometries) > maxStemLibraryIdentityGeometries {
+		unchecked = len(geometries) - maxStemLibraryIdentityGeometries
+		geometries = geometries[:maxStemLibraryIdentityGeometries]
+	}
+	matchedByGeometry := make(map[stemAudioGeometry]string, len(geometries))
+	resolved := analysis.ResolvedSource{Name: filepath.Base(sourcePath), Path: sourcePath}
+	for _, geometry := range geometries {
+		if err := ctx.Err(); err != nil {
+			return unchecked, err
+		}
+		hash, err := stemSourceAudioHashes.SHA256(ctx, decoderRegistry(), resolved, geometry.sampleRate, geometry.channels)
+		if err != nil {
+			if ctx.Err() != nil {
+				return unchecked, ctx.Err()
+			}
+			// Match the previous per-candidate fallback behavior: an unsupported
+			// geometry is simply not an identity match.
+			continue
+		}
+		matchedByGeometry[geometry] = strings.ToLower(hash)
+	}
+	for i := range candidates {
+		if candidates[i].SourceIdentityChecked {
+			continue
+		}
+		manifest := candidates[i].Validation.Manifest
+		geometry := stemAudioGeometry{sampleRate: manifest.Audio.SampleRate, channels: manifest.Audio.Channels}
+		candidates[i].SourceIdentityChecked = true
+		candidates[i].SourceIdentityMatches = strings.EqualFold(matchedByGeometry[geometry], manifest.Source.AudioSHA256) && manifest.Source.AudioSHA256 != ""
+	}
+	return unchecked, nil
+}
+
 func (a *API) runStemLibraryScanJob(job db.Job) {
 	var params struct {
 		Locations []string `json:"locations"`

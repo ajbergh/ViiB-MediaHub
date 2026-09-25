@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -15,6 +16,36 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/stems"
 )
+
+func TestAnnotateStemCandidateIdentitiesBoundsPCMGeometries(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "not-audio.bin")
+	if err := os.WriteFile(source, []byte("not decodable audio"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	candidates := make([]stems.PackageCandidate, maxStemLibraryIdentityGeometries+2)
+	for i := range candidates {
+		candidates[i].Validation.Manifest = stems.Manifest{
+			Source: stems.Source{SHA256: "different", AudioSHA256: "no-match"},
+			Audio:  stems.AudioGeometry{SampleRate: 8000 + i, Channels: 2},
+		}
+	}
+	candidates[0].Validation.Manifest.Source.SHA256 = "exact-source-hash"
+	unchecked, err := annotateStemCandidateIdentities(context.Background(), source, "exact-source-hash", candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchecked != 1 {
+		t.Fatalf("unchecked geometries=%d, want 1", unchecked)
+	}
+	for i, candidate := range candidates {
+		if !candidate.SourceIdentityChecked {
+			t.Fatalf("candidate %d identity was left eligible for per-package fallback", i)
+		}
+		if candidate.SourceIdentityMatches != (i == 0) {
+			t.Fatalf("candidate %d match=%t, want %t", i, candidate.SourceIdentityMatches, i == 0)
+		}
+	}
+}
 
 func TestStemLibraryScanRefreshesOnlyHashMatchingNestedPackages(t *testing.T) {
 	root := t.TempDir()
@@ -289,6 +320,38 @@ func TestStemLibraryScanRequiresASeparateConfiguredRoot(t *testing.T) {
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/scan", nil))
 	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), "Stem Library location") {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestConfiguredStemLibraryScanQueuesOnlyEnabledRootSnapshot(t *testing.T) {
+	root := t.TempDir()
+	database, err := db.New(filepath.Join(root, "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	library := filepath.Join(root, "Stem Library")
+	if err := os.MkdirAll(library, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SetStemLocations([]db.StemLocation{{ID: "enabled", Path: library, Enabled: true}, {ID: "disabled", Path: filepath.Join(root, "Disabled"), Enabled: false}}); err != nil {
+		t.Fatal(err)
+	}
+	router := (&API{db: database}).V2StemRoutes()
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/scan", nil))
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("configured scan status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	jobs, err := database.ListJobs(10, "")
+	if err != nil || len(jobs) != 1 || jobs[0].Type != "stem_library_scan" {
+		t.Fatalf("configured scan job missing: jobs=%+v err=%v", jobs, err)
+	}
+	var parameters struct {
+		Locations []string `json:"locations"`
+	}
+	if err := json.Unmarshal(jobs[0].Parameters, &parameters); err != nil || len(parameters.Locations) != 1 || filepath.Clean(parameters.Locations[0]) != filepath.Clean(library) {
+		t.Fatalf("job roots did not snapshot only enabled location: %+v err=%v", parameters, err)
 	}
 }
 

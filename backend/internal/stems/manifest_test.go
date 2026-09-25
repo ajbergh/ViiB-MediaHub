@@ -68,6 +68,26 @@ func TestValidatePackageDeterministicWAVFixture(t *testing.T) {
 	}
 }
 
+func TestValidatePlayablePackageRejectsSymlinkedManifest(t *testing.T) {
+	dir := t.TempDir()
+	manifest := fixtureManifest(t, dir, LayoutFour)
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, ManifestFilename)
+	targetPath := filepath.Join(dir, "manifest-target.json")
+	if err := os.WriteFile(targetPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(targetPath, manifestPath); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	if _, err := ValidatePlayablePackageContext(context.Background(), dir); err == nil {
+		t.Fatal("expected symlinked manifest to be rejected")
+	}
+}
+
 func TestValidatePackageRejectsChecksumMismatch(t *testing.T) {
 	dir := t.TempDir()
 	manifest := fixtureManifest(t, dir, LayoutFour)

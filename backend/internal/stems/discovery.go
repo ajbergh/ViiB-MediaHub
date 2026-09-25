@@ -199,10 +199,16 @@ func DiscoverLibraryPackagesContext(ctx context.Context, libraryDirs []string) (
 			if entries > maxLibraryWalkEntries {
 				return fmt.Errorf("stem library entry limit (%d) exceeded", maxLibraryWalkEntries)
 			}
-			if path == root || !entry.IsDir() {
+			if path == root {
 				return nil
 			}
 			if entry.Type()&fs.ModeSymlink != 0 {
+				if strings.EqualFold(filepath.Ext(entry.Name()), packageDirectorySuffix) {
+					result.Rejected = append(result.Rejected, RejectedPackage{Path: path, Source: CandidateLibrary, Err: errors.New("stem package root must not be a symlink")})
+				}
+				return nil
+			}
+			if !entry.IsDir() {
 				return nil
 			}
 			if strings.EqualFold(filepath.Ext(entry.Name()), packageDirectorySuffix) {

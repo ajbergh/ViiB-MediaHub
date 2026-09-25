@@ -278,6 +278,14 @@ func ValidatePlayablePackageContext(ctx context.Context, packageDir string) (Val
 	if err = RejectSymlinkPath(root); err != nil {
 		return Validation{}, fmt.Errorf("unsafe package path: %w", err)
 	}
+	manifestPath := filepath.Join(root, ManifestFilename)
+	manifestInfo, err := os.Lstat(manifestPath)
+	if err != nil {
+		return Validation{}, fmt.Errorf("inspect stem manifest: %w", err)
+	}
+	if manifestInfo.Mode()&os.ModeSymlink != 0 || !manifestInfo.Mode().IsRegular() {
+		return Validation{}, fmt.Errorf("unsafe stem manifest file")
+	}
 	validated, err := ValidatePackageContext(ctx, root)
 	if err != nil {
 		return Validation{}, err
