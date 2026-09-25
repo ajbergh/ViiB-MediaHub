@@ -857,6 +857,36 @@ func (d *DB) GetPlexTrackSource(songID string) (*PlexTrackSource, error) {
 	return &record, nil
 }
 
+// ListPlexTrackSources returns the cached source identity for the Plex catalog
+// in one metadata read. It does not contact Plex or open any media streams.
+func (d *DB) ListPlexTrackSources() (map[string]PlexTrackSource, error) {
+	if err := d.EnsurePlexSchema(); err != nil {
+		return nil, err
+	}
+	rows, err := d.conn.Query(`
+		SELECT t.song_id, t.source_id, t.library_id, t.machine_identifier, t.rating_key, t.metadata_key,
+		       t.media_key, t.artwork_key, t.container, t.audio_codec, t.updated_at, s.base_url, s.available
+		FROM plex_tracks t JOIN plex_sources s ON s.id=t.source_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sources := make(map[string]PlexTrackSource)
+	for rows.Next() {
+		var record PlexTrackSource
+		var available int
+		if err := rows.Scan(&record.SongID, &record.SourceID, &record.LibraryID, &record.MachineID, &record.RatingKey,
+			&record.MetadataKey, &record.MediaKey, &record.ArtworkKey, &record.Container, &record.AudioCodec,
+			&record.UpdatedAt, &record.BaseURL, &available); err != nil {
+			return nil, err
+		}
+		record.Available = available != 0
+		sources[record.SongID] = record
+	}
+	return sources, rows.Err()
+}
+
 // RemovePlexSource deletes only ViiB's cached catalog/configuration rows. It
 // performs no network request and can never delete or modify media on PMS.
 func (d *DB) RemovePlexSource(sourceID string) error {

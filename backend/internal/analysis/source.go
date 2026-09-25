@@ -38,8 +38,18 @@ func ResolveLocalSource(database *db.DB, songID string) (ResolvedSource, error) 
 	if song == nil || strings.TrimSpace(song.FilePath) == "" {
 		return ResolvedSource{}, fmt.Errorf("song %q has no local analysis source", songID)
 	}
+	return ResolveLocalSongSource(*song)
+}
+
+// ResolveLocalSongSource resolves a local source from an already loaded song
+// row. Batch callers can read library metadata once and avoid one song query
+// per current-source fingerprint check.
+func ResolveLocalSongSource(song db.Song) (ResolvedSource, error) {
+	if strings.TrimSpace(song.FilePath) == "" {
+		return ResolvedSource{}, fmt.Errorf("song %q has no local analysis source", song.ID)
+	}
 	if song.Source == "plex" {
-		return ResolvedSource{}, fmt.Errorf("song %q requires a Plex source adapter", songID)
+		return ResolvedSource{}, fmt.Errorf("song %q requires a Plex source adapter", song.ID)
 	}
 	info, err := os.Stat(song.FilePath)
 	if err != nil {

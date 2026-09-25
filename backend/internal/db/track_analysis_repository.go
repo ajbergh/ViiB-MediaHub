@@ -36,6 +36,7 @@ type TrackAnalysisArtifactMetadata struct {
 	Provenance        string
 	SourceFingerprint string
 	CreatedAt         int64
+	PayloadBytes      int64
 }
 
 type TrackAnalysisArtifactPayload struct {
@@ -383,7 +384,7 @@ func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, a
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
-	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, created_at
+	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, created_at, LENGTH(data)
 		FROM track_analysis_artifacts WHERE kind = ? AND format_version = ? AND algorithm_version = ? ORDER BY song_id`, kind, formatVersion, algorithmVersion)
 	if err != nil {
 		return nil, err
@@ -392,7 +393,7 @@ func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, a
 	metadata := make([]TrackAnalysisArtifactMetadata, 0)
 	for rows.Next() {
 		var artifact TrackAnalysisArtifactMetadata
-		if err := rows.Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.SourceFingerprint, &artifact.CreatedAt); err != nil {
+		if err := rows.Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.SourceFingerprint, &artifact.CreatedAt, &artifact.PayloadBytes); err != nil {
 			return nil, err
 		}
 		metadata = append(metadata, artifact)
@@ -400,16 +401,18 @@ func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, a
 	return metadata, rows.Err()
 }
 
-// GetTrackAnalysisArtifactPayloads fetches payloads for a selected set of
-// songs in bounded chunks. It avoids per-song reads and respects SQLite's
-// parameter limit even when the library has many eligible analyses.
-func (d *DB) GetTrackAnalysisArtifactPayloads(songIDs []string, kind string, formatVersion int, algorithmVersion string) (map[string]TrackAnalysisArtifactPayload, error) {
-	result := make(map[string]TrackAnalysisArtifactPayload, len(songIDs))
+// VisitTrackAnalysisArtifactPayloads loads eligible payloads in bounded SQL
+// batches and lets the caller validate each BLOB before the next is scanned.
+// The callback must not issue another query on this DB connection.
+func (d *DB) VisitTrackAnalysisArtifactPayloads(songIDs []string, kind string, formatVersion int, algorithmVersion string, visit func(songID, sourceFingerprint string, data []byte) error) error {
 	if len(songIDs) == 0 {
-		return result, nil
+		return nil
+	}
+	if visit == nil {
+		return errors.New("artifact payload visitor is required")
 	}
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
-		return nil, err
+		return err
 	}
 	unique := make([]string, 0, len(songIDs))
 	seen := make(map[string]struct{}, len(songIDs))
@@ -439,26 +442,29 @@ func (d *DB) GetTrackAnalysisArtifactPayloads(songIDs []string, kind string, for
 		rows, err := d.conn.Query(`SELECT song_id, source_fingerprint, data FROM track_analysis_artifacts
 			WHERE kind = ? AND format_version = ? AND algorithm_version = ? AND song_id IN (`+placeholders+`)`, args...)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		for rows.Next() {
 			var songID string
 			var payload TrackAnalysisArtifactPayload
 			if err := rows.Scan(&songID, &payload.SourceFingerprint, &payload.Data); err != nil {
 				rows.Close()
-				return nil, err
+				return err
 			}
-			result[songID] = payload
+			if err := visit(songID, payload.SourceFingerprint, payload.Data); err != nil {
+				rows.Close()
+				return err
+			}
 		}
 		if err := rows.Err(); err != nil {
 			rows.Close()
-			return nil, err
+			return err
 		}
 		if err := rows.Close(); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return result, nil
+	return nil
 }
 
 // DeleteTrackAnalysisArtifact removes only one versioned representation.  It

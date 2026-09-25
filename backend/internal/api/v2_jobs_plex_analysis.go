@@ -31,10 +31,7 @@ func (a *API) resolveAnalysisSource(ctx context.Context, songID string) (analysi
 	if err != nil || source == nil || !source.Available {
 		return analysis.ResolvedSource{}, fmt.Errorf("plex source unavailable")
 	}
-	revision := strings.Join([]string{
-		"plex", plexTrack.MachineID, plexTrack.RatingKey, plexTrack.MediaKey,
-		strconv.FormatInt(plexTrack.UpdatedAt, 10),
-	}, ":")
+	revision := plexAnalysisFingerprint(*plexTrack)
 	name := plexAnalysisFilename(plexTrack.RatingKey, plexTrack.Container)
 	return analysis.ResolvedSource{
 		SongID: songID, Name: name, Path: "plex://" + plexTrack.SourceID + "/" + plexTrack.RatingKey,
@@ -43,6 +40,13 @@ func (a *API) resolveAnalysisSource(ctx context.Context, songID string) (analysi
 			return a.openPlexAnalysisStream(ctx, source, plexTrack.MediaKey, plexTrack.MetadataKey)
 		},
 	}, nil
+}
+
+func plexAnalysisFingerprint(track db.PlexTrackSource) string {
+	return strings.Join([]string{
+		"plex", track.MachineID, track.RatingKey, track.MediaKey,
+		strconv.FormatInt(track.UpdatedAt, 10),
+	}, ":")
 }
 
 func plexAnalysisFilename(ratingKey, container string) string {
