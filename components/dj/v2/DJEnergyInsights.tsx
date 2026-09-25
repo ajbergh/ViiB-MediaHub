@@ -6,6 +6,7 @@ import { canAcceptMixNextCandidate, stillOwnsMixNextAcceptance, type MixNextAcce
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { api, normalizeTrackEnergyFeatures, type TrackBeatGrid, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
 import { describeTestMixPhaseEvidence } from '../../../lib/testMixPhaseReadiness';
+import { DJSavedMixIdeas } from './DJSavedMixIdeas';
 import type { DeckState } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
 
@@ -191,6 +192,18 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   };
   const top = recommendations?.recommendations[0];
   const candidateTrack = top ? librarySongs.find(song => song.id === top.songId) : undefined;
+  const sourceTrack = trackID ? librarySongs.find(song => song.id === trackID) : undefined;
+  const currentMixIdea = top && recommendations && sourceTrack ? {
+    source: { trackId: sourceTrack.id, title: sourceTrack.title, artist: sourceTrack.artist ?? 'Unknown artist' },
+    candidate: { trackId: top.songId, title: top.title, artist: top.artist },
+    intent: recommendations.intent,
+    algorithmVersion: recommendations.algorithmVersion,
+    score: top.score,
+    vector: top.vector,
+    components: top.components,
+    filters: recommendations.filters,
+    filterEvidence: top.filterEvidence,
+  } : null;
   const phaseGridState = candidateTrack && candidatePhaseGrid?.trackId === candidateTrack.id ? candidatePhaseGrid : undefined;
   const phaseGrid = !phaseGridState || !phaseGridState.loaded ? undefined
     : phaseGridState.grid?.songId === candidateTrack.id ? phaseGridState.grid : null;
@@ -656,6 +669,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         </li>)}
       </ul>
     </details>}
+    <DJSavedMixIdeas currentIdea={currentMixIdea} />
     {recommendations && recommendations.candidatesAfterFilters === 0 && <p role="status" className="mt-1 text-neutral-500">
       No analyzed candidates match these filters ({recommendations.candidatesBeforeFilters} checked).
     </p>}
