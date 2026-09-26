@@ -16,6 +16,7 @@ const dragStyle = { '--wails-draggable': 'drag' } as React.CSSProperties;
 
 export const DesktopTitleBar: React.FC = () => {
   const closeAction = useStore((state) => state.windowCloseAction);
+  const setSkinnyMode = useStore((state) => state.setSkinnyMode);
   const [isMaximised, setIsMaximised] = useState(false);
 
   useEffect(() => {
@@ -51,6 +52,15 @@ export const DesktopTitleBar: React.FC = () => {
     >
       <span className="font-medium">ViiB MediaHub</span>
       <div className="flex h-full" style={noDragStyle} onDoubleClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          onClick={() => setSkinnyMode(true)}
+          className="flex h-8 w-11 items-center justify-center text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-main"
+          aria-label="Enter skinny player mode"
+          title="Enter skinny player mode"
+        >
+          <Minimize2 size={15} aria-hidden="true" />
+        </button>
         <button
           type="button"
           onClick={() => void minimiseNativeWindow()}
