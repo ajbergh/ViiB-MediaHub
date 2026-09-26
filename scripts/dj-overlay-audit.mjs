@@ -116,8 +116,8 @@ const structure = () => page.evaluate(() => {
     const header = q(`[data-dj-waveform-deck="${deck}"] .dj-waveform-lane-header`);
     if (header) checkSiblings(`Waveform lane ${deck} toolbar`, header.children);
   }
-  const hiddenOverflow = [...document.querySelectorAll('.dj-deck-toolbar, .dj-deck-info, .dj-fx-rack, .dj-topbar, .dj-waveform-lane-header')]
-    .filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.className);
+  const hiddenOverflow = [...document.querySelectorAll('.dj-deck-toolbar, .dj-deck-info, .dj-fx-rack, .dj-topbar, .dj-waveform-lane-header, .dj-deck-footer, .dj-deck-tempo, .dj-mixer-head, .dj-mixer-channels, .dj-mixer-section')]
+    .filter(el => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1).map(el => `${el.className} (${el.scrollWidth}×${el.scrollHeight} in ${el.clientWidth}×${el.clientHeight})`);
   return {
     split: n(q('[data-dj-waveform-split]')),
     laneA: n(q('[data-dj-waveform-deck="A"]')),
@@ -155,7 +155,7 @@ const assertStructure = (s, label) => {
   }
   assert.deepEqual(s.overlaps, [], `${label}: overlapping controls`);
   assert.deepEqual(s.escapes, [], `${label}: controls outside their region`);
-  assert.deepEqual(s.hiddenOverflow, [], `${label}: rows rely on hidden horizontal overflow`);
+  assert.deepEqual(s.hiddenOverflow, [], `${label}: fixed-size rows overflow their box`);
 };
 const deckState = () => page.evaluate(async () => {
   const useStore = window.__djAuditStore;
@@ -252,6 +252,21 @@ try {
     assert.equal(await inspector.isVisible(), false, 'Escape does not close the inspector');
     assert.equal(await inspectorTrigger.evaluate(el => el === document.activeElement), true, 'inspector does not return focus');
     assertStructure(await structure(), `${width}×${height} loaded`);
+    // Every mixer tool must fit its panel without clipping (the panel is
+    // budgeted for the tallest tool, Beat FX).
+    for (const tool of ['FX Pad', 'Beat FX', 'Sampler']) {
+      await page.getByRole('tab', { name: tool, exact: true }).click();
+      const fit = await page.locator('.dj-mixer-bottom-body').evaluate(body => {
+        const box = body.getBoundingClientRect();
+        const content = [...body.querySelectorAll('*')].map(el => el.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0);
+        return {
+          scroll: body.scrollHeight <= body.clientHeight + 1 && body.scrollWidth <= body.clientWidth + 1,
+          bottom: Math.max(...content.map(r => r.bottom)) <= box.bottom + 1,
+          right: Math.max(...content.map(r => r.right)) <= box.right + 1,
+        };
+      });
+      assert.deepEqual(fit, { scroll: true, bottom: true, right: true }, `${width}×${height}: mixer ${tool} tool does not fit its panel`);
+    }
     await page.screenshot({ path: `${output}/${width}x${height}-loaded.png` });
 
     const overflow = await page.locator('.dj-deck-info').evaluateAll(elements => elements.map(el => ({ width: el.clientWidth, scroll: el.scrollWidth })));

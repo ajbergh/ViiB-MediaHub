@@ -248,10 +248,10 @@ export const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColo
           {label}
         </button>
         <div className='dj-fx-knobs'>
-          <DJEQKnob label={params.param1.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param1.label}, Deck ${deck}`} valueText={valueText1} value={params.param1.value} onChange={handleKnobParam1} color={knobColor} size={36} compact labelBelow className='dj-fx-knob' />
-          <DJEQKnob label={params.param2.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param2.label}, Deck ${deck}`} valueText={valueText2} value={params.param2.value} onChange={handleKnobParam2} color={knobColor} size={36} compact labelBelow className='dj-fx-knob' />
+          <DJEQKnob label={params.param1.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param1.label}, Deck ${deck}`} valueText={valueText1} value={params.param1.value} onChange={handleKnobParam1} color={knobColor} size={44} compact labelBelow className='dj-fx-knob' />
+          <DJEQKnob label={params.param2.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param2.label}, Deck ${deck}`} valueText={valueText2} value={params.param2.value} onChange={handleKnobParam2} color={knobColor} size={44} compact labelBelow className='dj-fx-knob' />
           {params.hasWet && (
-            <DJEQKnob label={params.wet.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.wet.label}, Deck ${deck}`} valueText={wetText} value={params.wet.value} onChange={handleKnobWet} color={knobColor} size={36} compact labelBelow className='dj-fx-knob' />
+            <DJEQKnob label={params.wet.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.wet.label}, Deck ${deck}`} valueText={wetText} value={params.wet.value} onChange={handleKnobWet} color={knobColor} size={44} compact labelBelow className='dj-fx-knob' />
           )}
         </div>
       </div>

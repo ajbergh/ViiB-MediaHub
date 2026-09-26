@@ -110,7 +110,7 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
       {/* Fader track container */}
       <div
         className="relative cursor-pointer touch-none rounded-lg dj-focus-ring"
-        style={{ width: computedWidth, height: 48 }}
+        style={{ width: computedWidth, height: 40 }}
         role="slider"
         tabIndex={0}
         aria-label="Crossfader"

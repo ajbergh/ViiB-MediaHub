@@ -65,6 +65,55 @@ These resolve the **Decision** rows in Section 3A. They were made during impleme
 
 ### Progress log
 
+- **2026-09-25 — Sampler fit in all layouts; smaller jog, larger performance controls (uncommitted, awaiting review).**
+  - **Sampler clipping (reported in review).** `DJSamplerPads` still chose its pad size from the layout mode: compact 48px pads in `perf`, tall 80px pads plus a mode/volume row in `browse`/`fx`. With samples assigned in FX or BROWSE, the second pad row was cut off by 42px.
+  - **Sampler fix.** The mixer now renders `<DJSamplerPads fill />`: two equal rows that fill the tools panel, with each pad's controls overlaid on the pad. Verified with six assigned pads in DJ and FX layouts: no overflow.
+  - **Decision: jog cap 400 → 300px (−25%, `--dj-jog-max`).** At 400px the jog dominated the deck more than in the mock-up, while primary performance controls were below the §12 44px target. The freed height is reinvested:
+
+    | Control | Before | After |
+    |---|---|---|
+    | Hot cues | 40px | 48px |
+    | Transport | 46px | 52px |
+    | FX knobs | 36px | 44px (rack 104 → 120px) |
+    | EQ knobs | 40px | 48px (EQ column 72 → 84px) |
+
+    The deck toolbar is unchanged because it has no spare width. Deck vertical budget: header 116, toolbar 44, FX 120, footer 140, body ~394 with a 300px jog.
+  - **Follow-up (review: "lots of empty space around the jog").**
+    - **Measured:** the jog column is 558×384px. The jog is height-bound (≈370px max), so growing it cannot fill the ~110px side flanks; the mock-up has the same empty flanks.
+    - **Jog cap 300 → 340px** (renders 320px).
+    - **Toolbar row 44 → 52px:** all toolbar controls (beat jump, loop sizes, IN/OUT/RELOOP, stems) are now 40px tall, and loop-size buttons have a 32px minimum width. The toolbar uses 716 of 744px.
+    - **Not done:** wider loop buttons (36px) would need ~780px.
+    - **Final deck budget:** header 116, toolbar 52, FX 120, footer 140, body ~378.
+
+- **2026-09-25 — Mixer tools panel fit (uncommitted, awaiting review).**
+  - **Problem (reported in review).** The Sampler / FX Pad / Beat FX panel was only 179px tall after the channel faders were lengthened, so the FX Pad (needs ~200px) and Beat FX (~184px) were clipped.
+  - **Rebalanced mixer budget** (authored px, 814 total):
+
+    | Section | Before | After |
+    |---|---|---|
+    | Header | 44 | 44 |
+    | Channels | 266 | 246 |
+    | Headphone cue mix | 139 | 113 |
+    | Crossfader | 96 | 84 |
+    | Sync + curve | 87 | 81 |
+    | Tools panel | 179 | 244 (196 body) |
+
+  - **How:**
+    - removed the redundant "Cue Mix" label (the control already reads HEADPHONES);
+    - tightened mixer section padding;
+    - crossfader hit area 48 → 40px;
+    - channel fader/meter 200/150 → 180/135px;
+    - X-Y pad 140 → 130px;
+    - Beat FX centred.
+  - **Measured fit.** At 1920×1080 and 1470×825, all three tools fit with no clipping: Sampler 74px spare, FX Pad 6px, Beat FX 12px.
+  - `dj-overlay-audit.mjs` now cycles all three mixer tools at every geometry and fails if any tool's content leaves its panel.
+
+- **2026-09-25 — Parity pass verified (uncommitted, awaiting review).**
+  - With the servers back, the mixer's longer faders were checked visually; they fit.
+  - A fresh overflow check found the deck header's info row 5px taller than its fixed box: 87 vs 82px, from the time/elapsed/KEY-SLIP-AG column. The column's gaps were tightened.
+  - `dj-overlay-audit.mjs` now also fails on **vertical** overflow of fixed-height rows. Previously it checked only horizontal overflow, which is why this slipped through. The check covers header info, toolbar, FX rack, footer, tempo column, and the mixer head/channels/sections.
+  - Results: `dj-overlay-audit.mjs` passes on WebGL and Canvas; `djv2-audit.mjs` passes at all four geometries. This closes the verification gap noted in the previous entry, which landed as `266b3c8`.
+
 - **2026-09-25 — Alignment review and mock-up parity pass (uncommitted, awaiting review).**
   - **Alignment (Playwright, authored px).**
     - Deck sections now share one 12px content inset (`--dj-deck-inset`). They were 15/11/13px.

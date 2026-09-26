@@ -52,7 +52,7 @@ const DJBeatJumpStrip = React.memo(function DJBeatJumpStrip({ deck }: { deck: De
         aria-label={`Jump forward ${size} ${unit}`} title={`Jump forward ${size} ${unit}; uses the stored beat grid when available, otherwise BPM`}>
         <ChevronRight size={16} aria-hidden='true' />
       </button>
-      <select className='dj-select' style={{ minHeight: 32 }} value={size} onChange={event => setSize(Number(event.currentTarget.value))}
+      <select className='dj-select' value={size} onChange={event => setSize(Number(event.currentTarget.value))}
         aria-label={`Deck ${deck} beat jump size`}>
         {JUMP_SIZES.map(beats => <option key={beats} value={beats}>{beats}</option>)}
       </select>

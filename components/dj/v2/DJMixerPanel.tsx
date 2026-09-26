@@ -3,9 +3,9 @@
  *
  * Neutral center anchor between the decks (Plan §9, §10A.13). Order, top to
  * bottom: active-deck header, channel strips + master, headphone cue mix,
- * crossfader, sync mode + quantize, crossfader curve, then a bottom panel
- * that switches between the sampler and the FX pad (X-Y pad + Beat FX).
- * The FX layout mode opens the FX pad tab.
+ * crossfader, sync mode + quantize, crossfader curve, then a tools panel
+ * with Sampler, FX Pad (X-Y pad) and Beat FX tabs. The panel height is
+ * budgeted for the tallest tool (Beat FX); the FX layout mode opens FX Pad.
  *
  * Leaf controls keep their own narrow store subscriptions.
  *
@@ -112,8 +112,8 @@ const MixerBottom = React.memo(function MixerBottom() {
         ))}
       </div>
       <div className='dj-mixer-bottom-body' role='tabpanel' aria-label={active.label} data-dj-mixer-tool={tool}>
-        {tool === 'sampler' && <DJSamplerPads />}
-        {tool === 'fxpad' && <div className='dj-mixer-fxpad'><DJFXPad size={140} /></div>}
+        {tool === 'sampler' && <DJSamplerPads fill />}
+        {tool === 'fxpad' && <div className='dj-mixer-fxpad'><DJFXPad size={130} /></div>}
         {tool === 'beatfx' && <DJBeatFXPanel />}
       </div>
     </div>
@@ -135,8 +135,7 @@ export const DJMixerPanel = React.memo(function DJMixerPanel({
         </div>
         <DJChannelStrip deckId='B' getDeckLevels={getDeckBLevels} onVolumeChange={onVolumeChange} />
       </div>
-      <div className='dj-mixer-section'>
-        <span className='dj-label'>Cue Mix</span>
+      <div className='dj-mixer-section' aria-label='Headphone cue mix' role='group'>
         <DJHeadphoneMix width={200} />
       </div>
       <div className='dj-mixer-section'>

@@ -38,6 +38,7 @@ const SamplerPadButton = memo(({
   progress,
   loading,
   compact,
+  fill = false,
 }: {
   pad: SamplerPad;
   onTrigger: (id: number) => void;
@@ -48,6 +49,8 @@ const SamplerPadButton = memo(({
   onModeChange: (id: number) => void;
   progress: number;
   loading: boolean;
+  /** Stretch to the grid cell height (mixer tools panel). */
+  fill?: boolean;
   compact: boolean;
 }) => {
   const hasAudio = pad.url !== null;
@@ -91,12 +94,12 @@ const SamplerPadButton = memo(({
   
   return (
     <div
-      className={compact ? 'relative w-full h-12' : 'flex flex-col items-center gap-0.5'}
+      className={fill ? 'relative w-full h-full min-h-0' : compact ? 'relative w-full h-12' : 'flex flex-col items-center gap-0.5'}
       onMouseLeave={compact && pad.mode === 'gate' && pad.isPlaying ? () => onStop(pad.id) : undefined}
     >
       {/* Pad button */}
       <button
-        className={`relative overflow-hidden w-full ${compact ? 'h-12' : 'h-20'} ${compact && hasAssignment ? 'pb-3' : ''} rounded-md border-2 transition-all duration-75 flex flex-col items-center justify-center text-[12px] font-bold select-none ${
+        className={`relative overflow-hidden w-full ${fill ? 'h-full' : compact ? 'h-12' : 'h-20'} ${compact && hasAssignment ? 'pb-3' : ''} rounded-md border-2 transition-all duration-75 flex flex-col items-center justify-center text-[12px] font-bold select-none ${
           pad.isPlaying
             ? 'scale-[0.98] translate-y-px'
             : hasAssignment
@@ -180,10 +183,20 @@ SamplerPadButton.displayName = 'SamplerPadButton';
 // Main Sampler Pads Component
 // ============================================================================
 
-export const DJSamplerPads: React.FC = memo(() => {
+interface DJSamplerPadsProps {
+  /**
+   * Fill the host's height with two equal pad rows and overlay each pad's
+   * mode/volume controls, so the sampler never overflows a fixed panel
+   * regardless of layout mode or how many pads are assigned.
+   */
+  fill?: boolean;
+}
+
+export const DJSamplerPads: React.FC<DJSamplerPadsProps> = memo(({ fill = false }) => {
   const djSampler = useStore(state => state.djSampler);
   const loadSamplerPad = useStore(state => state.loadSamplerPad);
-  const compact = useStore(state => state.djMixer.djLayoutMode === 'perf');
+  const perfLayout = useStore(state => state.djMixer.djLayoutMode === 'perf');
+  const compact = fill || perfLayout;
   const restoreSamplerPadMetadata = useStore(state => state.restoreSamplerPadMetadata);
   const clearSamplerPad = useStore(state => state.clearSamplerPad);
   const setSamplerPadVolume = useStore(state => state.setSamplerPadVolume);
@@ -304,7 +317,7 @@ export const DJSamplerPads: React.FC = memo(() => {
   }, [djSampler, engine, loadSamplerPad]);
   
   return (
-    <div className="flex flex-col gap-1">
+    <div className={fill ? "flex flex-col gap-1 h-full min-h-0" : "flex flex-col gap-1"}>
       <div className="flex items-center justify-between px-1">
         <div className="text-[12px] text-[var(--dj-text-secondary)] font-bold uppercase tracking-wider">
           Sampler
@@ -316,7 +329,7 @@ export const DJSamplerPads: React.FC = memo(() => {
           Session
         </span>
       </div>
-      <div className={`grid grid-cols-4 ${compact ? 'gap-1' : 'gap-2'} w-full`}>
+      <div className={`grid grid-cols-4 ${fill ? 'grid-rows-2 flex-1 min-h-0 gap-1.5' : compact ? 'gap-1' : 'gap-2'} w-full`}>
         {djSampler.map(pad => (
           <SamplerPadButton
             key={pad.id}
@@ -330,6 +343,7 @@ export const DJSamplerPads: React.FC = memo(() => {
             progress={padProgress[pad.id] || 0}
             loading={loadingPadId === pad.id}
             compact={compact}
+            fill={fill}
           />
         ))}
       </div>

@@ -60,7 +60,7 @@ export const DJChannelStrip = React.memo<DJChannelStripProps>(({
       <div className='w-full px-2 flex items-center justify-center gap-1'>
         <DJStereoVUMeter
           getLevels={getDeckLevels}
-          height={150}
+          height={135}
           channelWidth={4}
           gap={2}
           segments={16}
@@ -70,7 +70,7 @@ export const DJChannelStrip = React.memo<DJChannelStripProps>(({
           value={volume}
           onChange={(v) => onVolumeChange(deckId, v)}
           label=''
-          height={200}
+          height={180}
           isPlaying={isPlaying}
           accentColor={accentColor}
         />
@@ -125,19 +125,19 @@ export const DJDeckEQStrip = React.memo<DJDeckEQStripProps>(({
           onVolumeChange(deckId, Math.max(0, Math.min(1, normalized * 1.5)));
         }}
         color={accentColor}
-        size={40}
+        size={48}
         compact
       />
-      <DJEQKnob label='HIGH'   value={eqHigh}          onChange={v => onEQChange(deckId, 'high', v)}   color='var(--dj-info)' size={40} compact />
-      <DJEQKnob label='MID'    value={eqMid}           onChange={v => onEQChange(deckId, 'mid', v)}    color='var(--dj-play)' size={40} compact />
-      <DJEQKnob label='LOW'    value={eqLow}           onChange={v => onEQChange(deckId, 'low', v)}    color='var(--dj-warning)' size={40} compact />
+      <DJEQKnob label='HIGH'   value={eqHigh}          onChange={v => onEQChange(deckId, 'high', v)}   color='var(--dj-info)' size={48} compact />
+      <DJEQKnob label='MID'    value={eqMid}           onChange={v => onEQChange(deckId, 'mid', v)}    color='var(--dj-play)' size={48} compact />
+      <DJEQKnob label='LOW'    value={eqLow}           onChange={v => onEQChange(deckId, 'low', v)}    color='var(--dj-warning)' size={48} compact />
       <DJEQKnob
         label='FILT'
         valueText={!filterEnabled || Math.abs(filterValue) < 0.001 ? 'OFF' : `${filterValue < 0 ? 'LP' : 'HP'} ${Math.round(Math.abs(filterValue) * 100)}%`}
         value={filterKnobValue}
         onChange={v => onFilterChange(deckId, v)}
         color={filterEnabled ? 'var(--dj-danger)' : 'var(--dj-text-muted)'}
-        size={40}
+        size={48}
         compact
       />
     </div>
