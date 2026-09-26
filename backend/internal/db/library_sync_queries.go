@@ -17,6 +17,29 @@ func (d *DB) LibraryRevision() (int64, error) {
 	return revision, nil
 }
 
+// RecordSongLibraryChange appends an 'upsert' to the library change log for a
+// song whose derived library row changed without a write to the songs table
+// (for example its stem registry summary). It advances the revision exactly as
+// the songs triggers do, so revision streams and delta clients pick it up.
+func (d *DB) RecordSongLibraryChange(songID string) error {
+	if err := d.EnsureLibrarySyncSchema(); err != nil {
+		return err
+	}
+	tx, err := d.conn.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE library_state SET revision = revision + 1 WHERE id = 1`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO library_changes(revision, song_id, operation, changed_at)
+		SELECT revision, ?, 'upsert', ? FROM library_state WHERE id = 1`, songID, time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func clampPageLimit(limit, fallback, maximum int) int {
 	if limit <= 0 {
 		return fallback

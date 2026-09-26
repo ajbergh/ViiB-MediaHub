@@ -381,6 +381,11 @@ func (a *API) getSongs(w http.ResponseWriter, r *http.Request) {
 	for i := range songs {
 		transformLibrarySongForAPI(&songs[i])
 	}
+	// The frontend replaces its v2 snapshot with this list, so it must carry
+	// the same stem summary or every track reads as having no stems.
+	if err := a.attachLibraryStemStatuses(songs); err != nil {
+		log.Printf("Failed to attach stem statuses to song list: %v", err)
+	}
 
 	if songs == nil {
 		songs = []db.Song{}

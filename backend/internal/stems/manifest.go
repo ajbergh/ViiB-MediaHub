@@ -129,6 +129,9 @@ func requireManifestFields(data []byte) error {
 	if top == nil {
 		return errors.New("stem manifest must be a JSON object")
 	}
+	if isLegacyStemLabManifest(top) {
+		return errors.New("stem manifest was written by ViiB-StemLab 0.1.0 before the v1 contract (no stemLayout, stems.*.file); run `viib-stemlab package upgrade` on the Stem Library to convert it")
+	}
 	if err := requireFields("manifest", top, "schemaVersion", "source", "stemLayout", "generator", "model", "audio", "timing", "stems"); err != nil {
 		return err
 	}
@@ -167,6 +170,27 @@ func requireManifestFields(data []byte) error {
 		}
 	}
 	return nil
+}
+
+// isLegacyStemLabManifest recognizes the pre-contract StemLab 0.1.0 shape so
+// discovery reports an actionable reason instead of a generic missing field.
+// It never makes such a manifest valid.
+func isLegacyStemLabManifest(top map[string]json.RawMessage) bool {
+	if _, ok := top["stemLayout"]; ok {
+		return false
+	}
+	var stems map[string]map[string]json.RawMessage
+	if json.Unmarshal(top["stems"], &stems) != nil || len(stems) == 0 {
+		return false
+	}
+	for _, entry := range stems {
+		_, hasFile := entry["file"]
+		_, hasPath := entry["path"]
+		if !hasFile || hasPath {
+			return false
+		}
+	}
+	return true
 }
 
 func requireFields(object string, values map[string]json.RawMessage, fields ...string) error {
