@@ -1,6 +1,7 @@
 import type { Song } from '../types';
 import type { DeckSource } from './deckSource';
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
+import { stretchModuleUrl } from './stemStretchModule';
 
 export type StemBus = 'vocals' | 'drums' | 'bass' | 'music';
 export type StemMode = 'full' | 'stems' | 'fallback';
@@ -38,6 +39,9 @@ interface StemWorkletNode {
   connect(destination: AudioNode, output?: number, input?: number): unknown;
   disconnect(): void;
 }
+/** Vinyl-scratch protocol messages (see vinylScratch.worklet.js), relayed to the stem worklet. */
+export interface ScratchPort { postMessage(message: Record<string, unknown>): void }
+export type ScratchEvent = { type: string; token?: number; position?: number; time?: number; rate?: number };
 export interface StemDeckSourceOptions {
   fetch?: typeof fetch;
   createFallback?: (context: AudioContext) => DeckSource;
@@ -55,6 +59,9 @@ const EMPTY_STEM_STATE = (): StemDeckState => ({
 });
 const MAX_CHUNK_FRAMES = 32760; // Keep four stereo float32 buses below the endpoint's 4 MiB limit.
 const DEFAULT_TARGET_BUFFER_SECONDS = 4;
+// A seek this far inside the worklet's retained frames skips the flush and
+// refetch; the margin covers evictions still in flight from the audio thread.
+const RETAINED_SEEK_MARGIN_SECONDS = 0.5;
 
 /**
  * One deck clock for all four DJ buses. One HTMLAudioElement is retained solely
@@ -91,6 +98,13 @@ export class StemDeckSource implements DeckSource {
   private loopFitsBuffer = true;
   private loopPrefetchGeneration = 0;
   private listeners = new Map<'ended' | 'loadedmetadata' | 'timeupdate', Set<() => void>>();
+  private stretchReady = false;
+  private retainedStartFrame = 0;
+  /** Receives held/position/settled replies for scratches sent through {@link scratchPort}. */
+  onScratchEvent: ((event: ScratchEvent) => void) | null = null;
+  readonly scratchPort: ScratchPort = {
+    postMessage: command => this.worklet?.port.postMessage({ type: 'scratch', command }),
+  };
 
   constructor(private readonly audioContext: AudioContext, options: StemDeckSourceOptions = {}) {
     this.context = audioContext;
@@ -152,6 +166,7 @@ export class StemDeckSource implements DeckSource {
         this.nextPrefetchFrame = 0;
         this.positionFrame = 0;
         this.bufferEndFrame = 0;
+        this.retainedStartFrame = 0;
         this.mode = 'full';
         this.startPrefetch(generation);
         return fallbackUrl;
@@ -177,10 +192,14 @@ export class StemDeckSource implements DeckSource {
     node.connect(this.stemGains.bass, 2, 0);
     node.connect(this.stemGains.music, 3, 0);
     node.port.onmessage = event => this.onWorkletMessage(event.data);
+    node.port.postMessage({ type: 'keyLock', enabled: this.keyLockRequested });
   }
 
   private async createBrowserWorklet(): Promise<StemWorkletNode> {
     if (!this.context.audioWorklet || typeof AudioWorkletNode === 'undefined') throw new Error('AudioWorklet is unavailable');
+    // Key lock only; the transport reports the stretcher as unavailable without it.
+    try { await this.context.audioWorklet.addModule(await stretchModuleUrl()); }
+    catch (error) { console.warn('Stem key lock unavailable', error); }
     await this.context.audioWorklet.addModule(new URL('./stemTransport.worklet.js', import.meta.url));
     return new AudioWorkletNode(this.context, 'viib-stem-transport', {
       numberOfInputs: 0, numberOfOutputs: 4, outputChannelCount: [2, 2, 2, 2],
@@ -191,6 +210,8 @@ export class StemDeckSource implements DeckSource {
     if (message.type === 'position' && typeof message.frame === 'number') {
       this.positionFrame = message.frame;
       this.positionAnchorTime = this.context.currentTime;
+      // Keep the read-ahead topped up; waiting for an underrun leaves a gap.
+      if (this.mode === 'stems') this.startPrefetch(this.generation);
       this.emit('timeupdate');
     } else if (message.type === 'underrun') {
       this.underruns++;
@@ -198,7 +219,18 @@ export class StemDeckSource implements DeckSource {
     } else if (message.type === 'ended') {
       this.playing = false;
       this.emit('ended');
+    } else if (message.type === 'stretch') {
+      this.stretchReady = message.ready === true;
+    } else if (message.type === 'evicted' && typeof message.frame === 'number') {
+      this.retainedStartFrame = Math.max(this.retainedStartFrame, message.frame);
+    } else if (message.type === 'scratch' && message.event) {
+      this.onScratchEvent?.(message.event as ScratchEvent);
     }
+  }
+
+  /** Stem-mode scratching runs in the transport worklet on the buffered stem frames. */
+  canScratch(): boolean {
+    return this.mode === 'stems' && !!this.descriptor && !!this.worklet;
   }
 
   private startPrefetch(generation: number, urgent = false): void {
@@ -311,6 +343,7 @@ export class StemDeckSource implements DeckSource {
     this.stopFrameRequests();
     this.worklet.port.postMessage({ type: 'flush', generation });
     this.nextPrefetchFrame = Math.min(this.descriptor.frames, frame);
+    this.retainedStartFrame = this.nextPrefetchFrame;
     this.bufferEndFrame = this.nextPrefetchFrame;
     const wantedEnd = Math.min(this.descriptor.frames, frame + Math.max(this.chunkFrames, Math.floor(this.descriptor.sampleRate * 0.35)));
     while (generation === this.generation && this.nextPrefetchFrame < wantedEnd) {
@@ -407,7 +440,7 @@ export class StemDeckSource implements DeckSource {
     return {
       mode: this.mode, available: !!this.descriptor,
       bufferedSeconds: this.descriptor ? Math.max(0, (this.bufferEndFrame - this.currentFrame()) / this.descriptor.sampleRate) : 0,
-      underruns: this.underruns, supportsKeyLock: !supportsStems, supportsScratch: !supportsStems,
+      underruns: this.underruns, supportsKeyLock: !supportsStems || this.stretchReady, supportsScratch: true,
       supportsSampleAccurateLoop: supportsStems && this.loopFitsBuffer, ...(this.error ? { error: this.error } : {}),
     };
   }
@@ -456,7 +489,11 @@ export class StemDeckSource implements DeckSource {
       this.positionFrame = frame;
       this.positionAnchorTime = this.context.currentTime;
       this.worklet.port.postMessage({ type: 'seek', frame, generation: this.generation });
-      if (this.mode === 'stems') {
+      const retainedFrom = this.retainedStartFrame + RETAINED_SEEK_MARGIN_SECONDS * this.descriptor.sampleRate;
+      if (this.mode === 'stems' && frame >= retainedFrom && frame < this.bufferEndFrame) {
+        // Cues and jog releases usually land in frames the worklet still holds.
+        this.startPrefetch(this.generation);
+      } else if (this.mode === 'stems') {
         const generation = this.generation;
         void this.prefetchFrom(frame, generation).then(() => {
           if (this.playing && this.mode === 'stems' && generation === this.generation) this.worklet?.port.postMessage({ type: 'play', rate: this.tempo });
@@ -470,7 +507,11 @@ export class StemDeckSource implements DeckSource {
     this.fallback.setTempo(this.tempo);
     this.worklet?.port.postMessage({ type: 'rate', rate: this.tempo });
   }
-  setKeyLock(enabled: boolean): void { this.keyLockRequested = enabled; }
+  setKeyLock(enabled: boolean): void {
+    this.keyLockRequested = enabled;
+    this.fallback.setKeyLock(enabled);
+    this.worklet?.port.postMessage({ type: 'keyLock', enabled });
+  }
   setLoop(start: number, end: number, enabled: boolean): void {
     const descriptor = this.descriptor;
     if (!descriptor) return;
@@ -488,7 +529,8 @@ export class StemDeckSource implements DeckSource {
   getPosition(): number { return this.mode === 'stems' && this.descriptor ? this.currentFrame() / this.descriptor.sampleRate : this.fallback.getPosition(); }
   getDuration(): number { return this.descriptor?.durationSeconds || this.fallback.getDuration(); }
   isPlaying(): boolean { return this.mode === 'stems' ? this.playing : this.fallback.isPlaying(); }
-  isLoaded(): boolean { return this.fallback.isLoaded(); }
+  // In stem mode the fallback element is silent and may still be seeking.
+  isLoaded(): boolean { return (this.mode === 'stems' && !!this.descriptor) || this.fallback.isLoaded(); }
   addEventListener(type: 'ended' | 'loadedmetadata' | 'timeupdate', listener: () => void): void {
     const set = this.listeners.get(type) ?? new Set();
     set.add(listener);

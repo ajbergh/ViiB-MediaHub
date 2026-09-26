@@ -774,6 +774,7 @@ export class DJAudioEngine {
   private bindDeckSourceListeners(deck: DeckId, source: DeckSource | null): void {
     const prior = this.sourceListeners[deck];
     if (prior) {
+      if (prior.source instanceof StemDeckSource) prior.source.onScratchEvent = null;
       prior.source.removeEventListener('ended', prior.ended);
       prior.source.removeEventListener('loadedmetadata', prior.loadedmetadata);
       prior.source.removeEventListener('timeupdate', prior.timeupdate);
@@ -790,6 +791,7 @@ export class DJAudioEngine {
     source.addEventListener('ended', listeners.ended);
     source.addEventListener('loadedmetadata', listeners.loadedmetadata);
     source.addEventListener('timeupdate', listeners.timeupdate);
+    if (source instanceof StemDeckSource) source.onScratchEvent = event => { if (isCurrent()) this.handleScratchMessage(deck, event); };
     this.sourceListeners[deck] = listeners;
   }
 
@@ -806,13 +808,21 @@ export class DJAudioEngine {
     if (deck === 'A') ++this.stemControlGenerationA; else ++this.stemControlGenerationB;
     const source = this.getStemDeckSource(deck);
     if (!source) return;
+    this.endScratch(deck, 0, false);
     if (mode === 'stems') {
       this.clearScratchAudio(deck);
       this.setDeckLoopOnSource(deck);
     }
+    const generation = this.getDeckLoadGeneration(deck);
     await source.setStemMode(mode);
     const stemStatus = source.getStemStatus();
-    if (stemStatus.mode !== 'stems') return;
+    if (stemStatus.mode !== 'stems') {
+      const url = this.deckAudioUrls[deck];
+      if (url && generation === this.getDeckLoadGeneration(deck) && !this.scratchNodes[deck] && !this.scratchLoads[deck]) {
+        void this.prepareScratchAudio(deck, url, generation);
+      }
+      return;
+    }
     this.setDeckLoopOnSource(deck);
     if (this.audioContext?.state === 'suspended' && this.isPlaying(deck)) await this.audioContext.resume();
   }
@@ -915,6 +925,7 @@ export class DJAudioEngine {
 
     this.clearScratchAudio(deck);
     const audioUrl = track.url || `/api/audio/${track.id}`;
+    this.deckAudioUrls[deck] = audioUrl;
     console.log(`🎧 DJ Audio: Loading track to Deck ${deck}: ${track.title}, URL: ${audioUrl}`);
     const loadPromise = source.load(track);
     try { await loadPromise; }
@@ -937,8 +948,7 @@ export class DJAudioEngine {
 
     if (generation !== (deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB)) return;
     if (deck === 'A') this.loadedTrackIdA = track.id; else this.loadedTrackIdB = track.id;
-    if (source instanceof StemDeckSource && !source.getStemStatus().supportsScratch) return;
-    void this.prepareScratchAudio(deck, audioUrl, generation);
+    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) void this.prepareScratchAudio(deck, audioUrl, generation);
 
     // Auto-gain: analyze track loudness and compute normalization factor
     const storeState = useStore.getState();
@@ -1033,6 +1043,7 @@ export class DJAudioEngine {
     else { ++this.trackLoadGenerationB; this.activeTrackLoadGenerationB = null; }
     if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
     this.clearScratchAudio(deck);
+    delete this.deckAudioUrls[deck];
     this.getDeckSource(deck)?.unload();
   }
 
@@ -1232,7 +1243,8 @@ export class DJAudioEngine {
     if (deck === 'A') { ++this.trackLoadGenerationA; this.loadedTrackIdA = prepared.track.id; }
     else { ++this.trackLoadGenerationB; this.loadedTrackIdB = prepared.track.id; }
     prepared.state = 'committed';
-    void this.prepareScratchAudio(deck, prepared.track.url || `/api/audio/${prepared.track.id}`, this.getDeckLoadGeneration(deck));
+    this.deckAudioUrls[deck] = prepared.track.url || `/api/audio/${prepared.track.id}`;
+    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) void this.prepareScratchAudio(deck, this.deckAudioUrls[deck]!, this.getDeckLoadGeneration(deck));
     return retained;
   }
 
@@ -1384,9 +1396,18 @@ export class DJAudioEngine {
   private scratchLoads: Partial<Record<DeckId, AbortController>> = {};
   private scratchModule: Promise<void> | null = null;
   private scratchToken = 0;
+  private deckAudioUrls: Partial<Record<DeckId, string>> = {};
+
+  /** Stem mode scratches the buffered stems in the stem worklet; otherwise the decoded full track. */
+  private scratchPort(deck: DeckId): { postMessage(message: Record<string, unknown>): void } | null {
+    const stem = this.getStemDeckSource(deck);
+    if (stem?.getStemStatus().mode === 'stems') return stem.scratchPort;
+    return this.scratchNodes[deck]?.port ?? null;
+  }
 
   canScratch(deck: DeckId): boolean {
-    if (!this.getStemStatus(deck).supportsScratch) return false;
+    const stem = this.getStemDeckSource(deck);
+    if (stem?.getStemStatus().mode === 'stems') return stem.canScratch();
     return !!this.scratchReady[deck] && !!this.scratchNodes[deck];
   }
 
@@ -1406,6 +1427,8 @@ export class DJAudioEngine {
   }
 
   getScratchStatus(deck: DeckId): string {
+    const stem = this.getStemDeckSource(deck);
+    if (stem?.getStemStatus().mode === 'stems') return stem.canScratch() ? 'Scratch' : 'Scratch unavailable';
     if (this.scratchReady[deck]) return 'Scratch';
     return this.scratchLoads[deck] || this.scratchNodes[deck] ? 'Preparing scratch…' : 'Scratch unavailable';
   }
@@ -1483,7 +1506,7 @@ export class DJAudioEngine {
       previous.coasting = false;
       previous.holdBase = previous.position;
       previous.token = ++this.scratchToken;
-      this.scratchNodes[deck]!.port.postMessage({ type: 'hold', token: previous.token });
+      this.scratchPort(deck)!.postMessage({ type: 'hold', token: previous.token });
       return true;
     }
     if (previous) return false;
@@ -1499,7 +1522,7 @@ export class DJAudioEngine {
     }
     source.pause();
     void this.audioContext?.resume().catch(() => {});
-    this.scratchNodes[deck]?.port.postMessage({ type: 'start', position: scratch.position, token: scratch.token });
+    this.scratchPort(deck)?.postMessage({ type: 'start', position: scratch.position, token: scratch.token });
     return true;
   }
 
@@ -1510,7 +1533,7 @@ export class DJAudioEngine {
     if (!source || !scratch || !Number.isFinite(deltaTime)) return;
     const duration = source.getDuration();
     scratch.position = Math.max(0, Math.min(Number.isFinite(duration) ? duration : 0, scratch.position + deltaTime));
-    this.scratchNodes[deck]?.port.postMessage({ type: 'move', delta: deltaTime });
+    this.scratchPort(deck)?.postMessage({ type: 'move', delta: deltaTime });
   }
 
   /** Release returns to the deck transport, preserving paused state and slip time. */
@@ -1523,14 +1546,14 @@ export class DJAudioEngine {
       scratch.coasting = true;
       scratch.token = ++this.scratchToken;
       const shadow = deck === 'A' ? this.slipShadowA : this.slipShadowB;
-      this.scratchNodes[deck]!.port.postMessage({ type: 'coast', token: scratch.token,
+      this.scratchPort(deck)!.postMessage({ type: 'coast', token: scratch.token,
         velocity: Math.max(-8, Math.min(8, finalVelocity)),
         targetRate: scratch.wasPlaying ? (deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo) : 0,
         shadowPosition: shadow ? shadow.startPosition + (performance.now() - shadow.startRealTime) / 1000 * shadow.tempo : undefined,
         shadowRate: shadow?.tempo });
       return;
     }
-    this.scratchNodes[deck]?.port.postMessage({ type: 'stop' });
+    this.scratchPort(deck)?.postMessage({ type: 'stop' });
     const shadow = deck === 'A' ? this.slipShadowA : this.slipShadowB;
     const position = shadow ? shadow.startPosition + (performance.now() - shadow.startRealTime) / 1000 * shadow.tempo : scratch.position;
     if (deck === 'A') { this.scratchStateA = null; this.slipShadowA = null; }

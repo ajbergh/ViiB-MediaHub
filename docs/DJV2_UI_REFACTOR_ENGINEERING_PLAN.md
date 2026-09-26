@@ -65,6 +65,32 @@ These resolve the **Decision** rows in Section 3A. They were made during impleme
 
 ### Progress log
 
+- **2026-09-25 — Key lock and scratch in stem mode; stem library status (uncommitted, awaiting review).** This entry changes audio-engine behaviour, as the Scope line allows when called out.
+  - **Stem status in the library.** `/api/songs` now includes `stemStatus`, as the v2 snapshot already did. Stem registry changes now advance the library revision, so open sessions update without a reload. Previously every track showed no stems after a rescan.
+  - **"Illegal invocation" on stem load.** `StemDeckSource` called the global `fetch` detached from `window`. Fixed with a regression test.
+  - **Key lock in stem mode.** Uses `signalsmith-stretch` 1.3.2 (MIT, WASM), pinned exactly.
+    - One 8-channel instance runs inside `stemTransport.worklet.js`, so the four buses stay phase-coherent.
+    - It re-reads the transport's buffered frames ahead of the playhead each render quantum, so steady playback has no added latency.
+    - After a seek, cue or play it runs dry for about 60 ms, then crossfades back in. It is bypassed at 0% tempo.
+    - `lib/stemStretchModule.ts` captures the package's processor class in the worklet scope. It is a separate, lazily loaded 114 kB chunk.
+    - Cost: p99 0.7 ms per 128-frame quantum with `splitComputation`. Without it, the p99 was 3.3 ms, over the 2.9 ms budget.
+  - **Scratch in stem mode.** Uses the vinyl-scratch protocol (grab, move, hold, coast, release) inside the stem worklet, so stem mutes still apply while scratching.
+    - The worklet keeps 10 s of history behind the playhead.
+    - A seek inside frames the worklet still holds no longer flushes and refetches, so releasing the jog resumes immediately.
+    - `DJAudioEngine` routes scratch by mode. Switching back to full mode now reloads the decoded full-track scratch audio; previously it was lost until the track was reloaded.
+  - **Existing stem playback bugs fixed on the way.**
+    - Prefetch stopped once the buffer was full and resumed only after an underrun, giving a dropout every few seconds. It now tops up from the position reports.
+    - `isLoaded()` followed the silent fallback `<audio>` element, so a play right after a seek could be ignored.
+    - `setKeyLock` never reached the full-track `<audio>` element, so full mode always preserved pitch whatever the toggle said.
+  - **Verified live (Playwright, real stem package).**
+    - At +8% tempo, the pitch ratio is 1.000 with key lock on and 1.080 with it off.
+    - 0 underruns over 11 s of key-locked playback.
+    - A backward scratch is audible, and release resumes without a refetch.
+  - **Tests.**
+    - The worklet tests run the real WASM core: pitch held at +12% tempo, bus phase coherence, dry-after-seek, scratch in both directions, coast settle, and history eviction.
+    - Mutation-checked: disabling the wet mix fails the key-lock tests.
+    - Engine routing tests added. 233 frontend tests pass, plus the Go API, db and stems suites.
+
 - **2026-09-25 — Sampler fit in all layouts; smaller jog, larger performance controls (uncommitted, awaiting review).**
   - **Sampler clipping (reported in review).** `DJSamplerPads` still chose its pad size from the layout mode: compact 48px pads in `perf`, tall 80px pads plus a mode/volume row in `browse`/`fx`. With samples assigned in FX or BROWSE, the second pad row was cut off by 42px.
   - **Sampler fix.** The mixer now renders `<DJSamplerPads fill />`: two equal rows that fill the tools panel, with each pad's controls overlaid on the pad. Verified with six assigned pads in DJ and FX layouts: no overflow.
