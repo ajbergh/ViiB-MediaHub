@@ -8,7 +8,8 @@
  * @module components/dj/v2/waveform/canvasWaveformRenderer
  */
 
-import type { DeckId, Loop } from '../../../../slices/djMixerSlice';
+import type { DeckId, HotCue, Loop } from '../../../../slices/djMixerSlice';
+import { getHotCueMarkerStyle } from '../../../../lib/hotCueMarkerStyle';
 import { DECK_WAVEFORM_PALETTE, LEVEL_COLORS, WAVEFORM_CHROME, canvasGradientStops, type WaveformColorMode } from './waveformPalette';
 
 export interface MainWaveformFrame {
@@ -19,6 +20,7 @@ export interface MainWaveformFrame {
   beatGrid: number[] | null;
   beatGridOffset: number;
   cuePoint: number;
+  hotCues: HotCue[];
   loop: Loop;
   visibleSeconds: number;
   colorMode: WaveformColorMode;
@@ -140,6 +142,31 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
     ctx.beginPath(); ctx.moveTo(cueX, 0); ctx.lineTo(cueX, h); ctx.stroke();
     ctx.fillStyle = WAVEFORM_CHROME.cue;
     ctx.beginPath(); ctx.moveTo(cueX - 6, 0); ctx.lineTo(cueX + 6, 0); ctx.lineTo(cueX, 10); ctx.closePath(); ctx.fill();
+  }
+
+  // Hot cues: thin line plus a numbered flag at the top (mock-up). Generated
+  // cues are outlined, user cues filled, matching the overview markers.
+  for (const cue of frame.hotCues) {
+    if (cue.position < visibleStartTime || cue.position > visibleEndTime) continue;
+    const x = Math.round(playheadX + (cue.position - position) / secondsPerPixel) + 0.5;
+    const style = getHotCueMarkerStyle(cue);
+    ctx.strokeStyle = style.color;
+    ctx.fillStyle = style.color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash(style.dash);
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+    if (style.fill) ctx.fillRect(x - 0.5, 0, 12, 12);
+    else ctx.strokeRect(x, 0.5, 11, 11);
+    ctx.fillStyle = style.fill ? WAVEFORM_CHROME.flagText : style.color;
+    ctx.font = 'bold 9px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(cue.slot), x + 5.5, 9);
+    // Bottom tick so the marker reads against the lower half too.
+    ctx.fillStyle = style.color;
+    ctx.beginPath(); ctx.moveTo(x - 4, h); ctx.lineTo(x + 4, h); ctx.lineTo(x, h - 5); ctx.closePath(); ctx.fill();
   }
 
   // Playhead with glow and top triangle.

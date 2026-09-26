@@ -136,10 +136,13 @@ const structure = () => page.evaluate(() => {
 const near = (a, b, tolerance = 1) => Math.abs(a - b) <= tolerance;
 const assertStructure = (s, label) => {
   if (s.split) {
-    assert.ok(near(s.laneA.x, s.split.x), `${label}: Deck A lane does not start at the waveform edge`);
-    assert.ok(near(s.laneA.width, s.split.width / 2), `${label}: Deck A lane is not 50% (${s.laneA.width} of ${s.split.width})`);
-    assert.ok(near(s.laneB.x, s.split.x + s.split.width / 2), `${label}: Deck B lane does not start at the 50% line`);
-    assert.ok(near(s.laneB.width, s.split.width / 2), `${label}: Deck B lane is not 50%`);
+    // Lanes are framed panels; the split is exact when both frames are equal,
+    // mirror their outer insets, and the gutter between them is centred on 50%.
+    const center = s.split.x + s.split.width / 2;
+    assert.ok(near(s.laneA.width, s.laneB.width), `${label}: waveform lanes differ in width (${s.laneA.width} vs ${s.laneB.width})`);
+    assert.ok(near(s.laneA.x - s.split.x, s.split.x + s.split.width - (s.laneB.x + s.laneB.width)), `${label}: waveform lane outer insets differ`);
+    assert.ok(s.laneA.x + s.laneA.width <= center + 0.5 && s.laneB.x >= center - 0.5, `${label}: a waveform lane crosses the 50% line`);
+    assert.ok(near((s.laneA.x + s.laneA.width + s.laneB.x) / 2, center), `${label}: waveform gutter is not centred on 50%`);
     assert.ok(near(s.laneA.height, s.laneB.height), `${label}: waveform lanes differ in height`);
     assert.ok(near(s.mixer.x + s.mixer.width / 2, s.split.x + s.split.width / 2), `${label}: mixer centerline misses the waveform divider`);
     assert.ok(s.webglCanvases <= 2, `${label}: ${s.webglCanvases} WebGL waveform canvases (max 2)`);

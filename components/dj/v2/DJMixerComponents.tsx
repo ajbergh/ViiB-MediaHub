@@ -60,7 +60,7 @@ export const DJChannelStrip = React.memo<DJChannelStripProps>(({
       <div className='w-full px-2 flex items-center justify-center gap-1'>
         <DJStereoVUMeter
           getLevels={getDeckLevels}
-          height={110}
+          height={150}
           channelWidth={4}
           gap={2}
           segments={16}
@@ -70,7 +70,7 @@ export const DJChannelStrip = React.memo<DJChannelStripProps>(({
           value={volume}
           onChange={(v) => onVolumeChange(deckId, v)}
           label=''
-          height={160}
+          height={200}
           isPlaying={isPlaying}
           accentColor={accentColor}
         />

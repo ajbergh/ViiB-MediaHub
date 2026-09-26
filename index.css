@@ -94,7 +94,8 @@
   --dj-waveform-h: 172px;
   --dj-library-h: 44px;
   --dj-mixer-w: 340px;
-  --dj-track-header-h: 104px;
+  --dj-track-header-h: 116px;
+  --dj-deck-inset: 12px;
   --dj-toolbar-h: 44px;
   --dj-fx-rack-h: 104px;
   --dj-footer-h: 124px;
@@ -244,9 +245,24 @@
 .dj-btn:hover:not(:disabled) { color: var(--dj-text-primary); border-color: var(--dj-border-hover); background: var(--dj-surface-3); }
 .dj-btn:focus-visible { outline: 2px solid var(--dj-text-primary); outline-offset: 2px; }
 .dj-btn:disabled { color: var(--dj-text-disabled); cursor: not-allowed; }
-.dj-btn[aria-pressed="true"] { color: var(--dj-text-primary); background: var(--dj-primary); border-color: var(--dj-primary-hover); }
-.dj-btn[data-deck-accent="A"][aria-pressed="true"] { background: var(--dj-deck-a); border-color: var(--dj-deck-a-bright); }
-.dj-btn[data-deck-accent="B"][aria-pressed="true"] { background: var(--dj-deck-b); border-color: var(--dj-deck-b-bright); }
+/* Selected secondary controls use a subdued tint with a bright edge (mock-up),
+   so they never out-shout Play, hot cues or the top-bar mode. */
+.dj-btn[aria-pressed="true"] {
+  color: var(--dj-text-primary);
+  background: color-mix(in srgb, var(--dj-primary) 32%, var(--dj-surface-2));
+  border-color: var(--dj-primary-hover);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dj-primary) 35%, transparent);
+}
+.dj-btn[data-deck-accent="A"][aria-pressed="true"] {
+  background: color-mix(in srgb, var(--dj-deck-a) 38%, var(--dj-surface-2));
+  border-color: var(--dj-deck-a-bright);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dj-deck-a) 40%, transparent);
+}
+.dj-btn[data-deck-accent="B"][aria-pressed="true"] {
+  background: color-mix(in srgb, var(--dj-deck-b) 38%, var(--dj-surface-2));
+  border-color: var(--dj-deck-b-bright);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dj-deck-b) 40%, transparent);
+}
 .dj-btn-xs { min-height: 26px; padding: 0 8px; font-size: 11px; }
 .dj-btn-lg { min-height: 44px; padding: 0 16px; font-size: 13px; }
 .dj-btn-icon { padding: 0; min-width: 32px; }
@@ -307,23 +323,27 @@
 
 /* ── Split waveform (Plan §5) ───────────────────────── */
 .dj-waveform-split { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+/* Each lane is its own framed panel (mock-up); the 12px gutter between the two
+   frames is centred on the 50% line. */
 .dj-waveform-lane {
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 4px 6px 5px;
+  gap: 4px;
+  margin: 5px 6px 6px;
+  padding: 4px 6px 6px;
   background: var(--dj-bg-elevated);
+  border: 1px solid var(--dj-border-subtle);
+  border-radius: var(--dj-radius);
 }
-.dj-waveform-lane[data-dj-waveform-deck="A"] { border-right: 1px solid var(--dj-border); }
 .dj-waveform-lane-header { flex: 0 0 28px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dj-waveform-toolbar { display: flex; align-items: center; gap: 10px; }
 .dj-waveform-lane[data-dj-waveform-deck="A"] .dj-waveform-toolbar { margin-right: auto; }
 .dj-waveform-lane[data-dj-waveform-deck="B"] .dj-waveform-toolbar { margin-left: auto; }
 .dj-waveform-main-wrap { flex: 1 1 auto; min-height: 0; position: relative; }
 .dj-waveform-main { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: 3px; }
-.dj-deck-overview { display: block; flex: 0 0 22px; width: 100%; height: 22px; border-radius: 3px; cursor: pointer; }
+.dj-deck-overview { display: block; flex: 0 0 18px; width: 100%; height: 18px; border-radius: 3px; cursor: pointer; }
 .dj-upper-scope { height: 100%; display: flex; align-items: center; justify-content: center; }
 
 /* ── Deck (Plan §6, §8, §10A.6–10A.10) ──────────────── */
@@ -338,14 +358,19 @@
   border: 1px solid var(--dj-border-subtle);
   border-radius: var(--dj-radius);
 }
-.dj-deck[data-dj-deck="A"] { border-left: 3px solid var(--dj-deck-a); }
-.dj-deck[data-dj-deck="B"] { border-right: 3px solid var(--dj-deck-b); }
+/* Faint deck-tinted outline around the whole deck (mock-up). */
+.dj-deck[data-dj-deck="A"] { border-color: color-mix(in srgb, var(--dj-deck-a) 28%, var(--dj-border-subtle)); }
+.dj-deck[data-dj-deck="B"] { border-color: color-mix(in srgb, var(--dj-deck-b) 28%, var(--dj-border-subtle)); }
+/* Identity edge is drawn, not a border, so A and B keep identical content insets. */
+.dj-deck::before { content: ""; position: absolute; top: 0; bottom: 0; width: 3px; z-index: 1; pointer-events: none; }
+.dj-deck[data-dj-deck="A"]::before { left: 0; background: var(--dj-deck-a); border-radius: var(--dj-radius) 0 0 var(--dj-radius); }
+.dj-deck[data-dj-deck="B"]::before { right: 0; background: var(--dj-deck-b); border-radius: 0 var(--dj-radius) var(--dj-radius) 0; }
 .dj-deck[data-active="true"][data-dj-deck="A"] { box-shadow: inset 0 2px 0 var(--dj-deck-a); }
 .dj-deck[data-active="true"][data-dj-deck="B"] { box-shadow: inset 0 2px 0 var(--dj-deck-b); }
 .dj-deck[data-drag-over="true"][data-dj-deck="A"] { outline: 2px solid var(--dj-deck-a-bright); outline-offset: -2px; }
 .dj-deck[data-drag-over="true"][data-dj-deck="B"] { outline: 2px solid var(--dj-deck-b-bright); outline-offset: -2px; }
 
-.dj-deck-header { flex: 0 0 var(--dj-track-header-h); display: flex; flex-direction: column; padding: 10px 12px 6px; gap: 6px; }
+.dj-deck-header { flex: none; height: var(--dj-track-header-h); min-height: 0; display: flex; flex-direction: column; padding: 10px var(--dj-deck-inset) 8px; gap: 8px; }
 .dj-deck-info {
   flex: 1 1 auto;
   min-height: 0;
@@ -395,18 +420,21 @@
 .dj-time-remaining { color: var(--dj-text-primary); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 20px; font-weight: 700; line-height: 1; }
 .dj-time-elapsed { color: var(--dj-text-secondary); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1; }
 .dj-deck-actions { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
-.dj-deck-progress { position: relative; flex: 0 0 6px; height: 6px; border-radius: 3px; background: var(--dj-surface-2); overflow: hidden; }
-.dj-deck-progress-fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 3px; }
+.dj-deck-progress { position: relative; flex: 0 0 8px; height: 8px; border-radius: 4px; background: var(--dj-surface-2); }
+.dj-deck-progress-fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 4px; }
+/* White playhead tick at the fill's leading edge. */
+.dj-deck-progress-fill::after { content: ""; position: absolute; top: -3px; bottom: -3px; right: -1px; width: 2px; border-radius: 1px; background: var(--dj-text-primary); }
 .dj-deck[data-dj-deck="A"] .dj-deck-progress-fill { background: linear-gradient(90deg, var(--dj-deck-a-deep), var(--dj-deck-a-bright)); }
 .dj-deck[data-dj-deck="B"] .dj-deck-progress-fill { background: linear-gradient(90deg, var(--dj-deck-b-deep), var(--dj-deck-b-bright)); }
 
 .dj-deck-toolbar {
-  flex: 0 0 var(--dj-toolbar-h);
+  flex: none;
+  height: var(--dj-toolbar-h);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 12px;
+  padding: 0 var(--dj-deck-inset);
   border-top: 1px solid var(--dj-border-subtle);
   /* Visible so the stems popover can drop over the FX rack; the row itself
      must still fit (the audit checks scrollWidth). */
@@ -419,34 +447,40 @@
 
 /* FX rack (Plan §7, §10A.12) */
 .dj-fx-rack {
-  flex: 0 0 var(--dj-fx-rack-h);
+  flex: none;
+  height: var(--dj-fx-rack-h);
   display: grid;
   grid-template-columns: 22px repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  margin: 0 8px;
-  border: 1px solid var(--dj-border-subtle);
-  border-radius: var(--dj-radius-sm);
-  background: var(--dj-border-subtle);
-  overflow: hidden;
+  gap: 6px;
+  margin: 0 var(--dj-deck-inset);
 }
 .dj-fx-rack-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--dj-surface-1);
-  color: var(--dj-text-secondary);
-  font-size: 12px;
+  color: var(--dj-text-primary);
+  font-size: 13px;
   font-weight: 700;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   letter-spacing: .12em;
 }
-.dj-fx-module { min-width: 0; display: flex; flex-direction: column; align-items: stretch; background: var(--dj-surface-1); }
+/* Modules are separate cards with a header strip and labels under the knobs (mock-up). */
+.dj-fx-module {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  background: var(--dj-surface-1);
+  border: 1px solid var(--dj-border-subtle);
+  border-radius: var(--dj-radius-sm);
+}
 .dj-fx-module-toggle {
   min-height: 32px;
   border: 0;
   border-top: 2px solid transparent;
-  background: transparent;
+  background: var(--dj-surface-2);
   color: var(--dj-text-secondary);
   font-size: 11px;
   font-weight: 700;
@@ -458,7 +492,7 @@
 .dj-fx-module[data-enabled="true"] .dj-fx-module-toggle { color: var(--dj-text-primary); }
 .dj-deck[data-dj-deck="A"] .dj-fx-module[data-enabled="true"] .dj-fx-module-toggle { border-top-color: var(--dj-deck-a-bright); color: var(--dj-deck-a-bright); }
 .dj-deck[data-dj-deck="B"] .dj-fx-module[data-enabled="true"] .dj-fx-module-toggle { border-top-color: var(--dj-deck-b-bright); color: var(--dj-deck-b-bright); }
-.dj-fx-knobs { flex: 1 1 auto; display: flex; align-items: center; justify-content: space-evenly; gap: 2px; padding: 0 4px 4px; }
+.dj-fx-knobs { flex: 1 1 auto; display: flex; align-items: center; justify-content: space-evenly; gap: 2px; padding: 4px 4px 6px; }
 
 /* Jog / tempo / EQ body */
 .dj-deck-performance {
@@ -466,7 +500,7 @@
   min-height: 0;
   display: grid;
   grid-template-columns: 76px 72px minmax(0, 1fr);
-  margin: 6px 8px 0;
+  margin: 6px var(--dj-deck-inset) 0;
   border: 1px solid var(--dj-border-subtle);
   border-radius: var(--dj-radius-sm);
   background: var(--dj-surface-1);
@@ -481,7 +515,7 @@
 .dj-deck-jog-size { width: min(100%, 400px); height: 100%; max-height: 400px; display: flex; align-items: center; justify-content: center; }
 
 /* Hot cues and transport (Plan §10A.9) */
-.dj-deck-footer { flex: 0 0 var(--dj-footer-h); display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 8px 10px 10px; }
+.dj-deck-footer { flex: none; height: var(--dj-footer-h); display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 8px var(--dj-deck-inset) 10px; }
 .dj-deck-cues { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; align-items: center; gap: 8px; }
 .dj-deck-readout { display: flex; flex-direction: column; gap: 2px; }
 .dj-deck-readout:last-child { align-items: flex-end; }

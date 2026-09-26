@@ -2,12 +2,15 @@
  * ViiB MediaHub - DJ Crossfader Component (v2)
  * 
  * Professional horizontal crossfader with styled handle and visual feedback.
- * Features center detent indicator and deck color fills.
+ * Thin A→B gradient track, center detent and a slim silver cap.
  * 
  * @module components/dj/v2/DJCrossfader
  */
 
 import React, { useCallback, useRef, useState, useEffect } from 'react';
+
+/** Handle width in layout px; the track is inset by half of it on each side. */
+const HANDLE_WIDTH = 28;
 
 interface DJCrossfaderProps {
   value: number;      // -1 to +1
@@ -25,6 +28,8 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [computedWidth, setComputedWidth] = useState(width > 0 ? width : 180);
+  const computedWidthRef = useRef(computedWidth);
+  computedWidthRef.current = computedWidth;
 
   // Responsive width calculation
   useEffect(() => {
@@ -76,17 +81,17 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
   const updateValueFromPointer = (clientX: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const handleWidth = 56;
-    const trackLeft = rect.left + handleWidth / 2;
-    const trackWidth = rect.width - handleWidth;
+    // rect is post-transform (the DJ canvas is scaled); express the handle
+    // inset as a fraction of the layout width so pointer and handle agree.
+    const inset = rect.width * (HANDLE_WIDTH / 2) / computedWidthRef.current;
+    const trackLeft = rect.left + inset;
+    const trackWidth = rect.width - inset * 2;
     const relativeX = clientX - trackLeft;
     const normalized = Math.max(0, Math.min(1, relativeX / trackWidth));
     const newValue = (normalized * 2) - 1;
     onChange(newValue);
   };
 
-  // Calculate handle position (0-100%)
-  const handlePercent = ((value + 1) / 2) * 100;
   const isCentered = Math.abs(value) < 0.02;
 
   return (
@@ -104,7 +109,7 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
       
       {/* Fader track container */}
       <div
-        className="relative cursor-pointer touch-none bg-[var(--dj-surface-2)] rounded-lg p-1 dj-focus-ring"
+        className="relative cursor-pointer touch-none rounded-lg dj-focus-ring"
         style={{ width: computedWidth, height: 48 }}
         role="slider"
         tabIndex={0}
@@ -135,92 +140,50 @@ export const DJCrossfader: React.FC<DJCrossfaderProps> = ({
         }}
         onDoubleClick={() => onChange(0)}
       >
-        {/* Track groove */}
+        {/* Thin A→B gradient track (Plan §10A.13) */}
         <div
           className="absolute top-1/2 -translate-y-1/2 rounded-full"
           style={{
-            left: 28,
-            right: 28,
-            height: 12,
-            background: 'linear-gradient(to bottom, var(--dj-bg), var(--dj-surface-2), var(--dj-bg))',
-            boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)',
+            left: HANDLE_WIDTH / 2,
+            right: HANDLE_WIDTH / 2,
+            height: 6,
+            background: 'linear-gradient(to right, var(--dj-deck-a-bright), color-mix(in srgb, var(--dj-deck-a) 55%, var(--dj-deck-b)) 50%, var(--dj-deck-b-bright))',
+            boxShadow: '0 0 8px color-mix(in srgb, var(--dj-deck-b) 25%, transparent)',
           }}
         />
 
-        {/* Center marker line */}
+        {/* Center detent */}
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded"
           style={{
-            width: 3,
-            height: 24,
-            backgroundColor: isCentered ? 'var(--dj-play)' : 'var(--dj-border-light)',
+            width: 2,
+            height: 20,
+            backgroundColor: isCentered ? 'var(--dj-play)' : 'var(--dj-text-muted)',
             transition: 'background-color 0.1s',
           }}
         />
 
-        {/* Active fills */}
-        {value < -0.02 && (
-          <div
-            className="absolute top-1/2 -translate-y-1/2 rounded-full"
-            style={{
-              left: 28 + ((value + 1) / 2) * (computedWidth - 56),
-              width: (computedWidth / 2) - 28 - ((value + 1) / 2) * (computedWidth - 56),
-              height: 8,
-              background: 'linear-gradient(to right, var(--dj-deck-a), color-mix(in srgb, var(--dj-deck-a) 25%, transparent))',
-              boxShadow: '0 0 8px color-mix(in srgb, var(--dj-deck-a) 25%, transparent)',
-            }}
-          />
-        )}
-        {value > 0.02 && (
-          <div
-            className="absolute top-1/2 -translate-y-1/2 rounded-full"
-            style={{
-              left: computedWidth / 2,
-              width: (value / 2) * (computedWidth - 56),
-              height: 8,
-              background: 'linear-gradient(to right, color-mix(in srgb, var(--dj-deck-b) 25%, transparent), var(--dj-deck-b))',
-              boxShadow: '0 0 8px color-mix(in srgb, var(--dj-deck-b) 25%, transparent)',
-            }}
-          />
-        )}
-
-        {/* Handle */}
+        {/* Handle — slim silver cap; centre sits on the track position */}
         <div
-          className={`absolute top-1/2 -translate-y-1/2 cursor-grab ${isDragging ? 'cursor-grabbing scale-105' : ''}`}
+          className={`absolute top-1/2 -translate-y-1/2 cursor-grab ${isDragging ? 'cursor-grabbing' : ''}`}
           style={{
-            left: `calc(${handlePercent}% - 28px)`,
-            transition: isDragging ? 'none' : 'transform 0.1s',
+            left: ((value + 1) / 2) * (computedWidth - HANDLE_WIDTH),
+            transition: isDragging ? 'none' : 'left 0.08s',
           }}
         >
-          {/* Handle body — bigger, easier to grab; centre detent dot inset */}
           <div
-            className="rounded-md relative overflow-hidden"
+            className="rounded relative overflow-hidden flex items-center justify-center gap-[3px]"
             style={{
-              width: 56,
+              width: HANDLE_WIDTH,
               height: 36,
-              background: 'linear-gradient(to bottom, var(--dj-text-secondary), var(--dj-text-muted), var(--dj-border-hover))',
+              background: 'linear-gradient(to bottom, var(--dj-text-primary), var(--dj-text-secondary) 55%, var(--dj-text-muted))',
+              border: '1px solid var(--dj-border-hover)',
               boxShadow: isDragging
-                ? '0 4px 16px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.25)'
-                : '0 2px 10px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.18)',
+                ? '0 4px 14px rgba(0,0,0,0.6)'
+                : '0 2px 8px rgba(0,0,0,0.45)',
             }}
           >
-            {/* Grip texture */}
-            <div className="absolute inset-0 flex justify-center items-center gap-1">
-              {[...Array(5)].map((_, i) => (
-                <div
-                  key={i}
-                  className="w-px h-5"
-                  style={{
-                    backgroundColor: i % 2 === 0 ? 'var(--dj-text-muted)' : 'var(--dj-text-secondary)'
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Top highlight */}
-            <div
-              className="absolute top-0 left-2 right-2 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent"
-            />
+            {[0, 1, 2].map(i => <div key={i} className="w-px h-5" style={{ backgroundColor: 'var(--dj-border-light)' }} />)}
           </div>
         </div>
       </div>

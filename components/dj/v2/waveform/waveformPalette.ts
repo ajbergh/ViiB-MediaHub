@@ -76,6 +76,7 @@ export const WAVEFORM_CHROME = {
   overviewLoopInactive: 'rgba(148, 163, 184, 0.2)',
   overviewWindow: 'rgba(255, 255, 255, 0.10)',
   overviewPlayhead: '#f3f6fb',
+  flagText: '#090b0e',
 } as const;
 
 /** Convert `#rrggbb` to normalized RGB floats for WebGL uniforms. */

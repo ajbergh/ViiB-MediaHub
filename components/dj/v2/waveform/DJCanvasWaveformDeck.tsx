@@ -64,7 +64,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
       const position = moving && engine?.initialized ? engine.getPosition(deck) : d.position;
       const visual = {
         position, peaks: d.waveformPeaks, duration: d.duration, grid: d.beatGrid, offset: d.beatGridOffset,
-        cue: d.cuePoint, loop: d.loop, track: d.track?.id, w: canvas.width, h: canvas.height,
+        cue: d.cuePoint, hot: d.hotCues, loop: d.loop, track: d.track?.id, w: canvas.width, h: canvas.height,
       };
       const unchanged = last && Object.keys(visual).every(key => (visual as Record<string, unknown>)[key] === last![key]);
       if (!unchanged) {
@@ -77,6 +77,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
           beatGrid: d.beatGrid,
           beatGridOffset: d.beatGridOffset,
           cuePoint: d.cuePoint,
+          hotCues: d.hotCues,
           loop: d.loop,
           visibleSeconds,
           colorMode,

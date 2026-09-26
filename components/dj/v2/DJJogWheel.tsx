@@ -313,7 +313,6 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
 
   // Deck identity comes from tokens (Plan §10A.10); no bespoke per-deck hex.
   const accent = deck === 'A' ? 'var(--dj-deck-a-bright)' : 'var(--dj-deck-b-bright)';
-  const accentDeep = deck === 'A' ? 'var(--dj-deck-a-deep)' : 'var(--dj-deck-b-deep)';
   const ringRadius = computedSize / 2 - 7;
 
   // Progress arc ref - updated in RAF
@@ -363,8 +362,8 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
         {/* Beat-pulse glow ring - animated via ref */}
         <circle ref={glowRingRef} cx={c} cy={c} r={computedSize / 2 - 3} fill="none" style={{ stroke: accent, display: 'none' }} strokeWidth="2" opacity="0.3" />
 
-        {/* Outer ring track, then the deck-colored progress ring on top of it. */}
-        <circle cx={c} cy={c} r={ringRadius} fill="none" className="dj-jog-ring-track" style={{ stroke: track ? accentDeep : undefined }} strokeWidth="6" />
+        {/* Neutral ring track; only the progress arc carries the deck color (mock-up). */}
+        <circle cx={c} cy={c} r={ringRadius} fill="none" className="dj-jog-ring-track" strokeWidth="6" />
         <path ref={progressArcRef} d="" fill="none" style={{ stroke: accent, display: 'none' }} strokeWidth="6" strokeLinecap="round" />
 
         {/* Neutral tick marks */}

@@ -65,6 +65,30 @@ These resolve the **Decision** rows in Section 3A. They were made during impleme
 
 ### Progress log
 
+- **2026-09-25 — Alignment review and mock-up parity pass (uncommitted, awaiting review).**
+  - **Alignment (Playwright, authored px).**
+    - Deck sections now share one 12px content inset (`--dj-deck-inset`). They were 15/11/13px.
+    - The deck identity edge is a pseudo-element instead of a border, so A and B offsets match exactly.
+    - The deck header had grown to 114px against its 104px budget. It is now a fixed 116px.
+    - Remaining intentional offset: the hot-cue row is inset 72px from the transport by the Cue/Loop readouts.
+  - **Parity changes against `assets/djv2-ui-target.png`:**
+    - Selected secondary controls use a subdued deck/violet tint with a bright edge, so they no longer compete with Play; the top-bar mode stays solid violet.
+    - Waveform lanes are framed panels with a gutter centred on 50%; overview slimmed to 18px.
+    - The Canvas lane draws numbered hot-cue flags.
+    - FX modules are separate cards with labels under the knobs; knobs have unambiguous accessible names.
+    - The jog ring track is neutral, with only the progress arc in deck colour.
+    - The position bar is 8px with a white playhead tick.
+    - The crossfader is a thin A→B gradient track with a slim silver cap.
+    - Decks have a faint deck-tinted outline; mixer channel faders and meters are 40px longer.
+  - **Crossfader pointer mapping fixed.** This was pre-existing: the handle was drawn centred at `p × width`, while the pointer mapped over an inset track using an unscaled 56px constant. The handle overhung both ends and drifted from the pointer at non-1.0 canvas scales.
+  - **Overlay audit updated** to assert the framed split: equal lanes, mirrored outer insets, gutter centred on the 50% line, mixer centreline on that axis.
+  - **Remaining parity gaps, by decision (Phase 0):**
+    - no GRID/BEAT/PHRASE, sync MASTER, master TRIM or sampler banks;
+    - transport has no `|◀`, `▾` or ⚙;
+    - the library stays a 44px affordance plus drawer;
+    - the jog is larger than in the mock-up because the deck body has more height.
+  - **Verification incomplete.** The final fader-height change was not visually verified, and the full audits were not re-run. The backend began returning HTTP 429 (rate limiting after many Playwright runs), then the dev server on :3000 and the backend on :8080 stopped responding. Typecheck and all 220 unit tests pass.
+
 - **2026-09-25 — Phases 5–6 completed (uncommitted, awaiting review).**
   - **Leaf tokenization.** 29 leaf components now use `var(--dj-*)` tokens instead of neutral-grey and deck/semantic hex. This covers the channel strip, EQ and FX knobs, crossfader, headphone mix, sampler, FX pad, Beat FX, status bar, library browser, inspector widgets and dialogs. `${color}NN` alpha concatenation became `color-mix()`, so it works with tokens.
   - **Legacy floor removed.** The global typography/colour floor in `index.css` is gone. The 9–11px utility classes it enlarged are now explicit `text-[12px]`, so rendered sizes are unchanged.

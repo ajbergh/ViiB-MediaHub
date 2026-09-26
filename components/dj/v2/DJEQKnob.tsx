@@ -19,6 +19,10 @@ interface DJEQKnobProps {
   compact?: boolean;
   valueText?: string;
   className?: string;
+  /** Render the label under the knob (FX rack modules, per the mock-up). */
+  labelBelow?: boolean;
+  /** Accessible name when the visible label is ambiguous (e.g. FX parameters). */
+  ariaLabel?: string;
 }
 
 export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
@@ -30,6 +34,8 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
   compact = false,
   valueText,
   className = '',
+  labelBelow = false,
+  ariaLabel,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -123,8 +129,8 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
     >
       {/* Label */}
       <span
-        className={`dj-eq-knob-label text-[12px] font-bold uppercase tracking-wider ${compact ? 'leading-none mb-0' : 'mb-0.5'}`}
-        style={{ color: '#bac6d6' }}
+        className={`dj-eq-knob-label text-[12px] font-bold uppercase tracking-wider ${compact ? 'leading-none mb-0' : 'mb-0.5'} ${labelBelow ? 'order-last mt-1' : ''}`}
+        style={{ color: 'var(--dj-text-secondary)' }}
       >
         {label}
       </span>
@@ -135,7 +141,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
         style={{ width: knobSize, height: knobSize }}
         role="slider"
         tabIndex={0}
-        aria-label={label}
+        aria-label={ariaLabel ?? label}
         aria-valuetext={valueText ?? `${displayValue} dB`}
         title={`${label}: ${valueText ?? `${displayValue} dB`}`}
         aria-valuemin={-24}
