@@ -1377,8 +1377,8 @@ export const Settings: React.FC = () => {
                         {stemLibraryLocations.length === 0 ? (
                             <div className="text-text-subtle text-sm italic p-4 bg-surface-1 rounded-lg text-center">No Stem Libraries added yet.</div>
                         ) : stemLibraryLocations.map(location => (
-                            <div key={location.id} className="flex items-center justify-between bg-surface-1 p-3 rounded-lg border border-surface-border">
-                                <div className="font-mono text-sm text-text-main truncate" title={location.path}>{location.path}</div>
+                            <div key={location.id} className="flex items-center justify-between gap-3 bg-surface-1 p-3 rounded-lg border border-surface-border">
+                                <div className="min-w-0 flex-1 break-all font-mono text-sm text-text-main" title={location.path}>{location.path || 'Path unavailable'}</div>
                                 <Button variant="ghost" onClick={() => void removeStemLibraryLocation(location.path)} disabled={savingStemLocations} className="p-2 text-text-subtle hover:text-error" title="Remove Stem Library" aria-label={`Remove Stem Library ${location.path}`}>
                                     <X size={18} />
                                 </Button>
