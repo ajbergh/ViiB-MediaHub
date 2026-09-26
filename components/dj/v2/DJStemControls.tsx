@@ -95,6 +95,17 @@ export function formatDJStemStatus(status: DJStemStatus): string {
   return status.mode === 'stems' ? `Stems ready · ${status.bufferedSeconds.toFixed(1)} s buffered` : 'Stem package ready';
 }
 
+function sameStemState(a: DJStemState, b: DJStemState): boolean {
+  return BUSES.every(({ id }) => a[id].gain === b[id].gain && a[id].muted === b[id].muted && a[id].solo === b[id].solo);
+}
+
+/** Equal apart from bufferedSeconds, which only matters through the formatted label. */
+function sameStemStatus(a: DJStemStatus, b: DJStemStatus): boolean {
+  return a.mode === b.mode && a.available === b.available && a.underruns === b.underruns && a.error === b.error
+    && a.supportsKeyLock === b.supportsKeyLock && a.supportsScratch === b.supportsScratch
+    && a.supportsSampleAccurateLoop === b.supportsSampleAccurateLoop;
+}
+
 function clampGain(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
@@ -120,8 +131,11 @@ export function DJStemControls({ deck, compact = false }: { deck: DeckId; compac
 
   const refresh = useCallback(() => {
     try {
-      setLocalStemState(getStemState(deck));
-      setStatus(getStemStatus(deck));
+      // Keep the previous objects when nothing shown changed, so polling does not re-render.
+      const nextState = getStemState(deck);
+      const nextStatus = getStemStatus(deck);
+      setLocalStemState(previous => (sameStemState(previous, nextState) ? previous : nextState));
+      setStatus(previous => (formatDJStemStatus(previous) === formatDJStemStatus(nextStatus) && sameStemStatus(previous, nextStatus) ? previous : nextStatus));
     } catch {
       setStatus(DEFAULT_STEM_STATUS);
     }

@@ -248,6 +248,67 @@ describe('stem transport key lock', () => {
   });
 });
 
+describe('stem transport key lock alignment', () => {
+  const CLICK = Math.round(RATE * 0.3);
+  const click = (frame: number) => { const k = ((frame % CLICK) + CLICK) % CLICK; return k < 48 ? 0.8 * (1 - k / 48) : 0; };
+  const onsets = (samples: number[]) => {
+    const found: number[] = [];
+    for (let i = 1; i < samples.length; i++) {
+      if (Math.abs(samples[i]) > 0.2 && Math.abs(samples[i - 1]) <= 0.2 && (!found.length || i - found[found.length - 1] > 2000)) found.push(i);
+    }
+    return found;
+  };
+
+  async function clickTransport() {
+    const frames = RATE * 12;
+    const transport = createTransport({ sampleRate: RATE, core: loadStretchCore(RATE) });
+    transport.configure(frames);
+    transport.addFrames(0, frames, (frame, bus) => (bus === 0 ? click(frame) : 0));
+    for (let attempt = 0; attempt < 200 && !transport.messages.some(message => message.type === 'stretch'); attempt++) {
+      transport.render(128);
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    return transport;
+  }
+
+  /** Key-locked output next to the dry output the same clock would have produced. */
+  function play(transport: ReturnType<typeof createTransport>, rate: number, seconds: number, loop?: { start: number; end: number }) {
+    transport.command({ type: 'keyLock', enabled: true });
+    transport.command({ type: 'seek', frame: RATE * 5, generation: 1 });
+    if (loop) transport.command({ type: 'loop', startFrame: loop.start, endFrame: loop.end, enabled: true, generation: 1 });
+    transport.command({ type: 'play', rate, generation: 1 });
+    const wet: number[] = [];
+    const dry: number[] = [];
+    for (let block = 0; block < Math.round(seconds * RATE / 128); block++) {
+      let position = transport.processor.position;
+      for (let i = 0; i < 128; i++, position += rate) {
+        if (loop && position >= loop.end) position -= loop.end - loop.start;
+        dry.push(click(Math.floor(position)));
+      }
+      wet.push(...transport.render(128)[0][0]);
+    }
+    // Compare once the stretcher has warmed up and crossfaded in.
+    const settled = (i: number) => i > RATE * 0.25;
+    const dryOnsets = onsets(dry).filter(settled);
+    return onsets(wet).filter(settled).map(at => at - dryOnsets.reduce((best, x) => (Math.abs(x - at) < Math.abs(best - at) ? x : best)));
+  }
+
+  it.each([0.92, 1.06])('lands transients within a millisecond of the dry clock at %sx', async rate => {
+    const transport = await clickTransport();
+    const offsets = play(transport, rate, 1.5);
+    expect(transport.processor.wetMix).toBe(1);
+    expect(offsets.length).toBeGreaterThanOrEqual(3);
+    for (const offset of offsets) expect(Math.abs(offset)).toBeLessThan(RATE / 1000);
+  });
+
+  it('stays aligned through repeated loop wraps without re-priming', async () => {
+    const transport = await clickTransport();
+    const offsets = play(transport, 1.02, 2, { start: RATE * 5, end: RATE * 5 + Math.round(RATE * 0.5) });
+    expect(offsets.length).toBeGreaterThanOrEqual(5);
+    for (const offset of offsets) expect(Math.abs(offset)).toBeLessThan(RATE / 1000);
+  });
+});
+
 describe('stem transport scratch', () => {
   const scratchOf = (transport: ReturnType<typeof createTransport>) =>
     (command: Record<string, unknown>) => transport.command({ type: 'scratch', command });

@@ -28,6 +28,7 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds }: DJDeckOvervi
     // Static peak bars are cached and only rebuilt when peaks or size change.
     const cache = document.createElement('canvas');
     let cacheKey: unknown[] = [];
+    let frameKey: unknown[] = [];
 
     const draw = () => {
       const state = useStore.getState();
@@ -36,6 +37,11 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds }: DJDeckOvervi
       const height = canvas.clientHeight;
       if (width <= 0 || height <= 0) return;
       const ratio = window.devicePixelRatio || 1;
+      // Skip the redraw while nothing visible has moved (a paused deck costs nothing).
+      const playheadPixel = d.duration > 0 ? Math.round(d.position / d.duration * width * ratio) : -1;
+      const nextFrameKey = [d.waveformPeaks, width, height, ratio, d.duration, playheadPixel, d.loop.start, d.loop.end, d.loop.enabled, d.hotCues, d.track];
+      if (nextFrameKey.every((value, index) => value === frameKey[index])) return;
+      frameKey = nextFrameKey;
       if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
         canvas.width = Math.round(width * ratio);
         canvas.height = Math.round(height * ratio);

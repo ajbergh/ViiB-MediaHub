@@ -65,6 +65,27 @@ These resolve the **Decision** rows in Section 3A. They were made during impleme
 
 ### Progress log
 
+- **2026-09-25 — Stem audio performance pass (uncommitted, awaiting review).** Times are per 128-frame render quantum (2.9 ms budget at 44.1 kHz), measured in the main realm with the real WASM core. `vm` contexts inflate code that calls `Math` heavily, because every global lookup goes through interceptors.
+
+  | Path | Before | After |
+  |---|---|---|
+  | Dry playback | 0.028 ms | 0.009 ms |
+  | Key lock | 0.35 ms avg, p99 ~0.75 ms | 0.20 ms avg, p99 ~0.5 ms |
+  | Scratch | 0.025 ms | 0.010 ms |
+
+  - **Streaming key lock.** One priming seek, then only the frames each quantum consumes. Before, every quantum re-read and re-analysed a 5,292-frame × 8-channel window. Loop wraps are fed as an unwrapped stream, so they no longer re-prime.
+  - **Alignment.** Transients now land within 1 sample of the dry clock near unity tempo, and within about 0.5 ms at 0.92× and 1.06×. Before, they were 0.1–2.2 ms late with jitter. Regression tests cover this; mutation-checked, they fail with a one-quantum lag.
+  - **Hot-path cleanup in the worklet.**
+    - A block-lookup cache replaces the per-sample scan over up to about 20 retained blocks.
+    - Dry and scratch reads are inlined.
+    - WASM memory views are cached, and wet output is read in place.
+    - No per-quantum allocations remain.
+    - Decayed scratch gain and speed are snapped to zero to avoid denormals.
+  - **Main thread.**
+    - Prefetch returns early when the read-ahead is already full, instead of starting an async loop about 10 times a second.
+    - `DJStemControls` keeps its state objects while nothing shown has changed, so 500 ms polling no longer re-renders.
+    - `DJDeckOverview` skips its 80 ms redraw when nothing visible has moved, so a paused deck costs nothing.
+
 - **2026-09-25 — Key lock and scratch in stem mode; stem library status (uncommitted, awaiting review).** This entry changes audio-engine behaviour, as the Scope line allows when called out.
   - **Stem status in the library.** `/api/songs` now includes `stemStatus`, as the v2 snapshot already did. Stem registry changes now advance the library revision, so open sessions update without a reload. Previously every track showed no stems after a rescan.
   - **"Illegal invocation" on stem load.** `StemDeckSource` called the global `fetch` detached from `window`. Fixed with a regression test.

@@ -235,6 +235,9 @@ export class StemDeckSource implements DeckSource {
 
   private startPrefetch(generation: number, urgent = false): void {
     if (this.prefetchPromise || !this.descriptor || !this.worklet || generation !== this.generation) return;
+    // Position reports call this ~10x a second; skip the async loop when already full.
+    const target = Math.ceil(this.targetBufferSeconds * this.descriptor.sampleRate);
+    if (this.nextPrefetchFrame >= this.descriptor.frames || (!urgent && this.nextPrefetchFrame - this.currentFrame() >= target)) return;
     this.prefetchPromise = this.prefetchLoop(generation, urgent).finally(() => { this.prefetchPromise = null; });
   }
 
