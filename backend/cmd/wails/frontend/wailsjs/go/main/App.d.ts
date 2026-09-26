@@ -9,4 +9,6 @@ export function GetVersion():Promise<string>;
 
 export function SaveSupportBundle():Promise<string>;
 
+export function SetWindowCloseAction(arg1:string):Promise<void>;
+
 export function ShowWindow():Promise<void>;

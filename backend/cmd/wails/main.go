@@ -139,6 +139,13 @@ func (a *App) GetDataDir() string {
 	return a.dataDir
 }
 
+// SetWindowCloseAction persists the action used for future native close events.
+// Wails reads HideWindowOnClose while constructing the window, so a restart is
+// required before Alt+F4 or a native close button adopts a changed preference.
+func (a *App) SetWindowCloseAction(action string) error {
+	return saveWindowCloseAction(a.dataDir, action)
+}
+
 // SaveSupportBundle prompts for a destination and writes a sanitized support
 // archive there. An empty path means the user cancelled the save dialog.
 func (a *App) SaveSupportBundle() (string, error) {
@@ -286,7 +293,7 @@ func main() {
 	// macOS does not use the external tray because it conflicts with Wails v2's
 	// native AppDelegate. A nil channel keeps its app lifecycle fully native.
 	var quitChan chan struct{}
-	if hideWindowOnClose() {
+	if supportsSystemTray() {
 		quitChan = make(chan struct{})
 	}
 
@@ -312,9 +319,9 @@ func main() {
 		MinHeight:         600,
 		DisableResize:     false,
 		Fullscreen:        false,
-		Frameless:         true,
+		Frameless:         useFramelessWindow(),
 		StartHidden:       false,
-		HideWindowOnClose: hideWindowOnClose(),
+		HideWindowOnClose: hideWindowOnClose(*dataDir),
 		BackgroundColour:  &options.RGBA{R: 18, G: 18, B: 18, A: 255}, // Match app background (#121212)
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId:               "viib-mediahub-unique-lock",

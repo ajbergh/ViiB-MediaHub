@@ -41,6 +41,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   isPartyMode: false,
   isSkinnyMode: false,
   isSkinnyAlwaysOnTop: false,
+  windowCloseAction: 'hide',
   logs: [],
   toasts: [],
   contextMenu: {
@@ -92,6 +93,8 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   setSkinnyAlwaysOnTop: (enabled) => set((state) => ({
     isSkinnyAlwaysOnTop: state.isSkinnyMode ? enabled : false,
   })),
+
+  setWindowCloseAction: (action) => set({ windowCloseAction: action }),
   
   // Local search persistence
   setLocalSearchQuery: (query) => set({ localSearchQuery: query }),

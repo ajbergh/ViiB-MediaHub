@@ -48,7 +48,8 @@ export const useStore = create<AppState>()(
       // v2: removes legacy renderer secrets and persists Spotify playback preferences.
       // v3: DJv2 workstation defaults to the performance layout. 'fx' was the old
       //     default, so returning users are moved to 'perf' once.
-      version: 3,
+      // v4: persists desktop close behavior.
+      version: 4,
       migrate: (persistedState: any, version: number) => {
         const migrated = { ...(persistedState || {}) };
         delete migrated.spotifyClientSecret;
@@ -65,6 +66,7 @@ export const useStore = create<AppState>()(
           hasCompletedSetup: state.hasCompletedSetup,
           isSkinnyMode: state.isSkinnyMode,
           isSkinnyAlwaysOnTop: state.isSkinnyAlwaysOnTop,
+          windowCloseAction: state.windowCloseAction,
           spotifyClientId: state.spotifyClientId,
           // NOTE: spotifyAccessToken, spotifyRefreshToken, and spotifyTokenExpiry
           // are intentionally NOT persisted to renderer localStorage. The backend
