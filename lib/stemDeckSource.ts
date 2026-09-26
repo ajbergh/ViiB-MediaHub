@@ -94,7 +94,9 @@ export class StemDeckSource implements DeckSource {
 
   constructor(private readonly audioContext: AudioContext, options: StemDeckSourceOptions = {}) {
     this.context = audioContext;
-    this.fetcher = options.fetch ?? fetch;
+    // Bound: calling the native fetch as this.fetcher(...) would run it with a
+    // non-Window receiver and throw "Illegal invocation".
+    this.fetcher = options.fetch ?? fetch.bind(globalThis);
     this.createWorklet = options.createWorklet;
     this.chunkFrames = Math.max(1024, Math.min(MAX_CHUNK_FRAMES, Math.floor(options.chunkFrames ?? MAX_CHUNK_FRAMES)));
     this.targetBufferSeconds = Math.max(2, Math.min(4, options.targetBufferSeconds ?? DEFAULT_TARGET_BUFFER_SECONDS));

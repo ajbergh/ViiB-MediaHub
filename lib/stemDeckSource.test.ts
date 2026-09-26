@@ -68,7 +68,22 @@ function fixture(frameRequestOk = true, statusAvailable = true) {
 }
 
 describe('StemDeckSource', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('calls the default global fetch with a Window receiver', async () => {
+    // Native fetch throws "Illegal invocation" when called as a method of
+    // another object; this stub enforces the same receiver rule.
+    const nativeLike = vi.fn(function (this: unknown) {
+      if (this !== undefined && this !== globalThis) throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      return Promise.resolve(new Response(JSON.stringify({ status: 'none', stemSets: [] }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', nativeLike);
+    const context = { currentTime: 0, createGain: vi.fn(fakeGain) } as unknown as AudioContext;
+    const source = new StemDeckSource(context, { createFallback: fakeDeckSource, createWorklet: async () => fakeWorklet().node });
+    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    expect(nativeLike).toHaveBeenCalled();
+    expect(source.getStemStatus().error).toBeUndefined();
+  });
 
   it('packs all four buses behind one worklet clock and switches at the same position', async () => {
     const { source, fallback, worklet, fetcher } = fixture();

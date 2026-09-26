@@ -21,6 +21,7 @@ describe('DJ stem status copy', () => {
   it('reports unavailable packages and explicit full-track fallback', () => {
     expect(formatDJStemStatus({ ...availableStatus, available: false })).toBe('Full track · no stem package');
     expect(formatDJStemStatus({ ...availableStatus, mode: 'fallback', error: 'decoder failed' })).toBe('Full track · stems unavailable (decoder failed)');
+    expect(formatDJStemStatus({ ...availableStatus, mode: 'fallback', available: false })).toBe('Full track · no stem package');
   });
 
   it('makes buffering, ready, and underrun states visible', () => {

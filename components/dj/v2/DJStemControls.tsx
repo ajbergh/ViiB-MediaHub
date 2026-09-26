@@ -85,7 +85,9 @@ const DEFAULT_STEM_STATUS: DJStemStatus = {
 
 export function formatDJStemStatus(status: DJStemStatus): string {
   if (status.mode === 'fallback') {
-    return status.error ? `Full track · stems unavailable (${status.error})` : 'Full track · stem playback unavailable';
+    if (status.error) return `Full track · stems unavailable (${status.error})`;
+    // Fallback without an error means the deck is empty or has no package.
+    return status.available ? 'Full track · stem playback unavailable' : 'Full track · no stem package';
   }
   if (!status.available) return 'Full track · no stem package';
   if (status.mode === 'stems' && status.bufferedSeconds < 0.2) return 'Stems · buffering';
