@@ -12,6 +12,7 @@ import { ContextMenu } from './ContextMenu';
 import { ToastContainer } from './Toast';
 import { MobileTopBar } from './MobileTopBar';
 import { DesktopTitleBar } from './DesktopTitleBar';
+import { AnalysisProgressToast } from './AnalysisProgressToast';
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -47,6 +48,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       )}
       {(isSkinnyMode || !isDJRoute) && <Player />}
       <ContextMenu />
+      <AnalysisProgressToast />
       <ToastContainer />
     </div>
   );

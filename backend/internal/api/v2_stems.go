@@ -274,6 +274,7 @@ func (a *API) unlinkStemPackageV2(w http.ResponseWriter, r *http.Request) {
 		stemError(w, r, http.StatusInternalServerError, "stem_registry_unavailable", "Unable to load stem package status", true)
 		return
 	}
+	defer a.trackStemStatusChange(songID)()
 	for _, s := range sets {
 		if s.ID == id && s.ExplicitlyLinked {
 			_ = a.db.ClearExplicitStemLinks(songID)
@@ -320,6 +321,7 @@ func (a *API) refreshStemRegistryWithDiscoveryContext(ctx context.Context, songI
 	if song.Source == "plex" || song.FilePath == "" {
 		return nil
 	}
+	defer a.trackStemStatusChange(songID)()
 	existing, err := a.db.ListStemSets(songID)
 	if err != nil {
 		return err
@@ -494,6 +496,7 @@ func (a *API) runStemRegistryJob(job db.Job) {
 			_ = a.db.FailJob(job.ID, "stem_source_mismatch", "Package source SHA-256 does not match this track")
 			return
 		}
+		defer a.trackStemStatusChange(params.SongID)()
 		if err = a.db.ClearExplicitStemLinks(params.SongID); err != nil {
 			_ = a.db.FailJob(job.ID, "stem_link_failed", "Unable to select linked package")
 			return

@@ -4,6 +4,7 @@ import { vinylMomentum } from './vinylMomentum';
 
 vi.mock('../store', () => ({ useStore: { getState: () => state } }));
 import { DJAudioEngine } from './djAudio';
+import { StemDeckSource } from './stemDeckSource';
 
 const state = {
   djDeckA: { tempo: 1 }, djDeckB: { tempo: 1 },
@@ -227,5 +228,46 @@ describe('audio-thread momentum', () => {
     render(transport, 24000);
     expect(transport.position).toBeCloseTo(held);
     expect(transport.coast).toBeNull();
+  });
+});
+
+describe('stem mode scratch routing', () => {
+  function stemDeck(mode: 'stems' | 'full') {
+    const engine = new DJAudioEngine();
+    const audio = { position: 20, paused: false };
+    const stemPort = { postMessage: vi.fn() };
+    const vinylPort = { postMessage: vi.fn() };
+    // A StemDeckSource by prototype, so the engine's instanceof routing applies.
+    const source = Object.assign(Object.create(StemDeckSource.prototype), {
+      scratchPort: stemPort, onScratchEvent: null,
+      getStemStatus: () => ({ mode, available: true, supportsScratch: true }),
+      canScratch: () => mode === 'stems',
+      pause: vi.fn(() => { audio.paused = true; }), play: vi.fn(async () => { audio.paused = false; }),
+      seek: vi.fn((position: number) => { audio.position = position; }), setTempo: vi.fn(),
+      getPosition: () => audio.position, getDuration: () => 100,
+      isPlaying: () => !audio.paused, isLoaded: () => true,
+    });
+    Object.assign(engine, { deckSourceA: source, scratchNodes: { A: { port: vinylPort } }, scratchReady: { A: true } });
+    return { engine, source, stemPort, vinylPort };
+  }
+
+  it('scratches the stem worklet in stem mode without the decoded full track', () => {
+    const { engine, stemPort, vinylPort } = stemDeck('stems');
+    Object.assign(engine, { scratchNodes: {}, scratchReady: {} });
+    expect(engine.getScratchStatus('A')).toBe('Scratch');
+    expect(engine.startScratch('A')).toBe(true);
+    engine.updateScratch('A', -0.25, -1);
+    engine.endScratch('A', -3);
+    expect(stemPort.postMessage.mock.calls.map(([message]) => message.type)).toEqual(['start', 'move', 'coast']);
+    expect(stemPort.postMessage.mock.calls[0][0]).toMatchObject({ position: 20 });
+    expect(vinylPort.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps full-track mode on the vinyl scratch node', () => {
+    const { engine, stemPort, vinylPort } = stemDeck('full');
+    expect(engine.startScratch('A')).toBe(true);
+    engine.endScratch('A');
+    expect(vinylPort.postMessage.mock.calls.map(([message]) => message.type)).toEqual(['start', 'stop']);
+    expect(stemPort.postMessage).not.toHaveBeenCalled();
   });
 });

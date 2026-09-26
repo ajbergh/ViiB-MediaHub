@@ -45,6 +45,8 @@ import { TextInput } from '../components/ui/TextInput';
 import { isWailsEnvironment, SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
 import { PlexMusicSourceSettings } from '../components/PlexMusicSourceSettings';
 import { LibraryMonitoringPanel, LibraryOperationsPanel } from './LibraryOperations';
+import { isMacOSWails } from '../lib/webglSafety';
+import { persistNativeWindowCloseAction } from '../services/skinnyWindowService';
 
 const HOME_LAYOUT_OPTIONS: Array<{
   value: HomeLayoutVariant;
@@ -276,6 +278,7 @@ export const Settings: React.FC = () => {
       milkdropSettings, setMilkdropSettings, milkdropPresetKeys,
       showSmartMixes, setShowSmartMixes,
       homeLayoutVariant, setHomeLayoutVariant,
+      windowCloseAction, setWindowCloseAction,
       spotifyClientId, spotifyClientSecret, setSpotifyCredentials,
       streamingEnabled, streamingQuality, setStreamingEnabled, setStreamingQuality,
       preferLocalPlayback, setPreferLocalPlayback,
@@ -552,6 +555,7 @@ export const Settings: React.FC = () => {
   const initialTab = (location.state as { tab?: SettingsTab } | null)?.tab || 'library';
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const isBrowserRuntime = typeof window !== 'undefined' && /^https?:$/.test(window.location.protocol);
+  const isMacDesktopApp = isMacOSWails();
 
   const createSupportBundle = async () => {
     try {
@@ -1373,8 +1377,8 @@ export const Settings: React.FC = () => {
                         {stemLibraryLocations.length === 0 ? (
                             <div className="text-text-subtle text-sm italic p-4 bg-surface-1 rounded-lg text-center">No Stem Libraries added yet.</div>
                         ) : stemLibraryLocations.map(location => (
-                            <div key={location.id} className="flex items-center justify-between bg-surface-1 p-3 rounded-lg border border-surface-border">
-                                <div className="font-mono text-sm text-text-main truncate" title={location.path}>{location.path}</div>
+                            <div key={location.id} className="flex items-center justify-between gap-3 bg-surface-1 p-3 rounded-lg border border-surface-border">
+                                <div className="min-w-0 flex-1 break-all font-mono text-sm text-text-main" title={location.path}>{location.path || 'Path unavailable'}</div>
                                 <Button variant="ghost" onClick={() => void removeStemLibraryLocation(location.path)} disabled={savingStemLocations} className="p-2 text-text-subtle hover:text-error" title="Remove Stem Library" aria-label={`Remove Stem Library ${location.path}`}>
                                     <X size={18} />
                                 </Button>
@@ -3129,6 +3133,42 @@ export const Settings: React.FC = () => {
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${showSmartMixes ? 'right-1' : 'left-1'}`}></div>
                 </div>
               </div>
+              {!isBrowserRuntime && (
+                <div className="border-t border-surface-hover pt-6">
+                  <h3 className="font-medium text-text-main">Close Window</h3>
+                  <p className="mt-1 text-sm text-text-subtle">
+                    {isMacDesktopApp
+                      ? 'This macOS build uses the Dock for minimised windows and closes the app normally.'
+                      : 'Choose what the title-bar close button and native close action do. Native close actions update after restarting the app.'}
+                  </p>
+                  {!isMacDesktopApp && (
+                    <div className="mt-3 grid gap-3 md:grid-cols-2" role="radiogroup" aria-label="Close window behavior">
+                      {([
+                        ['hide', 'Hide to system tray', 'Keep ViiB running in the background.'],
+                        ['quit', 'Quit ViiB MediaHub', 'Close the app and stop background playback.'],
+                      ] as const).map(([action, label, description]) => {
+                        const selected = windowCloseAction === action;
+                        return (
+                          <button
+                            key={action}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => {
+                              setWindowCloseAction(action);
+                              void persistNativeWindowCloseAction(action);
+                            }}
+                            className={`rounded-lg border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${selected ? 'border-brand bg-brand/10 ring-1 ring-brand/50' : 'border-surface-border bg-surface-1 hover:border-white/20 hover:bg-surface-hover'}`}
+                          >
+                            <span className="font-semibold text-text-main">{label}</span>
+                            <p className="mt-1 text-sm text-text-subtle">{description}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </section>
         </div>

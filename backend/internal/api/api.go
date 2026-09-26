@@ -381,6 +381,11 @@ func (a *API) getSongs(w http.ResponseWriter, r *http.Request) {
 	for i := range songs {
 		transformLibrarySongForAPI(&songs[i])
 	}
+	// The frontend replaces its v2 snapshot with this list, so it must carry
+	// the same stem summary or every track reads as having no stems.
+	if err := a.attachLibraryStemStatuses(songs); err != nil {
+		log.Printf("Failed to attach stem statuses to song list: %v", err)
+	}
 
 	if songs == nil {
 		songs = []db.Song{}
@@ -830,7 +835,9 @@ func (a *API) startScan(w http.ResponseWriter, r *http.Request) {
 		_, err := a.scanner.ScanAll()
 		if err != nil {
 			logger.API("Scan error: %v", err)
+			return
 		}
+		a.queueAutoAnalysis("a full scan")
 	}()
 
 	respondJSON(w, map[string]string{"status": "started"})
@@ -895,6 +902,7 @@ func (a *API) startQuickScan(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Process changes if any
+		processedSuccessfully := true
 		if len(quickResult.ChangedFiles) > 0 {
 			msg := fmt.Sprintf("Processing %d changed files...", len(quickResult.ChangedFiles))
 			a.scanner.SetProgress(msg)
@@ -906,10 +914,14 @@ func (a *API) startQuickScan(w http.ResponseWriter, r *http.Request) {
 			result, err := a.scanner.ProcessChanges(quickResult.ChangedFiles)
 			if err != nil {
 				logger.API("Error processing changes: %v", err)
+				processedSuccessfully = false
 			} else {
 				logger.API("Quick scan processed: %d added, %d updated, %d deleted",
 					result.NewSongs, result.UpdatedSongs, result.RemovedSongs)
 			}
+		}
+		if processedSuccessfully {
+			a.queueAutoAnalysis("a quick scan")
 		}
 
 		// Emit completion event
@@ -1012,6 +1024,9 @@ func (a *API) scanOnStartup() {
 	if err != nil {
 		logger.API("Quick startup failed: %v, falling back to full scan", err)
 		// Fall back to full scan (which emits its own events)
+		// scanOnStartup owns the scan flag while the quick probe runs, but ScanAll
+		// acquires that flag itself.
+		a.scanner.SetScanning(false)
 		result, err := a.scanner.ScanAll()
 		if err != nil {
 			logger.API("Startup scan error: %v", err)
@@ -1019,6 +1034,7 @@ func (a *API) scanOnStartup() {
 		}
 		logger.API("Full startup scan complete: %d files, %d new, %d updated (%s)",
 			result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.Duration)
+		a.queueAutoAnalysis("the startup scan")
 		return
 	}
 
@@ -1044,6 +1060,7 @@ func (a *API) scanOnStartup() {
 	}
 
 	// If we detected changes, process them
+	startupProcessingSuccessful := true
 	if len(quickResult.ChangedFiles) > 0 {
 		// Update progress
 		msg := fmt.Sprintf("Processing %d changed files...", len(quickResult.ChangedFiles))
@@ -1056,6 +1073,7 @@ func (a *API) scanOnStartup() {
 		result, err := a.scanner.ProcessChanges(quickResult.ChangedFiles)
 		if err != nil {
 			logger.API("Error processing changes: %v", err)
+			startupProcessingSuccessful = false
 		} else {
 			logger.API("Processed changes: %d new, %d updated, %d removed",
 				result.NewSongs, result.UpdatedSongs, result.RemovedSongs)
@@ -1073,6 +1091,7 @@ func (a *API) scanOnStartup() {
 			a.scanner.EmitEvent(scanner.LibraryEvent{
 				Type: "library_updated",
 			})
+			a.queueAutoAnalysis("the startup scan")
 			return
 		}
 	}
@@ -1080,6 +1099,7 @@ func (a *API) scanOnStartup() {
 	// If quick startup required fallback or found too many changes, do a full scan
 	if quickResult.FallbackFull {
 		logger.API("Quick startup requested full scan fallback")
+		a.scanner.SetScanning(false)
 		result, err := a.scanner.ScanAll()
 		if err != nil {
 			logger.API("Fallback scan error: %v", err)
@@ -1092,6 +1112,7 @@ func (a *API) scanOnStartup() {
 		}
 		logger.API("Fallback scan complete: %d files, %d new, %d updated (%s)",
 			result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.Duration)
+		a.queueAutoAnalysis("the startup scan")
 		// ScanAll emits its own scan_complete event
 		return
 	}
@@ -1103,6 +1124,9 @@ func (a *API) scanOnStartup() {
 		Type:    "scan_complete",
 		Message: "Library check complete - no changes detected",
 	})
+	if startupProcessingSuccessful {
+		a.queueAutoAnalysis("the startup scan")
+	}
 }
 
 func (a *API) serveAudio(w http.ResponseWriter, r *http.Request) {

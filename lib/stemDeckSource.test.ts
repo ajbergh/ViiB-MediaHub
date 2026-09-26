@@ -68,7 +68,22 @@ function fixture(frameRequestOk = true, statusAvailable = true) {
 }
 
 describe('StemDeckSource', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('calls the default global fetch with a Window receiver', async () => {
+    // Native fetch throws "Illegal invocation" when called as a method of
+    // another object; this stub enforces the same receiver rule.
+    const nativeLike = vi.fn(function (this: unknown) {
+      if (this !== undefined && this !== globalThis) throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      return Promise.resolve(new Response(JSON.stringify({ status: 'none', stemSets: [] }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', nativeLike);
+    const context = { currentTime: 0, createGain: vi.fn(fakeGain) } as unknown as AudioContext;
+    const source = new StemDeckSource(context, { createFallback: fakeDeckSource, createWorklet: async () => fakeWorklet().node });
+    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    expect(nativeLike).toHaveBeenCalled();
+    expect(source.getStemStatus().error).toBeUndefined();
+  });
 
   it('packs all four buses behind one worklet clock and switches at the same position', async () => {
     const { source, fallback, worklet, fetcher } = fixture();
@@ -85,7 +100,7 @@ describe('StemDeckSource', () => {
     expect(source.getPosition()).toBeCloseTo(1.25);
     expect(fallback.pause).toHaveBeenCalled();
     expect(worklet.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'seek', frame: 1250 }));
-    expect(source.getStemStatus()).toMatchObject({ supportsKeyLock: false, supportsScratch: false, supportsSampleAccurateLoop: true });
+    expect(source.getStemStatus()).toMatchObject({ supportsKeyLock: false, supportsScratch: true, supportsSampleAccurateLoop: true });
 
     source.setStemGain('vocals', 0.5);
     source.setStemMuted('drums', true);
@@ -209,6 +224,62 @@ describe('StemDeckSource', () => {
       vocals: { gain: 1, muted: false, solo: false }, drums: { gain: 1, muted: false, solo: false },
       bass: { gain: 1, muted: false, solo: false }, music: { gain: 1, muted: false, solo: false },
     });
+    source.dispose();
+  });
+
+  it('relays key lock, stretcher readiness and scratch messages through the stem worklet', async () => {
+    const { source, worklet, fallback } = fixture();
+    source.setKeyLock(true);
+    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    expect(worklet.port.postMessage).toHaveBeenCalledWith({ type: 'keyLock', enabled: true });
+    await source.setStemMode('stems');
+    expect(source.getStemStatus().supportsKeyLock).toBe(false);
+    worklet.port.onmessage?.({ data: { type: 'stretch', ready: true } } as MessageEvent);
+    expect(source.getStemStatus()).toMatchObject({ mode: 'stems', supportsKeyLock: true, supportsScratch: true });
+
+    source.setKeyLock(false);
+    expect(worklet.port.postMessage).toHaveBeenLastCalledWith({ type: 'keyLock', enabled: false });
+    expect(fallback.setKeyLock).toHaveBeenLastCalledWith(false);
+    expect(source.canScratch()).toBe(true);
+    source.scratchPort.postMessage({ type: 'start', position: 1, token: 3 });
+    expect(worklet.port.postMessage).toHaveBeenLastCalledWith({ type: 'scratch', command: { type: 'start', position: 1, token: 3 } });
+    const events: unknown[] = [];
+    source.onScratchEvent = event => events.push(event);
+    worklet.port.onmessage?.({ data: { type: 'scratch', event: { type: 'held', token: 3, position: 0.9 } } } as MessageEvent);
+    expect(events).toEqual([{ type: 'held', token: 3, position: 0.9 }]);
+    source.dispose();
+  });
+
+  it('seeks inside retained stem frames without a flush and refetches outside them', async () => {
+    const { source, worklet } = fixture();
+    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    await source.setStemMode('stems');
+    await source.play();
+    await vi.waitFor(() => expect(source.getStemStatus().bufferedSeconds).toBeGreaterThan(1.5));
+    const post = worklet.port.postMessage;
+
+    post.mockClear();
+    source.seek(1);
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'seek', frame: 1000 }));
+    expect(post).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'flush' }));
+
+    // The worklet has dropped history before frame 900; 1.2 s is inside the safety margin.
+    worklet.port.onmessage?.({ data: { type: 'evicted', frame: 900 } } as MessageEvent);
+    post.mockClear();
+    source.seek(1.2);
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'flush' }));
+    source.dispose();
+  });
+  it('tops up the stem read-ahead from position reports instead of waiting for an underrun', async () => {
+    const { source, worklet, fetcher } = fixture();
+    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    await source.setStemMode('stems');
+    await source.play();
+    await vi.waitFor(() => expect(source.getStemStatus().bufferedSeconds).toBeGreaterThan(1.5));
+    const calls = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    worklet.port.onmessage?.({ data: { type: 'position', frame: 1500 } } as MessageEvent);
+    await vi.waitFor(() => expect((fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(calls));
+    expect(source.getStemStatus().underruns).toBe(0);
     source.dispose();
   });
 });

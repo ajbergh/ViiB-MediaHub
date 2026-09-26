@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Library, X } from 'lucide-react';
 import { DJLibraryBrowserV2 } from './DJLibraryBrowserV2';
 import { DJErrorBoundary } from './DJErrorBoundary';
@@ -6,15 +6,23 @@ import { DJErrorBoundary } from './DJErrorBoundary';
 export interface DJLibraryDrawerHandle {
   open: () => void;
   close: () => boolean;
+  toggle: () => void;
+}
+
+interface DJLibraryDrawerProps {
+  /** Mirrors open state to other controls (e.g. the top-bar LIBRARY button). */
+  onOpenChange?: (open: boolean) => void;
 }
 
 /** Local UI state never reaches the deck tree or audio store. */
-export const DJLibraryDrawer = forwardRef<DJLibraryDrawerHandle>(function DJLibraryDrawer(_, ref) {
+export const DJLibraryDrawer = forwardRef<DJLibraryDrawerHandle, DJLibraryDrawerProps>(function DJLibraryDrawer({ onOpenChange }, ref) {
   const [open, setOpen] = useState(false);
   const [visited, setVisited] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
 
   const show = useCallback(() => {
     if (!open) returnFocusRef.current = document.activeElement as HTMLElement | null;
@@ -36,14 +44,16 @@ export const DJLibraryDrawer = forwardRef<DJLibraryDrawerHandle>(function DJLibr
     return true;
   }, [open]);
 
-  useImperativeHandle(ref, () => ({ open: show, close }), [show, close]);
+  const toggle = useCallback(() => { if (open) close(); else show(); }, [open, close, show]);
+
+  useImperativeHandle(ref, () => ({ open: show, close, toggle }), [show, close, toggle]);
 
   return (
     <>
       <div className="dj-library-affordance">
-        <button ref={triggerRef} type="button" className="dj-focus-ring inline-flex items-center gap-2 px-5 min-h-8 text-xs text-text-main"
-          aria-controls="dj-library-drawer" aria-expanded={open} onClick={() => open ? close() : show()}>
-          <Library size={16} aria-hidden="true" /> <span>Library</span>
+        <button ref={triggerRef} type="button" className="dj-btn dj-focus-ring"
+          aria-controls="dj-library-drawer" aria-expanded={open} onClick={toggle}>
+          <Library size={16} aria-hidden="true" /> <span>Library</span> <kbd className="dj-kbd">/</kbd>
         </button>
       </div>
       <section ref={drawerRef} id="dj-library-drawer" role="region" aria-label="DJ library" hidden={!open}

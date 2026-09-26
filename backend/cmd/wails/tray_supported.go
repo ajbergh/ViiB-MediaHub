@@ -7,8 +7,12 @@ import (
 	"github.com/getlantern/systray"
 )
 
-func hideWindowOnClose() bool {
+func supportsSystemTray() bool {
 	return true
+}
+
+func hideWindowOnClose(dataDir string) bool {
+	return loadWindowCloseAction(dataDir) == closeActionHide
 }
 
 func startSystemTray(app *App, quitChan chan struct{}) func() {

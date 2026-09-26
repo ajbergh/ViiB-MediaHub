@@ -1,217 +1,154 @@
 /**
- * ViiB MediaHub - DJ Top Bar Component (v2)
- * 
- * Professional top navigation bar with view mode tabs, record button, and track info.
- * Styled to match professional DJ software (PCDJ DEX / Serato).
- * 
+ * ViiB MediaHub - DJ Top Bar (v2)
+ *
+ * Compact global navigation strip (Plan §10A.4). One mode group replaces the
+ * former SCOPE/TIMELINE/RACKS + PERF/BROWSE/FX pair:
+ *
+ *   DJ      performance workspace (split waveforms, full decks)
+ *   LIBRARY toggles the library drawer
+ *   BROWSE  performance geometry with the library open
+ *   FX      brings the mixer's FX pad (X-Y pad + Beat FX) forward
+ *   SCOPE   swaps the waveform band for the diagnostic scope
+ *
+ * Utilities on the right: REC, MIDI, AUDIO, settings, fullscreen.
+ *
  * @module components/dj/v2/DJTopBar
  */
 
-import React, { useEffect, useCallback, useState } from 'react';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Maximize2, Minimize2, Settings, Volume2, Cable } from 'lucide-react';
 import { useStore } from '../../../store';
+import { shouldUseAdvancedWebGL } from '../../../lib/webglSafety';
 import type { DJLayoutMode } from '../../../slices/djMixerSlice';
 
-type ViewMode = 'timeline' | 'scope' | 'racks';
+export type DJUpperView = 'waveform' | 'scope';
 
 interface DJTopBarProps {
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
-  isRecording?: boolean;
-  onRecordToggle?: () => void;
-  layoutMode?: DJLayoutMode;
-  onLayoutModeChange?: (mode: DJLayoutMode) => void;
+  layoutMode: DJLayoutMode;
+  onLayoutModeChange: (mode: DJLayoutMode) => void;
+  upperView: DJUpperView;
+  onUpperViewChange: (view: DJUpperView) => void;
+  libraryOpen: boolean;
+  onToggleLibrary: () => void;
+  isRecording: boolean;
+  recordingDuration: number;
+  onRecordToggle: () => void;
+  midiEnabled: boolean;
+  onOpenMidi: () => void;
+  onOpenAudio: () => void;
+  onShowShortcuts: () => void;
 }
 
-/** Persistent fullscreen toggle shown in the top-bar action row. */
+/** Persistent fullscreen toggle shown in the top-bar utility group. */
 const FullscreenButton: React.FC = () => {
-  const [isFS, setIsFS] = useState(() =>
-    typeof document !== 'undefined' ? !!document.fullscreenElement : false
-  );
-
+  const [isFS, setIsFS] = useState(() => typeof document !== 'undefined' ? !!document.fullscreenElement : false);
   useEffect(() => {
     const onFSChange = () => setIsFS(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', onFSChange);
     return () => document.removeEventListener('fullscreenchange', onFSChange);
   }, []);
-
-  const toggle = useCallback(async () => {
+  const toggle = async () => {
     try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-      } else {
-        await document.documentElement.requestFullscreen();
-      }
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
     } catch {
       // Fullscreen not available (e.g. Wails WebView) — ignore
     }
-  }, []);
-
+  };
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-label={isFS ? 'Exit fullscreen' : 'Enter fullscreen (F11)'}
-      title={isFS ? 'Exit fullscreen' : 'Enter fullscreen (F11)'}
-      className={`
-        ml-1 flex items-center justify-center w-8 h-8 rounded
-        transition-all duration-100 border
-        ${isFS
-          ? 'bg-brand/20 text-brand border-brand/40 hover:bg-brand/30'
-          : 'bg-[#222] text-neutral-500 border-[#333] hover:bg-[#2a2a2a] hover:text-neutral-300 hover:border-[#444]'}
-      `}
-    >
-      {isFS ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
+    <button type='button' onClick={toggle} className='dj-btn dj-btn-icon' aria-pressed={isFS}
+      aria-label={isFS ? 'Exit fullscreen' : 'Enter fullscreen (F11)'} title={isFS ? 'Exit fullscreen' : 'Enter fullscreen (F11)'}>
+      {isFS ? <Minimize2 size={15} aria-hidden='true' /> : <Maximize2 size={15} aria-hidden='true' />}
     </button>
   );
 };
 
-export const DJTopBar: React.FC<DJTopBarProps> = ({ 
-  viewMode, 
-  onViewModeChange,
-  isRecording = false,
-  onRecordToggle,
-  layoutMode = 'fx',
-  onLayoutModeChange,
-}) => {
-  // Granular selectors - avoid subscribing to position/volume/eq changes
-  const deckATrack = useStore(state => state.djDeckA.track);
-  const deckBTrack = useStore(state => state.djDeckB.track);
+const formatDuration = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
+
+/** DJ settings: waveform renderer and the shortcuts overlay. */
+const SettingsMenu: React.FC<{ onShowShortcuts: () => void }> = ({ onShowShortcuts }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const useWebGLWaveform = useStore(s => s.djMixer?.useWebGLWaveform);
+  const toggleWebGLWaveform = useStore(s => s.toggleWebGLWaveform);
+  const advancedWebGLEnabled = shouldUseAdvancedWebGL();
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [open]);
 
   return (
-    <div className="relative h-11 bg-gradient-to-b from-[#1f1f1f] to-[#1a1a1a] border-b border-[#2a2a2a] flex items-center justify-between px-3">
-      {/* Left - View Mode Tabs + Layout Mode Toggle */}
-      <div className="flex items-center gap-1">
-        {(['scope', 'timeline', 'racks'] as ViewMode[]).map(mode => (
-          <button
-            key={mode}
-            onClick={() => onViewModeChange(mode)}
-            aria-pressed={viewMode === mode}
-            className={`
-              px-3 min-h-[32px] flex items-center rounded text-[10px] font-bold uppercase tracking-wider
-              transition-all duration-100 border
-              ${viewMode === mode
-                ? 'bg-[#333] text-white border-[#4a4a4a] shadow-inner'
-                : 'bg-[#222] text-[#777] border-[#333] hover:text-white hover:bg-[#2a2a2a] hover:border-[#444]'}
-            `}
-          >
-            {mode}
+    <div ref={rootRef} className='relative' onKeyDown={event => { if (event.key === 'Escape' && open) { event.stopPropagation(); setOpen(false); } }}>
+      <button type='button' className='dj-btn dj-btn-icon' aria-expanded={open} aria-haspopup='true' aria-label='DJ settings'
+        title='DJ settings' onClick={() => setOpen(value => !value)}>
+        <Settings size={15} aria-hidden='true' />
+      </button>
+      {open && (
+        <div className='dj-popover' style={{ top: 'calc(100% + 6px)', right: 0 }} role='group' aria-label='DJ settings'>
+          <p className='dj-label' style={{ marginBottom: 6 }}>Waveform renderer</p>
+          <div className='dj-segmented' style={{ marginBottom: 10 }}>
+            <button type='button' className='dj-btn dj-btn-xs' aria-pressed={advancedWebGLEnabled && !!useWebGLWaveform}
+              disabled={!advancedWebGLEnabled} onClick={() => { if (!useWebGLWaveform) toggleWebGLWaveform(); }}
+              title={advancedWebGLEnabled ? 'GPU-accelerated waveform' : 'Canvas waveform is used in the macOS desktop app for stability'}>WebGL</button>
+            <button type='button' className='dj-btn dj-btn-xs' aria-pressed={!advancedWebGLEnabled || !useWebGLWaveform}
+              onClick={() => { if (useWebGLWaveform) toggleWebGLWaveform(); }} title='Canvas 2D waveform'>Canvas 2D</button>
+          </div>
+          <button type='button' className='dj-btn dj-btn-xs dj-menu-item' onClick={() => { setOpen(false); onShowShortcuts(); }}>
+            Keyboard shortcuts <kbd>?</kbd>
           </button>
-        ))}
-
-        {/* Separator */}
-        <div className='w-px h-5 bg-[#333] mx-1.5' />
-
-        {/* Layout Mode Toggle */}
-        <div className='flex items-center bg-[#1a1a1a] rounded border border-[#333] p-0.5'>
-          {(['perf', 'browse', 'fx'] as DJLayoutMode[]).map(mode => (
-            <button
-              key={mode}
-              onClick={() => onLayoutModeChange?.(mode)}
-              aria-pressed={layoutMode === mode}
-              className={`
-                px-2.5 min-h-[32px] flex items-center rounded text-[10px] font-bold uppercase tracking-wider
-                transition-all duration-150
-                ${layoutMode === mode
-                  ? 'bg-brand text-white shadow-sm'
-                  : 'text-[#666] hover:text-[#aaa]'}
-              `}
-              title={mode === 'perf' ? 'Performance layout — full decks' : mode === 'browse' ? 'Browse layout — expanded library' : 'FX layout — expanded effects'}
-            >
-              {mode === 'perf' ? 'PERF' : mode === 'browse' ? 'BROWSE' : 'FX'}
-            </button>
-          ))}
         </div>
-      </div>
-
-      {/* Center group — deck metadata balances around the fixed REC position. */}
-      <>
-        {/* Deck A Info */}
-        <div className="absolute right-[calc(50%+52px)] top-1/2 -translate-y-1/2 flex items-center justify-end gap-2 min-w-0 max-w-[240px]">
-          {deckATrack && (
-            <>
-              <div className="w-7 h-7 bg-[#252525] rounded overflow-hidden flex-shrink-0 border border-[#333]">
-                {deckATrack.coverUrl ? (
-                  <img
-                    src={deckATrack.coverUrl}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] text-neutral-600">♫</div>
-                )}
-              </div>
-              <div className="max-w-[180px] text-right">
-                <div className="text-[10px] text-neutral-300 truncate font-medium">
-                  {deckATrack.artist}
-                </div>
-                <div className="text-[10px] text-neutral-500 truncate">
-                  {deckATrack.title}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Record Button */}
-        <button
-          onClick={onRecordToggle}
-          aria-label={isRecording ? 'Stop recording' : 'Start recording'}
-          aria-pressed={isRecording}
-          className={`
-            absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 min-h-[32px] rounded
-            transition-all duration-100 border
-            ${isRecording
-              ? 'bg-red-900/30 border-red-500/50 shadow-lg shadow-red-500/20'
-              : 'bg-[#252525] border-[#333] hover:bg-[#2a2a2a] hover:border-[#444]'}
-          `}
-        >
-          <div
-            className={`w-2.5 h-2.5 rounded-full transition-colors ${
-              isRecording ? 'bg-red-500 animate-pulse shadow-lg shadow-red-500/50' : 'bg-[#555]'
-            }`}
-          />
-          <span className={`text-[10px] font-bold tracking-wider ${
-            isRecording ? 'text-red-400' : 'text-[#666]'
-          }`}>
-            REC
-          </span>
-        </button>
-
-        {/* Deck B Info */}
-        <div className="absolute left-[calc(50%+52px)] top-1/2 -translate-y-1/2 flex items-center gap-2 min-w-0 max-w-[240px]">
-          {deckBTrack && (
-            <>
-              <div className="max-w-[180px]">
-                <div className="text-[10px] text-neutral-300 truncate font-medium">
-                  {deckBTrack.artist}
-                </div>
-                <div className="text-[10px] text-neutral-500 truncate">
-                  {deckBTrack.title}
-                </div>
-              </div>
-              <div className="w-7 h-7 bg-[#252525] rounded overflow-hidden flex-shrink-0 border border-[#333]">
-                {deckBTrack.coverUrl ? (
-                  <img
-                    src={deckBTrack.coverUrl}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] text-neutral-600">♫</div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </>
-
-      {/* Right - Fullscreen toggle (zoom is handled via Ctrl+Scroll on the waveform — see help dialog) */}
-      <div className="flex items-center justify-end gap-2 text-neutral-500 w-44 shrink-0">
-        <FullscreenButton />
-      </div>
+      )}
     </div>
   );
 };
 
-export default DJTopBar;
+export const DJTopBar: React.FC<DJTopBarProps> = ({
+  layoutMode, onLayoutModeChange, upperView, onUpperViewChange, libraryOpen, onToggleLibrary,
+  isRecording, recordingDuration, onRecordToggle, midiEnabled, onOpenMidi, onOpenAudio, onShowShortcuts,
+}) => {
+  const modes: ReadonlyArray<{ mode: DJLayoutMode; label: string; title: string }> = [
+    { mode: 'perf', label: 'DJ', title: 'Performance workspace — split waveforms and full decks' },
+    { mode: 'browse', label: 'BROWSE', title: 'Browse — performance geometry with the library open' },
+    { mode: 'fx', label: 'FX', title: 'FX — X-Y pad and Beat FX in the mixer' },
+  ];
+  const [dj, browse, fx] = modes;
+  const modeButton = ({ mode, label, title }: typeof modes[number]) => (
+    <button key={mode} type='button' className='dj-btn dj-topbar-mode' aria-pressed={layoutMode === mode} title={title}
+      onClick={() => { onLayoutModeChange(mode); if (mode === 'perf') onUpperViewChange('waveform'); }}>{label}</button>
+  );
+
+  return (
+    <header className='dj-topbar'>
+      <nav className='dj-topbar-group' aria-label='DJ workspace modes'>
+        {modeButton(dj)}
+        <button type='button' className='dj-btn dj-topbar-mode' aria-expanded={libraryOpen} aria-controls='dj-library-drawer'
+          title='Toggle the library (/)' onClick={onToggleLibrary}>LIBRARY</button>
+        {modeButton(browse)}
+        {modeButton(fx)}
+        <button type='button' className='dj-btn dj-topbar-mode' aria-pressed={upperView === 'scope'}
+          title='Swap the waveform band for the signal scope' onClick={() => onUpperViewChange(upperView === 'scope' ? 'waveform' : 'scope')}>SCOPE</button>
+      </nav>
+      <div className='dj-topbar-group'>
+        <button type='button' className='dj-btn dj-btn-danger' onClick={onRecordToggle} aria-pressed={isRecording}
+          aria-label={isRecording ? 'Stop recording' : 'Start recording'} title={isRecording ? 'Stop and save the recording' : 'Record the master output'}>
+          <span className='dj-status-dot' data-state={isRecording ? 'live' : undefined} aria-hidden='true' />
+          REC
+          {isRecording && <span className='dj-rec-time'>{formatDuration(recordingDuration)}</span>}
+        </button>
+        <button type='button' className='dj-btn' onClick={onOpenMidi}
+          title={midiEnabled ? 'MIDI enabled — open controller mappings' : 'MIDI is off — open this panel and enable MIDI to receive controller input'}
+          aria-label={midiEnabled ? 'MIDI enabled, open controller mappings' : 'MIDI off, open controller mappings to enable'}>
+          <Cable size={14} aria-hidden='true' /> MIDI <span className='dj-status-dot' data-state={midiEnabled ? 'ok' : 'warn'} aria-hidden='true' />
+        </button>
+        <button type='button' className='dj-btn' onClick={onOpenAudio} title='Audio output setup'>
+          <Volume2 size={14} aria-hidden='true' /> AUDIO
+        </button>
+        <SettingsMenu onShowShortcuts={onShowShortcuts} />
+        <FullscreenButton />
+      </div>
+    </header>
+  );
+};

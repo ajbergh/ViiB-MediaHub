@@ -19,17 +19,23 @@ interface DJEQKnobProps {
   compact?: boolean;
   valueText?: string;
   className?: string;
+  /** Render the label under the knob (FX rack modules, per the mock-up). */
+  labelBelow?: boolean;
+  /** Accessible name when the visible label is ambiguous (e.g. FX parameters). */
+  ariaLabel?: string;
 }
 
 export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
   label,
   value,
   onChange,
-  color = '#888',
+  color = 'var(--dj-text-secondary)',
   size = 44,
   compact = false,
   valueText,
   className = '',
+  labelBelow = false,
+  ariaLabel,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -123,8 +129,8 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
     >
       {/* Label */}
       <span
-        className={`dj-eq-knob-label text-[10px] font-bold uppercase tracking-wider ${compact ? 'leading-none mb-0' : 'mb-0.5'}`}
-        style={{ color: '#bac6d6' }}
+        className={`dj-eq-knob-label text-[12px] font-bold uppercase tracking-wider ${compact ? 'leading-none mb-0' : 'mb-0.5'} ${labelBelow ? 'order-last mt-1' : ''}`}
+        style={{ color: 'var(--dj-text-secondary)' }}
       >
         {label}
       </span>
@@ -135,7 +141,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
         style={{ width: knobSize, height: knobSize }}
         role="slider"
         tabIndex={0}
-        aria-label={label}
+        aria-label={ariaLabel ?? label}
         aria-valuetext={valueText ?? `${displayValue} dB`}
         title={`${label}: ${valueText ?? `${displayValue} dB`}`}
         aria-valuemin={-24}
@@ -158,9 +164,9 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
           <defs>
             {/* Metallic gradient */}
             <radialGradient id={metalId} cx="35%" cy="30%" r="70%">
-              <stop offset="0%" stopColor="#666"/>
-              <stop offset="40%" stopColor="#444"/>
-              <stop offset="100%" stopColor="#222"/>
+              <stop offset="0%" stopColor="var(--dj-text-muted)"/>
+              <stop offset="40%" stopColor="var(--dj-border-hover)"/>
+              <stop offset="100%" stopColor="var(--dj-surface-3)"/>
             </radialGradient>
 
             {/* Inner shadow */}
@@ -179,7 +185,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
           </defs>
 
           {/* Knob shadow ring */}
-          <circle cx="20" cy="20" r="16" fill="#1a1a1a" />
+          <circle cx="20" cy="20" r="16" fill="var(--dj-surface-2)" />
 
           {/* Knob body */}
           <circle
@@ -191,10 +197,10 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
           />
 
           {/* Rim highlight */}
-          <circle cx="20" cy="20" r="14" fill="none" stroke="#555" strokeWidth="0.5" />
+          <circle cx="20" cy="20" r="14" fill="none" stroke="var(--dj-text-muted)" strokeWidth="0.5" />
 
           {/* Inner circle detail */}
-          <circle cx="20" cy="20" r="10" fill="none" stroke="#333" strokeWidth="0.5" />
+          <circle cx="20" cy="20" r="10" fill="none" stroke="var(--dj-border-light)" strokeWidth="0.5" />
 
           {/* Notch marks around edge */}
           {[-135, -90, -45, 0, 45, 90, 135].map((markAngle) => (
@@ -204,7 +210,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
               y1="5"
               x2="20"
               y2={markAngle === 0 ? 8 : 7}
-              stroke={markAngle === 0 ? '#666' : '#444'}
+              stroke={markAngle === 0 ? 'var(--dj-text-muted)' : 'var(--dj-border-hover)'}
               strokeWidth={markAngle === 0 ? 2 : 1}
               transform={`rotate(${markAngle}, 20, 20)`}
             />
@@ -225,7 +231,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
           />
 
           {/* Center dot */}
-          <circle cx="20" cy="20" r="2" fill="#222" stroke="#333" strokeWidth="0.5" />
+          <circle cx="20" cy="20" r="2" fill="var(--dj-surface-3)" stroke="var(--dj-border-light)" strokeWidth="0.5" />
         </svg>
       </div>
       {compact && (
@@ -236,9 +242,9 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
       
       {/* Value indicator bar (hidden in compact mode to save vertical space) */}
       {!compact && (
-        <div className="w-full h-1 bg-[#252525] rounded-sm mt-1 overflow-hidden relative">
+        <div className="w-full h-1 bg-[var(--dj-surface-3)] rounded-sm mt-1 overflow-hidden relative">
           {/* Center marker */}
-          <div className="absolute left-1/2 -translate-x-1/2 top-0 w-0.5 h-full bg-[#444]" />
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 w-0.5 h-full bg-[var(--dj-border-hover)]" />
 
           {/* Value fill */}
           {value !== 0 && (
@@ -250,7 +256,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
                 width: isNegative
                   ? `${66.7 - indicatorPercent}%`
                   : `${indicatorPercent - 66.7}%`,
-                boxShadow: `0 0 4px ${color}40`,
+                boxShadow: `0 0 4px color-mix(in srgb, ${color} 25%, transparent)`,
               }}
             />
           )}
@@ -260,8 +266,8 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
       {/* Value display */}
       {!compact && (
         <span
-          className="dj-eq-knob-readout text-[10px] font-mono mt-0.5 transition-colors whitespace-nowrap"
-          style={{ color: '#cbd5e1' }}
+          className="dj-eq-knob-readout text-[12px] font-mono mt-0.5 transition-colors whitespace-nowrap"
+          style={{ color: 'var(--dj-text-primary)' }}
         >
           {valueText ?? displayValue}
         </span>

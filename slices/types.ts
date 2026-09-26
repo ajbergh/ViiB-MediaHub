@@ -287,6 +287,7 @@ export interface UISlice {
   isPartyMode: boolean; // Fullscreen immersive mode with minimal UI
   isSkinnyMode: boolean;
   isSkinnyAlwaysOnTop: boolean;
+  windowCloseAction: 'hide' | 'quit';
   contextMenu: {
     isOpen: boolean;
     x: number;
@@ -312,6 +313,7 @@ export interface UISlice {
   togglePartyMode: () => void;
   setSkinnyMode: (enabled: boolean) => void;
   setSkinnyAlwaysOnTop: (enabled: boolean) => void;
+  setWindowCloseAction: (action: 'hide' | 'quit') => void;
   
   openContextMenu: (e: React.MouseEvent, type: ContextMenuType, data: any) => void;
   closeContextMenu: () => void;

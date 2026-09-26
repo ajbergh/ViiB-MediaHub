@@ -8,6 +8,8 @@ import { useStore } from '../../../store';
 interface DJBpmEditorProps {
   track: Song | null;
   deck: DeckId;
+  /** Render expanded, for hosts such as the deck inspector that own disclosure. */
+  embedded?: boolean;
 }
 
 function emptyFeature(songId: string): TrackAnalysisFeature {
@@ -26,7 +28,7 @@ function parseBpm(value: string): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 1000 ? parsed : undefined;
 }
 
-export function DJBpmEditor({ track, deck }: DJBpmEditorProps) {
+export function DJBpmEditor({ track, deck, embedded = false }: DJBpmEditorProps) {
   const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
   const setDeckAnalysis = useStore(state => state.setDeckAnalysis);
   const sourceIdentity = useMemo(() => djTrackSourceIdentity(track), [track?.id, track?.source, track?.sourceName, track?.path, track?.fileHash, track?.fileHandle?.name]);
@@ -157,30 +159,30 @@ export function DJBpmEditor({ track, deck }: DJBpmEditorProps) {
 
   if (!track) return null;
 
-  return <details className="mx-2 mb-1 rounded border border-neutral-800 bg-neutral-950/70 text-[10px] text-neutral-300">
+  return <details open={embedded || undefined} className="mx-2 mb-1 rounded border border-[var(--dj-border)] bg-[color-mix(in_srgb,var(--dj-bg)_70%,transparent)] text-[12px] text-[var(--dj-text-secondary)]">
     <summary className="cursor-pointer list-none px-2 py-1">
       BPM correction · {feature?.bpm == null ? 'Unknown BPM' : `${formatManualBpm(feature.bpm)} · ${feature.bpmSource}`}
     </summary>
-    <div className="space-y-2 border-t border-neutral-800 px-2 py-2">
-      <p className="text-neutral-500">These controls change scalar BPM only; they do not move or re-align beat-grid timestamps. Use Edit Grid separately for timing corrections.</p>
+    <div className="space-y-2 border-t border-[var(--dj-border)] px-2 py-2">
+      <p className="text-[var(--dj-text-secondary)]">These controls change scalar BPM only; they do not move or re-align beat-grid timestamps. Use Edit Grid separately for timing corrections.</p>
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1">BPM
           <input aria-label={`Deck ${deck} manual BPM`} type="number" min="0.01" max="1000" step="0.01"
             value={bpmInput} disabled={busy} onChange={event => setBpmInput(event.target.value)}
-            className="w-20 rounded border border-neutral-700 bg-neutral-900 px-1.5 py-1 font-mono text-neutral-100" />
+            className="w-20 rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] px-1.5 py-1 font-mono text-[var(--dj-text-primary)]" />
         </label>
         <button type="button" disabled={busy} onClick={() => adjustBpm(2)} aria-label="Double BPM"
-          className="rounded border border-neutral-700 px-2 py-1 hover:border-cyan-500 disabled:opacity-40">×2</button>
+          className="rounded border border-[var(--dj-border-light)] px-2 py-1 hover:border-[var(--dj-info)] disabled:opacity-40">×2</button>
         <button type="button" disabled={busy} onClick={() => adjustBpm(0.5)} aria-label="Halve BPM"
-          className="rounded border border-neutral-700 px-2 py-1 hover:border-cyan-500 disabled:opacity-40">÷2</button>
+          className="rounded border border-[var(--dj-border-light)] px-2 py-1 hover:border-[var(--dj-info)] disabled:opacity-40">÷2</button>
         <button type="button" disabled={busy} onClick={tap} aria-label="Tap BPM"
-          className="rounded border border-neutral-700 px-2 py-1 hover:border-cyan-500 disabled:opacity-40">Tap BPM</button>
+          className="rounded border border-[var(--dj-border-light)] px-2 py-1 hover:border-[var(--dj-info)] disabled:opacity-40">Tap BPM</button>
         <button type="button" disabled={busy || !feature?.sourceFingerprint} onClick={() => void save()}
-          className="rounded border border-cyan-500/50 px-2 py-1 text-cyan-200 hover:bg-cyan-950 disabled:opacity-40">Save BPM</button>
+          className="rounded border border-[color-mix(in_srgb,var(--dj-info)_50%,transparent)] px-2 py-1 text-cyan-200 hover:bg-cyan-950 disabled:opacity-40">Save BPM</button>
         <button type="button" disabled={busy || !feature?.sourceFingerprint || feature.bpmSource !== 'manual'} onClick={() => void reset()}
-          className="rounded border border-neutral-700 px-2 py-1 hover:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">Reset to measured</button>
-        {feature?.bpmSource === 'measured' && <span className="text-neutral-500">Measured {feature.bpm == null ? 'unknown' : `${formatManualBpm(feature.bpm)} BPM`}</span>}
-        {status && <span role="status" className="text-neutral-400">{status}</span>}
+          className="rounded border border-[var(--dj-border-light)] px-2 py-1 hover:border-[var(--dj-info)] disabled:cursor-not-allowed disabled:opacity-40">Reset to measured</button>
+        {feature?.bpmSource === 'measured' && <span className="text-[var(--dj-text-secondary)]">Measured {feature.bpm == null ? 'unknown' : `${formatManualBpm(feature.bpm)} BPM`}</span>}
+        {status && <span role="status" className="text-[var(--dj-text-secondary)]">{status}</span>}
       </div>
     </div>
   </details>;

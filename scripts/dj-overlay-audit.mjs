@@ -28,14 +28,16 @@ await page.route('**/api/songs', route => route.fulfill({ json: fixtureSongs }))
 await page.route('**/api/playlists', route => route.fulfill({ json: [{ id: 'audit', name: 'Audit playlist', songIds: fixtureSongs.slice(0, 1000).map(s => s.id) }] }));
 const drawer = page.getByRole('region', { name: 'DJ library' });
 const search = page.getByRole('textbox', { name: 'Search DJ library' });
-const geometry = () => page.locator('[data-dj-workspace], [data-dj-workspace] > div').evaluateAll(elements =>
+const geometry = () => page.locator('[data-dj-workspace], [data-dj-workspace] > *').evaluateAll(elements =>
   elements.map(el => el.getBoundingClientRect().toJSON()));
 const layoutMetrics = () => page.evaluate(() => {
   const rect = element => element.getBoundingClientRect();
   const canvas = document.querySelector('[data-dj-canvas]');
   const viewport = canvas.parentElement;
   const workspace = document.querySelector('[data-dj-workspace]');
-  const [deckA, mixer, deckB] = workspace.querySelectorAll(':scope > .dj-deck, :scope > .dj-mixer');
+  const deckA = workspace.querySelector(':scope > [data-dj-deck="A"]');
+  const mixer = workspace.querySelector(':scope > [data-dj-mixer]');
+  const deckB = workspace.querySelector(':scope > [data-dj-deck="B"]');
   const canvasRect = rect(canvas);
   const scale = canvasRect.width / canvas.clientWidth;
   const normalize = element => {
@@ -61,12 +63,119 @@ const layoutMetrics = () => page.evaluate(() => {
     },
   };
 });
+// Plan §15: 50/50 waveform split, mixer centerline, A/B symmetry, toolbar
+// fit and overlap detection, all in normalized authored-canvas pixels.
+const structure = () => page.evaluate(() => {
+  const canvas = document.querySelector('[data-dj-canvas]');
+  const canvasRect = canvas.getBoundingClientRect();
+  const scale = canvasRect.width / canvas.clientWidth;
+  const n = element => {
+    if (!element) return null;
+    const box = element.getBoundingClientRect();
+    return { x: (box.x - canvasRect.x) / scale, y: (box.y - canvasRect.y) / scale, width: box.width / scale, height: box.height / scale };
+  };
+  const q = selector => document.querySelector(selector);
+  const deckParts = deck => {
+    const root = q(`[data-dj-deck="${deck}"]`);
+    return Object.fromEntries(['.dj-deck-header', '.dj-deck-toolbar', '.dj-fx-rack', '.dj-deck-performance', '.dj-deck-footer']
+      .map(selector => [selector, n(root?.querySelector(selector))]));
+  };
+  const intersects = (a, b) => a && b && a.x < b.x + b.width - 0.5 && b.x < a.x + a.width - 0.5 && a.y < b.y + b.height - 0.5 && b.y < a.y + a.height - 0.5;
+  const overlaps = [];
+  const checkSiblings = (label, elements) => {
+    const boxes = [...elements].filter(el => el && el.offsetParent !== null).map(el => [el, n(el)]);
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      if (intersects(boxes[i][1], boxes[j][1])) overlaps.push(`${label}: ${boxes[i][0].textContent.trim().slice(0, 16)} × ${boxes[j][0].textContent.trim().slice(0, 16)}`);
+    }
+  };
+  for (const deck of ['A', 'B']) {
+    const root = q(`[data-dj-deck="${deck}"]`);
+    checkSiblings(`Deck ${deck} toolbar`, root.querySelectorAll('.dj-deck-toolbar button, .dj-deck-toolbar select, .dj-deck-toolbar summary'));
+    checkSiblings(`Deck ${deck} header`, root.querySelectorAll('.dj-deck-info > *'));
+    checkSiblings(`Deck ${deck} footer`, [root.querySelector('.dj-hotcues'), root.querySelector('.dj-transport')]);
+  }
+  for (const deck of ['A', 'B']) {
+    const root = q(`[data-dj-deck="${deck}"]`);
+    checkSiblings(`Deck ${deck} tempo column`, root.querySelectorAll('.dj-deck-tempo [role="group"], .dj-deck-tempo .dj-fader > *'));
+  }
+  // Interactive controls must stay inside their layout region.
+  const escapes = [];
+  for (const region of document.querySelectorAll('.dj-deck-header, .dj-deck-toolbar, .dj-deck-tempo, .dj-deck-eq, .dj-deck-footer, .dj-mixer-head, .dj-mixer-channels, .dj-mixer-section, .dj-waveform-lane-header')) {
+    const box = n(region);
+    for (const control of region.querySelectorAll('button, select, summary, [role="slider"]')) {
+      if (control.offsetParent === null || control.closest('.dj-popover, .dj-deck-inspector')) continue;
+      const c = n(control);
+      if (c.x < box.x - 1 || c.y < box.y - 1 || c.x + c.width > box.x + box.width + 1 || c.y + c.height > box.y + box.height + 1) {
+        escapes.push(`${region.className.split(' ')[0]}: ${control.getAttribute('aria-label') || control.textContent.trim().slice(0, 20)}`);
+      }
+    }
+  }
+  const mixer = q('[data-dj-mixer]');
+  checkSiblings('Mixer sections', mixer.querySelectorAll(':scope > *'));
+  for (const deck of ['A', 'B']) {
+    const header = q(`[data-dj-waveform-deck="${deck}"] .dj-waveform-lane-header`);
+    if (header) checkSiblings(`Waveform lane ${deck} toolbar`, header.children);
+  }
+  const hiddenOverflow = [...document.querySelectorAll('.dj-deck-toolbar, .dj-deck-info, .dj-fx-rack, .dj-topbar, .dj-waveform-lane-header, .dj-deck-footer, .dj-deck-tempo, .dj-mixer-head, .dj-mixer-channels, .dj-mixer-section')]
+    .filter(el => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1).map(el => `${el.className} (${el.scrollWidth}×${el.scrollHeight} in ${el.clientWidth}×${el.clientHeight})`);
+  return {
+    split: n(q('[data-dj-waveform-split]')),
+    laneA: n(q('[data-dj-waveform-deck="A"]')),
+    laneB: n(q('[data-dj-waveform-deck="B"]')),
+    deckA: n(q('[data-dj-deck="A"]')),
+    deckB: n(q('[data-dj-deck="B"]')),
+    mixer: n(mixer),
+    partsA: deckParts('A'),
+    partsB: deckParts('B'),
+    overlaps,
+    escapes,
+    hiddenOverflow,
+    webglCanvases: document.querySelectorAll('canvas[data-dj-renderer="webgl"]').length,
+  };
+});
+const near = (a, b, tolerance = 1) => Math.abs(a - b) <= tolerance;
+const assertStructure = (s, label) => {
+  if (s.split) {
+    // Lanes are framed panels; the split is exact when both frames are equal,
+    // mirror their outer insets, and the gutter between them is centred on 50%.
+    const center = s.split.x + s.split.width / 2;
+    assert.ok(near(s.laneA.width, s.laneB.width), `${label}: waveform lanes differ in width (${s.laneA.width} vs ${s.laneB.width})`);
+    assert.ok(near(s.laneA.x - s.split.x, s.split.x + s.split.width - (s.laneB.x + s.laneB.width)), `${label}: waveform lane outer insets differ`);
+    assert.ok(s.laneA.x + s.laneA.width <= center + 0.5 && s.laneB.x >= center - 0.5, `${label}: a waveform lane crosses the 50% line`);
+    assert.ok(near((s.laneA.x + s.laneA.width + s.laneB.x) / 2, center), `${label}: waveform gutter is not centred on 50%`);
+    assert.ok(near(s.laneA.height, s.laneB.height), `${label}: waveform lanes differ in height`);
+    assert.ok(near(s.mixer.x + s.mixer.width / 2, s.split.x + s.split.width / 2), `${label}: mixer centerline misses the waveform divider`);
+    assert.ok(s.webglCanvases <= 2, `${label}: ${s.webglCanvases} WebGL waveform canvases (max 2)`);
+  }
+  assert.ok(near(s.deckA.width, s.deckB.width) && near(s.deckA.height, s.deckB.height), `${label}: decks are not symmetric`);
+  assert.ok(s.mixer.width < s.deckA.width, `${label}: mixer is not narrower than a deck`);
+  for (const part of Object.keys(s.partsA)) {
+    assert.ok(s.partsA[part] && s.partsB[part], `${label}: missing ${part}`);
+    assert.ok(near(s.partsA[part].height, s.partsB[part].height) && near(s.partsA[part].y, s.partsB[part].y), `${label}: ${part} differs between decks`);
+  }
+  assert.deepEqual(s.overlaps, [], `${label}: overlapping controls`);
+  assert.deepEqual(s.escapes, [], `${label}: controls outside their region`);
+  assert.deepEqual(s.hiddenOverflow, [], `${label}: fixed-size rows overflow their box`);
+};
 const deckState = () => page.evaluate(async () => {
   const useStore = window.__djAuditStore;
   const s = useStore.getState();
   return [s.djDeckA, s.djDeckB].map(d => ({ id: d.track?.id, playing: d.isPlaying, tempo: d.tempo, cue: d.cuePoint, volume: d.volume }));
 });
 const settle = () => page.evaluate(async () => { await Promise.all(document.getAnimations().map(a => a.finished.catch(() => {}))); });
+// Viewport changes rescale the canvas via ResizeObserver; wait for that before measuring.
+const waitForCanvasScale = async () => {
+  await page.waitForFunction(({ canvasWidth, canvasHeight }) => {
+    const canvas = document.querySelector('[data-dj-canvas]');
+    const viewport = canvas?.parentElement;
+    if (!canvas || !viewport) return false;
+    const canvasRect = canvas.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    const expectedScale = Math.min(viewportRect.width / canvasWidth, viewportRect.height / canvasHeight);
+    return Math.abs(canvasRect.width / canvasWidth - expectedScale) < 0.001;
+  }, { canvasWidth: 1856, canvasHeight: 1090 });
+  await settle();
+};
 try {
   await page.goto(process.env.DJ_AUDIT_URL || 'http://localhost:3000/dj');
   await page.locator('[data-dj-workspace]').waitFor();
@@ -81,16 +190,7 @@ try {
   let referenceLayout;
   for (const [width, height] of [[1470,825], [1920,1080], [2560,1440], [3840,2160]]) {
     await page.setViewportSize({ width, height });
-    await page.waitForFunction(({ canvasWidth, canvasHeight }) => {
-      const canvas = document.querySelector('[data-dj-canvas]');
-      const viewport = canvas?.parentElement;
-      if (!canvas || !viewport) return false;
-      const canvasRect = canvas.getBoundingClientRect();
-      const viewportRect = viewport.getBoundingClientRect();
-      const expectedScale = Math.min(viewportRect.width / canvasWidth, viewportRect.height / canvasHeight);
-      return Math.abs(canvasRect.width / canvasWidth - expectedScale) < 0.001;
-    }, { canvasWidth: 1856, canvasHeight: 1090 });
-    await settle();
+    await waitForCanvasScale();
     const before = await geometry();
     const layout = await layoutMetrics();
     assert.ok(layout.workspace.scrollWidth <= layout.workspace.clientWidth + 1, `${width}×${height} workspace has horizontal overflow`);
@@ -107,6 +207,7 @@ try {
     } else {
       referenceLayout = layout.normalized;
     }
+    assertStructure(await structure(), `${width}×${height} empty`);
     const state = await deckState();
     await page.screenshot({ path: `${output}/${width}x${height}-closed.png` });
     await page.getByRole('button', { name: 'Library /', exact: true }).click();
@@ -134,18 +235,62 @@ try {
   await search.press('Escape');
   for (const [width, height] of [[1470,825], [1920,1080], [2560,1440], [3840,2160]]) {
     await page.setViewportSize({ width, height });
-    await page.locator('.dj-grid-editor summary').first().click();
-    assert.equal(await page.locator('.dj-grid-editor').first().getAttribute('open'), '');
-    await page.locator('.dj-grid-editor summary').first().click();
+    await waitForCanvasScale();
+    // Deck inspector: opens anchored inside the deck, stays in bounds, never
+    // moves the workspace, and closes on Escape with focus returned.
+    const beforeInspector = await geometry();
+    const inspectorTrigger = page.getByRole('button', { name: /^Deck A analysis and editing/ });
+    await inspectorTrigger.click();
+    const inspector = page.locator('[data-dj-deck-inspector="A"]');
+    await inspector.waitFor();
+    await inspector.getByRole('tab', { name: 'Grid' }).click();
+    const inspectorBox = await inspector.boundingBox();
+    const deckBox = await page.locator('[data-dj-deck="A"]').boundingBox();
+    assert.ok(inspectorBox.y >= deckBox.y && inspectorBox.y + inspectorBox.height <= deckBox.y + deckBox.height + 1, `${width}: inspector leaves the deck`);
+    assert.deepEqual(await geometry(), beforeInspector, 'opening the inspector moves the workspace');
+    await page.keyboard.press('Escape');
+    assert.equal(await inspector.isVisible(), false, 'Escape does not close the inspector');
+    assert.equal(await inspectorTrigger.evaluate(el => el === document.activeElement), true, 'inspector does not return focus');
+    assertStructure(await structure(), `${width}×${height} loaded`);
+    // Every mixer tool must fit its panel without clipping (the panel is
+    // budgeted for the tallest tool, Beat FX).
+    for (const tool of ['FX Pad', 'Beat FX', 'Sampler']) {
+      await page.getByRole('tab', { name: tool, exact: true }).click();
+      const fit = await page.locator('.dj-mixer-bottom-body').evaluate(body => {
+        const box = body.getBoundingClientRect();
+        const content = [...body.querySelectorAll('*')].map(el => el.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0);
+        return {
+          scroll: body.scrollHeight <= body.clientHeight + 1 && body.scrollWidth <= body.clientWidth + 1,
+          bottom: Math.max(...content.map(r => r.bottom)) <= box.bottom + 1,
+          right: Math.max(...content.map(r => r.right)) <= box.right + 1,
+        };
+      });
+      assert.deepEqual(fit, { scroll: true, bottom: true, right: true }, `${width}×${height}: mixer ${tool} tool does not fit its panel`);
+    }
     await page.screenshot({ path: `${output}/${width}x${height}-loaded.png` });
+
     const overflow = await page.locator('.dj-deck-info').evaluateAll(elements => elements.map(el => ({ width: el.clientWidth, scroll: el.scrollWidth })));
     assert.ok(overflow.every(el => el.scroll <= el.width + 1), 'Loaded deck metadata overflows');
-    for (const mode of ['timeline', 'scope', 'racks']) {
+    // Mode changes never move deck/mixer geometry; SCOPE swaps only the waveform band.
+    const referenceGeometry = await geometry();
+    for (const mode of ['SCOPE', 'SCOPE', 'FX', 'DJ']) {
       await page.getByRole('button', { name: mode, exact: true }).click();
       const bounds = await layoutMetrics();
       assert.ok(bounds.workspace.scrollHeight <= bounds.workspace.clientHeight + 1, `${mode} workspace overflows at ${width}: ${JSON.stringify(bounds.workspace)}`);
+      assert.deepEqual(await geometry(), referenceGeometry, `${mode} changes deck/mixer geometry at ${width}`);
     }
+    assert.ok(await page.locator('[data-dj-waveform-split]').isVisible(), 'waveform hidden in the DJ layout');
+
   }
+  // Renderer: WebGL lanes use one context per deck (two total); without WebGL
+  // each lane falls back to Canvas 2D with identical geometry.
+  await page.evaluate(() => { const s = window.__djAuditStore.getState(); if (!s.djMixer.useWebGLWaveform) s.toggleWebGLWaveform(); });
+  await page.waitForTimeout(600);
+  const rendererStructure = await structure();
+  assert.equal(rendererStructure.webglCanvases, disableWebGL ? 0 : 2, `expected ${disableWebGL ? 'Canvas fallback' : 'two WebGL lanes'}`);
+  assertStructure(rendererStructure, `${disableWebGL ? 'Canvas fallback' : 'WebGL'} renderer`);
+  await page.screenshot({ path: `${output}/renderer-${disableWebGL ? 'fallback' : 'webgl'}.png` });
+  await page.evaluate(() => { const s = window.__djAuditStore.getState(); if (s.djMixer.useWebGLWaveform) s.toggleWebGLWaveform(); });
   await page.keyboard.press('/'); await search.waitFor();
   await search.fill('');
   await page.getByRole('columnheader', { name: /Title/ }).click();
