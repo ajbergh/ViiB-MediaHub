@@ -14,9 +14,10 @@ import { NavLink, useLocation } from 'react-router';
 import {
   Home, Music, Disc, Mic2, ListMusic, Tags,
   Download, Search, Settings, Library, Sparkles, Loader2,
-  ChevronLeft, ChevronRight, BarChart3, Heart, Disc3, Copy, X
+  ChevronLeft, ChevronRight, BarChart3, Heart, Disc3, Copy, X, Gauge
 } from 'lucide-react';
 import { useStore } from '../store';
+import { jobsV2, type OperationJob } from '../services/jobsV2';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { SpotifyIcon } from './icons/SpotifyIcon';
 import LargeLogo from './icons/Large-Logo1-clear-highres.png';
@@ -70,6 +71,7 @@ export interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileClose }) => {
   const { isScanning, scanProgress, downloadCount, enrichmentStatus } = useStore();
   const [collapsed, setCollapsed] = useState(false);
+  const [jobs, setJobs] = useState<OperationJob[]>([]);
   const isMobile = useIsMobile();
   const location = useLocation();
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -78,6 +80,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
   // On DJ routes, force the sidebar to icon-rail mode to maximise the DJ canvas.
   const isDJRoute = location.pathname === '/dj';
   const effectiveCollapsed = isMobile ? false : (collapsed || isDJRoute);
+  const activeAnalysisJob = jobs.find((job) => job.type === 'analyze_tracks' && job.status === 'running');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void jobsV2.list('', controller.signal).then(({ jobs: listed }) => setJobs(listed)).catch(() => {
+      // Browser-only use does not have the durable job service.
+    });
+    const unsubscribe = jobsV2.subscribe(setJobs);
+    return () => {
+      controller.abort();
+      unsubscribe();
+    };
+  }, []);
 
   // Close drawer on route change (mobile only).
   useEffect(() => {
@@ -189,7 +204,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
       </nav>
 
       <div className={`p-4 border-t border-surface-3 bg-surface-0 ${effectiveCollapsed ? 'px-2' : ''}`}>
-        {enrichmentStatus.isEnriching ? (
+        {activeAnalysisJob ? (
+          <div
+            role="status"
+            aria-live="polite"
+            aria-label={activeAnalysisJob.progressTotal > 0 ? `Analyzing ${activeAnalysisJob.progressCurrent} of ${activeAnalysisJob.progressTotal}` : 'Preparing track analysis'}
+            className={`rounded-lg border border-brand/40 bg-brand/10 p-3 shadow-[0_0_18px_rgba(153,232,83,0.12)] ${effectiveCollapsed ? 'p-2' : ''}`}
+          >
+            <div className={`flex items-center gap-3 text-brand ${effectiveCollapsed ? 'justify-center' : ''}`}>
+              <Gauge size={19} className="animate-pulse motion-reduce:animate-none" />
+              {!effectiveCollapsed && (
+                <div className="min-w-0 flex-1">
+                  <span className="block text-xs font-bold uppercase tracking-wide text-brand">
+                    {activeAnalysisJob.progressTotal > 0 ? `Analyzing ${Math.min(activeAnalysisJob.progressCurrent, activeAnalysisJob.progressTotal)} of ${activeAnalysisJob.progressTotal}` : 'Preparing track analysis'}
+                  </span>
+                  <span className="block truncate text-[11px] text-text-secondary">{activeAnalysisJob.message || 'Preparing your library…'}</span>
+                </div>
+              )}
+            </div>
+            {!effectiveCollapsed && (
+              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+                <div
+                  className="h-full rounded-full bg-brand transition-all duration-300 ease-out motion-reduce:transition-none"
+                  style={{ width: activeAnalysisJob.progressTotal > 0 ? `${Math.min(100, Math.round((activeAnalysisJob.progressCurrent / activeAnalysisJob.progressTotal) * 100))}%` : '12%' }}
+                />
+              </div>
+            )}
+          </div>
+        ) : enrichmentStatus.isEnriching ? (
           <div
             role="status"
             aria-live="polite"

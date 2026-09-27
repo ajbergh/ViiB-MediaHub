@@ -554,7 +554,9 @@ export const Settings: React.FC = () => {
   const location = useLocation();
   const initialTab = (location.state as { tab?: SettingsTab } | null)?.tab || 'library';
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
-  const isBrowserRuntime = typeof window !== 'undefined' && /^https?:$/.test(window.location.protocol);
+  // Wails serves its WebView from wails.localhost over HTTP(S), so protocol
+  // alone cannot distinguish the native desktop shell from a browser tab.
+  const isBrowserRuntime = !isWailsEnvironment();
   const isMacDesktopApp = isMacOSWails();
 
   const createSupportBundle = async () => {

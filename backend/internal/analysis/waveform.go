@@ -3,7 +3,9 @@ package analysis
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
+	"os"
 )
 
 // DefaultWaveformResolution is the number of source frames summarized by one
@@ -87,9 +89,17 @@ func (a *PeakAccumulator) Overview(sampleRate int) WaveformOverview {
 // when no backend decoder is registered for the format, which callers surface
 // as an explicit capability gap instead of a fabricated waveform.
 func GenerateWaveformOverview(ctx context.Context, registry *DecoderRegistry, path string, resolution int) (WaveformOverview, error) {
+	return GenerateWaveformOverviewWithOpener(ctx, registry, path, func() (io.ReadCloser, error) {
+		return os.Open(path)
+	}, resolution)
+}
+
+// GenerateWaveformOverviewWithOpener uses the same decoder and peak calculation
+// for local files and authenticated remote streams.
+func GenerateWaveformOverviewWithOpener(ctx context.Context, registry *DecoderRegistry, name string, open func() (io.ReadCloser, error), resolution int) (WaveformOverview, error) {
 	accumulator := NewPeakAccumulator(resolution)
 	sampleRate := 0
-	err := StreamMonoFile(ctx, registry, path, func(chunk MonoChunk) error {
+	err := StreamMonoFileWithOpener(ctx, registry, name, open, func(chunk MonoChunk) error {
 		if sampleRate == 0 {
 			sampleRate = chunk.SampleRate
 		}

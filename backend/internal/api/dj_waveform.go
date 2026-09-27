@@ -83,16 +83,15 @@ func (a *API) getDJWaveform(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get song from database to find file path
-	song, err := a.db.GetSongByID(trackID)
+	// Resolve the same local file or authenticated Plex stream used by track analysis.
+	source, err := a.resolveAnalysisSource(r.Context(), trackID)
 	if err != nil {
-		logger.API("DJ waveform: song not found: %s - %v", trackID, err)
-		respondError(w, http.StatusNotFound, "Track not found")
+		logger.API("DJ waveform: source unavailable for %s: %v", trackID, err)
+		respondError(w, http.StatusNotFound, "Track source unavailable")
 		return
 	}
 
-	// Generate waveform from audio file
-	waveform, err := generateWaveform(song.FilePath)
+	waveform, err := generateWaveformSource(r.Context(), source)
 	if err != nil {
 		if errors.Is(err, errClientWaveformRequired) {
 			logger.API("DJ waveform: using client generation for %s: %v", trackID, err)
@@ -244,10 +243,19 @@ func generateWaveform(filePath string) (*db.DJWaveform, error) {
 
 func generateWaveformWith(ctx context.Context, registry *analysis.DecoderRegistry, filePath string) (*db.DJWaveform, error) {
 	overview, err := analysis.GenerateWaveformOverview(ctx, registry, filePath, analysis.DefaultWaveformResolution)
+	return djWaveformFromOverview(overview, err, filePath)
+}
+
+func generateWaveformSource(ctx context.Context, source analysis.ResolvedSource) (*db.DJWaveform, error) {
+	overview, err := analysis.GenerateWaveformOverviewWithOpener(ctx, waveformDecoders(), source.Name, source.Open, analysis.DefaultWaveformResolution)
+	return djWaveformFromOverview(overview, err, source.Name)
+}
+
+func djWaveformFromOverview(overview analysis.WaveformOverview, err error, name string) (*db.DJWaveform, error) {
 	if err != nil {
 		if errors.Is(err, analysis.ErrUnsupportedCodec) {
 			// Report the format that was refused so the fallback is auditable.
-			extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), ".")
+			extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
 			if extension == "" {
 				extension = "unknown"
 			}

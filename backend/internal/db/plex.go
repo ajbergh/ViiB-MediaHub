@@ -747,6 +747,11 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 		if exists && previous.matches(libraryID, track, normalizedGenres) {
 			continue
 		}
+		if exists && (previous.mediaKey != track.MediaKey || previous.container != track.Container || previous.updatedAt != track.UpdatedAt) {
+			if _, err := tx.Exec(`DELETE FROM dj_waveform_cache WHERE song_id = ?`, track.SongID); err != nil {
+				return 0, 0, 0, fmt.Errorf("invalidate Plex waveform: %w", err)
+			}
+		}
 		genres, _ := json.Marshal(normalizedGenres)
 		coverPath := plexArtworkPath(track.SongID, track.ArtworkKey, track.UpdatedAt)
 		filePath := plexSyntheticPath(track.MachineID, libraryID, track.RatingKey)
