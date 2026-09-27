@@ -31,6 +31,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"embed"
 	"flag"
 	"fmt"
@@ -127,6 +129,13 @@ func (a *App) shutdown(ctx context.Context) {
 // This can be called from the frontend if needed for direct API access.
 func (a *App) GetServerURL() string {
 	return a.serverURL
+}
+
+// GenerateSpotifyCodeChallenge hashes a PKCE verifier in the native process.
+// WebKit may omit SubtleCrypto for the wails:// custom-scheme page on macOS.
+func (a *App) GenerateSpotifyCodeChallenge(verifier string) string {
+	hash := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(hash[:])
 }
 
 // GetVersion returns the application version string.

@@ -33,6 +33,20 @@ import { Button } from '../components/ui/Button';
 import { TextInput } from '../components/ui/TextInput';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
+const getSpotifyProfileWithTimeout = async () => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            SpotifyService.getUserProfile(),
+            new Promise<never>((_, reject) => {
+                timeout = setTimeout(() => reject(new Error('Spotify profile request timed out')), 15000);
+            }),
+        ]);
+    } finally {
+        if (timeout) clearTimeout(timeout);
+    }
+};
+
 export const Spotify: React.FC = () => {
     const navigate = useNavigate();
     const registrationRedirectUri = isWailsEnvironment()
@@ -41,7 +55,7 @@ export const Spotify: React.FC = () => {
     const {
         spotifyClientId, spotifyUser,
         spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiry,
-        logoutSpotify, setSpotifyTokens, setSpotifyUser, addLog,
+        logoutSpotify, setSpotifyCredentials, setSpotifyTokens, setSpotifyUser, addLog,
         playSong, addToQueue, showToast, openContextMenu,
         // Search persistence from store
         spotifySearchQuery, spotifySearchResults, spotifyActiveTab,
@@ -162,7 +176,7 @@ export const Spotify: React.FC = () => {
                 }
 
                 // Fetch user profile to validate token and restore/update user
-                const userProfile = await SpotifyService.getUserProfile();
+                const userProfile = await getSpotifyProfileWithTimeout();
 
                 if (userProfile) {
                     console.log('[Spotify] Session validated successfully for:', userProfile.display_name);
@@ -336,45 +350,63 @@ export const Spotify: React.FC = () => {
     // Poll backend for auth completion (for Wails cross-origin popup)
     useEffect(() => {
         if (!isWaitingForAuth) return;
-        
+        let active = true;
+        let polling = false;
         const pollForAuth = async () => {
+            if (!active || polling) return;
+            polling = true;
             try {
                 const creds = await api.getSpotifyCredentials();
+                if (!active) return;
                 if (creds && creds.accessToken && creds.refreshToken) {
                     console.log('[Spotify] Auth detected via backend polling');
-                    
-                    // Update Zustand with tokens from backend
+                    setIsWaitingForAuth(false);
+                    if (creds.clientId) setSpotifyCredentials(creds.clientId, '');
                     setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry || Date.now() + 3600000);
-                    
-                    // Fetch user profile
+                    // Profile lookup can be slow; authorization has already succeeded.
                     try {
-                        const profile = await SpotifyService.getUserProfile();
+                        const profile = await getSpotifyProfileWithTimeout();
                         if (profile) {
                             setSpotifyUser(profile);
                             addLog('success', `Logged in as ${profile.display_name}`);
                             showToast({ type: 'success', message: `Connected as ${profile.display_name}` });
+                        } else {
+                            showToast({ type: 'error', message: 'Spotify authorized, but the profile could not be loaded. Please try again.' });
                         }
                     } catch (e) {
                         console.error('[Spotify] Failed to fetch profile after auth:', e);
+                        showToast({ type: 'error', message: 'Spotify authorized, but the profile could not be loaded. Please try again.' });
                     }
                     
+                } else if (creds?.oauthError) {
                     setIsWaitingForAuth(false);
+                    addLog('error', 'Spotify authorization failed', { error: creds.oauthError });
+                    showToast({ type: 'error', message: `Spotify authorization failed: ${creds.oauthError}` });
                 }
             } catch (e) {
                 console.error('[Spotify] Poll error:', e);
+            } finally {
+                polling = false;
             }
         };
-        
-        // Poll every 2 seconds
+
+        void pollForAuth();
         pollIntervalRef.current = setInterval(pollForAuth, 2000);
+        const timeout = setTimeout(() => {
+            if (!active) return;
+            setIsWaitingForAuth(false);
+            showToast({ type: 'error', message: 'Spotify sign-in timed out. Check the browser callback page, then try again.' });
+        }, 120000);
         
         return () => {
+            active = false;
+            clearTimeout(timeout);
             if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
                 pollIntervalRef.current = null;
             }
         };
-    }, [isWaitingForAuth, setSpotifyTokens, setSpotifyUser, addLog, showToast]);
+    }, [isWaitingForAuth, setSpotifyCredentials, setSpotifyTokens, setSpotifyUser, addLog, showToast]);
 
     const handleLogin = async () => {
         if (!spotifyClientId) {
@@ -844,10 +876,11 @@ export const Spotify: React.FC = () => {
                 </p>
                 <button
                     onClick={handleLogin}
-                    disabled={!spotifyClientId}
+                    disabled={!spotifyClientId || isWaitingForAuth}
                     className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-surface-0 font-bold py-3 px-8 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center gap-2"
                 >
-                    <Wifi size={20} /> Connect Spotify
+                    {isWaitingForAuth ? <Loader2 size={20} className="animate-spin" /> : <Wifi size={20} />}
+                    {isWaitingForAuth ? 'Waiting for Spotify…' : 'Connect Spotify'}
                 </button>
 
                 {!spotifyClientId && (

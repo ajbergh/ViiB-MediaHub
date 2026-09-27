@@ -831,7 +831,7 @@ export const api = {
    * @param creds - OAuth credentials from Spotify authorization flow
    * @returns Promise resolving to success response
    */
-  async saveSpotifyCredentials(creds: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; redirectUri?: string }) {
+  async saveSpotifyCredentials(creds: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; oauthError?: string; redirectUri?: string }) {
     const response = await fetch(`${API_BASE}/spotify/credentials`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -848,7 +848,7 @@ export const api = {
    */
   async getSpotifyCredentials() {
     const response = await fetch(`${API_BASE}/spotify/credentials`);
-    return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; redirectUri?: string }>(response);
+    return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; oauthError?: string; redirectUri?: string }>(response);
   },
 
   /**

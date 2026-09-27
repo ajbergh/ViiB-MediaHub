@@ -36,6 +36,7 @@ type SpotifyCredentials struct {
 	Expiry       int64  `json:"expiry"`
 	CodeVerifier string `json:"codeVerifier,omitempty"`
 	OAuthState   string `json:"oauthState,omitempty"`
+	OAuthError   string `json:"oauthError,omitempty"`
 	RedirectURI  string `json:"redirectUri,omitempty"`
 }
 

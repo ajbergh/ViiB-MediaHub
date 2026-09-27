@@ -26,6 +26,7 @@
 
 import { ArtistMetadata, AlbumMetadata, SpotifyProfile } from '../types';
 import { useStore } from '../store';
+import { isWailsEnvironment } from '../utils';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError, SpotifyNetworkError } from '../lib/spotifyErrors';
 
 const AUTH_URL = 'https://accounts.spotify.com/authorize';
@@ -99,9 +100,24 @@ const generateRandomString = (length: number) => {
  * Used to generate code_challenge from code_verifier for PKCE.
  * 
  * @param plain - Plain text to hash
- * @returns Promise resolving to ArrayBuffer containing hash
+ * @returns Browser digest bytes or a base64url challenge from the native runtime
  */
 const sha256 = async (plain: string) => {
+    if (isWailsEnvironment()) {
+        const nativeHash = (window as Window & {
+            go?: { main?: { App?: { GenerateSpotifyCodeChallenge?: (verifier: string) => Promise<string> } } };
+        }).go?.main?.App?.GenerateSpotifyCodeChallenge;
+        if (nativeHash) {
+            // Native Wails pages, including macOS wails://wails, do not need
+            // WebCrypto's secure-context support to create a PKCE challenge.
+            return nativeHash(plain);
+        }
+    }
+    if (!window.crypto?.subtle) {
+        throw new Error(isWailsEnvironment()
+            ? 'The desktop Spotify sign-in bridge is unavailable. Restart ViiB and try again.'
+            : 'Secure hashing is unavailable in this browser. Open ViiB on localhost or HTTPS.');
+    }
     const encoder = new TextEncoder();
     const data = encoder.encode(plain);
     return window.crypto.subtle.digest('SHA-256', data);
@@ -211,7 +227,7 @@ export const SpotifyService = {
     async generateAuthUrl(clientId: string, redirectUri: string) {
         const codeVerifier = generateRandomString(64);
         const hashed = await sha256(codeVerifier);
-        const codeChallenge = base64encode(hashed);
+        const codeChallenge = typeof hashed === 'string' ? hashed : base64encode(hashed);
         const state = generateRandomString(32);
 
         const scopes = [

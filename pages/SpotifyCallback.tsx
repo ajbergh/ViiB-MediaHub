@@ -22,12 +22,13 @@
  * @module SpotifyCallback
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
+import { selectSpotifyOAuthContext } from '../services/spotifyOAuthContext';
 import { Loader2, XCircle, CheckCircle } from 'lucide-react';
-import { isWailsEnvironment } from '../utils';
+import { isWailsEnvironment, SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
 import { Button } from '../components/ui/Button';
 
 import { api } from '../services/api';
@@ -78,43 +79,67 @@ export const SpotifyCallback: React.FC = () => {
     const { spotifyClientId, setSpotifyTokens, setSpotifyUser, addLog } = useStore();
     const [status, setStatus] = useState<'processing' | 'error' | 'success'>('processing');
     const [errorMsg, setErrorMsg] = useState('');
+    const startedRef = useRef(false);
 
     useEffect(() => {
+        // App startup may restore the client ID while this page is open. The
+        // authorization code is one-use, so never exchange it twice.
+        if (startedRef.current) return;
+        startedRef.current = true;
         const code = searchParams.get('code');
         const returnedState = searchParams.get('state');
         const storedState = localStorage.getItem('spotify_oauth_state');
         const error = searchParams.get('error');
 
+        const reportAuthError = async (message: string) => {
+            try {
+                const creds = await api.getSpotifyCredentials();
+                // Preserve a successful exchange and ignore an unrelated attempt.
+                if (!returnedState || !creds?.oauthState || creds.accessToken ||
+                    creds.oauthState !== returnedState) return;
+                await api.saveSpotifyCredentials({ ...creds, clientSecret: '', oauthError: message });
+            } catch (reportError) {
+                console.error('[SpotifyCallback] Could not report authorization error:', reportError);
+            }
+        };
+
         if (error) {
             setStatus('error');
             setErrorMsg(error);
+            void reportAuthError(error);
             return;
         }
 
         if (!code) {
             setStatus('error');
             setErrorMsg('No authorization code returned');
+            void reportAuthError('No authorization code returned');
             return;
         }
 
         const processAuth = async () => {
             try {
-                // Load the one-time OAuth context from this origin first, then
-                // fall back to the encrypted backend envelope for Wails callbacks.
+                // The native callback runs in the user's system browser. Its
+                // localStorage may contain stale values from an older attempt,
+                // while the desktop app wrote the current context to the backend.
+                const isDesktopCallback = `${window.location.origin}${window.location.pathname}` === SPOTIFY_DESKTOP_CALLBACK_URL;
                 let clientId = spotifyClientId;
                 let expectedState = storedState;
                 let redirectUri = localStorage.getItem('spotify_redirect_uri');
                 let codeVerifier = localStorage.getItem('spotify_code_verifier');
 
-                if (!clientId || !expectedState || !redirectUri || !codeVerifier) {
+                if (isDesktopCallback || !clientId || !expectedState || !redirectUri || !codeVerifier) {
                     try {
                         const creds = await api.getSpotifyCredentials();
-                        if (!clientId && creds?.clientId) clientId = creds.clientId;
-                        if (!expectedState && creds?.oauthState) expectedState = creds.oauthState;
-                        if (!redirectUri && creds?.redirectUri) redirectUri = creds.redirectUri;
-                        if (!codeVerifier && creds?.codeVerifier) codeVerifier = creds.codeVerifier;
+                        ({ clientId, state: expectedState, redirectUri, codeVerifier } = selectSpotifyOAuthContext(
+                            { clientId, state: expectedState, redirectUri, codeVerifier },
+                            { clientId: creds?.clientId || '', state: creds?.oauthState || null,
+                                redirectUri: creds?.redirectUri || null, codeVerifier: creds?.codeVerifier || null },
+                            isDesktopCallback,
+                        ));
                     } catch (e) {
                         console.error('[SpotifyCallback] Failed to load backend OAuth context:', e);
+                        if (isDesktopCallback) throw new Error('Could not load the desktop Spotify sign-in context. Please try again.');
                     }
                 }
 
@@ -232,6 +257,7 @@ export const SpotifyCallback: React.FC = () => {
                 setStatus('error');
                 setErrorMsg(err.message || 'Authentication failed');
                 addLog('error', 'Spotify Auth Failed', err);
+                await reportAuthError(err.message || 'Authentication failed');
             }
         };
 
