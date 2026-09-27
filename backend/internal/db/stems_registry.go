@@ -29,9 +29,10 @@ type StemArtifact struct {
 	Encoding                   string
 }
 type StemLocation struct {
-	ID, Path  string
-	Enabled   bool
-	CreatedAt int64
+	ID        string `json:"id"`
+	Path      string `json:"path"`
+	Enabled   bool   `json:"enabled"`
+	CreatedAt int64  `json:"createdAt"`
 }
 
 func (d *DB) UpsertStemSet(s StemSet) error {

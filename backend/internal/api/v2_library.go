@@ -85,6 +85,28 @@ func transformLibrarySongsForAPI(songs []db.Song) {
 	}
 }
 
+// trackStemStatusChange captures a song's library stem summary and returns a
+// func that records a library change if the summary differs when it runs.
+// Stem registry writes do not touch the songs table, so without this the
+// revision stream never tells open library sessions that stems appeared.
+func (a *API) trackStemStatusChange(songID string) func() {
+	stemStatus := func() string {
+		statuses, err := a.db.ListStemStatuses([]string{songID})
+		if err != nil {
+			return ""
+		}
+		return statuses[songID]
+	}
+	before := stemStatus()
+	return func() {
+		if after := stemStatus(); after != "" && after != before {
+			if err := a.db.RecordSongLibraryChange(songID); err != nil {
+				logger.API("Failed to record stem library change for %s: %v", songID, err)
+			}
+		}
+	}
+}
+
 func (a *API) attachLibraryStemStatuses(songs []db.Song) error {
 	ids := make([]string, len(songs))
 	for i := range songs {

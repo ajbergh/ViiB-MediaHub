@@ -18,6 +18,10 @@ export function SaveSupportBundle() {
   return window['go']['main']['App']['SaveSupportBundle']();
 }
 
+export function SetWindowCloseAction(arg1) {
+  return window['go']['main']['App']['SetWindowCloseAction'](arg1);
+}
+
 export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
 }

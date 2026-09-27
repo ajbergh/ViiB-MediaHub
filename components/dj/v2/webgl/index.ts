@@ -16,7 +16,7 @@ export { useDJWebGL, useDJWebGLAnimation } from './useDJWebGL';
 export type { UseDJWebGLOptions, UseDJWebGLReturn } from './useDJWebGL';
 
 // React component
-export { DJWebGLWaveform } from './DJWebGLWaveform';
+export { DJWebGLWaveformDeck } from './DJWebGLWaveformDeck';
 
 // Shaders (for advanced customization)
 export {

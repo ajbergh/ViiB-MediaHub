@@ -3,15 +3,103 @@ package api
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/go-chi/chi/v5"
 )
+
+func TestPlexDJWaveformMatchesLocalBackend(t *testing.T) {
+	const token = "waveform-secret"
+	samples := make([]float32, 22050)
+	for i := range samples {
+		samples[i] = float32(math.Sin(2 * math.Pi * 440 * float64(i) / 22050))
+	}
+	audio := encodePCM16WAV(samples, 22050)
+	localPath := filepath.Join(t.TempDir(), "tone.wav")
+	if err := os.WriteFile(localPath, audio, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want, err := generateWaveform(localPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Header.Get("X-Plex-Token") != token || strings.Contains(r.URL.RawQuery, token) {
+			t.Errorf("Plex token was missing from header or exposed in URL")
+		}
+		w.Header().Set("Content-Type", "audio/wav")
+		_, _ = w.Write(audio)
+	}))
+	defer upstream.Close()
+	database, api, track := setupPlexProxyTest(t, upstream.URL, "/audio", token, true)
+	track.Container = "wav"
+	if _, _, _, err := database.SyncPlexLibrary(track.SourceID, track.LibraryID, []db.PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	router.Get("/api/dj/waveform/{id}", api.getDJWaveform)
+	request := func() WaveformResponse {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/dj/waveform/"+track.SongID, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.String())
+		}
+		var result WaveformResponse
+		if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	got := request()
+	if got.Duration != want.Duration || got.SampleRate != want.SampleRate || got.Resolution != want.Resolution || len(got.Peaks) != len(want.Peaks) {
+		t.Fatalf("Plex waveform metadata differs from local: got %#v, want %#v", got, want)
+	}
+	for i := range want.Peaks {
+		if math.Abs(got.Peaks[i]-want.Peaks[i]) > 0.0001 {
+			t.Fatalf("peak %d: Plex %v, local %v", i, got.Peaks[i], want.Peaks[i])
+		}
+	}
+	if requests != 1 {
+		t.Fatalf("Plex requests = %d, want 1", requests)
+	}
+	request()
+	if requests != 1 {
+		t.Fatalf("cached waveform fetched Plex audio again: %d requests", requests)
+	}
+}
+
+func TestUnsupportedPlexDJWaveformFallsBackWithoutStreaming(t *testing.T) {
+	var requests int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+	}))
+	defer upstream.Close()
+	database, api, track := setupPlexProxyTest(t, upstream.URL, "/audio", "secret", true)
+	track.Container = "flac"
+	if _, _, _, err := database.SyncPlexLibrary(track.SourceID, track.LibraryID, []db.PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	router.Get("/api/dj/waveform/{id}", api.getDJWaveform)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/dj/waveform/"+track.SongID, nil))
+	if recorder.Code != http.StatusUnprocessableEntity || requests != 0 {
+		t.Fatalf("status = %d, Plex requests = %d, want 422 and 0", recorder.Code, requests)
+	}
+}
 
 // encodePCM16WAV builds a minimal mono RIFF/WAVE PCM16 file. The test owns this
 // rather than importing the Phase 0 benchmark harness, so production test code

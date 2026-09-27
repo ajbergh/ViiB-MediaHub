@@ -11,7 +11,7 @@ export interface CamelotChipProps {
 
 function compatibilityClass(score: number | null | undefined): string | undefined {
   if (score == null) return undefined;
-  if (score >= 0.85) return 'ring-1 ring-green-300';
+  if (score >= 0.85) return 'ring-1 ring-[var(--dj-play-hover)]';
   if (score >= 0.7) return 'ring-1 ring-yellow-300';
   if (score >= 0.5) return 'ring-1 ring-orange-300';
   return 'ring-1 ring-neutral-500';
@@ -25,7 +25,7 @@ export function CamelotChip({ camelotKey, fallbackLabel, title, compatibility }:
 
   return (
     <span
-      className={`inline-flex min-w-[1.8rem] items-center justify-center rounded px-1 py-0.5 font-mono text-[10px] leading-none ${compat || ''} ${color ? '' : 'border border-neutral-700 bg-neutral-900 text-neutral-400'}`}
+      className={`inline-flex min-w-[1.8rem] items-center justify-center rounded px-1 py-0.5 font-mono text-[12px] leading-none ${compat || ''} ${color ? '' : 'border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] text-[var(--dj-text-secondary)]'}`}
       style={color ? {
         backgroundColor: color.background,
         border: `1px solid ${color.border}`,

@@ -3,53 +3,63 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════
-   DJ Mode V2 — Design System CSS Variables
+   DJ Mode V2 — Design tokens
+   Values follow the approved mock-up (assets/djv2-ui-target.png) and
+   docs/DJV2_UI_REFACTOR_ENGINEERING_PLAN.md §10A.2. Waveform render colors
+   live in components/dj/v2/waveform/waveformPalette.ts.
    ═══════════════════════════════════════════════════════ */
 :root {
-  /* Surface palette (dark → light) */
-  --dj-bg:            #0d0d0d;
-  --dj-surface-0:     #121212;
-  --dj-surface-1:     #161616;
-  --dj-surface-2:     #1a1a1a;
-  --dj-surface-3:     #222222;
-  --dj-border:        #2a2a2a;
-  --dj-border-light:  #333333;
-  --dj-border-hover:  #444444;
+  /* Canvas and surfaces (dark → light) */
+  --dj-bg:            #090b0e;
+  --dj-bg-elevated:   #0e1116;
+  --dj-surface-0:     #0e1116;
+  --dj-surface-1:     #10141a;
+  --dj-surface-2:     #161a22;
+  --dj-surface-3:     #22272e;
+  --dj-border:        #2b313a;
+  --dj-border-subtle: #1c222b;
+  --dj-border-light:  #343b46;
+  --dj-border-hover:  #46505e;
 
   /* Text hierarchy */
-  --dj-text-primary:   rgba(255, 255, 255, 0.92);
-  --dj-text-secondary: rgba(255, 255, 255, 0.60);
-  --dj-text-muted:     rgba(255, 255, 255, 0.38);
-  --dj-text-disabled:  rgba(255, 255, 255, 0.22);
+  --dj-text-primary:   #f3f6fb;
+  --dj-text-secondary: #aab4c2;
+  --dj-text-muted:     #6f7b89;
+  --dj-text-disabled:  #4f5966;
 
   /* Deck identity */
-  --dj-deck-a:       #3b82f6;
-  --dj-deck-a-dim:   rgba(59, 130, 246, 0.20);
-  --dj-deck-a-glow:  rgba(59, 130, 246, 0.40);
-  --dj-deck-b:       #8b5cf6;
-  --dj-deck-b-dim:   rgba(139, 92, 246, 0.20);
-  --dj-deck-b-glow:  rgba(139, 92, 246, 0.40);
+  --dj-deck-a:        #0868f8;
+  --dj-deck-a-bright: #2088f8;
+  --dj-deck-a-deep:   #084098;
+  --dj-deck-a-dim:    rgba(8, 104, 248, 0.20);
+  --dj-deck-a-glow:   rgba(32, 136, 248, 0.45);
+  --dj-deck-b:        #8030f8;
+  --dj-deck-b-bright: #9d5cff;
+  --dj-deck-b-deep:   #53316b;
+  --dj-deck-b-dim:    rgba(128, 48, 248, 0.20);
+  --dj-deck-b-glow:   rgba(157, 92, 255, 0.45);
 
-  /* Semantic state colors */
-  --dj-active:   #22c55e;
-  --dj-warning:  #f59e0b;
-  --dj-danger:   #ef4444;
-  --dj-info:     #06b6d4;
+  /* Semantic / live states */
+  --dj-play:         #00c868;
+  --dj-play-hover:   #00d873;
+  --dj-hotcue:       #f85800;
+  --dj-hotcue-hover: #ff6a12;
+  --dj-key-active:   #00b978;
+  --dj-active:       var(--dj-play);
+  --dj-warning:      #f0a000;
+  --dj-danger:       #ff3b45;
+  --dj-info:         #06b6d4;
 
-  /* Spacing base (8px grid) */
+  /* Navigation / global accent */
+  --dj-primary:       #7b2cf5;
+  --dj-primary-hover: #8b3cff;
+
+  /* Spacing (4px base) */
   --dj-space:    8px;
   --dj-space-xs: 4px;
   --dj-space-sm: 6px;
   --dj-space-lg: 12px;
   --dj-space-xl: 16px;
-
-  /* Layout section sizes (overridden per layout mode).
-     Mixer width and waveform height use clamp() so the panel breathes
-     at 2K/4K instead of hugging 1920×1080. */
-  --dj-waveform-h: clamp(180px, 19vh, 260px);
-  --dj-mixer-w:    clamp(380px, 22vw, 480px);
-  --dj-topbar-h:   44px;
-  --dj-fx-h:       auto;
 
   /* Hit target minimums (WCAG 2.2 AA) */
   --dj-target-primary:   44px;
@@ -65,36 +75,33 @@
   --dj-fader-track:10px;
   --dj-xfader-h:   32px;
 
-  /* Transition defaults */
-  --dj-transition-fast:   75ms ease-out;
+  /* Motion */
+  --dj-transition-fast:   100ms ease-out;
   --dj-transition-normal: 150ms ease-out;
-  --dj-transition-layout: 300ms ease-out;
+  --dj-transition-layout: 180ms ease-out;
 }
 
-/* Layout mode overrides */
-[data-dj-mode="perf"],
-[data-dj-mode="browse"] {
-  --dj-waveform-h: clamp(180px, 18vh, 220px);
-  --dj-fx-h:       auto;
-}
-
-[data-dj-mode="fx"] {
-  --dj-waveform-h: 180px;
-  --dj-fx-h:       clamp(230px, 25vh, 300px);
-}
-
-/* DJv2 is a fixed-ratio design canvas. Its parent applies one scale factor,
-   so these reference dimensions must not depend on the physical viewport. */
+/* ═══════════════════════════════════════════════════════
+   DJ Mode V2 — Structural dimensions (authored canvas)
+   The workstation is a fixed 1856×1090 canvas scaled as one unit, so these
+   values never depend on the physical viewport. Budget (Plan §3B, option b):
+   48 top bar + 172 waveform + 826 deck/mixer grid + 44 library affordance.
+   ═══════════════════════════════════════════════════════ */
 [data-dj-canvas] {
-  --dj-mixer-w: 422px;
-}
-[data-dj-canvas][data-dj-mode="perf"],
-[data-dj-canvas][data-dj-mode="browse"] {
-  --dj-waveform-h: 194px;
-}
-[data-dj-canvas][data-dj-mode="fx"] {
-  --dj-waveform-h: 180px;
-  --dj-fx-h: 270px;
+  --dj-canvas-w: 1856px;
+  --dj-canvas-h: 1090px;
+  --dj-topbar-h: 48px;
+  --dj-waveform-h: 172px;
+  --dj-library-h: 44px;
+  --dj-mixer-w: 340px;
+  --dj-track-header-h: 116px;
+  --dj-deck-inset: 12px;
+  --dj-toolbar-h: 52px;
+  --dj-fx-rack-h: 120px;
+  --dj-footer-h: 140px;
+  --dj-jog-max: 340px;
+  --dj-radius: 6px;
+  --dj-radius-sm: 5px;
 }
 
 /* Shared focus ring used across DJ V2 controls */
@@ -110,7 +117,7 @@
 [data-dj-mode] [aria-disabled="true"],
 [data-dj-mode] :disabled {
   filter: grayscale(0.85);
-  opacity: 0.45;
+  opacity: 0.5;
 }
 
 /* Reduced motion — kill the play-button beat-pulse rAF effect */
@@ -172,24 +179,422 @@
   background: #24242B;
 }
 
-/* Library is positioned against the DJ viewport, never a flex sizing input. */
-.dj-library-affordance {
-  flex: 0 0 36px;
+/* ═══════════════════════════════════════════════════════
+   DJ Mode V2 — Workstation layout
+   One owner per region; no sibling/descendant selectors reach into leaf
+   components for layout. Plan §10.
+   ═══════════════════════════════════════════════════════ */
+.dj-workstation {
   display: flex;
-  justify-content: center;
-  background: var(--dj-surface-1);
-  border-top: 1px solid var(--dj-border-light);
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--dj-bg);
+  color: var(--dj-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
+.dj-upper {
+  flex: 0 0 var(--dj-waveform-h);
+  height: var(--dj-waveform-h);
+  min-height: 0;
+  background: var(--dj-bg);
+  border-bottom: 1px solid var(--dj-border-subtle);
+  position: relative;
+  overflow: hidden;
+}
+.dj-main-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--dj-mixer-w) minmax(0, 1fr);
+  gap: 6px;
+  padding: 6px 6px 0;
+  overflow: hidden;
+  background: var(--dj-bg);
+}
+
+/* ── Panels ─────────────────────────────────────────── */
+.dj-panel {
+  background: var(--dj-bg-elevated);
+  border: 1px solid var(--dj-border-subtle);
+  border-radius: var(--dj-radius);
+}
+.dj-control-group {
+  background: var(--dj-surface-1);
+  border: 1px solid var(--dj-border);
+  border-radius: var(--dj-radius-sm);
+}
+
+/* ── Buttons and segmented controls (Plan §10A.8) ───── */
+.dj-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--dj-border);
+  border-radius: var(--dj-radius-sm);
+  background: linear-gradient(180deg, var(--dj-surface-3), var(--dj-surface-2));
+  color: var(--dj-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: background-color var(--dj-transition-fast), color var(--dj-transition-fast), border-color var(--dj-transition-fast);
+}
+.dj-btn:hover:not(:disabled) { color: var(--dj-text-primary); border-color: var(--dj-border-hover); background: var(--dj-surface-3); }
+.dj-btn:focus-visible { outline: 2px solid var(--dj-text-primary); outline-offset: 2px; }
+.dj-btn:disabled { color: var(--dj-text-disabled); cursor: not-allowed; }
+/* Selected secondary controls use a subdued tint with a bright edge (mock-up),
+   so they never out-shout Play, hot cues or the top-bar mode. */
+.dj-btn[aria-pressed="true"] {
+  color: var(--dj-text-primary);
+  background: color-mix(in srgb, var(--dj-primary) 32%, var(--dj-surface-2));
+  border-color: var(--dj-primary-hover);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dj-primary) 35%, transparent);
+}
+.dj-btn[data-deck-accent="A"][aria-pressed="true"] {
+  background: color-mix(in srgb, var(--dj-deck-a) 38%, var(--dj-surface-2));
+  border-color: var(--dj-deck-a-bright);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dj-deck-a) 40%, transparent);
+}
+.dj-btn[data-deck-accent="B"][aria-pressed="true"] {
+  background: color-mix(in srgb, var(--dj-deck-b) 38%, var(--dj-surface-2));
+  border-color: var(--dj-deck-b-bright);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dj-deck-b) 40%, transparent);
+}
+.dj-btn-xs { min-height: 26px; padding: 0 8px; font-size: 11px; }
+.dj-btn-lg { min-height: 44px; padding: 0 16px; font-size: 13px; }
+.dj-btn-icon { padding: 0; min-width: 32px; }
+.dj-btn-xs.dj-btn-icon { min-width: 26px; font-size: 14px; }
+.dj-btn-ghost { background: transparent; border-color: transparent; }
+.dj-btn-play { background: var(--dj-play); border-color: var(--dj-play-hover); color: var(--dj-bg); }
+.dj-btn-play:hover:not(:disabled) { background: var(--dj-play-hover); color: var(--dj-bg); }
+.dj-btn-play[aria-pressed="true"] { background: var(--dj-play); border-color: var(--dj-text-primary); color: var(--dj-bg); }
+.dj-btn-danger[aria-pressed="true"] { background: var(--dj-danger); border-color: var(--dj-danger); }
+.dj-btn-key[aria-pressed="true"] { background: var(--dj-key-active); border-color: var(--dj-key-active); }
+.dj-btn-warn[aria-pressed="true"] { background: var(--dj-warning); border-color: var(--dj-warning); color: var(--dj-bg); }
+.dj-segmented { display: inline-flex; align-items: center; gap: 2px; }
+.dj-select {
+  appearance: none;
+  min-height: 26px;
+  padding: 0 22px 0 8px;
+  border: 1px solid var(--dj-border);
+  border-radius: var(--dj-radius-sm);
+  background: var(--dj-surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23aab4c2' fill='none' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 7px center;
+  color: var(--dj-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.dj-select:focus-visible { outline: 2px solid var(--dj-text-primary); outline-offset: 2px; }
+.dj-label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dj-text-muted); }
+.dj-status-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--dj-text-disabled); flex-shrink: 0; }
+.dj-status-dot[data-state="ok"] { background: var(--dj-play); }
+.dj-status-dot[data-state="warn"] { background: var(--dj-warning); }
+.dj-status-dot[data-state="live"] { background: var(--dj-danger); box-shadow: 0 0 6px var(--dj-danger); }
+
+/* ── Top bar (Plan §10A.4) ──────────────────────────── */
+.dj-topbar {
+  flex: 0 0 var(--dj-topbar-h);
+  height: var(--dj-topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  background: var(--dj-bg-elevated);
+  border-bottom: 1px solid var(--dj-border-subtle);
+}
+.dj-topbar-group { display: flex; align-items: center; gap: 6px; }
+.dj-topbar .dj-btn { min-height: 34px; padding: 0 16px; }
+.dj-topbar-mode[aria-pressed="true"] { background: linear-gradient(180deg, var(--dj-primary-hover), var(--dj-primary)); }
+.dj-rec-time { font-family: ui-monospace, monospace; font-size: 12px; color: var(--dj-danger); min-width: 44px; }
+.dj-popover {
+  position: absolute;
+  z-index: 60;
+  min-width: 240px;
+  padding: 10px;
+  background: var(--dj-surface-1);
+  border: 1px solid var(--dj-border-light);
+  border-radius: var(--dj-radius);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .55);
+}
+.dj-menu-item { width: 100%; justify-content: space-between; }
+
+/* ── Split waveform (Plan §5) ───────────────────────── */
+.dj-waveform-split { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+/* Each lane is its own framed panel (mock-up); the 12px gutter between the two
+   frames is centred on the 50% line. */
+.dj-waveform-lane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 5px 6px 6px;
+  padding: 4px 6px 6px;
+  background: var(--dj-bg-elevated);
+  border: 1px solid var(--dj-border-subtle);
+  border-radius: var(--dj-radius);
+}
+.dj-waveform-lane-header { flex: 0 0 28px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dj-waveform-toolbar { display: flex; align-items: center; gap: 10px; }
+.dj-waveform-lane[data-dj-waveform-deck="A"] .dj-waveform-toolbar { margin-right: auto; }
+.dj-waveform-lane[data-dj-waveform-deck="B"] .dj-waveform-toolbar { margin-left: auto; }
+.dj-waveform-main-wrap { flex: 1 1 auto; min-height: 0; position: relative; }
+.dj-waveform-main { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: 3px; }
+.dj-deck-overview { display: block; flex: 0 0 18px; width: 100%; height: 18px; border-radius: 3px; cursor: pointer; }
+.dj-upper-scope { height: 100%; display: flex; align-items: center; justify-content: center; }
+
+/* ── Deck (Plan §6, §8, §10A.6–10A.10) ──────────────── */
+.dj-deck {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--dj-bg-elevated);
+  border: 1px solid var(--dj-border-subtle);
+  border-radius: var(--dj-radius);
+}
+/* Faint deck-tinted outline around the whole deck (mock-up). */
+.dj-deck[data-dj-deck="A"] { border-color: color-mix(in srgb, var(--dj-deck-a) 28%, var(--dj-border-subtle)); }
+.dj-deck[data-dj-deck="B"] { border-color: color-mix(in srgb, var(--dj-deck-b) 28%, var(--dj-border-subtle)); }
+/* Identity edge is drawn, not a border, so A and B keep identical content insets. */
+.dj-deck::before { content: ""; position: absolute; top: 0; bottom: 0; width: 3px; z-index: 1; pointer-events: none; }
+.dj-deck[data-dj-deck="A"]::before { left: 0; background: var(--dj-deck-a); border-radius: var(--dj-radius) 0 0 var(--dj-radius); }
+.dj-deck[data-dj-deck="B"]::before { right: 0; background: var(--dj-deck-b); border-radius: 0 var(--dj-radius) var(--dj-radius) 0; }
+.dj-deck[data-active="true"][data-dj-deck="A"] { box-shadow: inset 0 2px 0 var(--dj-deck-a); }
+.dj-deck[data-active="true"][data-dj-deck="B"] { box-shadow: inset 0 2px 0 var(--dj-deck-b); }
+.dj-deck[data-drag-over="true"][data-dj-deck="A"] { outline: 2px solid var(--dj-deck-a-bright); outline-offset: -2px; }
+.dj-deck[data-drag-over="true"][data-dj-deck="B"] { outline: 2px solid var(--dj-deck-b-bright); outline-offset: -2px; }
+
+.dj-deck-header { flex: none; height: var(--dj-track-header-h); min-height: 0; display: flex; flex-direction: column; padding: 10px var(--dj-deck-inset) 8px; gap: 8px; }
+.dj-deck-info {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+.dj-deck-badge {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--dj-radius-sm);
+  color: var(--dj-text-primary);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+}
+.dj-deck-badge[data-deck="A"] { background: var(--dj-deck-a); }
+.dj-deck-badge[data-deck="B"] { background: var(--dj-deck-b); }
+.dj-deck-badge-sm { width: 24px; height: 24px; font-size: 13px; border-radius: 4px; flex-shrink: 0; }
+.dj-deck-art {
+  width: 72px;
+  height: 72px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--dj-surface-2);
+  border: 1px solid var(--dj-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dj-text-muted);
+  font-size: 22px;
+}
+.dj-deck-art img { width: 100%; height: 100%; object-fit: cover; }
+.dj-deck-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-top: 2px; }
+.dj-deck-title { color: var(--dj-text-primary); font-size: 19px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dj-deck-artist { color: var(--dj-text-secondary); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dj-deck-facts { display: flex; align-items: center; gap: 12px; color: var(--dj-text-secondary); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; }
+.dj-deck-facts-warn { color: var(--dj-warning); }
+.dj-deck-empty { color: var(--dj-text-muted); font-size: 14px; font-style: italic; padding-top: 16px; }
+.dj-deck-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.dj-deck-time-row { display: flex; align-items: center; gap: 8px; }
+.dj-time-remaining { color: var(--dj-text-primary); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 20px; font-weight: 700; line-height: 1; }
+.dj-time-elapsed { color: var(--dj-text-secondary); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1; }
+.dj-deck-actions { display: flex; align-items: center; gap: 4px; }
+.dj-deck-progress { position: relative; flex: 0 0 8px; height: 8px; border-radius: 4px; background: var(--dj-surface-2); }
+.dj-deck-progress-fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 4px; }
+/* White playhead tick at the fill's leading edge. */
+.dj-deck-progress-fill::after { content: ""; position: absolute; top: -3px; bottom: -3px; right: -1px; width: 2px; border-radius: 1px; background: var(--dj-text-primary); }
+.dj-deck[data-dj-deck="A"] .dj-deck-progress-fill { background: linear-gradient(90deg, var(--dj-deck-a-deep), var(--dj-deck-a-bright)); }
+.dj-deck[data-dj-deck="B"] .dj-deck-progress-fill { background: linear-gradient(90deg, var(--dj-deck-b-deep), var(--dj-deck-b-bright)); }
+
+.dj-deck-toolbar {
+  flex: none;
+  height: var(--dj-toolbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 var(--dj-deck-inset);
+  border-top: 1px solid var(--dj-border-subtle);
+  /* Visible so the stems popover can drop over the FX rack; the row itself
+     must still fit (the audit checks scrollWidth). */
+  position: relative;
+  z-index: 6;
+}
+.dj-toolbar-cluster { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+/* Deck toolbar controls are hit constantly while mixing: 40px tall. */
+.dj-toolbar-cluster .dj-btn { min-height: 40px; padding: 0 9px; }
+.dj-toolbar-cluster .dj-btn-icon { padding: 0; min-width: 40px; }
+.dj-toolbar-cluster .dj-select { min-height: 40px; }
+
+/* FX rack (Plan §7, §10A.12) */
+.dj-fx-rack {
+  flex: none;
+  height: var(--dj-fx-rack-h);
+  display: grid;
+  grid-template-columns: 22px repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 var(--dj-deck-inset);
+}
+.dj-fx-rack-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dj-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  letter-spacing: .12em;
+}
+/* Modules are separate cards with a header strip and labels under the knobs (mock-up). */
+.dj-fx-module {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  background: var(--dj-surface-1);
+  border: 1px solid var(--dj-border-subtle);
+  border-radius: var(--dj-radius-sm);
+}
+.dj-fx-module-toggle {
+  min-height: 32px;
+  border: 0;
+  border-top: 2px solid transparent;
+  background: var(--dj-surface-2);
+  color: var(--dj-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.dj-fx-module-toggle:hover { color: var(--dj-text-primary); }
+.dj-fx-module-toggle:focus-visible { outline: 2px solid var(--dj-text-primary); outline-offset: -2px; }
+.dj-fx-module[data-enabled="true"] .dj-fx-module-toggle { color: var(--dj-text-primary); }
+.dj-deck[data-dj-deck="A"] .dj-fx-module[data-enabled="true"] .dj-fx-module-toggle { border-top-color: var(--dj-deck-a-bright); color: var(--dj-deck-a-bright); }
+.dj-deck[data-dj-deck="B"] .dj-fx-module[data-enabled="true"] .dj-fx-module-toggle { border-top-color: var(--dj-deck-b-bright); color: var(--dj-deck-b-bright); }
+.dj-fx-knobs { flex: 1 1 auto; display: flex; align-items: center; justify-content: space-evenly; gap: 2px; padding: 4px 4px 6px; }
+
+/* Jog / tempo / EQ body */
+.dj-deck-performance {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 76px 84px minmax(0, 1fr);
+  margin: 6px var(--dj-deck-inset) 0;
+  border: 1px solid var(--dj-border-subtle);
+  border-radius: var(--dj-radius-sm);
+  background: var(--dj-surface-1);
+  overflow: hidden;
+}
+.dj-deck-performance[data-deck="B"] { grid-template-columns: minmax(0, 1fr) 84px 76px; }
+.dj-deck-tempo { min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 10px 0; }
+.dj-deck-eq { min-height: 0; background: var(--dj-bg-elevated); }
+.dj-deck-performance[data-deck="A"] .dj-deck-eq { border-right: 1px solid var(--dj-border-subtle); }
+.dj-deck-performance[data-deck="B"] .dj-deck-eq { border-left: 1px solid var(--dj-border-subtle); }
+.dj-deck-jog { min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 8px; }
+.dj-deck-jog-size { width: min(100%, var(--dj-jog-max)); height: 100%; max-height: var(--dj-jog-max); display: flex; align-items: center; justify-content: center; }
+
+/* Hot cues and transport (Plan §10A.9) */
+.dj-deck-footer { flex: none; height: var(--dj-footer-h); display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 8px var(--dj-deck-inset) 10px; }
+.dj-deck-cues { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; align-items: center; gap: 8px; }
+.dj-deck-readout { display: flex; flex-direction: column; gap: 2px; }
+.dj-deck-readout:last-child { align-items: flex-end; }
+.dj-deck-readout-value { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; color: var(--dj-text-secondary); }
+.dj-deck-readout-value[data-active="true"] { color: var(--dj-play); }
+.dj-deck-readout-value[data-cue="true"] { color: var(--dj-warning); }
+.dj-deck-transport { display: flex; align-items: center; justify-content: center; }
+
+/* Deck inspector (Plan §6.3) */
+.dj-deck-inspector {
+  position: absolute;
+  z-index: 45;
+  top: calc(var(--dj-track-header-h) + 4px);
+  left: 10px;
+  right: 10px;
+  max-height: 560px;
+  display: flex;
+  flex-direction: column;
+  background: var(--dj-surface-1);
+  border: 1px solid var(--dj-border-light);
+  border-radius: var(--dj-radius);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .55);
+}
+.dj-deck-inspector[hidden] { display: none; }
+.dj-deck-inspector-tabs { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid var(--dj-border-subtle); }
+.dj-deck-inspector-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 4px; color: var(--dj-text-secondary); font-size: 12px; }
+.dj-deck-inspector-body [role="tabpanel"][hidden] { display: none; }
+.dj-inspector-empty { padding: 12px; color: var(--dj-text-muted); }
+
+/* ── Mixer (Plan §9, §10A.13) ───────────────────────── */
+.dj-mixer {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--dj-bg-elevated);
+  border: 1px solid var(--dj-border-subtle);
+  border-radius: var(--dj-radius);
+}
+.dj-mixer-head { flex: 0 0 44px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 6px; padding: 6px 8px; }
+.dj-mixer-head .dj-btn { min-height: 32px; }
+.dj-mixer-title { text-align: center; color: var(--dj-text-primary); font-size: 13px; font-weight: 700; letter-spacing: .08em; }
+.dj-mixer-channels { flex: 0 0 auto; display: flex; padding: 4px 6px; border-block: 1px solid var(--dj-border-subtle); background: var(--dj-surface-1); }
+.dj-mixer-master { width: 88px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0; border-inline: 1px solid var(--dj-border-subtle); }
+.dj-mixer-section { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--dj-border-subtle); }
+.dj-mixer-row { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.dj-mixer-row .dj-btn { min-height: 32px; }
+.dj-mixer-bottom { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; overflow: hidden; }
+.dj-mixer-bottom-tabs { display: flex; align-items: center; gap: 4px; }
+.dj-mixer-bottom-body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 8px; }
+.dj-mixer-fxpad { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.dj-mixer-bottom-body[data-dj-mixer-tool="beatfx"] { align-items: center; }
+
+/* ── Library affordance and drawer ─────────────────── */
+.dj-library-affordance {
+  flex: 0 0 var(--dj-library-h, 44px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 6px;
+  background: var(--dj-bg-elevated);
+  border-top: 1px solid var(--dj-border-subtle);
+}
+.dj-library-affordance > button { min-width: 220px; }
 .dj-library-drawer {
   position: absolute;
-  inset: auto 0 36px;
+  inset: auto 0 var(--dj-library-h, 44px);
   z-index: 40;
-  height: clamp(280px, 40%, 640px);
+  height: clamp(280px, 50%, 640px);
   max-height: calc(100% - 80px);
   display: flex;
   flex-direction: column;
-  background: var(--dj-surface-0);
-  border-top: 1px solid var(--dj-border-hover);
+  background: var(--dj-bg-elevated);
+  border-top: 1px solid var(--dj-border-light);
   box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
   animation: dj-library-enter 150ms ease-out;
 }
@@ -202,46 +607,122 @@
   .dj-library-drawer { animation: none; }
 }
 
-/* Keep full controls reachable when window chrome or expanded FX constrain height. */
-[data-dj-workspace] > .dj-deck,
-[data-dj-workspace] > .dj-mixer { min-height: 610px; }
-.dj-deck-info { display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 4px; height: 104px; flex-shrink: 0; }
-.dj-deck-info > div { min-height: 0; }
-.dj-deck:last-child .dj-deck-info > div:first-child { order: 2; }
+/* ── Deck footer controls ──────────────────────────── */
+.dj-hotcues { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
+.dj-hotcue {
+  position: relative;
+  min-height: 48px;
+  border-radius: var(--dj-radius-sm);
+  border: 1px solid var(--dj-border);
+  background: var(--dj-surface-2);
+  color: var(--dj-hotcue);
+  font-size: 14px;
+  font-weight: 700;
+  transition: transform var(--dj-transition-fast), background-color var(--dj-transition-fast);
+}
+.dj-hotcue[data-state="empty"] { border-color: rgba(248, 88, 0, .45); }
+.dj-hotcue[data-state="empty"]:hover { background: var(--dj-surface-3); border-color: var(--dj-hotcue); }
+.dj-hotcue[data-state="set"] { color: var(--dj-text-primary); border-color: transparent; }
+.dj-hotcue[data-state="disabled"] { color: var(--dj-text-disabled); }
+.dj-hotcue:focus-visible { outline: 2px solid var(--dj-text-primary); outline-offset: 2px; }
+.dj-hotcue-low { border-style: dashed; border-color: var(--dj-text-primary); }
+.dj-hotcue-pressed { transform: scale(.95); }
+.dj-hotcue-longpress { transform: scale(.9); opacity: .5; }
+.dj-transport { width: 100%; display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: 8px; }
+.dj-transport .dj-btn { min-height: 52px; font-size: 14px; }
+.dj-transport-play { box-shadow: 0 0 calc(var(--glow, 0) * 16px) rgba(0, 200, 104, .55); }
+.dj-transport-play[data-playing="true"] { background: var(--dj-play-hover); }
 
-/* Performance console: readable reference typography, scaled with the canvas. */
-[data-dj-canvas] { color: #d6dce5; --dj-border: #343b46; }
-[data-dj-canvas][data-dj-mode="fx"] { --dj-fx-h: 244px; }
-[data-dj-canvas][data-dj-mode="perf"],
-[data-dj-canvas][data-dj-mode="browse"] { --dj-waveform-h: 160px; }
-[data-dj-canvas] :is(button, summary) { font-size: 12px; letter-spacing: .035em; }
-[data-dj-canvas] :is(button, summary):focus-visible { outline: 2px solid #e2e8f0; outline-offset: 2px; }
-[data-dj-canvas] :is(.text-neutral-500, .text-neutral-600, .text-neutral-400) { color: #a8b2c1; }
-[data-dj-canvas] :is([class*="text-[#444]"], [class*="text-[#555]"], [class*="text-[#666]"], [class*="text-[#777]"]) { color: #9ba8ba; }
-[data-dj-canvas] :is(.text-\[9px\], .text-\[10px\], .text-\[11px\]) { font-size: 12px; }
-[data-dj-canvas] .dj-fx-knob .dj-eq-knob-label { font-size: 10px; letter-spacing: 0; white-space: nowrap; }
+/* ── Toolbar, stems and inspector details ──────────── */
+.dj-toolbar-gap { width: 6px; flex-shrink: 0; }
+.dj-deck-toolbar .dj-btn { font-size: 12px; padding: 0 6px; min-width: 32px; }
+.dj-deck-toolbar .dj-btn-icon { padding: 0; }
+.dj-stems-popover { position: relative; }
+.dj-stems-popover > summary { list-style: none; cursor: pointer; }
+.dj-stems-popover > summary::-webkit-details-marker { display: none; }
+.dj-stems-panel { top: calc(100% + 6px); right: 0; width: 300px; display: flex; flex-direction: column; gap: 8px; }
+.dj-stem-row { display: grid; grid-template-columns: 56px 1fr 28px; align-items: center; gap: 8px; }
+.dj-deck-inspector-trigger { position: relative; }
+.dj-trigger-dot { position: absolute; top: 3px; right: 3px; }
+.dj-kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--dj-border-light);
+  border-radius: 4px;
+  background: var(--dj-surface-3);
+  color: var(--dj-text-primary);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+
+/* ── Dialogs ───────────────────────────────────────── */
+.dj-viewport { background: var(--dj-bg); }
+.dj-dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .8); }
+.dj-dialog { width: 100%; max-width: 32rem; max-height: 80vh; overflow-y: auto; padding: 24px; background: var(--dj-surface-1); border: 1px solid var(--dj-border-light); border-radius: 8px; }
+.dj-shortcuts-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; row-gap: 2px; font-size: 12px; color: var(--dj-text-secondary); }
+.dj-shortcuts-heading { grid-column: span 2; margin: 8px 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--dj-border); color: var(--dj-primary-hover); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+
+/* ── Tempo fader (Plan §10A.11) ────────────────────── */
+.dj-fader-readout { min-width: 64px; text-align: center; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; color: var(--dj-text-secondary); }
+.dj-fader-readout [data-active="true"] { color: var(--dj-text-primary); }
+.dj-fader-unit { margin-left: 3px; color: var(--dj-text-muted); }
+.dj-fader-percent { font-weight: 700; }
+.dj-fader-track { position: relative; width: 30px; border-radius: 4px; }
+.dj-fader-track::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 6px;
+  transform: translateX(-50%);
+  border: 1px solid var(--dj-border);
+  border-radius: 3px;
+  background: var(--dj-bg);
+}
+.dj-fader-track[data-disabled="true"] { opacity: .5; }
+.dj-fader-track:focus-visible { outline: 2px solid var(--dj-text-primary); outline-offset: 3px; }
+.dj-fader-center { position: absolute; left: 4px; right: 4px; top: 50%; height: 2px; transform: translateY(-50%); background: var(--dj-border-hover); }
+.dj-fader-scale { position: absolute; left: -32px; width: 28px; text-align: right; font-family: ui-monospace, monospace; font-size: 11px; color: var(--dj-text-muted); }
+.dj-fader-tick { position: absolute; left: 7px; right: 7px; height: 1px; background: var(--dj-border); }
+.dj-fader-fill { position: absolute; left: 50%; width: 4px; transform: translateX(-50%); border-radius: 2px; }
+.dj-fader-cap {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 6px;
+  border: 1px solid var(--dj-border-hover);
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--dj-text-primary), var(--dj-text-secondary) 55%, var(--dj-text-muted));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .5);
+  transition: box-shadow var(--dj-transition-fast);
+}
+.dj-fader-cap span { height: 1px; background: var(--dj-border-light); }
+.dj-fader-cap[data-dragging="true"] { box-shadow: 0 0 10px var(--dj-fader-accent), 0 2px 4px rgba(0, 0, 0, .5); }
+
+/* ── Jog wheel (Plan §10A.10) ──────────────────────── */
+.dj-jog-ring-track { stroke: var(--dj-surface-3); }
+.dj-jog-tick { stroke: var(--dj-border-light); }
+.dj-jog-tick-major { stroke: var(--dj-text-muted); }
+.dj-jog-groove { stroke: rgba(255, 255, 255, .035); }
+.dj-jog-center { fill: var(--dj-bg-elevated); stroke: var(--dj-border); }
+.dj-jog-bpm { fill: var(--dj-text-primary); }
+.dj-jog-secondary { fill: var(--dj-text-muted); }
+.dj-jog-time { fill: var(--dj-text-secondary); }
+.dj-jog[data-loaded="false"] :is(.dj-jog-bpm, .dj-jog-time) { fill: var(--dj-text-disabled); }
+.dj-jog-status { position: absolute; bottom: 8px; left: 0; width: 100%; text-align: center; font-size: 12px; color: var(--dj-text-secondary); pointer-events: none; }
+.dj-jog-scratch { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 3px; color: var(--dj-text-primary); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+/* ── Meters ─────────────────────────────────────────── */
+.dj-meter-scale { font-family: ui-monospace, monospace; font-size: 9px; color: var(--dj-text-secondary); }
+
+/* ── Component refinements ───────────────────────────
+   Scoped sizes for leaf components that keep their own markup. */
+[data-dj-canvas] .dj-fx-knob .dj-eq-knob-label { font-size: 10px; letter-spacing: .04em; white-space: nowrap; }
 [data-dj-canvas] .dj-fx-knob .dj-eq-knob-readout { font-size: 9px; letter-spacing: 0; }
-[data-dj-canvas] :disabled { opacity: .65; }
-[data-dj-canvas] button { border-radius: 5px; }
-[data-dj-canvas] button[aria-pressed="true"] { box-shadow: inset 0 -2px 0 rgba(255,255,255,.35); }
-[data-dj-canvas] .dj-tempo-bpm { min-width: 78px; font-size: 12px; }
 .dj-beat-fx-panel button { font-size: 10px; letter-spacing: 0; white-space: nowrap; }
-.dj-deck-info { height: 110px; padding: 10px 16px; background: #171c24; }
-.dj-deck-info .text-\[14px\] { font-size: 20px; }
-.dj-deck-info :is(.text-\[24px\], .text-\[26px\]) { font-size: 32px; color: #e2e8f0; }
-.dj-deck-info .text-\[20px\] { font-size: 28px; }
-.dj-deck-info .text-\[12px\] { font-size: 18px; }
-.dj-deck-overview { display: block; width: 100%; height: 52px; background: #0b1018; border-block: 1px solid #303947; }
-.dj-deck-info + div { overflow: visible; min-height: 56px; }
-.dj-grid-editor { position: relative; margin-left: auto; flex-shrink: 0; }
-.dj-grid-editor summary { cursor: pointer; padding: 9px 12px; border: 1px solid #424b59; border-radius: 5px; color: #cbd5e1; background: #222832; }
-.dj-grid-editor > div { max-height: min(55vh, 480px); overflow-y: auto; position: absolute; top: calc(100% + 6px); right: 0; padding: 14px; background: #171c24; border: 1px solid #536174; border-radius: 8px; z-index: 45; box-shadow: 0 8px 24px #0009; }
-.dj-deck:last-child .dj-grid-editor { margin-left: 0; margin-right: auto; }
-.dj-deck:last-child .dj-grid-editor > div { left: 0; right: auto; }
-.dj-mixer-channels { padding-top: 4px; padding-bottom: 4px; background: #151b23; }
-.dj-mixer > .dj-mixer-channels + div > .py-2 { padding-top: 4px; padding-bottom: 4px; }
-.dj-mixer > .dj-mixer-channels + div > .pb-2 { padding-bottom: 4px; }
-.dj-mixer { background: #151b23; }
-.dj-library-affordance { flex-basis: 44px; background: #1d2532; }
-.dj-library-affordance > button { width: 220px; justify-content: center; gap: 8px; font-size: 14px; font-weight: 700; color: #eef2ff; border-inline: 1px solid #66768d; background: #2a3546; }
-.dj-library-drawer { bottom: 44px; }

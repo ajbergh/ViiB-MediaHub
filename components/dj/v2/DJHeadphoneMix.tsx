@@ -83,6 +83,18 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
     handleMixChange(0.5);
   };
 
+  // Arrow keys step 5% (Shift: 1%); Home/End jump to CUE/MST; Enter/Space center.
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 0.01 : 0.05;
+    const next = e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? mix - step
+      : e.key === 'ArrowRight' || e.key === 'ArrowUp' ? mix + step
+      : e.key === 'Home' ? 0 : e.key === 'End' ? 1
+      : e.key === 'Enter' || e.key === ' ' ? 0.5 : null;
+    if (next === null) return;
+    e.preventDefault();
+    handleMixChange(next);
+  };
+
   // Get label based on mix position
   const getMixLabel = () => {
     if (mix < 0.1) return 'CUE';
@@ -94,7 +106,7 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
     <div className={'flex flex-col items-center gap-1 ' + className}>
       {/* Label + master cue toggle */}
       <div className="flex items-center gap-2">
-        <div className="text-[10px] uppercase text-neutral-400 font-bold tracking-wider">
+        <div className="text-[12px] uppercase text-[var(--dj-text-secondary)] font-bold tracking-wider">
           Headphones
         </div>
         <button
@@ -104,11 +116,11 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
           aria-label={`Master cue ${masterCueEnabled ? 'enabled' : 'disabled'}`}
           title="Master Cue - route master mix to headphones"
           className={`
-            h-5 px-1.5 rounded border flex items-center gap-1 text-[9px] font-bold
+            min-h-7 px-2 rounded border flex items-center gap-1 text-[12px] font-bold
             transition-all duration-100
             ${masterCueEnabled
-              ? 'bg-cyan-600 text-white border-cyan-400 shadow shadow-cyan-500/30'
-              : 'bg-[#222] text-neutral-500 border-[#333] hover:bg-[#2a2a2a] hover:text-cyan-300'}
+              ? 'bg-[var(--dj-info)] text-white border-[var(--dj-info)] shadow shadow-[color-mix(in_srgb,var(--dj-info)_30%,transparent)]'
+              : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] hover:bg-[var(--dj-border)] hover:text-[var(--dj-info)]'}
           `}
         >
           <Headphones size={10} aria-hidden />
@@ -119,15 +131,23 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
       {/* Mix Slider */}
       <div
         ref={sliderRef}
-        className="relative h-5 bg-[#1a1a1a] rounded-full cursor-pointer border border-[#333]"
+        className="relative h-5 bg-[var(--dj-surface-2)] rounded-full cursor-pointer border border-[var(--dj-border-light)]"
         style={{ width }}
         onMouseDown={handleMouseDown}
         onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+        role="slider"
+        tabIndex={0}
+        aria-label="Headphone mix, cue to master"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(mix * 100)}
+        aria-valuetext={getMixLabel()}
         title="Headphone Mix - Cue ↔ Master (double-click to center)"
       >
         {/* Track — center line only, labels moved outside */}
         <div className="absolute inset-y-0 left-1 right-1 flex items-center justify-center">
-          <div className="w-px h-3 bg-[#444]" />
+          <div className="w-px h-3 bg-[var(--dj-border-hover)]" />
         </div>
         
         {/* Thumb */}
@@ -135,21 +155,21 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
           className="absolute top-0.5 w-3 h-4 rounded-sm bg-white shadow-lg shadow-white/20 transition-colors"
           style={{
             left: (width - 12) * mix,
-            backgroundColor: mix < 0.5 ? '#f97316' : mix > 0.5 ? '#06b6d4' : '#fff',
+            backgroundColor: mix < 0.5 ? 'var(--dj-hotcue)' : mix > 0.5 ? 'var(--dj-info)' : 'var(--dj-text-primary)',
           }}
         />
       </div>
 
       {/* CUE / value / MST row */}
       <div className="flex justify-between items-center" style={{ width }}>
-        <span className="text-[9px] text-orange-400 font-bold">CUE</span>
-        <div className="text-[10px] font-mono text-neutral-300">{getMixLabel()}</div>
-        <span className="text-[9px] text-cyan-400 font-bold">MST</span>
+        <span className="text-[12px] text-[var(--dj-hotcue-hover)] font-bold">CUE</span>
+        <div className="text-[12px] font-mono text-[var(--dj-text-secondary)]">{getMixLabel()}</div>
+        <span className="text-[12px] text-[var(--dj-info)] font-bold">MST</span>
       </div>
 
       {/* Volume Slider */}
       <div className="flex items-center gap-1 mt-1">
-        <span className="text-[10px] text-neutral-500">VOL</span>
+        <span className="text-[12px] text-[var(--dj-text-secondary)]">VOL</span>
         <input
           type="range"
           min="0"
@@ -157,10 +177,12 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
           step="0.01"
           value={volume}
           onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-          className="w-16 h-1 bg-[#333] rounded-full appearance-none cursor-pointer accent-orange-500"
-          style={{ accentColor: '#f97316' }}
+          aria-label="Headphone volume"
+          aria-valuetext={`${Math.round(volume * 100)}%`}
+          className="w-20 h-4 cursor-pointer"
+          style={{ accentColor: 'var(--dj-hotcue)' }}
         />
-        <span className="text-[10px] font-mono text-neutral-400 w-6 text-right">
+        <span className="text-[12px] font-mono text-[var(--dj-text-secondary)] w-6 text-right">
           {Math.round(volume * 100)}
         </span>
       </div>

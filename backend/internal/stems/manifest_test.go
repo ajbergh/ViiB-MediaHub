@@ -225,3 +225,14 @@ func deterministicWAV() []byte {
 	}
 	return b
 }
+
+func TestParseManifestExplainsStemLab010Manifests(t *testing.T) {
+	legacy := `{"schemaVersion":1,"source":{"filename":"a.ogg","sha256":"` + strings.Repeat("a", 64) + `","sizeBytes":1},
+		"generator":{"name":"ViiB-StemLab","version":"0.1.0"},"model":{"engine":"demucs","name":"htdemucs_6s","version":"4.0.1","device":"cuda"},
+		"audio":{"codec":"wav","sampleRate":44100,"channels":2,"frames":10,"durationSeconds":0.0002},
+		"stems":{"vocals":{"file":"vocals.wav","sha256":"` + strings.Repeat("b", 64) + `","sizeBytes":84,"frames":10}}}`
+	_, err := ParseManifest(strings.NewReader(legacy))
+	if err == nil || !strings.Contains(err.Error(), "viib-stemlab package upgrade") {
+		t.Fatalf("legacy StemLab manifest error = %v, want upgrade guidance", err)
+	}
+}

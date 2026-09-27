@@ -42,25 +42,25 @@ export const DJBeatFXPanel: React.FC<DJBeatFXPanelProps> = memo(({ className = '
       : 'cyan';
 
   const onClass = activeColor === 'blue'
-    ? 'bg-blue-600 text-white border-blue-400 shadow-blue-500/30'
+    ? 'bg-[var(--dj-deck-a)] text-white border-[var(--dj-deck-a-bright)] shadow-[color-mix(in_srgb,var(--dj-deck-a)_30%,transparent)]'
     : activeColor === 'purple'
-      ? 'bg-purple-600 text-white border-purple-400 shadow-purple-500/30'
-      : 'bg-cyan-600 text-white border-cyan-400 shadow-cyan-500/30';
+      ? 'bg-[var(--dj-deck-b)] text-white border-[var(--dj-deck-b-bright)] shadow-[color-mix(in_srgb,var(--dj-deck-b)_30%,transparent)]'
+      : 'bg-[var(--dj-info)] text-white border-[var(--dj-info)] shadow-[color-mix(in_srgb,var(--dj-info)_30%,transparent)]';
 
   return (
-    <div className={`dj-beat-fx-panel w-[220px] rounded-md border border-[#282828] bg-[#101010] p-2 ${className}`}>
+    <div className={`dj-beat-fx-panel w-[220px] rounded-md border border-[var(--dj-border)] bg-[var(--dj-bg)] p-2 ${className}`}>
       <div className='flex items-center justify-between gap-2'>
-        <span className='text-[10px] font-bold text-neutral-500 uppercase tracking-widest'>Beat FX</span>
+        <span className='text-[12px] font-bold text-[var(--dj-text-secondary)] uppercase tracking-widest'>Beat FX</span>
         <button
           type='button'
           onClick={handleToggle}
           aria-pressed={beatFX.enabled}
           className={`
-            h-8 px-2 rounded border flex items-center gap-1.5 text-[10px] font-bold uppercase
+            h-8 px-2 rounded border flex items-center gap-1.5 text-[12px] font-bold uppercase
             transition-all duration-100 shadow
             ${beatFX.enabled
               ? onClass
-              : 'bg-[#222] text-neutral-500 border-[#333] shadow-transparent hover:bg-[#2a2a2a] hover:text-neutral-200'}
+              : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] shadow-transparent hover:bg-[var(--dj-border)] hover:text-[var(--dj-text-primary)]'}
           `}
           title={`Beat FX ${beatFX.enabled ? 'ON' : 'OFF'}`}
         >
@@ -77,14 +77,14 @@ export const DJBeatFXPanel: React.FC<DJBeatFXPanelProps> = memo(({ className = '
             onClick={() => setBeatFXTarget(target.value)}
             aria-pressed={beatFX.target === target.value}
             className={`
-              flex-1 h-7 rounded border text-[10px] font-bold transition-colors
+              flex-1 h-7 rounded border text-[12px] font-bold transition-colors
               ${beatFX.target === target.value
                 ? target.value === 'A'
-                  ? 'bg-blue-600 text-white border-blue-400'
+                  ? 'bg-[var(--dj-deck-a)] text-white border-[var(--dj-deck-a-bright)]'
                   : target.value === 'B'
-                    ? 'bg-purple-600 text-white border-purple-400'
-                    : 'bg-cyan-600 text-white border-cyan-400'
-                : 'bg-[#1d1d1d] text-neutral-500 border-[#2f2f2f] hover:text-neutral-200'}
+                    ? 'bg-[var(--dj-deck-b)] text-white border-[var(--dj-deck-b-bright)]'
+                    : 'bg-[var(--dj-info)] text-white border-[var(--dj-info)]'
+                : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border)] hover:text-[var(--dj-text-primary)]'}
             `}
           >
             {target.label}
@@ -100,10 +100,10 @@ export const DJBeatFXPanel: React.FC<DJBeatFXPanelProps> = memo(({ className = '
             onClick={() => setBeatFXType(effect.value)}
             aria-pressed={beatFX.type === effect.value}
             className={`
-              h-7 rounded border text-[9px] font-bold transition-colors
+              h-7 rounded border text-[12px] font-bold transition-colors
               ${beatFX.type === effect.value
-                ? 'bg-amber-500 text-black border-amber-300'
-                : 'bg-[#1d1d1d] text-neutral-500 border-[#2f2f2f] hover:text-neutral-200'}
+                ? 'bg-[var(--dj-warning)] text-black border-[var(--dj-warning)]'
+                : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border)] hover:text-[var(--dj-text-primary)]'}
             `}
           >
             {effect.label}
@@ -119,10 +119,10 @@ export const DJBeatFXPanel: React.FC<DJBeatFXPanelProps> = memo(({ className = '
             onClick={() => setBeatFXFraction(fraction)}
             aria-pressed={beatFX.fraction === fraction}
             className={`
-              h-7 rounded border text-[10px] font-mono font-bold transition-colors
+              h-7 rounded border text-[12px] font-mono font-bold transition-colors
               ${beatFX.fraction === fraction
-                ? 'bg-emerald-600 text-white border-emerald-400'
-                : 'bg-[#1d1d1d] text-neutral-500 border-[#2f2f2f] hover:text-neutral-200'}
+                ? 'bg-[var(--dj-key-active)] text-white border-[var(--dj-key-active)]'
+                : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border)] hover:text-[var(--dj-text-primary)]'}
             `}
           >
             {fraction}
@@ -131,7 +131,7 @@ export const DJBeatFXPanel: React.FC<DJBeatFXPanelProps> = memo(({ className = '
       </div>
 
       <div className='mt-2 flex items-center gap-2'>
-        <span className='w-9 text-[9px] font-bold text-neutral-500 uppercase tracking-wider'>Depth</span>
+        <span className='w-9 text-[12px] font-bold text-[var(--dj-text-secondary)] uppercase tracking-wider'>Depth</span>
         <input
           type='range'
           min='0'
@@ -142,7 +142,7 @@ export const DJBeatFXPanel: React.FC<DJBeatFXPanelProps> = memo(({ className = '
           className='flex-1 h-1 accent-amber-500'
           aria-label='Beat FX depth'
         />
-        <span className='w-6 text-right text-[10px] font-mono text-neutral-400'>
+        <span className='w-6 text-right text-[12px] font-mono text-[var(--dj-text-secondary)]'>
           {Math.round(beatFX.depth * 100)}
         </span>
       </div>

@@ -68,9 +68,9 @@ export const DJDeckStatusBar: React.FC<DJDeckStatusBarProps> = ({ deck }) => {
   ];
 
   const colorMap: Record<string, { activeBg: string; activeText: string; activeBorder: string }> = {
-    emerald: { activeBg: 'bg-emerald-600/30', activeText: 'text-emerald-300', activeBorder: 'border-emerald-500/50' },
-    orange: { activeBg: 'bg-orange-600/30', activeText: 'text-orange-300', activeBorder: 'border-orange-500/50' },
-    cyan: { activeBg: 'bg-cyan-600/30', activeText: 'text-cyan-300', activeBorder: 'border-cyan-500/50' },
+    emerald: { activeBg: 'bg-[color-mix(in_srgb,var(--dj-key-active)_30%,transparent)]', activeText: 'text-[var(--dj-key-active)]', activeBorder: 'border-[color-mix(in_srgb,var(--dj-key-active)_50%,transparent)]' },
+    orange: { activeBg: 'bg-[color-mix(in_srgb,var(--dj-hotcue)_30%,transparent)]', activeText: 'text-orange-300', activeBorder: 'border-[color-mix(in_srgb,var(--dj-hotcue)_50%,transparent)]' },
+    cyan: { activeBg: 'bg-[color-mix(in_srgb,var(--dj-info)_30%,transparent)]', activeText: 'text-[var(--dj-info)]', activeBorder: 'border-[color-mix(in_srgb,var(--dj-info)_50%,transparent)]' },
   };
 
   return (
@@ -81,13 +81,15 @@ export const DJDeckStatusBar: React.FC<DJDeckStatusBarProps> = ({ deck }) => {
           <button
             key={toggle.key}
             onClick={toggle.onClick}
+            type='button'
+            aria-pressed={toggle.active}
             className={`
-              px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider
+              px-1.5 py-0.5 rounded border text-[12px] font-bold uppercase tracking-wider
               transition-all duration-100 flex items-center gap-0.5
-              min-w-[32px] min-h-[24px] justify-center
+              min-w-[32px] min-h-[32px] justify-center
               ${toggle.active
                 ? `${colors.activeBg} ${colors.activeText} ${colors.activeBorder} font-extrabold`
-                : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400 hover:bg-[#2a2a2a]'}
+                : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] hover:text-[var(--dj-text-secondary)] hover:bg-[var(--dj-border)]'}
             `}
             title={toggle.tooltip}
           >

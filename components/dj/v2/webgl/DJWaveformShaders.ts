@@ -86,31 +86,22 @@ uniform float u_loopEnd;
 uniform int u_loopEnabled;
 uniform int u_colorMode;
 
-// Vertical gradient palette. This waveform stores amplitude only, not frequency bands.
-const vec3 BASS_COLOR = vec3(1.0, 0.267, 0.267);    // #ff4444
-const vec3 LOW_MID_COLOR = vec3(1.0, 0.533, 0.267); // #ff8844
-const vec3 MID_COLOR = vec3(0.267, 1.0, 0.267);     // #44ff44
-const vec3 HIGH_MID_COLOR = vec3(0.267, 1.0, 1.0);  // #44ffff
-const vec3 HIGH_COLOR = vec3(0.267, 0.267, 1.0);    // #4444ff
-const vec3 BG_COLOR = vec3(0.071, 0.071, 0.071);    // #121212
+// Deck-tinted gradient palette (center -> edge) and background, supplied by
+// the shared waveform palette module. This waveform stores amplitude only.
+uniform vec3 u_gradCenter;
+uniform vec3 u_gradMid;
+uniform vec3 u_gradEdge;
+uniform vec3 u_bgColor;
 
 in vec2 v_uv;
 out vec4 fragColor;
 
 vec3 getGradientColor(float normalizedY) {
-    float band = normalizedY;
-    
-    if (band < 0.2) {
-        return mix(BASS_COLOR, LOW_MID_COLOR, band / 0.2);
-    } else if (band < 0.4) {
-        return mix(LOW_MID_COLOR, MID_COLOR, (band - 0.2) / 0.2);
-    } else if (band < 0.6) {
-        return MID_COLOR;
-    } else if (band < 0.8) {
-        return mix(MID_COLOR, HIGH_MID_COLOR, (band - 0.6) / 0.2);
-    } else {
-        return mix(HIGH_MID_COLOR, HIGH_COLOR, (band - 0.8) / 0.2);
+    // 0 = center line, 1 = waveform edge.
+    if (normalizedY < 0.5) {
+        return mix(u_gradCenter, u_gradMid, normalizedY / 0.5);
     }
+    return mix(u_gradMid, u_gradEdge, (normalizedY - 0.5) / 0.5);
 }
 
 void main() {
@@ -129,7 +120,7 @@ void main() {
                 return;
             }
         }
-        fragColor = vec4(BG_COLOR, 1.0);
+        fragColor = vec4(u_bgColor, 1.0);
         return;
     }
     
@@ -181,7 +172,7 @@ void main() {
     } else {
         // Background
         bool inLoop = hasLoop && sampleU >= u_loopStart && sampleU <= u_loopEnd;
-        vec3 background = inLoop ? mix(BG_COLOR, u_loopEnabled == 1 ? vec3(0.12, 0.82, 0.42) : vec3(0.55, 0.65, 0.72), u_loopEnabled == 1 ? 0.2 : 0.08) : BG_COLOR;
+        vec3 background = inLoop ? mix(u_bgColor, u_loopEnabled == 1 ? vec3(0.12, 0.82, 0.42) : vec3(0.55, 0.65, 0.72), u_loopEnabled == 1 ? 0.2 : 0.08) : u_bgColor;
         fragColor = vec4(background, 1.0);
     }
 }
@@ -358,7 +349,7 @@ uniform float u_loopStart;
 uniform float u_loopEnd;
 uniform int u_loopEnabled;
 
-const vec3 BG_COLOR = vec3(0.102, 0.102, 0.102);  // #1a1a1a
+uniform vec3 u_bgColor;
 
 in vec2 v_uv;
 out vec4 fragColor;
@@ -388,7 +379,7 @@ void main() {
         vec3 color = u_deckColor * 0.6; // Dimmer than main waveform
         fragColor = vec4(color, 0.8);
     } else {
-        fragColor = vec4(BG_COLOR, 1.0);
+        fragColor = vec4(u_bgColor, 1.0);
     }
 
     bool inLoop = u_loopStart >= 0.0 && u_loopEnd > u_loopStart && v_uv.x >= u_loopStart && v_uv.x <= u_loopEnd;

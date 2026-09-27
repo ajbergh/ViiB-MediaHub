@@ -61,26 +61,26 @@ export function DJSavedMixIdeas({ currentIdea }: DJSavedMixIdeasProps) {
     }
   };
 
-  return <section aria-label="Saved Mix Next ideas" className="mt-2 space-y-1 text-neutral-300">
+  return <section aria-label="Saved Mix Next ideas" className="mt-2 space-y-1 text-[var(--dj-text-secondary)]">
     <div className="flex items-center gap-2">
       <button type="button" disabled={!currentIdea} onClick={save}
         title="Save a local snapshot of this recommendation and its evidence; no audio or deck state is stored."
-        className="rounded border border-cyan-500/40 px-2 py-1 text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50">
+        className="rounded border border-[color-mix(in_srgb,var(--dj-info)_40%,transparent)] px-2 py-1 text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50">
         {alreadySaved ? 'Update saved idea' : 'Save mix idea'}
       </button>
-      <span className="text-neutral-500">{ideas.length} saved on this device</span>
-      {message && <span role="status" className="text-neutral-400">{message}</span>}
+      <span className="text-[var(--dj-text-secondary)]">{ideas.length} saved on this device</span>
+      {message && <span role="status" className="text-[var(--dj-text-secondary)]">{message}</span>}
     </div>
     {ideas.length > 0 && <ul className="space-y-1">
-      {ideas.map(idea => <li key={djMixIdeaKey(idea)} className="flex flex-wrap items-center gap-x-2 rounded border border-neutral-800 px-2 py-1">
+      {ideas.map(idea => <li key={djMixIdeaKey(idea)} className="flex flex-wrap items-center gap-x-2 rounded border border-[var(--dj-border)] px-2 py-1">
         <span>{idea.source.title} — {idea.source.artist}</span>
         <span aria-hidden="true">→</span>
         <span>{idea.candidate.title} — {idea.candidate.artist}</span>
-        <span className="text-neutral-500">{idea.intent} · {Math.round(idea.score * 100)}% · {new Date(idea.createdAt).toLocaleDateString()}</span>
+        <span className="text-[var(--dj-text-secondary)]">{idea.intent} · {Math.round(idea.score * 100)}% · {new Date(idea.createdAt).toLocaleDateString()}</span>
         <button type="button" onClick={() => remove(idea)} aria-label={`Remove ${idea.source.title} to ${idea.candidate.title} mix idea`}
-          className="ml-auto rounded border border-neutral-700 px-1 text-neutral-300">Remove</button>
+          className="ml-auto rounded border border-[var(--dj-border-light)] px-1 text-[var(--dj-text-secondary)]">Remove</button>
       </li>)}
     </ul>}
-    <p className="text-[10px] text-neutral-500">Saved ideas keep recommendation evidence and track IDs on this device. They do not store audio, file paths, or deck settings.</p>
+    <p className="text-[12px] text-[var(--dj-text-secondary)]">Saved ideas keep recommendation evidence and track IDs on this device. They do not store audio, file paths, or deck settings.</p>
   </section>;
 }

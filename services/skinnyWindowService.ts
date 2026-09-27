@@ -7,6 +7,8 @@
 
 import { isMacOSWails } from '../lib/webglSafety';
 
+export type WindowCloseAction = 'hide' | 'quit';
+
 type DesktopWindowSnapshot = {
   width: number;
   height: number;
@@ -47,21 +49,46 @@ export async function toggleNativeWindowMaximise(): Promise<void> {
   }
 }
 
-/**
- * Closes the macOS app, where no external tray exists; other Wails targets
- * retain the existing hide-to-tray behavior.
- */
+/** Hides to the tray where available, otherwise minimises to the Dock. */
 export async function hideNativeWindow(): Promise<void> {
   if (!isNativeWindowRuntimeAvailable()) return;
   try {
     const runtime = await import('../backend/cmd/wails/frontend/wailsjs/runtime/runtime');
     if (isMacOSWails()) {
-      runtime.Quit();
+      // This build has no external macOS tray; keep the conventional Dock
+      // minimisation rather than making the app disappear with no way back.
+      runtime.WindowMinimise();
       return;
     }
     runtime.WindowHide();
   } catch (error) {
     console.warn('[Window] Unable to hide the native window', error);
+  }
+}
+
+/** Applies the configured action for the custom title-bar close control. */
+export async function closeNativeWindow(action: WindowCloseAction): Promise<void> {
+  if (!isNativeWindowRuntimeAvailable()) return;
+  try {
+    const runtime = await import('../backend/cmd/wails/frontend/wailsjs/runtime/runtime');
+    if (action === 'quit') {
+      runtime.Quit();
+      return;
+    }
+    await hideNativeWindow();
+  } catch (error) {
+    console.warn('[Window] Unable to close the native window', error);
+  }
+}
+
+/** Persists the native-close preference so Wails can apply it at next launch. */
+export async function persistNativeWindowCloseAction(action: WindowCloseAction): Promise<void> {
+  if (!isNativeWindowRuntimeAvailable()) return;
+  try {
+    const { SetWindowCloseAction } = await import('../backend/cmd/wails/frontend/wailsjs/go/main/App');
+    await SetWindowCloseAction(action);
+  } catch (error) {
+    console.warn('[Window] Unable to save native close preference', error);
   }
 }
 

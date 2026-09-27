@@ -84,7 +84,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<ResizableColumn, number> = {
 };
 
 // Track color coding - persisted in session via Map
-const TRACK_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#ffffff'] as const;
+const TRACK_COLORS = ['var(--dj-danger)', 'var(--dj-hotcue)', 'var(--dj-warning)', 'var(--dj-play)', 'var(--dj-deck-a)', 'var(--dj-primary-hover)', '#ec4899', 'var(--dj-text-primary)'] as const;
 const trackColorMap = new Map<string, string>();
 
 function loadColumnVisibility(): Record<OptionalColumn, boolean> {
@@ -163,14 +163,14 @@ const TrackRowCells = memo(({
       {/* Color label */}
       <td className="px-1 py-1 w-7 relative">
         <button
-          className="w-6 h-6 rounded-full border border-[#444] hover:border-neutral-300 transition-colors flex-shrink-0 dj-focus-ring"
-          style={{ backgroundColor: trackColor || '#333' }}
+          className="w-6 h-6 rounded-full border border-[var(--dj-border-hover)] hover:border-neutral-300 transition-colors flex-shrink-0 dj-focus-ring"
+          style={{ backgroundColor: trackColor || 'var(--dj-border-light)' }}
           onClick={(e) => { e.stopPropagation(); setShowColorPicker(!showColorPicker); }}
           aria-label={trackColor ? `Track color set — change` : 'Set track color label'}
           title={trackColor ? 'Change color label' : 'Set track color label'}
         />
         {showColorPicker && (
-          <div className="absolute top-full left-0 z-50 bg-[#1a1a1a] border border-[#444] rounded p-1 flex gap-0.5 shadow-lg"
+          <div className="absolute top-full left-0 z-50 bg-[var(--dj-surface-2)] border border-[var(--dj-border-hover)] rounded p-1 flex gap-0.5 shadow-lg"
             onMouseLeave={() => setShowColorPicker(false)}>
             {TRACK_COLORS.map(c => (
               <button
@@ -183,7 +183,7 @@ const TrackRowCells = memo(({
               />
             ))}
             <button
-              className="w-6 h-6 rounded-full border border-[#555] bg-[#333] text-[10px] text-neutral-400 flex items-center justify-center hover:border-white"
+              className="w-6 h-6 rounded-full border border-[var(--dj-text-muted)] bg-[var(--dj-border-light)] text-[12px] text-[var(--dj-text-secondary)] flex items-center justify-center hover:border-white"
               onClick={(e) => { e.stopPropagation(); onSetTrackColor(song.id, null); setShowColorPicker(false); }}
               title="Remove color"
             >
@@ -194,7 +194,7 @@ const TrackRowCells = memo(({
       </td>
 
       {/* Row number */}
-      <td className="px-2 py-1.5 text-neutral-600 font-mono w-10 text-right">
+      <td className="px-2 py-1.5 text-[var(--dj-text-secondary)] font-mono w-10 text-right">
         {index + 1}
       </td>
 
@@ -205,10 +205,10 @@ const TrackRowCells = memo(({
             onClick={(e) => { e.stopPropagation(); onLoadToDeck(song, 'A'); }}
             aria-label={`Load ${song.title} to Deck A`}
             className={`
-              w-8 h-7 text-[11px] rounded font-bold transition-all
+              w-8 h-7 text-[12px] rounded font-bold transition-all
               ${loadedDeck === 'A'
-                ? 'bg-blue-600 text-white shadow-[0_0_8px_rgba(59,130,246,0.5)]'
-                : 'bg-surface-2 text-neutral-500 hover:bg-blue-600/50 hover:text-white'}
+                ? 'bg-[var(--dj-deck-a)] text-white shadow-[0_0_8px_rgba(59,130,246,0.5)]'
+                : 'bg-surface-2 text-[var(--dj-text-secondary)] hover:bg-[color-mix(in_srgb,var(--dj-deck-a)_50%,transparent)] hover:text-white'}
             `}
             title="Load to Deck A"
           >
@@ -218,10 +218,10 @@ const TrackRowCells = memo(({
             onClick={(e) => { e.stopPropagation(); onLoadToDeck(song, 'B'); }}
             aria-label={`Load ${song.title} to Deck B`}
             className={`
-              w-8 h-7 text-[11px] rounded font-bold transition-all
+              w-8 h-7 text-[12px] rounded font-bold transition-all
               ${loadedDeck === 'B'
-                ? 'bg-purple-600 text-white shadow-[0_0_8px_rgba(139,92,246,0.5)]'
-                : 'bg-surface-2 text-neutral-500 hover:bg-purple-600/50 hover:text-white'}
+                ? 'bg-[var(--dj-deck-b)] text-white shadow-[0_0_8px_rgba(139,92,246,0.5)]'
+                : 'bg-surface-2 text-[var(--dj-text-secondary)] hover:bg-[color-mix(in_srgb,var(--dj-deck-b)_50%,transparent)] hover:text-white'}
             `}
             title="Load to Deck B"
           >
@@ -234,11 +234,11 @@ const TrackRowCells = memo(({
       <td className="px-2 py-1.5" style={{ width: columnWidths.title }}>
         <div className="flex items-center gap-1.5">
           {loadedDeck && (
-            <span className={`text-[10px] ${loadedDeck === 'A' ? 'text-blue-400' : 'text-purple-400'}`}>
+            <span className={`text-[12px] ${loadedDeck === 'A' ? 'text-[var(--dj-deck-a-bright)]' : 'text-[var(--dj-deck-b-bright)]'}`}>
               ▶
             </span>
           )}
-          <span className="text-neutral-100 truncate block" style={{ maxWidth: columnWidths.title - 24 }} title={song.title}>
+          <span className="text-[var(--dj-text-primary)] truncate block" style={{ maxWidth: columnWidths.title - 24 }} title={song.title}>
             {song.title}
           </span>
         </div>
@@ -246,7 +246,7 @@ const TrackRowCells = memo(({
 
       {/* Artist */}
       <td className="px-2 py-1.5" style={{ width: columnWidths.artist }}>
-        <span className="text-neutral-400 truncate block" style={{ maxWidth: columnWidths.artist - 16 }} title={song.artist}>
+        <span className="text-[var(--dj-text-secondary)] truncate block" style={{ maxWidth: columnWidths.artist - 16 }} title={song.artist}>
           {song.artist}
         </span>
       </td>
@@ -255,7 +255,7 @@ const TrackRowCells = memo(({
       {columnVisibility.bpm && (
         <td className="px-2 py-1.5 w-12 text-right">
           <span
-            className={`font-mono ${displayBPM ? 'text-green-400' : 'text-neutral-600'}`}
+            className={`font-mono ${displayBPM ? 'text-[var(--dj-play-hover)]' : 'text-[var(--dj-text-secondary)]'}`}
             title={analysis ? `${analysis.bpmSource} BPM${analysis.bpmConfidence !== undefined ? ` (${Math.round(analysis.bpmConfidence * 100)}% confidence)` : ''}` : undefined}
           >
             {displayBPM ? displayBPM.toFixed(1).replace(/\.0$/, '') : '-'}
@@ -279,7 +279,7 @@ const TrackRowCells = memo(({
               ].filter(Boolean).join('\n')}
             />
           ) : (
-            <span className="text-neutral-600">-</span>
+            <span className="text-[var(--dj-text-secondary)]">-</span>
           )}
         </td>
       )}
@@ -288,42 +288,42 @@ const TrackRowCells = memo(({
       {columnVisibility.energy && (
         <td className="px-2 py-1.5 w-14 text-center">
           {analysis?.energyLevel !== undefined ? (
-            <span className="inline-flex min-w-6 justify-center rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11px] text-amber-300"
+            <span className="inline-flex min-w-6 justify-center rounded bg-[color-mix(in_srgb,var(--dj-warning)_15%,transparent)] px-1.5 py-0.5 font-mono text-[12px] text-[var(--dj-warning)]"
               title={`Energy Level ${analysis.energyLevel}/10 · ${Math.round((analysis.energyLevelConfidence ?? 0) * 100)}% confidence · ${analysis.energyAlgorithmVersion ?? 'unknown version'}`}>
               {analysis.energyLevel}
             </span>
-          ) : <span className="text-neutral-600">-</span>}
+          ) : <span className="text-[var(--dj-text-secondary)]">-</span>}
         </td>
       )}
 
       {columnVisibility.lufs && (
         <td className="px-2 py-1.5 w-16 text-center">
           {isFiniteIntegratedLUFS(analysis?.integratedLufsBs1770) ? (
-            <span className="font-mono text-[10px] text-neutral-300"
+            <span className="font-mono text-[12px] text-[var(--dj-text-secondary)]"
               aria-label={`Integrated loudness ${formatIntegratedLUFS(analysis.integratedLufsBs1770)} LUFS`}
               title="Measured ITU-R BS.1770-5 integrated loudness">
               {formatIntegratedLUFS(analysis.integratedLufsBs1770)}
             </span>
-          ) : <span className="text-neutral-600" aria-label="LUFS unavailable" title="Current BS.1770 integrated loudness is unavailable">—</span>}
+          ) : <span className="text-[var(--dj-text-secondary)]" aria-label="LUFS unavailable" title="Current BS.1770 integrated loudness is unavailable">—</span>}
         </td>
       )}
 
       {columnVisibility.truePeak && (
         <td className="px-2 py-1.5 w-20 text-center">
           {isFiniteTruePeakDBTP(analysis?.truePeakDbtp) ? (
-            <span className="font-mono text-[10px] text-neutral-300"
+            <span className="font-mono text-[12px] text-[var(--dj-text-secondary)]"
               aria-label={`True Peak ${formatTruePeakDBTP(analysis.truePeakDbtp)} dBTP`}
               title="Measured ITU-R BS.1770-5 Annex 2 oversampled true peak">
               {formatTruePeakDBTP(analysis.truePeakDbtp)}
             </span>
-          ) : <span className="text-neutral-600" aria-label="True Peak unavailable" title="Current BS.1770 true peak is unavailable">—</span>}
+          ) : <span className="text-[var(--dj-text-secondary)]" aria-label="True Peak unavailable" title="Current BS.1770 true peak is unavailable">—</span>}
         </td>
       )}
 
       {/* Album */}
       {columnVisibility.album && (
         <td className="px-2 py-1.5 hidden xl:table-cell" style={{ width: columnWidths.album }}>
-          <span className="text-neutral-500 truncate block" style={{ maxWidth: columnWidths.album - 16 }} title={song.album}>
+          <span className="text-[var(--dj-text-secondary)] truncate block" style={{ maxWidth: columnWidths.album - 16 }} title={song.album}>
             {song.album}
           </span>
         </td>
@@ -332,7 +332,7 @@ const TrackRowCells = memo(({
       {/* Time */}
       {columnVisibility.time && (
         <td className="px-2 py-1.5 w-14 text-right">
-          <span className="font-mono text-neutral-400">
+          <span className="font-mono text-[var(--dj-text-secondary)]">
             {formatDuration(song.duration)}
           </span>
         </td>
@@ -341,7 +341,7 @@ const TrackRowCells = memo(({
       {/* Genre */}
       {columnVisibility.genre && (
         <td className="px-2 py-1.5 w-20 hidden lg:table-cell">
-          <span className="text-neutral-500 truncate block text-[10px]">
+          <span className="text-[var(--dj-text-secondary)] truncate block text-[12px]">
             {song.genre?.[0] || '-'}
           </span>
         </td>
@@ -351,12 +351,12 @@ const TrackRowCells = memo(({
       {columnVisibility.stemStatus && (
         <td className="px-2 py-1.5 w-24 text-center">
           <span
-            className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${
-              stemStatus === 'ready' ? 'bg-emerald-500/15 text-emerald-300' :
-              stemStatus === 'invalid' ? 'bg-red-500/15 text-red-300' :
-              stemStatus === 'stale' || stemStatus === 'unavailable' ? 'bg-amber-500/15 text-amber-300' :
-              stemStatus === 'discovered' || stemStatus === 'validating' ? 'bg-blue-500/15 text-blue-300' :
-              'bg-white/5 text-neutral-500'
+            className={`inline-flex rounded px-1.5 py-0.5 text-[12px] font-medium ${
+              stemStatus === 'ready' ? 'bg-[color-mix(in_srgb,var(--dj-key-active)_15%,transparent)] text-[var(--dj-key-active)]' :
+              stemStatus === 'invalid' ? 'bg-[color-mix(in_srgb,var(--dj-danger)_15%,transparent)] text-[var(--dj-danger)]' :
+              stemStatus === 'stale' || stemStatus === 'unavailable' ? 'bg-[color-mix(in_srgb,var(--dj-warning)_15%,transparent)] text-[var(--dj-warning)]' :
+              stemStatus === 'discovered' || stemStatus === 'validating' ? 'bg-[color-mix(in_srgb,var(--dj-deck-a)_15%,transparent)] text-[var(--dj-deck-a-bright)]' :
+              'bg-white/5 text-[var(--dj-text-secondary)]'
             }`}
             title={`Stem package status · ${stemStatus || 'none'}`}
           >
@@ -368,7 +368,7 @@ const TrackRowCells = memo(({
       {/* Analysis status communicates preparation readiness, not track quality. */}
       {columnVisibility.analysis && (
         <td className="px-2 py-1.5 w-28 text-center">
-          <span className={`inline-flex items-center gap-1 text-[10px] ${analysisReadiness.className}`}
+          <span className={`inline-flex items-center gap-1 text-[12px] ${analysisReadiness.className}`}
             title={analysisReadiness.description} aria-label={`Analysis readiness: ${analysisReadiness.label}`}>
             <span aria-hidden="true">{analysisReadiness.symbol}</span>
             {analysisReadiness.label}
@@ -378,7 +378,7 @@ const TrackRowCells = memo(({
 
       {columnVisibility.dateAnalyzed && (
         <td className="px-2 py-1.5 w-24 text-center">
-          <span className="text-[10px] text-neutral-400"
+          <span className="text-[12px] text-[var(--dj-text-secondary)]"
             title={hasAnalysisTimestamp(analyzedAt) ? `Most recent analysis result or failure · ${new Date(analyzedAt).toLocaleString()}` : 'No analysis timestamp'}>
             {hasAnalysisTimestamp(analyzedAt) ? new Date(analyzedAt).toLocaleDateString() : '—'}
           </span>
@@ -388,7 +388,7 @@ const TrackRowCells = memo(({
       {/* Three source-aware raw scores; this is evidence, not a combined quality grade. */}
       {columnVisibility.analysisConfidence && (
         <td className="px-2 py-1.5 w-40 text-center">
-          <div className="flex flex-col items-center font-mono text-[9px] leading-3 text-neutral-400"
+          <div className="flex flex-col items-center font-mono text-[12px] leading-3 text-[var(--dj-text-secondary)]"
             title="BPM and Key show detector evidence only for measured values. Energy confidence is an evidence-availability heuristic, not a probability. Manual values do not inherit detector scores.">
             <span aria-label={`BPM confidence: ${formatConfidenceEvidence(confidenceEvidence.bpm)}`}>BPM · {formatConfidenceEvidence(confidenceEvidence.bpm)}</span>
             <span aria-label={`Key confidence: ${formatConfidenceEvidence(confidenceEvidence.key)}`}>Key · {formatConfidenceEvidence(confidenceEvidence.key)}</span>
@@ -400,9 +400,9 @@ const TrackRowCells = memo(({
       {columnVisibility.structureStatus && (
         <td className="px-2 py-1.5 w-24 text-center">
           {analysis?.structureAvailable ? (
-            <span className="text-[10px] text-emerald-300" aria-label="Structure available" title="Current energy-structure artifact is available for this source">Available</span>
+            <span className="text-[12px] text-[var(--dj-key-active)]" aria-label="Structure available" title="Current energy-structure artifact is available for this source">Available</span>
           ) : (
-            <span className="text-[10px] text-neutral-600" aria-label="Structure not ready" title="Current energy-structure evidence is not ready or cannot be verified">—</span>
+            <span className="text-[12px] text-[var(--dj-text-secondary)]" aria-label="Structure not ready" title="Current energy-structure evidence is not ready or cannot be verified">—</span>
           )}
         </td>
       )}
@@ -430,9 +430,9 @@ const libraryTableComponents: TableComponents<Song, LibraryTableContext> = {
     const { isLoadedOnDeck, handleLoadToDeck } = context!;
     const loadedDeck = item ? isLoadedOnDeck(item.id) : null;
     const deckIndicatorClass = loadedDeck === 'A'
-      ? 'bg-blue-600/15 border-l-2 border-blue-500 shadow-[inset_0_0_12px_rgba(59,130,246,0.08)]'
+      ? 'bg-[color-mix(in_srgb,var(--dj-deck-a)_15%,transparent)] border-l-2 border-[var(--dj-deck-a)] shadow-[inset_0_0_12px_rgba(59,130,246,0.08)]'
       : loadedDeck === 'B'
-        ? 'bg-purple-600/15 border-l-2 border-purple-500 shadow-[inset_0_0_12px_rgba(139,92,246,0.08)]'
+        ? 'bg-[color-mix(in_srgb,var(--dj-deck-b)_15%,transparent)] border-l-2 border-[var(--dj-deck-b)] shadow-[inset_0_0_12px_rgba(139,92,246,0.08)]'
         : 'border-l-2 border-transparent';
     return (
       <tr
@@ -465,7 +465,7 @@ const SortHeader: React.FC<{
   }> =
     ({ label, sortKeyValue, className, width, resizable, sortKey, sortDirection, handleSort, startColumnResize }) => (
       <th
-        className={`relative px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:text-neutral-300 transition-colors ${className || ''}`}
+        className={`relative px-2 py-1.5 text-left text-[12px] font-medium text-[var(--dj-text-secondary)] uppercase tracking-wider cursor-pointer hover:text-[var(--dj-text-secondary)] transition-colors ${className || ''}`}
         style={width ? { width } : undefined}
         tabIndex={0}
         aria-sort={sortKey === sortKeyValue ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
@@ -825,21 +825,21 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
       {/* Sidebar */}
       <div
         className={`
-          flex-shrink-0 border-r border-white/10 bg-[#161616] transition-all duration-200
+          flex-shrink-0 border-r border-white/10 bg-[var(--dj-surface-2)] transition-all duration-200
           ${sidebarCollapsed ? 'w-10' : 'w-48'}
         `}
       >
         {/* Sidebar header with collapse toggle */}
         <div className="flex items-center justify-between p-2 border-b border-white/10">
           {!sidebarCollapsed && (
-            <span className="text-xs font-medium text-neutral-400">BROWSER</span>
+            <span className="text-xs font-medium text-[var(--dj-text-secondary)]">BROWSER</span>
           )}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             aria-label={sidebarCollapsed ? 'Expand browser sidebar' : 'Collapse browser sidebar'}
             aria-expanded={!sidebarCollapsed}
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded transition-colors text-neutral-500 hover:text-neutral-300 dj-focus-ring"
+            className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded transition-colors text-[var(--dj-text-secondary)] hover:text-[var(--dj-text-secondary)] dj-focus-ring"
           >
             {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
@@ -862,15 +862,15 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                     w-full flex items-center gap-2 px-2 py-1.5 text-xs transition-colors
                     ${selectedCategory === category.id
                       ? 'bg-brand/20 text-brand'
-                      : 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'}
+                      : 'text-[var(--dj-text-secondary)] hover:bg-white/5 hover:text-[var(--dj-text-primary)]'}
                   `}
                 >
                   {category.children && (
-                    <span className="text-neutral-600">
+                    <span className="text-[var(--dj-text-secondary)]">
                       {category.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </span>
                   )}
-                  <span className="text-neutral-500">{category.icon}</span>
+                  <span className="text-[var(--dj-text-secondary)]">{category.icon}</span>
                   <span className="truncate">{category.label}</span>
                 </button>
 
@@ -882,15 +882,15 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                         key={child.id}
                         onClick={() => setSelectedCategory(child.id)}
                         className={`
-                          w-full flex items-center justify-between px-3 py-1 text-[11px] transition-colors
+                          w-full flex items-center justify-between px-3 py-1 text-[12px] transition-colors
                           ${selectedCategory === child.id
                             ? 'bg-brand/20 text-brand'
-                            : 'text-neutral-500 hover:bg-white/5 hover:text-neutral-300'}
+                            : 'text-[var(--dj-text-secondary)] hover:bg-white/5 hover:text-[var(--dj-text-secondary)]'}
                         `}
                       >
                         <span className="truncate">{child.label}</span>
                         {child.count !== undefined && (
-                          <span className="text-neutral-600 text-[10px]">{child.count}</span>
+                          <span className="text-[var(--dj-text-secondary)] text-[12px]">{child.count}</span>
                         )}
                       </button>
                     ))}
@@ -905,9 +905,9 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Search header */}
-        <div className="relative flex items-center gap-3 px-3 py-2 border-b border-white/10 bg-[#1a1a1a]">
+        <div className="relative flex items-center gap-3 px-3 py-2 border-b border-white/10 bg-[var(--dj-surface-2)]">
           <div className="relative flex-1 max-w-md">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-600" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--dj-text-secondary)]" />
             <input
               ref={searchInputRef}
               type="text"
@@ -916,18 +916,18 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
               placeholder="Search..."
               aria-label="Search DJ library"
               className="w-full pl-8 pr-3 py-1.5 bg-surface-2 border border-white/10 rounded
-                         text-xs text-neutral-100 placeholder-neutral-600
+                         text-xs text-[var(--dj-text-primary)] placeholder-neutral-600
                          focus:outline-none focus:ring-1 focus:ring-brand focus:border-transparent"
             />
           </div>
-          <div className="text-[11px] text-neutral-500">
+          <div className="text-[12px] text-[var(--dj-text-secondary)]">
             {filteredSongs.length} tracks
           </div>
-          <label className="flex items-center gap-1 text-[10px] text-neutral-500" title="Inclusive Energy Level range">
+          <label className="flex items-center gap-1 text-[12px] text-[var(--dj-text-secondary)]" title="Inclusive Energy Level range">
             Energy
-            <input aria-label="Minimum Energy Level" type="number" min={1} max={10} value={energyMin} onChange={event => setEnergyMin(event.target.value)} placeholder="1" className="w-10 rounded border border-white/10 bg-surface-2 px-1 py-1 text-center text-neutral-200" />
+            <input aria-label="Minimum Energy Level" type="number" min={1} max={10} value={energyMin} onChange={event => setEnergyMin(event.target.value)} placeholder="1" className="w-10 rounded border border-white/10 bg-surface-2 px-1 py-1 text-center text-[var(--dj-text-primary)]" />
             –
-            <input aria-label="Maximum Energy Level" type="number" min={1} max={10} value={energyMax} onChange={event => setEnergyMax(event.target.value)} placeholder="10" className="w-10 rounded border border-white/10 bg-surface-2 px-1 py-1 text-center text-neutral-200" />
+            <input aria-label="Maximum Energy Level" type="number" min={1} max={10} value={energyMax} onChange={event => setEnergyMax(event.target.value)} placeholder="10" className="w-10 rounded border border-white/10 bg-surface-2 px-1 py-1 text-center text-[var(--dj-text-primary)]" />
           </label>
           <button
             type="button"
@@ -935,7 +935,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
             aria-expanded={columnMenuOpen}
             aria-haspopup="menu"
             title="Library columns"
-            className="h-8 px-2 rounded border border-white/10 bg-[#222] text-neutral-400 hover:text-neutral-100 hover:bg-[#2a2a2a] flex items-center gap-1.5 text-[11px] font-medium"
+            className="h-8 px-2 rounded border border-white/10 bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] hover:text-[var(--dj-text-primary)] hover:bg-[var(--dj-border)] flex items-center gap-1.5 text-[12px] font-medium"
           >
             <SlidersHorizontal size={13} aria-hidden />
             Columns
@@ -943,7 +943,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
           {columnMenuOpen && (
             <div
               role="menu"
-              className="absolute right-3 top-[42px] z-50 w-40 rounded-md border border-[#444] bg-[#151515] p-1.5 shadow-xl"
+              className="absolute right-3 top-[42px] z-50 w-40 rounded-md border border-[var(--dj-border-hover)] bg-[var(--dj-surface-1)] p-1.5 shadow-xl"
             >
               {([
                 ['bpm', 'BPM'],
@@ -962,7 +962,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
               ] as Array<[OptionalColumn, string]>).map(([column, label]) => (
                 <label
                   key={column}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded text-[11px] text-neutral-300 hover:bg-white/5"
+                  className="flex items-center gap-2 px-2 py-1.5 rounded text-[12px] text-[var(--dj-text-secondary)] hover:bg-white/5"
                 >
                   <input
                     type="checkbox"
@@ -980,7 +980,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         {/* Virtualized track table */}
         <div className="flex-1 overflow-hidden">
           {filteredSongs.length === 0 ? (
-            <div className="flex items-center justify-center h-24 text-neutral-600 text-sm">
+            <div className="flex items-center justify-center h-24 text-[var(--dj-text-secondary)] text-sm">
               {searchQuery ? 'No tracks match your search' : 'No tracks in library'}
             </div>
           ) : (
@@ -989,10 +989,10 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
               className="h-full"
               computeItemKey={(_idx, song) => song.id}
               fixedHeaderContent={() => (
-                <tr className="border-b border-white/10 bg-[#1a1a1a]">
-                  <th className="w-5 px-1 py-1.5 text-left text-[10px] font-medium text-neutral-500 bg-[#1a1a1a]" title="Color label">🎨</th>
-                  <th className="w-10 px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500 bg-[#1a1a1a]">#</th>
-                  <th className="w-20 px-2 py-1.5 text-left text-[10px] font-medium text-neutral-500 bg-[#1a1a1a]">LOAD</th>
+                <tr className="border-b border-white/10 bg-[var(--dj-surface-2)]">
+                  <th className="w-5 px-1 py-1.5 text-left text-[12px] font-medium text-[var(--dj-text-secondary)] bg-[var(--dj-surface-2)]" title="Color label">🎨</th>
+                  <th className="w-10 px-2 py-1.5 text-left text-[12px] font-medium text-[var(--dj-text-secondary)] bg-[var(--dj-surface-2)]">#</th>
+                  <th className="w-20 px-2 py-1.5 text-left text-[12px] font-medium text-[var(--dj-text-secondary)] bg-[var(--dj-surface-2)]">LOAD</th>
                   <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Title" sortKeyValue="title" width={columnWidths.title} resizable="title" />
                   <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Artist" sortKeyValue="artist" width={columnWidths.artist} resizable="artist" />
                   {columnVisibility.bpm && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="BPM" sortKeyValue="bpm" className="w-12 text-right" />}
@@ -1006,8 +1006,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   {columnVisibility.stemStatus && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Stem Status" sortKeyValue="stemStatus" className="w-24 text-center" />}
                   {columnVisibility.analysis && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Analysis" sortKeyValue="analysis" className="w-28 text-center" />}
                   {columnVisibility.dateAnalyzed && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Date Analyzed" sortKeyValue="dateAnalyzed" className="w-24 text-center" />}
-                  {columnVisibility.analysisConfidence && <th className="w-40 px-2 py-1.5 text-center text-[10px] font-medium text-neutral-500" title="BPM and Key show detector scores only for measured values. Energy confidence is an evidence-availability heuristic, not a probability. These independent dimensions have no combined sort order.">Analysis Confidence</th>}
-                  {columnVisibility.structureStatus && <th className="w-24 px-2 py-1.5 text-center text-[10px] font-medium text-neutral-500" title="Available means a current, valid energy-structure artifact exists; it is not a quality score.">Structure Status</th>}
+                  {columnVisibility.analysisConfidence && <th className="w-40 px-2 py-1.5 text-center text-[12px] font-medium text-[var(--dj-text-secondary)]" title="BPM and Key show detector scores only for measured values. Energy confidence is an evidence-availability heuristic, not a probability. These independent dimensions have no combined sort order.">Analysis Confidence</th>}
+                  {columnVisibility.structureStatus && <th className="w-24 px-2 py-1.5 text-center text-[12px] font-medium text-[var(--dj-text-secondary)]" title="Available means a current, valid energy-structure artifact exists; it is not a quality score.">Structure Status</th>}
                 </tr>
               )}
               itemContent={(index, song) => (

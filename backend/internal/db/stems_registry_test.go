@@ -1,9 +1,24 @@
 package db
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 )
+
+func TestStemLocationUsesFrontendJSONFieldNames(t *testing.T) {
+	data, err := json.Marshal(StemLocation{ID: "stem-root", Path: "/music/stems", Enabled: true, CreatedAt: 42})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["path"] != "/music/stems" || payload["id"] != "stem-root" || payload["createdAt"] != float64(42) {
+		t.Fatalf("unexpected stem location JSON: %s", data)
+	}
+}
 
 func TestStemRegistryPersistsMetadataAndUnlinksWithoutTouchingPackage(t *testing.T) {
 	database, err := New(filepath.Join(t.TempDir(), "library.db"))

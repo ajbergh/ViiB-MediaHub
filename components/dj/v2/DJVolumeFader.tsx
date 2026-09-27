@@ -24,7 +24,7 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
   label,
   height = 120,
   isPlaying = false,
-  accentColor = '#8b5cf6'
+  accentColor = 'var(--dj-deck-b)'
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -70,8 +70,8 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
       {/* Label */}
       {label && (
         <span
-          className={`text-[10px] font-bold mb-1 transition-colors`}
-          style={{ color: isPlaying ? accentColor : '#666' }}
+          className={`text-[12px] font-bold mb-1 transition-colors`}
+          style={{ color: isPlaying ? accentColor : 'var(--dj-text-muted)' }}
         >
           {label}
         </span>
@@ -112,7 +112,7 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
             width: 10,
             height: trackHeight - 14,
             top: 7,
-            background: 'linear-gradient(to bottom, #0d0d0d, #1a1a1a)',
+            background: 'linear-gradient(to bottom, var(--dj-bg), var(--dj-surface-2))',
             boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)',
           }}
         />
@@ -124,13 +124,13 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
             width: 6,
             height: Math.max(0, value * (trackHeight - 14)),
             bottom: 7,
-            background: `linear-gradient(to top, ${accentColor}60, ${accentColor})`,
-            boxShadow: isPlaying ? `0 0 8px ${accentColor}40` : 'none',
+            background: `linear-gradient(to top, color-mix(in srgb, ${accentColor} 38%, transparent), ${accentColor})`,
+            boxShadow: isPlaying ? `0 0 8px color-mix(in srgb, ${accentColor} 25%, transparent)` : 'none',
           }}
         />
 
         {/* VU meter markers (outside the wider track) */}
-        <div className='absolute top-0 -left-5 h-full flex flex-col justify-between text-[10px] text-neutral-400 pointer-events-none' aria-hidden='true'>
+        <div className='absolute top-0 -left-5 h-full flex flex-col justify-between text-[12px] text-[var(--dj-text-secondary)] pointer-events-none' aria-hidden='true'>
           <span title='Unity gain'>0 dB</span><span>−6</span><span>−∞</span>
         </div>
         <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-between py-1.5 pr-0.5">
@@ -142,7 +142,7 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
               <div
                 className="w-1.5 h-px"
                 style={{
-                  backgroundColor: pct === 100 ? '#e2e8f0' : '#64748b'
+                  backgroundColor: pct === 100 ? 'var(--dj-text-primary)' : '#64748b'
                 }}
               />
             </div>
@@ -164,8 +164,8 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
               width: 44,
               height: 16,
               background: isDragging
-                ? 'linear-gradient(to bottom, #aaa, #888)'
-                : 'linear-gradient(to bottom, #999, #777)',
+                ? 'linear-gradient(to bottom, var(--dj-text-primary), var(--dj-text-secondary))'
+                : 'linear-gradient(to bottom, var(--dj-text-secondary), var(--dj-text-muted))',
               boxShadow: isDragging
                 ? '0 4px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25)'
                 : '0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.18)',
@@ -177,7 +177,7 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
                 <div
                   key={i}
                   className="w-px h-3"
-                  style={{ backgroundColor: i % 2 === 0 ? '#555' : '#bbb' }}
+                  style={{ backgroundColor: i % 2 === 0 ? 'var(--dj-text-muted)' : 'var(--dj-text-secondary)' }}
                 />
               ))}
             </div>
@@ -192,7 +192,7 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
             style={{
               width: 12,
               height: 14,
-              background: 'linear-gradient(to bottom, #666, #444)',
+              background: 'linear-gradient(to bottom, var(--dj-text-muted), var(--dj-border-hover))',
               marginTop: -1,
             }}
           />
@@ -201,8 +201,8 @@ export const DJVolumeFader: React.FC<DJVolumeFaderProps> = ({
 
       {/* Value display */}
       <span
-        className="text-[10px] font-mono mt-0.5 transition-colors"
-        style={{ color: '#cbd5e1' }}
+        className="text-[12px] font-mono mt-0.5 transition-colors"
+        style={{ color: 'var(--dj-text-primary)' }}
       >
         {value > 0 ? `${(20 * Math.log10(value)).toFixed(1)} dB` : '−∞ dB'}
       </span>

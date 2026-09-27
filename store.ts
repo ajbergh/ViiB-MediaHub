@@ -45,10 +45,17 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'mediahub-storage',
-      version: 2, // Removes legacy renderer secrets and persists Spotify playback preferences
-      migrate: (persistedState: any) => {
+      // v2: removes legacy renderer secrets and persists Spotify playback preferences.
+      // v3: DJv2 workstation defaults to the performance layout. 'fx' was the old
+      //     default, so returning users are moved to 'perf' once.
+      // v4: persists desktop close behavior.
+      version: 4,
+      migrate: (persistedState: any, version: number) => {
         const migrated = { ...(persistedState || {}) };
         delete migrated.spotifyClientSecret;
+        if (version < 3 && migrated.djMixer?.djLayoutMode === 'fx') {
+          migrated.djMixer = { ...migrated.djMixer, djLayoutMode: 'perf' };
+        }
         return migrated;
       },
       // We do NOT persist 'songs' here anymore because they are in IndexedDB
@@ -59,6 +66,7 @@ export const useStore = create<AppState>()(
           hasCompletedSetup: state.hasCompletedSetup,
           isSkinnyMode: state.isSkinnyMode,
           isSkinnyAlwaysOnTop: state.isSkinnyAlwaysOnTop,
+          windowCloseAction: state.windowCloseAction,
           spotifyClientId: state.spotifyClientId,
           // NOTE: spotifyAccessToken, spotifyRefreshToken, and spotifyTokenExpiry
           // are intentionally NOT persisted to renderer localStorage. The backend

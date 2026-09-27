@@ -38,6 +38,7 @@ const SamplerPadButton = memo(({
   progress,
   loading,
   compact,
+  fill = false,
 }: {
   pad: SamplerPad;
   onTrigger: (id: number) => void;
@@ -48,6 +49,8 @@ const SamplerPadButton = memo(({
   onModeChange: (id: number) => void;
   progress: number;
   loading: boolean;
+  /** Stretch to the grid cell height (mixer tools panel). */
+  fill?: boolean;
   compact: boolean;
 }) => {
   const hasAudio = pad.url !== null;
@@ -91,12 +94,12 @@ const SamplerPadButton = memo(({
   
   return (
     <div
-      className={compact ? 'relative w-full h-12' : 'flex flex-col items-center gap-0.5'}
+      className={fill ? 'relative w-full h-full min-h-0' : compact ? 'relative w-full h-12' : 'flex flex-col items-center gap-0.5'}
       onMouseLeave={compact && pad.mode === 'gate' && pad.isPlaying ? () => onStop(pad.id) : undefined}
     >
       {/* Pad button */}
       <button
-        className={`relative overflow-hidden w-full ${compact ? 'h-12' : 'h-20'} ${compact && hasAssignment ? 'pb-3' : ''} rounded-md border-2 transition-all duration-75 flex flex-col items-center justify-center text-[10px] font-bold select-none ${
+        className={`relative overflow-hidden w-full ${fill ? 'h-full' : compact ? 'h-12' : 'h-20'} ${compact && hasAssignment ? 'pb-3' : ''} rounded-md border-2 transition-all duration-75 flex flex-col items-center justify-center text-[12px] font-bold select-none ${
           pad.isPlaying
             ? 'scale-[0.98] translate-y-px'
             : hasAssignment
@@ -104,14 +107,14 @@ const SamplerPadButton = memo(({
               : 'border-dashed opacity-50 hover:opacity-75 active:scale-[0.98]'
         }`}
         style={{
-          borderColor: hasAssignment ? pad.color : '#555',
+          borderColor: hasAssignment ? pad.color : 'var(--dj-text-muted)',
           background: pad.isPlaying
-            ? `linear-gradient(180deg, ${pad.color}70 0%, ${pad.color}35 48%, ${pad.color}18 100%)`
+            ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 44%, transparent) 0%, color-mix(in srgb, ${pad.color} 21%, transparent) 48%, color-mix(in srgb, ${pad.color} 9%, transparent) 100%)`
             : hasAssignment
-              ? `linear-gradient(180deg, ${pad.color}28 0%, ${pad.color}10 100%)`
+              ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 16%, transparent) 0%, color-mix(in srgb, ${pad.color} 6%, transparent) 100%)`
               : 'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(0,0,0,0.12))',
           boxShadow: pad.isPlaying
-            ? `inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -4px 8px rgba(0,0,0,0.42), 0 0 18px ${pad.color}a0, 0 3px 7px rgba(0,0,0,0.7)`
+            ? `inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -4px 8px rgba(0,0,0,0.42), 0 0 18px color-mix(in srgb, ${pad.color} 63%, transparent), 0 3px 7px rgba(0,0,0,0.7)`
             : hasAssignment
               ? `inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -4px 8px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.55)`
               : 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -3px 6px rgba(0,0,0,0.35)',
@@ -136,12 +139,12 @@ const SamplerPadButton = memo(({
         )}
         <span 
           className="relative z-10 truncate w-full text-center px-1"
-          style={{ color: hasAssignment ? pad.color : '#666' }}
+          style={{ color: hasAssignment ? pad.color : 'var(--dj-text-muted)' }}
         >
           {loading ? '...' : hasAssignment ? pad.name : '+'}
         </span>
         {hasAssignment && (
-          <span className={`relative z-10 text-[9px] mt-0.5 ${needsRelink ? 'text-amber-400' : pad.isPlaying ? 'text-white' : 'text-neutral-500'}`}>
+          <span className={`relative z-10 text-[12px] mt-0.5 ${needsRelink ? 'text-[var(--dj-warning)]' : pad.isPlaying ? 'text-white' : 'text-[var(--dj-text-secondary)]'}`}>
             {needsRelink ? 'RELINK' : pad.isPlaying ? pad.mode.toUpperCase() : pad.id + 1}
           </span>
         )}
@@ -151,7 +154,7 @@ const SamplerPadButton = memo(({
       {hasAssignment && (
         <div className={`flex items-center gap-1 ${compact ? 'absolute bottom-0.5 left-0.5 right-0.5 z-10 justify-center rounded bg-black/75 px-1 py-0.5' : ''}`}>
           <button
-            className={`${compact ? 'text-[8px] leading-none px-1 py-0.5' : 'text-[10px] px-1 py-0.5'} rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`${compact ? 'text-[8px] leading-none px-1 py-0.5' : 'text-[12px] px-1 py-0.5'} rounded bg-[var(--dj-surface-3)] hover:bg-[var(--dj-border-light)] text-[var(--dj-text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed`}
             onClick={() => onModeChange(pad.id)}
             disabled={needsRelink}
             title={`Mode: ${pad.mode} (click to cycle)`}
@@ -180,10 +183,20 @@ SamplerPadButton.displayName = 'SamplerPadButton';
 // Main Sampler Pads Component
 // ============================================================================
 
-export const DJSamplerPads: React.FC = memo(() => {
+interface DJSamplerPadsProps {
+  /**
+   * Fill the host's height with two equal pad rows and overlay each pad's
+   * mode/volume controls, so the sampler never overflows a fixed panel
+   * regardless of layout mode or how many pads are assigned.
+   */
+  fill?: boolean;
+}
+
+export const DJSamplerPads: React.FC<DJSamplerPadsProps> = memo(({ fill = false }) => {
   const djSampler = useStore(state => state.djSampler);
   const loadSamplerPad = useStore(state => state.loadSamplerPad);
-  const compact = useStore(state => state.djMixer.djLayoutMode === 'perf');
+  const perfLayout = useStore(state => state.djMixer.djLayoutMode === 'perf');
+  const compact = fill || perfLayout;
   const restoreSamplerPadMetadata = useStore(state => state.restoreSamplerPadMetadata);
   const clearSamplerPad = useStore(state => state.clearSamplerPad);
   const setSamplerPadVolume = useStore(state => state.setSamplerPadVolume);
@@ -304,19 +317,19 @@ export const DJSamplerPads: React.FC = memo(() => {
   }, [djSampler, engine, loadSamplerPad]);
   
   return (
-    <div className="flex flex-col gap-1">
+    <div className={fill ? "flex flex-col gap-1 h-full min-h-0" : "flex flex-col gap-1"}>
       <div className="flex items-center justify-between px-1">
-        <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">
+        <div className="text-[12px] text-[var(--dj-text-secondary)] font-bold uppercase tracking-wider">
           Sampler
         </div>
         <span
-          className="text-[8px] text-amber-400/80 font-bold uppercase tracking-wider border border-amber-500/20 rounded px-1"
+          className="text-[8px] text-[color-mix(in_srgb,var(--dj-warning)_80%,transparent)] font-bold uppercase tracking-wider border border-[color-mix(in_srgb,var(--dj-warning)_20%,transparent)] rounded px-1"
           title="Sampler metadata persists; local audio files must be relinked after reload."
         >
           Session
         </span>
       </div>
-      <div className={`grid grid-cols-4 ${compact ? 'gap-1' : 'gap-2'} w-full`}>
+      <div className={`grid grid-cols-4 ${fill ? 'grid-rows-2 flex-1 min-h-0 gap-1.5' : compact ? 'gap-1' : 'gap-2'} w-full`}>
         {djSampler.map(pad => (
           <SamplerPadButton
             key={pad.id}
@@ -330,6 +343,7 @@ export const DJSamplerPads: React.FC = memo(() => {
             progress={padProgress[pad.id] || 0}
             loading={loadingPadId === pad.id}
             compact={compact}
+            fill={fill}
           />
         ))}
       </div>

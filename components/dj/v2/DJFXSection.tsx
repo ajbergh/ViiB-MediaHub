@@ -31,16 +31,18 @@ interface FXUnitProps {
   enabledColor: string;
   compact?: boolean;
   expanded?: boolean;
+  /** Deck-local rack module: label toggle over 2–3 compact knobs (Plan §10A.12). */
+  rack?: boolean;
 }
 
-const FX_CONFIGS = {
+export const FX_CONFIGS = {
   filter: { label: 'FILTER', color: '#3b82f6', enabledColor: '#60a5fa' },
   delay: { label: 'DELAY', color: '#22c55e', enabledColor: '#4ade80' },
   reverb: { label: 'REVERB', color: '#a855f7', enabledColor: '#c084fc' },
   flanger: { label: 'FLANGER', color: '#f97316', enabledColor: '#fb923c' },
 } as const;
 
-const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, compact = false, expanded = false }) => {
+export const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, compact = false, expanded = false, rack = false }) => {
   const fx = useStore(state => {
     const deckState = deck === 'A' ? state.djDeckA : state.djDeckB;
     return deckState.fx[type];
@@ -237,6 +239,25 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
     : percent(type === 'delay' ? actual.feedback : type === 'reverb' ? actual.damping : actual.depth);
   const wetText = percent(type === 'flanger' ? actual.feedback : actual.mix);
 
+  if (rack) {
+    const knobColor = isEnabled ? `var(--dj-deck-${deck === 'A' ? 'a' : 'b'}-bright)` : 'var(--dj-text-muted)';
+    return (
+      <div className='dj-fx-module' data-enabled={isEnabled} data-fx={type}>
+        <button type='button' className='dj-fx-module-toggle' onClick={handleToggle} aria-pressed={isEnabled}
+          aria-label={`${label} on Deck ${deck}`} title={`${isEnabled ? 'Disable' : 'Enable'} ${label.toLowerCase()} on Deck ${deck}`}>
+          {label}
+        </button>
+        <div className='dj-fx-knobs'>
+          <DJEQKnob label={params.param1.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param1.label}, Deck ${deck}`} valueText={valueText1} value={params.param1.value} onChange={handleKnobParam1} color={knobColor} size={44} compact labelBelow className='dj-fx-knob' />
+          <DJEQKnob label={params.param2.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param2.label}, Deck ${deck}`} valueText={valueText2} value={params.param2.value} onChange={handleKnobParam2} color={knobColor} size={44} compact labelBelow className='dj-fx-knob' />
+          {params.hasWet && (
+            <DJEQKnob label={params.wet.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.wet.label}, Deck ${deck}`} valueText={wetText} value={params.wet.value} onChange={handleKnobWet} color={knobColor} size={44} compact labelBelow className='dj-fx-knob' />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Compact mode: toggle tab + always-rendered macro knob (greyed when off,
   // so toggling does NOT shift neighbour layout — see review §2.6).
   // MIX knob uses size=32 — paired inline with the 36-px toggle to keep the
@@ -244,22 +265,22 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
   if (compact) {
     return (
       <div className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded transition-all duration-150 ${
-        isEnabled ? 'bg-[#1e1e1e]' : 'bg-transparent'
+        isEnabled ? 'bg-[var(--dj-surface-3)]' : 'bg-transparent'
       }`}>
         <button
           onClick={handleToggle}
           aria-pressed={isEnabled}
           className={`
-            flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wider
+            flex items-center gap-1 px-2.5 py-1 rounded text-[12px] font-bold uppercase tracking-wider
             transition-all duration-100 border min-w-[64px] justify-center min-h-[36px]
             ${isEnabled
               ? 'text-white border-current/30'
-              : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400 hover:border-[#444]'}
+              : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] hover:text-[var(--dj-text-secondary)] hover:border-[var(--dj-border-hover)]'}
           `}
           style={isEnabled ? {
             backgroundColor: color,
-            borderColor: `${color}60`,
-            boxShadow: `0 0 6px ${color}30`,
+            borderColor: `color-mix(in srgb, ${color} 38%, transparent)`,
+            boxShadow: `0 0 6px color-mix(in srgb, ${color} 19%, transparent)`,
           } : undefined}
         >
           {isEnabled && <span className="w-1.5 h-1.5 rounded-full bg-white/80 flex-shrink-0" />}
@@ -271,7 +292,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
             valueText={wetText}
             value={params.wet.value}
             onChange={handleKnobWet}
-            color={isEnabled ? enabledColor : '#444'}
+            color={isEnabled ? enabledColor : 'var(--dj-border-hover)'}
             size={32}
             className="dj-fx-knob"
           />
@@ -282,24 +303,24 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
 
   return (
     <div className={`flex flex-col items-center gap-1 px-1.5 py-1 rounded-md transition-all duration-150 ${
-      isEnabled ? 'bg-[#1e1e1e] border border-current/20' : 'bg-[#141414] border border-transparent'
+      isEnabled ? 'bg-[var(--dj-surface-3)] border border-current/20' : 'bg-[var(--dj-surface-1)] border border-transparent'
     }`}
-      style={isEnabled ? { borderColor: `${color}30` } : undefined}
+      style={isEnabled ? { borderColor: `color-mix(in srgb, ${color} 19%, transparent)` } : undefined}
     >
       {/* Enable/Disable button */}
       <button
         onClick={handleToggle}
         aria-pressed={isEnabled}
         className={`
-          w-full px-2 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider
+          w-full px-2 py-1.5 rounded text-[12px] font-bold uppercase tracking-wider
           transition-all duration-100 border flex items-center justify-center gap-1 min-h-[36px]
           ${isEnabled
             ? 'text-white border-transparent'
-            : 'bg-[#222] text-neutral-600 border-[#333] hover:text-neutral-400 hover:border-[#444]'}
+            : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] hover:text-[var(--dj-text-secondary)] hover:border-[var(--dj-border-hover)]'}
         `}
         style={isEnabled ? {
           backgroundColor: color,
-          boxShadow: `0 0 8px ${color}40`,
+          boxShadow: `0 0 8px color-mix(in srgb, ${color} 25%, transparent)`,
         } : undefined}
       >
         {isEnabled && <span className="w-1.5 h-1.5 rounded-full bg-white/80 flex-shrink-0" />}
@@ -313,7 +334,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
           valueText={valueText1}
           value={params.param1.value}
           onChange={handleKnobParam1}
-          color={isEnabled ? enabledColor : '#555'}
+          color={isEnabled ? enabledColor : 'var(--dj-text-muted)'}
           size={knobSize}
           className="dj-fx-knob"
         />
@@ -322,7 +343,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
           valueText={valueText2}
           value={params.param2.value}
           onChange={handleKnobParam2}
-          color={isEnabled ? enabledColor : '#555'}
+          color={isEnabled ? enabledColor : 'var(--dj-text-muted)'}
           size={knobSize}
           className="dj-fx-knob"
         />
@@ -332,7 +353,7 @@ const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColor, comp
             valueText={wetText}
             value={params.wet.value}
             onChange={handleKnobWet}
-            color={isEnabled ? enabledColor : '#555'}
+            color={isEnabled ? enabledColor : 'var(--dj-text-muted)'}
             size={knobSize}
             className="dj-fx-knob"
           />
@@ -383,7 +404,7 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
     Object.values(state.djDeckB.fx).filter(fx => fx.enabled).length);
 
   return (
-    <div className={`bg-[#161616] border-b border-[#2a2a2a] ${className}`}>
+    <div className={`bg-[var(--dj-surface-2)] border-b border-[var(--dj-border)] ${className}`}>
       {/* Header */}
       <div
         role="button" tabIndex={0} aria-label="Toggle effects" aria-expanded={!collapsed}
@@ -392,22 +413,22 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
         onClick={() => setCollapsed(!collapsed)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">FX</span>
+          <span className="text-[12px] font-bold text-[var(--dj-text-secondary)] uppercase tracking-widest">FX</span>
           {activeA > 0 && (
-            <span className="text-[10px] font-bold text-blue-400 bg-blue-500/15 px-1.5 py-0.5 rounded">
+            <span className="text-[12px] font-bold text-[var(--dj-deck-a-bright)] bg-[color-mix(in_srgb,var(--dj-deck-a)_15%,transparent)] px-1.5 py-0.5 rounded">
               A: {activeA}
             </span>
           )}
           {activeB > 0 && (
-            <span className="text-[10px] font-bold text-purple-400 bg-purple-500/15 px-1.5 py-0.5 rounded">
+            <span className="text-[12px] font-bold text-[var(--dj-deck-b-bright)] bg-[color-mix(in_srgb,var(--dj-deck-b)_15%,transparent)] px-1.5 py-0.5 rounded">
               B: {activeB}
             </span>
           )}
         </div>
         {collapsed ? (
-          <ChevronDown size={12} className="text-neutral-500" />
+          <ChevronDown size={12} className="text-[var(--dj-text-secondary)]" />
         ) : (
-          <ChevronUp size={12} className="text-neutral-500" />
+          <ChevronUp size={12} className="text-[var(--dj-text-secondary)]" />
         )}
       </div>
 
@@ -415,8 +436,8 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
       {!collapsed && (
         <div className={`flex items-stretch px-2 pb-2 gap-2 ${isExpanded ? 'pt-1' : ''}`}>
           {/* Deck A FX */}
-          <div className={`flex-1 flex justify-end ${isCompact ? 'items-center' : ''} gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]`}>
-            <div className="text-[10px] font-bold text-blue-400 writing-vertical flex items-center justify-center w-3 mr-0.5"
+          <div className={`flex-1 flex justify-end ${isCompact ? 'items-center' : ''} gap-1 bg-[var(--dj-surface-1)] rounded-md p-1.5 border border-[var(--dj-surface-3)]`}>
+            <div className="text-[12px] font-bold text-[var(--dj-deck-a-bright)] writing-vertical flex items-center justify-center w-3 mr-0.5"
                  style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
               A
             </div>
@@ -437,13 +458,13 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
           {/* X-Y FX Pad — fills the centre gap that was previously empty.
               Drag morphs filter cutoff (X) + resonance (Y) for the selected deck(s);
               releasing the pad smoothly returns to neutral. */}
-          <div className={`flex-shrink-0 flex items-center justify-center bg-[#0e0e0e] rounded-md border border-[#222] px-2 py-1 ${isExpanded ? 'gap-2' : ''}`}>
+          <div className={`flex-shrink-0 flex items-center justify-center bg-[var(--dj-bg)] rounded-md border border-[var(--dj-surface-3)] px-2 py-1 ${isExpanded ? 'gap-2' : ''}`}>
             {isExpanded && <DJBeatFXPanel />}
             <DJFXPad size={isExpanded ? 150 : 96} />
           </div>
 
           {/* Deck B FX */}
-          <div className={`flex-1 flex ${isCompact ? 'items-center' : ''} gap-1 bg-[#111] rounded-md p-1.5 border border-[#222]`}>
+          <div className={`flex-1 flex ${isCompact ? 'items-center' : ''} gap-1 bg-[var(--dj-surface-1)] rounded-md p-1.5 border border-[var(--dj-surface-3)]`}>
             {(Object.keys(FX_CONFIGS) as EffectType[]).map(fxType => (
               <FXUnit
                 key={`B-${fxType}`}
@@ -456,7 +477,7 @@ export const DJFXSection: React.FC<DJFXSectionProps> = ({ className = '' }) => {
                 expanded={isExpanded}
               />
             ))}
-            <div className="text-[10px] font-bold text-purple-400 writing-vertical flex items-center justify-center w-3 ml-0.5"
+            <div className="text-[12px] font-bold text-[var(--dj-deck-b-bright)] writing-vertical flex items-center justify-center w-3 ml-0.5"
                  style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
               B
             </div>

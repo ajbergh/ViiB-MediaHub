@@ -9,9 +9,11 @@ import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 interface DJAnalysisCueEditorProps {
   trackID?: string;
   deck: DeckId;
+  /** Render expanded, for hosts such as the deck inspector that own disclosure. */
+  embedded?: boolean;
 }
 
-export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps) {
+export function DJAnalysisCueEditor({ trackID, deck, embedded = false }: DJAnalysisCueEditorProps) {
   const beatGrid = useStore(state => deck === 'A' ? state.djDeckA.beatGrid : state.djDeckB.beatGrid);
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
   const loadHotCues = useStore(state => state.loadHotCues);
@@ -116,54 +118,54 @@ export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps)
   };
 
   if (!trackID || !cueList) return null;
-  return <details className="mx-2 mb-1 rounded border border-neutral-800 bg-neutral-950/70 text-[10px] text-neutral-300">
-    <summary className="cursor-pointer list-none px-2 py-1 text-neutral-300">
+  return <details open={embedded || undefined} className="mx-2 mb-1 rounded border border-[var(--dj-border)] bg-[color-mix(in_srgb,var(--dj-bg)_70%,transparent)] text-[12px] text-[var(--dj-text-secondary)]">
+    <summary className="cursor-pointer list-none px-2 py-1 text-[var(--dj-text-secondary)]">
       Cue editor · {hotCues.filter(cue => cue.origin === 'analysis').length} auto · {hotCues.filter(cue => cue.origin !== 'analysis').length} manual
     </summary>
-    <div className="space-y-2 border-t border-neutral-800 px-2 py-2">
+    <div className="space-y-2 border-t border-[var(--dj-border)] px-2 py-2">
       {hotCues.length > 0 && <div className="grid grid-cols-[2rem_minmax(6rem,1fr)_auto_auto_auto_auto_auto_auto_auto] items-center gap-1">
         {hotCues.map(cue => <React.Fragment key={cue.slot}>
-          <span className="font-mono text-neutral-500">{cue.slot}</span>
+          <span className="font-mono text-[var(--dj-text-secondary)]">{cue.slot}</span>
           <label className="flex min-w-0 items-center gap-1">
             <input aria-label={`Cue ${cue.slot} label`} defaultValue={cue.label || cue.kind || `Cue ${cue.slot}`}
               disabled={!!cue.locked || isApplying}
               onBlur={event => {
                 const label = event.currentTarget.value.trim();
                 if (label && label !== (cue.label || cue.kind || `Cue ${cue.slot}`)) updateCue(cue.slot, current => renameHotCue(current, label));
-              }} className="min-w-0 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1 py-0.5" />
-            <span title={cue.rationale || cue.kind || 'User cue'} className={cue.origin === 'analysis' ? 'text-cyan-300' : 'text-neutral-500'}>
+              }} className="min-w-0 flex-1 rounded border border-[var(--dj-border)] bg-[var(--dj-surface-1)] px-1 py-0.5" />
+            <span title={cue.rationale || cue.kind || 'User cue'} className={cue.origin === 'analysis' ? 'text-[var(--dj-info)]' : 'text-[var(--dj-text-secondary)]'}>
               {cue.origin === 'analysis' ? 'AUTO' : 'USER'}{cue.confidence != null ? ` ${Math.round(cue.confidence * 100)}%` : ''}
             </span>
           </label>
           <button type="button" disabled={isApplying} onClick={() => jumpToCue(cue.slot)} title="Seek this deck to the cue position"
-            className="rounded border border-cyan-500/40 px-1 py-0.5 hover:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">Jump</button>
-          <button type="button" disabled={!!cue.locked || isApplying} onClick={() => moveToPlayhead(cue)} className="rounded border border-neutral-700 px-1 py-0.5 hover:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">Move</button>
+            className="rounded border border-[color-mix(in_srgb,var(--dj-info)_40%,transparent)] px-1 py-0.5 hover:border-[var(--dj-info)] disabled:cursor-not-allowed disabled:opacity-40">Jump</button>
+          <button type="button" disabled={!!cue.locked || isApplying} onClick={() => moveToPlayhead(cue)} className="rounded border border-[var(--dj-border-light)] px-1 py-0.5 hover:border-[var(--dj-info)] disabled:cursor-not-allowed disabled:opacity-40">Move</button>
           <button type="button" disabled={!!cue.locked || isApplying || quantizeMode === 'off' || !beatGrid?.length}
             title="Snap to the nearest beat subdivision in the stored beat grid; this does not correct downbeats."
-            onClick={() => snapCue(cue)} className="rounded border border-neutral-700 px-1 py-0.5 hover:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">Snap</button>
-          <label className="flex items-center gap-1 text-neutral-400">
+            onClick={() => snapCue(cue)} className="rounded border border-[var(--dj-border-light)] px-1 py-0.5 hover:border-[var(--dj-info)] disabled:cursor-not-allowed disabled:opacity-40">Snap</button>
+          <label className="flex items-center gap-1 text-[var(--dj-text-secondary)]">
             <input type="checkbox" aria-label={`Lock cue ${cue.slot}`} checked={!!cue.locked} disabled={isApplying} onChange={event => setLock(cue.slot, event.target.checked)} /> Lock
           </label>
           <label className="flex items-center gap-1" title="Change cue color while preserving its provenance">
             <span className="sr-only">Recolor cue {cue.slot}</span>
             <input type="color" aria-label={`Recolor cue ${cue.slot}`} value={/^#[\da-f]{6}$/i.test(cue.color) ? cue.color : DEFAULT_HOT_CUE_COLOR}
               disabled={!!cue.locked || isApplying} onChange={event => updateCue(cue.slot, current => recolorHotCue(current, event.target.value))}
-              className="h-5 w-6 cursor-pointer rounded border border-neutral-700 bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-40" />
+              className="h-5 w-6 cursor-pointer rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] disabled:cursor-not-allowed disabled:opacity-40" />
           </label>
           {cue.origin === 'analysis' ? <button type="button" aria-label={`Regenerate cue ${cue.slot}`} disabled={!!cue.locked || isApplying}
             onClick={() => void apply([cue.slot])}
             title="Generate a fresh candidate for this slot. If none is available, the current cue stays in place."
-            className="rounded border border-cyan-500/40 px-1 py-0.5 text-cyan-200 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40">Regenerate</button> : <span />}
+            className="rounded border border-[color-mix(in_srgb,var(--dj-info)_40%,transparent)] px-1 py-0.5 text-cyan-200 hover:border-[var(--dj-info)] disabled:cursor-not-allowed disabled:opacity-40">Regenerate</button> : <span />}
           {cue.origin === 'analysis' ? <button type="button" aria-label={`Convert cue ${cue.slot} to manual`} disabled={!!cue.locked || isApplying}
             onClick={() => updateCue(cue.slot, convertHotCueToManual)} title="Keep this cue but remove generated-only metadata"
-            className="rounded border border-amber-500/40 px-1 py-0.5 text-amber-200 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40">To Manual</button> : <span />}
+            className="rounded border border-[color-mix(in_srgb,var(--dj-warning)_40%,transparent)] px-1 py-0.5 text-amber-200 hover:border-[var(--dj-warning)] disabled:cursor-not-allowed disabled:opacity-40">To Manual</button> : <span />}
         </React.Fragment>)}
       </div>}
-      <div className="flex flex-wrap items-center gap-2 border-t border-neutral-800 pt-2">
+      <div className="flex flex-wrap items-center gap-2 border-t border-[var(--dj-border)] pt-2">
         <label className="flex items-center gap-1">
           Candidate policy
           <select aria-label="Generated cue apply policy" value={mode} onChange={event => setMode(event.target.value as AnalysisCueApplyMode)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5">
+            className="rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] px-1 py-0.5">
             <option value="fill-empty">Fill empty slots</option>
             <option value="replace-generated">Refresh generated</option>
           </select>
@@ -171,29 +173,29 @@ export function DJAnalysisCueEditor({ trackID, deck }: DJAnalysisCueEditorProps)
         <label className="flex items-center gap-1" title="Nearest stored beat-grid subdivision; this does not correct downbeats.">
           Quantize
           <select aria-label="Cue quantize mode" value={quantizeMode} onChange={event => setQuantizeMode(event.target.value as HotCueQuantizeMode)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5">
+            className="rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] px-1 py-0.5">
             <option value="off">Off</option>
             <option value="beat">Whole beat</option>
             <option value="half">Half beat</option>
             <option value="quarter">Quarter beat</option>
           </select>
         </label>
-        <button type="button" disabled={isApplying} onClick={() => void apply()} className="rounded border border-cyan-500/50 px-2 py-0.5 text-cyan-200 hover:bg-cyan-950 disabled:opacity-40">Apply policy</button>
-        <span className="text-neutral-500">{cueList.generatorVersion} · source {cueList.sourceFingerprint.slice(0, 12)}</span>
-        {status && <span role="status" className="text-neutral-400">{status}</span>}
+        <button type="button" disabled={isApplying} onClick={() => void apply()} className="rounded border border-[color-mix(in_srgb,var(--dj-info)_50%,transparent)] px-2 py-0.5 text-cyan-200 hover:bg-cyan-950 disabled:opacity-40">Apply policy</button>
+        <span className="text-[var(--dj-text-secondary)]">{cueList.generatorVersion} · source {cueList.sourceFingerprint.slice(0, 12)}</span>
+        {status && <span role="status" className="text-[var(--dj-text-secondary)]">{status}</span>}
       </div>
-      <ul className="grid gap-1 border-t border-neutral-800 pt-2 sm:grid-cols-2">
-        {cueList.generatedCandidates.map(candidate => <li key={candidate.slot} className="flex items-start justify-between gap-2 rounded bg-neutral-900/70 px-2 py-1">
+      <ul className="grid gap-1 border-t border-[var(--dj-border)] pt-2 sm:grid-cols-2">
+        {cueList.generatedCandidates.map(candidate => <li key={candidate.slot} className="flex items-start justify-between gap-2 rounded bg-[color-mix(in_srgb,var(--dj-surface-1)_70%,transparent)] px-2 py-1">
           <span className="min-w-0">
-            <strong className="text-neutral-200">{candidate.slot}. {candidate.label}</strong>
-            <span className="ml-1 text-cyan-300">AUTO {Math.round(candidate.confidence * 100)}%</span>
-            <span className="ml-1 text-neutral-500">{candidate.downbeatAligned ? 'measured/manual downbeat' : 'not downbeat-verified'}</span>
-            <span className="block truncate text-neutral-500" title={candidate.rationale}>{candidate.rationale}</span>
+            <strong className="text-[var(--dj-text-primary)]">{candidate.slot}. {candidate.label}</strong>
+            <span className="ml-1 text-[var(--dj-info)]">AUTO {Math.round(candidate.confidence * 100)}%</span>
+            <span className="ml-1 text-[var(--dj-text-secondary)]">{candidate.downbeatAligned ? 'measured/manual downbeat' : 'not downbeat-verified'}</span>
+            <span className="block truncate text-[var(--dj-text-secondary)]" title={candidate.rationale}>{candidate.rationale}</span>
           </span>
-          <button type="button" disabled={isApplying} onClick={() => void apply([candidate.slot])} className="shrink-0 rounded border border-neutral-700 px-1 py-0.5 hover:border-cyan-500 disabled:opacity-40">Apply</button>
+          <button type="button" disabled={isApplying} onClick={() => void apply([candidate.slot])} className="shrink-0 rounded border border-[var(--dj-border-light)] px-1 py-0.5 hover:border-[var(--dj-info)] disabled:opacity-40">Apply</button>
         </li>)}
       </ul>
-      {(cueList.suppressions ?? []).length > 0 && <p className="text-neutral-500">Suppressed generated slots: {(cueList.suppressions ?? []).map(item => `${item.slot} ${item.kind}`).join(', ')}</p>}
+      {(cueList.suppressions ?? []).length > 0 && <p className="text-[var(--dj-text-secondary)]">Suppressed generated slots: {(cueList.suppressions ?? []).map(item => `${item.slot} ${item.kind}`).join(', ')}</p>}
     </div>
   </details>;
 }

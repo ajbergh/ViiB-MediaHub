@@ -335,7 +335,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     if (session) finishPreviewRef.current(session.token, 'Test Mix stopped.');
   }, []);
 
-  if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[10px] text-amber-400">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
+  if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[12px] text-[var(--dj-warning)]">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
   if (!features) return null;
 
   const acceptCandidate = async () => {
@@ -560,9 +560,9 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     }
   };
 
-  return <section aria-label="Measured track energy" className="px-2 py-1 text-[10px] text-neutral-400">
+  return <section aria-label="Measured track energy" className="px-2 py-1 text-[12px] text-[var(--dj-text-secondary)]">
     <div className="relative flex h-5 items-end gap-px overflow-hidden" title="Track energy · Highlight shows playback position">
-      {features.energy.map((point, index) => <i key={index} className="w-1 bg-cyan-400/70" style={{ height: `${Math.max(2, point.value * 100)}%` }} />)}
+      {features.energy.map((point, index) => <i key={index} className="w-1 bg-[color-mix(in_srgb,var(--dj-info)_70%,transparent)]" style={{ height: `${Math.max(2, point.value * 100)}%` }} />)}
       {deck && <div ref={progressRef} hidden role="progressbar" aria-label={`Deck ${deck} track position`}
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}
         className="pointer-events-none absolute inset-y-0 left-0 bg-white/15" style={{ width: '0%' }}>
@@ -577,7 +577,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       <label className="inline-flex items-center gap-1">
         <span>Mix Next</span>
         <select aria-label="Mix Next direction" value={intent} onChange={event => setIntent(event.target.value as TransitionIntent)}
-          className="rounded border border-violet-500/30 bg-neutral-950 px-1 text-violet-200">
+          className="rounded border border-[color-mix(in_srgb,var(--dj-deck-b)_30%,transparent)] bg-[var(--dj-bg)] px-1 text-violet-200">
           <option value="hold">Hold</option>
           <option value="lift">Lift (+1 energy)</option>
           <option value="reset">Reset (-1 energy)</option>
@@ -587,18 +587,18 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       <label className="inline-flex items-center gap-1" title="Inclusive BPM range; candidates without a BPM value are excluded">
         <span>BPM</span>
         <input aria-label="Minimum BPM" type="number" min={60} max={190} step="0.1" value={minBpm} onChange={event => setMinBpm(event.target.value)} placeholder="min"
-          className="w-12 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200" />
+          className="w-12 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]" />
         <span>–</span>
         <input aria-label="Maximum BPM" type="number" min={60} max={190} step="0.1" value={maxBpm} onChange={event => setMaxBpm(event.target.value)} placeholder="max"
-          className="w-12 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200" />
+          className="w-12 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]" />
       </label>
       <label className="inline-flex items-center gap-1" title="Inclusive Energy Level range (1–10); candidates without a score are excluded">
         <span>Energy</span>
         <input aria-label="Minimum Energy Level" type="number" min={1} max={10} step={1} value={minEnergy} onChange={event => setMinEnergy(event.target.value)} placeholder="min"
-          className="w-9 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200" />
+          className="w-9 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]" />
         <span>–</span>
         <input aria-label="Maximum Energy Level" type="number" min={1} max={10} step={1} value={maxEnergy} onChange={event => setMaxEnergy(event.target.value)} placeholder="max"
-          className="w-9 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200" />
+          className="w-9 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]" />
       </label>
       <label className="inline-flex items-center gap-1" title="Only include candidates with a registered ready stem set">
         <input aria-label="Stems available only" type="checkbox" checked={stemsOnly} onChange={event => setStemsOnly(event.target.checked)} />
@@ -612,15 +612,15 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         <span>Playlists</span>
         <select aria-label="Mix Next playlists (any selected)" multiple size={3} value={playlistIds}
           onChange={event => setPlaylistIds(Array.from(event.currentTarget.selectedOptions, option => option.value))}
-          className="max-w-36 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200">
+          className="max-w-36 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]">
           {libraryPlaylists.map(playlist => <option key={playlist.id} value={playlist.id}>{playlist.name}</option>)}
         </select>
-        {playlistIds.length > 0 && <button type="button" onClick={() => setPlaylistIds([])} className="rounded border border-neutral-700 px-1">All</button>}
+        {playlistIds.length > 0 && <button type="button" onClick={() => setPlaylistIds([])} className="rounded border border-[var(--dj-border-light)] px-1">All</button>}
       </label>
       <label className="inline-flex items-center gap-1" title="Exact normalized genre membership; candidates without this genre are excluded">
         <span>Genre</span>
         <select aria-label="Mix Next genre" value={genre} onChange={event => setGenre(event.target.value)}
-          className="max-w-28 rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200">
+          className="max-w-28 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]">
           <option value="">All genres</option>
           {genreOptions.map(option => <option key={option} value={option}>{option}</option>)}
         </select>
@@ -628,37 +628,37 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       <label className="inline-flex items-center gap-1" title="Exclude tracks with a completed play in this period. Skips and listening events do not update completed-play history.">
         <span>Exclude tracks completed in the last</span>
         <select aria-label="Exclude tracks completed in the last" value={notRecentlyPlayedHours} onChange={event => setNotRecentlyPlayedHours(event.target.value)}
-          className="rounded border border-neutral-700 bg-neutral-950 px-1 text-neutral-200">
+          className="rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]">
           <option value="">Off</option>
           {[1, 3, 6, 12, 24, 48, 72, 168].map(hours => <option key={hours} value={hours}>{hours}</option>)}
         </select>
         <span>hours</span>
       </label>
-      {!filtersValid && <span role="status" className="text-amber-400">Check ranges: BPM 60–190; Energy Level 1–10; minimum must not exceed maximum.</span>}
+      {!filtersValid && <span role="status" className="text-[var(--dj-warning)]">Check ranges: BPM 60–190; Energy Level 1–10; minimum must not exceed maximum.</span>}
       {features.cueSuggestions.slice(0, 3).map((cue, index) => {
         const accepted = hotCues.some(hotCue => Math.abs(hotCue.position - cue.position) < .01);
         return <button key={`${cue.kind}-${index}`} disabled={!deck || accepted} onClick={() => acceptCue(cue.position, cue.kind)} title={cue.rationale}
-          className="rounded border border-cyan-500/30 px-1 text-cyan-300 disabled:border-neutral-700 disabled:text-neutral-600">
+          className="rounded border border-[color-mix(in_srgb,var(--dj-info)_30%,transparent)] px-1 text-[var(--dj-info)] disabled:border-[var(--dj-border-light)] disabled:text-[var(--dj-text-secondary)]">
           {accepted ? `${cue.kind} added` : `Add ${cue.kind}`}
         </button>;
       })}
     </div>
-    {top && <details className="mt-1 text-neutral-500">
+    {top && <details className="mt-1 text-[var(--dj-text-secondary)]">
       <summary className="cursor-pointer text-violet-300">Recommended next: {top.title} — {top.artist} ({Math.round(top.score * 100)}%)</summary>
-      <div className="mt-2 flex items-center gap-2 text-neutral-300">
+      <div className="mt-2 flex items-center gap-2 text-[var(--dj-text-secondary)]">
         <button type="button" disabled={!acceptanceAllowed || acceptanceBusy || !!previewRef.current}
           onClick={() => void acceptCandidate()}
           title={acceptanceBusy ? 'Candidate load is in progress.' : !acceptanceAllowed ? acceptanceReason : 'Load this candidate onto the empty, off-air opposite deck. It will remain stopped.'}
-          className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50">
+          className="rounded border border-[color-mix(in_srgb,var(--dj-key-active)_40%,transparent)] px-2 py-1 text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50">
           {acceptanceBusy ? 'Loading candidate…' : `Load to Deck ${previewDeckID}`}
         </button>
         {previewRef.current ? <button type="button" onClick={() => finishPreview(previewRef.current!.token, 'Test Mix stopped; both original decks remain unchanged.')}
-          className="rounded border border-amber-500/40 px-2 py-1 text-amber-200">Stop Test Mix</button>
+          className="rounded border border-[color-mix(in_srgb,var(--dj-warning)_40%,transparent)] px-2 py-1 text-amber-200">Stop Test Mix</button>
           : <button type="button" disabled={!previewAllowed || !!previewRef.current} onClick={() => void testCandidate()}
             title={previewRef.current ? 'Another Test Mix preview is active.' : !previewAllowed ? previewReason : 'Detached headphone copies audition both cue regions; browser-coordinated start is not sample-accurate, and both live deck states remain untouched.'}
-            className="rounded border border-violet-500/40 px-2 py-1 text-violet-200 disabled:cursor-not-allowed disabled:opacity-50">Test Mix in headphones</button>}
+            className="rounded border border-[color-mix(in_srgb,var(--dj-deck-b)_40%,transparent)] px-2 py-1 text-violet-200 disabled:cursor-not-allowed disabled:opacity-50">Test Mix in headphones</button>}
         <span role="status" title="This checks only reviewed downbeat evidence. Current HTML-media sources cannot share a scheduled start, and phrase length is not part of the grid metadata."
-          className="text-neutral-500">{phaseEvidenceStatus}</span>
+          className="text-[var(--dj-text-secondary)]">{phaseEvidenceStatus}</span>
         {acceptanceMessage && <span role="status">{acceptanceMessage}</span>}
         {previewMessage && <span role="status">{previewMessage}</span>}
       </div>
@@ -670,7 +670,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       </ul>
     </details>}
     <DJSavedMixIdeas currentIdea={currentMixIdea} />
-    {recommendations && recommendations.candidatesAfterFilters === 0 && <p role="status" className="mt-1 text-neutral-500">
+    {recommendations && recommendations.candidatesAfterFilters === 0 && <p role="status" className="mt-1 text-[var(--dj-text-secondary)]">
       No analyzed candidates match these filters ({recommendations.candidatesBeforeFilters} checked).
     </p>}
   </section>;

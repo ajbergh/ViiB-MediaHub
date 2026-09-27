@@ -30,6 +30,31 @@ func plexFixture(sourceID, libraryID, machineID, ratingKey, title string, update
 	}
 }
 
+func TestPlexSyncInvalidatesWaveformWhenMediaChanges(t *testing.T) {
+	database := openPlexTestDB(t)
+	defer database.Close()
+	const sourceID, libraryID, machineID = "plexsrc_test", "2", "machine-test"
+	if err := database.SavePlexSource(PlexSource{ID: sourceID, MachineIdentifier: machineID, BaseURL: "http://127.0.0.1:32400", Name: "Plex", LibraryID: libraryID, Active: true, Available: true}); err != nil {
+		t.Fatal(err)
+	}
+	track := plexFixture(sourceID, libraryID, machineID, "1", "First", 100)
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveDJWaveform(track.SongID, &DJWaveform{Duration: 1, SampleRate: 22050, Resolution: 256, Peaks: []float64{0.5}}); err != nil {
+		t.Fatal(err)
+	}
+	track.MediaKey = "/library/parts/1/replacement.flac"
+	track.UpdatedAt++
+	if _, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	cached, err := database.GetDJWaveform(track.SongID)
+	if err != nil || cached != nil {
+		t.Fatalf("waveform after media replacement = %#v, err %v; want no cache", cached, err)
+	}
+}
+
 func TestPlexSyncAddUpdateRemoveAndOfflineRetention(t *testing.T) {
 	database := openPlexTestDB(t)
 	defer database.Close()

@@ -338,6 +338,37 @@ function correlate(a: number[], b: number[]): number {
   return denominator > 0 ? numerator / denominator : 0;
 }
 
+const NOTE_INDEX: Record<string, number> = {
+  C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5, 'F#': 6, Gb: 6,
+  G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11,
+};
+
+/**
+ * Normalize a stored deck key ("Am", "C#m", "A minor", "F# major", "8A")
+ * into a display label plus its Camelot code, resolving enharmonics.
+ * Returns null for empty or unrecognized input.
+ */
+export function describeKey(raw: string | null | undefined): { label: string; camelot: string | null } | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  const camelotOnly = value.match(/^(1[0-2]|[1-9])\s*([AB])$/i);
+  if (camelotOnly) return { label: `${camelotOnly[1]}${camelotOnly[2].toUpperCase()}`, camelot: `${camelotOnly[1]}${camelotOnly[2].toUpperCase()}` };
+  const match = value.match(/^([A-Ga-g])([#♯b♭]?)\s*(m|min|minor|maj|major)?$/);
+  if (!match) return { label: value, camelot: null };
+  const accidental = match[2] === '♯' ? '#' : match[2] === '♭' ? 'b' : match[2];
+  const tonic = match[1].toUpperCase() + accidental;
+  const quality = match[3]?.toLowerCase() ?? '';
+  const minor = quality === 'm' || quality === 'min' || quality === 'minor';
+  const index = NOTE_INDEX[tonic];
+  const label = `${tonic} ${minor ? 'minor' : 'major'}`;
+  if (index === undefined) return { label, camelot: null };
+  for (const [name, code] of Object.entries(CAMELOT_WHEEL)) {
+    const [entryTonic, entryMode] = name.split(' ');
+    if (NOTE_INDEX[entryTonic] === index && (entryMode === 'minor') === minor) return { label, camelot: code };
+  }
+  return { label, camelot: null };
+}
+
 /**
  * Check if two keys are harmonically compatible
  * Returns compatibility score (0-1)
