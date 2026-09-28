@@ -204,6 +204,12 @@ pushd "$WAILS_DIR" > /dev/null
 
 export CGO_ENABLED=1
 
+# Wails packages into an existing .app directory without removing old files.
+# Clear bundles from this and any interrupted universal build first.
+rm -rf build/bin/ViiB-MediaHub.app \
+    build/bin/ViiB-MediaHub-amd64.app \
+    build/bin/ViiB-MediaHub-arm64.app
+
 # Universal builds: build amd64 + arm64 then lipo-combine
 if [[ "$ARCH" == "universal" ]]; then
     echo "  Building amd64 slice..."
@@ -234,40 +240,47 @@ fi
 
 popd > /dev/null
 
-# Copy output to /build
+# Replace the published bundle only after Wails produced a new executable.
 BUILD_DIR="$PROJECT_ROOT/build"
+SOURCE_APP="$WAILS_DIR/build/bin/ViiB-MediaHub.app"
+SOURCE_BIN="$SOURCE_APP/Contents/MacOS/ViiB-MediaHub"
+OUTPUT_APP="$BUILD_DIR/ViiB-MediaHub.app"
+OUTPUT_BIN="$OUTPUT_APP/Contents/MacOS/ViiB-MediaHub"
+
+if [[ ! -f "$SOURCE_BIN" ]]; then
+    echo "❌ Wails output not found: $SOURCE_BIN"
+    exit 1
+fi
+
 mkdir -p "$BUILD_DIR"
-cp -R "$WAILS_DIR/build/bin/ViiB-MediaHub.app" "$BUILD_DIR/ViiB-MediaHub.app"
-echo "  ✓ Copied to $BUILD_DIR/ViiB-MediaHub.app"
+rm -rf "$OUTPUT_APP"
+cp -R "$SOURCE_APP" "$OUTPUT_APP"
+
+if [[ ! -f "$OUTPUT_BIN" ]] || ! cmp -s "$SOURCE_BIN" "$OUTPUT_BIN"; then
+    echo "❌ Copied app executable does not match the Wails build: $OUTPUT_BIN"
+    exit 1
+fi
+echo "  ✓ Copied to $OUTPUT_APP"
 
 # ============================================================================
 # Report Results
 # ============================================================================
-
-OUTPUT_APP="$BUILD_DIR/ViiB-MediaHub.app"
-OUTPUT_BIN="$OUTPUT_APP/Contents/MacOS/ViiB-MediaHub"
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo "  ✅ BUILD COMPLETE"
 echo "═══════════════════════════════════════════════════════════"
 
-if [[ -f "$OUTPUT_BIN" ]]; then
-    SIZE_MB=$(du -sm "$OUTPUT_APP" | cut -f1)
-    ARCHS=$(lipo -archs "$OUTPUT_BIN" 2>/dev/null || echo "unknown")
-    echo ""
-    echo "  Output:  $OUTPUT_APP"
-    echo "  Size:    ~${SIZE_MB} MB"
-    echo "  Archs:   $ARCHS"
-    echo "  Mode:    $([ "$DEBUG" == "true" ] && echo 'Debug' || echo 'Release')"
-    echo ""
-    echo "  To run:"
-    echo "    open $OUTPUT_APP"
-    echo "    $OUTPUT_BIN -debug    # With dev tools"
-else
-    echo ""
-    echo "  ⚠ Output not found at expected location"
-    echo "    Expected: $OUTPUT_APP"
-fi
+SIZE_MB=$(du -sm "$OUTPUT_APP" | cut -f1)
+ARCHS=$(lipo -archs "$OUTPUT_BIN" 2>/dev/null || echo "unknown")
+echo ""
+echo "  Output:  $OUTPUT_APP"
+echo "  Size:    ~${SIZE_MB} MB"
+echo "  Archs:   $ARCHS"
+echo "  Mode:    $([ "$DEBUG" == "true" ] && echo 'Debug' || echo 'Release')"
+echo ""
+echo "  To run:"
+echo "    open $OUTPUT_APP"
+echo "    $OUTPUT_BIN -debug    # With dev tools"
 
 echo ""
