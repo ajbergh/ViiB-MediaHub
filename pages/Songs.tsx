@@ -15,9 +15,9 @@
  * @module Songs
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { Play, Clock, MoreHorizontal, Search, ChevronDown, ArrowUpDown, FolderPlus, Info } from 'lucide-react';
+import { Play, Clock, MoreHorizontal, Search, ChevronDown, ArrowUpDown, FolderPlus, Info, Columns3 } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
@@ -29,6 +29,12 @@ import { TextInput } from '../components/ui/TextInput';
 import { Button } from '../components/ui/Button';
 import { Menu, MenuItem } from '../components/ui/Menu';
 import { ListHeader } from '../components/ui/Page';
+import { SongColumnMenu } from '../components/SongColumnMenu';
+import { SONG_COLUMNS, SongColumnId, SONG_COLUMNS_STORAGE_KEY, loadSongColumns, songColumnValue } from '../lib/songColumns';
+import { api } from '../services/api';
+import { TrackAnalysisFeature } from '../services/trackAnalysisContracts';
+
+const songGridClass = 'grid grid-cols-[36px_minmax(0,1fr)_52px_36px] md:grid-cols-[var(--song-columns)] gap-2 md:gap-4';
 
 type SongSortOption = 'recent' | 'title-asc' | 'title-desc' | 'artist-asc' | 'artist-desc' | 'album-asc' | 'album-desc' | 'duration-asc' | 'duration-desc' | 'plays-desc';
 
@@ -51,6 +57,8 @@ interface SongsContext {
     setFilter: (val: string) => void;
     sortBy: SongSortOption;
     setSortBy: (val: SongSortOption) => void;
+    columns: SongColumnId[];
+    setColumns: (columns: SongColumnId[]) => void;
     showSortMenu: boolean;
     setShowSortMenu: (val: boolean) => void;
 }
@@ -58,7 +66,9 @@ interface SongsContext {
 // Define Header outside to maintain stability
 const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
     // Safety check for context
-    const { filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu } = context || { 
+    const { filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu, columns, setColumns } = context || {
+        columns: loadSongColumns(),
+        setColumns: () => {},
         filter: '', 
         setFilter: () => {}, 
         sortBy: 'recent' as SongSortOption, 
@@ -67,11 +77,22 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
         setShowSortMenu: () => {}
     };
 
+    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+    const returnFocus = useRef<HTMLElement | null>(null);
+    const closeColumns = useCallback(() => { setMenuPosition(null); returnFocus.current?.focus({ preventScroll: true }); }, []);
+    const openColumns = (event: React.MouseEvent<HTMLElement>) => {
+      event.preventDefault(); event.stopPropagation();
+      returnFocus.current = event.currentTarget;
+      setShowSortMenu(false);
+      const rect = event.currentTarget.getBoundingClientRect();
+      setMenuPosition(event.type === 'contextmenu' ? { x: event.clientX, y: event.clientY } : { x: rect.left, y: rect.bottom + 4 });
+    };
     return (
       <ListHeader>
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
           <h1 className="text-display">All Songs</h1>
                 <div className="flex items-center gap-3 w-full md:w-auto">
+                    <Button variant="secondary" aria-label="Choose track columns" title="Choose columns (or right-click the header)" aria-haspopup="menu" aria-expanded={menuPosition !== null} onClick={openColumns} className="rounded-full" leftIcon={<Columns3 size={16} />}>Columns</Button>
                     {/* Sort Dropdown */}
                     <div className="relative">
               <Button
@@ -128,16 +149,18 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
                 </div>
             </div>
 
-            {/* Table Header */}
-            <div className="bg-surface-1 rounded-t-lg sticky top-0 z-10 border-b border-surface-3 grid grid-cols-[44px_1fr_52px_36px] md:grid-cols-[50px_4fr_3fr_3fr_60px_60px_50px] gap-2 md:gap-4 px-4 py-3 text-text-secondary text-xs uppercase tracking-wider font-medium shadow-md">
+            {/* Header and rows share the same column order and widths. */}
+            <div tabIndex={0} aria-label="Track column header" onContextMenu={openColumns}
+              onKeyDown={event => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); returnFocus.current = event.currentTarget; const rect = event.currentTarget.getBoundingClientRect(); setMenuPosition({ x: rect.left, y: rect.bottom }); } }}
+              className={`${songGridClass} bg-surface-1 rounded-t-lg sticky top-0 z-10 border-b border-surface-3 px-4 py-3 text-text-secondary text-xs uppercase tracking-wider font-medium shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand`}>
                 <div className="text-center">#</div>
                 <div>Title</div>
-                <div className="hidden md:block">Album</div>
-                <div className="hidden md:block">Artist</div>
-                <div className="hidden md:flex justify-center">Plays</div>
-                <div className="flex justify-end pr-2"><Clock size={16} /></div>
-                <div></div>
+                {SONG_COLUMNS.filter(column => columns.includes(column.id)).map(column => <div key={column.id} data-column={column.id} className="hidden md:block truncate">{column.label}</div>)}
+                <div className="md:hidden flex justify-end"><Clock size={16} aria-label="Duration" /></div>
+                <div className="hidden md:block" />
+                <div />
             </div>
+            {menuPosition && <SongColumnMenu position={menuPosition} columns={columns} onChange={setColumns} onClose={closeColumns} />}
           </ListHeader>
     );
 };
@@ -153,12 +176,40 @@ export const Songs: React.FC = () => {
   const [filter, setFilter] = useState('');
   const [sortBy, setSortBy] = useState<SongSortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [columns, setColumns] = useState<SongColumnId[]>(loadSongColumns);
+  const [analysis, setAnalysis] = useState<Record<string, TrackAnalysisFeature>>({});
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     // Find the main scroll container from Layout
     setScrollParent(document.querySelector('main'));
   }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem(SONG_COLUMNS_STORAGE_KEY, JSON.stringify(columns)); } catch { /* Keep the active layout when storage is unavailable. */ }
+  }, [columns]);
+  const needsAnalysis = columns.some(id => ['bpm', 'key', 'camelot', 'energy'].includes(id));
+  useEffect(() => {
+    if (!needsAnalysis) return;
+    let active = true;
+    let generation = 0;
+    const refresh = async () => {
+      const current = ++generation;
+      try {
+        const features = await api.getTrackAnalysisFeatures();
+        if (active && current === generation) setAnalysis(Object.fromEntries(features.map(feature => [feature.songId, feature])));
+      } catch { if (active && current === generation) setAnalysis({}); }
+    };
+    void refresh();
+    window.addEventListener('library_updated', refresh);
+    window.addEventListener('enrichment_complete', refresh);
+    return () => { active = false; window.removeEventListener('library_updated', refresh); window.removeEventListener('enrichment_complete', refresh); };
+  }, [needsAnalysis, songs]);
+  const visibleColumns = SONG_COLUMNS.filter(column => columns.includes(column.id));
+  const gridStyle = {
+    '--song-columns': ['36px', 'minmax(220px, 4fr)', ...visibleColumns.map(column => column.width), '64px', '40px'].join(' '),
+    '--song-min-width': `${36 + 220 + 64 + 40 + visibleColumns.reduce((sum, column) => sum + column.minWidth, 0) + (visibleColumns.length + 3) * 16 + 96}px`,
+  } as React.CSSProperties;
 
   const sortedAndFilteredSongs = useMemo(() => {
     // First filter
@@ -202,21 +253,22 @@ export const Songs: React.FC = () => {
   }), []);
 
   return (
-    <div className="h-full animate-fade-in">
+    <div className="h-full animate-fade-in md:min-w-[var(--song-min-width)]" style={gridStyle}>
         <Virtuoso
             useWindowScroll={false}
             customScrollParent={scrollParent}
             data={sortedAndFilteredSongs}
-            context={{ filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu }}
+            context={{ filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu, columns, setColumns }}
             components={components}
             itemContent={(index, song) => {
                const isCurrent = currentSong?.id === song.id;
                const displayCover = song.coverUrl || albumCovers[song.album];
                
                return (
-                <div className="bg-surface-1 px-2 sm:px-4 md:px-8"> {/* Wrapper to match page padding visually for bg */}
+                <div className="bg-surface-1 px-4 sm:px-6 lg:px-8"> {/* Wrapper to match page padding visually for bg */}
                     <div 
-                        className={`grid grid-cols-[44px_1fr_52px_36px] md:grid-cols-[50px_4fr_3fr_3fr_60px_60px_40px_50px] gap-2 md:gap-4 px-4 py-3 items-center hover:bg-surface-hover group transition-colors cursor-pointer border-b border-transparent hover:border-surface-highlight ${isCurrent ? 'bg-surface-hover' : 'bg-surface-1'}`}
+                        className={`${songGridClass} px-4 py-3 items-center hover:bg-surface-hover group transition-colors cursor-pointer border-b border-transparent hover:border-surface-highlight ${isCurrent ? 'bg-surface-hover' : 'bg-surface-1'}`}
+                        data-song-id={song.id}
                         onClick={() => playSong(song, sortedAndFilteredSongs)}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                     >
@@ -235,12 +287,12 @@ export const Songs: React.FC = () => {
                             <div className="flex flex-col truncate">
                               <div className="flex items-center gap-1.5 truncate">
                                 <span className={`font-medium truncate ${isCurrent ? 'text-accent-green' : 'text-text-main'}`}>{song.title}</span>
-                                {song.bpm && (
+                                {!columns.includes('bpm') && song.bpm && (
                                   <span className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-accent-pink/15 text-accent-pink ring-1 ring-accent-pink/30 flex-shrink-0">
                                     {song.bpm} BPM
                                   </span>
                                 )}
-                                {song.originalYear && (
+                                {!columns.includes('year') && song.originalYear && (
                                   <span className="hidden xl:inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-medium bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30 flex-shrink-0">
                                     {song.originalYear}
                                   </span>
@@ -249,10 +301,11 @@ export const Songs: React.FC = () => {
                               <span className="md:hidden text-xs text-text-subtle truncate mt-0.5">{song.artist}</span>
                             </div>
                         </div>
-                        <div className="hidden md:block text-text-secondary text-sm truncate">{song.album}</div>
-                        <div className="hidden md:block text-text-secondary text-sm truncate">{song.artist}</div>
-                        <div className="hidden md:block text-text-secondary text-sm font-mono text-center">{song.playCount || 0}</div>
-                        <div className="text-text-secondary text-sm font-mono text-right pr-2">{formatTime(song.duration)}</div>
+                        {visibleColumns.map(column => {
+                          const value = songColumnValue(column.id, song, analysis[song.id]);
+                          return <div key={column.id} data-column={column.id} title={value} className="hidden md:block text-text-secondary text-sm truncate">{value}</div>;
+                        })}
+                        <div className="md:hidden text-text-secondary text-sm font-mono text-right">{formatTime(song.duration)}</div>
                         
                         <div className="hidden md:flex items-center justify-center gap-1">
                             <Button
