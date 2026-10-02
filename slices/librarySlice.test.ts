@@ -67,6 +67,27 @@ describe('library scan polling', () => {
     expect(state.isScanning).toBe(false);
     expect(backendService.getAllSongs).toHaveBeenCalledTimes(3);
   });
+  it('keeps scanning visible until the final catalog response arrives', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(backendService, 'getScanStatus')
+      .mockResolvedValueOnce({ scanning: true, progress: 'Scanning' })
+      .mockResolvedValue({ scanning: false, progress: '' });
+    let finish!: (value: Song[]) => void;
+    vi.spyOn(backendService, 'getAllSongs')
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    vi.spyOn(backendService, 'getFolders').mockResolvedValue([]);
+    const state = createTestLibraryState();
+    await state.pollScanStatus();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(state.songs).toHaveLength(0);
+    expect(state.isScanning).toBe(true);
+    finish(songs(1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state.songs).toHaveLength(1);
+    expect(state.isScanning).toBe(false);
+  });
+
 });
 
 describe('library persistence failures', () => {

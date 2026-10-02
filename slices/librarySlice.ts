@@ -862,8 +862,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                   // Scan complete - reload library
                   console.log('✅ Scan complete detected via polling, resetting UI...');
                   isPollingActive = false;
-                  set({ isScanning: false, scanProgress: '' });
-                  
+                  // Keep the loading state until the final catalog is available.
                   // Refresh songs from backend
                   const [loadedSongs, folders] = await Promise.all([
                       backendService.getAllSongs(),
@@ -871,7 +870,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                   ]);
                   const songs = libraryIndex.initialize(loadedSongs);
                   const mixes = generateSmartMixes(songs);
-                  set({ songs, smartMixes: mixes, scanFolders: folders });
+                  set({ songs, smartMixes: mixes, scanFolders: folders, isScanning: false, scanProgress: '' });
                   console.log('✅ Library refreshed after scan completion');
               }
           } catch (e) {

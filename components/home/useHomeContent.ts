@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useAlbums, useArtists, useStore } from '../../store';
+import { splitArtistNames } from '../../lib/artistNames';
 import { Album, Artist, ContextMenuType, SmartMix, Song } from '../../types';
 
 export type SpotlightKind = 'album' | 'artist' | 'smartMix';
@@ -69,14 +70,12 @@ const sortSongsForAlbum = (songs: Song[]) =>
 
 export const useHomeContent = (): HomeContent => {
   const navigate = useNavigate();
-  const {
-    songs,
-    smartMixes,
-    playSong,
-    openContextMenu,
-    showSmartMixes,
-    artistMetadata,
-  } = useStore();
+  const songs = useStore(state => state.songs);
+  const smartMixes = useStore(state => state.smartMixes);
+  const playSong = useStore(state => state.playSong);
+  const openContextMenu = useStore(state => state.openContextMenu);
+  const showSmartMixes = useStore(state => state.showSmartMixes);
+  const artistMetadata = useStore(state => state.artistMetadata);
   const albums = useAlbums();
   const artists = useArtists();
 
@@ -136,14 +135,21 @@ export const useHomeContent = (): HomeContent => {
   const topArtistsByLibrary = useMemo(() => artists.slice(0, 12), [artists]);
 
   const topArtistsByPlays = useMemo(() => {
+    const playsByArtist = new Map<string, number>();
+    const namesByCredit = new Map<string, Set<string>>();
+    for (const song of songs) {
+      const credit = song.artist;
+      let names = namesByCredit.get(credit);
+      if (!names) {
+        names = new Set(splitArtistNames(credit).map(name => name.toLowerCase()));
+        namesByCredit.set(credit, names);
+      }
+      for (const name of names) {
+        playsByArtist.set(name, (playsByArtist.get(name) || 0) + (song.playCount || 0));
+      }
+    }
     const ranked = artists
-      .map((artist) => {
-        const artistName = artist.name.toLowerCase();
-        const plays = songs.reduce((total, song) => {
-          return song.artist.toLowerCase().includes(artistName) ? total + (song.playCount || 0) : total;
-        }, 0);
-        return { artist, plays };
-      })
+      .map(artist => ({ artist, plays: playsByArtist.get(artist.name.toLowerCase()) || 0 }))
       .filter((entry) => entry.plays > 0)
       .sort((a, b) => b.plays - a.plays)
       .map((entry) => entry.artist);
