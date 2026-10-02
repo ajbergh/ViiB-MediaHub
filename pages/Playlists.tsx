@@ -12,17 +12,25 @@
  * @module Playlists
  */
 
-import React, { useRef, useState } from 'react';
-import { useStore } from '../store';
-import { Download, FileUp, ListMusic, Plus } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { useAlbumCovers, useStore } from '../store';
+import { Download, FileUp, Plus } from 'lucide-react';
 import { ContextMenuType } from '../types';
 import { EmptyPlaylists } from '../components/EmptyState';
 import { Page, PageHeader } from '../components/ui/Page';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 import { api } from '../services/api';
+import { PlaylistArtwork } from '../components/PlaylistArtwork';
+import { getPlaylistArtwork } from '../lib/playlistArtwork';
 
 export const Playlists: React.FC = () => {
   const { playlists, createPlaylist, openContextMenu, refreshLibrary, showToast } = useStore();
+  const songs = useStore(state => state.songs);
+  const albumCovers = useAlbumCovers();
+  const songsById = useMemo(() => new Map(songs.map(song => [song.id, song])), [songs]);
+  const thumbnails = useMemo(() => new Map(playlists.map(playlist => [
+    playlist.id, getPlaylistArtwork(playlist.songIds, songsById, albumCovers),
+  ])), [playlists, songsById, albumCovers]);
   const [showInput, setShowInput] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('playlists-card-cols') ?? 5));
@@ -117,9 +125,12 @@ export const Playlists: React.FC = () => {
                     className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer"
                     onContextMenu={(e) => openContextMenu(e, ContextMenuType.PLAYLIST, pl)}
                 >
-                    <div className="w-full aspect-square bg-surface-1 rounded-md mb-4 flex items-center justify-center shadow-lg relative overflow-hidden">
-                        <ListMusic size={40} className="text-surface-border" />
-                    </div>
+                    <PlaylistArtwork
+                      name={pl.name}
+                      coverUrl={pl.coverUrl}
+                      covers={thumbnails.get(pl.id) || []}
+                      className="mb-4"
+                    />
                     <h4 className="font-bold truncate text-text-main mb-1">{pl.name}</h4>
                     <p className="text-sm text-text-secondary">{pl.songIds.length} songs</p>
                     <button
