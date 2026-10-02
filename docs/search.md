@@ -43,7 +43,7 @@ For Plex tracks, playback still uses the normal ViiB song result; the frontend d
 Matches album name, album artist, or track artist. Clicking an album opens [Album Detail](albums.md).
 
 ### Artists
-Matches artist name. Clicking an artist opens [Artist Detail](artists.md).
+Matches any part of a track artist or album artist name. For example, `Pumpkins` finds `The Smashing Pumpkins`. Clicking an artist opens [Artist Detail](artists.md).
 
 ### Playlists
 Matches playlist name. Search results expose playlist matches, but the current router does not provide a separate playlist-detail route; use the Playlists page for playlist actions.
@@ -53,7 +53,7 @@ Matches playlist name. Search results expose playlist matches, but the current r
 ## Search Tips
 
 - Search is case-insensitive.
-- Backend mode uses prefix-oriented indexing to keep large-library queries efficient; enter additional leading characters to narrow broad results.
+- Backend mode uses prefix-oriented indexing for titles and album names. Artist names match any part of the name; matches at the beginning rank first. Search does not correct spelling mistakes.
 - Plex tracks become searchable after a successful Plex library synchronization.
 - A temporarily offline Plex server does not remove cached Plex tracks from search. Those tracks remain cataloged, while playback can report source unavailability until PMS reconnects.
 - Spotify's remote catalog is not folded into ViiB's indexed catalog search; use [Spotify](spotify.md) for Spotify catalog discovery.

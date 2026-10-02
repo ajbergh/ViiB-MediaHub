@@ -12,17 +12,28 @@
  * @module Playlists
  */
 
-import React, { useRef, useState } from 'react';
-import { useStore } from '../store';
-import { Download, FileUp, ListMusic, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import React, { useMemo, useRef, useState } from 'react';
+import { useAlbumCovers, useStore } from '../store';
+import { Download, FileUp, Plus } from 'lucide-react';
 import { ContextMenuType } from '../types';
 import { EmptyPlaylists } from '../components/EmptyState';
 import { Page, PageHeader } from '../components/ui/Page';
-import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
+import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { api } from '../services/api';
+import { PlaylistArtwork } from '../components/PlaylistArtwork';
+import { getPlaylistArtwork } from '../lib/playlistArtwork';
 
 export const Playlists: React.FC = () => {
+  const navigate = useNavigate();
   const { playlists, createPlaylist, openContextMenu, refreshLibrary, showToast } = useStore();
+  const songs = useStore(state => state.songs);
+  const albumCovers = useAlbumCovers();
+  const songsById = useMemo(() => new Map(songs.map(song => [song.id, song])), [songs]);
+  const thumbnails = useMemo(() => new Map(playlists.map(playlist => [
+    playlist.id, getPlaylistArtwork(playlist.songIds, songsById, albumCovers),
+  ])), [playlists, songsById, albumCovers]);
   const [showInput, setShowInput] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('playlists-card-cols') ?? 5));
@@ -46,6 +57,7 @@ export const Playlists: React.FC = () => {
     anchor.click();
     URL.revokeObjectURL(url);
   };
+  const listView = cardCols === MAX_CARD_COLUMNS;
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('playlists-card-cols', String(v)); };
 
   const handleCreate = async () => {
@@ -83,7 +95,7 @@ export const Playlists: React.FC = () => {
           >
             <Plus size={16} /> Create Playlist
           </button>
-          <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
+          <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
           </div>
         }
       />
@@ -107,21 +119,34 @@ export const Playlists: React.FC = () => {
       {playlists.length === 0 ? (
         <EmptyPlaylists onCreate={() => setShowInput(true)} />
       ) : (
+        <div>
+        {listView && <LibraryListHeader title="Playlist" stats="Tracks" />}
         <div
-          className="grid gap-6"
-          style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}
+          className={listView ? 'grid gap-0' : 'grid gap-6'}
+          style={{ gridTemplateColumns: `repeat(${listView ? 1 : cardCols}, minmax(0, 1fr))` }}
         >
-            {playlists.map((pl) => (
+            {playlists.map((pl, index) => listView ? (
+                <LibraryListRow key={pl.id} index={index} name={pl.name}
+                  artwork={<PlaylistArtwork name={pl.name} coverUrl={pl.coverUrl} covers={thumbnails.get(pl.id) || []} />}
+                  stats={String(pl.songIds.length)} onOpen={() => navigate(`/playlist/${encodeURIComponent(pl.id)}`)}
+                  onContextMenu={e => openContextMenu(e, ContextMenuType.PLAYLIST, pl)}
+                  actions={<button type="button" aria-label={`Export ${pl.name} as M3U`} className="p-2 text-text-secondary hover:text-brand" onClick={event => { event.stopPropagation(); void handleExport(pl.id, pl.name); }}><Download size={16} /></button>} />
+            ) : (
                 <div 
                     key={pl.id} 
                     className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer"
                     onContextMenu={(e) => openContextMenu(e, ContextMenuType.PLAYLIST, pl)}
                 >
-                    <div className="w-full aspect-square bg-surface-1 rounded-md mb-4 flex items-center justify-center shadow-lg relative overflow-hidden">
-                        <ListMusic size={40} className="text-surface-border" />
-                    </div>
+                    <button type="button" className="w-full text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand" aria-label={`Open playlist ${pl.name}`} onClick={() => navigate(`/playlist/${encodeURIComponent(pl.id)}`)}>
+                    <PlaylistArtwork
+                      name={pl.name}
+                      coverUrl={pl.coverUrl}
+                      covers={thumbnails.get(pl.id) || []}
+                      className="mb-4"
+                    />
                     <h4 className="font-bold truncate text-text-main mb-1">{pl.name}</h4>
                     <p className="text-sm text-text-secondary">{pl.songIds.length} songs</p>
+                    </button>
                     <button
                       type="button"
                       className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-text-secondary hover:text-brand"
@@ -131,6 +156,7 @@ export const Playlists: React.FC = () => {
                     </button>
                 </div>
             ))}
+        </div>
         </div>
       )}
     </Page>

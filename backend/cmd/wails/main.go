@@ -32,8 +32,8 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"embed"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -103,9 +103,12 @@ func (a *App) startup(ctx context.Context) {
 	if a.quitChan != nil {
 		// Start listening for quit signals on platforms with an external tray.
 		go func() {
-			<-a.quitChan
-			logger.Main("Quit signal received from system tray")
-			runtime.Quit(a.ctx)
+			select {
+			case <-a.quitChan:
+				logger.Main("Quit signal received from system tray")
+				runtime.Quit(ctx)
+			case <-ctx.Done():
+			}
 		}()
 	}
 }
@@ -334,7 +337,7 @@ func main() {
 		BackgroundColour:  &options.RGBA{R: 18, G: 18, B: 18, A: 255}, // Match app background (#121212)
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId:               "viib-mediahub-unique-lock",
-			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {},
+			OnSecondInstanceLaunch: func(data options.SecondInstanceData) { app.ShowWindow() },
 		},
 		AssetServer: &assetserver.Options{
 			Assets:  distFS,

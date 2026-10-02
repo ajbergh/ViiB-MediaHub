@@ -7,9 +7,10 @@
  * @module Home
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router';
 import { EmptyLibrary } from '../components/EmptyState';
+import { SkeletonAlbumGrid } from '../components/Skeleton';
 import { HomeSearchBar } from '../components/home/HomeSearchBar';
 import { HomeCoverWallLayout } from '../components/home/layouts/HomeCoverWallLayout';
 import { HomeDashboardLayout } from '../components/home/layouts/HomeDashboardLayout';
@@ -20,14 +21,10 @@ import { useStore } from '../store';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
-  const { homeLayoutVariant, refreshSmartMixes } = useStore();
+  const homeLayoutVariant = useStore(state => state.homeLayoutVariant);
+  const isLibraryInitializing = useStore(state => state.isLibraryInitializing);
+  const isScanning = useStore(state => state.isScanning);
   const content = useHomeContent();
-
-  useEffect(() => {
-    if (content.songs.length > 0) {
-      refreshSmartMixes();
-    }
-  }, [content.songs.length, refreshSmartMixes]);
 
   if (content.songs.length === 0) {
     return (
@@ -41,7 +38,14 @@ export const Home: React.FC = () => {
             <HomeSearchBar />
           </div>
         </header>
-        <EmptyLibrary onOpenSettings={() => navigate('/settings')} />
+        {isLibraryInitializing || isScanning ? (
+          <section aria-busy="true" aria-label="Loading library">
+            <p role="status" className="mb-6 text-text-secondary">Loading library…</p>
+            <div aria-hidden="true"><SkeletonAlbumGrid count={10} /></div>
+          </section>
+        ) : (
+          <EmptyLibrary onOpenSettings={() => navigate('/settings')} />
+        )}
       </Page>
     );
   }

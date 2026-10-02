@@ -67,6 +67,27 @@ describe('library scan polling', () => {
     expect(state.isScanning).toBe(false);
     expect(backendService.getAllSongs).toHaveBeenCalledTimes(3);
   });
+  it('keeps scanning visible until the final catalog response arrives', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(backendService, 'getScanStatus')
+      .mockResolvedValueOnce({ scanning: true, progress: 'Scanning' })
+      .mockResolvedValue({ scanning: false, progress: '' });
+    let finish!: (value: Song[]) => void;
+    vi.spyOn(backendService, 'getAllSongs')
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    vi.spyOn(backendService, 'getFolders').mockResolvedValue([]);
+    const state = createTestLibraryState();
+    await state.pollScanStatus();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(state.songs).toHaveLength(0);
+    expect(state.isScanning).toBe(true);
+    finish(songs(1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state.songs).toHaveLength(1);
+    expect(state.isScanning).toBe(false);
+  });
+
 });
 
 describe('library persistence failures', () => {
@@ -97,4 +118,43 @@ describe('library persistence failures', () => {
   await expect(state.saveSmartMixAsPlaylist('mix')).rejects.toThrow('server unavailable');
   expect(local).not.toHaveBeenCalled();
  });
+});
+
+
+describe('playlist content editing', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it.each([true, false])('persists ordered occurrences and artwork before committing (backend=%s)', async backendAvailable => {
+    const state = createTestLibraryState() as any;
+    const original = { id: 'playlist', name: 'Mix', songIds: ['a', 'a', 'b'], coverUrl: '/cover.jpg', createdAt: 1 };
+    Object.assign(state, { backendAvailable, playlists: [original] });
+    let finish!: () => void;
+    const write = backendAvailable ? vi.spyOn(backendService, 'updatePlaylist') : vi.spyOn(libraryService, 'savePlaylist');
+    write.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const ids = ['b', 'a', 'a'];
+    const pending = state.updatePlaylistContents('playlist', ids, original.songIds);
+    expect(state.playlists[0]).toBe(original);
+    expect(write).toHaveBeenCalledWith({ ...original, songIds: ids });
+    finish(); await pending;
+    expect(state.playlists[0].songIds).toEqual(ids);
+    ids.push('c');
+    expect(state.playlists[0].songIds).toEqual(['b', 'a', 'a']);
+    expect(state.playlists[0].coverUrl).toBe('/cover.jpg');
+  });
+  it.each([true, false])('retains saved contents after a write failure (backend=%s)', async backendAvailable => {
+    const state = createTestLibraryState() as any;
+    const original = { id: 'playlist', name: 'Mix', songIds: ['a', 'a', 'b'], createdAt: 1 };
+    Object.assign(state, { backendAvailable, playlists: [original] });
+    const write = backendAvailable ? vi.spyOn(backendService, 'updatePlaylist') : vi.spyOn(libraryService, 'savePlaylist');
+    write.mockRejectedValue(new Error('Save failed'));
+    await expect(state.updatePlaylistContents('playlist', ['b'])).rejects.toThrow('Save failed');
+    expect(state.playlists[0]).toBe(original);
+  });
+  it('rejects stale drafts and missing playlists without writing', async () => {
+    const state = createTestLibraryState() as any;
+    state.playlists = [{ id: 'playlist', songIds: ['a', 'new'] }];
+    const write = vi.spyOn(backendService, 'updatePlaylist');
+    await expect(state.updatePlaylistContents('playlist', ['b'], ['a'])).rejects.toThrow('changed while you were editing');
+    await expect(state.updatePlaylistContents('missing', ['b'])).rejects.toThrow('no longer exists');
+    expect(write).not.toHaveBeenCalled();
+  });
 });

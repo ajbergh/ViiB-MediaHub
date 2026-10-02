@@ -34,6 +34,7 @@ function localSearch(query: string, songs: Song[], playlists: ReturnType<typeof 
   const tracks = songs.filter(song =>
     song.title.toLocaleLowerCase().includes(normalized) ||
     song.artist.toLocaleLowerCase().includes(normalized) ||
+    song.albumArtist?.toLocaleLowerCase().includes(normalized) ||
     song.album.toLocaleLowerCase().includes(normalized) ||
     song.genre?.some(genre => genre.toLocaleLowerCase().includes(normalized)),
   ).slice(0, 100);
@@ -48,11 +49,12 @@ function localSearch(query: string, songs: Song[], playlists: ReturnType<typeof 
       if (existing) existing.songCount += 1;
       else albums.set(key, { name: song.album, artist: albumArtist, songCount: 1, coverPath: song.coverUrl });
     }
-    if (song.artist.toLocaleLowerCase().includes(normalized)) {
-      const existing = artists.get(song.artist) || { name: song.artist, songCount: 0, albumNames: new Set<string>() };
+    for (const name of new Set([song.artist, song.albumArtist].filter((name): name is string => Boolean(name)))) {
+      if (!name.toLocaleLowerCase().includes(normalized)) continue;
+      const existing = artists.get(name) || { name, songCount: 0, albumNames: new Set<string>() };
       existing.songCount += 1;
       existing.albumNames.add(song.album);
-      artists.set(song.artist, existing);
+      artists.set(name, existing);
     }
   }
 
@@ -72,11 +74,47 @@ function localSearch(query: string, songs: Song[], playlists: ReturnType<typeof 
   };
 }
 
+const ArtistResultArtwork: React.FC<{ name: string; imageUrl?: string }> = ({ name, imageUrl }) => {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  return (
+    <div className="aspect-square rounded-full overflow-hidden mb-3 flex items-center justify-center" style={{ background: generateGradient(name) }}>
+      {imageUrl && imageUrl !== failedUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          loading="lazy"
+          className="w-full h-full object-cover"
+          onError={() => setFailedUrl(imageUrl)}
+        />
+      ) : (
+        <Music size={36} className="text-white/70" aria-hidden="true" />
+      )}
+    </div>
+  );
+};
+
 export const Search: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const songs = useStore(state => state.songs);
   const playlists = useStore(state => state.playlists);
+  const artistMetadata = useStore(state => state.artistMetadata);
+  const artistImages = useMemo(() => {
+    const images = new Map<string, string>();
+    for (const song of songs) {
+      if (!song.coverUrl) continue;
+      for (const name of [song.artist, song.albumArtist]) {
+        if (!name) continue;
+        const key = name.toLocaleLowerCase();
+        if (!images.has(key)) images.set(key, song.coverUrl);
+      }
+    }
+    // Artist portraits take precedence over album artwork, as on Artists/Home.
+    for (const [name, metadata] of Object.entries(artistMetadata)) {
+      if (metadata.imageUrl) images.set(name.toLocaleLowerCase(), metadata.imageUrl);
+    }
+    return images;
+  }, [songs, artistMetadata]);
   const backendAvailable = useStore(state => state.backendAvailable);
   const playSong = useStore(state => state.playSong);
   const addToQueue = useStore(state => state.addToQueue);
@@ -224,9 +262,7 @@ export const Search: React.FC = () => {
                     onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
                     className="text-left bg-surface-1 hover:bg-surface-2 rounded-lg p-4 transition-colors"
                   >
-                    <div className="aspect-square rounded-full mb-3 flex items-center justify-center" style={{ background: generateGradient(artist.name) }}>
-                      <Music size={36} className="text-white/70" />
-                    </div>
+                    <ArtistResultArtwork name={artist.name} imageUrl={artistImages.get(artist.name.toLocaleLowerCase())} />
                     <div className="font-semibold truncate">{artist.name}</div>
                     <div className="text-sm text-text-secondary">{artist.songCount} tracks · {artist.albumCount} albums</div>
                   </button>

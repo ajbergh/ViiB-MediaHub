@@ -71,7 +71,6 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
                 className="relative"
                 onMouseEnter={() => setPlaylistsSubmenuOpen(true)}
                 onMouseLeave={() => setPlaylistsSubmenuOpen(false)}
-                onFocus={() => setPlaylistsSubmenuOpen(true)}
                 onBlurCapture={(e) => {
                     const next = e.relatedTarget as Node | null;
                     if (!next || !e.currentTarget.contains(next)) {
@@ -90,9 +89,9 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
                     className="group w-full text-left px-4 py-2 text-sm text-text-main hover:bg-surface-1/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-0 flex items-center justify-between transition-colors duration-150 motion-reduce:transition-none"
                     onClick={(e) => {
                         e.stopPropagation();
-                        setPlaylistsSubmenuOpen((v) => !v);
+                        setPlaylistsSubmenuOpen(true);
                         requestAnimationFrame(() => {
-                            const root = (e.currentTarget.parentElement as HTMLElement | null) ?? null;
+                            const root = playlistTriggerRef.current?.parentElement ?? null;
                             const submenu = root?.querySelector('[data-viib-submenu="playlists"]') as HTMLElement | null;
                             const firstItem = submenu?.querySelector('[role="menuitem"]') as HTMLElement | null;
                             firstItem?.focus();

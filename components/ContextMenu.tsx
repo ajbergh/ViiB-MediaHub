@@ -236,7 +236,7 @@ export const ContextMenu: React.FC = () => {
             ref={menuRef}
             role="menu"
             aria-label="Context menu"
-            className="fixed z-[9999] w-56 bg-surface-2 ring-1 ring-surface-3 rounded-xl shadow-xl shadow-black/30 py-1 overflow-hidden text-text-main animate-in fade-in duration-150 motion-reduce:transition-none"
+            className="fixed z-[9999] w-56 bg-surface-2 ring-1 ring-surface-3 rounded-xl shadow-xl shadow-black/30 py-1 overflow-visible text-text-main animate-in fade-in duration-150 motion-reduce:transition-none"
             style={{ top: adjustedPos.y, left: adjustedPos.x }}
         >
             {type === ContextMenuType.SONG && <SongMenu song={data} onClose={closeContextMenu} />}

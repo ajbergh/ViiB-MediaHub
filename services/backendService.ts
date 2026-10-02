@@ -183,8 +183,11 @@ export const backendService = {
       await api.updatePlaylist(playlist.id, {
         name: playlist.name,
         songIds: playlist.songIds,
+        coverPath: playlist.coverUrl,
         createdAt: playlist.createdAt,
       });
+    } else {
+      throw new Error('Backend not available');
     }
   },
 

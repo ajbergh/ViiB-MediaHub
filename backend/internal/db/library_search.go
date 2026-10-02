@@ -1,4 +1,4 @@
-// library_search.go performs prefix search against the persisted SQLite index.
+// library_search.go searches the persisted SQLite metadata index.
 package db
 
 import "strings"
@@ -7,8 +7,8 @@ func searchPrefixBounds(query string) (string, string) {
 	return query, query + string(rune(0x10ffff))
 }
 
-// SearchLibrary performs case-insensitive prefix matching. Range predicates
-// deliberately avoid leading wildcards so SQLite can use the search indexes.
+// SearchLibrary uses indexed prefix matches for titles and albums, and literal
+// substring matches for artist names so later words in a band name are searchable.
 func (d *DB) SearchLibrary(query string, limit int) (LibrarySearchResult, error) {
 	query = strings.TrimSpace(strings.ToLower(query))
 	limit = clampPageLimit(limit, 50, 200)
@@ -26,15 +26,15 @@ func (d *DB) SearchLibrary(query string, limit int) (LibrarySearchResult, error)
 	rows, err := d.conn.Query(songSelect+`
 		JOIN song_search ss ON ss.song_id = songs.id
 		WHERE COALESCE(songs.ignored, 0) = 0
-		  AND ((ss.title >= ? AND ss.title < ?) OR (ss.artist >= ? AND ss.artist < ?)
-		       OR (ss.album >= ? AND ss.album < ?) OR (ss.album_artist >= ? AND ss.album_artist < ?)
+		  AND ((ss.title >= ? AND ss.title < ?) OR instr(ss.artist, ?) > 0
+		       OR (ss.album >= ? AND ss.album < ?) OR instr(ss.album_artist, ?) > 0
 		       OR (ss.genre >= ? AND ss.genre < ?) OR (ss.file_path >= ? AND ss.file_path < ?))
 		ORDER BY CASE
 			WHEN ss.title >= ? AND ss.title < ? THEN 0
 			WHEN ss.artist >= ? AND ss.artist < ? THEN 1
 			WHEN ss.album >= ? AND ss.album < ? THEN 2 ELSE 3 END,
 			COALESCE(songs.play_count, 0) DESC, songs.title
-		LIMIT ?`, lower, upper, lower, upper, lower, upper, lower, upper, genreLower, genreUpper, lower, upper,
+		LIMIT ?`, lower, upper, query, lower, upper, query, genreLower, genreUpper, lower, upper,
 		lower, upper, lower, upper, lower, upper, limit)
 	if err != nil {
 		return result, err
@@ -49,12 +49,12 @@ func (d *DB) SearchLibrary(query string, limit int) (LibrarySearchResult, error)
 		       COUNT(*), COALESCE(MAX(songs.cover_path), '')
 		FROM songs JOIN song_search ss ON ss.song_id = songs.id
 		WHERE COALESCE(songs.ignored, 0) = 0
-		  AND ((ss.album >= ? AND ss.album < ?) OR (ss.album_artist >= ? AND ss.album_artist < ?)
-		       OR (ss.artist >= ? AND ss.artist < ?))
+		  AND ((ss.album >= ? AND ss.album < ?) OR instr(ss.album_artist, ?) > 0
+		       OR instr(ss.artist, ?) > 0)
 		GROUP BY songs.album, resolved_artist
 		ORDER BY CASE WHEN lower(songs.album) >= ? AND lower(songs.album) < ? THEN 0 ELSE 1 END,
 		         COUNT(*) DESC, songs.album
-		LIMIT ?`, lower, upper, lower, upper, lower, upper, lower, upper, limit)
+		LIMIT ?`, lower, upper, query, query, lower, upper, limit)
 	if err != nil {
 		return result, err
 	}
@@ -71,13 +71,21 @@ func (d *DB) SearchLibrary(query string, limit int) (LibrarySearchResult, error)
 	}
 
 	artistRows, err := d.conn.Query(`
-		SELECT songs.artist, COUNT(*), COUNT(DISTINCT songs.album)
-		FROM songs JOIN song_search ss ON ss.song_id = songs.id
-		WHERE COALESCE(songs.ignored, 0) = 0 AND ss.artist >= ? AND ss.artist < ?
-		GROUP BY songs.artist
-		ORDER BY CASE WHEN lower(songs.artist) >= ? AND lower(songs.artist) < ? THEN 0 ELSE 1 END,
-		         COUNT(*) DESC, songs.artist
-		LIMIT ?`, lower, upper, lower, upper, limit)
+        WITH artist_songs AS (
+            SELECT songs.id, songs.artist AS name, songs.album
+            FROM songs JOIN song_search ss ON ss.song_id = songs.id
+            WHERE COALESCE(songs.ignored, 0) = 0 AND instr(ss.artist, ?) > 0
+            UNION
+            SELECT songs.id, songs.album_artist AS name, songs.album
+            FROM songs JOIN song_search ss ON ss.song_id = songs.id
+            WHERE COALESCE(songs.ignored, 0) = 0 AND instr(ss.album_artist, ?) > 0
+        )
+        SELECT name, COUNT(*), COUNT(DISTINCT album)
+        FROM artist_songs
+        GROUP BY name
+        ORDER BY CASE WHEN lower(name) >= ? AND lower(name) < ? THEN 0 ELSE 1 END,
+                 COUNT(*) DESC, name
+        LIMIT ?`, query, query, lower, upper, limit)
 	if err != nil {
 		return result, err
 	}

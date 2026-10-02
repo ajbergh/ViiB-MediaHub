@@ -114,9 +114,10 @@ const LibraryEventListener = () => {
             console.warn('Revisioned library synchronization failed:', error);
             // Do not wait for another scanner batch to make a first-run
             // library visible if the revision endpoint is unavailable.
-            void storeRef.current.refreshLibrary();
+            return storeRef.current.refreshLibrary();
           }
         });
+      return syncPromiseRef.current;
     };
 
     // Scanner batches are the most immediate signal that tracks have been
@@ -148,12 +149,15 @@ const LibraryEventListener = () => {
           case 'scan_progress':
             setScanProgress(payload.message);
             break;
-          case 'scan_complete':
-            setScanning(false);
-            setScanProgress('');
-            if (deltaAvailableRef.current) enqueueSync();
-            else refreshLibrary();
+          case 'scan_complete': {
+            const sync = deltaAvailableRef.current ? enqueueSync() : refreshLibrary();
+            void sync.then(() => {
+              if (disposed) return;
+              setScanning(false);
+              setScanProgress('');
+            });
             break;
+          }
           case 'library_updated':
             // A local scan emits this after each committed batch. Prefer a
             // revision delta, but use the legacy full refresh if its stream is

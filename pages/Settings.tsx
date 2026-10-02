@@ -47,7 +47,7 @@ import { isWailsEnvironment, SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
 import { PlexMusicSourceSettings } from '../components/PlexMusicSourceSettings';
 import { LibraryMonitoringPanel, LibraryOperationsPanel } from './LibraryOperations';
 import { isMacOSWails } from '../lib/webglSafety';
-import { persistNativeWindowCloseAction } from '../services/skinnyWindowService';
+import { closeNativeWindow, persistNativeWindowCloseAction } from '../services/skinnyWindowService';
 
 const HOME_LAYOUT_OPTIONS: Array<{
   value: HomeLayoutVariant;
@@ -2941,7 +2941,16 @@ export const Settings: React.FC = () => {
               </div>
               {!isBrowserRuntime && (
                 <div className="border-t border-surface-hover pt-6">
-                  <h3 className="font-medium text-text-main">Close Window</h3>
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className="font-medium text-text-main">Close Window</h3>
+                    <button
+                      type="button"
+                      onClick={() => void closeNativeWindow('quit')}
+                      className="rounded-lg border border-surface-border px-4 py-2 text-sm font-medium text-text-main hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                    >
+                      Quit now
+                    </button>
+                  </div>
                   <p className="mt-1 text-sm text-text-subtle">
                     {isMacDesktopApp
                       ? 'This macOS build uses the Dock for minimised windows and closes the app normally.'

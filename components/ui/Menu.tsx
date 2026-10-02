@@ -36,7 +36,7 @@ export const Menu: React.FC<MenuProps> = ({
       if (!root) return [];
       return Array.from(
         root.querySelectorAll<HTMLButtonElement>(
-          'button[role="menuitem"]:not([disabled])'
+          'button[role="menuitem"]:not([disabled]), button[role="menuitemcheckbox"]:not([disabled])'
         )
       );
     };

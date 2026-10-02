@@ -4,7 +4,8 @@ import { useStore } from '../store';
 import { Music, Search, ChevronRight, Play, Shuffle, Loader2 } from 'lucide-react';
 import { Song } from '../types';
 import { api, GenreStat } from '../services/api';
-import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
+import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { TextInput } from '../components/ui/TextInput';
 
 /**
@@ -36,6 +37,7 @@ export const Genres: React.FC = () => {
   const [genres, setGenres] = useState<GenreStat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('genres-card-cols') ?? 4));
+  const listView = cardCols === MAX_CARD_COLUMNS;
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('genres-card-cols', String(v)); };
 
   useEffect(() => {
@@ -114,7 +116,7 @@ export const Genres: React.FC = () => {
               {genres.length} genres found in your library
             </p>
           </div>
-          <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
+          <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
         </div>
 
         {/* Search */}
@@ -133,11 +135,18 @@ export const Genres: React.FC = () => {
 
       {/* Genre Grid */}
       <div className="flex-1 overflow-y-auto p-8 pt-0">
+        {listView && <LibraryListHeader title="Genre" detail="Top artists" stats="Tracks" />}
         <div
-          className="grid gap-4"
-          style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}
+          className={listView ? 'grid gap-0' : 'grid gap-4'}
+          style={{ gridTemplateColumns: `repeat(${listView ? 1 : cardCols}, minmax(0, 1fr))` }}
         >
-          {filteredGenres.map((genre) => (
+          {filteredGenres.map((genre, index) => listView ? (
+            <LibraryListRow key={genre.name} index={index} name={genre.name}
+              artwork={genre.coverUrl ? <img src={genre.coverUrl} alt="" className="w-full h-full object-cover" /> : <Music className="w-full h-full p-2 text-brand" />}
+              detail={genre.topArtists?.join(', ')} stats={String(genre.count)}
+              onOpen={() => navigate(`/genres/${encodeURIComponent(genre.name)}`)}
+              actions={<><button type="button" aria-label={`Play ${genre.name}`} className="p-2 rounded hover:bg-surface-3 text-brand" onClick={e => handlePlayGenre(e, genre.name, false)}><Play size={16} /></button><button type="button" aria-label={`Shuffle ${genre.name}`} className="p-2 rounded hover:bg-surface-3 text-text-secondary" onClick={e => handlePlayGenre(e, genre.name, true)}><Shuffle size={16} /></button></>} />
+          ) : (
             <div
               key={genre.name}
               onClick={() => navigate(`/genres/${encodeURIComponent(genre.name)}`)}

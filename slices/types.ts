@@ -179,6 +179,7 @@ export interface LibrarySlice {
   resetLibrary: () => Promise<void>;
   createPlaylist: (name: string, songIds?: string[]) => Promise<Playlist | void>;
   addToPlaylist: (playlistId: string, songId: string) => void;
+  updatePlaylistContents: (playlistId: string, songIds: string[], expectedSongIds?: string[]) => Promise<void>;
   deletePlaylist: (playlistId: string) => Promise<void>;
   
   refreshSmartMixes: () => void;

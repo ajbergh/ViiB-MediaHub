@@ -311,6 +311,20 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
         return newPlaylist;
     },
 
+  updatePlaylistContents: async (playlistId, songIds, expectedSongIds) => {
+      const { backendAvailable, playlists } = get();
+      const existing = playlists.find(playlist => playlist.id === playlistId);
+      if (!existing) throw new Error('Playlist no longer exists.');
+      if (expectedSongIds && (existing.songIds.length !== expectedSongIds.length ||
+          existing.songIds.some((id, index) => id !== expectedSongIds[index]))) {
+          throw new Error('This playlist changed while you were editing. Cancel to reload its latest contents.');
+      }
+      const updated = { ...existing, songIds: [...songIds] };
+      if (backendAvailable) await backendService.updatePlaylist(updated);
+      else await libraryService.savePlaylist(updated);
+      set(state => ({ playlists: state.playlists.map(playlist => playlist.id === playlistId ? updated : playlist) }));
+  },
+
   addToPlaylist: (playlistId, songId) => {
       const { backendAvailable } = get();
       set((state) => {
@@ -862,8 +876,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                   // Scan complete - reload library
                   console.log('✅ Scan complete detected via polling, resetting UI...');
                   isPollingActive = false;
-                  set({ isScanning: false, scanProgress: '' });
-                  
+                  // Keep the loading state until the final catalog is available.
                   // Refresh songs from backend
                   const [loadedSongs, folders] = await Promise.all([
                       backendService.getAllSongs(),
@@ -871,7 +884,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                   ]);
                   const songs = libraryIndex.initialize(loadedSongs);
                   const mixes = generateSmartMixes(songs);
-                  set({ songs, smartMixes: mixes, scanFolders: folders });
+                  set({ songs, smartMixes: mixes, scanFolders: folders, isScanning: false, scanProgress: '' });
                   console.log('✅ Library refreshed after scan completion');
               }
           } catch (e) {

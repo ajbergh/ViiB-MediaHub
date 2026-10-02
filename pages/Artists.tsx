@@ -22,7 +22,8 @@ import { VirtuosoGrid } from 'react-virtuoso';
 import { Search } from 'lucide-react';
 import { EmptyArtists } from '../components/EmptyState';
 import { Page, PageHeader } from '../components/ui/Page';
-import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
+import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { TextInput } from '../components/ui/TextInput';
 
 // Define Grid Components
@@ -35,7 +36,7 @@ const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...pro
       ...style,
       display: 'grid',
       gridTemplateColumns: 'repeat(var(--card-cols, 5), minmax(0, 1fr))',
-      gap: '1.5rem',
+      gap: 'var(--card-gap, 1.5rem)',
       paddingBottom: '8rem',
     }}
   >
@@ -56,6 +57,7 @@ export const Artists: React.FC = () => {
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
   const [filter, setFilter] = useState('');
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('artists-card-cols') ?? 5));
+  const listView = cardCols === MAX_CARD_COLUMNS;
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('artists-card-cols', String(v)); };
 
   // Debug: Log artistMetadata on first render and when it changes
@@ -88,7 +90,7 @@ export const Artists: React.FC = () => {
         <PageHeader heading="Artists" subtitle={`${filteredArtists.length}${filter ? ` of ${artists.length}` : ''} artists`}
           actions={
             <div className="flex items-center gap-3">
-              <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
+              <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
               {/* Search Input */}
               <div className="w-full md:w-72">
                 <TextInput
@@ -108,8 +110,10 @@ export const Artists: React.FC = () => {
         {artists.length === 0 ? (
             <EmptyArtists />
         ) : (
-             <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
+             <div style={{ '--card-cols': listView ? 1 : cardCols, '--card-gap': listView ? '0px' : '1.5rem' } as React.CSSProperties}>
+             {listView && <LibraryListHeader title="Artist" detail="Albums" stats="Tracks" />}
              <VirtuosoGrid
+                key={listView ? 'list' : 'tiles'}
                 useWindowScroll={false}
                 customScrollParent={scrollParent}
                 data={filteredArtists}
@@ -125,6 +129,11 @@ export const Artists: React.FC = () => {
                     if (index < 3) {
                         console.log(`🎨 Artist "${artist.name}": metadata=${!!metadata}, imageUrl=${displayImage?.substring(0, 50)}...`);
                     }
+
+                    if (listView) return <LibraryListRow index={index} name={artist.name}
+                      artwork={<div className="w-full h-full rounded-full flex items-center justify-center" style={{ background: displayImage ? `${cssUrl(displayImage)} center/cover no-repeat` : generateGradient(artist.name) }}>{!displayImage && artist.name.charAt(0)}</div>}
+                      detail={`${artist.albumCount} albums`} stats={String(artist.songCount)}
+                      onOpen={() => handleArtistClick(artist.name)} onContextMenu={e => openContextMenu(e, ContextMenuType.ARTIST, artist)} />;
 
                     return (
                         <div 
