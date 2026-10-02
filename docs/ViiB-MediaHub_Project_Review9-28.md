@@ -550,7 +550,7 @@ Native installer startup/upgrades, repeated macOS packaging, physical shares/dri
 
 PR #113 failed release validation before any build because the current tag `v1.0.0-rc4` already exists (Actions run `37016036862`). Resolved: the version step accepts existing tags for `pull_request` events, matching the existing publish-job exclusion. Push/manual publishing still rejects duplicate tags. The release version is unchanged.
 
-Validation: the actual version-step Bash script passed all six combinations of PR/push/manual events with existing/new tags, and rejected an invalid version. `git diff --check` passed. Updated GitHub Actions validation is pending. The original PR frontend, native track-analysis, semantic cross-compilation and scalar-determinism checks passed; backend validation was still running when this follow-up began.
+Validation: the actual version-step Bash script passed all six combinations of PR/push/manual events with existing/new tags, and rejected an invalid version. `git diff --check` passed. GitHub Actions passed on fix commit `90677e4`: [regular CI](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/37016654358) (frontend, backend, analysis/determinism, cross-compilation and all native desktop builds) and [release validation/packaging](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/37016653456) (Linux, both macOS architectures, Windows installer and all six web-server packages). Release publication was correctly skipped for the PR. These automated package builds do not establish installer startup or live-service behavior.
 
 ## Conclusion
 
