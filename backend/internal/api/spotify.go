@@ -1671,8 +1671,8 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a streamer for this request
-	streamer := spotify.NewStreamer(sessionManager)
+	// Reuse capacity ownership across HTTP requests.
+	streamer := a.streamerForSession(sessionManager)
 
 	// Generate unique request ID for tracking
 	requestID := uuid.New().String()
@@ -1772,4 +1772,17 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logger.SpotifyStreamer("Stream completed: %d bytes", written)
 	}
+}
+
+func (a *API) streamerForSession(manager *spotify.SessionManager) *spotify.Streamer {
+	a.spotifyStreamerMu.Lock()
+	defer a.spotifyStreamerMu.Unlock()
+	if a.spotifyStreamer == nil || a.spotifyStreamSession != manager {
+		if a.spotifyStreamer != nil {
+			a.spotifyStreamer.CloseAllStreams()
+		}
+		a.spotifyStreamSession = manager
+		a.spotifyStreamer = spotify.NewStreamer(manager)
+	}
+	return a.spotifyStreamer
 }

@@ -8,7 +8,7 @@
     "build": "vite build",
     "check:raw-colors": "node scripts/check-no-raw-colors-tsx.mjs",
     "check:palette": "node scripts/check-no-tailwind-palette.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.boundaries.json --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

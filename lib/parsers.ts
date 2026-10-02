@@ -1,3 +1,4 @@
+import { managedObjectUrls } from './playbackLifecycle';
 // @ts-ignore - URL import is handled by Vite at runtime; TS bundler resolution doesn't model it.
 import { parseBlob } from 'https://esm.sh/music-metadata@10.0.0?bundle';
 import { Song } from '../types';
@@ -85,7 +86,7 @@ export async function parseSongFile(
         if (common.picture && common.picture.length > 0) {
             const pic = common.picture[0];
             const blob = new Blob([pic.data], { type: pic.format });
-            coverUrl = URL.createObjectURL(blob);
+            coverUrl = managedObjectUrls.create(blob);
         }
     } catch (error) {
         console.warn(`Failed to parse metadata for ${file.name}. Using fallback.`, error);
@@ -104,7 +105,7 @@ export async function parseSongFile(
                 img => img.name.toLowerCase() === nameToCheck
             );
             if (match) {
-                coverUrl = URL.createObjectURL(match);
+                coverUrl = managedObjectUrls.create(match);
                 break;
             }
         }
@@ -113,7 +114,7 @@ export async function parseSongFile(
         if (!coverUrl) {
              const validImage = relevantImages.find(img => /\.(jpg|jpeg|png)$/i.test(img.name));
              if (validImage) {
-                 coverUrl = URL.createObjectURL(validImage);
+                 coverUrl = managedObjectUrls.create(validImage);
              }
         }
     }
@@ -129,7 +130,7 @@ export async function parseSongFile(
         genre,
         year,
         duration,
-        url: URL.createObjectURL(file),
+        url: managedObjectUrls.create(file),
         coverUrl,
         addedAt: Date.now(),
         path: path

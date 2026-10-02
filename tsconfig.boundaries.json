@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "allowJs": false
+  },
+  "include": [
+    "lib/playbackLifecycle.ts",
+    "services/libraryService.ts",
+    "services/db.ts",
+    "services/httpClient.ts"
+  ]
+}

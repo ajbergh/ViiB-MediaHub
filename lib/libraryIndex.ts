@@ -49,7 +49,10 @@ export class LibraryIndex {
       }
 
       const song = upsertById.get(change.songId);
-      if (!song) continue;
+      if (!song) {
+        if (this.songsById.delete(change.songId)) deleted.add(change.songId);
+        continue;
+      }
       const previous = this.songsById.get(song.id);
       if (!previous || songSortKey(previous) !== songSortKey(song)) {
         requiresSort = true;

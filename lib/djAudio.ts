@@ -1,3 +1,4 @@
+import { createReverbImpulse, getBeatFXDelayTime } from './djAudioEffects';
 import { canSyncBeatGrid } from './beatGridConfidence';
 import type { DeckSource } from './deckSource';
 import { StemDeckSource, type StemBus, type StemDeckState, type StemDeckStatus } from './stemDeckSource';
@@ -613,7 +614,7 @@ export class DJAudioEngine {
     // We'll create an impulse response programmatically for simplicity
     // Reverb is additive (only adds wet signal)
     const reverbConvolver = ctx.createConvolver();
-    this.createReverbImpulse(ctx, reverbConvolver, 0.5, 0.5);
+    createReverbImpulse(ctx, reverbConvolver, 0.5, 0.5);
     
     const reverbWetGain = ctx.createGain();
     reverbWetGain.gain.value = 0; // Disabled by default
@@ -729,7 +730,7 @@ export class DJAudioEngine {
     this.masterBeatFXFlangerLfo.start();
 
     this.masterBeatFXReverb = ctx.createConvolver();
-    this.createReverbImpulse(ctx, this.masterBeatFXReverb, 0.5, 0.5);
+    createReverbImpulse(ctx, this.masterBeatFXReverb, 0.5, 0.5);
     this.masterBeatFXReverbWetGain = ctx.createGain();
     this.masterBeatFXReverbWetGain.gain.value = 0;
     this.masterBeatFXInput
@@ -741,27 +742,6 @@ export class DJAudioEngine {
   /**
    * Create a simple algorithmic reverb impulse response
    */
-  private createReverbImpulse(
-    ctx: AudioContext, 
-    convolver: ConvolverNode, 
-    roomSize: number, 
-    damping: number
-  ): void {
-    const sampleRate = ctx.sampleRate;
-    const length = sampleRate * (0.5 + roomSize * 2.5); // 0.5-3 seconds
-    const impulse = ctx.createBuffer(2, length, sampleRate);
-    
-    for (let channel = 0; channel < 2; channel++) {
-      const channelData = impulse.getChannelData(channel);
-      for (let i = 0; i < length; i++) {
-        // Exponential decay with noise
-        const decay = Math.pow(1 - damping, i / sampleRate * 10);
-        channelData[i] = (Math.random() * 2 - 1) * decay;
-      }
-    }
-    
-    convolver.buffer = impulse;
-  }
 
   /**
    * Set up event listeners for audio elements
@@ -2309,7 +2289,7 @@ export class DJAudioEngine {
     // Only regenerate impulse response when roomSize or damping changes
     // This is expensive, so we cache and compare
     if (cachedParams.roomSize !== roomSize || cachedParams.damping !== damping) {
-      this.createReverbImpulse(this.audioContext, reverbConvolver, roomSize, damping);
+      createReverbImpulse(this.audioContext, reverbConvolver, roomSize, damping);
       cachedParams.roomSize = roomSize;
       cachedParams.damping = damping;
     }
@@ -2326,30 +2306,6 @@ export class DJAudioEngine {
   // ============================================================================
   // Beat FX (Phase 6)
   // ============================================================================
-
-  private beatFractionToMultiplier(fraction: BeatFraction): number {
-    switch (fraction) {
-      case '1/4':
-        return 0.25;
-      case '1/2':
-        return 0.5;
-      case '2':
-        return 2;
-      case '4':
-        return 4;
-      case '1':
-      default:
-        return 1;
-    }
-  }
-
-  private getBeatFXDelayTime(fraction: BeatFraction, bpm: number): number {
-    const safeBpm = (typeof bpm === 'number' && isFinite(bpm))
-      ? Math.max(40, Math.min(240, bpm))
-      : 120;
-    const beatSeconds = 60 / safeBpm;
-    return Math.max(0.01, Math.min(2, beatSeconds * this.beatFractionToMultiplier(fraction)));
-  }
 
   private clearPreviousBeatFX(bpm: number): void {
     if (!this.lastBeatFXTarget || !this.lastBeatFXType) return;
@@ -2425,7 +2381,7 @@ export class DJAudioEngine {
     depth: number,
     bpm: number,
   ): void {
-    const delayTime = this.getBeatFXDelayTime(fraction, bpm);
+    const delayTime = getBeatFXDelayTime(fraction, bpm);
     const safeDepth = Math.max(0, Math.min(1, depth));
 
     switch (type) {
@@ -2491,7 +2447,7 @@ export class DJAudioEngine {
     if (!enabled) return;
 
     const safeDepth = Math.max(0, Math.min(1, depth));
-    const delayTime = this.getBeatFXDelayTime(fraction, bpm);
+    const delayTime = getBeatFXDelayTime(fraction, bpm);
 
     switch (type) {
       case 'delay':
@@ -2505,7 +2461,7 @@ export class DJAudioEngine {
         this.masterBeatFXDelayWetGain.gain.setValueAtTime(0.2 + safeDepth * 0.65, now);
         break;
       case 'reverb':
-        this.createReverbImpulse(this.audioContext, this.masterBeatFXReverb, 0.25 + safeDepth * 0.7, 0.35);
+        createReverbImpulse(this.audioContext, this.masterBeatFXReverb, 0.25 + safeDepth * 0.7, 0.35);
         this.masterBeatFXReverbWetGain.gain.setValueAtTime(0.12 + safeDepth * 0.65, now);
         break;
       case 'filter':

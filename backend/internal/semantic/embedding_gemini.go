@@ -178,3 +178,5 @@ func (provider *GeminiEmbeddingProvider) embed(ctx context.Context, inputs []str
 func (provider *GeminiEmbeddingProvider) Close() error { return nil }
 
 var _ EmbeddingProvider = (*GeminiEmbeddingProvider)(nil)
+
+func (provider *GeminiEmbeddingProvider) Dimensions() int { return provider.dimensions }

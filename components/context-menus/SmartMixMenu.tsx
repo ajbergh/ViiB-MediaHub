@@ -15,7 +15,7 @@ import { SmartMix } from '../../types';
  *  - onClose: Callback invoked when the menu closes
  */
 export const SmartMixMenu: React.FC<{ mix: SmartMix; onClose: () => void }> = ({ mix, onClose }) => {
-    const { songs, playSong, playNext, addToQueue, saveSmartMixAsPlaylist, refreshSmartMixes } = useStore();
+    const { songs, playSong, playNext, addToQueue, saveSmartMixAsPlaylist, refreshSmartMixes, showToast } = useStore();
     const mixSongs = mix.songIds.map((id: string) => songs.find(s => s.id === id)).filter(Boolean) as any[];
 
     const handleAction = (action: () => void) => {
@@ -41,9 +41,11 @@ export const SmartMixMenu: React.FC<{ mix: SmartMix; onClose: () => void }> = ({
             
             <div className="border-t border-surface-border my-1"></div>
             
-            <MenuItem icon={Save} label="Save as Playlist" onClick={() => handleAction(() => {
-                    saveSmartMixAsPlaylist(mix.id);
-                    alert(`Saved "${mix.name}" to your playlists.`);
+            <MenuItem icon={Save} label="Save as Playlist" onClick={() => handleAction(async () => {
+                    try {
+                        await saveSmartMixAsPlaylist(mix.id);
+                        showToast({type: 'success', message: `Saved "${mix.name}" to your playlists.`});
+                    } catch { showToast({type: 'error', message: 'Unable to save playlist. Please try again.'}); }
             })} />
             
             <MenuItem icon={RefreshCw} label="Refresh Mix" onClick={() => handleAction(() => refreshSmartMixes())} />

@@ -33,7 +33,9 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 		}
 		switch change.ChangeType {
 		case ChangeTypeDeleted:
-			filesToDelete = append(filesToDelete, filepath.Clean(change.Path))
+			if s.db.ConfirmMissingLocalMedia(change.Path) || pathContainsSkippedDirectory(change.Path) {
+				filesToDelete = append(filesToDelete, filepath.Clean(change.Path))
+			}
 		case ChangeTypeCreated, ChangeTypeModified:
 			filesToProcess = append(filesToProcess, change)
 		}

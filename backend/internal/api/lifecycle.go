@@ -10,6 +10,11 @@ func (a *API) Close() {
 	if semanticService != nil {
 		_ = semanticService.Close()
 	}
+	a.spotifyStreamerMu.Lock()
+	if a.spotifyStreamer != nil {
+		a.spotifyStreamer.CloseAllStreams()
+	}
+	a.spotifyStreamerMu.Unlock()
 	if a.downloadManager != nil {
 		a.downloadManager.Stop()
 	}

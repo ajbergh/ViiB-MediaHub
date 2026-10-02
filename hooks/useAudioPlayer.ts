@@ -268,8 +268,8 @@ export const useAudioPlayer = () => {
                     });
                     setTimeout(() => {
                         const latest = useStore.getState();
-                        if (latest.currentSong?.id === currentSong.id) {
-                            void latest.playSong(fallback, latest.queue, currentSong.playbackContext || 'queue');
+                        if (latest.currentSong === currentSong && latest.isPlaying) {
+                            void latest.playSong(fallback, latest.queue, currentSong.playbackContext || 'queue', fallbackIndex);
                         }
                     }, 0);
                 } else {
@@ -341,7 +341,11 @@ export const useAudioPlayer = () => {
                     errorType: 'unavailable',
                     timestamp: Date.now()
                 });
-                setTimeout(() => useStore.getState().nextSong(), 2000);
+                const generation = useStore.getState().playbackGeneration;
+                setTimeout(() => {
+                    const latest = useStore.getState();
+                    if (latest.playbackGeneration === generation && latest.isPlaying) latest.nextSong();
+                }, 2000);
             }
         };
         
@@ -477,6 +481,7 @@ export const useAudioPlayer = () => {
                  const fadeDuration = normalizeCrossfadeDuration(audioSettings.crossfadeDuration, audioSettings.gapless);
                  audioEngine.transition(currentPlayer, nextPlayer, fadeDuration);
             } else {
+                 audioEngine.cancelCleanup(nextPlayer);
                  // Not playing, just switch context silently
                  currentPlayer.pause();
                  nextPlayer.currentTime = 0;
@@ -485,8 +490,10 @@ export const useAudioPlayer = () => {
             
             activePlayerIndex.current = nextIndex;
         } else {
+            audioEngine.cancelCleanup(currentPlayer);
             // Same Song - Play/Pause Toggle
             if (isPlaying) {
+                 if (currentPlayer.error) currentPlayer.load();
                  // If paused, resume. 
                  if (currentPlayer.paused) {
                     audioEngine.transition(null, currentPlayer, 0.3);

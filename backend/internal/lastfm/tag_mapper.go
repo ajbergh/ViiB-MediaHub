@@ -81,7 +81,8 @@ func (m *TagMapper) MapTags(tags []TagWithCount, minCount int) *TagEnrichment {
 		normalizedTag := strings.ToLower(strings.TrimSpace(tag.Name))
 
 		// Skip low-count tags for genre extraction
-		if tag.Count >= minCount {
+		// track.getInfo omits counts; zero means unknown, not unpopular.
+		if tag.Count == 0 || tag.Count >= minCount {
 			// Check if it's a genre tag
 			if m.genreTags[normalizedTag] {
 				// Capitalize properly

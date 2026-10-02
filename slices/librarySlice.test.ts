@@ -3,6 +3,8 @@ import { createLibrarySlice } from './librarySlice';
 import { backendService } from '../services/backendService';
 import { libraryIndex } from '../lib/libraryIndex';
 import { Song } from '../types';
+import { libraryOperationsV2 } from '../services/libraryOperationsV2';
+import { libraryService } from '../services/libraryService';
 
 vi.mock('../store', () => ({
   useStore: { getState: () => ({}) },
@@ -65,4 +67,34 @@ describe('library scan polling', () => {
     expect(state.isScanning).toBe(false);
     expect(backendService.getAllSongs).toHaveBeenCalledTimes(3);
   });
+});
+
+describe('library persistence failures', () => {
+ afterEach(() => vi.restoreAllMocks());
+ it('propagates metadata rejection without committing or replacing displayed metadata', async () => {
+  const state = createTestLibraryState() as any;
+  const song = songs(1)[0]; Object.assign(state, { songs: [song], queue:[song], currentSong:song, songInfoModalSong:song });
+  vi.spyOn(libraryOperationsV2,'updateSongMetadata').mockRejectedValue(new Error('write failed'));
+  await expect(state.updateSongMetadata(song.id,{title:'Changed'})).rejects.toThrow('write failed');
+  expect(state.songs[0].title).toBe(song.title); expect(state.songInfoModalSong).toBe(song);
+  await expect(state.updateSongMetadata('unknown',{title:'Changed'})).rejects.toThrow('Unknown song');
+ });
+ it('awaits browser metadata writes and refreshes the displayed song after success', async () => {
+  const state=createTestLibraryState() as any; const song=songs(1)[0];
+  Object.assign(state,{backendAvailable:false,songs:[song],queue:[song],currentSong:song,songInfoModalSong:song});
+  let finish!:()=>void; vi.spyOn(libraryService,'saveSongs').mockImplementation(()=>new Promise(resolve=>{finish=resolve}));
+  const pending=state.updateSongMetadata(song.id,{title:'Changed'});
+  expect(state.songs[0].title).toBe(song.title); finish(); await pending;
+  expect(state.songs[0].title).toBe('Changed'); expect(state.songInfoModalSong.title).toBe('Changed');
+ });
+ it('never creates a local phantom playlist after server creation fails', async () => {
+  const state=createTestLibraryState() as any;
+  vi.spyOn(backendService,'createPlaylist').mockRejectedValue(new Error('server unavailable'));
+  const local=vi.spyOn(libraryService,'savePlaylist');
+  await expect(state.createPlaylist('New')).rejects.toThrow('server unavailable');
+  expect(state.playlists).toEqual([]);expect(local).not.toHaveBeenCalled();
+  state.smartMixes=[{id:'mix',name:'Mix',songIds:[]}];
+  await expect(state.saveSmartMixAsPlaylist('mix')).rejects.toThrow('server unavailable');
+  expect(local).not.toHaveBeenCalled();
+ });
 });

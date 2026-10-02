@@ -291,7 +291,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                 set((state) => ({ playlists: [...state.playlists, created] }));
                 return created;
             } catch (e) {
-                console.error('Failed to create playlist on backend, falling back to local:', e);
+                console.error('Failed to create playlist on backend:', e);
+                throw e;
             }
         }
 
@@ -302,7 +303,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
             createdAt: Date.now()
         };
     
-        libraryService.savePlaylist(newPlaylist).catch(console.error);
+        await libraryService.savePlaylist(newPlaylist);
     
         set((state) => ({
             playlists: [...state.playlists, newPlaylist]
@@ -362,7 +363,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
             set((state) => ({ playlists: [...state.playlists, created] }));
             return created;
         } catch (e) {
-            console.error('Failed to create playlist on backend, falling back to local:', e);
+            console.error('Failed to create playlist on backend:', e);
+                throw e;
         }
       }
 
@@ -373,7 +375,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           createdAt: Date.now()
       };
 
-      libraryService.savePlaylist(newPlaylist).catch(console.error);
+      await libraryService.savePlaylist(newPlaylist);
       set((state) => ({ playlists: [...state.playlists, newPlaylist] }));
       return newPlaylist;
   },
@@ -458,15 +460,9 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   updateSongMetadata: async (songId, patch) => {
       const { backendAvailable, songs } = get();
       const existing = songs.find(s => s.id === songId);
-      if (!existing) return;
+      if (!existing) throw new Error(`Unknown song: ${songId}`);
 
       const updatedSong = { ...existing, ...patch };
-      set((state) => ({
-          songs: state.songs.map(s => (s.id === songId ? updatedSong : s)),
-          currentSong: state.currentSong?.id === songId ? { ...state.currentSong, ...patch } : state.currentSong,
-          queue: state.queue.map(s => (s.id === songId ? { ...s, ...patch } : s)),
-      }));
-
       if (backendAvailable) {
           const backendPatch: Record<string, any> = {};
           if (patch.title !== undefined) backendPatch.title = patch.title;
@@ -478,14 +474,16 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           if (patch.year !== undefined) backendPatch.year = patch.year;
           if (patch.genre !== undefined) backendPatch.genre = patch.genre;
 
-          try {
-              await libraryOperationsV2.updateSongMetadata(songId, backendPatch);
-          } catch (err) {
-              console.error('Failed to persist song metadata on backend:', err);
-          }
+          await libraryOperationsV2.updateSongMetadata(songId, backendPatch);
       } else {
-          libraryService.saveSongs([updatedSong]);
+          await libraryService.saveSongs([updatedSong]);
       }
+      set((state) => ({
+          songs: state.songs.map(s => s.id === songId ? { ...s, ...patch } : s),
+          currentSong: state.currentSong?.id === songId ? { ...state.currentSong, ...patch } : state.currentSong,
+          queue: state.queue.map(s => s.id === songId ? { ...s, ...patch } : s),
+          songInfoModalSong: state.songInfoModalSong?.id === songId ? { ...state.songInfoModalSong, ...patch } : state.songInfoModalSong,
+      }));
   },
 
   fetchArtistMetadata: async (artistName) => {

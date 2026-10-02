@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -77,6 +78,7 @@ func buildGenreLikePattern(genreName string) string {
 // including play history tracking and mood analysis.
 type DB struct {
 	conn               *sql.DB
+	databaseLock       *os.File
 	librarySyncOnce    sync.Once
 	librarySyncInitErr error
 	semanticOnce       sync.Once
@@ -186,16 +188,22 @@ type FileMetadataCache struct {
 // New opens the SQLite database located at dbPath and returns a configured
 // DB instance ready for queries and updates.
 func New(dbPath string) (*DB, error) {
+	databaseLock, err := lockDatabase(dbPath, false)
+	if err != nil {
+		return nil, err
+	}
 	registerSQLiteRuntimeDriver()
 	conn, err := sql.Open(sqliteRuntimeDriverName, sqliteRuntimeDSN(dbPath))
 	if err != nil {
+		databaseLock.Close()
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	db := &DB{conn: conn}
+	db := &DB{conn: conn, databaseLock: databaseLock}
 
 	if err := db.migrate(); err != nil {
 		conn.Close()
+		databaseLock.Close()
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
@@ -204,7 +212,11 @@ func New(dbPath string) (*DB, error) {
 
 // Close releases the underlying database connection.
 func (d *DB) Close() error {
-	return d.conn.Close()
+	err := d.conn.Close()
+	if d.databaseLock != nil {
+		d.databaseLock.Close()
+	}
+	return err
 }
 
 func (d *DB) migrate() error {
@@ -2136,60 +2148,6 @@ func (d *DB) SavePlaylist(p *Playlist) error {
 // DeletePlaylist deletes a playlist by ID.
 func (d *DB) DeletePlaylist(id string) error {
 	_, err := d.conn.Exec("DELETE FROM playlists WHERE id = ?", id)
-	return err
-}
-
-// Scan folder operations
-
-// GetScanFolders returns the configured scan folders for the library.
-func (d *DB) GetScanFolders() ([]ScanFolder, error) {
-	rows, err := d.conn.Query(`SELECT id, path, added_at, last_scan, song_count FROM scan_folders ORDER BY path`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var folders []ScanFolder
-	for rows.Next() {
-		var f ScanFolder
-		var lastScan sql.NullInt64
-
-		err := rows.Scan(&f.ID, &f.Path, &f.AddedAt, &lastScan, &f.SongCount)
-		if err != nil {
-			return nil, err
-		}
-
-		if lastScan.Valid {
-			f.LastScan = lastScan.Int64
-		}
-
-		folders = append(folders, f)
-	}
-
-	return folders, rows.Err()
-}
-
-// AddScanFolder adds a new folder to be scanned for music files.
-func (d *DB) AddScanFolder(f *ScanFolder) error {
-	_, err := d.conn.Exec(`
-		INSERT INTO scan_folders (id, path, added_at, song_count)
-		VALUES (?, ?, ?, 0)
-		ON CONFLICT(path) DO NOTHING
-	`, f.ID, f.Path, f.AddedAt)
-	return err
-}
-
-// UpdateScanFolder updates the scan timestamp and song count for a folder.
-func (d *DB) UpdateScanFolder(id string, lastScan int64, songCount int) error {
-	_, err := d.conn.Exec(`
-		UPDATE scan_folders SET last_scan = ?, song_count = ? WHERE id = ?
-	`, lastScan, songCount, id)
-	return err
-}
-
-// RemoveScanFolder removes a configured scan folder.
-func (d *DB) RemoveScanFolder(id string) error {
-	_, err := d.conn.Exec("DELETE FROM scan_folders WHERE id = ?", id)
 	return err
 }
 
@@ -4242,7 +4200,7 @@ func (d *DB) UpdateSongLastFM(songID string, update LastFMSongUpdate) error {
 	}
 	if len(update.Genres) > 0 {
 		genresJSON, _ := json.Marshal(update.Genres)
-		query += `, genre = COALESCE(NULLIF(genre, ''), NULLIF(genre, '[]'), ?)`
+		query += `, genre = COALESCE(NULLIF(NULLIF(NULLIF(genre, ''), '[]'), 'null'), ?)`
 		args = append(args, string(genresJSON))
 	}
 	if update.Instrumental {

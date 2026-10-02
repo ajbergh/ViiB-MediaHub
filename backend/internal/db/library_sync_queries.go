@@ -4,6 +4,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
 )
@@ -87,11 +88,29 @@ func (d *DB) ListSongsPage(afterID string, limit int) (LibrarySnapshotPage, erro
 	return page, nil
 }
 
+var ErrLibraryResnapshotRequired = errors.New("library cursor expired; a new snapshot is required")
+
 // GetLibraryChanges returns ordered changes after since plus current songs for
 // upserts. Delete changes have no song payload by design.
 func (d *DB) GetLibraryChanges(since int64, limit int) (LibraryChangePage, error) {
 	limit = clampPageLimit(limit, defaultChangeLimit, maxChangeLimit)
-	rows, err := d.conn.Query(`
+	tx, err := d.conn.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return LibraryChangePage{}, err
+	}
+	defer tx.Rollback()
+	var current int64
+	var oldest sql.NullInt64
+	if err := tx.QueryRow(`SELECT revision FROM library_state WHERE id=1`).Scan(&current); err != nil {
+		return LibraryChangePage{}, err
+	}
+	if err := tx.QueryRow(`SELECT MIN(revision) FROM library_changes`).Scan(&oldest); err != nil {
+		return LibraryChangePage{}, err
+	}
+	if current > since && (!oldest.Valid || oldest.Int64 > since+1) {
+		return LibraryChangePage{}, ErrLibraryResnapshotRequired
+	}
+	rows, err := tx.Query(`
 		SELECT revision, song_id, operation, changed_at
 		FROM library_changes WHERE revision > ?
 		ORDER BY revision LIMIT ?`, since, limit+1)
@@ -117,8 +136,7 @@ func (d *DB) GetLibraryChanges(since int64, limit int) (LibraryChangePage, error
 		page.HasMore = true
 		page.Changes = page.Changes[:limit]
 	}
-	current, err := d.LibraryRevision()
-	if err != nil {
+	if err := rows.Close(); err != nil {
 		return LibraryChangePage{}, err
 	}
 	if len(page.Changes) > 0 {
@@ -139,8 +157,23 @@ func (d *DB) GetLibraryChanges(since int64, limit int) (LibraryChangePage, error
 		seen[change.SongID] = struct{}{}
 		upsertIDs = append(upsertIDs, change.SongID)
 	}
-	page.Songs, err = d.GetSongsByIDs(upsertIDs)
+	page.Songs = []Song{}
+	if len(upsertIDs) > 0 {
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(upsertIDs)), ",")
+		args := make([]any, len(upsertIDs))
+		for i, id := range upsertIDs {
+			args[i] = id
+		}
+		songRows, queryErr := tx.Query(songSelect+` WHERE COALESCE(ignored,0)=0 AND id IN (`+placeholders+`)`, args...)
+		if queryErr != nil {
+			return LibraryChangePage{}, queryErr
+		}
+		page.Songs, err = scanLibrarySongRows(songRows)
+	}
 	if err != nil {
+		return LibraryChangePage{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return LibraryChangePage{}, err
 	}
 	return page, nil

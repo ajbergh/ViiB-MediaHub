@@ -1,6 +1,8 @@
 package dj
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -32,5 +34,31 @@ func TestBuildQueueFromPhasePoolsRejectsUncoveredOrEmptyPools(t *testing.T) {
 	}
 	if _, _, err := NewSequencer().BuildQueueFromPhasePools([]PhaseCandidatePool{{}}, plan, GetPersona(PersonaFlowMaster), NewScoreContext()); err == nil {
 		t.Fatal("empty pool was accepted")
+	}
+}
+
+func TestStochasticSelectionFiltersUsedBeforeWindowAndPreservesInput(t *testing.T) {
+	ctx := NewScoreContext()
+	scored := make([]ScoredSong, 120)
+	for i := range scored {
+		scored[i] = ScoredSong{Song: db.Song{ID: fmt.Sprint(i), Artist: fmt.Sprint(i)}, Score: 1}
+		if i < 55 {
+			ctx.UsedSongIDs[fmt.Sprint(i)] = true
+		}
+	}
+	before := append([]ScoredSong(nil), scored...)
+	selected := NewSequencer().selectWithStochasticity(scored, 60, 0, ctx)
+	if len(selected) != 60 {
+		t.Fatalf("phase truncated despite eligible candidates: %d", len(selected))
+	}
+	seen := map[string]bool{}
+	for _, song := range selected {
+		if ctx.UsedSongIDs[song.ID] || seen[song.ID] {
+			t.Fatalf("reused %s", song.ID)
+		}
+		seen[song.ID] = true
+	}
+	if !reflect.DeepEqual(scored, before) {
+		t.Fatal("caller pool was mutated")
 	}
 }

@@ -25,7 +25,7 @@ import { ContextMenuType } from '../types';
 export const SmartMixDetail: React.FC = () => {
     const { mixId } = useParams<{ mixId: string }>();
     const navigate = useNavigate();
-    const { smartMixes, songs, playSong, currentSong, isPlaying, openContextMenu, saveSmartMixAsPlaylist, addToQueue } = useStore();
+    const { smartMixes, songs, playSong, currentSong, isPlaying, openContextMenu, saveSmartMixAsPlaylist, addToQueue, showToast } = useStore();
     const albumCovers = useAlbumCovers();
 
     const mix = smartMixes.find(m => m.id === mixId);
@@ -54,13 +54,15 @@ export const SmartMixDetail: React.FC = () => {
     const durationMin = Math.floor(totalDuration / 60);
     const durationSec = Math.floor(totalDuration % 60);
 
-    const handleSaveAsPlaylist = () => {
+    const handleSaveAsPlaylist = async () => {
         const name = prompt("Save Smart Mix as Playlist:", mix.name);
         if (name) {
             // We use a custom action in store or simulating adding playlists
             // Since useStore doesn't expose a direct 'createFromIds', we use the specific action we added
-            saveSmartMixAsPlaylist(mix.id);
-            navigate('/playlists');
+            try {
+                await saveSmartMixAsPlaylist(mix.id);
+                navigate('/playlists');
+            } catch { showToast({ type: 'error', message: 'Unable to save playlist. Please try again.' }); }
         }
     };
 

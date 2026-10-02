@@ -26,8 +26,16 @@ import (
 
 // Enricher handles batch enrichment of songs using Last.FM data.
 type Enricher struct {
-	client *Client
+	client enrichmentClient
 	db     *db.DB
+}
+
+type enrichmentClient interface {
+	GetTrackInfo(context.Context, string, string) (*TrackInfo, error)
+	MapTagsToEnrichment([]TagWithCount, int) *TagEnrichment
+	GetSimilarTracks(context.Context, string, string, int) ([]SimilarTrack, error)
+	GetArtistInfo(context.Context, string) (*ArtistInfo, error)
+	GetSimilarArtists(context.Context, string, int) ([]SimilarArtist, error)
 }
 
 // NewEnricher creates a new Last.FM enricher.
@@ -55,6 +63,7 @@ func (e *Enricher) EnrichSongs(ctx context.Context, songs []db.Song, opts Enrich
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var processed int32
+	defer func() { wg.Wait(); result.Processed = int(atomic.LoadInt32(&processed)) }()
 
 	for _, song := range songs {
 		// Check context cancellation
@@ -73,8 +82,16 @@ func (e *Enricher) EnrichSongs(ctx context.Context, songs []db.Song, opts Enrich
 			continue
 		}
 
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			return result, ctx.Err()
+		}
+		if err := ctx.Err(); err != nil {
+			<-sem
+			return result, err
+		}
 		wg.Add(1)
-		sem <- struct{}{} // Acquire semaphore
 
 		go func(s db.Song) {
 			defer wg.Done()
@@ -97,7 +114,7 @@ func (e *Enricher) EnrichSongs(ctx context.Context, songs []db.Song, opts Enrich
 
 	wg.Wait()
 	result.Processed = int(processed)
-	return result, nil
+	return result, ctx.Err()
 }
 
 // enrichSong enriches a single song with Last.FM data.
@@ -105,9 +122,9 @@ func (e *Enricher) enrichSong(ctx context.Context, song db.Song, opts EnrichOpti
 	// Fetch track info from Last.FM
 	trackInfo, err := e.client.GetTrackInfo(ctx, song.Artist, song.Title)
 	if err != nil {
-		// Log but don't fail - track might not exist in Last.FM
+		// Surface failed fetches so cancelled/failed songs are not counted as enriched.
 		logger.Debug("LastFM", "Track not found: %s - %s: %v", song.Artist, song.Title, err)
-		return nil // Return nil to not count as error for missing tracks
+		return err
 	}
 
 	// Map tags to mood/energy/tempo

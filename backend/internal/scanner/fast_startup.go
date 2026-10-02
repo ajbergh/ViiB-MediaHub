@@ -198,7 +198,7 @@ func (s *Scanner) checkDirectoryWithSignature(
 				}
 				if s.signaturesMatch(sig, currentSig) {
 					dirsUnchanged++
-					return filepath.SkipDir
+					// Immediate-child signatures cannot certify descendants.
 				}
 			}
 			return nil

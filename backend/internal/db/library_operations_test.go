@@ -2,6 +2,7 @@ package db
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -26,6 +27,9 @@ func TestLibraryDiagnosticsMetadataAndBackup(t *testing.T) {
 
 	existingPath := filepath.Join(dataDir, "existing.mp3")
 	if err := os.WriteFile(existingPath, []byte("audio"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AddScanFolder(&ScanFolder{ID: "root", Path: dataDir}); err != nil {
 		t.Fatal(err)
 	}
 	missingPath := filepath.Join(dataDir, "missing.mp3")
@@ -68,7 +72,7 @@ func TestLibraryDiagnosticsMetadataAndBackup(t *testing.T) {
 		t.Fatalf("corrupt search index fixture: %v", err)
 	}
 
-	repair, err := database.RepairLibraryIndexes(true)
+	repair, err := database.RepairLibraryIndexes(true, "missing")
 	if err != nil {
 		t.Fatalf("repair library: %v", err)
 	}
@@ -120,5 +124,110 @@ func TestApplyPendingRestoreCreatesRollback(t *testing.T) {
 	}
 	if _, err := os.Stat(rollback); err != nil {
 		t.Fatalf("rollback file missing: %v", err)
+	}
+}
+
+func TestRepairOnlyDeletesConfirmedMissingOnReadableRoots(t *testing.T) {
+	root := t.TempDir()
+	database := openOperationsTestDB(t, t.TempDir())
+	defer database.Close()
+	if err := database.AddScanFolder(&ScanFolder{ID: "root", Path: root}); err != nil {
+		t.Fatal(err)
+	}
+	offline := filepath.Join(root, "offline")
+	if err := os.Mkdir(offline, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AddScanFolder(&ScanFolder{ID: "offline", Path: offline}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(offline); err != nil {
+		t.Fatal(err)
+	}
+	for _, song := range []Song{{ID: "confirmed", FilePath: filepath.Join(root, "a.mp3"), AddedAt: 1}, {ID: "unconfirmed", FilePath: filepath.Join(root, "b.mp3"), AddedAt: 1}, {ID: "offline", FilePath: filepath.Join(offline, "c.mp3"), AddedAt: 1}, {ID: "invalid", FilePath: root, AddedAt: 1}} {
+		if err := database.SaveSong(&song); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report, err := database.RunLibraryDiagnostics()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.MissingMedia) != 2 || len(report.UnavailableMedia) != 2 {
+		t.Fatalf("incorrect classification: %+v", report)
+	}
+	result, err := database.RepairLibraryIndexes(true, "confirmed", "offline", "invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result["removedMissing"] != 1 {
+		t.Fatalf("incorrect removals: %+v", result)
+	}
+	for _, id := range []string{"unconfirmed", "offline", "invalid"} {
+		if _, err := database.GetSongByID(id); err != nil {
+			t.Fatalf("lost %s: %v", id, err)
+		}
+	}
+}
+
+func TestRestoreCrashWALAndExclusiveAccess(t *testing.T) {
+	if dataDir := os.Getenv("VIIB_RESTORE_CRASH_FIXTURE"); dataDir != "" {
+		database := openOperationsTestDB(t, dataDir)
+		if _, err := database.conn.Exec(`PRAGMA wal_autocheckpoint=0`); err != nil {
+			t.Fatal(err)
+		}
+		if err := database.SaveSong(&Song{ID: "committed-wal", FilePath: filepath.Join(dataDir, "track.mp3"), AddedAt: 1}); err != nil {
+			t.Fatal(err)
+		}
+		os.Exit(0) // Deliberately leave committed WAL without closing/checkpointing.
+	}
+	dataDir := t.TempDir()
+	source := openOperationsTestDB(t, t.TempDir())
+	pending := filepath.Join(dataDir, "restore-pending", "library.db")
+	if err := source.CreateConsistentCopy(pending); err != nil {
+		t.Fatal(err)
+	}
+	source.Close()
+	if err := os.WriteFile(filepath.Join(dataDir, "restore-pending", "restore.json"), []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(os.Args[0], "-test.run=^TestRestoreCrashWALAndExclusiveAccess$")
+	command.Env = append(os.Environ(), "VIIB_RESTORE_CRASH_FIXTURE="+dataDir)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("crash fixture: %s %v", output, err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "library.db-wal")); err != nil {
+		t.Fatal("fixture did not leave WAL", err)
+	}
+	current := openOperationsTestDB(t, dataDir)
+	if applied, _, err := ApplyPendingRestore(dataDir); err == nil || applied {
+		t.Fatal("restore allowed while application owns database")
+	}
+	current.Close()
+	// Recreate WAL-only crash state after the clean close above.
+	command = exec.Command(os.Args[0], "-test.run=^TestRestoreCrashWALAndExclusiveAccess$")
+	command.Env = append(os.Environ(), "VIIB_RESTORE_CRASH_FIXTURE="+dataDir)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("crash fixture: %s %v", output, err)
+	}
+	// A non-empty temporary destination forces activation preparation to fail.
+	temporary := filepath.Join(dataDir, "library.db.restore-new")
+	if err := os.Mkdir(temporary, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(temporary, "block"), []byte("block"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	applied, rollback, err := ApplyPendingRestore(dataDir)
+	if err == nil || applied || rollback == "" {
+		t.Fatalf("expected recoverable failure: %v %s %v", applied, rollback, err)
+	}
+	copy, err := New(rollback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer copy.Close()
+	if _, err := copy.GetSongByID("committed-wal"); err != nil {
+		t.Fatal("rollback lost committed WAL row", err)
 	}
 }

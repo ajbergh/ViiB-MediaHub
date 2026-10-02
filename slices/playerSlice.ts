@@ -27,7 +27,7 @@ import { EQ_PRESETS } from '../utils';
 import { libraryService } from '../services/libraryService';
 import { api } from '../services/api';
 import { AudioSettings, MilkdropSettings } from '../types';
-import { ManagedObjectUrlRegistry } from '../lib/playbackLifecycle';
+import { managedObjectUrls } from '../lib/playbackLifecycle';
 
 // Maximum retry attempts for streaming errors
 const MAX_RETRY_ATTEMPTS = 3;
@@ -38,7 +38,7 @@ const BASE_RETRY_DELAY = 1000;
 let saveSettingsTimeout: ReturnType<typeof setTimeout> | null = null;
 
 let latestPlaybackRequestId = 0;
-const managedObjectUrls = new ManagedObjectUrlRegistry();
+
 
 /**
  * Saves audio settings to the backend database with debouncing.
@@ -89,6 +89,7 @@ const defaultMilkdropSettings: MilkdropSettings = {
 
 export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (set, get) => ({
     isPlaying: false,
+    playbackGeneration: 0,
     currentSong: null,
     currentSongIndex: -1,
     queue: [],
@@ -127,8 +128,9 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     // Streaming analytics
     streamingStats: { ...initialStreamingStats },
 
-    playSong: async (song, context, requestedContext = song.playbackContext || 'queue') => {
+    playSong: async (song, context, requestedContext = song.playbackContext || 'queue', queueIndex) => {
         const playbackRequestId = ++latestPlaybackRequestId;
+        set({ playbackGeneration: playbackRequestId });
         // 1. Resolve URL if missing (e.g. after page reload)
         let playableSong = { ...song };
 
@@ -201,7 +203,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             }
         }
         // Check if we need to regenerate Blob URL from File Handle
-        else if ((!playableSong.url || playableSong.url.startsWith('blob:') === false) && playableSong.fileHandle) {
+        else if (!managedObjectUrls.owns(playableSong.url) && playableSong.fileHandle) {
             try {
                 // Verify permission or request it (browser might show prompt)
                 const permitted = await libraryService.verifyPermission(playableSong.fileHandle);
@@ -219,7 +221,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         }
 
         if (playbackRequestId !== latestPlaybackRequestId) {
-            managedObjectUrls.release(playableSong.url);
+            if (get().currentSong?.url !== playableSong.url) managedObjectUrls.release(playableSong.url);
             return;
         }
         playableSong.playbackContext = requestedContext;
@@ -228,7 +230,9 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             const settings = get().audioSettings;
             const fadeSeconds = settings.gapless ? 0 : Math.max(0, settings.crossfadeDuration || 0);
             // Keep the outgoing Blob alive until the audio engine has paused the old element.
-            setTimeout(() => managedObjectUrls.release(previousUrl), fadeSeconds * 1000 + 1000);
+            setTimeout(() => {
+                if (get().currentSong?.url !== previousUrl) managedObjectUrls.release(previousUrl);
+            }, fadeSeconds * 1000 + 1000);
         }
 
         // When no explicit context is provided, default the queue to just this
@@ -238,7 +242,8 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         const newQueue = context ? [...context] : [playableSong];
 
         // Use ID to match, ensuring we map to the possibly updated playableSong object
-        const index = newQueue.findIndex(s => s.id === song.id);
+        const index = queueIndex !== undefined && newQueue[queueIndex]?.id === song.id
+            ? queueIndex : newQueue.findIndex(s => s.id === song.id);
         const validIndex = index !== -1 ? index : 0;
 
         // If context was passed, we might need to update the object in queue if it was stale
@@ -279,20 +284,23 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         });
     },
 
-    togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
+    togglePlay: () => {
+        const generation = ++latestPlaybackRequestId;
+        set(state => ({ isPlaying: !state.isPlaying, playbackGeneration: generation }));
+    },
 
     nextSong: () => {
         const { queue, currentSongIndex, playSong } = get();
         if (queue.length === 0) return;
 
         if (currentSongIndex >= queue.length - 1) {
-            set({ isPlaying: false });
+            set({ isPlaying: false, playbackGeneration: ++latestPlaybackRequestId });
             return;
         }
 
         const nextIndex = currentSongIndex + 1;
         // We call playSong to handle the file handle resolution for the next track
-        playSong(queue[nextIndex], queue);
+        playSong(queue[nextIndex], queue, undefined, nextIndex);
     },
 
     prevSong: () => {
@@ -300,7 +308,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         if (queue.length === 0) return;
 
         const prevIndex = (currentSongIndex - 1 + queue.length) % queue.length;
-        playSong(queue[prevIndex], queue);
+        playSong(queue[prevIndex], queue, undefined, prevIndex);
     },
 
     setVolume: (volume) => set({ volume }),
@@ -327,6 +335,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     },
 
     removeFromQueue: (index) => {
+        set({ playbackGeneration: ++latestPlaybackRequestId });
         const { queue, currentSongIndex } = get();
         const newQueue = [...queue];
         newQueue.splice(index, 1);
@@ -348,6 +357,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     },
 
     clearQueue: () => {
+        set({ playbackGeneration: ++latestPlaybackRequestId });
         const { currentSong } = get();
         if (currentSong) {
             set({ queue: [currentSong], currentSongIndex: 0 });
@@ -377,7 +387,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     playQueueItem: (index) => {
         const { queue, playSong } = get();
         if (index >= 0 && index < queue.length) {
-            playSong(queue[index], queue);
+            playSong(queue[index], queue, undefined, index);
         }
     },
 
@@ -614,7 +624,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     },
     
     retryStream: async () => {
-        const { currentSong, retryCount, playSong, queue, showToast, recordStreamEvent } = get();
+        const { currentSong, currentSongIndex, playbackGeneration, retryCount, playSong, queue, showToast, recordStreamEvent } = get();
         
         if (!currentSong) {
             console.warn('[Player] No current song to retry');
@@ -649,9 +659,10 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, delay));
         
+        if (get().playbackGeneration !== playbackGeneration || !get().isPlaying) return;
         // Retry playback
         try {
-            await playSong(currentSong, queue, currentSong.playbackContext || 'queue');
+            await playSong(currentSong, queue, currentSong.playbackContext || 'queue', currentSongIndex);
             console.log('[Player] Stream retry successful');
             set({ retryCount: 0 });
         } catch (error) {

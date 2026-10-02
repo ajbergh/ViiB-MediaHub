@@ -4,7 +4,7 @@
   "components/dj/DJWaveform.tsx": 9,
   "components/dj/v2/DJBeatJump.tsx": 17,
   "components/dj/v2/DJDeckComponents.tsx": 13,
-  "components/dj/v2/DJEQKnob.tsx": 2,
+  "components/dj/v2/DJEQKnob.tsx": 1,
   "components/dj/v2/DJFXPad.tsx": 2,
   "components/dj/v2/DJFXSection.tsx": 8,
   "components/dj/v2/DJHotCuePad.tsx": 10,
@@ -13,5 +13,18 @@
   "components/dj/v2/DJScopeView.tsx": 12,
   "components/dj/v2/DJVUMeter.tsx": 6,
   "components/dj/v2/DJVolumeFader.tsx": 1,
-  "pages/Settings.tsx": 2
+  "components/dj/v2/hooks/useDJShortcuts.ts": 9,
+  "components/dj/v2/waveform/waveformPalette.ts": 23,
+  "components/dj/v2/webgl/DJWebGLRenderer.ts": 1,
+  "components/ui/tokens.ts": 5,
+  "index.css": 34,
+  "lib/camelotColors.ts": 14,
+  "lib/hotCueEditor.test.ts": 5,
+  "lib/hotCueMarkerStyle.test.ts": 5,
+  "lib/hotCueMarkerStyle.ts": 1,
+  "lib/smartMix.ts": 14,
+  "pages/Settings.tsx": 2,
+  "services/api.ts": 1,
+  "slices/djMixerSlice.test.ts": 1,
+  "slices/djMixerSlice.ts": 9
 }

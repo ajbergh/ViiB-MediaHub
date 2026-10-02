@@ -5,6 +5,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -150,6 +151,10 @@ func (a *API) getLibraryChangesV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, err := a.db.GetLibraryChanges(since, parseBoundedInt(r.URL.Query().Get("limit"), 500, 2000))
+	if errors.Is(err, db.ErrLibraryResnapshotRequired) {
+		respondV2Error(w, r, http.StatusGone, "resnapshot_required", err.Error(), false, nil)
+		return
+	}
 	if err != nil {
 		respondError(w, 500, err.Error())
 		return
