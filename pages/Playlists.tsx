@@ -19,7 +19,8 @@ import { Download, FileUp, Plus } from 'lucide-react';
 import { ContextMenuType } from '../types';
 import { EmptyPlaylists } from '../components/EmptyState';
 import { Page, PageHeader } from '../components/ui/Page';
-import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
+import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { api } from '../services/api';
 import { PlaylistArtwork } from '../components/PlaylistArtwork';
 import { getPlaylistArtwork } from '../lib/playlistArtwork';
@@ -56,6 +57,7 @@ export const Playlists: React.FC = () => {
     anchor.click();
     URL.revokeObjectURL(url);
   };
+  const listView = cardCols === MAX_CARD_COLUMNS;
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('playlists-card-cols', String(v)); };
 
   const handleCreate = async () => {
@@ -93,7 +95,7 @@ export const Playlists: React.FC = () => {
           >
             <Plus size={16} /> Create Playlist
           </button>
-          <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
+          <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
           </div>
         }
       />
@@ -117,11 +119,19 @@ export const Playlists: React.FC = () => {
       {playlists.length === 0 ? (
         <EmptyPlaylists onCreate={() => setShowInput(true)} />
       ) : (
+        <div>
+        {listView && <LibraryListHeader title="Playlist" stats="Tracks" />}
         <div
-          className="grid gap-6"
-          style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}
+          className={listView ? 'grid gap-0' : 'grid gap-6'}
+          style={{ gridTemplateColumns: `repeat(${listView ? 1 : cardCols}, minmax(0, 1fr))` }}
         >
-            {playlists.map((pl) => (
+            {playlists.map((pl, index) => listView ? (
+                <LibraryListRow key={pl.id} index={index} name={pl.name}
+                  artwork={<PlaylistArtwork name={pl.name} coverUrl={pl.coverUrl} covers={thumbnails.get(pl.id) || []} />}
+                  stats={String(pl.songIds.length)} onOpen={() => navigate(`/playlist/${encodeURIComponent(pl.id)}`)}
+                  onContextMenu={e => openContextMenu(e, ContextMenuType.PLAYLIST, pl)}
+                  actions={<button type="button" aria-label={`Export ${pl.name} as M3U`} className="p-2 text-text-secondary hover:text-brand" onClick={event => { event.stopPropagation(); void handleExport(pl.id, pl.name); }}><Download size={16} /></button>} />
+            ) : (
                 <div 
                     key={pl.id} 
                     className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer"
@@ -146,6 +156,7 @@ export const Playlists: React.FC = () => {
                     </button>
                 </div>
             ))}
+        </div>
         </div>
       )}
     </Page>

@@ -25,7 +25,8 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Menu, MenuItem } from '../components/ui/Menu';
 import { Page, PageHeader } from '../components/ui/Page';
-import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
+import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { TextInput } from '../components/ui/TextInput';
 import { resolveAlbumArtwork } from '../lib/artwork';
 
@@ -49,7 +50,7 @@ const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...pro
       ...style,
       display: 'grid',
       gridTemplateColumns: 'repeat(var(--card-cols, 4), minmax(0, 1fr))',
-      gap: '1.5rem',
+      gap: 'var(--card-gap, 1.5rem)',
       paddingBottom: '8rem',
     }}
   >
@@ -72,6 +73,7 @@ export const Albums: React.FC = () => {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [filter, setFilter] = useState('');
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('albums-card-cols') ?? 4));
+  const listView = cardCols === MAX_CARD_COLUMNS;
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('albums-card-cols', String(v)); };
 
   useEffect(() => {
@@ -133,7 +135,7 @@ export const Albums: React.FC = () => {
           subtitle={`${filteredAlbums.length}${filter ? ` of ${albums.length}` : ''} albums`}
           actions={
             <div className="flex items-center gap-3">
-              <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
+              <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
               <div className="relative">
                 <Button
                   variant="secondary"
@@ -191,8 +193,10 @@ export const Albums: React.FC = () => {
         {filteredAlbums.length === 0 ? (
           <EmptyAlbums />
         ) : (
-          <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
+          <div style={{ '--card-cols': listView ? 1 : cardCols, '--card-gap': listView ? '0px' : '1.5rem' } as React.CSSProperties}>
+            {listView && <LibraryListHeader title="Album" detail="Artist" stats="Tracks" />}
             <VirtuosoGrid
+              key={listView ? 'list' : 'tiles'}
               useWindowScroll={false}
               customScrollParent={scrollParent}
               data={filteredAlbums}
@@ -201,6 +205,12 @@ export const Albums: React.FC = () => {
                 const metadataKey = `${album.name}::${album.artist}`;
                 const metadata = albumMetadata[metadataKey];
                 const coverUrl = resolveAlbumArtwork(album.coverUrl, metadata?.coverUrl, album.plexBacked);
+
+                if (listView) return <LibraryListRow index={index} name={album.name}
+                  artwork={<div className="w-full h-full flex items-center justify-center" style={{ background: coverBackground(coverUrl, album.name) }}>{!coverUrl && album.name.charAt(0)}</div>}
+                  detail={album.artist} stats={String(album.songCount)}
+                  onOpen={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
+                  onContextMenu={e => openContextMenu(e, ContextMenuType.ALBUM, album)} />;
 
                 return (
                   <Card
