@@ -210,3 +210,5 @@ func (apiEmbeddingProvider) EmbedDocuments(_ context.Context, texts []string) ([
 func (apiEmbeddingProvider) EmbedQuery(_ context.Context, _ string) ([]float32, error) {
 	return []float32{1, 1}, nil
 }
+
+func (apiEmbeddingProvider) Dimensions() int { return 2 }

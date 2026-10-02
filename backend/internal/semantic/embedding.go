@@ -27,6 +27,7 @@ const (
 type EmbeddingProvider interface {
 	Name() string
 	Model() string
+	Dimensions() int
 	DocumentPrefix() string
 	QueryPrefix() string
 	EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error)

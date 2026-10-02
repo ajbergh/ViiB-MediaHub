@@ -52,6 +52,11 @@ import { Button } from './ui/Button';
 type TabType = 'vibe' | 'overview' | 'stats' | 'technical';
 
 export const SongInfoDialog: React.FC = () => {
+  const song = useStore(state => state.songInfoModalSong);
+  return song ? <SongInfoEditor key={song.id} /> : null;
+};
+
+const SongInfoEditor: React.FC = () => {
   const navigate = useNavigate();
   const { songInfoModalSong, closeSongInfoModal, playSong, addToQueue, setLocalSearchQuery, showToast, updateSongMetadata } = useStore();
   const albumCovers = useAlbumCovers();

@@ -19,6 +19,8 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - name: Validate Unix shell scripts
+        run: for script in scripts/*.sh; do bash -n "$script"; done
       - run: npm ci
       - name: Run frontend checks
         id: frontend_checks

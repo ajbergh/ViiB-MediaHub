@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { generateSmartMixes } from '../lib/smartMix';
 import { libraryIndex } from '../lib/libraryIndex';
-import { libraryV2 } from '../services/libraryV2';
+import { libraryV2, LibraryResnapshotRequired } from '../services/libraryV2';
 import { getEventStreamURL } from '../services/eventStreamURL';
 
 const REVISION_STORAGE_KEY = 'viib-library-revision';
@@ -89,7 +89,9 @@ const LibraryEventListener = () => {
     };
 
     const applyChanges = async () => {
-      const delta = await libraryV2.getChanges(currentRevisionRef.current, abortController.signal);
+      let delta;
+      try { delta = await libraryV2.getChanges(currentRevisionRef.current, abortController.signal); }
+      catch (error) { if (error instanceof LibraryResnapshotRequired) { await initializeSnapshot(); return; } throw error; }
       if (disposed) return;
       if (delta.changes.length > 0) {
         const songs = libraryIndex.apply(delta.changes, delta.songs);

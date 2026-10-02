@@ -406,7 +406,11 @@ func (provider *fakeEmbeddingProvider) EmbedQuery(_ context.Context, _ string) (
 	provider.mu.Lock()
 	provider.queryCalls++
 	provider.mu.Unlock()
-	return []float32{1, 1}, nil
+	vector := make([]float32, provider.Dimensions())
+	for i := range vector {
+		vector[i] = 1
+	}
+	return vector, nil
 }
 
 func (provider *fakeEmbeddingProvider) callCount() int {
@@ -460,4 +464,116 @@ func newServiceTestDB(t *testing.T) *db.DB {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	return database
+}
+
+func (provider *fakeEmbeddingProvider) Dimensions() int {
+	if provider.dimensions == 0 {
+		return 2
+	}
+	return provider.dimensions
+}
+func (provider *blockingEmbeddingProvider) Dimensions() int { return 0 }
+
+func TestPartialRebuildLoadsSuccessfulArenas(t *testing.T) {
+	database := newServiceTestDB(t)
+	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: filepath.Join(t.TempDir(), "song.mp3"), AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	provider := &fakeEmbeddingProvider{failCalls: semanticEmbeddingRetryLimit}
+	service, err := NewService(database, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	if err := service.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if service.Status().FailedDocuments == 0 || service.Index(db.SemanticEntityTrack).Len() != 1 {
+		t.Fatalf("partial index not loaded: %+v", service.Status())
+	}
+	result, err := service.SearchSemanticDocuments(context.Background(), "song")
+	if err != nil || len(result.Tracks) != 1 {
+		t.Fatalf("successful documents unavailable: %+v %v", result, err)
+	}
+}
+func TestDimensionsOnlyChangeRebuildsSameModel(t *testing.T) {
+	database := newServiceTestDB(t)
+	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: filepath.Join(t.TempDir(), "song.mp3"), AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := NewService(database, &fakeEmbeddingProvider{dimensions: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+	second, err := NewService(database, &fakeEmbeddingProvider{dimensions: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if err := second.LoadReadyIndexes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if second.Index(db.SemanticEntityTrack).Dimensions() != 3 {
+		t.Fatal("old dimensional identity retained")
+	}
+	result, err := second.SearchSemanticDocuments(context.Background(), "song")
+	if err != nil || len(result.Tracks) != 1 {
+		t.Fatalf("new dimension retrieval failed: %+v %v", result, err)
+	}
+}
+
+type gatedQueryProvider struct {
+	fakeEmbeddingProvider
+	started, release chan struct{}
+}
+
+func (provider *gatedQueryProvider) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	close(provider.started)
+	select {
+	case <-provider.release:
+		return provider.fakeEmbeddingProvider.EmbedQuery(ctx, text)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+func TestSearchSnapshotSurvivesIndexReplacement(t *testing.T) {
+	database := newServiceTestDB(t)
+	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: filepath.Join(t.TempDir(), "song.mp3"), AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	provider := &gatedQueryProvider{started: make(chan struct{}), release: make(chan struct{})}
+	service, err := NewService(database, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	if err := service.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		result, err := service.SearchSemanticDocuments(context.Background(), "song")
+		if err == nil && (len(result.Tracks) != 1 || len(result.Albums) != 1) {
+			err = errors.New("captured arena was invalidated")
+		}
+		done <- err
+	}()
+	<-provider.started
+	if err := service.LoadReadyIndexes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+	close(provider.release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
 }

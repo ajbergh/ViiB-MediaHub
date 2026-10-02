@@ -25,3 +25,11 @@ describe('LibraryIndex', () => {
     expect(index.initialize([second, first]).map(item => item.id)).toEqual(['1', '2']);
   });
 });
+
+it('removes payload-less invisible upserts and restores unignored songs',()=>{
+ const first=new LibraryIndex(),second=new LibraryIndex();const visible=song('1','One');
+ for(const index of [first,second]) {
+  index.initialize([visible]);expect(index.apply([{revision:2,songId:'1',operation:'upsert',changedAt:2}],[])).toEqual([]);
+  expect(index.apply([{revision:3,songId:'1',operation:'upsert',changedAt:3}],[visible])).toEqual([visible]);
+ }
+});

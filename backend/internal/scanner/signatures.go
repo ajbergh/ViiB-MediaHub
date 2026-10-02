@@ -173,7 +173,7 @@ func (s *Scanner) DetectDeletedFiles() ([]FileChange, error) {
 			})
 			continue
 		}
-		if _, statErr := os.Stat(cleanPath); os.IsNotExist(statErr) {
+		if s.db.ConfirmMissingLocalMedia(cleanPath) {
 			changes = append(changes, FileChange{
 				Path: cleanPath, ChangeType: ChangeTypeDeleted,
 				OldMtime: cached.Mtime, OldSize: cached.FileSize,

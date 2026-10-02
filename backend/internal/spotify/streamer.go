@@ -124,7 +124,8 @@ type Streamer struct {
 	sessionManager *SessionManager          // Session for Spotify authentication
 	activeStreams  map[string]*ActiveStream // Track active streams by request ID
 	mu             sync.RWMutex             // Protects activeStreams
-	maxConcurrent  int                      // Maximum concurrent streams allowed
+	closed         bool
+	maxConcurrent  int // Maximum concurrent streams allowed
 }
 
 // NewStreamer creates a new Spotify streamer.
@@ -191,14 +192,16 @@ func (s *Streamer) StreamTrack(ctx context.Context, spotifyID string, requestID 
 func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string, requestID string, quality string) (*ActiveStream, error) {
 	stLog("Starting stream for track: %s (request: %s, quality: %s)", spotifyID, requestID, quality)
 
-	// Enforce concurrent stream limit
-	s.mu.RLock()
-	activeCount := len(s.activeStreams)
-	s.mu.RUnlock()
-	if activeCount >= s.maxConcurrent {
-		stLog("Too many concurrent streams (%d/%d), rejecting request: %s", activeCount, s.maxConcurrent, requestID)
-		return nil, fmt.Errorf("too many concurrent streams (max %d)", s.maxConcurrent)
+	releaseCapacity, err := s.reserveStream(requestID)
+	if err != nil {
+		return nil, err
 	}
+	capacityOwned := true
+	defer func() {
+		if capacityOwned {
+			releaseCapacity()
+		}
+	}()
 
 	// Get authenticated session
 	sess, releaseSession, err := s.sessionManager.AcquireSession()
@@ -285,12 +288,18 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 		},
 		cancelCtx: cancel,
 		assetCtx:  assetCtx,
-		release:   releaseSession,
+		release:   func() { releaseSession(); releaseCapacity() },
 	}
 	releaseNeeded = false
+	capacityOwned = false
 
 	// Track active stream
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		stream.Close()
+		return nil, fmt.Errorf("streamer closed during preparation")
+	}
 	s.activeStreams[requestID] = stream
 	s.mu.Unlock()
 
@@ -298,9 +307,6 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 	go func() {
 		<-streamCtx.Done()
 		stLog("Stream context done, cleaning up: %s", requestID)
-		s.mu.Lock()
-		delete(s.activeStreams, requestID)
-		s.mu.Unlock()
 		stream.Close()
 	}()
 
@@ -321,12 +327,36 @@ func (s *Streamer) GetActiveStreamCount() int {
 // and releases associated resources.
 func (s *Streamer) CloseAllStreams() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	s.closed = true
+	streams := make(map[string]*ActiveStream, len(s.activeStreams))
 	for id, stream := range s.activeStreams {
-		stLog("Closing stream: %s", id)
-		stream.Close()
+		streams[id] = stream
 	}
-	s.activeStreams = make(map[string]*ActiveStream)
+	s.mu.Unlock()
+
+	for id, stream := range streams {
+		stLog("Closing stream: %s", id)
+		if stream != nil {
+			stream.Close()
+		}
+	}
 	stLog("All streams closed")
+}
+
+// Reserve capacity before session acquisition, including streams still preparing.
+func (s *Streamer) reserveStream(requestID string) (func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, fmt.Errorf("streamer closed")
+	}
+	if _, exists := s.activeStreams[requestID]; exists {
+		return nil, fmt.Errorf("duplicate stream request")
+	}
+	if len(s.activeStreams) >= s.maxConcurrent {
+		return nil, fmt.Errorf("too many concurrent streams (max %d)", s.maxConcurrent)
+	}
+	s.activeStreams[requestID] = nil
+	var once sync.Once
+	return func() { once.Do(func() { s.mu.Lock(); delete(s.activeStreams, requestID); s.mu.Unlock() }) }, nil
 }

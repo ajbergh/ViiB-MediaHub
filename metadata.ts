@@ -20,6 +20,7 @@
  */
 
 import { Song } from './types';
+import { managedObjectUrls } from './lib/playbackLifecycle';
 
 // Inline Worker Code
 // We use a Blob to create the worker to ensure it works in all environments without 
@@ -176,6 +177,7 @@ function getWorker() {
             const workerUrl = URL.createObjectURL(blob);
             
             worker = new Worker(workerUrl, { type: 'module' });
+            URL.revokeObjectURL(workerUrl);
 
             worker.onmessage = (e) => {
                 const { id, metadata, error } = e.data;
@@ -257,9 +259,9 @@ export function parseSong(
                         genre: metadata.genre,
                         year: metadata.year,
                         duration: metadata.duration,
-                        url: URL.createObjectURL(file), // Valid Main Thread URL
+                        url: managedObjectUrls.create(file), // Owned Main Thread URL
                         coverData: metadata.coverData, // Blob
-                        coverUrl: metadata.coverData ? URL.createObjectURL(metadata.coverData) : undefined,
+                        coverUrl: metadata.coverData ? managedObjectUrls.create(metadata.coverData) : undefined,
                         addedAt: Date.now(),
                         path: path
                     };

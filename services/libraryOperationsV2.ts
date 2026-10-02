@@ -19,6 +19,7 @@ export interface LibraryDiagnostics {
   revision: number;
   retainedChanges: number;
   missingMedia: MissingMedia[];
+  unavailableMedia: MissingMedia[];
   brokenPlaylistReferences: BrokenPlaylistReference[];
   scannerFailures: ScannerFailure[];
 }
@@ -27,8 +28,8 @@ export const libraryOperationsV2 = {
   diagnostics(signal?: AbortSignal): Promise<LibraryDiagnostics> {
     return requestJSON(`${BASE}/diagnostics`, { signal, timeoutMs: 120_000 });
   },
-  repair(removeMissing: boolean, signal?: AbortSignal): Promise<Record<string, number>> {
-    return requestJSON(`${BASE}/repair`, { method: 'POST', signal, retry: false, timeoutMs: 120_000, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removeMissing }) });
+  repair(removeMissing: boolean, signal?: AbortSignal, confirmedSongIds: string[] = []): Promise<Record<string, number>> {
+    return requestJSON(`${BASE}/repair`, { method: 'POST', signal, retry: false, timeoutMs: 120_000, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removeMissing, confirmedSongIds }) });
   },
   listBackups(signal?: AbortSignal): Promise<{ backups: BackupInfo[] }> {
     return requestJSON(`${BASE}/backups`, { signal });

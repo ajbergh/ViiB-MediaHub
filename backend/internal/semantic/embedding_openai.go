@@ -179,3 +179,5 @@ func (provider *OpenAIEmbeddingProvider) embed(ctx context.Context, inputs []str
 func (provider *OpenAIEmbeddingProvider) Close() error { return nil }
 
 var _ EmbeddingProvider = (*OpenAIEmbeddingProvider)(nil)
+
+func (provider *OpenAIEmbeddingProvider) Dimensions() int { return provider.dimensions }

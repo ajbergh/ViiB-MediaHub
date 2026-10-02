@@ -33,6 +33,7 @@ type LibraryDiagnostics struct {
 	SearchIndexCount         int                       `json:"searchIndexCount"`
 	Revision                 int64                     `json:"revision"`
 	RetainedChanges          int64                     `json:"retainedChanges"`
+	UnavailableMedia         []MissingMedia            `json:"unavailableMedia"`
 	MissingMedia             []MissingMedia            `json:"missingMedia"`
 	BrokenPlaylistReferences []BrokenPlaylistReference `json:"brokenPlaylistReferences"`
 	ScannerFailures          []ScannerFailure          `json:"scannerFailures"`
@@ -42,7 +43,7 @@ type LibraryDiagnostics struct {
 // broken playlist references, revision state, and scanner quarantine entries.
 func (d *DB) RunLibraryDiagnostics() (LibraryDiagnostics, error) {
 	result := LibraryDiagnostics{
-		CheckedAt: time.Now().UnixMilli(), MissingMedia: []MissingMedia{},
+		CheckedAt: time.Now().UnixMilli(), MissingMedia: []MissingMedia{}, UnavailableMedia: []MissingMedia{},
 		BrokenPlaylistReferences: []BrokenPlaylistReference{}, ScannerFailures: []ScannerFailure{},
 	}
 	if err := d.conn.QueryRow(`PRAGMA integrity_check`).Scan(&result.Integrity); err != nil {
@@ -78,10 +79,14 @@ func (d *DB) RunLibraryDiagnostics() (LibraryDiagnostics, error) {
 		info, statErr := os.Stat(item.FilePath)
 		if statErr != nil {
 			item.Reason = statErr.Error()
-			result.MissingMedia = append(result.MissingMedia, item)
+			if os.IsNotExist(statErr) && d.ConfirmMissingLocalMedia(item.FilePath) {
+				result.MissingMedia = append(result.MissingMedia, item)
+			} else {
+				result.UnavailableMedia = append(result.UnavailableMedia, item)
+			}
 		} else if info.IsDir() {
 			item.Reason = "path resolves to a directory"
-			result.MissingMedia = append(result.MissingMedia, item)
+			result.UnavailableMedia = append(result.UnavailableMedia, item)
 		}
 	}
 	if err := rows.Close(); err != nil {
@@ -112,16 +117,22 @@ func (d *DB) RunLibraryDiagnostics() (LibraryDiagnostics, error) {
 // RepairLibraryIndexes rebuilds search state and removes broken playlist IDs.
 // When removeMissing is true it also removes confirmed missing-media records;
 // it never deletes media files from disk.
-func (d *DB) RepairLibraryIndexes(removeMissing bool) (map[string]int, error) {
+func (d *DB) RepairLibraryIndexes(removeMissing bool, confirmedIDs ...string) (map[string]int, error) {
 	result := map[string]int{"removedMissing": 0, "removedPlaylistReferences": 0, "rebuiltSearchRows": 0}
 	if removeMissing {
 		diagnostics, err := d.RunLibraryDiagnostics()
 		if err != nil {
 			return result, err
 		}
+		confirmed := make(map[string]bool, len(confirmedIDs))
+		for _, id := range confirmedIDs {
+			confirmed[id] = true
+		}
 		paths := make([]string, 0, len(diagnostics.MissingMedia))
 		for _, missing := range diagnostics.MissingMedia {
-			paths = append(paths, missing.FilePath)
+			if confirmed[missing.SongID] && d.ConfirmMissingLocalMedia(missing.FilePath) {
+				paths = append(paths, missing.FilePath)
+			}
 		}
 		if len(paths) > 0 {
 			removed, err := d.DeleteSongsByFilePaths(paths)

@@ -40,7 +40,12 @@ export const libraryService = {
   async saveSongs(songs: Song[]): Promise<void> {
     const db = await getDB();
     const tx = db.transaction('songs', 'readwrite');
-    await Promise.all(songs.map(song => tx.store.put(song)));
+    await Promise.all(songs.map(song => {
+      const durableSong = { ...song };
+      if (durableSong.url?.startsWith('blob:')) durableSong.url = '';
+      if (durableSong.coverUrl?.startsWith('blob:')) delete durableSong.coverUrl;
+      return tx.store.put(durableSong);
+    }));
     await tx.done;
   },
 

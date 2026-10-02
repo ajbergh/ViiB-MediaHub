@@ -22,7 +22,7 @@ import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 import { api } from '../services/api';
 
 export const Playlists: React.FC = () => {
-  const { playlists, createPlaylist, openContextMenu, refreshLibrary } = useStore();
+  const { playlists, createPlaylist, openContextMenu, refreshLibrary, showToast } = useStore();
   const [showInput, setShowInput] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('playlists-card-cols') ?? 5));
@@ -48,11 +48,13 @@ export const Playlists: React.FC = () => {
   };
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('playlists-card-cols', String(v)); };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (newPlaylistName.trim()) {
-      createPlaylist(newPlaylistName);
-      setNewPlaylistName('');
-      setShowInput(false);
+      try {
+        await createPlaylist(newPlaylistName);
+        setNewPlaylistName('');
+        setShowInput(false);
+      } catch { showToast({ type: 'error', message: 'Unable to create playlist. Please try again.' }); }
     }
   };
 

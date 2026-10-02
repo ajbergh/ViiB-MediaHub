@@ -891,6 +891,7 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 			return nil
 		}
 		if _, ignored := ignoredPathSet[filepath.Clean(path)]; ignored {
+			scannedPaths = append(scannedPaths, path)
 			return nil
 		}
 

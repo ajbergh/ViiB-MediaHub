@@ -28,6 +28,10 @@ export class ManagedObjectUrlRegistry {
     return url;
   }
 
+  owns(url?: string | null): boolean {
+    return Boolean(url && this.urls.has(url));
+  }
+
   release(url?: string | null): void {
     if (!url || !this.urls.delete(url)) return;
     URL.revokeObjectURL(url);
@@ -49,3 +53,5 @@ export const calculateReplayGain = (gainDb?: number, peak?: number): number => {
   }
   return Math.max(0.05, Math.min(4, linear));
 };
+
+export const managedObjectUrls = new ManagedObjectUrlRegistry();

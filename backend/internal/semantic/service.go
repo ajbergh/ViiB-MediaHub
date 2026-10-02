@@ -171,6 +171,9 @@ func (service *Service) reindexLocked(ctx context.Context) (err error) {
 		return fmt.Errorf("checkpoint semantic WAL: %w", err)
 	}
 	if failed > 0 {
+		if err := service.loadReadyIndexesLocked(ctx); err != nil {
+			return err
+		}
 		service.setStatus(ServiceStatus{State: serviceStateError, DocumentsIndexed: indexed, FailedDocuments: failed, LastError: "some semantic documents could not be embedded"})
 		return nil
 	}
@@ -285,6 +288,9 @@ func (service *Service) RetryErrors(ctx context.Context) (int, error) {
 		return count, err
 	}
 	if failed > 0 {
+		if err := service.loadReadyIndexesLocked(ctx); err != nil {
+			return count, err
+		}
 		service.setStatus(ServiceStatus{State: serviceStateError, DocumentsIndexed: indexed, FailedDocuments: failed, LastError: "some semantic documents could not be embedded"})
 		return count, nil
 	}
@@ -324,12 +330,9 @@ func (service *Service) loadReadyIndexesLocked(ctx context.Context) error {
 		replacement[entityType] = index
 	}
 	service.indexesMu.Lock()
-	previous := service.indexes
 	service.indexes = replacement
 	service.indexesMu.Unlock()
-	for _, index := range previous {
-		_ = index.Close()
-	}
+	// In-flight searches own references to replaced arenas; GC reclaims them.
 	return nil
 }
 
@@ -342,8 +345,11 @@ func (service *Service) resetForIdentityChange(ctx context.Context) error {
 		if state.ItemCount == 0 || state.EmbeddingProvider == "" {
 			continue
 		}
-		if state.EmbeddingProvider != service.provider.Name() || state.EmbeddingModel != service.provider.Model() || state.EmbeddingInputPrefix != service.provider.DocumentPrefix() {
-			return service.database.ResetSemanticEmbeddings(ctx)
+		if state.EmbeddingProvider != service.provider.Name() || state.EmbeddingModel != service.provider.Model() || state.EmbeddingInputPrefix != service.provider.DocumentPrefix() || (service.provider.Dimensions() > 0 && state.Dimensions != service.provider.Dimensions()) {
+			if err := service.database.ResetSemanticEmbeddings(ctx); err != nil {
+				return err
+			}
+			return service.loadReadyIndexesLocked(ctx)
 		}
 	}
 	return nil
@@ -685,12 +691,9 @@ func (service *Service) Close() error {
 		<-done
 	}
 	service.indexesMu.Lock()
-	indexes := service.indexes
 	service.indexes = map[string]VectorIndex{}
 	service.indexesMu.Unlock()
-	for _, index := range indexes {
-		_ = index.Close()
-	}
+	// Preserve captured query snapshots until their readers release them.
 	return service.provider.Close()
 }
 

@@ -56,17 +56,18 @@ export const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, onClick, 
  *  - onClose: Callback when the submenu closes
  */
 export const PlaylistsSubmenu: React.FC<{ songId: string; onClose: () => void; onBack?: () => void }> = ({ songId, onClose, onBack }) => {
-    const { playlists, addToPlaylist, createPlaylist } = useStore();
+    const { playlists, addToPlaylist, createPlaylist, showToast } = useStore();
 
     const handleAddToPlaylist = (playlistId: string) => {
         addToPlaylist(playlistId, songId);
         onClose();
     };
 
-    const handleCreatePlaylist = () => {
+    const handleCreatePlaylist = async () => {
         const name = prompt("New Playlist Name:");
         if (name) {
-            createPlaylist(name);
+            try { await createPlaylist(name, [songId]); }
+            catch { showToast({ type: 'error', message: 'Unable to create playlist. Please try again.' }); return; }
         }
         onClose();
     };

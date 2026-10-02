@@ -312,18 +312,24 @@ func (s *Sequencer) selectWithStochasticity(
 	artistsInPhase := make(map[string]bool)
 	usedIDs := make(map[string]bool)
 
-	// Take from top 50 candidates with softmax-style selection
-	poolSize := 50
-	if poolSize > len(scored) {
-		poolSize = len(scored)
+	// Copy eligible candidates before sampling. The window is replenished after
+	// each pick so phases can consume more than 50 without mutating caller data.
+	pool := make([]ScoredSong, 0, len(scored))
+	for _, candidate := range scored {
+		if ctx.UsedSongIDs == nil || !ctx.UsedSongIDs[candidate.Song.ID] {
+			pool = append(pool, candidate)
+		}
 	}
-	pool := scored[:poolSize]
 
 	for len(selected) < targetCount && len(pool) > 0 {
 		// Calculate softmax weights
-		weights := make([]float64, len(pool))
+		window := len(pool)
+		if window > 50 {
+			window = 50
+		}
+		weights := make([]float64, window)
 		maxScore := pool[0].Score
-		for i, s := range pool {
+		for i, s := range pool[:window] {
 			// Temperature scaling (lower = more deterministic)
 			temperature := 0.3
 			weights[i] = math.Exp((s.Score - maxScore) / temperature)
@@ -359,7 +365,7 @@ func (s *Sequencer) selectWithStochasticity(
 		selectedIdx := 0
 		for i, w := range weights {
 			cumulative += w
-			if r <= cumulative {
+			if r < cumulative {
 				selectedIdx = i
 				break
 			}

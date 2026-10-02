@@ -19,8 +19,7 @@ import (
 // LinuxMtimeDetector implements JournalChangeDetector using mtime-based detection.
 // Linux doesn't have persistent filesystem events like Windows USN or macOS FSEvents,
 // so we use an optimized mtime scan that leverages:
-// 1. Directory ctime/mtime to skip unchanged directory subtrees
-// 2. Inode change time (ctime) for more accurate change detection
+// Inode change time (ctime) complements mtime for metadata changes.
 type LinuxMtimeDetector struct {
 	scanner      *Scanner
 	lastScanTime time.Time
@@ -43,8 +42,8 @@ func (l *LinuxMtimeDetector) IsAvailable() bool {
 	return true
 }
 
-// GetChangesSince returns all filesystem changes since the given timestamp
-// Uses optimized mtime scanning with directory-level skipping.
+// GetChangesSince stats audio files throughout each tree; directory timestamps
+// cannot establish that child content or nested directories are unchanged.
 func (l *LinuxMtimeDetector) GetChangesSince(since time.Time, watchPaths []string) ([]FileChange, error) {
 	var changes []FileChange
 	sinceUnix := since.Unix()
@@ -94,21 +93,8 @@ func (l *LinuxMtimeDetector) scanDirectoryForChanges(
 				return filepath.SkipDir
 			}
 
-			// Check if we can skip this directory using stored signature
-			if sig, ok := sigMap[path]; ok {
-				// Get current directory stats
-				stat, ok := info.Sys().(*syscall.Stat_t)
-				if ok {
-					// Use ctime (inode change time) for better accuracy
-					dirCtime := stat.Ctim.Sec
+			// Directory ctime does not reflect file edits or nested changes.
 
-					// If directory hasn't changed since signature was computed, skip it
-					if dirCtime <= sig.LastVerified/1000 && sig.LatestMtime/1000 <= sinceUnix {
-						logger.Scanner("Skipping unchanged directory: %s", path)
-						return filepath.SkipDir
-					}
-				}
-			}
 			return nil
 		}
 
@@ -122,7 +108,7 @@ func (l *LinuxMtimeDetector) scanDirectoryForChanges(
 		stat, ok := info.Sys().(*syscall.Stat_t)
 		if !ok {
 			// Fallback to basic mtime check
-			if info.ModTime().Unix() > sinceUnix {
+			if info.ModTime().Unix() >= sinceUnix {
 				changes = append(changes, l.createFileChange(path, info))
 			}
 			return nil
@@ -137,7 +123,7 @@ func (l *LinuxMtimeDetector) scanDirectoryForChanges(
 			latestChange = ctime
 		}
 
-		if latestChange > sinceUnix {
+		if latestChange >= sinceUnix {
 			changes = append(changes, l.createFileChange(path, info))
 		}
 

@@ -50,11 +50,14 @@ func (m *MtimeChangeDetector) GetChangesSince(since time.Time, watchPaths []stri
 
 	// Track seen files to detect deletions
 	seenFiles := make(map[string]bool)
+	failedRoots := make(map[string]bool)
 
 	for _, watchPath := range watchPaths {
 		err := filepath.Walk(watchPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				return nil // Skip errors
+				failedRoots[watchPath] = true
+				logger.Scanner("Source unavailable at %s: %v; suppressing deletions for %s", path, err, watchPath)
+				return nil
 			}
 
 			if info.IsDir() {
@@ -113,7 +116,7 @@ func (m *MtimeChangeDetector) GetChangesSince(since time.Time, watchPaths []stri
 		if !seenFiles[path] {
 			// Check if the path is within our watch paths
 			for _, watchPath := range watchPaths {
-				if strings.HasPrefix(strings.ToLower(path), strings.ToLower(watchPath)) {
+				if !failedRoots[watchPath] && db.PathWithinRoot(watchPath, path) && m.scanner.db.ConfirmMissingLocalMedia(path) {
 					cached := metadataCache[path]
 					changes = append(changes, FileChange{
 						Path:       path,

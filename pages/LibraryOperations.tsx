@@ -109,7 +109,9 @@ export const LibraryOperationsPanel: React.FC = () => {
   });
 
   const repair = (removeMissing: boolean) => run('repair', async () => {
-    const result = await libraryOperationsV2.repair(removeMissing);
+    const confirmedIds = removeMissing ? diagnostics?.missingMedia.map(item => item.songId) ?? [] : [];
+    if (removeMissing && (!confirmedIds.length || !window.confirm(`Remove the ${confirmedIds.length} missing tracks shown by diagnostics from the catalog?`))) return;
+    const result = await libraryOperationsV2.repair(removeMissing, undefined, confirmedIds);
     setMessage(`Repair complete: ${result.removedMissing || 0} missing tracks removed and ${result.removedPlaylistReferences || 0} broken playlist references repaired.`);
     setDiagnostics(await libraryOperationsV2.diagnostics());
   });
@@ -156,17 +158,26 @@ export const LibraryOperationsPanel: React.FC = () => {
           <div className="mb-4 flex flex-wrap gap-3">
             <button className={actionClass} disabled={busy !== null} onClick={runDiagnostics}><Activity size={17} />Run diagnostics</button>
             <button className={secondaryClass} disabled={busy !== null} onClick={() => repair(false)}><Wrench size={17} />Repair indexes</button>
-            <button className={secondaryClass} disabled={busy !== null} onClick={() => repair(true)}><RefreshCw size={17} />Remove missing files</button>
+            <button className={secondaryClass} disabled={busy !== null || !diagnostics?.missingMedia.length} onClick={() => repair(true)}><RefreshCw size={17} />Remove missing files</button>
           </div>
           {diagnostics ? (
+            <>
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Database integrity</dt><dd className="mt-1 font-semibold">{diagnostics.integrity}</dd></div>
               <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Songs / search rows</dt><dd className="mt-1 font-semibold">{diagnostics.songCount} / {diagnostics.searchIndexCount}</dd></div>
               <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Missing media</dt><dd className="mt-1 font-semibold">{diagnostics.missingMedia.length}</dd></div>
+              <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Unavailable / invalid media</dt><dd className="mt-1 font-semibold">{diagnostics.unavailableMedia?.length ?? 0}</dd></div>
               <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Broken playlist refs</dt><dd className="mt-1 font-semibold">{diagnostics.brokenPlaylistReferences.length}</dd></div>
               <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Quarantined media</dt><dd className="mt-1 font-semibold">{diagnostics.scannerFailures.length}</dd></div>
               <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Library revision</dt><dd className="mt-1 font-semibold">{diagnostics.revision}</dd></div>
             </dl>
+            {diagnostics.missingMedia.length > 0 && <ul className="mt-3 max-h-48 overflow-auto text-sm" aria-label="Missing tracks to remove">
+              {diagnostics.missingMedia.map(item => <li key={item.songId} className="py-2"><span className="font-medium">{item.title || item.songId}</span><div className="break-all text-text-secondary">{item.filePath}</div></li>)}
+            </ul>}
+            {(diagnostics.unavailableMedia?.length ?? 0) > 0 && <ul className="mt-3 max-h-48 overflow-auto text-sm" aria-label="Unavailable tracks retained">
+              {diagnostics.unavailableMedia.map(item => <li key={item.songId} className="py-2"><span className="font-medium">{item.title || item.songId}</span><div className="break-all text-text-secondary">{item.reason}</div></li>)}
+            </ul>}
+            </>
           ) : <p className="text-sm text-text-secondary">Run diagnostics to inspect database integrity, file availability, playlists, search indexes, and scanner quarantine.</p>}
         </section>
 

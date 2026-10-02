@@ -27,6 +27,7 @@ import { SmartPlaylistFilter, SmartPlaylistSource, SmartPlaylistValidation, DJPe
 
 export interface PlayerSlice {
   isPlaying: boolean;
+  playbackGeneration: number;
   currentSong: Song | null;
   currentSongIndex: number;
   queue: Song[];
@@ -47,7 +48,7 @@ export interface PlayerSlice {
   streamError: StreamingError | null;
   retryCount: number;
   
-  playSong: (song: Song, context?: Song[], playbackContext?: PlaybackContext) => Promise<void>;
+  playSong: (song: Song, context?: Song[], playbackContext?: PlaybackContext, queueIndex?: number) => Promise<void>;
   togglePlay: () => void;
   nextSong: () => void;
   prevSong: () => void;

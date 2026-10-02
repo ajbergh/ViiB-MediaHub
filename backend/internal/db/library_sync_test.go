@@ -1,9 +1,13 @@
 package db
 
 import (
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func openLibrarySyncTestDB(t *testing.T) *DB {
@@ -148,5 +152,65 @@ func TestSearchPrefixQueryUsesTitleIndex(t *testing.T) {
 	}
 	if !strings.Contains(plan, "idx_song_search_title") {
 		t.Fatalf("expected indexed title range scan, got %q", plan)
+	}
+}
+
+func TestLibraryDeltaRejectsExpiredCursor(t *testing.T) {
+	database := openLibrarySyncTestDB(t)
+	for i := 0; i < 8; i++ {
+		song := testLibrarySong(fmt.Sprint(i), "Song", filepath.Join(t.TempDir(), "song.mp3"))
+		if err := database.SaveSong(&song); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := database.PruneLibraryChanges(2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.GetLibraryChanges(0, 10); !errors.Is(err, ErrLibraryResnapshotRequired) {
+		t.Fatalf("expired cursor accepted: %v", err)
+	}
+	if _, err := database.GetLibraryChanges(7, 10); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestConcurrentDeltaCannotAdvancePastUnseenChanges(t *testing.T) {
+	database := openLibrarySyncTestDB(t)
+	var wg sync.WaitGroup
+	writerErr := make(chan error, 1)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			song := testLibrarySong(fmt.Sprint(i), "Song", filepath.Join(t.TempDir(), "song.mp3"))
+			if err := database.SaveSong(&song); err != nil {
+				writerErr <- err
+				return
+			}
+		}
+	}()
+	cursor := int64(0)
+	seen := map[int64]bool{}
+	deadline := time.Now().Add(10 * time.Second)
+	for cursor < 50 && time.Now().Before(deadline) {
+		page, err := database.GetLibraryChanges(cursor, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Changes) == 0 && page.ToRevision != cursor {
+			t.Fatalf("empty page skipped revision %d -> %d", cursor, page.ToRevision)
+		}
+		for _, change := range page.Changes {
+			seen[change.Revision] = true
+		}
+		cursor = page.ToRevision
+	}
+	wg.Wait()
+	select {
+	case err := <-writerErr:
+		t.Fatal(err)
+	default:
+	}
+	if len(seen) != 50 {
+		t.Fatalf("lost changes: %d", len(seen))
 	}
 }

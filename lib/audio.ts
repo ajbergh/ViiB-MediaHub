@@ -32,6 +32,14 @@ class AudioEngine {
   // Track connected sources and their individual gain nodes (for crossfading)
   private sources: Map<HTMLAudioElement, { source: MediaElementAudioSourceNode, inputGain: GainNode }> = new Map();
 
+  private cleanupTimers = new Map<HTMLAudioElement, ReturnType<typeof setTimeout>>();
+
+  cancelCleanup(element: HTMLAudioElement) {
+    const timer = this.cleanupTimers.get(element);
+    if (timer !== undefined) clearTimeout(timer);
+    this.cleanupTimers.delete(element);
+  }
+
   constructor() {}
 
   init() {
@@ -146,6 +154,8 @@ class AudioEngine {
       this.register(to);
       if (from) this.register(from);
 
+      this.cancelCleanup(to);
+      if (from) this.cancelCleanup(from);
       const now = this.context!.currentTime;
       const toNode = this.sources.get(to);
       const fromNode = from ? this.sources.get(from) : null;
@@ -176,10 +186,13 @@ class AudioEngine {
           fromNode.inputGain.gain.linearRampToValueAtTime(0, now + duration);
           
           // Cleanup after fade
-          setTimeout(() => {
+          const timer = setTimeout(() => {
+              if (this.cleanupTimers.get(from) !== timer) return;
+              this.cleanupTimers.delete(from);
               from.pause();
               from.currentTime = 0;
-          }, duration * 1000 + 100); 
+          }, duration * 1000 + 100);
+          this.cleanupTimers.set(from, timer);
       }
   }
   

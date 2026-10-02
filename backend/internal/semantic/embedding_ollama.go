@@ -150,3 +150,5 @@ func OllamaEmbeddingModelAvailable(ctx context.Context, baseURL, model string, c
 }
 
 var _ EmbeddingProvider = (*OllamaEmbeddingProvider)(nil)
+
+func (provider *OllamaEmbeddingProvider) Dimensions() int { return 0 }
