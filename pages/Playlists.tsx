@@ -12,6 +12,7 @@
  * @module Playlists
  */
 
+import { useNavigate } from 'react-router';
 import React, { useMemo, useRef, useState } from 'react';
 import { useAlbumCovers, useStore } from '../store';
 import { Download, FileUp, Plus } from 'lucide-react';
@@ -24,6 +25,7 @@ import { PlaylistArtwork } from '../components/PlaylistArtwork';
 import { getPlaylistArtwork } from '../lib/playlistArtwork';
 
 export const Playlists: React.FC = () => {
+  const navigate = useNavigate();
   const { playlists, createPlaylist, openContextMenu, refreshLibrary, showToast } = useStore();
   const songs = useStore(state => state.songs);
   const albumCovers = useAlbumCovers();
@@ -125,6 +127,7 @@ export const Playlists: React.FC = () => {
                     className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer"
                     onContextMenu={(e) => openContextMenu(e, ContextMenuType.PLAYLIST, pl)}
                 >
+                    <button type="button" className="w-full text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand" aria-label={`Open playlist ${pl.name}`} onClick={() => navigate(`/playlist/${encodeURIComponent(pl.id)}`)}>
                     <PlaylistArtwork
                       name={pl.name}
                       coverUrl={pl.coverUrl}
@@ -133,6 +136,7 @@ export const Playlists: React.FC = () => {
                     />
                     <h4 className="font-bold truncate text-text-main mb-1">{pl.name}</h4>
                     <p className="text-sm text-text-secondary">{pl.songIds.length} songs</p>
+                    </button>
                     <button
                       type="button"
                       className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-text-secondary hover:text-brand"

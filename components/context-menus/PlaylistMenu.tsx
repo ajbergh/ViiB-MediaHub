@@ -4,10 +4,12 @@
  * Provides contextual actions for playlists such as Play, Play Next, Add to Queue and Delete.
  */
 import React from 'react';
-import { Play, SkipForward, ListPlus, Trash2 } from 'lucide-react';
+import { Play, SkipForward, ListPlus, Trash2, Pencil } from 'lucide-react';
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
 import { Playlist } from '../../types';
+import { useNavigate } from 'react-router';
+import { resolvePlaylistSongs } from '../../lib/playlistContents';
 
 /**
  * PlaylistMenu props:
@@ -16,7 +18,8 @@ import { Playlist } from '../../types';
  */
 export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }> = ({ playlist, onClose }) => {
     const { songs, playSong, playNext, addToQueue, deletePlaylist, showConfirmDialog, closeConfirmDialog } = useStore();
-    const playlistSongs = songs.filter(s => playlist.songIds.includes(s.id));
+    const navigate = useNavigate();
+    const playlistSongs = resolvePlaylistSongs(playlist.songIds, new Map(songs.map(song => [song.id, song])));
 
     const handleAction = (action: () => void) => {
         action();
@@ -52,6 +55,7 @@ export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }>
             
             <div className="border-t border-surface-border my-1"></div>
             
+            <MenuItem icon={Pencil} label="Edit Playlist" onClick={() => handleAction(() => navigate(`/playlist/${encodeURIComponent(playlist.id)}`))} />
             <MenuItem icon={Trash2} label="Delete Playlist" onClick={handleDeletePlaylist} />
         </>
     );

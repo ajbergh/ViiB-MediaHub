@@ -2,11 +2,12 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ state: {} as any }));
+const mocks = vi.hoisted(() => ({ state: {} as any, navigate: vi.fn() }));
 vi.mock('../store', () => ({
   useStore: (selector?: any) => selector ? selector(mocks.state) : mocks.state,
   useAlbumCovers: () => ({}),
 }));
+vi.mock('react-router', () => ({ useNavigate: () => mocks.navigate }));
 import { Playlists } from './Playlists';
 
 it('creates thumbnails for new playlists and updates them with membership, custom covers, and failed art', async () => {
@@ -23,6 +24,8 @@ it('creates thumbnails for new playlists and updates them with membership, custo
   const update = (patch: any) => { mocks.state.playlists = [{ ...mocks.state.playlists[0], ...patch }]; };
   try {
     await render();
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Open playlist My Playlist"]')!.click());
+    expect(mocks.navigate).toHaveBeenCalledWith('/playlist/playlist');
     expect(sources()).toEqual([]);
     update({ songIds: ['a'] }); await render();
     expect(sources()).toEqual(['/a.jpg']);

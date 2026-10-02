@@ -3,7 +3,7 @@
  *
  * Common elements used across multiple context menus such as MenuItem and PlaylistsSubmenu.
  */
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Plus } from 'lucide-react';
 import { useStore } from '../../store';
@@ -57,6 +57,31 @@ export const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, onClick, 
  */
 export const PlaylistsSubmenu: React.FC<{ songId: string; onClose: () => void; onBack?: () => void }> = ({ songId, onClose, onBack }) => {
     const { playlists, addToPlaylist, createPlaylist, showToast } = useStore();
+    const submenuRef = useRef<HTMLDivElement>(null);
+    const [position, setPosition] = useState<React.CSSProperties>({});
+
+    useLayoutEffect(() => {
+        const placeSubmenu = () => {
+            const submenu = submenuRef.current;
+            const anchor = submenu?.parentElement;
+            if (!submenu || !anchor) return;
+            const rect = anchor.getBoundingClientRect();
+            const margin = 8;
+            const width = Math.min(224, Math.max(0, window.innerWidth - margin * 2));
+            const height = Math.min(submenu.getBoundingClientRect().height, window.innerHeight - margin * 2);
+            const preferredLeft = rect.right + width <= window.innerWidth - margin
+                ? rect.right : rect.left - width;
+            const left = Math.max(margin, Math.min(preferredLeft, window.innerWidth - width - margin));
+            const top = Math.max(margin, Math.min(rect.top, window.innerHeight - height - margin));
+            // Keep this in the menu DOM for focus and click-outside handling.
+            // Adjacent edges also let the pointer enter without crossing a gap.
+            setPosition({ left: left - rect.left, top: top - rect.top, width, maxHeight: window.innerHeight - margin * 2 });
+        };
+        placeSubmenu();
+        window.addEventListener('resize', placeSubmenu);
+        return () => window.removeEventListener('resize', placeSubmenu);
+    }, [playlists.length]);
+
 
     const handleAddToPlaylist = (playlistId: string) => {
         addToPlaylist(playlistId, songId);
@@ -77,10 +102,13 @@ export const PlaylistsSubmenu: React.FC<{ songId: string; onClose: () => void; o
             role="menu"
             aria-label="Playlists"
             data-viib-submenu="playlists"
-            className="absolute left-full top-0 ml-1 w-56 bg-surface-2 ring-1 ring-surface-3 rounded-xl shadow-xl shadow-black/30 py-1 overflow-hidden z-50"
+            ref={submenuRef}
+            style={position}
+            className="absolute left-full top-0 w-56 bg-surface-2 ring-1 ring-surface-3 rounded-xl shadow-xl shadow-black/30 py-1 overflow-y-auto z-50"
             onKeyDown={(e) => {
                 if (e.key === 'ArrowLeft' && onBack) {
                     e.preventDefault();
+                    e.stopPropagation();
                     onBack();
                 }
             }}
