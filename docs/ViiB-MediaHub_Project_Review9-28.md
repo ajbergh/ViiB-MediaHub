@@ -546,6 +546,12 @@ Style baselines now record existing debt in the expanded scope: 239 palette occu
 
 Native installer startup/upgrades, repeated macOS packaging, physical shares/drives and live Plex/Spotify/AI/audio-device operation have not been performed in this Windows session. Those release-validation checklist items remain open; no tracked code finding is represented as validated against a live service.
 
+## October 2 PR CI follow-up
+
+PR #113 failed release validation before any build because the current tag `v1.0.0-rc4` already exists (Actions run `37016036862`). Resolved: the version step accepts existing tags for `pull_request` events, matching the existing publish-job exclusion. Push/manual publishing still rejects duplicate tags. The release version is unchanged.
+
+Validation: the actual version-step Bash script passed all six combinations of PR/push/manual events with existing/new tags, and rejected an invalid version. `git diff --check` passed. Updated GitHub Actions validation is pending. The original PR frontend, native track-analysis, semantic cross-compilation and scalar-determinism checks passed; backend validation was still running when this follow-up began.
+
 ## Conclusion
 
 The tracked defects and maintenance observations have been addressed with automated regression coverage. Local frontend/backend validation passes. Release readiness still requires the platform and live-integration checks explicitly retained above.

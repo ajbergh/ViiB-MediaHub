@@ -43,7 +43,9 @@ jobs:
             exit 1
           fi
           tag="v${version}"
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+          # PRs validate packaging without publishing; an existing version is valid.
+          # Publishing events must still reject a tag that already exists.
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]] && git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
             echo "Tag ${tag} already exists." >&2
             exit 1
           fi
