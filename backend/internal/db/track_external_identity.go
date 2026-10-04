@@ -13,6 +13,45 @@ var spotifyRecordingID = regexp.MustCompile("^[A-Za-z0-9]{22}$")
 // ValidSpotifyRecordingID accepts only a recording ID, never a URL or album ID.
 func ValidSpotifyRecordingID(id string) bool { return spotifyRecordingID.MatchString(id) }
 
+// SpotifySearchAllowed preserves explicit removals and stronger recording
+// identities, including manual links to a previous source revision.
+func (d *DB) SpotifySearchAllowed(songID, fingerprint string) (bool, error) {
+	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
+		return false, err
+	}
+	var allowed bool
+	err := d.conn.QueryRow(`SELECT NOT EXISTS (
+ SELECT 1 FROM track_external_identity_suppression WHERE song_id=? AND source_fingerprint=?)
+ AND NOT EXISTS (SELECT 1 FROM track_external_identity WHERE song_id=? AND provider='spotify' AND link_origin!='automatic_search')`, songID, fingerprint, songID).Scan(&allowed)
+	return allowed, err
+}
+
+// SaveSpotifySearchMatch never upgrades an inferred match to manual confirmation.
+func (d *DB) SaveSpotifySearchMatch(songID, id, fingerprint string) (bool, error) {
+	if songID == "" || fingerprint == "" || !ValidSpotifyRecordingID(id) {
+		return false, errors.New("recording ID and current source required")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return false, err
+	}
+	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
+		return false, err
+	}
+	result, err := d.conn.Exec(`INSERT INTO track_external_identity
+ (song_id,provider,external_id,link_origin,source_fingerprint,confirmed_at)
+ SELECT ?,'spotify',?,'automatic_search',?,? WHERE EXISTS (
+ SELECT 1 FROM track_analysis_source_revisions WHERE song_id=? AND source_fingerprint=?)
+ AND NOT EXISTS (SELECT 1 FROM track_external_identity_suppression WHERE song_id=? AND source_fingerprint=?)
+ ON CONFLICT(song_id,provider) DO UPDATE SET external_id=excluded.external_id,
+ link_origin=excluded.link_origin,source_fingerprint=excluded.source_fingerprint,confirmed_at=excluded.confirmed_at
+ WHERE track_external_identity.link_origin='automatic_search'`, songID, id, fingerprint, time.Now().UnixMilli(), songID, fingerprint, songID, fingerprint)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n == 1, err
+}
+
 type ExternalTrackIdentity struct {
 	SongID            string `json:"songId"`
 	Provider          string `json:"provider"`

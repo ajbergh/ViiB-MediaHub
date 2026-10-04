@@ -34,14 +34,16 @@ func dLog(format string, v ...interface{}) {
 // This mirrors the DownloadMetadata struct in the api package but is defined here
 // to avoid import cycles.
 type DownloadMetadata struct {
-	TrackNumber   int    `json:"trackNumber,omitempty"`   // Track number within album (1-based)
-	DiscNumber    int    `json:"discNumber,omitempty"`    // Disc number for multi-disc albums
-	AlbumArtist   string `json:"albumArtist,omitempty"`   // Primary album artist
-	ReleaseDate   string `json:"releaseDate,omitempty"`   // Album release date (YYYY-MM-DD)
-	Genre         string `json:"genre,omitempty"`         // Genre classification
-	PlaylistName  string `json:"playlistName,omitempty"`  // Playlist name (for playlist downloads)
-	PlaylistOrder int    `json:"playlistOrder,omitempty"` // Position in playlist (1-based)
-	ImageURL      string `json:"imageUrl,omitempty"`      // Album/playlist artwork URL
+	BPM           *float64 `json:"bpm,omitempty"`
+	InitialKey    string   `json:"initialKey,omitempty"`
+	TrackNumber   int      `json:"trackNumber,omitempty"`   // Track number within album (1-based)
+	DiscNumber    int      `json:"discNumber,omitempty"`    // Disc number for multi-disc albums
+	AlbumArtist   string   `json:"albumArtist,omitempty"`   // Primary album artist
+	ReleaseDate   string   `json:"releaseDate,omitempty"`   // Album release date (YYYY-MM-DD)
+	Genre         string   `json:"genre,omitempty"`         // Genre classification
+	PlaylistName  string   `json:"playlistName,omitempty"`  // Playlist name (for playlist downloads)
+	PlaylistOrder int      `json:"playlistOrder,omitempty"` // Position in playlist (1-based)
+	ImageURL      string   `json:"imageUrl,omitempty"`      // Album/playlist artwork URL
 }
 
 // Downloader handles downloading tracks from Spotify using librespot.
@@ -542,6 +544,12 @@ func (d *Downloader) writeOggMetadata(filePath, artist, title, album string, met
 
 	// Add metadata fields if available
 	if metadata != nil {
+		if metadata.BPM != nil && *metadata.BPM > 0 {
+			tags["BPM"] = []string{strconv.FormatFloat(*metadata.BPM, 'f', -1, 64)}
+		}
+		if metadata.InitialKey != "" {
+			tags["INITIALKEY"] = []string{metadata.InitialKey}
+		}
 		if metadata.AlbumArtist != "" {
 			tags["ALBUMARTIST"] = []string{strings.ToValidUTF8(metadata.AlbumArtist, "")}
 		}

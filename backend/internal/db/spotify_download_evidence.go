@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 	"io"
 	"log"
 	"os"
@@ -116,8 +118,10 @@ func (d *DB) MarkDownloadCompletedWithEvidence(ctx context.Context, id, path str
 		return false, errors.New("invalid recording ID in completed download")
 	}
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO spotify_download_evidence
- (file_path,content_sha256,file_size,mtime_ns,spotify_id,completed_at) VALUES (?,?,?,?,?,?)`,
-		revision.path, revision.digest, revision.size, revision.mtime, recording, time.Now().UnixMilli())
+ (file_path,content_sha256,file_size,mtime_ns,spotify_id,completed_at,features_json)
+ VALUES (?,?,?,?,?,?,COALESCE((SELECT observation_json FROM external_track_analysis
+ WHERE provider='spotify' AND external_id=? AND endpoint='audio_features' AND schema_version=? AND expires_at>?),''))`,
+		revision.path, revision.digest, revision.size, revision.mtime, recording, time.Now().UnixMilli(), recording, ExternalAnalysisSchemaVersion, time.Now().UnixMilli())
 	if err != nil {
 		return false, err
 	}
@@ -188,9 +192,48 @@ func (d *DB) ReconcileSpotifyDownload(ctx context.Context, path string) error {
  SELECT ?,'spotify',?,'download_completion',?,? WHERE EXISTS (
  SELECT 1 FROM songs WHERE id=? AND file_path=? AND COALESCE(file_hash,'')=?) AND NOT EXISTS (
  SELECT 1 FROM track_external_identity_suppression WHERE song_id=? AND source_fingerprint=?)
- ON CONFLICT(song_id,provider) DO UPDATE SET external_id=excluded.external_id, source_fingerprint=excluded.source_fingerprint, confirmed_at=excluded.confirmed_at WHERE track_external_identity.link_origin='download_completion'`,
+ ON CONFLICT(song_id,provider) DO UPDATE SET external_id=excluded.external_id, source_fingerprint=excluded.source_fingerprint, confirmed_at=excluded.confirmed_at WHERE track_external_identity.link_origin IN ('download_completion','automatic_search')`,
 		song.ID, recording, fingerprint, time.Now().UnixMilli(), song.ID, path, song.FileHash, song.ID, fingerprint)
-	return err
+	if err != nil {
+		return err
+	}
+	link, err := d.GetSpotifyRecording(song.ID, fingerprint)
+	if err != nil || link == nil || link.ExternalID != recording {
+		return err
+	}
+	var encoded string
+	err = d.conn.QueryRowContext(ctx, `SELECT features_json FROM spotify_download_evidence
+ WHERE file_path=? AND content_sha256=? AND file_size=? AND mtime_ns=? AND spotify_id=?`,
+		absolute, revision.digest, revision.size, revision.mtime, recording).Scan(&encoded)
+	if err != nil {
+		return err
+	}
+	if encoded == "" {
+		return nil
+	}
+	var observation spotifyanalysis.Observation
+	if json.Unmarshal([]byte(encoded), &observation) != nil || observation.TrackID != recording || spotifyanalysis.ValidateObservation(observation) != nil {
+		return nil
+	}
+	existing, err := d.GetTrackAnalysis(song.ID)
+	if err == nil && existing.SourceFingerprint == fingerprint {
+		return nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	record := TrackAnalysis{SongID: song.ID, Status: TrackAnalysisPartial, AnalysisVersion: 1,
+		AlgorithmVersion: "spotify-features-v1", SourceFingerprint: fingerprint,
+		SourceSize: &revision.size, SourceMtime: scalarPtr(info.ModTime().UnixMilli()), AnalyzedAt: scalarPtr(time.Now().UnixMilli())}
+	ApplySpotifyScalars(&record, observation)
+	if record.BPM == nil && record.KeyTonic == nil {
+		return nil
+	}
+	if record.BPM != nil && record.KeyTonic != nil {
+		record.Status = TrackAnalysisComplete
+	}
+	// The download algorithm marker keeps these eligible for the normal scan.
+	return d.UpsertTrackAnalysis(record)
 }
 
 // RequeueConverting retires account-bound post-processing without restarting

@@ -43,6 +43,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
+	"github.com/ajbergh/viib-mediahub/internal/spotify/catalog"
 	spotifyrefresh "github.com/ajbergh/viib-mediahub/internal/spotify/refresh"
 	"github.com/ajbergh/viib-mediahub/internal/version"
 	"github.com/go-chi/chi/v5"
@@ -59,6 +60,7 @@ type API struct {
 	enrichmentClosed      bool
 	enrichmentWorkers     sync.WaitGroup
 	spotifyHTTPClient     *http.Client
+	spotifyTrackSearch    func(context.Context, string) ([]*catalog.Track, error)
 	spotifyAuthMu         sync.Mutex
 	spotifyHooksOnce      sync.Once
 	spotifyAuth           *spotifyAuthRuntime
@@ -142,6 +144,7 @@ func New(database *db.DB, dataDir string) *API {
 
 	api.spotifyTokens()
 	api.initSpotifyAnalysis()
+	dm.spotifyFeatures = api.spotifyTrackFeatures
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()

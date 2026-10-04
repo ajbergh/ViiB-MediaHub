@@ -32,7 +32,7 @@ const SELECTIONS: { mode: AnalysisSelectionMode; source: AnalysisSource; label: 
   { mode: 'missing', source: 'local', label: 'Prepare new tracks', hint: 'Analyze local tracks that have never been prepared.' },
   { mode: 'missing', source: 'plex', label: 'Prepare Plex tracks', hint: 'Analyze available Plex tracks that have never been prepared.' },
   { mode: 'stale', source: 'all', label: 'Update analysis', hint: 'Refresh local and Plex tracks analyzed by an older algorithm version.' },
-  { mode: 'all', source: 'all', label: 'Prepare library', hint: 'Prepare every available local and Plex track. Current results are skipped.' },
+  { mode: 'all', source: 'all', label: 'Prepare library', hint: 'Prepare every available local and Plex track. With Spotify connected, also match existing tracks for BPM/key; current audio analysis is reused.' },
 ];
 
 const isEnabled = (value: string) => ['1', 'true', 'yes', 'on', 'enabled'].includes(value.trim().toLowerCase());

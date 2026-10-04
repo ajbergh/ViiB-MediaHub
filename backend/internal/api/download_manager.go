@@ -20,6 +20,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
+	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 	"github.com/ajbergh/viib-mediahub/internal/validation"
 	"github.com/google/uuid"
@@ -89,6 +90,7 @@ const (
 //   - Auth failure detection: notifies frontend when re-authentication is needed
 type DownloadManager struct {
 	tokenSource         spotifyTokenSource
+	spotifyFeatures     func(context.Context, string) *spotifyanalysis.Observation
 	sessionPrepareMu    sync.Mutex
 	db                  *db.DB                        // Database for persistent queue
 	downloadDir         string                        // Root directory for downloaded files
@@ -1399,6 +1401,19 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 		}
 	}
 
+	if dm.spotifyFeatures != nil {
+		if observation := dm.spotifyFeatures(ctx, download.SpotifyID); observation != nil {
+			if metadata == nil {
+				metadata = &spotify.DownloadMetadata{}
+			}
+			metadata.BPM = observation.BPM
+			metadata.InitialKey = observation.InitialKey()
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	// Download the track
 	dm.mu.RLock()
 	downloader := dm.downloader
@@ -1500,6 +1515,8 @@ func (dm *DownloadManager) convertDownloadedOgg(ctx context.Context, download *d
 		tags.DiscNumber = metadata.DiscNumber
 		tags.Date = metadata.ReleaseDate
 		tags.Genre = metadata.Genre
+		tags.BPM = metadata.BPM
+		tags.InitialKey = metadata.InitialKey
 		if metadata.PlaylistName != "" {
 			tags.Album = metadata.PlaylistName
 			tags.AlbumArtist = metadata.PlaylistName

@@ -2,7 +2,7 @@ import type { DJHotCue } from './api';
 
 // Resolved server-side analysis for DJ display and timing. `bpm` deliberately
 // excludes legacy AI estimates, and `syncAllowed` is true only for manual or
-// audio-measured tempo.
+// audio-measured tempo. Spotify scalar tempo is displayable but supplies no beat phase.
 export interface TrackAnalysisFeature {
   songId: string;
   status: 'pending' | 'running' | 'complete' | 'partial' | 'failed' | 'unsupported';
@@ -12,7 +12,7 @@ export interface TrackAnalysisFeature {
   bpmAltCandidate?: number;
   tempoStability?: number;
   tempoKind?: string;
-  bpmSource: 'unknown' | 'manual' | 'measured';
+  bpmSource: 'unknown' | 'manual' | 'measured' | 'spotify';
   syncAllowed: boolean;
   key?: string;
   camelotKey?: string;
@@ -22,7 +22,7 @@ export interface TrackAnalysisFeature {
   measuredKeyTonic?: number;
   measuredKeyMode?: 'major' | 'minor';
   keyConfidence?: number;
-  keySource: 'unknown' | 'manual' | 'measured';
+  keySource: 'unknown' | 'manual' | 'measured' | 'spotify';
   energyLevel?: number;
   energyLevelConfidence?: number;
   energyAlgorithmVersion?: string;

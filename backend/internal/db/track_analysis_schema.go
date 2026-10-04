@@ -1,9 +1,14 @@
 // track_analysis_schema.go installs durable, song-keyed analysis storage.
 package db
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
 
 type trackAnalysisSchemaResult struct{ err error }
+
+var trackAnalysisSchemaMu sync.Mutex
 
 var trackAnalysisSchemas sync.Map // map[*DB]trackAnalysisSchemaResult
 
@@ -11,6 +16,8 @@ var trackAnalysisSchemas sync.Map // map[*DB]trackAnalysisSchemaResult
 // and manual-override tables. It intentionally does not alter songs.bpm: that
 // integer column remains legacy inferred metadata, never measured tempo.
 func (d *DB) EnsureTrackAnalysisSchema() error {
+	trackAnalysisSchemaMu.Lock()
+	defer trackAnalysisSchemaMu.Unlock()
 	if value, ok := trackAnalysisSchemas.Load(d); ok {
 		return value.(trackAnalysisSchemaResult).err
 	}
@@ -30,11 +37,11 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 			bpm_alt_candidate REAL,
 			tempo_stability REAL,
 			tempo_kind TEXT CHECK(tempo_kind IS NULL OR tempo_kind IN ('unknown', 'static', 'dynamic-candidate', 'dynamic')),
-			bpm_source TEXT CHECK(bpm_source IS NULL OR bpm_source IN ('measured', 'imported', 'manual', 'legacy-ai')),
+			bpm_source TEXT CHECK(bpm_source IS NULL OR bpm_source IN ('measured', 'spotify', 'imported', 'manual', 'legacy-ai')),
 			key_tonic INTEGER CHECK(key_tonic IS NULL OR key_tonic BETWEEN 0 AND 11),
 			key_mode TEXT CHECK(key_mode IS NULL OR key_mode IN ('major', 'minor')),
 			key_confidence REAL,
-			key_source TEXT CHECK(key_source IS NULL OR key_source IN ('measured', 'imported', 'manual')),
+			key_source TEXT CHECK(key_source IS NULL OR key_source IN ('measured', 'spotify', 'imported', 'manual')),
 			camelot_key TEXT,
 			open_key TEXT,
 			energy_level INTEGER CHECK(energy_level IS NULL OR energy_level BETWEEN 1 AND 10),
@@ -92,6 +99,9 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 	}
 	if err == nil {
 		err = ensureTrackAnalysisOverrideBPMSourceFingerprintColumn(d)
+	}
+	if err == nil {
+		err = ensureSpotifyScalarSources(d)
 	}
 	result := trackAnalysisSchemaResult{err: err}
 	actual, loaded := trackAnalysisSchemas.LoadOrStore(d, result)
@@ -255,4 +265,36 @@ func ensureTrackAnalysisEnergyColumns(d *DB) error {
 		}
 	}
 	return nil
+}
+
+// SQLite cannot widen a CHECK constraint with ALTER COLUMN. Rebuild only the
+// scalar table in one transaction, preserving its columns, rows and indexes.
+func ensureSpotifyScalarSources(d *DB) error {
+	var definition string
+	if err := d.conn.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='track_analysis'").Scan(&definition); err != nil {
+		return err
+	}
+	if strings.Contains(definition, "'spotify'") {
+		return nil
+	}
+	definition = strings.ReplaceAll(definition, "'measured',", "'measured', 'spotify',")
+	definition = strings.Replace(definition, "track_analysis", "track_analysis_spotify_upgrade", 1)
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, statement := range []string{
+		definition,
+		"INSERT INTO track_analysis_spotify_upgrade SELECT * FROM track_analysis",
+		"DROP TABLE track_analysis",
+		"ALTER TABLE track_analysis_spotify_upgrade RENAME TO track_analysis",
+		"CREATE INDEX idx_track_analysis_status ON track_analysis(status)",
+		"CREATE INDEX idx_track_analysis_fingerprint ON track_analysis(source_fingerprint)",
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

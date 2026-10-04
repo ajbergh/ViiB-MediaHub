@@ -25,6 +25,8 @@ const (
 // MP3Metadata contains the ID3 fields retained when a downloaded Ogg file is
 // converted to MP3.
 type MP3Metadata struct {
+	BPM         *float64
+	InitialKey  string
 	Title       string
 	Artist      string
 	Album       string
@@ -298,6 +300,8 @@ func writeID3v24(output io.Writer, metadata MP3Metadata) error {
 		{"TPOS", positiveNumber(metadata.DiscNumber)},
 		{"TDRC", metadata.Date},
 		{"TCON", metadata.Genre},
+		{"TBPM", bpmText(metadata.BPM)},
+		{"TKEY", metadata.InitialKey},
 	}
 	for _, frame := range textFrames {
 		if frame.value == "" {
@@ -325,6 +329,13 @@ func writeID3v24(output io.Writer, metadata MP3Metadata) error {
 	}
 	_, err := frames.WriteTo(output)
 	return err
+}
+
+func bpmText(value *float64) string {
+	if value == nil || *value <= 0 {
+		return ""
+	}
+	return strconv.FormatFloat(*value, 'f', -1, 64)
 }
 
 func positiveNumber(value int) string {

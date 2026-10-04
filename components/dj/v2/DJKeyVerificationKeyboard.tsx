@@ -124,7 +124,7 @@ export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: D
       setFeature(measured);
       setSelectedTonic(measured.keyTonic ?? 0);
       setSelectedMode(measured.keyMode ?? 'major');
-      if (updateDeckKey(measured)) setStatus(measured.keySource === 'measured' ? 'Restored the measured key.' : 'No measured key is available yet.');
+      if (updateDeckKey(measured)) setStatus(measured.keySource === 'spotify' ? 'Restored the Spotify key.' : measured.keySource === 'measured' ? 'Restored the measured key.' : 'No measured key is available yet.');
       else setStatus('Key reset, but the deck changed tracks before the display updated.');
     } catch (cause) {
       if (generation !== actionGenerationRef.current) return;
