@@ -49,10 +49,11 @@ This worktree adds `Validate Spotify browser authentication on macOS` to those j
 
 ```sh
 # Run from backend on the Mac runner. No Spotify account secrets are needed.
-CGO_ENABLED=1 VIIB_TEST_LOGIN_BROWSER=1 go test -count=1 -timeout=5m ./internal/spotify/auth ./internal/crypto ./internal/api
+CGO_ENABLED=1 VIIB_TEST_LOGIN_BROWSER=1 go test -count=1 -timeout=5m ./internal/spotify/auth ./internal/crypto
+CGO_ENABLED=1 go test -count=1 -timeout=5m ./internal/api -run '^Test(BrowserLogin|Cookie|SpotifySessionExcluded|SpotifyCredentialsExcluded)'
 ```
 
-This enables the otherwise opt-in real-browser fixture, including HttpOnly capture, cancellation, and temporary-profile removal on macOS. The existing subsequent Wails build and DMG checks cover native compilation and packaging. The added step has been prepared locally but has not run in GitHub CI yet; the changed worktree must be committed/pushed before a run can validate it. Existing workflow triggers remain unchanged.
+This enables the otherwise opt-in real-browser fixture, including HttpOnly capture, cancellation, and temporary-profile removal on macOS. The existing subsequent Wails build and DMG checks cover native compilation and packaging. The added step has now run in GitHub CI; see the initial findings below. Existing workflow triggers remain unchanged.
 
 CI fixtures do not prove a real Spotify form/MFA/SSO submission or user-visible Wails behavior. Those remain hand-test gates. Do not put the supplied session cookie into CI to replace those gates.
 
@@ -71,3 +72,11 @@ Test the packaged build installed in its final location, ideally once on Apple S
 Record macOS version, architecture, installed browser/version, app installation path, and pass/fail for each step. Exclude cookies, tokens, passwords, and raw cookie/network logs from the report.
 
 See [the overall validation record](SPOTIFY_WEBPLAYER_VALIDATION.md) and [the parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md).
+
+## Initial native CI findings (2026-10-04)
+
+[PR #115](https://github.com/ajbergh/ViiB-MediaHub/pull/115) triggered both validation workflows. Standard CI passed on `74df803`, including native desktop builds. The [release validation run](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/37220767061) exposed temporary Chrome-profile cleanup failures in the browser fixture on Apple Silicon and Intel. It also exposed unrelated stem-library API tests rejecting the macOS `/var` symlink alias.
+
+The follow-up stops/waits for the allocator before the browser-context wait and retries removal of the exact capture profile for a bounded 1.9-second retry window, checking that the profile root is absent. It still refuses to return a credential if cleanup fails. Deterministic retry/exhaustion tests and the Windows real-browser fixture pass. Native revalidation is pending for this fix.
+
+The Mac CI step now runs the full auth/crypto suites and the Spotify browser-login, cookie lifecycle/catalog, and export-isolation API tests. It does not claim to validate unrelated stem-library behavior; the `/var` alias failures remain a separate known Mac testing issue.

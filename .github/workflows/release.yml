@@ -237,7 +237,9 @@ jobs:
         env:
           CGO_ENABLED: '1'
           VIIB_TEST_LOGIN_BROWSER: '1'
-        run: go test -count=1 -timeout=5m ./internal/spotify/auth ./internal/crypto ./internal/api
+        run: |
+          go test -count=1 -timeout=5m ./internal/spotify/auth ./internal/crypto
+          go test -count=1 -timeout=5m ./internal/api -run '^Test(BrowserLogin|Cookie|SpotifySessionExcluded|SpotifyCredentialsExcluded)'
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}

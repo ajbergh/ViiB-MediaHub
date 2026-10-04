@@ -109,3 +109,41 @@ func TestLoginBrowserDiscoveryPreservesPathPriority(t *testing.T) {
 		t.Fatalf("changed PATH priority: %s", got)
 	}
 }
+
+func TestLoginProfileCleanupRetriesTransientFailureAndRecreatedRoot(t *testing.T) {
+	profile := filepath.Join(t.TempDir(), "profile")
+	if err := os.Mkdir(profile, 0700); err != nil {
+		t.Fatal(err)
+	}
+	attempts := 0
+	err := removeLoginProfile(profile, func(path string) error {
+		if path != profile {
+			t.Fatal("cleanup escaped the capture profile")
+		}
+		attempts++
+		if attempts == 1 {
+			return os.ErrPermission
+		}
+		if attempts == 2 {
+			return nil
+		} // a remaining/recreated root is not success
+		return os.RemoveAll(path)
+	}, func(time.Duration) {})
+	if err != nil || attempts != 3 {
+		t.Fatalf("cleanup error=%v attempts=%d", err, attempts)
+	}
+	if _, err := os.Lstat(profile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("profile remains")
+	}
+}
+
+func TestLoginProfileCleanupBoundsPersistentFailure(t *testing.T) {
+	attempts, pauses := 0, 0
+	err := removeLoginProfile(filepath.Join(t.TempDir(), "profile"), func(string) error {
+		attempts++
+		return os.ErrPermission
+	}, func(time.Duration) { pauses++ })
+	if !errors.Is(err, os.ErrPermission) || attempts != 20 || pauses != 19 {
+		t.Fatalf("cleanup error=%v attempts=%d pauses=%d", err, attempts, pauses)
+	}
+}

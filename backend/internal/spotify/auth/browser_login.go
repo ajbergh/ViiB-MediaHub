@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -48,7 +49,8 @@ func captureBrowserSession(ctx context.Context, config browserCaptureOptions) (c
 		return "", ErrLoginBrowserUnavailable
 	}
 	defer func() {
-		if cleanupErr := os.RemoveAll(profile); cleanupErr != nil {
+		if cleanupErr := removeLoginProfile(profile, os.RemoveAll, time.Sleep); cleanupErr != nil {
+			log.Printf("[SpotifyLogin] stage=profile_cleanup error_type=%T", cleanupErr)
 			cookie = ""
 			err = ErrLoginProfileCleanup
 		}
@@ -63,9 +65,11 @@ func captureBrowserSession(ctx context.Context, config browserCaptureOptions) (c
 		chromedp.Flag("password-store", "basic"), chromedp.Flag("remote-debugging-address", "127.0.0.1"),
 	)
 	allocator, stopAllocator := chromedp.NewExecAllocator(ctx, options...)
-	defer stopAllocator() // waits for the process before removing its profile
 	browser, stopBrowser := chromedp.NewContext(allocator)
-	defer stopBrowser()
+	defer func() {
+		stopAllocator() // terminate and wait before the browser-context wait
+		stopBrowser()
+	}()
 	if err := chromedp.Run(browser, chromedp.Navigate(config.loginURL)); err != nil {
 		if ctx.Err() != nil {
 			return "", ctx.Err()
@@ -111,6 +115,28 @@ func captureBrowserSession(ctx context.Context, config browserCaptureOptions) (c
 		case <-ticker.C:
 		}
 	}
+}
+
+// removeLoginProfile retries only the profile created by this capture. Chrome
+// helpers may finish writing briefly after the main process has exited.
+func removeLoginProfile(profile string, remove func(string) error, pause func(time.Duration)) error {
+	var err error
+	for attempt := 0; attempt < 20; attempt++ {
+		err = remove(profile)
+		if err == nil {
+			_, err = os.Lstat(profile)
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			if err == nil {
+				err = ErrLoginProfileCleanup
+			}
+		}
+		if attempt < 19 {
+			pause(100 * time.Millisecond)
+		}
+	}
+	return err
 }
 
 func validLoginCookie(cookie *network.Cookie) bool {
