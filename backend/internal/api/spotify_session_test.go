@@ -1,3 +1,4 @@
+// Tests encrypted cookie-session persistence, status, account generations, and session retirement hooks.
 package api
 
 import (

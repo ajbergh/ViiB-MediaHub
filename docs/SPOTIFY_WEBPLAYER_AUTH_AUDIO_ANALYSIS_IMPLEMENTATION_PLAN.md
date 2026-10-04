@@ -1,31 +1,51 @@
-# Spotify WebPlayer and Audio Analysis: Feasibility Review and Direct Implementation Plan
+# Spotify WebPlayer Authentication and Audio Analysis Implementation Plan
 
-## Active objective: full cookie authentication parity
+**Updated:** 2026-10-04
 
-The user now requests all existing OAuth functionality through cookie-based authentication. This supersedes the original first-slice restriction against production routing/migration. The backend now has an encrypted cookie-session runtime and explicit all-purpose routing, connect/status/disconnect endpoints and shared media token injection. The renderer migration, complete account/queue lifecycle and live public API/expiry coverage remain required. Earlier progress entries and review decisions below are historical evidence, not a narrower completion target.
+**Branch:** spotify/webplayer-auth-analysis-provider
 
-The normal frontend login and catalog/library/playback metadata calls now use backend cookie sessions. Shared login UI, redacted startup/enrichment state and account-media retirement are implemented and fixture-tested. Full frontend checks passed (284 tests and production build); focused backend lifecycle race checks passed. Live public API/expiry, complete app workflows and final audits are still required for parity.
+**Implementation checkpoint:** `8187104`
 
-Shared public API cooldowns now survive reconnect and restart. Rejected sessions propagate to the renderer reconnect state, and session generations fence queued work, pending responses, account views and background enrichment. Frontend checks and targeted lifecycle tests passed. Live catalog/library access, sustained playback, natural token expiry and final requirement auditing remain open.
+## Current objective and implementation
 
-Live Pathfinder research now verifies Web Player client-token acquisition, profileAttributes and findTopResults with HTTP 200 for the consenting account. A public search retry again returned HTTP 429. Complete cookie parity now requires a typed Web Player catalog/library adapter and production routing; successful token substitution alone has not provided working public API browsing. This new evidence changes the next implementation priority.
+The objective is all existing Spotify functionality working through cookie authentication, with credentials entered on Spotify's own sign-in page and no cookie-paste field in the normal UI. Cookie authentication and its main application workflows are implemented. Full parity remains unproven; the [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) owns the current gate status, and the [validation record](SPOTIFY_WEBPLAYER_VALIDATION.md) contains the dated evidence.
 
-Production cookie profile routing now uses a runtime-owned typed Pathfinder client with memory-only client-token caching and account retirement. A live check of that production client passed identity/display-name normalization. Email/plan/country/followers remain unavailable and null; other catalog/library routes still require implementation and live verification.
+The backend owns browser capture, encrypted session persistence, purpose-aware tokens, renewal and account retirement. Normal UI sign-in opens an isolated Chrome, Chromium or Edge window on Spotify, captures the resulting session automatically, closes/removes the temporary profile and validates the session before committing it. Status DTOs omit cookies and bearer tokens. Legacy OAuth remains a compatibility path for installations that have not selected cookie authentication; it is not the normal cookie-mode sign-in procedure.
 
-Production search, individual/batch tracks, album, artist/top-track, playlist/content and saved album/playlist adapters are now implemented. Live production-client probes pass explicit renewal, search/category paging, album/playlist paging, artist top tracks and normal 20-item saved-library pages and a full 50-track metadata batch. Recently played remains an open parity gate: the documented route returned 429 in an isolated live check, while the internal recent-context route supplies one last-track reference per listening context and has not proven individual play-event equivalence. Production browser startup, saved-library views, album playback/seek/next, explicit renewal, single-track worker downloads/conversion, encrypted restart and logout/restart now have live evidence. Natural expiry, active-media account changes, grouped downloads/native UI and the remaining profile/market fields are still required. See the current validation record for coverage and limitations.
+Fixed catalog adapters serve profile identity, search, individual/batch tracks, album, artist/top-track, playlist/content and saved album/playlist reads. The renderer supports saved-library pagination, cancellation, stale-response fencing and visible retry/error state. Browser evidence covers full library traversal, playback through natural token expiry, seek/next, logout/reconnect, downloads/conversion and link retention across restart. Windows native functional controls and clean shutdown pass; the reported buffering/search issues still need feedback after the latest fixes.
 
-## Direct catalog parity implementation sequence
+Native Spotify audio uses direct loopback HTTP rather than the buffered Wails asset-response path. Prepared assets are reused by track, quality and session generation with independent readers: at most three reusable entries, 32 MiB aggregate, 16 MiB per asset and a 30-second idle TTL. These are reuse-pool limits, not a global bound on every active stream allocation. Account retirement invalidates reuse and cancels active work. API-owned enrichment and optional reference workers cancel/drain on shutdown; active-enrichment native shutdown remains unverified.
 
-The successful Pathfinder probe establishes a separate Web Player protocol, not the app's existing REST response shapes. Implement this sequence while preserving the full parity goal:
+Optional Spotify analysis stays independent from local/manual BPM, key and DJ timing. Recording identities, cached observations and failures retain separate provenance. Scalar features have live evidence; detailed analysis returned 404 for the supplied recordings. The reference panel, frozen comparator and read-only cache exporter are implemented. Their fixture success does not qualify a real-audio benchmark; see the [benchmark contract and workflow](SPOTIFY_REFERENCE_BENCHMARK.md).
 
-1. Add backend/internal/spotify/catalog with fixed, reviewed operation contracts and a bounded HTTP client. Cache the provider-issued client token only in memory using its returned expiry, coalesce renewal, and retire it on account change. Never accept arbitrary GraphQL text, operation hashes or target URLs from the renderer. Keep token values and raw account payloads out of diagnostics.
-2. Pin the source revision and license for each operation hash and inspect real response structures. Existing validated operations are profileAttributes and findTopResults. Full category search, album, track/batch-track, artist/top-track, playlist/content, library and recent-listening operations still need source and live evidence. Candidate implementation references are linked in the validation record; their current hashes are leads, not verified contracts.
-3. Normalize each operation into the shapes already consumed by SpotifyService, detail pages, download metadata and playback queues. Preserve stable Spotify IDs/URIs, durations, artists, artwork, profile fields, playlist owners, market availability, unavailable entries, ordering, totals and pagination. Handle missing/nullable data explicitly. Generate bounded pagination links that route through the same backend adapter.
-4. Route cookie-mode catalog requests to this adapter in the backend resource boundary; retain the OAuth compatibility owner for installations that have not selected cookie mode. Use existing account contexts and session generations so stale operations cannot write into a replacement account. Use persisted catalog cooldowns and one bounded renewal on authentication rejection. Schema/permission errors must not masquerade as expired login; never silently select OAuth.
-5. Verify normalized profile and all search categories first, then album/artist/playlist details, full saved library and recent-listening pages, pagination, album/playlist play/shuffle/queue, metadata enrichment and grouped downloads. Use meaningful fixture tests for response conversion and pagination, plus live consenting-account checks. A 200 GraphQL envelope alone cannot prove field or workflow parity.
-6. Verify complete application streaming/downloading with these normalized metadata routes, restart/reconnect/account rotation, sustained playback and natural token-expiry recovery. Run frontend/native UI workflows and the final requirement audit before claiming full parity. The original analysis work remains separately capability-gated because detailed analysis returned 404.
+## Original step coverage at this checkpoint
 
-## Implementation progress (2026-10-02)
+| Original step | Implemented or evidenced | Remaining verification |
+| --- | --- | --- |
+| 0: Evidence and live-use gates | Pinned protocol sources, synthetic fixtures and user-authorized live account testing. | Distribution was not requested or assessed. |
+| 1: Authentication seam | Explicit WebAPI, Playback and InternalAnalysis purposes; renewal, cancellation and account fencing. | Full parity depends on the unresolved consumers below. |
+| 2: WebPlayer provider | Backend session-to-token provider and normal Spotify-owned credentials login; encrypted restore/reconnect evidence. | MFA/SSO variants and macOS/Linux interactive login. |
+| 3: Analysis client | Bounded normalization, nullable fields, typed denial/rate-limit behavior; live scalar features. | Detailed-analysis availability is unproven after 404 responses. |
+| 4: Identity and observations | Fingerprint-bound confirmations, separate cache/status storage and download-link retention. | Reviewed real recording/version corpus for benchmark evidence. |
+| 5: Narrow APIs and reference UI | Explicit optional refresh/cache behavior, separate reference panel, local/manual values preserved. | Broader account/content variants; no inferred identities or remote timing replacement. |
+| 6: Lifecycle and production login | Browser capture/cleanup, account-media retirement, direct-loopback native audio, worker cancellation/draining and actual Windows clean close. | Updated native responsiveness/search feedback, native close during active enrichment, macOS/Linux runtime. |
+| 7: Comparator and compatibility | Frozen snapshot comparator and read-only exporter with strict identity/hash/provenance fixtures. | Reviewed real-audio comparison, Recent individual-event history and missing profile fields. |
+
+## Remaining completion gates
+
+- Verify individual play events with ordering, repeated plays, `played_at` and cursor semantics. The latest normal-app Recent request returned 429; context history is not a substitute.
+- Establish an accessible source for profile email/product/country/followers. These fields were absent from the tested profile response; nullable rendering is not field parity.
+- Retest Windows native startup, seek, next and search after direct-loopback transport and bounded asset reuse, and close the app while enrichment is active. The latest test window exited cleanly, but responsiveness feedback has not arrived.
+- Run the exporter/comparator against a reviewed real-audio manifest with confirmed recording IDs/versions, exact file hashes and explicit audio/reference declarations. Only synthetic benchmark fixtures have been verified.
+- Verify credentials login, playback/reconnect and shutdown on macOS/Linux. Five-target CGO-free backend compilation passes; it is not native packaging or foreign-host runtime proof.
+
+Recorded frontend checks include 77 files/337 tests, TypeScript and a production build. Full backend tests and relevant vet checks pass in the validation record. The current Windows environment lacks the GCC/CGO support needed for Go race testing; unsupported race checks are not passes. This documentation update adds no new runtime results.
+
+## Historical implementation notes
+
+The entries below describe the 2026-10-02 implementation stages and original feasibility review. Their OAuth-only routing, uninstalled-service, unassessed-catalog and documentation-only statements applied at those stages. They are retained for traceability and do not describe the current checkpoint or override the user's authorization for cookie migration and account testing.
+
+### Early implementation progress (2026-10-02)
 
 Steps 1–3 now have purpose-separated authentication, a fixture-tested WebPlayer provider, bounded analysis/features clients, and a build-tagged live research probe. The consenting live probe verified authentication and explicit renewal; detailed analysis returned 404, while scalar audio features succeeded for the supplied recording. These are separate capabilities.
 
@@ -42,13 +62,15 @@ The research probe now supports independently selected public API groups and pro
 See [validation and live evidence](SPOTIFY_WEBPLAYER_VALIDATION.md) for exact implemented routes, tests, and remaining gates. Review-time statements below describe the original baseline; they do not override these subsequent results.
 
 
+## Original feasibility review (historical, 2026-10-02)
+
 **Reviewed:** 2026-10-02
 
-**Status:** Backend auth/client/research-probe slice implemented; live scalar features verified for one account/track; detailed analysis returned HTTP 404
+**Status at the early implementation stage:** Backend auth/client/research-probe slice implemented; live scalar features verified for one account/track; detailed analysis returned HTTP 404
 
 **Input:** [Original research proposal](SPOTIFY_WEBPLAYER_AUTH_AUDIO_ANALYSIS_PLAN.md)
 
-**Scope:** Review and planning only. This deliverable does not implement authentication or authorize live-account experiments.
+**Original review scope:** Review and planning only. This deliverable does not implement authentication or authorize live-account experiments.
 
 Implementation progress and current test evidence are recorded in [Spotify WebPlayer Validation](SPOTIFY_WEBPLAYER_VALIDATION.md). Identity/storage, API/UI, production login, and live compatibility remain later increments.
 
@@ -246,7 +268,7 @@ go test -race ./...
 
 Use a Go race-supported toolchain on each validation host. Record unsupported tooling or environmental failures explicitly. Separately perform a permitted manual smoke test of current OAuth login, startup restoration, browsing/library, streaming, download behavior, and local/manual DJ metadata. Passing unit tests does not establish live compatibility.
 
-During this review, RepoTracer reported passing focused Spotify frontend tests, backend Spotify API tests, and analysisbench/track/db tests. A broader backend test attempt was interrupted and is not a pass. No full check, live token derivation, private endpoint probe, or cross-platform login validation was completed. This task changes documentation only.
+At the original review baseline, RepoTracer reported passing focused Spotify frontend tests, backend Spotify API tests, and analysisbench/track/db tests. A broader backend test attempt was interrupted and is not a pass. No full check, live token derivation, private endpoint probe, or cross-platform login validation was completed. That original review changed documentation only; subsequent implementation and live results are summarized above.
 
 Recommended reviewable increments:
 
@@ -258,7 +280,9 @@ Recommended reviewable increments:
 
 Each increment must leave the optional provider disabled without affecting local analysis or current OAuth consumers. Rollback disables the adapter/UI, cancels workers, disconnects its session, and leaves additive tables inert; avoid destructive rollback migrations.
 
-## 6. First implementation milestone acceptance checklist
+## 6. Original first-milestone acceptance checklist
+
+These retained review-time boxes are not the current completion ledger. Use the step coverage above and the [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) for implemented work and unresolved gates.
 
 - [ ] Existing OAuth WebAPI/Playback behavior is preserved and purpose routing is explicit.
 - [ ] Standalone provider protocol evidence is pinned, or the live adapter is clearly unproven and excluded.

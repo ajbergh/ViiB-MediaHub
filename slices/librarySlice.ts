@@ -1,4 +1,3 @@
-import { assertSpotifySession } from '../services/spotifyBackend';
 /**
  * ViiB MediaHub - Library State Slice
  * 
@@ -25,6 +24,7 @@ import { assertSpotifySession } from '../services/spotifyBackend';
  * @module librarySlice
  */
 
+import { assertSpotifySession } from '../services/spotifyBackend';
 import { StateCreator } from 'zustand';
 import { AppState, LibrarySlice, ScanFolder } from './types';
 import { generateSmartMixes } from '../lib/smartMix';

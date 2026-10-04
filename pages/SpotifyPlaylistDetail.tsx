@@ -1,5 +1,3 @@
-import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
-import { backendSpotifyFetch } from '../services/spotifyBackend';
 /**
  * ViiB MediaHub - Spotify Playlist Detail Page
  * 
@@ -18,6 +16,8 @@ import { backendSpotifyFetch } from '../services/spotifyBackend';
  * @module SpotifyPlaylistDetail
  */
 
+import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
+import { backendSpotifyFetch } from '../services/spotifyBackend';
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download } from 'lucide-react';

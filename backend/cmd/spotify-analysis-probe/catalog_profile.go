@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Probes authenticated profile fields with bounded wire-shape diagnostics.
 package main
 
 import (

@@ -1,6 +1,6 @@
 // Package api provides REST API handlers for ViiB MediaHub.
-// This file implements Spotify integration endpoints including credential management,
-// Web API proxy, and download management.
+// This file serves legacy credential routes, catalog proxy requests, downloads, and audio streams.
+// Cookie sessions, browser sign-in, token routing, and fixed catalog adapters are composed in companion files.
 package api
 
 import (

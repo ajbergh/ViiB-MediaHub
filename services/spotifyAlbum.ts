@@ -1,3 +1,5 @@
+/** Collects complete album track pages for playback and queue actions with session-generation checks. */
+
 import {backendSpotifyFetch, assertSpotifySession} from './spotifyBackend';
 import {useStore} from '../store';
 

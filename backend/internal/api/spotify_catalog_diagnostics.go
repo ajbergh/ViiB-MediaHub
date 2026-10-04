@@ -1,3 +1,4 @@
+// Records bounded catalog timing and status diagnostics without response bodies or credentials.
 package api
 
 import (

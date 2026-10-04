@@ -1,4 +1,3 @@
-import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
 /**
  * ViiB MediaHub - Spotify Album Detail Page
  * 
@@ -17,6 +16,7 @@ import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
  * @module SpotifyAlbumDetail
  */
 
+import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, CheckCircle } from 'lucide-react';

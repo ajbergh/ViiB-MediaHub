@@ -1,3 +1,4 @@
+// Tests mapping supported search categories and their server paging into catalog models.
 package catalog
 
 import (

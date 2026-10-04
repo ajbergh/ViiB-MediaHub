@@ -1,3 +1,4 @@
+// Shares generation-scoped audio assets across independent readers with bounded idle retention.
 package spotify
 
 import (

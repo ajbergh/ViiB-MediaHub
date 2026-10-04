@@ -1,3 +1,4 @@
+// Tests optional reference refresh, caching, cooldowns, and identity/session isolation.
 package refresh
 
 import (

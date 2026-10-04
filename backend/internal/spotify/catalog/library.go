@@ -1,3 +1,4 @@
+// Maps saved albums and playlists with bounded paging into catalog models.
 package catalog
 
 import (

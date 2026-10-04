@@ -1,3 +1,4 @@
+// Tests exchanging backend-held cookies for Web Player tokens using the pinned contract and coalesced refreshes.
 package auth
 
 import (

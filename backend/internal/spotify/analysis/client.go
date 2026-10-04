@@ -1,3 +1,4 @@
+// Fetches optional Spotify reference data with purpose-scoped credentials, bounded responses, and typed failures.
 package analysis
 
 import (

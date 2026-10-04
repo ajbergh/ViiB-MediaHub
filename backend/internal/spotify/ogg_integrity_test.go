@@ -1,3 +1,4 @@
+// Tests validation of Ogg page checksums, sequence continuity, and end-of-stream with bounded trailing padding.
 package spotify
 
 import (

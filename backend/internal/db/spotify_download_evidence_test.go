@@ -1,3 +1,4 @@
+// Tests recording and reconciliation of Spotify download evidence against local file identity.
 package db
 
 import (

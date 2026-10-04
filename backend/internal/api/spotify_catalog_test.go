@@ -1,3 +1,4 @@
+// Tests translation of supported REST resources into account-scoped Web Player catalog responses.
 package api
 
 import (

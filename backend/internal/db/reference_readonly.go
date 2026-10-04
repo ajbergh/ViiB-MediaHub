@@ -1,3 +1,4 @@
+// Opens consistent read-only library snapshots for reference export without running migrations.
 package db
 
 import (

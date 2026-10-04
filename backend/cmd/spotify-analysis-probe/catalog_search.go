@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Probes catalog search categories through the fixed Web Player adapter.
 package main
 
 import (

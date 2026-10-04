@@ -1,3 +1,4 @@
+// Tests proxy request bounds, response contracts, failures, and cancellation.
 package api
 
 import (

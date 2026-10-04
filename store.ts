@@ -4,12 +4,12 @@
  * Zustand-based state management combining multiple slices:
  * - PlayerSlice: Playback state, queue, audio settings, EQ
  * - LibrarySlice: Songs, playlists, smart mixes, metadata cache
- * - SpotifySlice: OAuth tokens, user profile, Spotify integration
+ * - SpotifySlice: Backend session state, account generation, profile, and legacy OAuth fields
  * - UISlice: Context menus, dialogs, download count, panel states
  * 
  * Persistence:
  * - Audio settings and UI preferences persisted to localStorage
- * - Spotify client ID and non-sensitive preferences persisted to localStorage; secrets and tokens are excluded from renderer persistence and restored from the backend when available
+ * - Spotify client ID and non-sensitive preferences persisted to localStorage; secrets and tokens are excluded from renderer persistence; connection status is restored from the backend
  * - Song library backed by SQLite (via Go backend); IndexedDB used as fallback in browser-only mode
  * 
  * Selectors:

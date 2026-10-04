@@ -1,3 +1,5 @@
+/** Sends validated resource paths to the backend and fences requests and responses against session changes. */
+
 import { SpotifyAuthError, SpotifyRateLimitError } from '../lib/spotifyErrors';
 import { useStore } from '../store';
 

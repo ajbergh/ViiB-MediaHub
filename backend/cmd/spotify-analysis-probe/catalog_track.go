@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Probes individual and batched track metadata through the fixed catalog adapter.
 package main
 
 import (

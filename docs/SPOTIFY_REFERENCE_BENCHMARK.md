@@ -1,5 +1,9 @@
 # Frozen Spotify reference comparisons
 
+**Updated:** 2026-10-04. Implementation checkpoint: `8187104`.
+
+Current status: comparator/exporter fixtures pass; a reviewed real-audio comparison remains open. Overall application gates are tracked in the [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md), with dated proof in the [validation record](SPOTIFY_WEBPLAYER_VALIDATION.md).
+
 `analysisbench` can compare local analyzer output against an offline, normalized Spotify reference snapshot while retaining the ordinary local-label comparison as a separate report. This implements the frozen comparator portion of implementation-plan Step 7. It does not prove real-audio benchmark quality. A read-only cache-to-snapshot exporter is also available and has database/command fixture coverage.
 
 From `backend`:
@@ -30,6 +34,14 @@ To seal a snapshot, use `SpotifyReferenceSnapshot.Hash()`, assign its return val
 Coverage reports all selected-split positions, matched identities, missing references, unconfirmed local identities, unavailable BPM/key and completely unlabelled references. An identity mismatch or unknown manifest track fails the comparison. Null provider values are excluded from that dimension's label denominator and counted as unavailable; they are never manufactured expected-unknown labels. Missing local detector results remain unknown failures where a provider label exists. A snapshot with no usable labels produces coverage without an accuracy comparison.
 
 The report reuses strict BPM (±0.5), metrical/half-double, exact key/mode, harmonic compatibility, unknown-rate and local confidence-calibration metrics. Relative major/minor matches and same-mode harmonic-neighbor matches are also reported separately. Synthetic fixtures retain `synthetic-ci` and cannot pass the real-audio qualification gate.
+
+## Real-corpus verification workflow
+
+1. Prepare a reviewed manifest with `evidenceClass: lawful-real-audio`, per-track audio/license and label declarations, tuning/held-out split, and confirmed Spotify recording IDs/versions bound to exact full-file SHA-256 values. Synthetic placeholders and filename matches do not qualify.
+2. Manually confirm those recordings against the current local sources in ViiB. Automatic download-origin links alone are not eligible for export.
+3. Obtain eligible normalized cached observations through the explicit optional reference workflow when the provider is available. Export does not refresh a cache, authenticate or contact Spotify; missing, expired or failed observations remain coverage gaps.
+4. Run the read-only exporter below, then the comparator command above with independently produced local analyzer results. Keep the ordinary local-label report separate from the frozen Spotify comparison.
+5. Review identity coverage, unavailable dimensions, licensing/provenance, split separation and the actual metrics before claiming real-audio evidence. Retain the unchanged reviewed manifest, frozen snapshot/hash, local results and comparison report for reproduction. A declaration or snapshot hash alone does not prove recording correctness, source authenticity or lawful use.
 
 ## Export from the local cache
 

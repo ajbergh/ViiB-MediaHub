@@ -1,3 +1,4 @@
+// Tests frozen-reference export output and protection of existing output files.
 package main
 
 import (

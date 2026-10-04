@@ -1,3 +1,4 @@
+// Records and reconciles completed Spotify download evidence against validated local file identity.
 package db
 
 import (

@@ -1,3 +1,4 @@
+// Tests download retry behavior and queue state transitions.
 package api
 
 import (

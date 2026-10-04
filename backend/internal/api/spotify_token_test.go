@@ -1,3 +1,4 @@
+// Tests routing of cookie catalog requests and legacy OAuth token refresh through shared request and cooldown handling.
 package api
 
 import (

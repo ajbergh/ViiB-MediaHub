@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Tests probe failure classification and redacted stage diagnostics.
 package main
 
 import (

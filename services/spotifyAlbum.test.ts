@@ -1,3 +1,5 @@
+/** Tests complete album paging and session changes. */
+
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {fetchSpotifyAlbum} from './spotifyAlbum';
 import {useStore} from '../store';

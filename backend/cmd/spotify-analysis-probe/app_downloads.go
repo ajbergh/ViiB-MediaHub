@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Audits completed application download artifacts without changing the library or queue.
 package main
 
 import (

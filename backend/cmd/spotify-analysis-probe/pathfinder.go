@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Probes fixed Web Player operations and client-token behavior for protocol research.
 package main
 
 import (

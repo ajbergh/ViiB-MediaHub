@@ -1,3 +1,4 @@
+// Coordinates Spotify request admission, cooldown state, and session rejection handling.
 package api
 
 import (

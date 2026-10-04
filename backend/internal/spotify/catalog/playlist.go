@@ -1,3 +1,4 @@
+// Maps playlist metadata and positional track pages, preserving unavailable rows and nullable fields.
 package catalog
 
 import (

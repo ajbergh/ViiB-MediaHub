@@ -1,4 +1,3 @@
-import { getEventStreamURL } from '../services/eventStreamURL';
 /**
  * ViiB MediaHub - Audio Player Hook
  * 
@@ -22,6 +21,7 @@ import { getEventStreamURL } from '../services/eventStreamURL';
  * @module useAudioPlayer
  */
 
+import { getEventStreamURL } from '../services/eventStreamURL';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useStore } from '../store';
 import { audioEngine } from '../lib/audio';

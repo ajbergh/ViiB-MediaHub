@@ -1,3 +1,4 @@
+// Tests Spotify download behavior, artifact validation, and cancellation.
 package spotify
 
 import (

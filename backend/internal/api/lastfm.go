@@ -19,7 +19,6 @@
 // be reinitialized when settings are saved via initLastFMClient().
 //
 // Created: 2025-12-31
-// Last Modified: 2025-12-31
 package api
 
 import (

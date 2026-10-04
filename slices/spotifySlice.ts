@@ -1,19 +1,10 @@
 /**
- * ViiB MediaHub - Spotify State Slice
- * 
- * Zustand slice managing Spotify integration state.
- * 
- * State:
- * - spotifyClientId/Secret: OAuth application credentials
- * - spotifyAccessToken/RefreshToken: User authentication tokens
- * - spotifyTokenExpiry: Token expiration timestamp
- * - spotifyUser: Authenticated user profile
- * 
- * Only the client ID and non-sensitive preferences are persisted by the
- * renderer's localStorage store. Access/refresh tokens are never written to
- * renderer localStorage; the Go backend may persist the encrypted session and
- * the app restores valid credentials into renderer memory at startup.
- * 
+ * Zustand slice for Spotify connection, account generation, profile, search,
+ * playback preferences, and download count. Disconnect and authentication failure
+ * retire Spotify playback and invalidate requests from the prior generation.
+ * Legacy OAuth fields remain for compatibility. Cookies and active Web Player
+ * bearer tokens stay in the backend; renderer persistence excludes secrets and tokens.
+ *
  * @module spotifySlice
  */
 

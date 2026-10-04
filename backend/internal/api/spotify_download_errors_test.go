@@ -1,3 +1,4 @@
+// Tests mapping Spotify download failures to sanitized HTTP responses for authentication, availability, and cooldown.
 package api
 
 import (

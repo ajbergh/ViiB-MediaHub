@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Probes fixed Web Player artist and top-track operations.
 package main
 
 import (

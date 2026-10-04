@@ -1,3 +1,5 @@
+/** Tests resource validation, backend errors, and session-generation fences. */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { backendSpotifyFetch, SpotifySessionChangedError } from './spotifyBackend';
 import { SpotifyService } from './spotifyService';

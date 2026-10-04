@@ -1,3 +1,4 @@
+// Captures a Spotify session from an isolated visible browser sign-in and cleans up the temporary profile.
 package auth
 
 import (

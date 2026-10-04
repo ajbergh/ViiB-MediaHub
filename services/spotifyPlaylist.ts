@@ -1,3 +1,5 @@
+/** Collects playlist pages while checking snapshot, positions, totals, and the active session generation. */
+
 import {backendSpotifyFetch,assertSpotifySession} from './spotifyBackend';
 import {useStore} from '../store';
 

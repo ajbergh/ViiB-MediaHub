@@ -1,3 +1,4 @@
+// Validates corpus and detector results and computes split-aware BPM/key accuracy and coverage.
 package analysisbench
 
 import (

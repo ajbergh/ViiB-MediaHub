@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Tests inspection of bounded recently played context responses without treating them as track play events.
 package main
 
 import (

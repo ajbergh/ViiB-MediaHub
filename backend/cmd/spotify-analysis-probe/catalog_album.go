@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Probes fixed Web Player album operations and track pagination.
 package main
 
 import (

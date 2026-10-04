@@ -1,3 +1,4 @@
+// Tests API streaming behavior and Spotify stream lifecycle handling.
 package api
 
 import (

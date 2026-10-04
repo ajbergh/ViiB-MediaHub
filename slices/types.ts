@@ -7,7 +7,7 @@
  * Slices:
  * - PlayerSlice: Playback, queue, and audio settings
  * - LibrarySlice: Songs, playlists, metadata, scanning
- * - SpotifySlice: OAuth tokens and user profile
+ * - SpotifySlice: Backend connection state, session generation, profile, and legacy OAuth fields
  * - UISlice: Context menus, dialogs, logs, panel states, toast notifications
  * - AIDJSlice: AI DJ search state and preferences (persisted)
  * 

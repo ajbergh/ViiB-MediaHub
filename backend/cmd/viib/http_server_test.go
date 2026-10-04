@@ -1,3 +1,4 @@
+// Tests loopback server startup and cancellation of active requests before shutdown.
 package main
 
 import (

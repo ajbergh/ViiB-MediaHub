@@ -10,6 +10,8 @@
 //   - album_metadata: Cached Spotify album metadata
 //   - artist_metadata: Cached Spotify artist metadata
 //   - indexed_genres: Pre-computed genre lists for fast lookup
+//   - External recording links, optional reference observations, and refresh status
+//     are maintained by the additive external analysis schema.
 //
 // AI DJ Support:
 //   - Mood/energy/tempo/BPM fields in songs table (populated by Gemini AI)

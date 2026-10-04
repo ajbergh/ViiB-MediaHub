@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Probes playlist metadata and paging through the fixed catalog adapter.
 package main
 
 import (

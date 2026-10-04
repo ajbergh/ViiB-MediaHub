@@ -1,3 +1,5 @@
+/** Combines saved-library pages using server positions and stable totals while detecting incomplete traversal. */
+
 interface LibraryPage<T> {
     items: T[];
     offset: number;

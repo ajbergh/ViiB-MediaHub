@@ -1,3 +1,5 @@
+/** Edits manual/tapped BPM with source-aware local or Plex handling and a separate optional Spotify reference panel. */
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
 import { djTrackSourceIdentity, formatManualBpm, tapTempoBpm } from '../../../lib/djBpmCorrection';

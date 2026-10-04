@@ -1,3 +1,5 @@
+/** Tests playback, queue navigation, source resolution, and Spotify session isolation. */
+
 import { resetEventStreamURLCacheForTests } from '../services/eventStreamURL';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPlayerSlice } from './playerSlice';

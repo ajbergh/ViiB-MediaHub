@@ -1,3 +1,4 @@
+// Parses single HTTP byte ranges, including suffix, open-ended, and zero-byte boundaries.
 package api
 
 import (

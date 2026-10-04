@@ -1,3 +1,4 @@
+// Adds external recording identity, reference cache, and refresh-status schema without replacing local analysis.
 package db
 
 import "strings"

@@ -1,3 +1,4 @@
+// Translates supported REST resource requests into fixed, account-scoped Web Player catalog operations.
 package api
 
 import (

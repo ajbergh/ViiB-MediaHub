@@ -1,3 +1,4 @@
+// Manages explicit external recording links tied to the current local source fingerprint.
 package db
 
 import (

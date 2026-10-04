@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Probes saved-library pages and optional full traversal through the catalog adapter.
 package main
 
 import (

@@ -1,3 +1,4 @@
+// Tests individual and batched track catalog response contracts.
 package api
 
 import (

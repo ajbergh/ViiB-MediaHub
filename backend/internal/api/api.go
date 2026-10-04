@@ -4,14 +4,14 @@
 //   - Library management: songs, playlists, folders
 //   - Likes: song and album favorites with persistence
 //   - Media serving: audio streaming, cover art
-//   - Spotify integration: OAuth, search proxy, downloads, streaming
+//   - Spotify integration: browser sign-in, cookie catalog, OAuth compatibility, downloads, streaming, optional references
 //   - Last.FM integration: settings, testing, enrichment endpoints
 //   - Metadata enrichment: AI or Last.FM based on user preference
 //   - Metadata caching: album and artist enrichment
 //   - Settings: key-value configuration storage
 //   - SSE endpoints: real-time download progress and library events
 //
-// All endpoints return JSON responses with consistent error handling.
+// Structured endpoints return JSON; media, event streams, and archive routes use their own formats.
 // Audio and cover files are served with appropriate caching headers.
 package api
 

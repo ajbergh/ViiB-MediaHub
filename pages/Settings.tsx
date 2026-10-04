@@ -1,4 +1,3 @@
-import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
 /**
  * ViiB MediaHub - Settings Page
  * 
@@ -32,6 +31,7 @@ import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
  * @module Settings
  */
 
+import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router';
 import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker, Copy, ShieldCheck, Wrench, FileArchive } from 'lucide-react';

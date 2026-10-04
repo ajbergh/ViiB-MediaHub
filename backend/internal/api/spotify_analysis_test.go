@@ -1,3 +1,4 @@
+// Tests explicit recording links and optional Spotify reference cache, status, and refresh operations.
 package api
 
 import (

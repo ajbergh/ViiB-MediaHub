@@ -1,9 +1,3 @@
-import { appendSpotifyLibraryPage } from '../lib/spotifyLibraryPaging';
-import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
-import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
-import { nextSpotifySearchOffset } from '../lib/spotifySearchPaging';
-import { backendSpotifyFetch } from '../services/spotifyBackend';
-import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
 /**
  * ViiB MediaHub - Spotify Page
  * 
@@ -18,11 +12,18 @@ import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
  * - Redacted backend session restoration
  * 
  * Requires Spotify Premium for streaming and download functionality.
- * Uses Web API for search/browse, librespot for streaming and downloads.
+ * Uses backend Web Player catalog adapters for search/browse and librespot for audio.
+ * Recent-history availability depends on the provider capabilities exposed to the session.
  * 
  * @module Spotify
  */
 
+import { appendSpotifyLibraryPage } from '../lib/spotifyLibraryPaging';
+import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
+import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
+import { nextSpotifySearchOffset } from '../lib/spotifySearchPaging';
+import { backendSpotifyFetch } from '../services/spotifyBackend';
+import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2, Copy } from 'lucide-react';

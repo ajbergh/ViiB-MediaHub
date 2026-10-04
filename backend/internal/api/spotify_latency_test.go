@@ -1,3 +1,4 @@
+// Tests interactive request admission, background contention, cooldowns, and session retirement.
 package api
 
 import (

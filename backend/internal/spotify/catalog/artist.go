@@ -1,3 +1,4 @@
+// Maps fixed Web Player artist metadata and top tracks into catalog models.
 package catalog
 
 import (

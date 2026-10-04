@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+/** Tests optional reference display, recording confirmation, and separation from effective local BPM/key. */
+
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';

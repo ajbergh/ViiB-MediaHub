@@ -1,3 +1,4 @@
+// Tests sharing of generation-scoped audio assets across independent readers with bounded idle retention.
 package spotify
 
 import (

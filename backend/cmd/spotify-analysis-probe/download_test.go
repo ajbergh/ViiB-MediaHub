@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Tests running isolated download, container, decoder, and metadata probes with bounded cleanup.
 package main
 
 import (

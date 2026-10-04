@@ -1,3 +1,4 @@
+// Pins the reviewed Web Player authentication protocol constants and their upstream provenance.
 package auth
 
 import (

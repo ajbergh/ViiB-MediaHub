@@ -1,3 +1,4 @@
+// Tests purpose-scoped token acquisition, refresh, session replacement, and retirement.
 package auth
 
 import (

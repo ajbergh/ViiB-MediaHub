@@ -1,3 +1,4 @@
+// Resolves canonical local audio sources and their fingerprints; remote streams use explicit adapters.
 package analysis
 
 import (

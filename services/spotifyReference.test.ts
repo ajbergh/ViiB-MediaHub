@@ -1,3 +1,5 @@
+/** Tests recording-link and reference request contracts and refresh isolation. */
+
 import { afterEach, expect, it, vi } from 'vitest';
 import { spotifyRecordingId, spotifyReference } from './spotifyReference';
 import { useStore } from '../store';

@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Probes an allowlisted read-only Web API route matrix with response limits and cooldown handling.
 package main
 
 import (

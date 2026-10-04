@@ -1,13 +1,12 @@
 // Package crypto provides encryption utilities for ViiB MediaHub.
 //
 // This package implements AES-256-GCM encryption for sensitive data such as:
-//   - Spotify OAuth credentials (access tokens, refresh tokens, client secrets)
+//   - Spotify session cookies and legacy OAuth credentials
 //   - Gemini API keys
 //   - Other sensitive configuration values
 //
-// The encryption key is derived from machine-specific information to ensure
-// that encrypted data can only be decrypted on the same machine where it was
-// encrypted. This provides protection against database file theft.
+// The encryption key is derived from machine-specific information. Reading
+// encrypted settings requires the corresponding key derivation inputs.
 //
 // Key Derivation:
 //   - Uses PBKDF2 with SHA-256 to derive a 256-bit key

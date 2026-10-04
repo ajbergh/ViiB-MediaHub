@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Runs bounded librespot audio probes with cancellation, cleanup, and watchdog diagnostics.
 package main
 
 import (

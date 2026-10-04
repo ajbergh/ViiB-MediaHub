@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Tests the pinned Web Player authentication contract against a known TOTP vector.
 package main
 
 import (

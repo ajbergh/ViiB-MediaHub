@@ -1,3 +1,4 @@
+// Coordinates API shutdown, worker admission, cancellation, and provider cleanup.
 package api
 
 import (

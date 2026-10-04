@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+/** Tests background metadata enrichment scheduling and Spotify connection/session guards. */
+
 import React, {act} from 'react';
 import {createRoot, Root} from 'react-dom/client';
 import {afterEach, expect, it, vi} from 'vitest';

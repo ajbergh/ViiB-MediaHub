@@ -1,3 +1,4 @@
+// Starts the loopback HTTP server and cancels active requests before graceful shutdown.
 package main
 
 import (

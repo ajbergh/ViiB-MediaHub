@@ -1,3 +1,5 @@
+/** Connects through Spotify browser sign-in, polls cancellable login status, and disconnects backend-owned sessions. */
+
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
 import { useStore } from '../store';

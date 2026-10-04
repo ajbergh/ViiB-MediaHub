@@ -1,3 +1,4 @@
+// Maps fixed Web Player album responses and paged tracks into catalog models.
 package catalog
 
 import (

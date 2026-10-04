@@ -1,4 +1,3 @@
-import { SpotifySessionConnect } from './SpotifySessionConnect';
 /**
  * ViiB MediaHub - First Launch Configuration Dialog
  * 
@@ -19,7 +18,7 @@ import { SpotifySessionConnect } from './SpotifySessionConnect';
  * Setup Steps:
  * 1. Welcome screen with feature overview
  * 2. Add music folder(s) to scan
- * 3. Configure Spotify credentials (optional)
+ * 3. Sign in through the Spotify browser connection (optional)
  * 4. Configure AI Provider for AI DJ (optional)
  * 5. Configure Last.FM for metadata enrichment (optional)
  * 6. Enrichment source selection (shown only if both LLM and Last.FM configured)
@@ -34,6 +33,7 @@ import { SpotifySessionConnect } from './SpotifySessionConnect';
  * @see {@link Settings} for post-setup configuration changes
  */
 
+import { SpotifySessionConnect } from './SpotifySessionConnect';
 import React, { useState, useEffect } from 'react';
 import { Music, FolderOpen, Wifi, Check, Loader2, X, Plus, ChevronRight, Sparkles, HardDrive, AlertCircle } from 'lucide-react';
 import { useStore } from '../store';

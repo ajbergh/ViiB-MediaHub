@@ -1,3 +1,4 @@
+// Tests playlist scraper cancellation before browser work.
 package spotify
 
 import (

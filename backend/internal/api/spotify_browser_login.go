@@ -1,3 +1,4 @@
+// Manages cancellable Spotify browser sign-in operations and guarded session installation.
 package api
 
 import (

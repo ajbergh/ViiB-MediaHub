@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Tests counting playlist row shapes and item types without recording raw item values.
 package main
 
 import (

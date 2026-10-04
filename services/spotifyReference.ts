@@ -1,3 +1,5 @@
+/** Provides typed recording-link and optional reference-cache APIs with refresh session checks. */
+
 import { useStore } from '../store';
 export type SpotifyReferenceEndpoint = 'audio_features' | 'audio_analysis';
 export interface SpotifyRecordingLink {

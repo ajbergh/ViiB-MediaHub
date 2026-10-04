@@ -1,3 +1,5 @@
+/** Keeps the legacy callback route reachable and directs users to the Spotify session connection page. */
+
 import React from 'react';
 import { Link } from 'react-router';
 

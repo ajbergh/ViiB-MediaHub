@@ -1,3 +1,5 @@
+/** Tests playlist paging, snapshot consistency, and session changes. */
+
 import{afterEach,beforeEach,expect,it,vi}from 'vitest';
 import{fetchSpotifyPlaylist}from './spotifyPlaylist';import{useStore}from '../store';
 const id='P'.repeat(22);beforeEach(()=>{useStore.getState().logoutSpotify();useStore.getState().setSpotifyConnected(true)});afterEach(()=>vi.unstubAllGlobals());

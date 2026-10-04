@@ -1,3 +1,4 @@
+// Builds support archives with bounded, redacted diagnostics and logs.
 package api
 
 import (

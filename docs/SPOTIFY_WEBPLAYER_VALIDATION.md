@@ -1,10 +1,36 @@
 # Spotify WebPlayer Validation and Research Record
 
-**Date:** 2026-10-02
+**Record started:** 2026-10-02
+
+**Evidence through:** 2026-10-04
+
+**Implementation checkpoint:** `8187104`
 
 **Branch:** spotify/webplayer-auth-analysis-provider
 
 **Related:** [Implementation plan](SPOTIFY_WEBPLAYER_AUTH_AUDIO_ANALYSIS_IMPLEMENTATION_PLAN.md)
+
+## Current evidence summary
+
+The [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) is the current feature/gate checklist. This file retains the dated experiments, including failures and superseded intermediate results. Earlier open-gate statements apply to their own experiment date; the summary below reflects the latest recorded evidence. This documentation pass did not rerun application tests or add live results.
+
+| Area | Latest recorded result | Still unverified |
+| --- | --- | --- |
+| Sign-in and session lifecycle | Real Spotify-owned credentials login without cookie paste, encrypted same-path restart, logout/reconnect and browser playback through natural token expiry pass. | MFA/SSO variants and other-platform login. |
+| Catalog and library | Production adapters and bounded live samples pass; UI traversed all 63 album cards and 229 playlist positions, retaining four unavailable positions. | Universal account/market/content coverage; Recent individual play events and missing profile fields. |
+| Audio and native UX | Browser controls and direct-loopback transport fixtures pass; warm HTTP reads improve with asset reuse. Windows native functional controls and latest clean closure pass. | Updated native buffering/search feedback and shutdown while enrichment is active. Browser timing is not WebView timing. |
+| Downloads and reference identity | Album/playlist worker samples fully decode; fresh Ogg/MP3 links persist after queue clearing and restart. | Broader quality/mixed/relinked content and repeated multi-track stress. |
+| Analysis and benchmark | Scalar reference, local-value preservation, frozen comparator and read-only exporter have separate live/fixture evidence. | Detailed analysis after 404 samples; reviewed real-audio benchmark corpus/results. |
+| Credentials and failure paths | Encrypted storage, generic-setting exclusion, support redaction, sanitized new backup copies, bounded proxy failures and shutdown-drain fixtures pass. | Full live generic write-route compatibility is not established. |
+| Platforms | Core backend compiles for Windows amd64/arm64, Linux amd64 and macOS amd64/arm64 with CGO disabled. | Native packages and macOS/Linux interactive login/playback/shutdown; race testing unavailable on the recorded Windows toolchain. |
+
+Latest normal-app Recent request: HTTP 429 with Retry-After 27; session status remained connected. No individual-event parity is claimed. Profile email/product/country/followers were absent from the inspected response, not silently dropped by the DTO in that sample.
+
+For detailed follow-ups, see [stream reuse](#stream-asset-reuse-and-byte-ranges-2026-10-04), [shutdown ownership](#2026-10-04-enrichment-and-reference-shutdown-ownership), [credential exports/proxy](#2026-10-04-generic-proxy-and-credential-export-regression-gates), [platform checks](#2026-10-04-cross-platform-core-compilation-and-browser-discovery) and [the final gate recheck](#2026-10-04-remaining-external-gates-rechecked).
+
+Evidence artifacts referenced under `output/playwright` and temporary audio/test roots are local validation output, not committed fixtures or distributable datasets. Their absence from another checkout does not create new passing evidence; use the documented result and a fresh authorized run when reproduction is required. The original account cookie and live tokens are not part of this record.
+
+## Dated validation entries
 
 ## First-search responsiveness follow-up — 2026-10-03
 

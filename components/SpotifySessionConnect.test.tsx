@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+/** Tests browser sign-in polling, cancellation, connection state, and disconnection. */
+
 import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';

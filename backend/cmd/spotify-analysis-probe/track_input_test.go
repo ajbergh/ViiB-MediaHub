@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Tests parsing Spotify track IDs, URLs, and URIs for diagnostic inputs.
 package main
 
 import "testing"

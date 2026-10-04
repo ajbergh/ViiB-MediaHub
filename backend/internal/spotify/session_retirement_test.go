@@ -1,3 +1,4 @@
+// Tests session retirement waiting for media consumers and clearing bearer credentials.
 package spotify
 
 import (

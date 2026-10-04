@@ -1,5 +1,7 @@
 // Package spotify provides Spotify integration for ViiB MediaHub.
-// This file implements session management for librespot-go authentication.
+// This file manages librespot playback/download sessions from backend bearer tokens.
+// Sessions are leased to media consumers and retired on credential or account changes;
+// cookie exchange and catalog access belong to the auth and catalog packages.
 package spotify
 
 import (

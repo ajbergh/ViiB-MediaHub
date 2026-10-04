@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Observes profile field presence and types while preserving the response body.
 package main
 
 import (

@@ -1,3 +1,4 @@
+// Validates normalized reference observations before persistence or reuse.
 package analysis
 
 import "errors"

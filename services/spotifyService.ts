@@ -1,27 +1,11 @@
 /**
- * Spotify Web API Integration Service
- * 
- * Normal catalog requests use the backend cookie session.
- * Used for searching Spotify catalog, fetching metadata, and enhancing
- * local library information.
- * 
- * Authentication Flow:
- * 1. User initiates login -> startAuth() generates code verifier/challenge
- * 2. User redirects to Spotify authorization page
- * 3. Spotify redirects back with authorization code
- * 4. handleCallback() exchanges code for access/refresh tokens
- * 5. Tokens stored in backend via api.saveSpotifyCredentials()
- * 
- * Features:
- * - OAuth 2.0 with PKCE (no client secret exposed to frontend)
- * - Backend-owned automatic token renewal
- * - Request queuing to respect rate limits (200ms between requests)
- * - Typed error handling (SpotifyAuthError, SpotifyRateLimitError, etc.)
- * - Fuzzy string matching for artist/album metadata
- * - Levenshtein distance algorithm for improved matching accuracy
- * 
- * The access tokens are also used by the backend for librespot downloads,
- * providing seamless integration between Web API and download functionality.
+ * Spotify catalog and metadata service using the backend-owned session.
+ * Browser sign-in and token renewal run in the backend; catalog requests send
+ * resource paths and reject results from a retired session generation.
+ * Background metadata work is queued with 200 ms spacing. Interactive searches
+ * bypass that queue; the backend enforces concurrency bounds and provider cooldowns.
+ * Includes typed failures, fuzzy artist/album matching, and retained OAuth helpers
+ * for compatibility. The normal connection UI uses Spotify browser sign-in.
  */
 
 import { backendSpotifyFetch, assertSpotifySession, SpotifySessionChangedError } from './spotifyBackend';

@@ -1,3 +1,4 @@
+// Tests exclusion of Spotify session credentials from settings exports and library backups.
 package api
 
 import (

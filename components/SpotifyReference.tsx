@@ -1,3 +1,5 @@
+/** Displays optional Spotify BPM/key references and explicit recording-link controls alongside local analysis. */
+
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { spotifyReference, spotifyRecordingId, type SpotifyRecordingLink, type SpotifyReferenceView, type SpotifyReferenceEndpoint } from '../services/spotifyReference';

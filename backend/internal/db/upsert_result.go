@@ -1,3 +1,4 @@
+// Reports song inserts and updates during batch saves and reconciles Spotify download recording evidence.
 package db
 
 import (

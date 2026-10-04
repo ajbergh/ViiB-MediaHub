@@ -1,3 +1,4 @@
+// Sanitizes Spotify session credentials from a backup copy while leaving the source database intact.
 package db
 
 import (

@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Tests probing experimental listening-history event shapes without guessing fallback operations.
 package main
 
 import (

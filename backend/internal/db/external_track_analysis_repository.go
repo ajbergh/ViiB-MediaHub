@@ -1,3 +1,4 @@
+// Stores optional external analysis observations and failure/cooldown state separately from local analysis.
 package db
 
 import (

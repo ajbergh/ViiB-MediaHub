@@ -65,8 +65,9 @@ For Plex tracks these edits are ViiB-local only; they are never silently written
 Creating a backup:
 
 1. Creates a consistent SQLite snapshot using `VACUUM INTO` after a WAL checkpoint.
-2. Validates the snapshot with SQLite integrity checking.
-3. Stores `library.db` and a SHA-256 manifest in a ZIP archive in the application data directory.
+2. Removes Spotify cookie-session and OAuth-credential settings from the temporary snapshot, then erases deleted credential bytes with SQLite secure-delete and `VACUUM`. The active database is unchanged.
+3. Validates the sanitized snapshot with SQLite integrity checking.
+4. Stores `library.db` and a SHA-256 manifest in a ZIP archive in the application data directory.
 
 **Preview restore** validates the archive, manifest checksum, and SQLite database without changing the active library.
 

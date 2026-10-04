@@ -1,3 +1,4 @@
+// Maps authenticated profile and recent-context responses without inventing unavailable account fields.
 package catalog
 
 import (

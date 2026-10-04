@@ -1,3 +1,4 @@
+// Tests download conversion failures and successful output handling.
 package api
 
 import (

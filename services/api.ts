@@ -2,18 +2,19 @@
  * API Client for ViiB MediaHub Backend
  * 
  * This module provides a typed interface for communicating with the Go backend.
- * All API calls go through this module to ensure consistent error handling and typing.
+ * Centralizes typed backend endpoints; specialized Spotify and streaming clients
+ * also call backend routes directly.
  * 
  * Architecture:
  * - Development: Vite dev server proxies /api requests to Go backend (port 8080)
  * - Production: Backend serves both the built frontend and API from same origin
- * - All responses are JSON with consistent error format
+ * - Structured responses are typed JSON; event streams and file exports use separate formats
  * - TypeScript interfaces match backend Go structs
  * 
  * Features:
  * - Library management (songs, playlists, folders)
  * - File scanning and metadata extraction
- * - Spotify OAuth credential storage
+ * - Spotify browser sign-in, redacted session status, and legacy credential endpoints
  * - Spotify download queue management
  * - Real-time download progress via SSE (handled by DownloadManager component)
  * 

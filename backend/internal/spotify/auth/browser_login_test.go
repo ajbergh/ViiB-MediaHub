@@ -1,3 +1,4 @@
+// Tests browser session capture, cancellation, and temporary-profile cleanup.
 package auth
 
 import (

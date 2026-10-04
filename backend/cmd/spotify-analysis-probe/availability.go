@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Compares independently probed Spotify endpoint capabilities.
 package main
 
 import (

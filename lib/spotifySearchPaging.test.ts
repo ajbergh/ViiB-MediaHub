@@ -1,3 +1,5 @@
+/** Tests search cursor advancement independently of fallback items and unequal result buckets. */
+
 import {describe,it,expect} from 'vitest';
 import {nextSpotifySearchOffset} from './spotifySearchPaging';
 describe('Spotify search paging',()=>{

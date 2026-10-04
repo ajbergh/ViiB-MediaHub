@@ -1,3 +1,4 @@
+// Normalizes Spotify scalar features and detailed intervals into nullable reference observations.
 package analysis
 
 import (

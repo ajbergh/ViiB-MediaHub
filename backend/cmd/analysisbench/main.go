@@ -1,4 +1,5 @@
-// Command analysisbench reports reproducible Phase 0 fixture and codec metadata.
+// Command analysisbench generates fixtures, runs local analyzers, and reports corpus
+// accuracy, codec capabilities, determinism, and frozen Spotify reference comparisons.
 // It is deliberately not linked into the desktop application.
 package main
 

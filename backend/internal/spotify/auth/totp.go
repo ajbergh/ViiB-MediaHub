@@ -1,3 +1,4 @@
+// Computes Web Player authentication TOTP values using the supplied server-adjusted time.
 package auth
 
 import (

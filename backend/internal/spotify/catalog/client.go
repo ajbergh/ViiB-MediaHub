@@ -1,6 +1,6 @@
 // Package catalog implements fixed Web Player catalog operations.
 // Contract source: stupid-social f0f8c219e43d394c84516a3bcc7af7c9fd41f713
-// scripts/spotify-web-client.py; Apache-2.0, license retained beside auth contract.
+// scripts/spotify-web-client.py; Apache-2.0, licenses retained in the auth and catalog directories.
 package catalog
 
 import (

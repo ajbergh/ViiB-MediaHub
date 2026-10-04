@@ -1,3 +1,4 @@
+// Maps individual and batched Spotify track responses into catalog models.
 package catalog
 
 import (

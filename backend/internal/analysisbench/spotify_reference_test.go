@@ -1,3 +1,4 @@
+// Tests comparison of frozen Spotify references bound to corpus identity separately from ground-truth labels.
 package analysisbench
 
 import (

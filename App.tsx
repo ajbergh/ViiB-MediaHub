@@ -3,7 +3,7 @@
  * 
  * Entry point for the React frontend. Handles:
  * - Route configuration using react-router
- * - Global state initialization (library, Spotify credentials sync)
+ * - Global state initialization (library, redacted Spotify session status)
  * - Error boundary for graceful component failure handling
  * - Background metadata enrichment startup
  * - Global UI overlays (ConfirmDialog, DownloadManager)

@@ -1,5 +1,6 @@
 //go:build spotify_research
 
+// Observes bounded library response field types without recording raw field values.
 package main
 
 import (
