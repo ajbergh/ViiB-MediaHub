@@ -57,6 +57,7 @@ export interface PlayerSlice {
   playNext: (items: Song | Song[]) => void;
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
+  retireSpotifyPlayback: () => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   playQueueItem: (index: number) => void;
   
@@ -225,6 +226,11 @@ export interface LibrarySlice {
 }
 
 export interface SpotifySlice {
+  spotifyConnected: boolean;
+  spotifySessionGeneration: number;
+  spotifyAuthRequired: boolean;
+  markSpotifyAuthRequired: () => void;
+  setSpotifyConnected: (connected: boolean) => void;
   spotifyClientId: string;
   spotifyClientSecret: string;
   spotifyAccessToken: string | null;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -154,12 +155,16 @@ func TestOggConversionDoesNotOccupyDownloadSlot(t *testing.T) {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-releaseConversion:
-			return "first.mp3", nil
+			path := filepath.Join(t.TempDir(), "first.mp3")
+			if err := os.WriteFile(path, []byte("converted fixture"), 0600); err != nil {
+				return "", err
+			}
+			return path, nil
 		}
 	}
 
 	first := &db.SpotifyDownload{
-		ID: "first", SpotifyID: "spotify-first", SpotifyURI: "spotify:track:first",
+		ID: "first", SpotifyID: "5r9W9MJLvHk83fcZSPQ8SE", SpotifyURI: "spotify:track:first",
 		Type: "track", Title: "First", Status: "queued", AddedAt: 1,
 	}
 	second := &db.SpotifyDownload{
@@ -175,7 +180,7 @@ func TestOggConversionDoesNotOccupyDownloadSlot(t *testing.T) {
 		t.Fatalf("mark first started: changed=%v err=%v", changed, err)
 	}
 
-	if err := manager.startOggConversion(first, nil, "first.ogg"); err != nil {
+	if err := manager.startOggConversion(context.Background(), first, nil, "first.ogg"); err != nil {
 		t.Fatalf("start conversion: %v", err)
 	}
 	select {
@@ -211,7 +216,7 @@ func TestOggConversionDoesNotOccupyDownloadSlot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get completed first: %v", err)
 	}
-	if completed.Status != "completed" || completed.FilePath != "first.mp3" {
+	if completed.Status != "completed" || filepath.Base(completed.FilePath) != "first.mp3" {
 		t.Fatalf("completed first = %#v", completed)
 	}
 }
@@ -240,14 +245,18 @@ func TestOggConversionsRunInParallelUpToConfiguredLimit(t *testing.T) {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-release:
-			return path + ".mp3", nil
+			final := filepath.Join(t.TempDir(), filepath.Base(path)+".mp3")
+			if err := os.WriteFile(final, []byte("converted fixture"), 0600); err != nil {
+				return "", err
+			}
+			return final, nil
 		}
 	}
 
 	for i := 1; i <= 3; i++ {
 		id := fmt.Sprintf("conversion-%d", i)
 		download := &db.SpotifyDownload{
-			ID: id, SpotifyID: "spotify-" + id, SpotifyURI: "spotify:track:" + id,
+			ID: id, SpotifyID: fmt.Sprintf("%022d", i), SpotifyURI: "spotify:track:" + id,
 			Type: "track", Title: id, Status: "queued", AddedAt: int64(i),
 		}
 		if err := database.AddDownload(download); err != nil {
@@ -256,7 +265,7 @@ func TestOggConversionsRunInParallelUpToConfiguredLimit(t *testing.T) {
 		if changed, err := database.MarkDownloadStarted(id); err != nil || !changed {
 			t.Fatalf("mark %s started: changed=%v err=%v", id, changed, err)
 		}
-		if err := manager.startOggConversion(download, nil, id+".ogg"); err != nil {
+		if err := manager.startOggConversion(context.Background(), download, nil, id+".ogg"); err != nil {
 			t.Fatalf("start %s conversion: %v", id, err)
 		}
 	}
@@ -321,5 +330,72 @@ func TestSetMaxConversionWorkersRejectsOutOfRangeValues(t *testing.T) {
 		if err := manager.SetMaxConversionWorkers(workers); err == nil {
 			t.Fatalf("SetMaxConversionWorkers(%d) succeeded", workers)
 		}
+	}
+}
+
+func TestConversionDetachesWorkerButRetainsOriginalAccount(t *testing.T) {
+	a, _, _ := fixtureCookieRuntime(t)
+	manager := NewDownloadManager(a.db, t.TempDir())
+	defer manager.cancel()
+	manager.tokenSource = a.spotifyAuth
+	job, cancelJob := a.spotifyAuth.requestContext(context.Background())
+	defer cancelJob()
+	conversion, cancelConversion := manager.conversionContext(job)
+	defer cancelConversion()
+	cancelJob()
+	if conversion.Err() != nil {
+		t.Fatal("worker cleanup cancelled transferred conversion")
+	}
+	a.spotifyAuth.beginRetirement()
+	select {
+	case <-conversion.Done():
+	case <-time.After(time.Second):
+		t.Fatal("account retirement did not cancel conversion")
+	}
+	if !errors.Is(context.Cause(conversion), errSpotifyAccountChanged) {
+		t.Fatalf("wrong cancellation cause: %v", context.Cause(conversion))
+	}
+}
+
+func TestAccountRetirementRequeuesActiveConversion(t *testing.T) {
+	a, _, _ := fixtureCookieRuntime(t)
+	manager := NewDownloadManager(a.db, t.TempDir())
+	defer manager.cancel()
+	manager.tokenSource = a.spotifyAuth
+	job, cancelJob := a.spotifyAuth.requestContext(context.Background())
+	defer cancelJob()
+	started := make(chan struct{})
+	manager.oggToMP3Converter = func(ctx context.Context, _ string, _ audio.MP3Metadata, _ audio.ActivityCallback) (string, error) {
+		close(started)
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	download := &db.SpotifyDownload{ID: "retire-conversion", SpotifyID: "5r9W9MJLvHk83fcZSPQ8SE", Type: "track", Title: "Fixture", Status: "queued", AddedAt: 1}
+	if err := a.db.AddDownload(download); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := a.db.MarkDownloadStarted(download.ID); err != nil || !changed {
+		t.Fatalf("start: %v %v", changed, err)
+	}
+	if err := manager.startOggConversion(job, download, nil, "fixture.ogg"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("conversion did not start")
+	}
+	cancelJob()
+	a.spotifyAuth.beginRetirement()
+	done := make(chan struct{})
+	go func() { manager.conversionWg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("conversion did not stop")
+	}
+	row, err := a.db.GetDownload(download.ID)
+	if err != nil || row.Status != "queued" {
+		t.Fatalf("retired conversion state: %#v %v", row, err)
 	}
 }

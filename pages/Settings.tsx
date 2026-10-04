@@ -1,3 +1,4 @@
+import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
 /**
  * ViiB MediaHub - Settings Page
  * 
@@ -83,7 +84,6 @@ export const Settings: React.FC = () => {
       showSmartMixes, setShowSmartMixes,
       homeLayoutVariant, setHomeLayoutVariant,
       windowCloseAction, setWindowCloseAction,
-      spotifyClientId, spotifyClientSecret, setSpotifyCredentials,
       streamingEnabled, streamingQuality, setStreamingEnabled, setStreamingQuality,
       preferLocalPlayback, setPreferLocalPlayback,
       streamingStats, resetStreamingStats,
@@ -93,11 +93,8 @@ export const Settings: React.FC = () => {
       setEnrichmentStatus, refreshLibrary
   } = useStore();
 
-  const [tempClientId, setTempClientId] = useState(spotifyClientId);
-  const [tempClientSecret, setTempClientSecret] = useState(spotifyClientSecret);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [supportBundleStatus, setSupportBundleStatus] = useState<'idle' | 'working' | 'success' | 'error'>('idle');
   const [supportBundleMessage, setSupportBundleMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -538,27 +535,6 @@ export const Settings: React.FC = () => {
       } catch (e) {
           addLog('error', 'Failed to save automatic library scan threshold', e);
       }
-  };
-
-  const handleSaveCredentials = async () => {
-      setSpotifyCredentials(tempClientId, tempClientSecret);
-      
-      // Sync to backend immediately
-      try {
-          await api.saveSpotifyCredentials({
-              clientId: tempClientId,
-              clientSecret: tempClientSecret,
-              accessToken: useStore.getState().spotifyAccessToken || '',
-              refreshToken: useStore.getState().spotifyRefreshToken || '',
-              expiry: useStore.getState().spotifyTokenExpiry || 0
-          });
-          addLog('success', 'Spotify credentials saved and synced to backend');
-      } catch (e) {
-          addLog('warn', 'Saved locally but failed to sync to backend', e);
-      }
-
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   const handleSaveDownloadPath = async () => {
@@ -1757,77 +1733,9 @@ export const Settings: React.FC = () => {
 
           </section>
 
-          {/* Spotify Integration */}
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
-            <div className="flex items-center gap-3 mb-4 text-brand">
-                <Wifi size={20} />
-                <h2 className="text-lg font-bold text-text-main">Spotify Developer Application</h2>
-            </div>
-            
-            <div className="space-y-4">
-                <p className="text-sm text-text-secondary">
-                    Create your own Spotify Developer app, add the callback below in its settings, then paste its credentials here.
-                </p>
-                <div className="bg-surface-1 border border-surface-border rounded-lg p-4 text-sm text-text-secondary space-y-2">
-                    <p><span className="font-bold text-text-main">1.</span> Create an app in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">Spotify Developer Dashboard</a>.</p>
-                    <p><span className="font-bold text-text-main">2.</span> Add this exact Redirect URI in the app's settings:</p>
-                    <div className="flex items-center gap-2">
-                        <code className="flex-1 bg-surface-2 px-3 py-2 rounded text-xs text-text-main break-all select-all">{SPOTIFY_DESKTOP_CALLBACK_URL}</code>
-                        <button
-                            onClick={() => navigator.clipboard.writeText(SPOTIFY_DESKTOP_CALLBACK_URL)}
-                            className="p-2 rounded hover:bg-surface-2 text-text-secondary hover:text-text-main transition-colors"
-                            title="Copy Spotify redirect URI"
-                            aria-label="Copy Spotify redirect URI"
-                        >
-                            <Copy size={14} />
-                        </button>
-                    </div>
-                    <p><span className="font-bold text-text-main">3.</span> Copy the Client ID and Client Secret from that Spotify app into the fields below.</p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-bold text-text-subtle uppercase mb-2">Client ID</label>
-                        <TextInput
-                            type="text"
-                            value={tempClientId}
-                            onChange={(e) => setTempClientId(e.target.value)}
-                            placeholder="Enter Client ID"
-                            className="w-full px-4 py-3"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-text-subtle uppercase mb-2">Client Secret</label>
-                        <TextInput
-                            type="password"
-                            value={tempClientSecret}
-                            onChange={(e) => setTempClientSecret(e.target.value)}
-                            placeholder="Enter Client Secret"
-                            className="w-full px-4 py-3"
-                        />
-                    </div>
-                </div>
-
-                <div className="flex items-center justify-between mt-2">
-                    <p className="text-xs text-text-subtle">{tempClientId && tempClientSecret ? 'Ready to save credentials. Then return to the Spotify page and select Connect Spotify.' : 'Not configured yet. Enter both values to enable Spotify connection.'}</p>
-                    <div className="flex items-center gap-3">
-                        {saveSuccess && (
-                            <span className="text-success text-sm font-bold animate-in fade-in slide-in-from-right-4">
-                                Saved!
-                            </span>
-                        )}
-                        <Button
-                            variant="primary"
-                            accent="brand"
-                            onClick={handleSaveCredentials}
-                            disabled={!tempClientId.trim() || !tempClientSecret.trim()}
-                            className="rounded-full px-6 py-2 text-sm font-bold"
-                        >
-                            Save Credentials
-                        </Button>
-                    </div>
-                </div>
-            </div>
+            <h2 className="text-lg font-bold mb-4">Spotify account</h2>
+            <SpotifySessionConnect />
           </section>
 
           {/* Spotify Direct Streaming */}

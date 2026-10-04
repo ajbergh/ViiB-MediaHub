@@ -1,9 +1,9 @@
 /**
- * Resolves SSE URLs for both the browser build and the native Wails build.
+ * Resolves streaming URLs for both the browser build and the native Wails build.
  *
  * Wails proxies ordinary API requests through its asset server, but that
  * response path buffers indefinitely-lived Server-Sent Event responses. The
- * backend's loopback HTTP server is therefore used directly for event streams
+ * backend's loopback HTTP server is therefore used directly for event and audio streams
  * in the native app. Browser and Vite development builds retain relative URLs.
  */
 

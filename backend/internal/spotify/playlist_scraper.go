@@ -4,6 +4,7 @@
 package spotify
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -91,17 +92,24 @@ type ScrapedTrack struct {
 //   - *ScrapedPlaylist: Playlist data including name, artwork, and track IDs
 //   - error: If fetching or parsing fails
 func ScrapePlaylist(playlistID string) (*ScrapedPlaylist, error) {
+	return ScrapePlaylistContext(context.Background(), playlistID)
+}
+
+// ScrapePlaylistContext binds the fallback fetch to the caller/account lifetime.
+func ScrapePlaylistContext(ctx context.Context, playlistID string) (*ScrapedPlaylist, error) {
+	return scrapePlaylist(ctx, playlistID, &http.Client{Timeout: 30 * time.Second})
+}
+
+func scrapePlaylist(ctx context.Context, playlistID string, client *http.Client) (*ScrapedPlaylist, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	psLog("Scraping playlist embed page for ID: %s", playlistID)
 
 	// Build the embed URL for the playlist
 	embedURL := "https://open.spotify.com/embed/playlist/" + playlistID
 
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	req, err := http.NewRequest("GET", embedURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", embedURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

@@ -20,7 +20,25 @@
 import { StateCreator } from 'zustand';
 import { AppState, SpotifySlice } from './types';
 
-export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = (set) => ({
+export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = (set, get) => ({
+  spotifyConnected: false,
+  spotifySessionGeneration: 0,
+  spotifyAuthRequired: false,
+  setSpotifyConnected: (connected) => set(state => ({
+    spotifyConnected: connected,
+    spotifyAuthRequired: connected ? false : state.spotifyAuthRequired,
+    spotifySessionGeneration: state.spotifySessionGeneration + (state.spotifyConnected !== connected ? 1 : 0),
+    ...(!connected ? {spotifyUser: null, spotifySearchResults: null} : {})
+  })),
+  markSpotifyAuthRequired: () => {
+    get().retireSpotifyPlayback();
+    set(state => ({
+      spotifyConnected: false, spotifyAuthRequired: true,
+      spotifySessionGeneration: state.spotifySessionGeneration + 1,
+      spotifyUser: null, spotifySearchResults: null,
+      spotifyAccessToken: null, spotifyRefreshToken: null, spotifyTokenExpiry: 0
+    }));
+  },
   spotifyClientId: '',
   spotifyClientSecret: '',
   spotifyAccessToken: null,
@@ -40,12 +58,19 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       spotifyTokenExpiry: expiry 
   }),
   setSpotifyUser: (user) => set({ spotifyUser: user }),
-  logoutSpotify: () => set({ 
+  logoutSpotify: () => {
+    get().retireSpotifyPlayback();
+    set(state => ({
+      spotifySessionGeneration: state.spotifySessionGeneration + 1,
+      spotifyAuthRequired: false,
+      spotifyConnected: false,
+      spotifySearchResults: null,
       spotifyAccessToken: null, 
       spotifyRefreshToken: null, 
       spotifyTokenExpiry: 0, 
       spotifyUser: null 
-  }),
+    }));
+  },
   
   // Search persistence actions
   setSpotifySearchQuery: (query) => set({ spotifySearchQuery: query }),

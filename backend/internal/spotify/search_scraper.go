@@ -9,8 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log"
 	"net/url"
 	"time"
 
@@ -51,6 +49,13 @@ type SearchPlaylistsResult struct {
 //   - *SearchPlaylistsResult: Array of found playlists
 //   - error: If fetching or parsing fails
 func SearchPlaylists(query string) (*SearchPlaylistsResult, error) {
+	return SearchPlaylistsContext(context.Background(), query)
+}
+
+func SearchPlaylistsContext(parent context.Context, query string) (*SearchPlaylistsResult, error) {
+	if err := parent.Err(); err != nil {
+		return nil, err
+	}
 	if query == "" {
 		return nil, fmt.Errorf("empty search query")
 	}
@@ -61,11 +66,8 @@ func SearchPlaylists(query string) (*SearchPlaylistsResult, error) {
 	encoded := url.PathEscape(query)
 	searchURL := fmt.Sprintf("https://open.spotify.com/search/%s/playlists", encoded)
 
-	// Silence chromedp internal logs
-	log.SetOutput(io.Discard)
-
 	// Use chromedp to render the JavaScript-driven page
-	playlists, err := renderPlaylistsWithChromedp(searchURL)
+	playlists, err := renderPlaylistsWithChromedp(parent, searchURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render search page: %w", err)
 	}
@@ -81,9 +83,9 @@ func SearchPlaylists(query string) (*SearchPlaylistsResult, error) {
 // renderPlaylistsWithChromedp loads the Spotify search page in a headless browser
 // and extracts playlist information using in-page DOM traversal via JavaScript.
 // This is required because Spotify's search page renders playlists with JavaScript.
-func renderPlaylistsWithChromedp(targetURL string) ([]SearchedPlaylist, error) {
+func renderPlaylistsWithChromedp(parent context.Context, targetURL string) ([]SearchedPlaylist, error) {
 	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 
 	// Create chromedp context with headless options

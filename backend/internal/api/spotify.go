@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 	"io"
 	"log"
 	"net/http"
@@ -108,6 +109,10 @@ func (a *API) saveSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 // GET /api/spotify/credentials
 // Response: SpotifyCredentials JSON or {}
 func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
+	if a.spotifyTokens().status().Provider == "webplayer" {
+		respondJSON(w, map[string]interface{}{})
+		return
+	}
 	val, err := a.db.GetSetting("spotify_credentials")
 	if err != nil {
 		// This endpoint is an auth-state probe. If a legacy encrypted value or
@@ -164,11 +169,14 @@ func (a *API) spotifySearch(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := a.doSpotifyRequest(r.Context(), http.MethodGet, "https://api.spotify.com/v1/search?"+params.Encode(), nil, "")
 	if err != nil {
-		respondError(w, http.StatusBadGateway, "Failed to fetch from Spotify")
+		respondSpotifySessionError(w, err)
 		return
 	}
 	defer resp.Body.Close()
 	w.Header().Set("Content-Type", "application/json")
+	if retry := resp.Header.Get("Retry-After"); retry != "" {
+		w.Header().Set("Retry-After", retry)
+	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
 }
@@ -192,7 +200,7 @@ func (a *API) spotifySearchPlaylists(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[SpotifySearchPlaylists] Searching for: %s", query)
 
-	result, err := spotify.SearchPlaylists(query)
+	result, err := spotify.SearchPlaylistsContext(r.Context(), query)
 	if err != nil {
 		log.Printf("[SpotifySearchPlaylists] Error: %v", err)
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to search playlists: %v", err))
@@ -353,17 +361,23 @@ func (a *API) spotifyGetPlaylistByScraping(w http.ResponseWriter, r *http.Reques
 func (a *API) spotifyGetUserProfile(w http.ResponseWriter, r *http.Request) {
 	resp, err := a.doSpotifyRequest(r.Context(), http.MethodGet, "https://api.spotify.com/v1/me", nil, "")
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to fetch from Spotify")
+		respondSpotifySessionError(w, err)
 		return
 	}
 	defer resp.Body.Close()
 
 	w.Header().Set("Content-Type", "application/json")
+	if retry := resp.Header.Get("Retry-After"); retry != "" {
+		w.Header().Set("Retry-After", retry)
+	}
 	w.WriteHeader(resp.StatusCode)
 	var result json.RawMessage
 	json.NewDecoder(resp.Body).Decode(&result)
 	json.NewEncoder(w).Encode(result)
 }
+
+const spotifyProxyRequestLimit = 2 << 20
+const spotifyProxyResponseLimit = 8 << 20
 
 // Generic proxy endpoint for Spotify API
 func (a *API) spotifyProxy(w http.ResponseWriter, r *http.Request) {
@@ -388,24 +402,50 @@ func (a *API) spotifyProxy(w http.ResponseWriter, r *http.Request) {
 		spotifyURL += "?" + params.Encode()
 	}
 
-	requestBody, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+	requestBody, err := io.ReadAll(io.LimitReader(r.Body, spotifyProxyRequestLimit+1))
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "Failed to read request body")
 		return
 	}
+	if len(requestBody) > spotifyProxyRequestLimit {
+		respondError(w, http.StatusRequestEntityTooLarge, "Spotify request body too large")
+		return
+	}
 	resp, err := a.doSpotifyRequest(r.Context(), r.Method, spotifyURL, requestBody, "application/json")
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to fetch from Spotify")
+		respondSpotifySessionError(w, err)
 		return
 	}
 	defer resp.Body.Close()
 
-	// Forward response
+	// Keep provider failures typed by status without forwarding untrusted error
+	// bodies, which can contain headers or session material echoed by a proxy.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		delay := spotifyauth.RetryAfter(resp.Header.Get("Retry-After"), time.Now())
+		if delay > 0 {
+			w.Header().Set("Retry-After", strconv.FormatInt(int64((delay+time.Second-1)/time.Second), 10))
+		}
+	}
+	if resp.StatusCode >= 400 {
+		respondError(w, resp.StatusCode, "Spotify request failed")
+		return
+	}
+	if r.Method == http.MethodHead || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified {
+		w.WriteHeader(resp.StatusCode)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, spotifyProxyResponseLimit+1))
+	if err != nil {
+		respondSpotifySessionError(w, err)
+		return
+	}
+	if len(body) > spotifyProxyResponseLimit || !json.Valid(body) {
+		respondError(w, http.StatusBadGateway, "Invalid Spotify response")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
-	var result json.RawMessage
-	json.NewDecoder(resp.Body).Decode(&result)
-	json.NewEncoder(w).Encode(result)
+	_, _ = w.Write(body)
 }
 
 // Download endpoints
@@ -443,7 +483,7 @@ func (a *API) downloadTrack(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue download: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusInternalServerError, "Failed to queue download")
 		return
 	}
 
@@ -455,6 +495,8 @@ func (a *API) downloadTrack(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) downloadAlbum(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := a.spotifyTokens().requestContext(r.Context())
+	defer cancel()
 	var req struct {
 		SpotifyID string `json:"spotifyId"`
 		Title     string `json:"title"`
@@ -475,10 +517,10 @@ func (a *API) downloadAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch tracks for the album
-	tracks, imageURL, err := a.fetchAlbumTracks(r.Context(), req.SpotifyID)
+	tracks, imageURL, err := a.fetchAlbumTracks(ctx, req.SpotifyID)
 	if err != nil {
 		log.Printf("Error fetching album tracks: %v", err)
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch album tracks: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusInternalServerError, "Failed to fetch album tracks")
 		return
 	}
 
@@ -500,9 +542,14 @@ func (a *API) downloadAlbum(w http.ResponseWriter, r *http.Request) {
 			Type: "track", Title: track.Name, Artist: track.Artist, Album: track.Album, Metadata: metadata,
 		})
 	}
-	ids, err := a.downloadManager.QueueDownloads(requests)
+	var ids []string
+	err = a.spotifyTokens().withAccount(ctx, func() error {
+		var queueErr error
+		ids, queueErr = a.downloadManager.QueueDownloads(requests)
+		return queueErr
+	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue album: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusInternalServerError, "Failed to queue album")
 		return
 	}
 	queuedCount := len(ids)
@@ -515,6 +562,8 @@ func (a *API) downloadAlbum(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) downloadPlaylist(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := a.spotifyTokens().requestContext(r.Context())
+	defer cancel()
 	var req struct {
 		SpotifyID string `json:"spotifyId"`
 		Name      string `json:"name"`
@@ -535,10 +584,10 @@ func (a *API) downloadPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch tracks for the playlist (also returns the playlist name and image from Spotify)
-	tracks, playlistName, imageURL, err := a.fetchPlaylistTracks(r.Context(), req.SpotifyID, nil)
+	tracks, playlistName, imageURL, err := a.fetchPlaylistTracks(ctx, req.SpotifyID, nil)
 	if err != nil {
 		log.Printf("Error fetching playlist tracks: %v", err)
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch playlist tracks: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusInternalServerError, "Failed to fetch playlist tracks")
 		return
 	}
 
@@ -564,9 +613,14 @@ func (a *API) downloadPlaylist(w http.ResponseWriter, r *http.Request) {
 			Type: "track", Title: track.Name, Artist: track.Artist, Album: track.Album, Metadata: metadata,
 		})
 	}
-	ids, err := a.downloadManager.QueueDownloads(requests)
+	var ids []string
+	err = a.spotifyTokens().withAccount(ctx, func() error {
+		var queueErr error
+		ids, queueErr = a.downloadManager.QueueDownloads(requests)
+		return queueErr
+	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue playlist: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusInternalServerError, "Failed to queue playlist")
 		return
 	}
 	queuedCount := len(ids)
@@ -666,10 +720,12 @@ func parseSpotifyURL(input string) (contentType, spotifyID string) {
 
 // downloadTrackByID fetches track metadata from Spotify and queues the download
 func (a *API) downloadTrackByID(w http.ResponseWriter, ctx context.Context, spotifyID string) {
+	ctx, cancel := a.spotifyTokens().requestContext(ctx)
+	defer cancel()
 	// Fetch track metadata from Spotify
 	resp, err := a.doSpotifyRequest(ctx, http.MethodGet, fmt.Sprintf("https://api.spotify.com/v1/tracks/%s", spotifyID), nil, "")
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to fetch track metadata")
+		respondSpotifySessionError(w, err)
 		return
 	}
 	defer resp.Body.Close()
@@ -698,6 +754,10 @@ func (a *API) downloadTrackByID(w http.ResponseWriter, ctx context.Context, spot
 		return
 	}
 
+	if track.ID != spotifyID || track.Name == "" {
+		respondError(w, http.StatusBadGateway, "Inconsistent track metadata")
+		return
+	}
 	artist := ""
 	if len(track.Artists) > 0 {
 		artist = track.Artists[0].Name
@@ -710,18 +770,23 @@ func (a *API) downloadTrackByID(w http.ResponseWriter, ctx context.Context, spot
 	}
 
 	// Queue the download
-	downloadID, err := a.downloadManager.QueueDownload(
-		track.ID,
-		fmt.Sprintf("spotify:track:%s", track.ID),
-		"track",
-		track.Name,
-		artist,
-		track.Album.Name,
-		metadata,
-	)
+	var downloadID string
+	err = a.spotifyTokens().withAccount(ctx, func() error {
+		var queueErr error
+		downloadID, queueErr = a.downloadManager.QueueDownload(
+			track.ID,
+			fmt.Sprintf("spotify:track:%s", track.ID),
+			"track",
+			track.Name,
+			artist,
+			track.Album.Name,
+			metadata,
+		)
+		return queueErr
+	})
 
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue download: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusInternalServerError, "Failed to queue download")
 		return
 	}
 
@@ -737,9 +802,11 @@ func (a *API) downloadTrackByID(w http.ResponseWriter, ctx context.Context, spot
 }
 
 func (a *API) downloadAlbumByIDPaginated(w http.ResponseWriter, ctx context.Context, spotifyID string) {
+	ctx, cancel := a.spotifyTokens().requestContext(ctx)
+	defer cancel()
 	tracks, imageURL, err := a.fetchAlbumTracks(ctx, spotifyID)
 	if err != nil {
-		respondError(w, http.StatusBadGateway, fmt.Sprintf("Failed to fetch album: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusBadGateway, "Failed to fetch album")
 		return
 	}
 	requests := make([]QueueDownloadRequest, 0, len(tracks))
@@ -751,9 +818,14 @@ func (a *API) downloadAlbumByIDPaginated(w http.ResponseWriter, ctx context.Cont
 				AlbumArtist: track.AlbumArtist, ReleaseDate: track.ReleaseDate, ImageURL: imageURL},
 		})
 	}
-	ids, err := a.downloadManager.QueueDownloads(requests)
+	var ids []string
+	err = a.spotifyTokens().withAccount(ctx, func() error {
+		var queueErr error
+		ids, queueErr = a.downloadManager.QueueDownloads(requests)
+		return queueErr
+	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue album: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusInternalServerError, "Failed to queue album")
 		return
 	}
 	title, artist := "Album", "Unknown Artist"
@@ -767,9 +839,11 @@ func (a *API) downloadAlbumByIDPaginated(w http.ResponseWriter, ctx context.Cont
 }
 
 func (a *API) downloadPlaylistByIDPaginated(w http.ResponseWriter, ctx context.Context, spotifyID string) {
+	ctx, cancel := a.spotifyTokens().requestContext(ctx)
+	defer cancel()
 	tracks, playlistName, imageURL, err := a.fetchPlaylistTracks(ctx, spotifyID, nil)
 	if err != nil {
-		respondError(w, http.StatusBadGateway, fmt.Sprintf("Failed to fetch playlist: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusBadGateway, "Failed to fetch playlist")
 		return
 	}
 	requests := make([]QueueDownloadRequest, 0, len(tracks))
@@ -781,9 +855,14 @@ func (a *API) downloadPlaylistByIDPaginated(w http.ResponseWriter, ctx context.C
 				ReleaseDate: track.ReleaseDate, ImageURL: imageURL},
 		})
 	}
-	ids, err := a.downloadManager.QueueDownloads(requests)
+	var ids []string
+	err = a.spotifyTokens().withAccount(ctx, func() error {
+		var queueErr error
+		ids, queueErr = a.downloadManager.QueueDownloads(requests)
+		return queueErr
+	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to queue playlist: %v", err))
+		respondSpotifyDownloadError(w, err, http.StatusInternalServerError, "Failed to queue playlist")
 		return
 	}
 	respondJSON(w, map[string]interface{}{
@@ -1223,11 +1302,11 @@ func (a *API) forceRestartDownload(w http.ResponseWriter, r *http.Request) {
 // GET /api/spotify/auth/status
 // Response: {"authRequired": true/false, "message": "..."}
 func (a *API) getSpotifyAuthStatus(w http.ResponseWriter, r *http.Request) {
-	authRequired := a.downloadManager.IsAuthRequired()
-	respondJSON(w, map[string]interface{}{
-		"authRequired": authRequired,
-		"message":      "",
-	})
+	status := a.spotifyTokens().status()
+	if a.downloadManager != nil && a.downloadManager.IsAuthRequired() {
+		status.AuthRequired = true
+	}
+	respondJSON(w, status)
 }
 
 // refreshSpotifyAuth is called after the user re-authenticates with Spotify.
@@ -1236,7 +1315,20 @@ func (a *API) getSpotifyAuthStatus(w http.ResponseWriter, r *http.Request) {
 // POST /api/spotify/auth/refresh
 // Response: {"status": "ok"}
 func (a *API) refreshSpotifyAuth(w http.ResponseWriter, r *http.Request) {
-	a.downloadManager.ClearAuthRequired()
+	source := a.spotifyTokens()
+	if source.status().Provider == "webplayer" {
+		token, err := source.Token(r.Context(), spotifyauth.WebAPI)
+		if err == nil {
+			_, err = source.Refresh(r.Context(), spotifyauth.WebAPI, token)
+		}
+		if err != nil {
+			respondSpotifySessionError(w, err)
+			return
+		}
+	}
+	if a.downloadManager != nil {
+		a.downloadManager.ClearAuthRequired()
+	}
 	respondJSON(w, map[string]string{"status": "ok"})
 }
 
@@ -1347,6 +1439,8 @@ type spotifyAlbumTrack struct {
 }
 
 func (a *API) fetchAlbumTracks(ctx context.Context, albumID string) ([]AlbumTrackInfo, string, error) {
+	ctx, cancel := a.spotifyTokens().requestContext(ctx)
+	defer cancel()
 	resp, err := a.doSpotifyRequest(ctx, http.MethodGet, fmt.Sprintf("https://api.spotify.com/v1/albums/%s", albumID), nil, "")
 	if err != nil {
 		return nil, "", err
@@ -1354,8 +1448,7 @@ func (a *API) fetchAlbumTracks(ctx context.Context, albumID string) ([]AlbumTrac
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, "", fmt.Errorf("spotify api error: %s - %s", resp.Status, string(body))
+		return nil, "", spotifyDownloadResponseError(resp)
 	}
 
 	var album struct {
@@ -1386,7 +1479,7 @@ func (a *API) fetchAlbumTracks(ctx context.Context, albumID string) ([]AlbumTrac
 		}
 		if pageResponse.StatusCode != http.StatusOK {
 			pageResponse.Body.Close()
-			return nil, "", fmt.Errorf("spotify album page returned %s", pageResponse.Status)
+			return nil, "", spotifyDownloadResponseError(pageResponse)
 		}
 		var page struct {
 			Items []spotifyAlbumTrack `json:"items"`
@@ -1415,6 +1508,9 @@ func (a *API) fetchAlbumTracks(ctx context.Context, albumID string) ([]AlbumTrac
 
 	var tracks []AlbumTrackInfo
 	for _, item := range albumItems {
+		if item.ID == "" {
+			continue
+		} // Unavailable catalog rows preserve paging positions.
 		// Track artist (may differ from album artist on compilations)
 		trackArtist := albumArtist
 		if len(item.Artists) > 0 {
@@ -1460,6 +1556,8 @@ type spotifyPlaylistItem struct {
 }
 
 func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playlistName *string) ([]PlaylistTrackInfo, string, string, error) {
+	ctx, cancel := a.spotifyTokens().requestContext(ctx)
+	defer cancel()
 	resp, err := a.doSpotifyRequest(ctx, http.MethodGet, fmt.Sprintf("https://api.spotify.com/v1/playlists/%s", playlistID), nil, "")
 	if err != nil {
 		return nil, "", "", err
@@ -1473,12 +1571,13 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", "", fmt.Errorf("spotify api error: %s", resp.Status)
+		return nil, "", "", spotifyDownloadResponseError(resp)
 	}
 
 	var playlist struct {
-		Name   string `json:"name"`
-		Images []struct {
+		SnapshotID *string `json:"snapshot_id"`
+		Name       string  `json:"name"`
+		Images     []struct {
 			URL    string `json:"url"`
 			Height int    `json:"height"`
 			Width  int    `json:"width"`
@@ -1493,23 +1592,32 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 		return nil, "", "", err
 	}
 	playlistItems := playlist.Tracks.Items
+	seenPages := map[string]bool{}
 	for next := playlist.Tracks.Next; next != ""; {
+		if seenPages[next] {
+			return nil, "", "", fmt.Errorf("Spotify playlist pagination did not advance")
+		}
+		seenPages[next] = true
 		pageResponse, err := a.doSpotifyRequest(ctx, http.MethodGet, next, nil, "")
 		if err != nil {
 			return nil, "", "", err
 		}
 		if pageResponse.StatusCode != http.StatusOK {
 			pageResponse.Body.Close()
-			return nil, "", "", fmt.Errorf("spotify playlist page returned %s", pageResponse.Status)
+			return nil, "", "", spotifyDownloadResponseError(pageResponse)
 		}
 		var page struct {
-			Items []spotifyPlaylistItem `json:"items"`
-			Next  string                `json:"next"`
+			SnapshotID *string               `json:"snapshot_id"`
+			Items      []spotifyPlaylistItem `json:"items"`
+			Next       string                `json:"next"`
 		}
 		decodeErr := json.NewDecoder(pageResponse.Body).Decode(&page)
 		pageResponse.Body.Close()
 		if decodeErr != nil {
 			return nil, "", "", decodeErr
+		}
+		if playlist.SnapshotID != nil && page.SnapshotID != nil && *playlist.SnapshotID != *page.SnapshotID {
+			return nil, "", "", fmt.Errorf("Spotify playlist changed while loading")
 		}
 		playlistItems = append(playlistItems, page.Items...)
 		next = page.Next
@@ -1548,7 +1656,7 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 // that are not accessible via the Web API, then fetches individual track metadata.
 func (a *API) fetchPlaylistTracksByScraping(ctx context.Context, playlistID string) ([]PlaylistTrackInfo, string, string, error) {
 	// Scrape playlist data from embed page
-	scraped, err := spotify.ScrapePlaylist(playlistID)
+	scraped, err := spotify.ScrapePlaylistContext(ctx, playlistID)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed to scrape playlist: %w", err)
 	}
@@ -1581,7 +1689,7 @@ func (a *API) fetchPlaylistTracksByScraping(ctx context.Context, playlistID stri
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			return nil, "", "", fmt.Errorf("spotify track batch returned %s", resp.Status)
+			return nil, "", "", spotifyDownloadResponseError(resp)
 		}
 		var batch struct {
 			Tracks []*batchTrack `json:"tracks"`
@@ -1633,6 +1741,9 @@ func (a *API) fetchPlaylistTracksByScraping(ctx context.Context, playlistID stri
 //   - 403 Forbidden: Premium required
 //   - 404 Not Found: Track not available
 func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := a.spotifyTokens().requestContext(r.Context())
+	defer cancel()
+	r = r.WithContext(ctx)
 	spotifyID := chi.URLParam(r, "id")
 	if spotifyID == "" {
 		respondError(w, http.StatusBadRequest, "Missing track ID")
@@ -1652,14 +1763,9 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 	logger.SpotifyStreamer("Stream request for track: %s (quality: %s)", spotifyID, quality)
 
 	// Get access token and initialize session
-	if err := a.downloadManager.EnsureSession(); err != nil {
+	if err := a.downloadManager.EnsureSessionContext(r.Context()); err != nil {
 		logger.SpotifyStreamer("Session error: %v", err)
-		// Check if this looks like an expired/invalid token error
-		if strings.Contains(err.Error(), "expired") || strings.Contains(err.Error(), "refresh") {
-			respondError(w, http.StatusUnauthorized, "Spotify session expired. Token refresh required.")
-		} else {
-			respondError(w, http.StatusUnauthorized, "Spotify session not available. Please log in.")
-		}
+		respondSpotifyDownloadError(w, err, http.StatusServiceUnavailable, "Spotify playback is temporarily unavailable. Please retry.")
 		return
 	}
 
@@ -1681,13 +1787,10 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 	stream, err := streamer.StreamTrackWithQuality(r.Context(), spotifyID, requestID, quality)
 	if err != nil {
 		logger.SpotifyStreamer("Failed to start stream: %v", err)
-		// Check for specific errors
-		if strings.Contains(err.Error(), "session") || strings.Contains(err.Error(), "token") {
-			respondError(w, http.StatusUnauthorized, "Spotify session expired. Please log in again.")
-		} else if strings.Contains(err.Error(), "premium") {
+		if strings.Contains(err.Error(), "premium") {
 			respondError(w, http.StatusForbidden, "Spotify Premium required for streaming")
 		} else {
-			respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to stream track: %v", err))
+			respondSpotifyDownloadError(w, err, http.StatusServiceUnavailable, "Spotify playback is temporarily unavailable. Please retry.")
 		}
 		return
 	}
@@ -1695,7 +1798,10 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 
 	// Get stream size for Range request support
 	// Seek to end to get total size
-	totalSize, err := stream.Seek(0, io.SeekEnd)
+	totalSize := stream.Size()
+	if totalSize <= 0 {
+		totalSize, err = stream.Seek(0, io.SeekEnd)
+	}
 	if err != nil {
 		logger.SpotifyStreamer("Failed to get stream size: %v", err)
 		totalSize = 0 // Unknown size
@@ -1715,46 +1821,28 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 	// Handle Range requests for seeking
 	rangeHeader := r.Header.Get("Range")
 	if rangeHeader != "" && totalSize > 0 {
-		// Parse range header (e.g., "bytes=0-1048575" or "bytes=1000-")
-		var start, end int64
-		if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-%d", &start, &end); err != nil {
-			// Try parsing without end (e.g., "bytes=1000-")
-			if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-", &start); err != nil {
-				logger.SpotifyStreamer("Invalid Range header: %s", rangeHeader)
-				// Fall through to normal response
-			} else {
-				end = totalSize - 1
-			}
+		start, end, rangeErr := parseSpotifyByteRange(rangeHeader, totalSize)
+		if rangeErr != nil {
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", totalSize))
+			w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+			return
 		}
-
-		// Validate range
-		if start >= 0 && start < totalSize {
-			if end <= 0 || end >= totalSize {
-				end = totalSize - 1
-			}
-			if end >= start {
-				// Seek to start position
-				if _, err := stream.Seek(start, io.SeekStart); err != nil {
-					logger.SpotifyStreamer("Failed to seek to %d: %v", start, err)
-				} else {
-					contentLength := end - start + 1
-					w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, totalSize))
-					w.Header().Set("Content-Length", fmt.Sprintf("%d", contentLength))
-					w.WriteHeader(http.StatusPartialContent)
-
-					logger.SpotifyStreamer("Range request: bytes=%d-%d/%d", start, end, totalSize)
-
-					// Stream the requested range
-					written, err := io.CopyN(w, stream, contentLength)
-					if err != nil && err != io.EOF {
-						logger.SpotifyStreamer("Range stream ended: %v (wrote %d/%d bytes)", err, written, contentLength)
-					} else {
-						logger.SpotifyStreamer("Range stream completed: %d bytes", written)
-					}
-					return
-				}
-			}
+		if _, err := stream.Seek(start, io.SeekStart); err != nil {
+			respondError(w, http.StatusServiceUnavailable, "Spotify seek is temporarily unavailable. Please retry.")
+			return
 		}
+		contentLength := end - start + 1
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, totalSize))
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", contentLength))
+		w.WriteHeader(http.StatusPartialContent)
+		if r.Method == http.MethodHead {
+			return
+		}
+		written, err := io.CopyN(w, stream, contentLength)
+		if err != nil && err != io.EOF {
+			logger.SpotifyStreamer("Range stream ended: %v (wrote %d/%d bytes)", err, written, contentLength)
+		}
+		return
 	}
 
 	// Full content response
@@ -1764,6 +1852,9 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 
 	logger.SpotifyStreamer("Starting full audio stream for track: %s", spotifyID)
 
+	if r.Method == http.MethodHead {
+		return
+	}
 	// Stream the audio data to the response
 	written, err := io.Copy(w, stream)
 	if err != nil {

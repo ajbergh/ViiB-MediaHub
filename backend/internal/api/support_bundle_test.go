@@ -24,7 +24,10 @@ func TestSupportBundleContainsSanitizedDiagnosticsOnly(t *testing.T) {
 	if err := database.SetSetting("spotify_credentials", `{"accessToken":"stored-secret"}`); err != nil {
 		t.Fatal(err)
 	}
-	logText := `request failed api_key=secret-value path=/Users/alice/Music/private/song.mp3?access_token=url-secret` + "\n"
+	if err := database.SetSetting(spotifyCookieSetting, `{"provider":"webplayer","spDC":"stored-cookie"}`); err != nil {
+		t.Fatal(err)
+	}
+	logText := `request failed api_key=secret-value path=/Users/alice/Music/private/song.mp3?access_token=url-secret` + "\n" + `spDC=log-cookie sp_dc=snake-cookie {"spDC":"json-cookie"} Cookie: sp_dc=header-cookie; sp_key=key-cookie ?sp_dc=query-cookie&ok=1` + "\n"
 	if err := os.WriteFile(filepath.Join(dataDir, "viib.log"), []byte(logText), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +69,7 @@ func TestSupportBundleContainsSanitizedDiagnosticsOnly(t *testing.T) {
 			t.Errorf("missing ZIP entry %q", name)
 		}
 	}
-	for _, forbidden := range []string{"stored-secret", "secret-value", "url-secret", "/Users/alice", "library.db"} {
+	for _, forbidden := range []string{"stored-cookie", "log-cookie", "snake-cookie", "json-cookie", "header-cookie", "key-cookie", "query-cookie", "stored-secret", "secret-value", "url-secret", "/Users/alice", "library.db"} {
 		for name, content := range entries {
 			if strings.Contains(content, forbidden) {
 				t.Errorf("entry %s contains forbidden value %q", name, forbidden)

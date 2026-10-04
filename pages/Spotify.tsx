@@ -1,15 +1,21 @@
+import { appendSpotifyLibraryPage } from '../lib/spotifyLibraryPaging';
+import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
+import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
+import { nextSpotifySearchOffset } from '../lib/spotifySearchPaging';
+import { backendSpotifyFetch } from '../services/spotifyBackend';
+import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
 /**
  * ViiB MediaHub - Spotify Page
  * 
  * Spotify integration hub for browsing, streaming, and downloading from Spotify catalog.
  * 
  * Features:
- * - OAuth login with PKCE flow
+ * - Backend cookie session connection
  * - Search Spotify catalog (tracks, albums, artists, playlists)
  * - Browse user's saved albums and playlists
  * - View recently played tracks
  * - Queue downloads for tracks, albums, and playlists
- * - Session restoration from cached tokens
+ * - Redacted backend session restoration
  * 
  * Requires Spotify Premium for streaming and download functionality.
  * Uses Web API for search/browse, librespot for streaming and downloads.
@@ -17,11 +23,10 @@
  * @module Spotify
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2, Copy } from 'lucide-react';
-import { formatTime, getOAuthCallbackUrl, isWailsEnvironment, SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
-import { openExternalURL } from '../services/externalNavigation';
+import { formatTime } from '../utils';
 import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
@@ -34,28 +39,20 @@ import { TextInput } from '../components/ui/TextInput';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
 
 const getSpotifyProfileWithTimeout = async () => {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-        return await Promise.race([
-            SpotifyService.getUserProfile(),
-            new Promise<never>((_, reject) => {
-                timeout = setTimeout(() => reject(new Error('Spotify profile request timed out')), 15000);
-            }),
-        ]);
+        return await SpotifyService.getUserProfile(controller.signal);
     } finally {
-        if (timeout) clearTimeout(timeout);
+        clearTimeout(timeout);
     }
 };
 
 export const Spotify: React.FC = () => {
     const navigate = useNavigate();
-    const registrationRedirectUri = isWailsEnvironment()
-        ? SPOTIFY_DESKTOP_CALLBACK_URL
-        : `${window.location.origin}/callback`;
     const {
-        spotifyClientId, spotifyUser,
-        spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiry,
-        logoutSpotify, setSpotifyCredentials, setSpotifyTokens, setSpotifyUser, addLog,
+        spotifyConnected, spotifySessionGeneration, setSpotifyConnected, spotifyUser,
+        logoutSpotify, setSpotifyUser, addLog,
         playSong, addToQueue, showToast, openContextMenu,
         // Search persistence from store
         spotifySearchQuery, spotifySearchResults, spotifyActiveTab,
@@ -73,6 +70,8 @@ export const Spotify: React.FC = () => {
     const [debouncedQuery, setDebouncedQuery] = useState(spotifySearchQuery);
     const [spotifyResults, setSpotifyResultsLocal] = useState<any>(spotifySearchResults);
     const [isSearching, setIsSearching] = useState(false);
+    const [searchError, setSearchError] = useState('');
+    const [searchRetry, setSearchRetry] = useState(0);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(false);
     
@@ -87,8 +86,9 @@ export const Spotify: React.FC = () => {
     
     // Wrapper to persist search results
     const setSpotifyResults = (results: any) => {
-        setSpotifyResultsLocal(results);
-        setSpotifySearchResults(results);
+        const nextResults = typeof results === "function" ? results(spotifyResults) : results;
+        setSpotifyResultsLocal(nextResults);
+        setSpotifySearchResults(nextResults);
     };
 
     // Library State
@@ -96,6 +96,60 @@ export const Spotify: React.FC = () => {
     const [savedAlbums, setSavedAlbums] = useState<any>(null);
     const [savedPlaylists, setSavedPlaylists] = useState<any>(null);
     const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
+    const [libraryLoadError, setLibraryLoadError] = useState('');
+    const [libraryReload, setLibraryReload] = useState(0);
+
+    const [loadingMoreLibrary, setLoadingMoreLibrary] = useState(false);
+    const [libraryPageError, setLibraryPageError] = useState('');
+    const libraryRequest = useRef(0);
+    const libraryBusy = useRef(false);
+    useEffect(() => {
+        libraryRequest.current++;
+        libraryBusy.current = false;
+        setLoadingMoreLibrary(false);
+        setLibraryPageError('');
+        setLibraryLoadError('');
+        return () => { libraryRequest.current++; libraryBusy.current = false; };
+    }, [activeTab, spotifySessionGeneration]);
+
+    const loadMoreLibrary = async () => {
+        if (libraryBusy.current || (activeTab !== 'albums' && activeTab !== 'playlists')) return;
+        const kind = activeTab;
+        const previous = kind === 'albums' ? savedAlbums : savedPlaylists;
+        if (!previous?.next) return;
+        const request = ++libraryRequest.current;
+        const generation = spotifySessionGeneration;
+        const current = () => request === libraryRequest.current && generation === useStore.getState().spotifySessionGeneration && kind === useStore.getState().spotifyActiveTab;
+        libraryBusy.current = true;
+        setLoadingMoreLibrary(true);
+        setLibraryPageError('');
+        try {
+            const offset = previous.offset + previous.items.length;
+            const page = kind === 'albums'
+                ? await SpotifyService.getSavedAlbums(20, offset)
+                : await SpotifyService.getSavedPlaylists(20, offset);
+            if (!current()) return;
+            const combined = appendSpotifyLibraryPage(previous, page);
+            if (kind === 'albums') setSavedAlbums(combined); else setSavedPlaylists(combined);
+        } catch {
+            if (current()) setLibraryPageError('Could not load more. Retry, or refresh if your library changed.');
+        } finally {
+            if (current()) { libraryBusy.current = false; setLoadingMoreLibrary(false); }
+        }
+    };
+    const libraryPagingControls = (page: any) => (
+        <div className="flex flex-col items-center gap-3 py-6">
+            {libraryPageError && <p role="alert">{libraryPageError}</p>}
+            {page?.next && <Button disabled={loadingMoreLibrary} onClick={loadMoreLibrary}>
+                {loadingMoreLibrary ? 'Loading more…' : 'Load more'}
+            </Button>}
+            {libraryPageError && <Button onClick={() => {
+                libraryRequest.current++; libraryBusy.current = false;
+                setLoadingMoreLibrary(false); setLibraryPageError('');
+                if (activeTab === 'albums') setSavedAlbums(null); else setSavedPlaylists(null);
+            }}>Refresh library</Button>}
+        </div>
+    );
 
     // Download State - track which items are currently being queued
     const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('spotify-card-cols') ?? 5));
@@ -125,99 +179,35 @@ export const Spotify: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        const handleMessage = (event: MessageEvent) => {
-            if (event.origin !== window.location.origin) return;
+        setRecentlyPlayed(null);setSavedAlbums(null);setSavedPlaylists(null);setSpotifyResultsLocal(null);
+        setIsSearching(false);setIsLoadingMore(false);setIsLoadingLibrary(false);setHasMore(false);
+    }, [spotifySessionGeneration]);
 
-            if (event.data?.type === 'SPOTIFY_AUTH_SUCCESS') {
-                const { accessToken, refreshToken, expiry, user } = event.data;
-                setSpotifyTokens(accessToken, refreshToken, expiry);
-                setSpotifyUser(user);
-                addLog('success', `Logged in as ${user.display_name}`);
-            }
-        };
-
-        window.addEventListener('message', handleMessage);
-        return () => window.removeEventListener('message', handleMessage);
-    }, [setSpotifyTokens, setSpotifyUser, addLog]);
-
-    // Session restoration effect - runs once on mount to restore cached session
     useEffect(() => {
-        const restoreSession = async () => {
-            // Check if we have cached tokens to validate
-            if (!spotifyAccessToken || !spotifyRefreshToken) {
-                console.log('[Spotify] No cached tokens found');
-                // If we have a stale user without tokens, clear it
-                if (spotifyUser) {
-                    console.log('[Spotify] Clearing stale user without tokens');
-                    logoutSpotify();
-                }
-                return;
-            }
+        let active = true;
+        const generation = useStore.getState().spotifySessionGeneration;
+        setIsRestoringSession(true);
+        void api.getSpotifyAuthStatus().then(status => {
+            if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(status.connected && !status.authRequired);
+        }).catch(() => {if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(false);}).finally(() => {if(active) setIsRestoringSession(false);});
+        return () => {active=false;};
+    }, [setSpotifyConnected]);
 
-            // If we already have a user and token is not expired, assume valid for now
-            // This provides a faster initial load - token will be validated on first API call anyway
-            if (spotifyUser && spotifyTokenExpiry && Date.now() < spotifyTokenExpiry) {
-                console.log('[Spotify] Session appears valid (token not expired), skipping validation');
-                return;
-            }
-
-            console.log('[Spotify] Validating cached session...');
-            setIsRestoringSession(true);
-
-            try {
-                // Try to get a valid access token (will refresh if expired)
-                const accessToken = await SpotifyService.getAccessToken();
-
-                if (!accessToken) {
-                    console.log('[Spotify] Could not get valid access token');
-                    logoutSpotify();
-                    setIsRestoringSession(false);
-                    return;
-                }
-
-                // Fetch user profile to validate token and restore/update user
-                const userProfile = await getSpotifyProfileWithTimeout();
-
-                if (userProfile) {
-                    console.log('[Spotify] Session validated successfully for:', userProfile.display_name);
-                    setSpotifyUser(userProfile);
-                    addLog('success', `Session restored for ${userProfile.display_name}`);
-
-                    // Sync refreshed tokens to backend
-                    try {
-                        const currentState = useStore.getState();
-                        await api.saveSpotifyCredentials({
-                            clientId: currentState.spotifyClientId || '',
-                            clientSecret: currentState.spotifyClientSecret || '',
-                            accessToken: currentState.spotifyAccessToken || '',
-                            refreshToken: currentState.spotifyRefreshToken || '',
-                            expiry: currentState.spotifyTokenExpiry || 0,
-                        });
-                    } catch (e) {
-                        console.warn('[Spotify] Failed to sync tokens to backend:', e);
-                    }
-                } else {
-                    console.log('[Spotify] Failed to fetch user profile');
-                    logoutSpotify();
-                }
-            } catch (error) {
-                console.error('[Spotify] Session restoration failed:', error);
-                // Clear invalid cached credentials
-                logoutSpotify();
-            } finally {
-                setIsRestoringSession(false);
-            }
-        };
-
-        restoreSession();
-    }, []); // Empty dependency array - runs once on mount
+    useEffect(() => {
+        if (!spotifyConnected) return;
+        let active = true;
+        void getSpotifyProfileWithTimeout().then(profile => {if(active) setSpotifyUser(profile);}).catch(error => {
+            if(active) addLog('warn', 'Spotify profile unavailable', {status: error?.statusCode});
+        });
+        return () => {active=false;};
+    }, [spotifyConnected, spotifySessionGeneration, setSpotifyUser, addLog]);
 
     // Debounce Logic
     useEffect(() => {
         const handler = setTimeout(() => {
             setDebouncedQuery(inputValue);
             setSpotifySearchQuery(inputValue); // Persist the search query
-        }, 500); // 500ms delay for API calls
+        }, 150); // Short typing debounce; Enter submits immediately.
 
         return () => {
             clearTimeout(handler);
@@ -226,25 +216,37 @@ export const Spotify: React.FC = () => {
 
     // Search Effect
     useEffect(() => {
-        if (debouncedQuery && spotifyUser) {
+        let active = true;
+        const controller = new AbortController();
+        const current = () => active && useStore.getState().spotifySessionGeneration === spotifySessionGeneration;
+        if (debouncedQuery.trim() && debouncedQuery === inputValue && spotifyConnected && activeTab === 'search') {
             const searchSpotify = async () => {
                 setIsSearching(true);
-                try {
-                    const results = await SpotifyService.search(debouncedQuery, ['album', 'playlist', 'track', 'artist'], 20, 0);
+                setSearchError('');
+                setSpotifyResults(null);
+                const publishResults = (results: any) => {
+                    if (!current()) return;
                     setSpotifyResults(results);
-
-                    // Check if there are more results
-                    const hasMoreAlbums = results.albums?.next !== null;
-                    const hasMorePlaylists = results.playlists?.next !== null;
-                    const hasMoreTracks = results.tracks?.next !== null;
-                    const hasMoreArtists = results.artists?.next !== null;
-                    setHasMore(hasMoreAlbums || hasMorePlaylists || hasMoreTracks || hasMoreArtists);
+                    setHasMore(['albums', 'playlists', 'tracks', 'artists'].some(category => Boolean(results[category]?.next)));
+                    setIsSearching(false);
+                };
+                try {
+                    const results = await SpotifyService.search(debouncedQuery, ['album', 'playlist', 'track', 'artist'], 20, 0, {
+                        signal: controller.signal,
+                        onCatalogResults: publishResults,
+                    });
+                    publishResults(results);
                 } catch (error) {
+                    if (!current()) return;
+                    setSearchError(error instanceof SpotifyRateLimitError
+                        ? `Spotify is rate limiting search. Try again in ${error.retryAfter} seconds.`
+                        : error instanceof SpotifyAuthError
+                            ? 'Please reconnect to Spotify to search.'
+                            : 'Spotify search failed. Try again.');
                     if (error instanceof SpotifyRateLimitError) {
                         addLog('warn', `Rate limited. Try again in ${error.retryAfter} seconds`);
                     } else if (error instanceof SpotifyAuthError) {
                         addLog('error', 'Authentication failed. Please reconnect to Spotify.');
-                        logoutSpotify();
                     } else if (error instanceof SpotifyApiError) {
                         addLog('error', `Spotify API Error: ${error.message}`);
                     } else {
@@ -252,28 +254,33 @@ export const Spotify: React.FC = () => {
                         console.error("Spotify search failed", error);
                     }
                 }
-                setIsSearching(false);
+                if (current()) setIsSearching(false);
             };
             searchSpotify();
-        } else if (!debouncedQuery) {
+        } else if (!inputValue.trim()) {
             setSpotifyResults(null);
+            setSearchError('');
             setHasMore(false);
+            setIsSearching(false);
+        } else {
+            setIsSearching(spotifyConnected && activeTab === 'search');
         }
-    }, [debouncedQuery, spotifyUser, addLog, logoutSpotify]);
+        return () => { active = false; controller.abort(); };
+    }, [debouncedQuery, inputValue, activeTab, spotifyConnected, spotifySessionGeneration, searchRetry, addLog, logoutSpotify]);
 
     const handleLoadMore = async () => {
-        if (!debouncedQuery || !spotifyResults || isLoadingMore) return;
+        if (!spotifyConnected || !debouncedQuery || !spotifyResults || isLoadingMore) return;
+        const generation = spotifySessionGeneration;
 
         setIsLoadingMore(true);
         try {
-            const currentOffset = spotifyResults.albums?.items?.length ||
-                spotifyResults.playlists?.items?.length ||
-                spotifyResults.tracks?.items?.length ||
-                spotifyResults.artists?.items?.length || 0;
+            const currentOffset = nextSpotifySearchOffset(spotifyResults);
+            if (currentOffset === undefined) {setHasMore(false);setIsLoadingMore(false);return;}
 
             const moreResults = await SpotifyService.search(debouncedQuery, ['album', 'playlist', 'track', 'artist'], 20, currentOffset);
 
             // Merge results
+            if (generation !== useStore.getState().spotifySessionGeneration || debouncedQuery !== useStore.getState().spotifySearchQuery) return;
             setSpotifyResults((prev: any) => ({
                 albums: prev.albums && moreResults.albums ? {
                     ...moreResults.albums,
@@ -294,36 +301,45 @@ export const Spotify: React.FC = () => {
             }));
 
             // Update hasMore
-            const hasMoreAlbums = moreResults.albums?.next !== null;
-            const hasMorePlaylists = moreResults.playlists?.next !== null;
-            const hasMoreTracks = moreResults.tracks?.next !== null;
-            const hasMoreArtists = moreResults.artists?.next !== null;
+            const hasMoreAlbums = Boolean(moreResults.albums?.next);
+            const hasMorePlaylists = Boolean(moreResults.playlists?.next);
+            const hasMoreTracks = Boolean(moreResults.tracks?.next);
+            const hasMoreArtists = Boolean(moreResults.artists?.next);
             setHasMore(hasMoreAlbums || hasMorePlaylists || hasMoreTracks || hasMoreArtists);
         } catch (error) {
             addLog('error', 'Failed to load more results');
             console.error("Load more failed", error);
         }
-        setIsLoadingMore(false);
+        if (generation === useStore.getState().spotifySessionGeneration) setIsLoadingMore(false);
     };
 
     // Load library data when tabs change
     useEffect(() => {
-        if (!spotifyUser) return;
+        if (!spotifyConnected) return;
+        let active = true;
+        const current = () => active && useStore.getState().spotifySessionGeneration === spotifySessionGeneration;
 
         const loadLibraryData = async () => {
             setIsLoadingLibrary(true);
+            setLibraryLoadError('');
             try {
                 if (activeTab === 'recent' && !recentlyPlayed) {
                     const data = await SpotifyService.getRecentlyPlayed(50);
-                    setRecentlyPlayed(data);
+                    if (current()) setRecentlyPlayed(data);
                 } else if (activeTab === 'albums' && !savedAlbums) {
                     const data = await SpotifyService.getSavedAlbums(20, 0);
-                    setSavedAlbums(data);
+                    if (current()) setSavedAlbums(data);
                 } else if (activeTab === 'playlists' && !savedPlaylists) {
                     const data = await SpotifyService.getSavedPlaylists(20, 0);
-                    setSavedPlaylists(data);
+                    if (current()) setSavedPlaylists(data);
                 }
             } catch (error) {
+                if (!current()) return;
+                setLibraryLoadError(error instanceof SpotifyRateLimitError
+                    ? `Spotify is rate limiting this request. Try again in ${error.retryAfter} seconds.`
+                    : error instanceof SpotifyAuthError
+                        ? 'Please reconnect to Spotify to load this view.'
+                        : 'Spotify could not load this view. Try again later.');
                 if (error instanceof SpotifyRateLimitError) {
                     addLog('warn', `Rate limited. Try again in ${error.retryAfter} seconds`);
                 } else if (error instanceof SpotifyAuthError) {
@@ -335,155 +351,25 @@ export const Spotify: React.FC = () => {
                     console.error('Library data error:', error);
                 }
             }
-            setIsLoadingLibrary(false);
+            if (current()) setIsLoadingLibrary(false);
         };
 
         if (activeTab !== 'search') {
             loadLibraryData();
         }
-    }, [activeTab, spotifyUser, recentlyPlayed, savedAlbums, savedPlaylists, addLog]);
+    return () => { active = false; };
+    }, [activeTab, spotifyConnected, spotifySessionGeneration, recentlyPlayed, savedAlbums, savedPlaylists, libraryReload, addLog]);
 
-    // Polling state for Wails cross-origin auth
-    const [isWaitingForAuth, setIsWaitingForAuth] = useState(false);
-    const pollIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
-
-    // Poll backend for auth completion (for Wails cross-origin popup)
-    useEffect(() => {
-        if (!isWaitingForAuth) return;
-        let active = true;
-        let polling = false;
-        const pollForAuth = async () => {
-            if (!active || polling) return;
-            polling = true;
-            try {
-                const creds = await api.getSpotifyCredentials();
-                if (!active) return;
-                if (creds && creds.accessToken && creds.refreshToken) {
-                    console.log('[Spotify] Auth detected via backend polling');
-                    setIsWaitingForAuth(false);
-                    if (creds.clientId) setSpotifyCredentials(creds.clientId, '');
-                    setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry || Date.now() + 3600000);
-                    // Profile lookup can be slow; authorization has already succeeded.
-                    try {
-                        const profile = await getSpotifyProfileWithTimeout();
-                        if (profile) {
-                            setSpotifyUser(profile);
-                            addLog('success', `Logged in as ${profile.display_name}`);
-                            showToast({ type: 'success', message: `Connected as ${profile.display_name}` });
-                        } else {
-                            showToast({ type: 'error', message: 'Spotify authorized, but the profile could not be loaded. Please try again.' });
-                        }
-                    } catch (e) {
-                        console.error('[Spotify] Failed to fetch profile after auth:', e);
-                        showToast({ type: 'error', message: 'Spotify authorized, but the profile could not be loaded. Please try again.' });
-                    }
-                    
-                } else if (creds?.oauthError) {
-                    setIsWaitingForAuth(false);
-                    addLog('error', 'Spotify authorization failed', { error: creds.oauthError });
-                    showToast({ type: 'error', message: `Spotify authorization failed: ${creds.oauthError}` });
-                }
-            } catch (e) {
-                console.error('[Spotify] Poll error:', e);
-            } finally {
-                polling = false;
-            }
-        };
-
-        void pollForAuth();
-        pollIntervalRef.current = setInterval(pollForAuth, 2000);
-        const timeout = setTimeout(() => {
-            if (!active) return;
-            setIsWaitingForAuth(false);
-            showToast({ type: 'error', message: 'Spotify sign-in timed out. Check the browser callback page, then try again.' });
-        }, 120000);
-        
-        return () => {
-            active = false;
-            clearTimeout(timeout);
-            if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current);
-                pollIntervalRef.current = null;
-            }
-        };
-    }, [isWaitingForAuth, setSpotifyCredentials, setSpotifyTokens, setSpotifyUser, addLog, showToast]);
-
-    const handleLogin = async () => {
-        if (!spotifyClientId) {
-            alert("Please configure your Spotify Client ID in Settings first.");
-            return;
-        }
-
+    // Backend session logout
+    const handleLogout = async () => {
         try {
-            // Get the proper callback URL (handles Wails environment)
-            const redirectUri = await getOAuthCallbackUrl();
-        
-            // For standard web builds on localhost, prompt user to use 127.0.0.1
-            if (!isWailsEnvironment() && window.location.hostname === 'localhost') {
-                alert("Please access this app via http://127.0.0.1:3000 instead of localhost to comply with Spotify's new security requirements.");
-                window.location.href = window.location.href.replace('localhost', '127.0.0.1');
-                return;
-            }
-
-            addLog('info', 'Initiating Spotify Login', { redirectUri, clientId: spotifyClientId });
-
-            const { url, codeVerifier, state } = await SpotifyService.generateAuthUrl(spotifyClientId, redirectUri);
-
-            // For Wails builds, save credentials to backend BEFORE opening the
-            // system browser. The loopback callback uses this OAuth context.
-            if (isWailsEnvironment()) {
-                const preSaveData = {
-                    clientId: spotifyClientId,
-                    clientSecret: '',
-                    accessToken: '',
-                    refreshToken: '',
-                    expiry: 0,
-                    codeVerifier,
-                    oauthState: state,
-                    redirectUri
-                };
-                await api.saveSpotifyCredentials(preSaveData);
-                console.log('[Spotify] Pre-saved credentials and verifier to backend for browser callback');
-            }
-
-            // Store verifier for the callback
-            localStorage.setItem('spotify_code_verifier', codeVerifier);
-            localStorage.setItem('spotify_oauth_state', state);
-            // Also store the redirect URI for the callback to use
-            localStorage.setItem('spotify_redirect_uri', redirectUri);
-
-            addLog('info', 'Opening Spotify authorization', { url });
-
-            // Start polling for auth completion (for Wails)
-            if (isWailsEnvironment()) {
-                setIsWaitingForAuth(true);
-            }
-
-            if (isWailsEnvironment()) {
-                await openExternalURL(url);
-                return;
-            }
-
-            // Browser builds retain popup-based authorization.
-            const width = 600;
-            const height = 800;
-            const left = window.screen.width / 2 - width / 2;
-            const top = window.screen.height / 2 - height / 2;
-            window.open(url, 'Spotify Auth', `width=${width},height=${height},left=${left},top=${top}`);
-        } catch (error) {
-            setIsWaitingForAuth(false);
-            const message = error instanceof Error ? error.message : 'Unknown error';
-            console.error('[Spotify] Failed to start authorization:', error);
-            addLog('error', 'Failed to start Spotify authorization', { error: message });
-            showToast({ type: 'error', message: `Could not open Spotify login: ${message}` });
+            await api.disconnectSpotifySession();
+            logoutSpotify();
+            setSpotifyResults(null);
+            setInputValue('');
+        } catch {
+            showToast({type:'error', message:'Could not disconnect from Spotify. Try again.'});
         }
-    };
-
-    const handleLogout = () => {
-        logoutSpotify();
-        setIsWaitingForAuth(false);
-        setSpotifyResults(null);
-        setInputValue('');
     };
 
     const handleDownloadTrack = async (track: any) => {
@@ -575,21 +461,8 @@ export const Spotify: React.FC = () => {
     const handlePlayAlbum = async (album: any) => {
         try {
             addLog('info', `Loading album: ${album.name}...`);
-            const token = await SpotifyService.getAccessToken();
-            if (!token) {
-                addLog('error', 'Not authenticated with Spotify');
-                return;
-            }
 
-            const response = await fetch(`https://api.spotify.com/v1/albums/${album.id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch album: ${response.statusText}`);
-            }
-
-            const fullAlbum = await response.json();
+            const fullAlbum = await fetchSpotifyAlbum(album.id);
             const songs = spotifyAlbumToSongs(fullAlbum);
 
             if (songs.length > 0) {
@@ -608,21 +481,9 @@ export const Spotify: React.FC = () => {
     const handlePlayPlaylist = async (playlist: any) => {
         try {
             addLog('info', `Loading playlist: ${playlist.name}...`);
-            const token = await SpotifyService.getAccessToken();
-            if (!token) {
-                addLog('error', 'Not authenticated with Spotify');
-                return;
-            }
 
-            const response = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks?limit=100`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch playlist: ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            const fullPlaylist = await fetchSpotifyPlaylist(playlist.id);
+            const data = fullPlaylist.tracks;
             const tracks = data.items
                 ?.filter((item: any) => item?.track && item.track.id)
                 .map((item: any) => item.track);
@@ -644,21 +505,8 @@ export const Spotify: React.FC = () => {
     const handleShuffleAlbum = async (album: any) => {
         try {
             addLog('info', `Loading album for shuffle: ${album.name}...`);
-            const token = await SpotifyService.getAccessToken();
-            if (!token) {
-                addLog('error', 'Not authenticated with Spotify');
-                return;
-            }
 
-            const response = await fetch(`https://api.spotify.com/v1/albums/${album.id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch album: ${response.statusText}`);
-            }
-
-            const fullAlbum = await response.json();
+            const fullAlbum = await fetchSpotifyAlbum(album.id);
             const songs = spotifyAlbumToSongs(fullAlbum);
 
             if (songs.length > 0) {
@@ -679,21 +527,9 @@ export const Spotify: React.FC = () => {
     const handleShufflePlaylist = async (playlist: any) => {
         try {
             addLog('info', `Loading playlist for shuffle: ${playlist.name}...`);
-            const token = await SpotifyService.getAccessToken();
-            if (!token) {
-                addLog('error', 'Not authenticated with Spotify');
-                return;
-            }
 
-            const response = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks?limit=100`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch playlist: ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            const fullPlaylist = await fetchSpotifyPlaylist(playlist.id);
+            const data = fullPlaylist.tracks;
             const tracks = data.items
                 ?.filter((item: any) => item?.track && item.track.id)
                 .map((item: any) => item.track);
@@ -724,21 +560,8 @@ export const Spotify: React.FC = () => {
     const handleAddAlbumToQueue = async (album: any) => {
         try {
             addLog('info', `Adding album to queue: ${album.name}...`);
-            const token = await SpotifyService.getAccessToken();
-            if (!token) {
-                addLog('error', 'Not authenticated with Spotify');
-                return;
-            }
 
-            const response = await fetch(`https://api.spotify.com/v1/albums/${album.id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch album: ${response.statusText}`);
-            }
-
-            const fullAlbum = await response.json();
+            const fullAlbum = await fetchSpotifyAlbum(album.id);
             const songs = spotifyAlbumToSongs(fullAlbum);
 
             if (songs.length > 0) {
@@ -757,21 +580,9 @@ export const Spotify: React.FC = () => {
     const handleAddPlaylistToQueue = async (playlist: any) => {
         try {
             addLog('info', `Adding playlist to queue: ${playlist.name}...`);
-            const token = await SpotifyService.getAccessToken();
-            if (!token) {
-                addLog('error', 'Not authenticated with Spotify');
-                return;
-            }
 
-            const response = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks?limit=100`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch playlist: ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            const fullPlaylist = await fetchSpotifyPlaylist(playlist.id);
+            const data = fullPlaylist.tracks;
             const tracks = data.items
                 ?.filter((item: any) => item?.track && item.track.id)
                 .map((item: any) => item.track);
@@ -863,7 +674,7 @@ export const Spotify: React.FC = () => {
         );
     }
 
-    if (!spotifyUser) {
+    if (!spotifyConnected) {
         return (
             <div className="h-full flex flex-col items-center justify-center p-8 text-center">
                 <div className="w-24 h-24 bg-brand rounded-full flex items-center justify-center mb-6 shadow-lg shadow-brand/20">
@@ -874,50 +685,7 @@ export const Spotify: React.FC = () => {
                     Link your Spotify account to search and play music directly from ViiB MediaHub.
                     Requires a Spotify Premium account for full playback.
                 </p>
-                <button
-                    onClick={handleLogin}
-                    disabled={!spotifyClientId || isWaitingForAuth}
-                    className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-surface-0 font-bold py-3 px-8 rounded-full transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center gap-2"
-                >
-                    {isWaitingForAuth ? <Loader2 size={20} className="animate-spin" /> : <Wifi size={20} />}
-                    {isWaitingForAuth ? 'Waiting for Spotify…' : 'Connect Spotify'}
-                </button>
-
-                {!spotifyClientId && (
-                    <div className="mt-8 w-full max-w-lg bg-surface-2 border border-warning/30 rounded-xl p-6 relative overflow-hidden text-left">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-warning"></div>
-                        <h4 className="text-warning font-bold text-sm uppercase tracking-wide mb-3 flex items-center gap-2">
-                            Configuration Required
-                        </h4>
-                        <div className="text-sm text-text-secondary space-y-3">
-                            <p>Connect your own Spotify Developer app before signing in:</p>
-                            <ol className="list-decimal list-inside space-y-2 ml-1">
-                                <li>Create an app in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">Spotify Developer Dashboard</a>.</li>
-                                <li>In that app's settings, add the Redirect URI below and save it. It must match exactly.</li>
-                                <li>
-                                    Copy the app's
-                                    <span className="text-white font-mono bg-surface-3 px-1 rounded mx-1">Client ID</span>
-                                    and
-                                    <span className="text-white font-mono bg-surface-3 px-1 rounded mx-1">Client Secret</span>
-                                    into <span className="text-white font-bold">Settings → Integrations & Spotify</span> in ViiB MediaHub.
-                                </li>
-                            </ol>
-                            <div className="mt-2 flex items-center gap-2">
-                              <div className="flex-1 bg-surface-1 p-3 rounded font-mono text-xs text-text-subtle break-all select-all border border-surface-3">
-                                {registrationRedirectUri}
-                              </div>
-                              <button
-                                onClick={() => navigator.clipboard.writeText(registrationRedirectUri)}
-                                className="flex-shrink-0 p-2 rounded hover:bg-surface-2 text-text-secondary hover:text-text-main transition-colors"
-                                title="Copy redirect URI"
-                                aria-label="Copy redirect URI to clipboard"
-                              >
-                                <Copy size={14} />
-                              </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <SpotifySessionConnect />
             </div>
         );
     }
@@ -939,10 +707,10 @@ export const Spotify: React.FC = () => {
 
             <div className="bg-gradient-to-br from-brand/20 to-surface-1 p-6 rounded-2xl border border-brand/30 mb-8">
                 <div className="flex items-center gap-6">
-                    {spotifyUser.images && spotifyUser.images.length > 0 ? (
+                    {spotifyUser?.images && spotifyUser?.images.length > 0 ? (
                         <img
-                            src={spotifyUser.images[0].url}
-                            alt={spotifyUser.display_name}
+                            src={spotifyUser?.images[0].url}
+                            alt={spotifyUser?.display_name}
                             className="w-24 h-24 rounded-full shadow-xl border-4 border-surface-1"
                         />
                     ) : (
@@ -952,16 +720,14 @@ export const Spotify: React.FC = () => {
                     )}
 
                     <div>
-                        <h2 className="text-section font-bold mb-1">{spotifyUser.display_name}</h2>
+                        <h2 className="text-section font-bold mb-1">{spotifyUser?.display_name || "Spotify account"}</h2>
                         <div className="flex items-center gap-4 text-text-secondary text-sm mb-3">
-                            <span>{spotifyUser.followers?.total.toLocaleString()} followers</span>
-                            <span>•</span>
-                            <span className="uppercase">{spotifyUser.product} Plan</span>
-                            <span>•</span>
-                            <span>{spotifyUser.country}</span>
+                            {spotifyUser?.followers && <span>{spotifyUser.followers.total.toLocaleString()} followers</span>}
+                            {spotifyUser?.product && <span className="uppercase">{spotifyUser.product} Plan</span>}
+                            {spotifyUser?.country && <span>{spotifyUser.country}</span>}
                         </div>
                         <a
-                            href={spotifyUser.external_urls.spotify}
+                            href={spotifyUser?.external_urls?.spotify}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-brand hover:text-brand-hover font-bold text-sm transition-all duration-200"
@@ -1036,6 +802,12 @@ export const Spotify: React.FC = () => {
                                 placeholder="Search Spotify for songs, albums, or playlists..."
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        setDebouncedQuery(inputValue);
+                                        setSpotifySearchQuery(inputValue);
+                                    }
+                                }}
                                 leftIcon={<SearchIcon className="text-text-secondary" size={22} />}
                                 rightIcon={
                                     isSearching ? <Loader2 className="animate-spin text-brand" size={20} /> : null
@@ -1046,6 +818,12 @@ export const Spotify: React.FC = () => {
                         </div>
                     </div>
 
+                    {searchError && (
+                        <div className="flex flex-col items-center gap-3 py-4">
+                            <p role="alert">{searchError}</p>
+                            <Button onClick={() => setSearchRetry(value => value + 1)}>Retry search</Button>
+                        </div>
+                    )}
                     {/* Search Result Category Tabs */}
                     {spotifyResults && (
                         <div className="flex gap-2 mb-6 flex-wrap">
@@ -1195,7 +973,7 @@ export const Spotify: React.FC = () => {
                                                 </div>
                                                 <h3 className="font-bold truncate text-text-main text-center">{artist.name}</h3>
                                                 <p className="text-sm text-text-secondary truncate text-center mt-1">
-                                                    {artist.followers?.total?.toLocaleString()} followers
+                                                    {artist.followers && `${artist.followers.total.toLocaleString()} followers`}
                                                 </p>
                                             </div>
                                         ))}
@@ -1214,7 +992,7 @@ export const Spotify: React.FC = () => {
                                                 onClick={() => navigate(`/spotify/playlist/${playlist.id}`)}
                                                 role="link"
                                                 tabIndex={0}
-                                                aria-label={`Open Spotify playlist ${playlist.name}`}
+                                                aria-label={`Open Spotify playlist ${playlist.name || 'Untitled playlist'}`}
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter' || e.key === ' ') {
                                                         e.preventDefault();
@@ -1250,7 +1028,7 @@ export const Spotify: React.FC = () => {
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    <h3 className="font-bold truncate text-text-main">{playlist.name}</h3>
+                                                    <h3 className="font-bold truncate text-text-main">{playlist.name || 'Untitled playlist'}</h3>
                                                     <p className="text-sm text-text-secondary truncate">By {playlist.owner?.display_name}</p>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDownloadPlaylist(playlist); }}
@@ -1411,10 +1189,17 @@ export const Spotify: React.FC = () => {
                 </>
             )}
 
+            {activeTab !== 'search' && libraryLoadError && (
+                <div className="py-4 flex flex-col items-center gap-3">
+                    <p role="alert">{libraryLoadError}</p>
+                    <Button onClick={() => setLibraryReload(value => value + 1)}>Retry library request</Button>
+                </div>
+            )}
+
             {/* Recently Played Tab */}
             {activeTab === 'recent' && (
                 <div>
-                    {isLoadingLibrary ? (
+                    {libraryLoadError ? null : isLoadingLibrary ? (
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="animate-spin text-brand" size={48} />
                         </div>
@@ -1515,15 +1300,15 @@ export const Spotify: React.FC = () => {
             {/* Saved Albums Tab */}
             {activeTab === 'albums' && (
                 <div>
-                    {isLoadingLibrary ? (
+                    {libraryLoadError ? null : isLoadingLibrary ? (
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="animate-spin text-brand" size={48} />
                         </div>
                     ) : savedAlbums?.items && savedAlbums.items.length > 0 ? (
                         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
-                            {savedAlbums.items.map((item: any) => (
+                            {savedAlbums.items.filter((item: any) => item?.album?.id).map((item: any, index: number) => (
                                 <div
-                                    key={item.album.id}
+                                    key={`${item.album.id}:${index}`}
                                     onClick={() => navigate(`/spotify/album/${item.album.id}`)}
                                     className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-all duration-200 group cursor-pointer"
                                     role="link"
@@ -1559,26 +1344,27 @@ export const Spotify: React.FC = () => {
                             <p>No saved albums</p>
                         </div>
                     )}
+                    {libraryPagingControls(savedAlbums)}
                 </div>
             )}
 
             {/* Saved Playlists Tab */}
             {activeTab === 'playlists' && (
                 <div>
-                    {isLoadingLibrary ? (
+                    {libraryLoadError ? null : isLoadingLibrary ? (
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="animate-spin text-brand" size={48} />
                         </div>
                     ) : savedPlaylists?.items && savedPlaylists.items.length > 0 ? (
                         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
-                            {savedPlaylists.items.map((playlist: any) => (
+                            {savedPlaylists.items.filter((playlist: any) => playlist?.id).map((playlist: any, index: number) => (
                                 <div
-                                    key={playlist.id}
+                                    key={`${playlist.id}:${index}`}
                                     onClick={() => navigate(`/spotify/playlist/${playlist.id}`)}
                                     className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-all duration-200 group cursor-pointer"
                                     role="link"
                                     tabIndex={0}
-                                    aria-label={`Open Spotify playlist ${playlist.name}`}
+                                    aria-label={`Open Spotify playlist ${playlist.name || 'Untitled playlist'}`}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             e.preventDefault();
@@ -1597,7 +1383,7 @@ export const Spotify: React.FC = () => {
                                             <Play size={20} fill="black" />
                                         </Button>
                                     </div>
-                                    <h3 className="font-bold truncate text-text-main">{playlist.name}</h3>
+                                    <h3 className="font-bold truncate text-text-main">{playlist.name || 'Untitled playlist'}</h3>
                                     <p className="text-sm text-text-secondary truncate">By {playlist.owner?.display_name}</p>
                                     <p className="text-xs text-text-subtle mt-1">{playlist.tracks.total} tracks</p>
                                 </div>
@@ -1609,6 +1395,7 @@ export const Spotify: React.FC = () => {
                             <p>No saved playlists</p>
                         </div>
                     )}
+                    {libraryPagingControls(savedPlaylists)}
                 </div>
             )}
         </div>

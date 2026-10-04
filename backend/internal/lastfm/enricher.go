@@ -137,6 +137,9 @@ func (e *Enricher) enrichSong(ctx context.Context, song db.Song, opts EnrichOpti
 	}
 
 	// Update song in database
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	err = e.db.UpdateSongLastFM(song.ID, db.LastFMSongUpdate{
 		Listeners: trackInfo.Listeners,
 		Playcount: trackInfo.Playcount,
@@ -210,6 +213,9 @@ func (e *Enricher) EnrichArtists(ctx context.Context, artists []string, fetchSim
 			tagNames[i] = tag.Name
 		}
 
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		err = e.db.UpdateArtistLastFM(artist, db.LastFMArtistUpdate{
 			Listeners: artistInfo.Listeners,
 			Playcount: artistInfo.Playcount,
@@ -226,7 +232,7 @@ func (e *Enricher) EnrichArtists(ctx context.Context, artists []string, fetchSim
 		// Fetch and store similar artists
 		if fetchSimilar {
 			similar, err := e.client.GetSimilarArtists(ctx, artist, 20)
-			if err == nil && len(similar) > 0 {
+			if err == nil && ctx.Err() == nil && len(similar) > 0 {
 				// Convert to db types
 				dbArtists := make([]db.LastFMSimilarArtist, len(similar))
 				for i, s := range similar {

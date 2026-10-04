@@ -23,6 +23,7 @@ func TestIsRetriableDownloadError(t *testing.T) {
 		{fmt.Errorf("request timeout"), true},
 		{fmt.Errorf("permission denied"), false},
 		{context.Canceled, false},
+		{fmt.Errorf("candidate: %w", spotify.ErrOggIntegrity), true},
 		{errors.New("crypto/aes: invalid key size 0"), true},
 		{fmt.Errorf("pin: %w", spotify.ErrAudioKeyRejected), true},
 		{errors.New("crypto/aes: invalid key size 15"), false},

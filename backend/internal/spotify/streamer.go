@@ -33,13 +33,15 @@ type StreamInfo struct {
 // semantics for streaming audio to an HTTP response. It also exposes
 // metadata (Info) about the stream and uses a cancel function for cleanup.
 type ActiveStream struct {
-	reader    io.ReadSeekCloser  // Underlying audio data reader
-	info      StreamInfo         // Stream metadata
-	mu        sync.RWMutex       // Protects closed state
-	closed    bool               // Whether stream has been closed
-	cancelCtx context.CancelFunc // Cancel function for cleanup
-	assetCtx  task.Context       // Per-stream asset lifecycle
-	release   func()             // Releases the shared session lease
+	reader     io.ReadSeekCloser  // Underlying audio data reader
+	info       StreamInfo         // Stream metadata
+	mu         sync.RWMutex       // Protects closed state
+	closed     bool               // Whether stream has been closed
+	cancelCtx  context.CancelFunc // Cancel function for cleanup
+	totalSize  int64
+	assetCtx   task.Context // Per-stream asset lifecycle
+	invalidate func()
+	release    func() // Releases the shared session lease
 }
 
 // Read implements io.Reader for streaming audio data.
@@ -52,7 +54,11 @@ func (s *ActiveStream) Read(p []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 	s.mu.RUnlock()
-	return s.reader.Read(p)
+	n, err = s.reader.Read(p)
+	if err != nil && err != io.EOF && s.invalidate != nil {
+		s.invalidate()
+	}
+	return n, err
 }
 
 // Seek implements io.Seeker for seeking within the audio stream.
@@ -66,7 +72,11 @@ func (s *ActiveStream) Seek(offset int64, whence int) (int64, error) {
 		return 0, fmt.Errorf("stream closed")
 	}
 	s.mu.RUnlock()
-	return s.reader.Seek(offset, whence)
+	position, err := s.reader.Seek(offset, whence)
+	if err != nil && s.invalidate != nil {
+		s.invalidate()
+	}
+	return position, err
 }
 
 // Close releases resources associated with the stream.
@@ -99,6 +109,9 @@ func (s *ActiveStream) Close() error {
 	return err
 }
 
+// Size returns the asset size discovered once during shared preparation.
+func (s *ActiveStream) Size() int64 { return s.totalSize }
+
 // Info returns metadata about the stream.
 // Info returns stream-level metadata such as SpotifyID and format
 // which can be used to set HTTP headers for streaming responses.
@@ -125,6 +138,7 @@ type Streamer struct {
 	activeStreams  map[string]*ActiveStream // Track active streams by request ID
 	mu             sync.RWMutex             // Protects activeStreams
 	closed         bool
+	assets         *streamAssetPool
 	maxConcurrent  int // Maximum concurrent streams allowed
 }
 
@@ -143,6 +157,7 @@ func NewStreamer(sessionManager *SessionManager) *Streamer {
 		sessionManager: sessionManager,
 		activeStreams:  make(map[string]*ActiveStream),
 		maxConcurrent:  5,
+		assets:         newStreamAssetPool(),
 	}
 }
 
@@ -190,6 +205,9 @@ func (s *Streamer) StreamTrack(ctx context.Context, spotifyID string, requestID 
 // quality preference ("high"/"medium"/"low") and returns an ActiveStream
 // which supports seeking.
 func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string, requestID string, quality string) (*ActiveStream, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	stLog("Starting stream for track: %s (request: %s, quality: %s)", spotifyID, requestID, quality)
 
 	releaseCapacity, err := s.reserveStream(requestID)
@@ -216,6 +234,9 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 		}
 	}()
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	// Build audio format list based on quality preference
 	var audioFormats []spotifyProto.AudioFile_Format
 	switch quality {
@@ -236,44 +257,66 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 		}
 	}
 
-	// Pin the track with quality preferences
-	stLog("Pinning track with quality preferences: %v", audioFormats)
-	pinOpts := respot.PinOpts{
-		StartInternally: false,
-		Format: asset.AssetFormat{
-			AudioFormats: audioFormats,
-		},
-	}
-
-	releaseAudioKeyRequest, err := s.sessionManager.acquireAudioKeyRequest(ctx)
+	key := streamAssetKey{track: spotifyID, quality: quality, generation: s.sessionManager.Generation()}
+	shared, releaseAsset, err := s.assets.acquire(ctx, key, func() (*streamAsset, error) {
+		pinOpts := respot.PinOpts{StartInternally: false, Format: asset.AssetFormat{AudioFormats: audioFormats}}
+		releaseKey, err := s.sessionManager.acquireAudioKeyRequest(ctx)
+		if err != nil {
+			return nil, err
+		}
+		assetMedia, err := sess.PinTrack(spotifyID, pinOpts)
+		releaseKey()
+		if err != nil {
+			return nil, fmt.Errorf("pin stream asset: %w", normalizeAudioKeyError(err))
+		}
+		assetCtx, err := sess.Context().Context.StartChild(task.Task{Info: task.Info{Label: "spotify-stream-" + requestID}})
+		if err != nil {
+			return nil, err
+		}
+		// Abort first-chunk preparation if its initiating HTTP request is cancelled.
+		stopCancel := context.AfterFunc(ctx, func() { _ = assetCtx.Close() })
+		if err = assetMedia.OnStart(assetCtx); err != nil {
+			stopCancel()
+			_ = assetCtx.Close()
+			return nil, err
+		}
+		probe, err := assetMedia.NewAssetReader()
+		if err != nil {
+			stopCancel()
+			_ = assetCtx.Close()
+			return nil, err
+		}
+		size, err := probe.Seek(0, io.SeekEnd)
+		_ = probe.Close()
+		stopped := stopCancel()
+		if err != nil || !stopped || ctx.Err() != nil {
+			_ = assetCtx.Close()
+			if err == nil {
+				err = ctx.Err()
+				if err == nil {
+					err = context.Canceled
+				}
+			}
+			return nil, err
+		}
+		return &streamAsset{size: size, contentType: assetMedia.ContentType(), close: func() { _ = assetCtx.Close() }, newReader: func() (io.ReadSeekCloser, error) {
+			select {
+			case <-assetCtx.Closing():
+				return nil, fmt.Errorf("stream asset unavailable")
+			default:
+			}
+			return assetMedia.NewAssetReader()
+		}}, nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("wait to request Spotify audio key: %w", err)
+		return nil, err
 	}
-	assetMedia, err := sess.PinTrack(spotifyID, pinOpts)
-	releaseAudioKeyRequest()
+	reader, err := shared.newReader()
 	if err != nil {
-		err = normalizeAudioKeyError(err)
-		stLog("Failed to pin track: %v", err)
-		return nil, fmt.Errorf("failed to pin track: %w", err)
+		s.assets.discard(key, shared)
+		releaseAsset()
+		return nil, err
 	}
-	stLog("Track pinned successfully: %s", assetMedia.Label())
-	assetCtx, err := sess.Context().Context.StartChild(task.Task{Info: task.Info{Label: "spotify-stream-" + requestID}})
-	if err != nil {
-		return nil, fmt.Errorf("create stream asset context: %w", err)
-	}
-	if err := assetMedia.OnStart(assetCtx); err != nil {
-		_ = assetCtx.Close()
-		return nil, fmt.Errorf("start stream asset: %w", err)
-	}
-
-	// Create asset reader
-	reader, err := assetMedia.NewAssetReader()
-	if err != nil {
-		_ = assetCtx.Close()
-		stLog("Failed to create asset reader: %v", err)
-		return nil, fmt.Errorf("failed to create asset reader: %w", err)
-	}
-	stLog("Asset reader created, stream ready")
 
 	// Create cancellable context for cleanup
 	streamCtx, cancel := context.WithCancel(ctx)
@@ -284,11 +327,12 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 		info: StreamInfo{
 			SpotifyID:   spotifyID,
 			Format:      "OGG_VORBIS",
-			ContentType: "audio/ogg",
+			ContentType: shared.contentType,
 		},
-		cancelCtx: cancel,
-		assetCtx:  assetCtx,
-		release:   func() { releaseSession(); releaseCapacity() },
+		cancelCtx:  cancel,
+		totalSize:  shared.size,
+		invalidate: func() { s.assets.discard(key, shared) },
+		release:    func() { releaseAsset(); releaseSession(); releaseCapacity() },
 	}
 	releaseNeeded = false
 	capacityOwned = false
@@ -334,6 +378,9 @@ func (s *Streamer) CloseAllStreams() {
 	}
 	s.mu.Unlock()
 
+	if s.assets != nil {
+		s.assets.close()
+	}
 	for id, stream := range streams {
 		stLog("Closing stream: %s", id)
 		if stream != nil {

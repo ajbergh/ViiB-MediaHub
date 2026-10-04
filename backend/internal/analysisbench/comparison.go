@@ -35,10 +35,13 @@ type CorpusManifest struct {
 
 // CorpusTrack mirrors roadmap §14.1 while adding the required split field.
 type CorpusTrack struct {
-	ID          string `json:"id"`
-	Path        string `json:"path"`
-	License     string `json:"license"`
-	LabelSource string `json:"labelSource"`
+	// SpotifyRecording binds frozen references to explicitly confirmed local audio.
+	// Legacy filename/title imports deliberately leave this absent.
+	SpotifyRecording *SpotifyRecordingIdentity `json:"spotifyRecording,omitempty"`
+	ID               string                    `json:"id"`
+	Path             string                    `json:"path"`
+	License          string                    `json:"license"`
+	LabelSource      string                    `json:"labelSource"`
 	// RecordingGroup must be shared by alternate encodings/copies of the same
 	// recording. Label-derived groups are conservative until independently reviewed.
 	RecordingGroup    string    `json:"recordingGroup,omitempty"`
@@ -261,6 +264,11 @@ func (manifest CorpusManifest) Validate() error {
 		context := fmt.Sprintf("manifest track %d", index)
 		if strings.TrimSpace(track.ID) == "" || strings.TrimSpace(track.Path) == "" || strings.TrimSpace(track.License) == "" || strings.TrimSpace(track.LabelSource) == "" || strings.TrimSpace(track.Genre) == "" {
 			return fmt.Errorf("%s requires id, path, license, label source, and genre", context)
+		}
+		if track.SpotifyRecording != nil {
+			if err := track.SpotifyRecording.validate(); err != nil {
+				return fmt.Errorf("%s recording identity: %w", context, err)
+			}
 		}
 		if track.Split != SplitTuning && track.Split != SplitHeldOut {
 			return fmt.Errorf("%s has invalid split %q", context, track.Split)
@@ -638,7 +646,11 @@ func keysCompatible(expected, actual musicalKey) bool {
 		return true
 	}
 	if expected.minor != actual.minor {
-		return expected.pitchClass == (actual.pitchClass+3)%12 || actual.pitchClass == (expected.pitchClass+3)%12
+		minor, major := expected, actual
+		if !minor.minor {
+			minor, major = actual, expected
+		}
+		return major.pitchClass == (minor.pitchClass+3)%12
 	}
 	delta := (actual.pitchClass - expected.pitchClass + 12) % 12
 	return delta == 5 || delta == 7

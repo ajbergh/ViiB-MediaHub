@@ -1,3 +1,4 @@
+import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
 /**
  * ViiB MediaHub - Spotify Album Detail Page
  * 
@@ -33,7 +34,7 @@ interface SpotifyAlbumFull {
   name: string;
   artists: { name: string; id: string }[];
   images: { url: string; height: number; width: number }[];
-  release_date: string;
+  release_date: string | null;
   total_tracks: number;
   label: string;
   copyrights: { text: string; type: string }[];
@@ -156,7 +157,11 @@ export const SpotifyAlbumDetail: React.FC = () => {
     openContextMenu(e, ContextMenuType.SONG, song);
   };
 
+  const spotifyGeneration = useStore(state => state.spotifySessionGeneration);
   useEffect(() => {
+    let active = true;
+    const current = () => active && useStore.getState().spotifySessionGeneration === spotifyGeneration;
+    setAlbum(null);
     const fetchAlbum = async () => {
       if (!id) return;
       
@@ -164,33 +169,11 @@ export const SpotifyAlbumDetail: React.FC = () => {
       setError(null);
       
       try {
-        const token = await SpotifyService.getAccessToken();
-        if (!token) {
-          throw new SpotifyAuthError('No access token available');
-        }
 
-        const response = await fetch(`https://api.spotify.com/v1/albums/${id}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (response.status === 429) {
-          const retryAfter = response.headers.get('Retry-After');
-          throw new SpotifyRateLimitError(
-            'Rate limited while fetching album',
-            retryAfter ? parseInt(retryAfter) : 60
-          );
-        }
-
-        if (!response.ok) {
-          throw new SpotifyApiError(
-            'Failed to fetch album details',
-            response.status
-          );
-        }
-
-        const data = await response.json();
-        setAlbum(data);
+        const data = await fetchSpotifyAlbum(id);
+        if (current()) setAlbum(data);
       } catch (err) {
+        if (!current()) return;
         if (err instanceof SpotifyRateLimitError) {
           setError(`Rate limited. Please try again in ${err.retryAfter} seconds.`);
           addLog('warn', `Rate limited while fetching album`);
@@ -205,12 +188,13 @@ export const SpotifyAlbumDetail: React.FC = () => {
           console.error('Album fetch error:', err);
         }
       } finally {
-        setIsLoading(false);
+        if (current()) setIsLoading(false);
       }
     };
 
     fetchAlbum();
-  }, [id, addLog]);
+    return () => {active = false;};
+  }, [id, addLog, spotifyGeneration]);
 
   if (isLoading) {
     return (
@@ -237,7 +221,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
   }
 
   const totalDuration = album.tracks.items.reduce((sum, track) => sum + track.duration_ms, 0);
-  const releaseYear = album.release_date.split('-')[0];
+  const releaseYear = album.release_date?.split('-')[0] || '';
 
   return (
     <div className="h-full overflow-y-auto">

@@ -1,3 +1,4 @@
+import { SpotifySessionConnect } from './SpotifySessionConnect';
 /**
  * ViiB MediaHub - First Launch Configuration Dialog
  * 
@@ -67,8 +68,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
   const [loadingBrowser, setLoadingBrowser] = useState(false);
 
   // Spotify credentials state
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
+  const spotifyConnected = useStore(state => state.spotifyConnected);
   const [savingCredentials, setSavingCredentials] = useState(false);
 
   // Gemini API key state (legacy, for backward compatibility with enrichment)
@@ -111,7 +111,6 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
     loadScanFolders,
     addScanFolder,
     removeScanFolder,
-    setSpotifyCredentials,
     addLog,
     setScanning,
     setScanProgress,
@@ -240,22 +239,12 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
   };
 
   const handleSaveSpotifyCredentials = async () => {
-    if (!clientId.trim() || !clientSecret.trim()) {
+    if (!spotifyConnected) {
       return;
     }
 
     setSavingCredentials(true);
     try {
-      setSpotifyCredentials(clientId, clientSecret);
-      await api.saveSpotifyCredentials({
-        clientId,
-        clientSecret,
-        accessToken: '',
-        refreshToken: '',
-        expiry: 0
-      });
-      addLog('success', 'Spotify credentials saved');
-
       // Save download path if specified
       if (spotifyDownloadPath.trim()) {
         try {
@@ -669,7 +658,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
 
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
         <p className="text-sm text-text-secondary mb-4">
-          Connect your Spotify Developer account to automatically fetch high-quality album artwork,
+          Connect your Spotify account to automatically fetch high-quality album artwork,
           artist images, and metadata for your local music library.
         </p>
 
@@ -691,41 +680,8 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
           </ul>
         </div>
 
-        <div className="bg-surface-2 border border-surface-border rounded-lg p-4 mb-6 text-sm text-text-secondary space-y-2">
-          <p className="font-bold text-white">Before entering your credentials</p>
-          <p>1. Create an app in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">Spotify Developer Dashboard</a>.</p>
-          <p>2. In the app's settings, add this exact Redirect URI:</p>
-          <code className="block bg-surface-1 px-3 py-2 rounded text-xs text-text-main break-all select-all">{SPOTIFY_DESKTOP_CALLBACK_URL}</code>
-          <p>3. Copy its Client ID and Client Secret into the fields below.</p>
-        </div>
-
-        <div className="space-y-4 mb-4">
-          <div>
-            <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
-              Spotify Client ID
-            </label>
-            <TextInput
-              type="text"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="Enter your Client ID"
-              className="w-full bg-surface-2 px-4 py-3"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
-              Spotify Client Secret
-            </label>
-            <TextInput
-              type="password"
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              placeholder="Enter your Client Secret"
-              className="w-full bg-surface-2 px-4 py-3"
-            />
-          </div>
-
+        <SpotifySessionConnect />
+        <div className="space-y-4 my-4">
           <div>
             <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
               Download Location (Optional)
@@ -755,17 +711,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
           </div>
         </div>
 
-        <div className="text-xs text-text-subtle">
-          Don't have credentials? Create a free app at{' '}
-          <a
-            href="https://developer.spotify.com/dashboard"
-            target="_blank"
-            rel="noreferrer"
-            className="text-brand hover:underline"
-          >
-            developer.spotify.com/dashboard
-          </a>
-        </div>
+
       </div>
 
       <div className="flex items-center justify-between">
@@ -789,7 +735,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
             variant="primary"
             accent="brand"
             onClick={handleSaveSpotifyCredentials}
-            disabled={!clientId.trim() || !clientSecret.trim() || savingCredentials}
+            disabled={!spotifyConnected || savingCredentials}
             leftIcon={savingCredentials ? <Loader2 size={18} className="animate-spin" /> : undefined}
             rightIcon={!savingCredentials ? <ChevronRight size={18} /> : undefined}
             className="font-bold py-3 px-6"

@@ -82,7 +82,7 @@ The watcher status reports whether monitoring is running, its interval, check co
 
 ## Safety notes
 
-- Backups and restore archives contain local library metadata and may include encrypted integration credentials as part of the database. Store them with the same care as the application data directory.
+- New backups exclude Spotify cookie sessions and OAuth credentials. Sign in to Spotify again after restoring one. Other encrypted integration credentials may remain in the database, and older archives may contain Spotify credentials; store archives with the same care as the application data directory.
 - Repair and restore act only on the ViiB SQLite database. They do not delete or rewrite local audio files or Plex-hosted media.
 - Track analysis only reads audio. It never rewrites a media file's tags or contents, and it never writes measured values back to Plex.
 - Removing or changing Plex configuration performs no destructive PMS operation.

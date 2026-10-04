@@ -148,11 +148,11 @@ export interface AlbumMetadata {
 export interface SpotifyProfile {
   id: string;
   display_name: string;
-  email: string;
-  images: { url: string; height: number; width: number }[];
-  product: string; // 'premium', 'free', 'open'
-  country: string;
-  followers: { href: string | null; total: number };
+  email: string | null;
+  images: { url: string; height: number | null; width: number | null }[];
+  product: string | null; // 'premium', 'free', 'open'
+  country: string | null;
+  followers: { href: string | null; total: number } | null;
   external_urls: { spotify: string };
 }
 

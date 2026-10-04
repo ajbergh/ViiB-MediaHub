@@ -133,50 +133,33 @@ func lockDestination(ctx context.Context, path string) (func(), error) {
 //
 // If any check fails, the file should be re-downloaded.
 func isValidDownloadedFile(filePath string) bool {
-	// Check if file exists and get its size
-	fileInfo, err := os.Stat(filePath)
+	return isValidDownloadedFileContext(context.Background(), filePath)
+}
+
+func isValidDownloadedFileContext(ctx context.Context, filePath string) bool {
+	return validateDownloadedFileContext(ctx, filePath) == nil
+}
+
+func validateDownloadedFileContext(ctx context.Context, filePath string) error {
+	info, err := os.Stat(filePath)
 	if err != nil {
-		return false // File doesn't exist
+		return err
 	}
-
-	// Check minimum file size
-	if fileInfo.Size() < MinValidFileSize {
-		dLog("File too small (%d bytes), needs re-download: %s", fileInfo.Size(), filePath)
-		return false
+	if info.Size() < MinValidFileSize {
+		return fmt.Errorf("downloaded file is too small")
 	}
-	if !isOggFile(filePath) {
-		dLog("File is not an Ogg container: %s", filePath)
-		return false
+	if err := validateOggPages(ctx, filePath); err != nil {
+		return err
 	}
-
-	// Check if it's a valid audio file with metadata
 	tags, err := taglib.ReadTags(filePath)
 	if err != nil {
-		dLog("Failed to read tags (may be corrupt): %s - %v", filePath, err)
-		return false
+		return fmt.Errorf("read downloaded file tags: %w", err)
 	}
-
-	// Helper to get first tag value
-	getTag := func(key string) string {
-		if vals, ok := tags[key]; ok && len(vals) > 0 {
-			return vals[0]
-		}
-		return ""
+	if len(tags[taglib.Artist]) == 0 || tags[taglib.Artist][0] == "" ||
+		len(tags[taglib.Title]) == 0 || tags[taglib.Title][0] == "" {
+		return fmt.Errorf("downloaded file is missing artist or title tags")
 	}
-
-	artist := getTag(taglib.Artist)
-	title := getTag(taglib.Title)
-
-	// Check for essential metadata - artist and title should be present if properly saved
-	if artist == "" || title == "" {
-		dLog("Missing metadata (artist=%s, title=%s), needs re-download: %s",
-			artist, title, filePath)
-		return false
-	}
-
-	dLog("Valid existing download found: %s (size=%d, artist=%s, title=%s)",
-		filePath, fileInfo.Size(), artist, title)
-	return true
+	return ctx.Err()
 }
 
 // ProgressCallback is called during download to report progress.
@@ -326,15 +309,15 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 
 	// Avoid all Spotify and artwork network work when a complete local file is
 	// already present. The destination lock also serializes duplicate requests.
-	if isValidDownloadedFile(fullPath) {
+	if isValidDownloadedFileContext(ctx, fullPath) {
 		dLog("Valid existing file found, skipping download: %s", fullPath)
 		return fullPath, nil
 	}
-	if _, err := os.Stat(fullPath); err == nil {
-		if err := os.Remove(fullPath); err != nil {
-			return "", fmt.Errorf("remove invalid existing file: %w", err)
-		}
+	// Cancellation during validation must not remove a previously valid local file.
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
+	// Keep the prior destination until a fully validated replacement is ready.
 
 	dLog("Downloading track: %s - %s (ID: %s)", artist, title, spotifyID)
 
@@ -509,6 +492,9 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 		return "", fmt.Errorf("failed to close file: %w", err)
 	}
 
+	if err := validateOggPages(ctx, tempPath); err != nil {
+		return "", fmt.Errorf("validate downloaded Ogg before metadata: %w", err)
+	}
 	// Tags and integrity are part of the successful download transaction.
 	if err := d.writeOggMetadata(tempPath, artist, title, album, metadata); err != nil {
 		return "", fmt.Errorf("write downloaded file metadata: %w", err)
@@ -517,8 +503,8 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	if !isValidDownloadedFile(tempPath) {
-		return "", fmt.Errorf("downloaded file failed Ogg integrity validation")
+	if err := validateDownloadedFileContext(ctx, tempPath); err != nil {
+		return "", fmt.Errorf("validate downloaded file after metadata: %w", err)
 	}
 
 	// Rename temporary file to final name

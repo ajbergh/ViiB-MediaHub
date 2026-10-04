@@ -41,6 +41,10 @@
 import { AudioSettings } from '../types';
 import { getEventStreamURL } from './eventStreamURL';
 
+export interface SpotifySessionStatus { provider: 'oauth' | 'webplayer'; connected: boolean; authRequired: boolean; message: string }
+
+export interface SpotifyBrowserLoginStatus { id: string; state: 'pending' | 'connected' | 'canceled' | 'failed'; message?: string }
+
 const API_BASE = '/api';
 
 /**
@@ -561,6 +565,31 @@ export const api = {
     return `${API_BASE}/spotify/stream/${spotifyId}${qualityParam}`;
   },
 
+  async resolveSpotifyStreamUrl(spotifyId: string, quality?: 'high' | 'medium' | 'low'): Promise<string> {
+    // Wails' Windows asset response buffers audio until EOF. Use the same
+    // direct loopback transport as SSE, retaining ordinary browser URLs.
+    return getEventStreamURL(api.getSpotifyStreamUrl(spotifyId, quality));
+  },
+
+  async startSpotifyBrowserLogin(): Promise<SpotifyBrowserLoginStatus> {
+    return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login', { method: 'POST', headers: { 'Content-Type': 'application/json' } }));
+  },
+  async getSpotifyBrowserLogin(id: string): Promise<SpotifyBrowserLoginStatus> {
+    return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login/' + encodeURIComponent(id)));
+  },
+  async cancelSpotifyBrowserLogin(id: string): Promise<SpotifyBrowserLoginStatus> {
+    return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login/' + encodeURIComponent(id), { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }));
+  },
+
+  async connectSpotifySession(spDC: string): Promise<SpotifySessionStatus> {
+    const response = await fetch(API_BASE + "/spotify/auth/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({spDC}) });
+    return handleResponse<SpotifySessionStatus>(response);
+  },
+
+  async disconnectSpotifySession(): Promise<SpotifySessionStatus> {
+    return handleResponse<SpotifySessionStatus>(await fetch(API_BASE + "/spotify/auth/session", {method: "DELETE"}));
+  },
+
   // Spotify Credentials
 
   /**
@@ -600,8 +629,8 @@ export const api = {
    * @param query - Search query string
    * @returns Promise resolving to playlist search results in Spotify API format
    */
-  async searchPlaylistsFallback(query: string): Promise<{ playlists: { items: any[]; total: number } }> {
-    const response = await fetch(`${API_BASE}/spotify/search/playlists?q=${encodeURIComponent(query)}`);
+  async searchPlaylistsFallback(query: string, signal?: AbortSignal): Promise<{ playlists: { items: any[]; total: number } }> {
+    const response = await fetch(`${API_BASE}/spotify/search/playlists?q=${encodeURIComponent(query)}`, {signal});
     return handleResponse<{ playlists: { items: any[]; total: number } }>(response);
   },
 
@@ -787,9 +816,9 @@ export const api = {
    * 
    * @returns Promise with authRequired status and optional message
    */
-  async getSpotifyAuthStatus(): Promise<{ authRequired: boolean; message: string }> {
+  async getSpotifyAuthStatus(): Promise<SpotifySessionStatus> {
     const response = await fetch(`${API_BASE}/spotify/auth/status`);
-    return handleResponse<{ authRequired: boolean; message: string }>(response);
+    return handleResponse<SpotifySessionStatus>(response);
   },
 
   /**

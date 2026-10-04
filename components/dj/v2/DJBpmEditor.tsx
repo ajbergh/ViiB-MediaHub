@@ -4,6 +4,7 @@ import { djTrackSourceIdentity, formatManualBpm, tapTempoBpm } from '../../../li
 import type { Song } from '../../../types';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { useStore } from '../../../store';
+import { SpotifyReference } from '../../SpotifyReference';
 
 interface DJBpmEditorProps {
   track: Song | null;
@@ -184,6 +185,7 @@ export function DJBpmEditor({ track, deck, embedded = false }: DJBpmEditorProps)
         {feature?.bpmSource === 'measured' && <span className="text-[var(--dj-text-secondary)]">Measured {feature.bpm == null ? 'unknown' : `${formatManualBpm(feature.bpm)} BPM`}</span>}
         {status && <span role="status" className="text-[var(--dj-text-secondary)]">{status}</span>}
       </div>
+      <SpotifyReference songId={track.id} sourceIdentity={sourceIdentity} />
     </div>
   </details>;
 }

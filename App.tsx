@@ -74,7 +74,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 
 const App: React.FC = () => {
   const initLibrary = useStore(state => state.initLibrary);
-  const { spotifyAccessToken, setSpotifyTokens, setSpotifyCredentials } = useStore();
+  const setSpotifyConnected = useStore(state => state.setSpotifyConnected);
   const confirmDialog = useStore(state => state.confirmDialog);
   const closeConfirmDialog = useStore(state => state.closeConfirmDialog);
   const hasCompletedSetup = useStore(state => state.hasCompletedSetup);
@@ -90,11 +90,11 @@ const App: React.FC = () => {
       try {
         const [folders, creds, songs, plexConfig] = await Promise.all([
           api.getFolders().catch(() => []),
-          api.getSpotifyCredentials().catch(() => null),
+          api.getSpotifyAuthStatus().catch(() => null),
           api.getSongs().catch(() => []),
           plexService.getConfig().catch(() => null),
         ]);
-        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.clientId) || Boolean(plexConfig?.source?.libraryId)) {
+        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.connected) || Boolean(plexConfig?.source?.libraryId)) {
           setHasCompletedSetup(true);
         }
       } catch (error) { appLogger.warn('Failed to check existing configuration', error); }
@@ -103,23 +103,12 @@ const App: React.FC = () => {
   }, [backendAvailable, hasCompletedSetup, setHasCompletedSetup]);
 
   useEffect(() => {
-    const syncSpotify = async () => {
-      if (spotifyAccessToken) return;
-      try {
-        const creds = await api.getSpotifyCredentials();
-        // The public client ID is needed to begin a PKCE login even when the
-        // user has not authenticated yet. The backend intentionally does not
-        // return the stored client secret to the renderer.
-        if (creds?.clientId) {
-          setSpotifyCredentials(creds.clientId, '');
-        }
-        if (creds?.accessToken) {
-          setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry);
-        }
-      } catch { /* Spotify is optional. */ }
-    };
-    void syncSpotify();
-  }, [spotifyAccessToken, setSpotifyCredentials, setSpotifyTokens]);
+    if (!backendAvailable) return;
+    let active = true;
+    const generation = useStore.getState().spotifySessionGeneration;
+      void api.getSpotifyAuthStatus().then(status => {if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(status.connected && !status.authRequired);}).catch(() => {if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(false);});
+    return () => {active=false;};
+  }, [backendAvailable, setSpotifyConnected]);
 
   const loadAudioSettings = useStore(state => state.loadAudioSettings);
   useEffect(() => { if (backendAvailable) void loadAudioSettings(); }, [backendAvailable, loadAudioSettings]);
