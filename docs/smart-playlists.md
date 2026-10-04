@@ -1,8 +1,8 @@
-# Smart Playlists / AI DJ
+# AI Smart Mix
 
-![Smart Playlists / AI DJ](../assets/screenshots/smart-playlists.png)
+![AI Smart Mix](../assets/screenshots/smart-playlists.png)
 
-Smart Playlists and AI DJ operate on ViiB's canonical music catalog. After a Plex music library has synchronized successfully, Plex tracks can participate alongside local filesystem tracks in the same generated playlists and DJ sets.
+Smart Playlists and AI Smart Mix operate on ViiB's canonical music catalog. After a Plex music library has synchronized successfully, Plex tracks can participate alongside local filesystem tracks in the same generated playlists and DJ sets.
 
 Spotify's remote catalog is not implicitly searched by this feature; Spotify remains a separate integration.
 
@@ -70,6 +70,6 @@ A later successful authoritative Plex synchronization reconciles additions, upda
 
 For best results, configure the desired AI/metadata provider in [Settings → AI & Enrichment](settings.md#ai--enrichment).
 
-ViiB-side enrichment may add or improve genre, mood, energy, tempo, BPM, and year metadata used by Smart Mixes/AI DJ.
+ViiB-side enrichment may add or improve genre, mood, energy, tempo, BPM, and year metadata used by Smart Mixes/AI Smart Mix.
 
 For Plex-backed tracks, ViiB enrichment is local ViiB state. ViiB does not silently write enriched metadata back to Plex; a later Plex synchronization can refresh fields that are sourced from PMS.

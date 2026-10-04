@@ -20,13 +20,13 @@ Plex support remains audio-only; DJ Mode does not introduce Plex video or video-
 
 ---
 
-## AI DJ generated sets
+## AI Smart Mix generated sets
 
-The **AI DJ** page is the set-generation workflow; it is distinct from this two-deck performance interface. When the Semantic Retrieval Index is ready, each generated set phase retrieves a bounded pool of catalog songs matching the phase's positive and negative semantic intent. Existing persona, BPM/flow, recency, artist-diversity, and sequencing logic then chooses the final queue.
+The **AI Smart Mix** page is the set-generation workflow; it is distinct from this two-deck performance interface. When the Semantic Retrieval Index is ready, each generated set phase retrieves a bounded pool of catalog songs matching the phase's positive and negative semantic intent. Existing persona, BPM/flow, recency, artist-diversity, and sequencing logic then chooses the final queue.
 
 The LLM receives the prompt and compact planning context, not a dump of the ViiB catalog or local genre taxonomy. Generated queues always contain existing ViiB song IDs and retain the selected local/Plex source constraint. If the index is unavailable or its pools cannot satisfy the plan without reusing songs, ViiB falls back to the established metadata/full-catalog path before sequencing.
 
-The AI DJ page shows index readiness and optional count-only retrieval diagnostics. Configure, reindex, test, or recover the semantic provider in **Settings → AI & Enrichment**.
+The AI Smart Mix page shows index readiness and optional count-only retrieval diagnostics. Configure, reindex, test, or recover the semantic provider in **Settings → AI & Enrichment**.
 
 ---
 

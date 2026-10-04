@@ -9,7 +9,7 @@
  * - Multi-step wizard interface with progress indicator
  * - Music folder selection with native folder browser
  * - Optional Spotify integration setup for metadata enrichment
- * - AI Provider (LLM) configuration for AI DJ and mood analysis
+ * - AI Provider (LLM) configuration for AI Smart Mix and mood analysis
  * - Last.FM integration for community-powered metadata enrichment
  * - Enrichment source selection when both LLM and Last.FM are configured
  * - Skip options at each step for minimal setup
@@ -19,7 +19,7 @@
  * 1. Welcome screen with feature overview
  * 2. Add music folder(s) to scan
  * 3. Sign in through the Spotify browser connection (optional)
- * 4. Configure AI Provider for AI DJ (optional)
+ * 4. Configure AI Provider for AI Smart Mix (optional)
  * 5. Configure Last.FM for metadata enrichment (optional)
  * 6. Enrichment source selection (shown only if both LLM and Last.FM configured)
  * 7. Complete and start scanning
@@ -75,7 +75,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
   const [geminiKey, setGeminiKey] = useState('');
   const [savingGemini, setSavingGemini] = useState(false);
 
-  // LLM Provider state for AI DJ
+  // LLM Provider state for AI Smart Mix
   const [llmProvider, setLlmProvider] = useState('ollama');
   const [llmModel, setLlmModel] = useState('llama3.2:8b');
   const [llmApiKey, setLlmApiKey] = useState('');
@@ -280,7 +280,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
   const handleSaveLlmSettings = async () => {
     setSavingLlm(true);
     try {
-      // Save LLM settings for AI DJ
+      // Save LLM settings for AI Smart Mix
       await api.updateLLMSettings({
         provider: llmProvider,
         model: llmModel,
@@ -755,14 +755,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
           <Sparkles size={28} className="text-brand" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-white">AI DJ Provider</h2>
-          <p className="text-text-secondary">Optional - Power the AI DJ with your preferred AI</p>
+          <h2 className="text-2xl font-bold text-white">AI Smart Mix Provider</h2>
+          <p className="text-text-secondary">Optional - Power AI Smart Mix with your preferred AI</p>
         </div>
       </div>
 
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
         <p className="text-sm text-text-secondary mb-4">
-          Choose which AI provider powers the AI DJ for natural language playlist generation.
+          Choose which AI provider powers AI Smart Mix for natural language playlist generation.
           Ollama runs locally (free, no API key), or use cloud providers for more powerful models.
         </p>
 
@@ -1187,7 +1187,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
                 <span className="font-medium text-text-main block">Last.FM Only</span>
                 <span className="text-sm text-text-secondary block mt-1">
                   Use community-powered tags from Last.FM. Free, fast, and based on millions of listeners' tags.
-                  AI is reserved for the AI DJ feature only.
+                  AI is reserved for the AI Smart Mix feature only.
                 </span>
               </div>
             </label>

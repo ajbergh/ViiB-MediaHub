@@ -919,3 +919,19 @@ At 14:55 UTC, the retained browser-test application's auth status returned HTTP 
 The updated asset-cache native test executable was absent from the process inventory. Its exact retained session completed with exit code 0 and a completed HTTP-shutdown message. This adds actual clean-closure evidence for that native build, but does not establish buffering/search responsiveness or shutdown during active enrichment. No new window was launched. Safe typed recheck results are retained in `output/playwright/spotify-remaining-gate-recheck.json`.
 
 The remaining completion requirements need external evidence: native performance/search feedback, provider support for Recent and missing profile fields, a reviewed recording-identity/audio-license corpus manifest for the real benchmark, and macOS/Linux runtime hosts. The user was asked for the concrete feedback, corpus path and available test machines. Passing local compiler/fixture checks do not close these requirements.
+
+## Artist search navigation and browsing (2026-10-04)
+
+Artists search results now link to `/spotify/artist/:id`. Track artists, album artists, saved-album artists, and playlist track artists use the same route. The dedicated page loads profile, top tracks, and discography independently through the backend resource client, aborts abandoned requests, and fences updates against account-generation changes. It supports top-track play/shuffle/queue, individual queue/download actions, and album/single navigation to the existing album page. A failed section exposes retry rather than claiming an empty success.
+
+The cookie adapter intercepts `/artists/:id/albums` and uses the fixed, reviewed `queryArtistDiscographyAll` contract. It flattens release groups, deduplicates release IDs, preserves type/date/artwork, checks supplied identity fields and schema bounds, and retains the shared authentication renewal/cooldown path. This request is bounded at the first 100 release groups. It does not invent a total or continuation cursor; a full response exposes the limit and a Spotify full-discography link.
+
+Validation: 37 targeted frontend tests pass, including artist-result and track-artist navigation, playback context, queue/download actions, partial failure/retry, and stale account responses. Catalog/API Go tests, TypeScript checks, palette/raw-color checks, and the production frontend build pass. Playwright fixture browsing passes Search → Artists → artist page → existing album page; the artist page screenshot was visually checked. The user reported that a tested build looks good. That report does not establish independent market or exhaustive discography coverage.
+
+An independent live probe could not decrypt the saved session in the temporary test database and stopped before a Spotify request. A live discography response remains unverified here; the fixture and browser evidence above must not be treated as live provider evidence.
+
+## macOS authentication pre-native validation (2026-10-04)
+
+Current Windows-hosted checks pass for browser-login lifecycle, encrypted session boundaries, frontend connection controls, and the opt-in real-Chromium capture/cleanup fixture. Fresh Darwin arm64 and amd64 compilation passes for internal packages, the plain Wails package, and auth/API/Wails test binaries; all six foreign test binaries have verified 64-bit Mach-O architecture. These do not establish a native CGO/Wails `.app` build or Mac execution.
+
+The normal macOS application window uses system WebKit. Spotify browser capture separately requires installed Chrome, Chromium, or Edge and does not support default Safari through CDP. A native browser-auth fixture step is prepared in both macOS release jobs; it has not run in GitHub CI yet. Real Spotify login/MFA, native WebKit/catalog/audio controls, same-path restart, and Mac process/profile cleanup remain hand-test gates. See [the macOS validation result and hand-test procedure](SPOTIFY_MACOS_AUTH_VALIDATION.md).

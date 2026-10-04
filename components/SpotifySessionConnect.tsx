@@ -92,6 +92,7 @@ export const SpotifySessionConnect: React.FC<{ onConnected?: () => void }> = ({ 
         {authRequired && <p className="text-warning text-sm">Your Spotify session expired. Connect again to continue.</p>}
         {connected && <p className="text-success text-sm">Spotify session connected</p>}
         <p className="text-sm text-text-secondary">Sign in on Spotify in the window that opens. ViiB connects automatically when you finish.</p>
+        <p className="text-sm text-text-secondary">Spotify sign-in requires Chrome, Microsoft Edge, or Chromium installed on this device. Safari isn’t supported for sign-in yet.</p>
         <p className="text-xs text-text-subtle">Your session is stored encrypted on this device.</p>
         {busy && <p role="status" className="text-sm text-text-secondary">Waiting for Spotify sign-in…</p>}
         <div className="flex gap-3">

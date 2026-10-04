@@ -14,7 +14,7 @@ const ROUTE_TITLES: Array<[RegExp, string]> = [
   [/^\/playlists/, 'Playlists'],
   [/^\/liked-albums/, 'Liked Albums'],
   [/^\/liked/, 'Liked Songs'],
-  [/^\/smart-playlists/, 'AI DJ'],
+  [/^\/smart-playlists/, 'AI Smart Mix'],
   [/^\/smart-mix/, 'Smart Mix'],
   [/^\/spotify/, 'Spotify'],
   [/^\/downloads/, 'Downloads'],

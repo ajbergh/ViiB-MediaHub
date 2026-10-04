@@ -17,6 +17,7 @@
  */
 
 import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
+import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, CheckCircle } from 'lucide-react';
@@ -251,7 +252,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
               <h1 className="text-display font-bold mb-4 leading-tight">{album.name}</h1>
               <div className="flex items-center gap-2 text-text-secondary">
                 <span className="font-bold text-text-main">
-                  {album.artists.map(a => a.name).join(', ')}
+                  <SpotifyArtistLinks artists={album.artists} />
                 </span>
                 <span>•</span>
                 <span>{releaseYear}</span>
@@ -356,7 +357,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
                 )}
               </div>
               <div className="text-text-secondary truncate flex items-center">
-                {track.artists.map(a => a.name).join(', ')}
+                <SpotifyArtistLinks artists={track.artists} />
               </div>
               <div className="text-text-subtle font-mono text-sm flex items-center justify-center">
                 {formatTime(track.duration_ms / 1000)}

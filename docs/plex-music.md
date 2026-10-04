@@ -2,7 +2,7 @@
 
 ViiB MediaHub can use a Plex Media Server **music/audio library** as a first-class music source alongside local filesystem libraries.
 
-Plex content synchronizes into ViiB's existing catalog, so Plex-hosted tracks use the normal Songs, Albums, Artists, Search, Queue, playlists, likes, play history, Smart Mixes, AI DJ, statistics, and player interfaces wherever those features operate on the ViiB `Song` catalog.
+Plex content synchronizes into ViiB's existing catalog, so Plex-hosted tracks use the normal Songs, Albums, Artists, Search, Queue, playlists, likes, play history, Smart Mixes, AI Smart Mix, statistics, and player interfaces wherever those features operate on the ViiB `Song` catalog.
 
 ## Track analysis
 

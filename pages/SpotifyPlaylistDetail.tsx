@@ -18,6 +18,7 @@
 
 import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
 import { backendSpotifyFetch } from '../services/spotifyBackend';
+import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download } from 'lucide-react';
@@ -365,7 +366,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
                   {item.track.name}
                 </div>
                 <div className="text-sm text-text-secondary truncate">
-                  {item.track.artists.map(a => a.name).join(', ')}
+                  <SpotifyArtistLinks artists={item.track.artists} />
                 </div>
               </div>
               <div className="text-text-secondary truncate flex items-center">

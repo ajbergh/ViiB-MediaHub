@@ -69,6 +69,11 @@ func (a *API) cookieSpotifyCatalog(ctx context.Context, runtime *spotifyAuthRunt
 			}
 			return album, err
 		}
+	} else if id, ok := catalog.ArtistAlbumsPath(target.Path); ok {
+		if err := catalog.ValidateArtistAlbumsQuery(id, target.Query()); err != nil {
+			return nil, err
+		}
+		request = func(token spotifyauth.Token) (any, error) { return client.ArtistAlbums(ctx, token, id) }
 	} else if id, top, ok := catalog.ArtistPath(target.Path); ok {
 		if err := catalog.ValidateArtistQuery(id, target.Query()); err != nil {
 			return nil, err

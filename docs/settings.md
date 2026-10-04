@@ -59,7 +59,7 @@ Open **Settings → Library Sources → Plex Media Server** to configure Plex as
 - offline/authentication-required status;
 - changing or removing the Plex source without modifying anything on the Plex server.
 
-Plex songs synchronize into the same ViiB catalog used by local files, so they appear in the existing Songs, Albums, Artists, Search, queue, playlists, likes, history, Smart Mixes, AI DJ, and statistics experiences. Plex video libraries are not supported.
+Plex songs synchronize into the same ViiB catalog used by local files, so they appear in the existing Songs, Albums, Artists, Search, queue, playlists, likes, history, Smart Mixes, AI Smart Mix, and statistics experiences. Plex video libraries are not supported.
 
 The Plex panel also includes an optional **AI Metadata Writeback** workflow. AI enrichment is always local first: preview the per-track genre/year changes, explicitly approve the exact diff, then ViiB writes and locks only those fields in Plex and verifies them. It never writes audio-file tags; mood/energy/tempo/BPM and semantic embeddings remain ViiB-only. The Plex token must have PMS metadata-management permission.
 
@@ -153,7 +153,7 @@ Select and configure the LLM backend used for:
 - Genre enrichment
 - Mood / energy / tempo analysis
 - Smart playlist generation
-- AI DJ set building
+- AI Smart Mix set building
 
 | Provider | Notes |
 |---|---|
@@ -168,7 +168,7 @@ Enter the API key (or endpoint for Ollama) and click **Save**.
 
 ### Semantic Retrieval Index
 
-The Semantic Retrieval Index is configured independently from the AI chat provider. It powers meaning-based candidate recall for Smart Playlists and AI DJ when it is ready; chat/metadata enrichment settings do not silently change its vector space.
+The Semantic Retrieval Index is configured independently from the AI chat provider. It powers meaning-based candidate recall for Smart Playlists and AI Smart Mix when it is ready; chat/metadata enrichment settings do not silently change its vector space.
 
 | Setting or control | Description |
 |---|---|
@@ -180,7 +180,7 @@ The Semantic Retrieval Index is configured independently from the AI chat provid
 
 Ollama uses its embedding endpoint and ViiB never downloads a model automatically. Gemini uses `gemini-embedding-2` at 768 dimensions by default; OpenRouter uses its embeddings API with `openai/text-embedding-3-small` at 512 dimensions by default. Cloud providers receive deterministic semantic document text but never file paths, internal song IDs, or listening history. Before any cloud indexing starts, ViiB displays either OpenAI's current one-time estimate or a Gemini/OpenRouter data-and-cost notice and requires explicit confirmation.
 
-Status reports ready/indexing/configuration/error state plus ready, pending, and error document counts. If the index is unavailable, Smart Playlists and AI DJ use their normal metadata fallback rather than becoming unavailable.
+Status reports ready/indexing/configuration/error state plus ready, pending, and error document counts. If the index is unavailable, Smart Playlists and AI Smart Mix use their normal metadata fallback rather than becoming unavailable.
 
 ### Metadata enrichment source
 
@@ -194,7 +194,7 @@ Choose AI, Last.FM, or Hybrid as the source used for automatic metadata enrichme
 Runs full metadata enrichment: genres, mood, energy, tempo, BPM, and release year.
 
 - Click **Run Unified Enrichment** to start.
-- This is slower than genre-only enrichment but produces richer data for AI DJ.
+- This is slower than genre-only enrichment but produces richer data for AI Smart Mix.
 
 ---
 

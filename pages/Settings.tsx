@@ -23,10 +23,10 @@
  * - Spotify download destination and conversion settings
  * 
  * AI Features (requires configured AI provider):
- * - AI DJ and metadata features use the configured AI Provider & Model section
+ * - AI Smart Mix and metadata features use the configured AI Provider & Model section
  * - Genre enrichment runs during library scans or can be triggered manually
  * - Mood analysis detects emotional characteristics without audio processing
- * - Results are stored in the songs table for AI DJ playlist generation
+ * - Results are stored in the songs table for AI Smart Mix playlist generation
  * 
  * @module Settings
  */
@@ -2045,7 +2045,7 @@ export const Settings: React.FC = () => {
               <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
                 <h3 className="text-lg font-bold text-text-main mb-2">AI Provider & Model</h3>
                 <p className="text-text-subtle text-sm mb-4">
-                  Choose the chat model used for AI DJ playlist generation and AI metadata enrichment.
+                  Choose the chat model used for AI Smart Mix playlist generation and AI metadata enrichment.
                   Ollama runs locally (free, no API key), or use cloud providers for more powerful models.
                 </p>
                 
@@ -2245,7 +2245,7 @@ export const Settings: React.FC = () => {
                   <div>
                     <h3 className="text-lg font-bold text-text-main mb-1">Semantic Retrieval Index</h3>
                     <p className="text-text-subtle text-sm">
-                      Builds a separate meaning-based index for AI DJ retrieval. It never changes your chat provider or library metadata.
+                      Builds a separate meaning-based index for AI Smart Mix retrieval. It never changes your chat provider or library metadata.
                     </p>
                   </div>
                   <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${semanticStatus?.state === 'ready' ? 'bg-success/20 text-success' : semanticStatus?.state === 'error' ? 'bg-error/20 text-error' : 'bg-surface-3 text-text-subtle'}`}>
@@ -2498,7 +2498,7 @@ export const Settings: React.FC = () => {
                 <h3 className="text-lg font-bold text-text-main mb-2">Metadata Enrichment Source</h3>
                 <p className="text-text-subtle text-sm mb-4">
                   Choose which system to use for automatic metadata enrichment during library scans.
-                  AI DJ features will still use the configured AI provider regardless of this setting. Configure Last.FM credentials in Integrations &amp; Spotify before selecting a Last.FM option.
+                  AI Smart Mix features will still use the configured AI provider regardless of this setting. Configure Last.FM credentials in Integrations &amp; Spotify before selecting a Last.FM option.
                 </p>
                 
                 <div className="space-y-3">

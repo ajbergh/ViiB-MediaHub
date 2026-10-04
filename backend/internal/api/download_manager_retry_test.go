@@ -36,6 +36,53 @@ func TestIsRetriableDownloadError(t *testing.T) {
 	}
 }
 
+func TestDownloadTransferProgressUsesActualSize(t *testing.T) {
+	for _, test := range []struct {
+		copied, total int64
+		want          int
+	}{
+		{3 * 1024 * 1024, 12 * 1024 * 1024, 25},
+		{7 * 1024 * 1024, 14 * 1024 * 1024, 50},
+		{12 * 1024 * 1024, 12 * 1024 * 1024, 99},
+		{14 * 1024 * 1024, 12 * 1024 * 1024, 99},
+		{0, 12 * 1024 * 1024, 0},
+		{7 * 1024 * 1024, -1, 99},
+	} {
+		if got := downloadTransferProgress(test.copied, test.total); got != test.want {
+			t.Errorf("progress(%d,%d)=%d, want %d", test.copied, test.total, got, test.want)
+		}
+	}
+	if !shouldReportDownloadProgress(99, 95) || shouldReportDownloadProgress(99, 99) || shouldReportDownloadProgress(96, 95) {
+		t.Fatal("final progress must bypass the throttle exactly once")
+	}
+}
+
+func TestDownloadRetryResetsProgressWithoutRequeue(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "downloads.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	download := &db.SpotifyDownload{ID: "retry-progress", SpotifyID: "track", Type: "track", Status: "queued", AddedAt: 1}
+	if err := database.AddDownload(download); err != nil {
+		t.Fatal(err)
+	}
+	if claimed, err := database.MarkDownloadStarted(download.ID); err != nil || !claimed {
+		t.Fatalf("start: %v, %v", claimed, err)
+	}
+	database.UpdateDownloadProgress(download.ID, 95)
+	manager := NewDownloadManager(database, t.TempDir())
+	manager.reportDownloadRetry(download.ID, 2, 3)
+	current, err := database.GetDownload(download.ID)
+	if err != nil || current.Status != "downloading" || current.Progress != 0 {
+		t.Fatalf("retry changed ownership or retained stale progress: %+v, %v", current, err)
+	}
+	event := <-manager.progressChan
+	if event.Progress != 0 || event.Status != "downloading" || !strings.Contains(event.Error, "attempt 2/3") {
+		t.Fatalf("retry not explicit: %+v", event)
+	}
+}
+
 func TestDownloadStallTimeoutIsPhaseAware(t *testing.T) {
 	now := time.Now()
 	inactiveFor := StreamStallTimeout + time.Second

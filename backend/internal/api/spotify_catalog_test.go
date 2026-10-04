@@ -1190,3 +1190,59 @@ func TestCookieCatalogLibraryChildAuthenticationAndCooldown(t *testing.T) {
 		})
 	}
 }
+
+// Exercise the real proxy dispatch so artist albums cannot silently fall through to Web API search.
+func TestCookieCatalogArtistAlbumsRouting(t *testing.T) {
+	a, _, _ := fixtureCookieRuntime(t)
+	if err := a.spotifyAuth.connect(context.Background(), "fixture-cookie"); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("A", 22)
+	albumID := strings.Repeat("B", 22)
+	requests := 0
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.Header.Get("Cookie") != "" {
+			t.Fatal("cookie escaped")
+		}
+		body := `{"granted_token":{"token":"client","expires_after_seconds":600}}`
+		if r.URL.Host != "clienttoken.spotify.com" {
+			if r.URL.Host != "api-partner.spotify.com" || r.Header.Get("Authorization") == "" || r.Header.Get("Client-Token") == "" {
+				t.Fatal("unsafe discography request")
+			}
+			var request struct {
+				Operation string `json:"operationName"`
+				Variables struct {
+					URI           string `json:"uri"`
+					Limit, Offset int
+				}
+				Extensions struct {
+					PersistedQuery struct {
+						Hash string `json:"sha256Hash"`
+					} `json:"persistedQuery"`
+				}
+			}
+			if json.NewDecoder(r.Body).Decode(&request) != nil || request.Operation != "queryArtistDiscographyAll" || request.Variables.URI != "spotify:artist:"+id || request.Variables.Limit != 100 || request.Variables.Offset != 0 || request.Extensions.PersistedQuery.Hash != "9380995a9d4663cbcb5113fef3c6aabf70ae6d407ba61793fd01e2a1dd6929b0" {
+				t.Fatal("wrong discography contract")
+			}
+			requests++
+			body = `{"data":{"artistUnion":{"id":"` + id + `","discography":{"all":{"items":[{"releases":{"items":[{"uri":"spotify:album:` + albumID + `","name":"Artist album","type":"ALBUM","date":{"isoString":"2020-01-01"},"tracks":{"totalCount":10}}]}}]}}}}}`
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	w := httptest.NewRecorder()
+	a.spotifyProxy(w, httptest.NewRequest("GET", "/spotify/proxy?path=artists/"+id+"/albums&limit=100", nil))
+	var result catalog.ArtistAlbums
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil || len(result.Items) != 1 || result.Items[0].ID != albumID || result.Items[0].Name != "Artist album" {
+		t.Fatal("discography proxy failed", w.Code, w.Body.String())
+	}
+	for _, path := range []string{"artists/bad/albums", "artists/" + id + "/albums&offset=1", "artists/" + id + "/albums&limit=101"} {
+		w = httptest.NewRecorder()
+		a.spotifyProxy(w, httptest.NewRequest("GET", "/spotify/proxy?path="+path, nil))
+		if w.Code != 400 {
+			t.Fatal("invalid discography input accepted", w.Code)
+		}
+	}
+	if requests != 1 {
+		t.Fatal("invalid requests reached upstream", requests)
+	}
+}

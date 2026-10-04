@@ -137,10 +137,11 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 		parsed, _ := url.Parse(target)
 		_, _, albumPath := catalog.AlbumPath(parsed.Path)
 		_, _, artistPath := catalog.ArtistPath(parsed.Path)
+		_, artistAlbumsPath := catalog.ArtistAlbumsPath(parsed.Path)
 		_, _, playlistPath := catalog.PlaylistPath(parsed.Path)
 		_, libraryPath := catalog.LibraryPath(parsed.Path)
 		_, _, trackPath := catalog.TrackPath(parsed.Path)
-		if parsed.Path == "/v1/me" || parsed.Path == "/v1/search" || albumPath || artistPath || playlistPath || libraryPath || trackPath {
+		if parsed.Path == "/v1/me" || parsed.Path == "/v1/search" || albumPath || artistPath || artistAlbumsPath || playlistPath || libraryPath || trackPath {
 			catalogTarget = parsed
 		}
 	}

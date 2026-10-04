@@ -429,8 +429,6 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 
 	dLog("Starting download stream...")
 	reportActivity(DownloadPhaseStreaming)
-	var bytesRead int64
-	buf := make([]byte, 64*1024) // 64KB read buffer for better throughput
 	readerDone := make(chan struct{})
 	go func() {
 		select {
@@ -443,35 +441,12 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 	}()
 	defer close(readerDone)
 
-	for {
-		n, readErr := assetReader.Read(buf)
-		if n > 0 {
-			if _, writeErr := bufWriter.Write(buf[:n]); writeErr != nil {
-				dLog("Failed to write to file: %v", writeErr)
-				return "", fmt.Errorf("failed to write to file: %w", writeErr)
-			}
-			bytesRead += int64(n)
-
-			// Report progress (we don't know total size, so pass -1)
-			if progressCallback != nil {
-				progressCallback(bytesRead, -1)
-			}
-		}
-		if readErr == io.EOF {
-			dLog("Download complete, received EOF. Total bytes: %d", bytesRead)
-			reportActivity(DownloadPhaseFinalizing)
-			break
-		}
-		if readErr != nil {
-			// Check if this was caused by context cancellation
-			if ctx.Err() != nil {
-				dLog("Read error due to context cancellation: %v", readErr)
-				return "", ctx.Err()
-			}
-			dLog("Failed to read from asset: %v", readErr)
-			return "", fmt.Errorf("failed to read from asset: %w", readErr)
-		}
+	bytesRead, err := copySpotifyDownload(ctx, bufWriter, assetReader, progressCallback)
+	if err != nil {
+		return "", fmt.Errorf("copy Spotify asset: %w", err)
 	}
+	dLog("Download complete. Total bytes: %d", bytesRead)
+	reportActivity(DownloadPhaseFinalizing)
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -492,7 +467,7 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 		return "", fmt.Errorf("failed to close file: %w", err)
 	}
 
-	if err := validateOggPages(ctx, tempPath); err != nil {
+	if err := normalizeSpotifyOggDownload(ctx, tempPath, bytesRead); err != nil {
 		return "", fmt.Errorf("validate downloaded Ogg before metadata: %w", err)
 	}
 	// Tags and integrity are part of the successful download transaction.

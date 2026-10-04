@@ -1235,6 +1235,7 @@ retryLoop:
 
 		dmLog("Worker %d: download failed for '%s' (attempt %d/%d): %v - retrying...",
 			workerID, download.Title, attempt, maxRetries, lastErr)
+		dm.reportDownloadRetry(download.ID, attempt+1, maxRetries)
 
 		audioKeyRejected := spotify.IsAudioKeyRejected(lastErr)
 		resetForAudioKey := audioKeyRejected && !audioKeySessionResetAttempted
@@ -1297,6 +1298,28 @@ func downloadRetryReason(audioKeyRejected bool) string {
 	return "repeated transient failures"
 }
 
+// Keep ownership/status unchanged while making a new transfer attempt explicit.
+func (dm *DownloadManager) reportDownloadRetry(id string, attempt, maximum int) {
+	dm.db.UpdateDownloadProgress(id, 0)
+	dm.progressChan <- DownloadProgress{
+		DownloadID: id,
+		Status:     "downloading",
+		Progress:   0,
+		Error:      fmt.Sprintf("Retrying download (attempt %d/%d) after a transfer or validation failure", attempt, maximum),
+	}
+}
+
+func downloadTransferProgress(bytesRead, totalBytes int64) int {
+	if totalBytes <= 0 {
+		totalBytes = 7 * 1024 * 1024 // Legacy unknown-length readers only.
+	}
+	return max(0, min(99, int(float64(bytesRead)/float64(totalBytes)*100)))
+}
+
+func shouldReportDownloadProgress(progress, last int) bool {
+	return progress >= last+5 || (progress == 99 && last < 99)
+}
+
 func isRetriableDownloadError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false
@@ -1323,10 +1346,9 @@ func isRetriableDownloadError(err error) bool {
 // and database updates.
 //
 // Progress Tracking:
-//   - Since total file size is unknown beforehand, progress is estimated
-//   - Assumes average track size of 7MB (typical for ~3-4 minute song)
+//   - Uses the asset's declared size, with a legacy unknown-length fallback
 //   - Progress updates sent every 5% to reduce database writes
-//   - Progress capped at 99% until download is fully complete
+//   - Always emits 99%, reserving 100% for validated completion
 //   - Updates stall detection tracker on each progress update
 //
 // Parameters:
@@ -1339,13 +1361,7 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 	// Captures lastProgress to implement throttling (updates every 5%)
 	var lastProgress int
 	progressCallback := func(bytesRead int64, totalBytes int64) {
-		// Estimate progress based on typical track size (5-10 MB)
-		// Since we don't know the total size, we'll estimate progress
-		estimatedTotal := int64(7 * 1024 * 1024) // 7MB average
-		progress := int((float64(bytesRead) / float64(estimatedTotal)) * 100)
-		if progress > 99 {
-			progress = 99 // Don't go to 100 until file is complete
-		}
+		progress := downloadTransferProgress(bytesRead, totalBytes)
 
 		// Update stall detection tracker on ANY bytes read, even if the UI
 		// percentage has not crossed its throttling threshold.
@@ -1359,7 +1375,7 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 		dm.mu.Unlock()
 
 		// Only update UI if progress changed by at least 5%
-		if progress >= lastProgress+5 {
+		if shouldReportDownloadProgress(progress, lastProgress) {
 			lastProgress = progress
 			dm.db.UpdateDownloadProgress(download.ID, progress)
 			dm.progressChan <- DownloadProgress{

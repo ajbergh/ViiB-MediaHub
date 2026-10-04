@@ -25,7 +25,8 @@ import { nextSpotifySearchOffset } from '../lib/spotifySearchPaging';
 import { backendSpotifyFetch } from '../services/spotifyBackend';
 import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
+import { Link, useNavigate } from 'react-router';
 import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2, Copy } from 'lucide-react';
 import { formatTime } from '../utils';
 import { useStore } from '../store';
@@ -910,7 +911,7 @@ export const Spotify: React.FC = () => {
                                                         </div>
                                                     </div>
                                                     <h3 className="font-bold truncate text-text-main">{album.name}</h3>
-                                                    <p className="text-sm text-text-secondary truncate">{album.artists?.map((a: any) => a.name).join(', ')}</p>
+                                                    <p className="text-sm text-text-secondary truncate"><SpotifyArtistLinks artists={album.artists || []} /></p>
                                                     <p className="text-xs text-text-subtle mt-1">{album.release_date?.split('-')[0]} • Album</p>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDownloadAlbum(album); }}
@@ -936,7 +937,8 @@ export const Spotify: React.FC = () => {
                                 <section>
                                     <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
                                         {spotifyResults.artists.items.filter((a: any) => a).map((artist: any) => (
-                                            <div key={artist.id} className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group">
+                                            <div key={artist.id} className="relative bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group">
+                                                <Link to={`/spotify/artist/${encodeURIComponent(artist.id)}`} aria-label={`View artist ${artist.name}`} className="absolute inset-0 z-10 rounded-lg focus-visible:outline focus-visible:outline-brand" />
                                                 <div className="aspect-square mb-4 relative shadow-lg rounded-full overflow-hidden">
                                                     {artist.images?.[0]?.url ? (
                                                         <img src={artist.images[0].url} alt={artist.name} className="w-full h-full object-cover" />
@@ -945,7 +947,7 @@ export const Spotify: React.FC = () => {
                                                             <Mic2 size={40} className="text-text-subtle" />
                                                         </div>
                                                     )}
-                                                    <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
+                                                    <div className="absolute z-20 right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 transition-all duration-200">
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleShuffleArtistTopTracks(artist); }}
                                                             className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-white" 
@@ -1090,12 +1092,13 @@ export const Spotify: React.FC = () => {
                                                     <div className="text-sm text-text-secondary truncate">
                                                         {track.artists?.map((artist: any, i: number) => (
                                                             <span key={artist.id}>
-                                                                <span 
-                                                                    className="hover:underline cursor-pointer"
-                                                                    onClick={(e) => { e.stopPropagation(); navigate(`/spotify?artist=${artist.id}`); }}
+                                                                <Link
+                                                                    to={`/spotify/artist/${encodeURIComponent(artist.id)}`}
+                                                                    className="hover:underline"
+                                                                    onClick={(e) => e.stopPropagation()}
                                                                 >
                                                                     {artist.name}
-                                                                </span>
+                                                                </Link>
                                                                 {i < track.artists.length - 1 && ', '}
                                                             </span>
                                                         ))}
@@ -1236,7 +1239,7 @@ export const Spotify: React.FC = () => {
                                         <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200">
                                             {item.track.name}
                                         </div>
-                                        <div className="text-sm text-text-secondary truncate">{item.track.artists?.map((a: any) => a.name).join(', ')}</div>
+                                        <div className="text-sm text-text-secondary truncate"><SpotifyArtistLinks artists={item.track.artists || []} /></div>
                                     </div>
                                     <div 
                                         className="text-sm text-text-subtle hover:text-brand hover:underline cursor-pointer"
@@ -1334,7 +1337,7 @@ export const Spotify: React.FC = () => {
                                         </Button>
                                     </div>
                                     <h3 className="font-bold truncate text-text-main">{item.album.name}</h3>
-                                    <p className="text-sm text-text-secondary truncate">{item.album.artists?.map((a: any) => a.name).join(', ')}</p>
+                                    <p className="text-sm text-text-secondary truncate"><SpotifyArtistLinks artists={item.album.artists || []} /></p>
                                     <p className="text-xs text-text-subtle mt-1">{item.album.release_date?.split('-')[0]} • {item.album.total_tracks} tracks</p>
                                 </div>
                             ))}

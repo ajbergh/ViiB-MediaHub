@@ -1,4 +1,4 @@
-// Tests validation of Ogg page checksums, sequence continuity, and end-of-stream with bounded trailing padding.
+// Tests validation of Ogg page checksums and end-of-stream with bounded trailing padding.
 package spotify
 
 import (
@@ -6,7 +6,13 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
+
+	"github.com/art-media-platform/librespot-go/librespot/asset"
 )
 
 func testOggPage(flags byte, body []byte) []byte {
@@ -66,6 +72,124 @@ func TestValidateOggAllowsBoundedZeroTrailerAfterEOS(t *testing.T) {
 	} {
 		if validateOggReader(context.Background(), bytes.NewReader(invalid)) == nil {
 			t.Fatal("unbounded, incomplete or nonzero trailer accepted")
+		}
+	}
+}
+
+func TestValidateOggIncompleteTrailerDiagnostics(t *testing.T) {
+	for _, test := range []struct {
+		flags byte
+		tail  []byte
+		want  string
+	}{
+		{0, []byte{0, 0, 0}, "preceding EOS=false; zero trailer=true"},
+		{4, []byte{'O', 'g', 'g'}, "preceding EOS=true; zero trailer=false"},
+	} {
+		data := append(testOggPage(test.flags, []byte("audio")), test.tail...)
+		err := validateOggReader(context.Background(), bytes.NewReader(data))
+		if !errors.Is(err, ErrOggIntegrity) || !strings.Contains(err.Error(), test.want) {
+			t.Fatalf("missing tail diagnosis: %v", err)
+		}
+	}
+}
+
+func TestNormalizeSpotifyOggWordPadding(t *testing.T) {
+	for _, count := range []int{1, 2, 3} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			// A CRC-valid BOS/EOS page with exactly count bytes of word padding.
+			// 28-byte page + 167-byte prefix == 3 mod 4.
+			bodySize := (5 - count) % 4
+			complete := testOggPage(6, make([]byte, bodySize))
+			padded := append(append([]byte{}, complete...), bytes.Repeat([]byte{0xa5}, count)...)
+			if (len(padded)+asset.SPOTIFY_OGG_HEADER_SIZE)%4 != 0 {
+				t.Fatal("fixture is not transport-word aligned")
+			}
+			if validateOggReader(context.Background(), bytes.NewReader(padded)) == nil {
+				t.Fatal("generic validation accepted nonzero transport padding")
+			}
+			path := filepath.Join(t.TempDir(), "candidate.vctemp")
+			if err := os.WriteFile(path, padded, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := normalizeSpotifyOggDownload(context.Background(), path, int64(len(padded))); err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(got, complete) {
+				t.Fatalf("audio pages changed: %v", err)
+			}
+			if err := validateOggPages(context.Background(), path); err != nil {
+				t.Fatalf("normalized candidate fails strict validation: %v", err)
+			}
+		})
+	}
+}
+
+func TestNormalizeSpotifyOggRejectsDamageWithoutMutation(t *testing.T) {
+	complete := testOggPage(6, []byte{1, 2}) // needs three transport bytes
+	corrupt := append([]byte{}, complete...)
+	corrupt[len(corrupt)-1] ^= 1
+	for _, test := range []struct {
+		name string
+		data []byte
+	}{
+		{"checksum", append(corrupt, 1, 2, 3)},
+		{"missing EOS", append(testOggPage(2, []byte{1, 2}), 1, 2, 3)},
+		{"wrong alignment", append(append([]byte{}, complete...), 1, 2)},
+		{"four nonzero bytes", append(append([]byte{}, complete...), 1, 2, 3, 4)},
+		{"partial next page", append(append([]byte{}, complete...), []byte("OggS")...)},
+		{"truncated payload", complete[:len(complete)-1]},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "candidate.vctemp")
+			if err := os.WriteFile(path, test.data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := normalizeSpotifyOggDownload(context.Background(), path, int64(len(test.data))); !errors.Is(err, ErrOggIntegrity) {
+				t.Fatalf("damaged file accepted: %v", err)
+			}
+			got, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(got, test.data) {
+				t.Fatalf("failed validation modified candidate: %v", err)
+			}
+		})
+	}
+}
+
+func TestNormalizeSpotifyOggCancellationAndSizeMismatch(t *testing.T) {
+	data := append(testOggPage(6, []byte{1, 2}), 1, 2, 3)
+	path := filepath.Join(t.TempDir(), "candidate.vctemp")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := normalizeSpotifyOggDownload(ctx, path, int64(len(data))); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation ignored: %v", err)
+	}
+	if err := normalizeSpotifyOggDownload(context.Background(), path, int64(len(data)+1)); !errors.Is(err, ErrOggIntegrity) {
+		t.Fatalf("size mismatch accepted: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(got, data) {
+		t.Fatalf("candidate changed: %v", err)
+	}
+}
+
+func TestNormalizeSpotifyOggPreservesPagesWithLegacyZeroPadding(t *testing.T) {
+	complete := testOggPage(6, []byte("audio"))
+	for _, count := range []int{0, 3, 15} {
+		path := filepath.Join(t.TempDir(), "candidate.vctemp")
+		data := append(append([]byte{}, complete...), make([]byte, count)...)
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := normalizeSpotifyOggDownload(context.Background(), path, int64(len(data))); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(got, complete) {
+			t.Fatalf("pages changed with %d zero bytes: %v", count, err)
 		}
 	}
 }

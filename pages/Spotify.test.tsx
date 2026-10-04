@@ -3,7 +3,7 @@
 
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SpotifySearchOptions } from '../services/spotifyService';
 import { useStore } from '../store';
@@ -100,7 +100,7 @@ afterEach(async () => {
 });
 
 async function mount() {
-    await act(async () => root!.render(<MemoryRouter><Spotify /></MemoryRouter>));
+    await act(async () => root!.render(<MemoryRouter initialEntries={['/spotify']}><Routes><Route path="/spotify" element={<Spotify />} /><Route path="/spotify/artist/:id" element={<p>Artist destination</p>} /></Routes></MemoryRouter>));
 }
 
 function searchInput() {
@@ -320,3 +320,27 @@ it('shows a current search failure, clears old results, and retries the same que
     expect(host.textContent).toContain('Retried track');
     expect(host.querySelector('[role="alert"]')).toBeNull();
 });
+
+ describe('Spotify artist navigation', () => {
+    it('opens an artist result from the Artists tab', async () => {
+        await mount(); await typeQuery('artist query'); await enter();
+        const catalog = results('track');
+        catalog.artists.items = [{id: 'AAAAAAAAAAAAAAAAAAAAAA', name: 'Result Artist', images: []}] as any;
+        await act(async () => requests[0].final.resolve(catalog));
+        await tab('Artists (1)');
+        const artistLink = host.querySelector<HTMLAnchorElement>('a[aria-label="View artist Result Artist"]');
+        expect(artistLink?.getAttribute('href')).toBe('/spotify/artist/AAAAAAAAAAAAAAAAAAAAAA');
+        await act(async () => artistLink!.click());
+        expect(host.textContent).toContain('Artist destination');
+    });
+    it('opens the same artist destination from a track artist name without playing the track', async () => {
+        const play = vi.fn(); useStore.setState({playSong: play});
+        await mount(); await typeQuery('track query'); await enter();
+        await act(async () => requests[0].final.resolve(results('track')));
+        const artistLink = host.querySelector<HTMLAnchorElement>('a[href="/spotify/artist/fixture-artist"]');
+        expect(artistLink).not.toBeNull();
+        await act(async () => artistLink!.click());
+        expect(host.textContent).toContain('Artist destination');
+        expect(play).not.toHaveBeenCalled();
+    });
+ });
