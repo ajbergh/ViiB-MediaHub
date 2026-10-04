@@ -3,6 +3,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -216,5 +217,57 @@ func TestConflictingCompletionRetiresEarlierAutomaticIdentity(t *testing.T) {
 	link, err = d.GetSpotifyRecording("song", fingerprint)
 	if err != nil || link != nil {
 		t.Fatalf("conflicting evidence retained identity: %#v %v", link, err)
+	}
+}
+
+func TestConcurrentDownloadCompletionPersistsEveryArtifact(t *testing.T) {
+	d, base := evidenceFixture(t)
+	const jobs = 8
+	paths := make([]string, jobs)
+	for i := range paths {
+		paths[i] = filepath.Join(filepath.Dir(base), fmt.Sprintf("artifact-%d.mp3", i))
+		if err := os.WriteFile(paths[i], []byte(fmt.Sprintf("final tagged bytes %d", i)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		id := fmt.Sprintf("parallel-%d", i)
+		if err := d.AddDownload(&SpotifyDownload{ID: id, SpotifyID: referenceID, Type: "track", Status: "queued"}); err != nil {
+			t.Fatal(err)
+		}
+		if changed, err := d.MarkDownloadStarted(id); err != nil || !changed {
+			t.Fatalf("start: %v %v", changed, err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := make(chan struct{})
+	results := make(chan error, jobs)
+	for i := range paths {
+		go func(i int) {
+			<-start
+			changed, err := d.MarkDownloadCompletedWithEvidence(ctx, fmt.Sprintf("parallel-%d", i), paths[i])
+			if err == nil && !changed {
+				err = fmt.Errorf("completion %d did not commit", i)
+			}
+			results <- err
+		}(i)
+	}
+	close(start)
+	for range paths {
+		if err := <-results; err != nil {
+			t.Error(err)
+		}
+	}
+	for i, path := range paths {
+		download, err := d.GetDownload(fmt.Sprintf("parallel-%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if download.Status != "completed" || download.FilePath != path {
+			t.Fatalf("incomplete artifact %d: %#v", i, download)
+		}
+		var count int
+		if err := d.conn.QueryRow("SELECT count(*) FROM spotify_download_evidence WHERE file_path=? AND spotify_id=?", path, referenceID).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("evidence %d: count=%d error=%v", i, count, err)
+		}
 	}
 }

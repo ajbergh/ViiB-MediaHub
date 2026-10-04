@@ -102,7 +102,10 @@ func (d *DB) MarkDownloadCompletedWithEvidence(ctx context.Context, id, path str
 	}
 	defer tx.Rollback()
 	var recording string
-	err = tx.QueryRowContext(ctx, "SELECT spotify_id FROM spotify_downloads WHERE id=? AND status IN ('downloading','converting')", id).Scan(&recording)
+	// Acquire the write lock before creating a read snapshot. Concurrent
+	// completions otherwise race to upgrade stale WAL snapshots to writers.
+	err = tx.QueryRowContext(ctx, `UPDATE spotify_downloads SET status='completed',progress=100,file_path=?,completed_at=?
+ WHERE id=? AND status IN ('downloading','converting') RETURNING spotify_id`, revision.path, time.Now().Unix(), id).Scan(&recording)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -111,15 +114,6 @@ func (d *DB) MarkDownloadCompletedWithEvidence(ctx context.Context, id, path str
 	}
 	if !ValidSpotifyRecordingID(recording) {
 		return false, errors.New("invalid recording ID in completed download")
-	}
-	result, err := tx.ExecContext(ctx, `UPDATE spotify_downloads SET status='completed',progress=100,file_path=?,completed_at=?
- WHERE id=? AND status IN ('downloading','converting')`, revision.path, time.Now().Unix(), id)
-	if err != nil {
-		return false, err
-	}
-	count, err := result.RowsAffected()
-	if err != nil || count != 1 {
-		return false, err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO spotify_download_evidence
  (file_path,content_sha256,file_size,mtime_ns,spotify_id,completed_at) VALUES (?,?,?,?,?,?)`,
