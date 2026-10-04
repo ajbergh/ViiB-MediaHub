@@ -179,7 +179,9 @@ func TestClientCancellationAndRedirect(t *testing.T) {
 	var refreshes, destinationCalls atomic.Int32
 	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { destinationCalls.Add(1) }))
 	defer destination.Close()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, destination.URL, 307) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL, http.StatusTemporaryRedirect)
+	}))
 	defer server.Close()
 	client := NewClient(testTokens(&refreshes), Options{Enabled: true, AppVersion: "fixture", Client: testHTTP(server)})
 	_, err := client.Fetch(context.Background(), testID)

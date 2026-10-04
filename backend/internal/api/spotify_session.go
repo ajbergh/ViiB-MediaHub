@@ -18,7 +18,7 @@ import (
 
 const spotifyCookieSetting = "spotify_webplayer_session"
 
-var errSpotifyAccountChanged = errors.New("Spotify account changed")
+var errSpotifyAccountChanged = errors.New("spotify account changed")
 
 type spotifyTokenSource interface {
 	Token(context.Context, spotifyauth.Purpose) (spotifyauth.Token, error)

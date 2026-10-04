@@ -1595,7 +1595,7 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 	seenPages := map[string]bool{}
 	for next := playlist.Tracks.Next; next != ""; {
 		if seenPages[next] {
-			return nil, "", "", fmt.Errorf("Spotify playlist pagination did not advance")
+			return nil, "", "", fmt.Errorf("spotify playlist pagination did not advance")
 		}
 		seenPages[next] = true
 		pageResponse, err := a.doSpotifyRequest(ctx, http.MethodGet, next, nil, "")
@@ -1617,7 +1617,7 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 			return nil, "", "", decodeErr
 		}
 		if playlist.SnapshotID != nil && page.SnapshotID != nil && *playlist.SnapshotID != *page.SnapshotID {
-			return nil, "", "", fmt.Errorf("Spotify playlist changed while loading")
+			return nil, "", "", fmt.Errorf("spotify playlist changed while loading")
 		}
 		playlistItems = append(playlistItems, page.Items...)
 		next = page.Next

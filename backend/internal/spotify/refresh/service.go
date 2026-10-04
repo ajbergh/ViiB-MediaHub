@@ -19,7 +19,7 @@ const (
 )
 
 var ErrInvalidEndpoint = errors.New("invalid Spotify reference endpoint")
-var ErrStorage = errors.New("Spotify reference storage unavailable")
+var ErrStorage = errors.New("spotify reference storage unavailable")
 
 // Shared across session lifetimes, including a retiring provider whose HTTP
 // operation has not yet acknowledged cancellation.

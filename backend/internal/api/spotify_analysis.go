@@ -174,7 +174,7 @@ func (a *API) InstallSpotifyAnalysisService(service *spotifyrefresh.Service) err
 	a.spotifyAnalysisMu.Lock()
 	defer a.spotifyAnalysisMu.Unlock()
 	if a.spotifyAnalysisClosed || a.spotifyAnalysis != nil {
-		return errors.New("Spotify reference service already installed or API closed")
+		return errors.New("spotify reference service already installed or API closed")
 	}
 	if err := a.db.PurgeExternalAnalysis(); err != nil {
 		return err

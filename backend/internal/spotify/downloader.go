@@ -124,7 +124,7 @@ func lockDestination(ctx context.Context, path string) (func(), error) {
 	}
 }
 
-// isValidDownloadedFile checks if an existing file is a valid complete download.
+// isValidDownloadedFileContext checks if an existing file is a valid complete download.
 // Returns true if the file:
 // 1. Exists
 // 2. Is larger than MinValidFileSize (1 MB)
@@ -132,10 +132,6 @@ func lockDestination(ctx context.Context, path string) (func(), error) {
 // 4. Has metadata tags written (artist, title)
 //
 // If any check fails, the file should be re-downloaded.
-func isValidDownloadedFile(filePath string) bool {
-	return isValidDownloadedFileContext(context.Background(), filePath)
-}
-
 func isValidDownloadedFileContext(ctx context.Context, filePath string) bool {
 	return validateDownloadedFileContext(ctx, filePath) == nil
 }

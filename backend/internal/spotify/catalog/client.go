@@ -17,7 +17,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 )
 
-var ErrSchema = errors.New("Spotify catalog response is incompatible")
+var ErrSchema = errors.New("spotify catalog response is incompatible")
 
 type HTTPError struct {
 	Stage      string
