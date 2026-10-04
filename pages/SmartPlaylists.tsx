@@ -1,7 +1,7 @@
 /**
- * SmartPlaylists.tsx - AI DJ Interface
+ * SmartPlaylists.tsx - AI Smart Mix Interface
  * 
- * This component provides the main UI for ViiB MediaHub's AI DJ feature,
+ * This component provides the main UI for ViiB MediaHub's AI Smart Mix feature,
  * allowing users to generate playlists using natural language prompts.
  * 
  * Design System Alignment (Phase 4 complete 2025-12-28):
@@ -90,7 +90,7 @@ export const SmartPlaylists: React.FC = () => {
         ? 'Semantic index needs attention'
         : 'Standard matching active';
   const semanticDescription = semanticReady
-    ? 'AI DJ will use meaning-based retrieval when indexed tracks are available for the selected source.'
+    ? 'AI Smart Mix will use meaning-based retrieval when indexed tracks are available for the selected source.'
     : semanticIndexing
       ? 'Standard matching remains available while the background index finishes.'
       : 'Semantic matching will be used automatically after the index is configured and ready.';
@@ -100,7 +100,7 @@ export const SmartPlaylists: React.FC = () => {
     playSong, 
     showToast, 
     createPlaylist,
-    // AI DJ state
+    // AI Smart Mix state (existing persisted identifiers retained)
     aiDjPrompt,
     aiDjGeneratedSongs,
     aiDjFilter,
@@ -120,7 +120,7 @@ export const SmartPlaylists: React.FC = () => {
     aiDjPlan,
     aiDjPhases,
     aiDjNarration,
-    // AI DJ actions
+    // AI Smart Mix actions
     setAIDJPrompt,
     setAIDJGeneratedSongs,
     setAIDJFilter,
@@ -206,7 +206,7 @@ export const SmartPlaylists: React.FC = () => {
       } else if (validation?.shortened) {
         showToast({
           type: 'warning',
-          message: `Found ${songs.length} strong matches. AI DJ did not pad the playlist with tracks that conflicted with your request.`
+          message: `Found ${songs.length} strong matches. AI Smart Mix did not pad the playlist with tracks that conflicted with your request.`
         });
       } else if (aiDjMode) {
         showToast({
@@ -259,7 +259,7 @@ export const SmartPlaylists: React.FC = () => {
       <div className="p-8 pb-4">
         <div className="flex items-center gap-3 mb-4">
           <Sparkles className="text-brand" size={32} />
-          <h1 className="text-display text-text-main">AI DJ</h1>
+          <h1 className="text-display text-text-main">AI Smart Mix</h1>
         </div>
 
         {/* Mode Toggle */}
@@ -335,7 +335,7 @@ export const SmartPlaylists: React.FC = () => {
               ? "e.g., 'Late night deep house session' or 'High energy festival peak time'"
               : "e.g., 'Upbeat 80s pop songs for a workout' or 'Chill jazz for studying'"
             }
-            aria-label="AI DJ prompt"
+            aria-label="AI Smart Mix prompt"
             value={aiDjPrompt}
             onChange={(e) => setAIDJPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
@@ -619,7 +619,7 @@ export const SmartPlaylists: React.FC = () => {
                     </div>
                     {aiDjValidation.shortened && (
                       <p className="mt-2 text-meta text-warning">
-                        The result is shorter than requested because AI DJ found no more tracks that safely matched.
+                        The result is shorter than requested because AI Smart Mix found no more tracks that safely matched.
                       </p>
                     )}
                   </div>

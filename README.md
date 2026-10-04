@@ -25,7 +25,7 @@
 
 ViiB MediaHub is a self-hosted, local-first music player for Windows, macOS, and Linux. It combines a React interface with a Go backend, SQLite catalog, native Wails desktop shell, local filesystem scanning, Plex Media Server music-library support, Spotify integration, and AI-assisted library intelligence.
 
-ViiB's normal library experience is source-transparent: local files and synchronized Plex music are normalized into the same ViiB song catalog, so Songs, Albums, Artists, Search, Queue, playlists, likes, history, Smart Mixes, AI DJ, and statistics do not need separate Plex-specific screens.
+ViiB's normal library experience is source-transparent: local files and synchronized Plex music are normalized into the same ViiB song catalog, so Songs, Albums, Artists, Search, Queue, playlists, likes, history, Smart Mixes, AI Smart Mix, and statistics do not need separate Plex-specific screens.
 
 Spotify remains a distinct integration for Spotify browsing, streaming, and downloads.
 
@@ -69,7 +69,7 @@ Both modes share the same Go backend and React frontend.
 - **Local folders** — add and scan multiple filesystem music roots
 - **Plex Media Server music** — discover or manually configure PMS, authenticate, select a music library, synchronize metadata, and play through the normal ViiB player
 - One canonical ViiB `songs` catalog for local and Plex tracks
-- Source-transparent Albums, Artists, Search, playlists, likes, history, Smart Mixes, AI DJ, and Stats
+- Source-transparent Albums, Artists, Search, playlists, likes, history, Smart Mixes, AI Smart Mix, and Stats
 - Revisioned library synchronization and indexed backend search for large catalogs
 - Library Operations for track analysis, diagnostics, repair, backup, and staged offline restore
 
@@ -100,15 +100,15 @@ See [Plex Media Server Music Support](docs/plex-music.md).
 
 See [Spotify Integration](docs/spotify.md).
 
-### AI DJ and library intelligence
+### AI Smart Mix and library intelligence
 
 - Natural-language playlist generation with semantic track, album, and artist recall when the optional local SQLite index is ready
-- Semantic AI DJ phase retrieval with local source/filter enforcement, behaviour-aware ranking, diversity, BPM flow, and deterministic metadata fallback
+- Semantic AI Smart Mix phase retrieval with local source/filter enforcement, behaviour-aware ranking, diversity, BPM flow, and deterministic metadata fallback
 - Separate semantic embedding configuration: local Ollama or explicitly confirmed OpenAI, Gemini, or OpenRouter embeddings; chat-provider settings and listening history are never repurposed as embedding content
 - Smart Mixes based on catalog metadata and listening history
 - Multi-provider LLM support including Gemini, OpenAI, Anthropic, OpenRouter, Ollama, and X.AI where configured
 - Genre, mood, energy, tempo, BPM, and year enrichment
-- AI DJ set generation using the same ViiB catalog that contains local and synchronized Plex tracks
+- AI Smart Mix set generation using the same ViiB catalog that contains local and synchronized Plex tracks
 
 ### DJ Mode
 

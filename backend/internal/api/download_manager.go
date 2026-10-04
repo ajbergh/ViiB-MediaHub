@@ -20,6 +20,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
+	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 	"github.com/ajbergh/viib-mediahub/internal/validation"
 	"github.com/google/uuid"
 )
@@ -87,6 +88,8 @@ const (
 //   - Phase-aware stall detection with one automatic recovery attempt
 //   - Auth failure detection: notifies frontend when re-authentication is needed
 type DownloadManager struct {
+	tokenSource         spotifyTokenSource
+	sessionPrepareMu    sync.Mutex
 	db                  *db.DB                        // Database for persistent queue
 	downloadDir         string                        // Root directory for downloaded files
 	sessionManager      *spotify.SessionManager       // Manages librespot session lifecycle
@@ -192,7 +195,11 @@ type QueueDownloadRequest struct {
 //
 // Returns:
 //   - Initialized DownloadManager ready to be started
-func NewDownloadManager(database *db.DB, downloadDir string) *DownloadManager {
+func NewDownloadManager(database *db.DB, downloadDir string, sources ...spotifyTokenSource) *DownloadManager {
+	var source spotifyTokenSource = spotifyOAuthManager(database)
+	if len(sources) > 0 && sources[0] != nil {
+		source = sources[0]
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Create session manager (will be initialized with access token when needed)
@@ -231,6 +238,7 @@ func NewDownloadManager(database *db.DB, downloadDir string) *DownloadManager {
 	dm := &DownloadManager{
 		db:                  database,
 		downloadDir:         downloadDir,
+		tokenSource:         source,
 		sessionManager:      sessionManager,
 		downloader:          downloader,
 		isRunning:           false,
@@ -403,38 +411,45 @@ func (dm *DownloadManager) GetDownloadDir() string {
 //
 // Returns:
 //   - error if credentials are missing, invalid, or session initialization fails
-func (dm *DownloadManager) ensureSession() error {
-	dmLog("Ensuring Spotify session is ready...")
-
-	creds, err := loadValidSpotifyCredentials(dm.ctx, dm.db)
+func (dm *DownloadManager) ensureSession() error { return dm.ensureSessionContext(dm.ctx) }
+func (dm *DownloadManager) ensureSessionContext(ctx context.Context) error {
+	source := dm.tokenSource
+	if source == nil {
+		source = spotifyOAuthManager(dm.db)
+	}
+	prepare := func(ctx context.Context, token spotifyauth.Token) error {
+		dm.sessionPrepareMu.Lock()
+		defer dm.sessionPrepareMu.Unlock()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		dm.sessionManager.UpdateAccessToken(token.Bearer())
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := dm.sessionManager.Initialize(); err != nil {
+			return fmt.Errorf("failed to initialize session: %w", err)
+		}
+		return ctx.Err()
+	}
+	var err error
+	if runtime, ok := source.(*spotifyAuthRuntime); ok {
+		err = runtime.withPlayback(ctx, prepare)
+	} else {
+		var token spotifyauth.Token
+		token, err = source.Token(ctx, spotifyauth.Playback)
+		if err == nil {
+			err = prepare(ctx, token)
+		}
+	}
 	if err != nil {
 		message := strings.ToLower(err.Error())
-		if strings.Contains(message, "re-authentication required") ||
-			strings.Contains(message, "credentials not configured") ||
-			strings.Contains(message, "access token missing") {
-			dm.setAuthRequired(true, "Spotify session expired - please reconnect to Spotify")
+		if errors.Is(err, spotifyauth.ErrAuthenticationRequired) || errors.Is(err, spotifyauth.ErrDisabled) || strings.Contains(message, "credentials not configured") || strings.Contains(message, "re-authentication required") || strings.Contains(message, "login") || strings.Contains(message, "unauthorized") || strings.Contains(message, "invalid token") {
+			dm.setAuthRequired(true, "Spotify session unavailable - please reconnect")
 		}
 		return err
 	}
-
-	dmLog("Access token present (length: %d), updating session manager...", len(creds.AccessToken))
-
-	// Update session manager with current access token
-	dm.sessionManager.UpdateAccessToken(creds.AccessToken)
-
-	// Initialize session if not already done
-	dmLog("Initializing session...")
-	if err := dm.sessionManager.Initialize(); err != nil {
-		dmLog("Failed to initialize session: %v", err)
-		message := strings.ToLower(err.Error())
-		if strings.Contains(message, "login") || strings.Contains(message, "unauthorized") || strings.Contains(message, "invalid token") {
-			dm.setAuthRequired(true, "Spotify authentication failed - please reconnect to Spotify")
-		}
-		return fmt.Errorf("failed to initialize session: %w", err)
-	}
-
 	dm.setAuthRequired(false, "")
-	dmLog("Session ready!")
 	return nil
 }
 
@@ -450,11 +465,14 @@ func (dm *DownloadManager) setAuthRequired(required bool, message string) {
 	if required && !wasRequired {
 		dmLog("AUTH REQUIRED: %s", message)
 		// Send auth_required event via SSE
-		dm.progressChan <- DownloadProgress{
+		select {
+		case dm.progressChan <- DownloadProgress{
 			DownloadID: "auth",
 			Status:     "auth_required",
 			Progress:   0,
 			Error:      message,
+		}:
+		default: // Status polling remains authoritative when the event buffer is full.
 		}
 	} else if !required && wasRequired {
 		dmLog("Auth requirement cleared")
@@ -483,10 +501,14 @@ func (dm *DownloadManager) EnsureSession() error {
 	return dm.ensureSession()
 }
 
+func (dm *DownloadManager) EnsureSessionContext(ctx context.Context) error {
+	return dm.ensureSessionContext(ctx)
+}
+
 func (dm *DownloadManager) ensureSessionWithRetry(ctx context.Context) error {
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		lastErr = dm.ensureSession()
+		lastErr = dm.ensureSessionContext(ctx)
 		if lastErr == nil || dm.IsAuthRequired() {
 			return lastErr
 		}
@@ -588,10 +610,12 @@ func (dm *DownloadManager) QueueDownload(spotifyID, spotifyURI, downloadType, ti
 	return ids[0], nil
 }
 
+var errNoDownloadableTracks = errors.New("download request contains no tracks")
+
 // QueueDownloads atomically adds all tracks belonging to one logical request.
 func (dm *DownloadManager) QueueDownloads(requests []QueueDownloadRequest) ([]string, error) {
 	if len(requests) == 0 {
-		return nil, fmt.Errorf("download request contains no tracks")
+		return nil, errNoDownloadableTracks
 	}
 	downloads := make([]*db.SpotifyDownload, 0, len(requests))
 	addedAt := time.Now().Unix()
@@ -978,6 +1002,15 @@ func (dm *DownloadManager) dispatchDownloads() {
 			continue // Already being processed
 		}
 		jobCtx, cancel := context.WithCancel(dm.ctx)
+		if runtime, ok := dm.tokenSource.(*spotifyAuthRuntime); ok {
+			cancel()
+			jobCtx, cancel = runtime.requestContext(dm.ctx)
+		}
+		if jobCtx.Err() != nil || dm.IsAuthRequired() {
+			cancel()
+			dm.mu.Unlock()
+			return
+		}
 		dm.activeDownloads[download.ID] = cancel
 		dm.mu.Unlock()
 
@@ -1068,6 +1101,9 @@ func (dm *DownloadManager) processDownload(workerID int, job downloadJob) {
 
 		// Cleanup: remove from active downloads, progress tracker, and decrement counter
 		dm.mu.Lock()
+		if cancel := dm.activeDownloads[download.ID]; cancel != nil {
+			cancel()
+		}
 		restart := dm.restartRequests[download.ID]
 		delete(dm.restartRequests, download.ID)
 		delete(dm.activeDownloads, download.ID)
@@ -1078,6 +1114,9 @@ func (dm *DownloadManager) processDownload(workerID int, job downloadJob) {
 		dm.mu.Unlock()
 		newCount := atomic.AddInt32(&dm.activeCount, -1)
 		dmLogDebug("Worker %d: finished processing %s, activeCount now %d", workerID, download.ID, newCount)
+		if errors.Is(context.Cause(job.ctx), errSpotifyAccountChanged) {
+			_, _ = dm.db.RequeueDownloading(download.ID)
+		}
 		if restart {
 			if err := dm.db.ResetDownloadForForceRestart(download.ID); err != nil {
 				dmLog("Failed to requeue force-restarted download %s: %v", download.ID, err)
@@ -1196,6 +1235,7 @@ retryLoop:
 
 		dmLog("Worker %d: download failed for '%s' (attempt %d/%d): %v - retrying...",
 			workerID, download.Title, attempt, maxRetries, lastErr)
+		dm.reportDownloadRetry(download.ID, attempt+1, maxRetries)
 
 		audioKeyRejected := spotify.IsAudioKeyRejected(lastErr)
 		resetForAudioKey := audioKeyRejected && !audioKeySessionResetAttempted
@@ -1258,11 +1298,33 @@ func downloadRetryReason(audioKeyRejected bool) string {
 	return "repeated transient failures"
 }
 
+// Keep ownership/status unchanged while making a new transfer attempt explicit.
+func (dm *DownloadManager) reportDownloadRetry(id string, attempt, maximum int) {
+	dm.db.UpdateDownloadProgress(id, 0)
+	dm.progressChan <- DownloadProgress{
+		DownloadID: id,
+		Status:     "downloading",
+		Progress:   0,
+		Error:      fmt.Sprintf("Retrying download (attempt %d/%d) after a transfer or validation failure", attempt, maximum),
+	}
+}
+
+func downloadTransferProgress(bytesRead, totalBytes int64) int {
+	if totalBytes <= 0 {
+		totalBytes = 7 * 1024 * 1024 // Legacy unknown-length readers only.
+	}
+	return max(0, min(99, int(float64(bytesRead)/float64(totalBytes)*100)))
+}
+
+func shouldReportDownloadProgress(progress, last int) bool {
+	return progress >= last+5 || (progress == 99 && last < 99)
+}
+
 func isRetriableDownloadError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false
 	}
-	if spotify.IsAudioKeyRejected(err) {
+	if spotify.IsAudioKeyRejected(err) || spotify.IsOggIntegrityError(err) {
 		return true
 	}
 	message := strings.ToLower(err.Error())
@@ -1284,10 +1346,9 @@ func isRetriableDownloadError(err error) bool {
 // and database updates.
 //
 // Progress Tracking:
-//   - Since total file size is unknown beforehand, progress is estimated
-//   - Assumes average track size of 7MB (typical for ~3-4 minute song)
+//   - Uses the asset's declared size, with a legacy unknown-length fallback
 //   - Progress updates sent every 5% to reduce database writes
-//   - Progress capped at 99% until download is fully complete
+//   - Always emits 99%, reserving 100% for validated completion
 //   - Updates stall detection tracker on each progress update
 //
 // Parameters:
@@ -1300,13 +1361,7 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 	// Captures lastProgress to implement throttling (updates every 5%)
 	var lastProgress int
 	progressCallback := func(bytesRead int64, totalBytes int64) {
-		// Estimate progress based on typical track size (5-10 MB)
-		// Since we don't know the total size, we'll estimate progress
-		estimatedTotal := int64(7 * 1024 * 1024) // 7MB average
-		progress := int((float64(bytesRead) / float64(estimatedTotal)) * 100)
-		if progress > 99 {
-			progress = 99 // Don't go to 100 until file is complete
-		}
+		progress := downloadTransferProgress(bytesRead, totalBytes)
 
 		// Update stall detection tracker on ANY bytes read, even if the UI
 		// percentage has not crossed its throttling threshold.
@@ -1320,7 +1375,7 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 		dm.mu.Unlock()
 
 		// Only update UI if progress changed by at least 5%
-		if progress >= lastProgress+5 {
+		if shouldReportDownloadProgress(progress, lastProgress) {
 			lastProgress = progress
 			dm.db.UpdateDownloadProgress(download.ID, progress)
 			dm.progressChan <- DownloadProgress{
@@ -1369,13 +1424,24 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 		return err
 	}
 	if shouldConvert {
-		return dm.startOggConversion(download, metadata, filePath)
+		return dm.startOggConversion(ctx, download, metadata, filePath)
 	}
-	return dm.completeDownload(download, filePath)
+	return dm.completeDownload(ctx, download, filePath)
 }
 
-func (dm *DownloadManager) completeDownload(download *db.SpotifyDownload, filePath string) error {
-	changed, err := dm.db.MarkDownloadCompleted(download.ID, filePath)
+func (dm *DownloadManager) completeDownload(ctx context.Context, download *db.SpotifyDownload, filePath string) error {
+	var changed bool
+	commit := func() error {
+		var err error
+		changed, err = dm.db.MarkDownloadCompletedWithEvidence(ctx, download.ID, filePath)
+		return err
+	}
+	var err error
+	if runtime, ok := dm.tokenSource.(*spotifyAuthRuntime); ok {
+		err = runtime.withAccount(ctx, commit)
+	} else {
+		err = commit()
+	}
 	if err != nil {
 		dmLog("Error marking download as completed: %v", err)
 		return err
@@ -1456,7 +1522,7 @@ func (dm *DownloadManager) convertDownloadedOgg(ctx context.Context, download *d
 // independent post-processing goroutine. Once this method returns, the worker's
 // deferred cleanup releases its download slot, allowing the dispatcher to start
 // the next queued transfer while conversion continues.
-func (dm *DownloadManager) startOggConversion(download *db.SpotifyDownload, metadata *spotify.DownloadMetadata, filePath string) error {
+func (dm *DownloadManager) startOggConversion(ctx context.Context, download *db.SpotifyDownload, metadata *spotify.DownloadMetadata, filePath string) error {
 	changed, err := dm.db.MarkDownloadConverting(download.ID, filePath)
 	if err != nil {
 		return fmt.Errorf("mark download as converting: %w", err)
@@ -1465,7 +1531,12 @@ func (dm *DownloadManager) startOggConversion(download *db.SpotifyDownload, meta
 		return fmt.Errorf("download state changed before conversion")
 	}
 
-	conversionCtx, cancel := context.WithCancel(dm.ctx)
+	conversionCtx, cancel := dm.conversionContext(ctx)
+	if conversionCtx.Err() != nil {
+		cancel()
+		_, _ = dm.db.RequeueConverting(download.ID)
+		return conversionCtx.Err()
+	}
 	dm.mu.Lock()
 	dm.activeConversions[download.ID] = cancel
 	dm.mu.Unlock()
@@ -1478,6 +1549,18 @@ func (dm *DownloadManager) startOggConversion(download *db.SpotifyDownload, meta
 
 	go dm.runOggConversion(conversionCtx, download, metadata, filePath)
 	return nil
+}
+
+func (dm *DownloadManager) conversionContext(job context.Context) (context.Context, context.CancelFunc) {
+	if runtime, ok := dm.tokenSource.(*spotifyAuthRuntime); ok {
+		// Preserve the original account, but detach from the finishing worker.
+		parent := dm.ctx
+		if lifetime, ok := job.Value(spotifyAccountContextKey{}).(context.Context); ok {
+			parent = context.WithValue(parent, spotifyAccountContextKey{}, lifetime)
+		}
+		return runtime.requestContext(parent)
+	}
+	return context.WithCancel(dm.ctx)
 }
 
 func (dm *DownloadManager) runOggConversion(ctx context.Context, download *db.SpotifyDownload, metadata *spotify.DownloadMetadata, filePath string) {
@@ -1494,8 +1577,14 @@ func (dm *DownloadManager) runOggConversion(ctx context.Context, download *db.Sp
 		dm.mu.Lock()
 		restart := dm.restartRequests[download.ID]
 		delete(dm.restartRequests, download.ID)
+		if cancel := dm.activeConversions[download.ID]; cancel != nil {
+			cancel()
+		}
 		delete(dm.activeConversions, download.ID)
 		dm.mu.Unlock()
+		if errors.Is(context.Cause(ctx), errSpotifyAccountChanged) {
+			_, _ = dm.db.RequeueConverting(download.ID)
+		}
 		if restart {
 			if err := dm.db.ResetDownloadForForceRestart(download.ID); err != nil {
 				dmLog("Failed to requeue force-restarted conversion %s: %v", download.ID, err)
@@ -1524,7 +1613,7 @@ func (dm *DownloadManager) runOggConversion(ctx context.Context, download *db.Sp
 		return
 	}
 
-	if err := dm.completeDownload(download, convertedPath); err != nil {
+	if err := dm.completeDownload(ctx, download, convertedPath); err != nil {
 		dmLog("Failed to complete converted download %s: %v", download.ID, err)
 	}
 }

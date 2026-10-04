@@ -1,26 +1,35 @@
 /**
- * ViiB MediaHub - Spotify State Slice
- * 
- * Zustand slice managing Spotify integration state.
- * 
- * State:
- * - spotifyClientId/Secret: OAuth application credentials
- * - spotifyAccessToken/RefreshToken: User authentication tokens
- * - spotifyTokenExpiry: Token expiration timestamp
- * - spotifyUser: Authenticated user profile
- * 
- * Only the client ID and non-sensitive preferences are persisted by the
- * renderer's localStorage store. Access/refresh tokens are never written to
- * renderer localStorage; the Go backend may persist the encrypted session and
- * the app restores valid credentials into renderer memory at startup.
- * 
+ * Zustand slice for Spotify connection, account generation, profile, search,
+ * playback preferences, and download count. Disconnect and authentication failure
+ * retire Spotify playback and invalidate requests from the prior generation.
+ * Legacy OAuth fields remain for compatibility. Cookies and active Web Player
+ * bearer tokens stay in the backend; renderer persistence excludes secrets and tokens.
+ *
  * @module spotifySlice
  */
 
 import { StateCreator } from 'zustand';
 import { AppState, SpotifySlice } from './types';
 
-export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = (set) => ({
+export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = (set, get) => ({
+  spotifyConnected: false,
+  spotifySessionGeneration: 0,
+  spotifyAuthRequired: false,
+  setSpotifyConnected: (connected) => set(state => ({
+    spotifyConnected: connected,
+    spotifyAuthRequired: connected ? false : state.spotifyAuthRequired,
+    spotifySessionGeneration: state.spotifySessionGeneration + (state.spotifyConnected !== connected ? 1 : 0),
+    ...(!connected ? {spotifyUser: null, spotifySearchResults: null} : {})
+  })),
+  markSpotifyAuthRequired: () => {
+    get().retireSpotifyPlayback();
+    set(state => ({
+      spotifyConnected: false, spotifyAuthRequired: true,
+      spotifySessionGeneration: state.spotifySessionGeneration + 1,
+      spotifyUser: null, spotifySearchResults: null,
+      spotifyAccessToken: null, spotifyRefreshToken: null, spotifyTokenExpiry: 0
+    }));
+  },
   spotifyClientId: '',
   spotifyClientSecret: '',
   spotifyAccessToken: null,
@@ -40,12 +49,19 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       spotifyTokenExpiry: expiry 
   }),
   setSpotifyUser: (user) => set({ spotifyUser: user }),
-  logoutSpotify: () => set({ 
+  logoutSpotify: () => {
+    get().retireSpotifyPlayback();
+    set(state => ({
+      spotifySessionGeneration: state.spotifySessionGeneration + 1,
+      spotifyAuthRequired: false,
+      spotifyConnected: false,
+      spotifySearchResults: null,
       spotifyAccessToken: null, 
       spotifyRefreshToken: null, 
       spotifyTokenExpiry: 0, 
       spotifyUser: null 
-  }),
+    }));
+  },
   
   // Search persistence actions
   setSpotifySearchQuery: (query) => set({ spotifySearchQuery: query }),

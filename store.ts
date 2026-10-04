@@ -4,12 +4,12 @@
  * Zustand-based state management combining multiple slices:
  * - PlayerSlice: Playback state, queue, audio settings, EQ
  * - LibrarySlice: Songs, playlists, smart mixes, metadata cache
- * - SpotifySlice: OAuth tokens, user profile, Spotify integration
+ * - SpotifySlice: Backend session state, account generation, profile, and legacy OAuth fields
  * - UISlice: Context menus, dialogs, download count, panel states
  * 
  * Persistence:
  * - Audio settings and UI preferences persisted to localStorage
- * - Spotify client ID and non-sensitive preferences persisted to localStorage; secrets and tokens are excluded from renderer persistence and restored from the backend when available
+ * - Spotify client ID and non-sensitive preferences persisted to localStorage; secrets and tokens are excluded from renderer persistence; connection status is restored from the backend
  * - Song library backed by SQLite (via Go backend); IndexedDB used as fallback in browser-only mode
  * 
  * Selectors:
@@ -50,10 +50,15 @@ export const useStore = create<AppState>()(
       // v3: DJv2 workstation defaults to the performance layout. 'fx' was the old
       //     default, so returning users are moved to 'perf' once.
       // v4: persists desktop close behavior.
-      version: 4,
+      version: 5,
       migrate: (persistedState: any, version: number) => {
         const migrated = { ...(persistedState || {}) };
         delete migrated.spotifyClientSecret;
+        delete migrated.spotifyUser;
+        delete migrated.spotifyAccessToken;
+        delete migrated.spotifyRefreshToken;
+        delete migrated.spotifyTokenExpiry;
+        delete migrated.spotifyConnected;
         if (version < 3 && migrated.djMixer?.djLayoutMode === 'fx') {
           migrated.djMixer = { ...migrated.djMixer, djLayoutMode: 'perf' };
         }
@@ -72,7 +77,7 @@ export const useStore = create<AppState>()(
           // NOTE: spotifyAccessToken, spotifyRefreshToken, and spotifyTokenExpiry
           // are intentionally NOT persisted to renderer localStorage. The backend
           // owns encrypted session persistence and restores valid tokens at startup.
-          spotifyUser: state.spotifyUser,
+
           streamingEnabled: state.streamingEnabled,
           streamingQuality: state.streamingQuality,
           preferLocalPlayback: state.preferLocalPlayback,

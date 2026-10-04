@@ -38,6 +38,7 @@ const BASE_RETRY_DELAY = 1000;
 let saveSettingsTimeout: ReturnType<typeof setTimeout> | null = null;
 
 let latestPlaybackRequestId = 0;
+const spotifyPreloadCancellations = new Set<() => void>();
 
 
 /**
@@ -160,7 +161,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
                             // Check if streaming is enabled before falling back
                             if (streamingEnabled) {
                                 const { api } = await import('../services/api');
-                                playableSong.url = api.getSpotifyStreamUrl(playableSong.spotifyId!, streamingQuality);
+                                playableSong.url = await api.resolveSpotifyStreamUrl(playableSong.spotifyId!, streamingQuality);
                                 playableSong.isStreaming = true;
                             } else {
                                 console.warn('[Player] Streaming disabled, cannot play track');
@@ -172,7 +173,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
                         // Check if streaming is enabled before falling back
                         if (streamingEnabled) {
                             const { api } = await import('../services/api');
-                            playableSong.url = api.getSpotifyStreamUrl(playableSong.spotifyId!, streamingQuality);
+                            playableSong.url = await api.resolveSpotifyStreamUrl(playableSong.spotifyId!, streamingQuality);
                             playableSong.isStreaming = true;
                         } else {
                             console.warn('[Player] Streaming disabled, cannot play track');
@@ -186,7 +187,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
                         return;
                     }
                     const { api } = await import('../services/api');
-                    playableSong.url = api.getSpotifyStreamUrl(playableSong.spotifyId, streamingQuality);
+                    playableSong.url = await api.resolveSpotifyStreamUrl(playableSong.spotifyId, streamingQuality);
                     playableSong.isStreaming = true;
                     console.log('[Player] Using Spotify stream URL:', playableSong.url);
                 }
@@ -197,7 +198,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
                     return;
                 }
                 const { api } = await import('../services/api');
-                playableSong.url = api.getSpotifyStreamUrl(playableSong.spotifyId, streamingQuality);
+                playableSong.url = await api.resolveSpotifyStreamUrl(playableSong.spotifyId, streamingQuality);
                 playableSong.isStreaming = true;
                 console.log('[Player] Streaming preferred, using Spotify stream URL:', playableSong.url);
             }
@@ -366,6 +367,27 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         }
     },
 
+    retireSpotifyPlayback: () => {
+        for (const cancel of spotifyPreloadCancellations) cancel();
+        // Invalidate pending song resolution and delayed retries as well as active playback.
+        const state = get();
+        const requiresSpotify = (song: typeof state.currentSong) =>
+            !!song?.spotifyId && (song.isStreaming || !song.url);
+        const queue = state.queue.filter(song => !requiresSpotify(song));
+        const stopped = requiresSpotify(state.currentSong);
+        const currentSongIndex = stopped ? -1 : state.queue.slice(0, state.currentSongIndex)
+            .filter(song => !requiresSpotify(song)).length;
+        set({
+            playbackGeneration: ++latestPlaybackRequestId,
+            queue,
+            currentSongIndex: state.currentSong ? currentSongIndex : -1,
+            preloadedTrackId: null,
+            ...(stopped ? {
+                currentSong: null, isPlaying: false, isBuffering: false,
+                bufferProgress: 0, streamError: null, retryCount: 0,
+            } : {}),
+        });
+    },
     reorderQueue: (fromIndex, toIndex) => {
         const { queue, currentSongIndex } = get();
         const newQueue = [...queue];
@@ -566,42 +588,41 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         console.log('[Player] Pre-buffering next track:', nextTrack.title);
         
         try {
+            const generation = get().playbackGeneration;
             // Create a hidden audio element to pre-buffer
             const preloadAudio = new Audio();
             const { api } = await import('../services/api');
             const streamUrl = nextTrack.source === 'plex'
                 ? nextTrack.url
-                : api.getSpotifyStreamUrl(nextTrack.spotifyId!, streamingQuality);
+                : await api.resolveSpotifyStreamUrl(nextTrack.spotifyId!, streamingQuality);
             
+            if (get().playbackGeneration !== generation) return;
             preloadAudio.preload = 'auto';
             preloadAudio.src = streamUrl;
             
-            // Load without playing - just buffer the data
-            preloadAudio.load();
-            
-            // Wait for enough data to be buffered (canplaythrough event)
+            // Retirement releases hidden network preloads, including a pending completion.
             await new Promise<void>((resolve, reject) => {
+                const cleanup = () => {
+                    clearTimeout(timeout);
+                    spotifyPreloadCancellations.delete(cancel);
+                    preloadAudio.removeEventListener('canplaythrough', complete);
+                    preloadAudio.removeEventListener('error', failed);
+                    preloadAudio.removeAttribute('src');
+                    preloadAudio.load();
+                };
+                const cancel = () => { cleanup(); resolve(); };
+                const complete = () => { cleanup(); resolve(); };
+                const failed = () => { cleanup(); reject(new Error('Preload failed')); };
                 const timeout = setTimeout(() => {
-                    preloadAudio.src = ''; // Cleanup
+                    cleanup();
                     reject(new Error('Preload timeout'));
-                }, 30000); // 30 second timeout
-                
-                preloadAudio.addEventListener('canplaythrough', () => {
-                    clearTimeout(timeout);
-                    // Release the Audio element to prevent memory leak
-                    preloadAudio.src = '';
-                    preloadAudio.removeAttribute('src');
-                    resolve();
-                }, { once: true });
-                
-                preloadAudio.addEventListener('error', (e) => {
-                    clearTimeout(timeout);
-                    preloadAudio.src = '';
-                    preloadAudio.removeAttribute('src');
-                    reject(e);
-                }, { once: true });
+                }, 30000);
+                if (nextTrack.source !== 'plex') spotifyPreloadCancellations.add(cancel);
+                preloadAudio.addEventListener('canplaythrough', complete, {once: true});
+                preloadAudio.addEventListener('error', failed, {once: true});
+                preloadAudio.load();
             });
-            
+            if (get().playbackGeneration !== generation) return;
             console.log('[Player] Next track pre-buffered successfully:', nextTrack.title);
             set({ preloadedTrackId: nextTrack.id });
             

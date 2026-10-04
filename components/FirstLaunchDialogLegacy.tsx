@@ -9,7 +9,7 @@
  * - Multi-step wizard interface with progress indicator
  * - Music folder selection with native folder browser
  * - Optional Spotify integration setup for metadata enrichment
- * - AI Provider (LLM) configuration for AI DJ and mood analysis
+ * - AI Provider (LLM) configuration for AI Smart Mix and mood analysis
  * - Last.FM integration for community-powered metadata enrichment
  * - Enrichment source selection when both LLM and Last.FM are configured
  * - Skip options at each step for minimal setup
@@ -18,8 +18,8 @@
  * Setup Steps:
  * 1. Welcome screen with feature overview
  * 2. Add music folder(s) to scan
- * 3. Configure Spotify credentials (optional)
- * 4. Configure AI Provider for AI DJ (optional)
+ * 3. Sign in through the Spotify browser connection (optional)
+ * 4. Configure AI Provider for AI Smart Mix (optional)
  * 5. Configure Last.FM for metadata enrichment (optional)
  * 6. Enrichment source selection (shown only if both LLM and Last.FM configured)
  * 7. Complete and start scanning
@@ -33,6 +33,7 @@
  * @see {@link Settings} for post-setup configuration changes
  */
 
+import { SpotifySessionConnect } from './SpotifySessionConnect';
 import React, { useState, useEffect } from 'react';
 import { Music, FolderOpen, Wifi, Check, Loader2, X, Plus, ChevronRight, Sparkles, HardDrive, AlertCircle } from 'lucide-react';
 import { useStore } from '../store';
@@ -67,15 +68,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
   const [loadingBrowser, setLoadingBrowser] = useState(false);
 
   // Spotify credentials state
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
+  const spotifyConnected = useStore(state => state.spotifyConnected);
   const [savingCredentials, setSavingCredentials] = useState(false);
 
   // Gemini API key state (legacy, for backward compatibility with enrichment)
   const [geminiKey, setGeminiKey] = useState('');
   const [savingGemini, setSavingGemini] = useState(false);
 
-  // LLM Provider state for AI DJ
+  // LLM Provider state for AI Smart Mix
   const [llmProvider, setLlmProvider] = useState('ollama');
   const [llmModel, setLlmModel] = useState('llama3.2:8b');
   const [llmApiKey, setLlmApiKey] = useState('');
@@ -111,7 +111,6 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
     loadScanFolders,
     addScanFolder,
     removeScanFolder,
-    setSpotifyCredentials,
     addLog,
     setScanning,
     setScanProgress,
@@ -240,22 +239,12 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
   };
 
   const handleSaveSpotifyCredentials = async () => {
-    if (!clientId.trim() || !clientSecret.trim()) {
+    if (!spotifyConnected) {
       return;
     }
 
     setSavingCredentials(true);
     try {
-      setSpotifyCredentials(clientId, clientSecret);
-      await api.saveSpotifyCredentials({
-        clientId,
-        clientSecret,
-        accessToken: '',
-        refreshToken: '',
-        expiry: 0
-      });
-      addLog('success', 'Spotify credentials saved');
-
       // Save download path if specified
       if (spotifyDownloadPath.trim()) {
         try {
@@ -291,7 +280,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
   const handleSaveLlmSettings = async () => {
     setSavingLlm(true);
     try {
-      // Save LLM settings for AI DJ
+      // Save LLM settings for AI Smart Mix
       await api.updateLLMSettings({
         provider: llmProvider,
         model: llmModel,
@@ -669,7 +658,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
 
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
         <p className="text-sm text-text-secondary mb-4">
-          Connect your Spotify Developer account to automatically fetch high-quality album artwork,
+          Connect your Spotify account to automatically fetch high-quality album artwork,
           artist images, and metadata for your local music library.
         </p>
 
@@ -691,41 +680,8 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
           </ul>
         </div>
 
-        <div className="bg-surface-2 border border-surface-border rounded-lg p-4 mb-6 text-sm text-text-secondary space-y-2">
-          <p className="font-bold text-white">Before entering your credentials</p>
-          <p>1. Create an app in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-brand hover:underline">Spotify Developer Dashboard</a>.</p>
-          <p>2. In the app's settings, add this exact Redirect URI:</p>
-          <code className="block bg-surface-1 px-3 py-2 rounded text-xs text-text-main break-all select-all">{SPOTIFY_DESKTOP_CALLBACK_URL}</code>
-          <p>3. Copy its Client ID and Client Secret into the fields below.</p>
-        </div>
-
-        <div className="space-y-4 mb-4">
-          <div>
-            <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
-              Spotify Client ID
-            </label>
-            <TextInput
-              type="text"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="Enter your Client ID"
-              className="w-full bg-surface-2 px-4 py-3"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
-              Spotify Client Secret
-            </label>
-            <TextInput
-              type="password"
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              placeholder="Enter your Client Secret"
-              className="w-full bg-surface-2 px-4 py-3"
-            />
-          </div>
-
+        <SpotifySessionConnect />
+        <div className="space-y-4 my-4">
           <div>
             <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
               Download Location (Optional)
@@ -755,17 +711,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
           </div>
         </div>
 
-        <div className="text-xs text-text-subtle">
-          Don't have credentials? Create a free app at{' '}
-          <a
-            href="https://developer.spotify.com/dashboard"
-            target="_blank"
-            rel="noreferrer"
-            className="text-brand hover:underline"
-          >
-            developer.spotify.com/dashboard
-          </a>
-        </div>
+
       </div>
 
       <div className="flex items-center justify-between">
@@ -789,7 +735,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
             variant="primary"
             accent="brand"
             onClick={handleSaveSpotifyCredentials}
-            disabled={!clientId.trim() || !clientSecret.trim() || savingCredentials}
+            disabled={!spotifyConnected || savingCredentials}
             leftIcon={savingCredentials ? <Loader2 size={18} className="animate-spin" /> : undefined}
             rightIcon={!savingCredentials ? <ChevronRight size={18} /> : undefined}
             className="font-bold py-3 px-6"
@@ -809,14 +755,14 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
           <Sparkles size={28} className="text-brand" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-white">AI DJ Provider</h2>
-          <p className="text-text-secondary">Optional - Power the AI DJ with your preferred AI</p>
+          <h2 className="text-2xl font-bold text-white">AI Smart Mix Provider</h2>
+          <p className="text-text-secondary">Optional - Power AI Smart Mix with your preferred AI</p>
         </div>
       </div>
 
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
         <p className="text-sm text-text-secondary mb-4">
-          Choose which AI provider powers the AI DJ for natural language playlist generation.
+          Choose which AI provider powers AI Smart Mix for natural language playlist generation.
           Ollama runs locally (free, no API key), or use cloud providers for more powerful models.
         </p>
 
@@ -1241,7 +1187,7 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
                 <span className="font-medium text-text-main block">Last.FM Only</span>
                 <span className="text-sm text-text-secondary block mt-1">
                   Use community-powered tags from Last.FM. Free, fast, and based on millions of listeners' tags.
-                  AI is reserved for the AI DJ feature only.
+                  AI is reserved for the AI Smart Mix feature only.
                 </span>
               </div>
             </label>

@@ -188,7 +188,7 @@ func (a *API) createBackupV2(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.RemoveAll(workDir)
 	databaseCopy := filepath.Join(workDir, "library.db")
-	if err := a.db.CreateConsistentCopy(databaseCopy); err != nil {
+	if err := a.db.CreateSpotifyCredentialFreeCopy(databaseCopy); err != nil {
 		respondV2Error(w, r, http.StatusInternalServerError, "backup_database_failed", "Unable to create a consistent database snapshot", true, map[string]any{"reason": err.Error()})
 		return
 	}

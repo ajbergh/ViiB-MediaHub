@@ -19,7 +19,6 @@
 // be reinitialized when settings are saved via initLastFMClient().
 //
 // Created: 2025-12-31
-// Last Modified: 2025-12-31
 package api
 
 import (
@@ -293,10 +292,18 @@ func (a *API) handleLastFMEnrichSongs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	jobCtx, finish, admitted := a.beginEnrichment(context.Background())
+	if !admitted {
+		atomic.StoreInt32(&a.enrichRunning, 0)
+		respondError(w, http.StatusServiceUnavailable, "Application is shutting down")
+		return
+	}
+
 	// Start enrichment in background
 	go func() {
+		defer finish()
 		defer atomic.StoreInt32(&a.enrichRunning, 0)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		ctx, cancel := context.WithTimeout(jobCtx, 30*time.Minute)
 		defer cancel()
 
 		result, err := enricher.EnrichSongs(ctx, songs, lastfm.EnrichOptions{
@@ -314,7 +321,9 @@ func (a *API) handleLastFMEnrichSongs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Store last sync time
-		a.db.SetSetting("lastfm_last_sync", strconv.FormatInt(time.Now().Unix(), 10))
+		if err == nil && ctx.Err() == nil {
+			a.db.SetSetting("lastfm_last_sync", strconv.FormatInt(time.Now().Unix(), 10))
+		}
 	}()
 
 	respondJSON(w, map[string]interface{}{
@@ -366,9 +375,16 @@ func (a *API) handleLastFMEnrichArtists(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	jobCtx, finish, admitted := a.beginEnrichment(context.Background())
+	if !admitted {
+		respondError(w, http.StatusServiceUnavailable, "Application is shutting down")
+		return
+	}
+
 	// Start enrichment in background
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer finish()
+		ctx, cancel := context.WithTimeout(jobCtx, 15*time.Minute)
 		defer cancel()
 
 		enricher := lastfm.NewEnricher(a.lastfmClient, a.db)

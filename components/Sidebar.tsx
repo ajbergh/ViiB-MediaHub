@@ -181,7 +181,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
         <div className="space-y-1">
           <SidebarItem to="/liked" icon={Heart} label="Liked Songs" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
           <SidebarItem to="/liked-albums" icon={Disc} label="Liked Albums" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
-          <SidebarItem to="/smart-playlists" icon={Sparkles} label="AI DJ" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
+          <SidebarItem to="/smart-playlists" icon={Sparkles} label="AI Smart Mix" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
         </div>
 
         <div className={`my-2 border-t border-surface-highlight/50 ${effectiveCollapsed ? 'mx-2' : 'mx-4'}`} role="separator"></div>

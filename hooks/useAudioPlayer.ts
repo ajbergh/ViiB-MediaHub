@@ -21,6 +21,7 @@
  * @module useAudioPlayer
  */
 
+import { getEventStreamURL } from '../services/eventStreamURL';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useStore } from '../store';
 import { audioEngine } from '../lib/audio';
@@ -104,8 +105,20 @@ export const useAudioPlayer = () => {
 
     // Only destructure reactive state needed for effect dependencies and rendering.
     // Action functions are accessed via useStore.getState() inside handlers to avoid stale closures (H-6).
-    const { currentSong, isPlaying, volume, audioSettings } = useStore();
+    const { currentSong, isPlaying, volume, audioSettings, spotifyConnected, spotifySessionGeneration } = useStore();
 
+    // Release an outgoing or gapless-preloaded Spotify stream while preserving local audio.
+    useEffect(() => {
+        if (spotifyConnected) return;
+        for (const player of [primaryRef.current, secondaryRef.current]) {
+            if (player?.getAttribute('src')?.includes('/api/spotify/stream/')) {
+                audioEngine.cancelCleanup(player);
+                player.pause();
+                player.removeAttribute('src');
+                player.load();
+            }
+        }
+    }, [spotifyConnected, spotifySessionGeneration]);
     // Init Engine & EQ
     useEffect(() => {
         // Ensure engine is awake if we have a song
@@ -401,8 +414,17 @@ export const useAudioPlayer = () => {
         audioEngine.register(secondary);
 
         if (!currentSong) {
+            audioEngine.cancelCleanup(primary);
+            audioEngine.cancelCleanup(secondary);
             primary.pause();
             secondary.pause();
+            // Release active and preloaded stream requests on account retirement.
+            for (const player of [primary, secondary]) {
+                if (player.getAttribute('src')) {
+                    player.removeAttribute('src');
+                    player.load();
+                }
+            }
             return;
         }
 
@@ -548,10 +570,19 @@ export const useAudioPlayer = () => {
             if (state.audioSettings.gapless && dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
                 const nextTrack = state.queue[state.currentSongIndex + 1];
                 const inactivePlayer = activePlayerIndex.current === 0 ? secondaryRef.current : primaryRef.current;
-                if (nextTrack?.url && inactivePlayer && inactivePlayer.getAttribute('src') !== nextTrack.url) {
-                    inactivePlayer.preload = 'auto';
-                    inactivePlayer.src = nextTrack.url;
-                    inactivePlayer.load();
+                if (nextTrack?.url && inactivePlayer && hasTriggeredPreload.current !== currentSong?.id) {
+                    const generation = state.playbackGeneration;
+                    const url = nextTrack.isStreaming && nextTrack.spotifyId
+                        ? getEventStreamURL(nextTrack.url) : Promise.resolve(nextTrack.url);
+                    void url.then(source => {
+                        const latest = useStore.getState();
+                        if (latest.playbackGeneration !== generation || latest.queue[latest.currentSongIndex + 1]?.id !== nextTrack.id) return;
+                        if (inactivePlayer.getAttribute('src') !== source) {
+                            inactivePlayer.preload = 'auto';
+                            inactivePlayer.src = source;
+                            inactivePlayer.load();
+                        }
+                    }).catch(() => { /* Normal track selection can retry this optional preload. */ });
                 }
             }
 

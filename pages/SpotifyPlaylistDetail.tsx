@@ -16,6 +16,9 @@
  * @module SpotifyPlaylistDetail
  */
 
+import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
+import { backendSpotifyFetch } from '../services/spotifyBackend';
+import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download } from 'lucide-react';
@@ -33,13 +36,13 @@ interface SpotifyPlaylistFull {
   description: string;
   images: { url: string; height: number; width: number }[];
   owner: { display_name: string; id: string };
-  followers: { total: number };
-  public: boolean;
+  followers: { total: number } | null;
+  public: boolean | null;
   external_urls: { spotify: string };
   tracks: {
     total: number;
     items: {
-      added_at: string;
+      added_at: string | null;
       track: {
         id: string;
         name: string;
@@ -110,7 +113,11 @@ export const SpotifyPlaylistDetail: React.FC = () => {
     }
   };
 
+  const spotifyGeneration = useStore(state => state.spotifySessionGeneration);
   useEffect(() => {
+    let active = true;
+    const current = () => active && useStore.getState().spotifySessionGeneration === spotifyGeneration;
+    setPlaylist(null);
     const fetchPlaylist = async () => {
       if (!id) return;
       
@@ -118,14 +125,8 @@ export const SpotifyPlaylistDetail: React.FC = () => {
       setError(null);
       
       try {
-        const token = await SpotifyService.getAccessToken();
-        if (!token) {
-          throw new SpotifyAuthError('No access token available');
-        }
 
-        const response = await fetch(`https://api.spotify.com/v1/playlists/${id}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const response = await backendSpotifyFetch(`/playlists/${id}`);
 
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After');
@@ -175,7 +176,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
                   })),
                 },
               };
-              setPlaylist(transformedPlaylist);
+              if (current()) setPlaylist(transformedPlaylist);
               return;
             }
           } catch (scrapeError) {
@@ -195,9 +196,10 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           );
         }
 
-        const data = await response.json();
-        setPlaylist(data);
+        const data = await fetchSpotifyPlaylist(id,response);
+        if (current()) setPlaylist(data);
       } catch (err) {
+        if (!current()) return;
         if (err instanceof SpotifyRateLimitError) {
           setError(`Rate limited. Please try again in ${err.retryAfter} seconds.`);
           addLog('warn', `Rate limited while fetching playlist`);
@@ -212,12 +214,13 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           console.error('Playlist fetch error:', err);
         }
       } finally {
-        setIsLoading(false);
+        if (current()) setIsLoading(false);
       }
     };
 
     fetchPlaylist();
-  }, [id, addLog]);
+    return () => {active = false;};
+  }, [id, addLog, spotifyGeneration]);
 
   if (isLoading) {
     return (
@@ -279,7 +282,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
                   {playlist.owner.display_name}
                 </span>
                 <span>•</span>
-                <span>{playlist.followers.total.toLocaleString()} likes</span>
+                {playlist.followers && <span>{playlist.followers.total.toLocaleString()} likes</span>}
                 <span>•</span>
                 <span>{playlist.tracks.total} songs</span>
                 <span>•</span>
@@ -363,7 +366,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
                   {item.track.name}
                 </div>
                 <div className="text-sm text-text-secondary truncate">
-                  {item.track.artists.map(a => a.name).join(', ')}
+                  <SpotifyArtistLinks artists={item.track.artists} />
                 </div>
               </div>
               <div className="text-text-secondary truncate flex items-center">

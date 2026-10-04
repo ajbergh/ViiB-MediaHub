@@ -1,3 +1,4 @@
+// Builds support archives with bounded, redacted diagnostics and logs.
 package api
 
 import (
@@ -24,8 +25,8 @@ const (
 )
 
 var (
-	supportSecretPattern = regexp.MustCompile(`(?i)((?:authorization|access_?token|refresh_?token|client_?secret|api_?key|password|shared_?secret|code_?verifier|oauth_?state)["']?\s*[:=]\s*["']?)(?:bearer\s+)?[^"'\s,;}\]]+`)
-	supportQueryPattern  = regexp.MustCompile(`(?i)([?&](?:code|state|token|access_token|refresh_token|key|api_key|secret|password)=)[^&\s]+`)
+	supportSecretPattern = regexp.MustCompile(`(?i)((?:sp_?dc|sp_?key|spotify_webplayer_session|cookie|authorization|access_?token|refresh_?token|client_?secret|api_?key|password|shared_?secret|code_?verifier|oauth_?state)["']?\s*[:=]\s*["']?)(?:bearer\s+)?[^"'\s,;}\]]+`)
+	supportQueryPattern  = regexp.MustCompile(`(?i)([?&](?:sp_?dc|sp_?key|code|state|token|access_token|refresh_token|key|api_key|secret|password)=)[^&\s]+`)
 	supportWindowsPath   = regexp.MustCompile(`(?i)[a-z]:\\[^\r\n,;)}\]]+`)
 	supportUnixPath      = regexp.MustCompile(`/(?:Users|home|Volumes)/[^\r\n,;)}\]]+`)
 )

@@ -614,6 +614,9 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
           )}
 
           {/* Error Message */}
+          {download.status === 'downloading' && download.errorMessage && (
+            <p className="text-xs text-text-muted mt-2" role="status">{download.errorMessage}</p>
+          )}
           {download.status === 'failed' && download.errorMessage && (
             <div className="bg-error/10 border border-error/30 rounded p-2 mt-2">
               <p className="text-xs text-error">{download.errorMessage}</p>

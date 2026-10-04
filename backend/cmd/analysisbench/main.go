@@ -1,4 +1,5 @@
-// Command analysisbench reports reproducible Phase 0 fixture and codec metadata.
+// Command analysisbench generates fixtures, runs local analyzers, and reports corpus
+// accuracy, codec capabilities, determinism, and frozen Spotify reference comparisons.
 // It is deliberately not linked into the desktop application.
 package main
 
@@ -17,16 +18,17 @@ import (
 )
 
 type report struct {
-	Fixtures          []fixtureReport                   `json:"fixtures"`
-	Codecs            []analysisbench.CodecCapability   `json:"codecs"`
-	WAV               *analysisbench.WAVInfo            `json:"wav,omitempty"`
-	Comparison        *analysisbench.ComparisonReport   `json:"comparison,omitempty"`
-	Gate              *analysisbench.Phase0GateReport   `json:"gate,omitempty"`
-	Determinism       *analysisbench.DeterminismReport  `json:"determinism,omitempty"`
-	Probes            []analysisbench.CodecProbe        `json:"probes,omitempty"`
-	SpotifyImport     *analysisbench.CorpusImportReport `json:"spotifyImport,omitempty"`
-	WrittenWAV        []string                          `json:"writtenWav,omitempty"`
-	SyntheticManifest string                            `json:"syntheticManifest,omitempty"`
+	SpotifyReference  *analysisbench.SpotifyReferenceReport `json:"spotifyReference,omitempty"`
+	Fixtures          []fixtureReport                       `json:"fixtures"`
+	Codecs            []analysisbench.CodecCapability       `json:"codecs"`
+	WAV               *analysisbench.WAVInfo                `json:"wav,omitempty"`
+	Comparison        *analysisbench.ComparisonReport       `json:"comparison,omitempty"`
+	Gate              *analysisbench.Phase0GateReport       `json:"gate,omitempty"`
+	Determinism       *analysisbench.DeterminismReport      `json:"determinism,omitempty"`
+	Probes            []analysisbench.CodecProbe            `json:"probes,omitempty"`
+	SpotifyImport     *analysisbench.CorpusImportReport     `json:"spotifyImport,omitempty"`
+	WrittenWAV        []string                              `json:"writtenWav,omitempty"`
+	SyntheticManifest string                                `json:"syntheticManifest,omitempty"`
 }
 
 type fixtureReport struct {
@@ -43,6 +45,7 @@ func main() {
 	format := flag.String("format", "json", "output format: json")
 	wavPath := flag.String("wav", "", "optional WAV file to inspect without decoding its data chunk")
 	manifestPath := flag.String("manifest", "", "optional label-only corpus manifest JSON")
+	spotifySnapshotPath := flag.String("spotify-reference-snapshot", "", "frozen, identity-bound reference JSON; requires -manifest and -results; no network access")
 	resultsPath := flag.String("results", "", "detector result JSON; requires -manifest")
 	gateManifestPath := flag.String("gate-manifest", "", "corpus manifest for a held-out Phase 0 go/no-go evaluation")
 	candidateResultsPath := flag.String("candidate-results", "", "Go analyzer result JSON; requires -gate-manifest and -browser-results")
@@ -73,6 +76,10 @@ func main() {
 	flag.Parse()
 	if *format != "json" {
 		fmt.Fprintln(os.Stderr, "analysisbench: only -format=json is supported")
+		os.Exit(2)
+	}
+	if *spotifySnapshotPath != "" && (*manifestPath == "" || *resultsPath == "") {
+		fmt.Fprintln(os.Stderr, "analysisbench: -spotify-reference-snapshot requires -manifest and -results")
 		os.Exit(2)
 	}
 	if (*manifestPath == "") != (*resultsPath == "") {
@@ -219,6 +226,19 @@ func main() {
 			os.Exit(1)
 		}
 		result.Comparison = &comparison
+		if *spotifySnapshotPath != "" {
+			snapshot, err := analysisbench.LoadSpotifyReferenceSnapshot(*spotifySnapshotPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "analysisbench: load Spotify reference snapshot: %v\n", err)
+				os.Exit(1)
+			}
+			reference, err := analysisbench.CompareSpotifyReference(manifest, results, snapshot, *split)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "analysisbench: compare Spotify reference: %v\n", err)
+				os.Exit(1)
+			}
+			result.SpotifyReference = &reference
+		}
 	}
 	if *analyzeManifestPath != "" {
 		manifest, err := analysisbench.LoadManifest(*analyzeManifestPath)

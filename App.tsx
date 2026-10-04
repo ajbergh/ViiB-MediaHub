@@ -3,7 +3,7 @@
  * 
  * Entry point for the React frontend. Handles:
  * - Route configuration using react-router
- * - Global state initialization (library, Spotify credentials sync)
+ * - Global state initialization (library, redacted Spotify session status)
  * - Error boundary for graceful component failure handling
  * - Background metadata enrichment startup
  * - Global UI overlays (ConfirmDialog, DownloadManager)
@@ -28,6 +28,7 @@ import { LikedSongs } from './pages/LikedSongs';
 import { LikedAlbums } from './pages/LikedAlbums';
 import { Spotify } from './pages/Spotify';
 import { SpotifyCallback } from './pages/SpotifyCallback';
+import { SpotifyArtistDetail } from './pages/SpotifyArtistDetail';
 import { SpotifyAlbumDetail } from './pages/SpotifyAlbumDetail';
 import { SpotifyPlaylistDetail } from './pages/SpotifyPlaylistDetail';
 import { Downloads } from './pages/Downloads';
@@ -74,7 +75,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 
 const App: React.FC = () => {
   const initLibrary = useStore(state => state.initLibrary);
-  const { spotifyAccessToken, setSpotifyTokens, setSpotifyCredentials } = useStore();
+  const setSpotifyConnected = useStore(state => state.setSpotifyConnected);
   const confirmDialog = useStore(state => state.confirmDialog);
   const closeConfirmDialog = useStore(state => state.closeConfirmDialog);
   const hasCompletedSetup = useStore(state => state.hasCompletedSetup);
@@ -90,11 +91,11 @@ const App: React.FC = () => {
       try {
         const [folders, creds, songs, plexConfig] = await Promise.all([
           api.getFolders().catch(() => []),
-          api.getSpotifyCredentials().catch(() => null),
+          api.getSpotifyAuthStatus().catch(() => null),
           api.getSongs().catch(() => []),
           plexService.getConfig().catch(() => null),
         ]);
-        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.clientId) || Boolean(plexConfig?.source?.libraryId)) {
+        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.connected) || Boolean(plexConfig?.source?.libraryId)) {
           setHasCompletedSetup(true);
         }
       } catch (error) { appLogger.warn('Failed to check existing configuration', error); }
@@ -103,23 +104,12 @@ const App: React.FC = () => {
   }, [backendAvailable, hasCompletedSetup, setHasCompletedSetup]);
 
   useEffect(() => {
-    const syncSpotify = async () => {
-      if (spotifyAccessToken) return;
-      try {
-        const creds = await api.getSpotifyCredentials();
-        // The public client ID is needed to begin a PKCE login even when the
-        // user has not authenticated yet. The backend intentionally does not
-        // return the stored client secret to the renderer.
-        if (creds?.clientId) {
-          setSpotifyCredentials(creds.clientId, '');
-        }
-        if (creds?.accessToken) {
-          setSpotifyTokens(creds.accessToken, creds.refreshToken, creds.expiry);
-        }
-      } catch { /* Spotify is optional. */ }
-    };
-    void syncSpotify();
-  }, [spotifyAccessToken, setSpotifyCredentials, setSpotifyTokens]);
+    if (!backendAvailable) return;
+    let active = true;
+    const generation = useStore.getState().spotifySessionGeneration;
+      void api.getSpotifyAuthStatus().then(status => {if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(status.connected && !status.authRequired);}).catch(() => {if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(false);});
+    return () => {active=false;};
+  }, [backendAvailable, setSpotifyConnected]);
 
   const loadAudioSettings = useStore(state => state.loadAudioSettings);
   useEffect(() => { if (backendAvailable) void loadAudioSettings(); }, [backendAvailable, loadAudioSettings]);
@@ -164,6 +154,7 @@ const App: React.FC = () => {
             <Route path="/liked-albums" element={<LikedAlbums />} />
             <Route path="/smart-mix/:mixId" element={<SmartMixDetail />} />
             <Route path="/spotify" element={<Spotify />} />
+            <Route path="/spotify/artist/:id" element={<SpotifyArtistDetail />} />
             <Route path="/spotify/album/:id" element={<SpotifyAlbumDetail />} />
             <Route path="/spotify/playlist/:id" element={<SpotifyPlaylistDetail />} />
             <Route path="/callback" element={<SpotifyCallback />} />

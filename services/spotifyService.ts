@@ -1,29 +1,14 @@
 /**
- * Spotify Web API Integration Service
- * 
- * Provides OAuth 2.0 PKCE authentication and API access for Spotify.
- * Used for searching Spotify catalog, fetching metadata, and enhancing
- * local library information.
- * 
- * Authentication Flow:
- * 1. User initiates login -> startAuth() generates code verifier/challenge
- * 2. User redirects to Spotify authorization page
- * 3. Spotify redirects back with authorization code
- * 4. handleCallback() exchanges code for access/refresh tokens
- * 5. Tokens stored in backend via api.saveSpotifyCredentials()
- * 
- * Features:
- * - OAuth 2.0 with PKCE (no client secret exposed to frontend)
- * - Automatic token refresh with mutex to prevent race conditions
- * - Request queuing to respect rate limits (200ms between requests)
- * - Typed error handling (SpotifyAuthError, SpotifyRateLimitError, etc.)
- * - Fuzzy string matching for artist/album metadata
- * - Levenshtein distance algorithm for improved matching accuracy
- * 
- * The access tokens are also used by the backend for librespot downloads,
- * providing seamless integration between Web API and download functionality.
+ * Spotify catalog and metadata service using the backend-owned session.
+ * Browser sign-in and token renewal run in the backend; catalog requests send
+ * resource paths and reject results from a retired session generation.
+ * Background metadata work is queued with 200 ms spacing. Interactive searches
+ * bypass that queue; the backend enforces concurrency bounds and provider cooldowns.
+ * Includes typed failures, fuzzy artist/album matching, and retained OAuth helpers
+ * for compatibility. The normal connection UI uses Spotify browser sign-in.
  */
 
+import { backendSpotifyFetch, assertSpotifySession, SpotifySessionChangedError } from './spotifyBackend';
 import { ArtistMetadata, AlbumMetadata, SpotifyProfile } from '../types';
 import { useStore } from '../store';
 import { isWailsEnvironment } from '../utils';
@@ -31,19 +16,12 @@ import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError, SpotifyNetwor
 
 const AUTH_URL = 'https://accounts.spotify.com/authorize';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const API_BASE = 'https://api.spotify.com/v1';
+const API_BASE = '';
 
 // Request queue to prevent flooding the API and respect rate limits
-// Spotify allows ~180 requests per minute; we use 200ms delay for safety
+// The backend enforces provider cooldowns; this queue spaces renderer work
 let requestQueue: (() => Promise<void>)[] = [];
 let isProcessingQueue = false;
-
-// Token refresh mutex to prevent race conditions during concurrent requests
-// Multiple simultaneous requests should wait for a single token refresh
-let isRefreshing = false;
-let refreshPromise: Promise<string | null> | null = null;
-let refreshFailureCount = 0;
-const MAX_REFRESH_FAILURES = 3;
 
 const processQueue = async () => {
     if (isProcessingQueue || requestQueue.length === 0) return;
@@ -67,10 +45,13 @@ const processQueue = async () => {
 };
 
 const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
+    const generation = useStore.getState().spotifySessionGeneration;
     return new Promise((resolve, reject) => {
         requestQueue.push(async () => {
             try {
+                assertSpotifySession(generation);
                 const result = await task();
+                assertSpotifySession(generation);
                 resolve(result);
             } catch (error) {
                 reject(error);
@@ -79,6 +60,24 @@ const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
         processQueue();
     });
 };
+
+// User searches must not wait for profile requests or background enrichment.
+// The backend bounds catalog concurrency and enforces the shared cooldown.
+const runInteractive = async <T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> => {
+    const generation = useStore.getState().spotifySessionGeneration;
+    signal?.throwIfAborted();
+    assertSpotifySession(generation);
+    const result = await task();
+    signal?.throwIfAborted();
+    assertSpotifySession(generation);
+    return result;
+};
+
+export interface SpotifySearchOptions {
+    signal?: AbortSignal;
+    /** Publish catalog results before optional playlist scraping finishes. */
+    onCatalogResults?: (results: any) => void;
+}
 
 // --- Helper Functions ---
 
@@ -302,125 +301,13 @@ export const SpotifyService = {
         }
     },
 
-    async getAccessToken(): Promise<string | null> {
-        const store = useStore.getState();
-        const { 
-            spotifyClientId,
-            spotifyAccessToken, spotifyRefreshToken, spotifyTokenExpiry,
-            setSpotifyTokens
-        } = store;
-
-        if (!spotifyClientId) {
-            return null;
-        }
-
-        // 1. Check User Token
-        if (spotifyAccessToken && spotifyRefreshToken) {
-            if (Date.now() < spotifyTokenExpiry) {
-                refreshFailureCount = 0; // Reset on valid token
-                return spotifyAccessToken;
-            }
-            
-            // Bail if refresh has failed too many times (likely revoked token)
-            if (refreshFailureCount >= MAX_REFRESH_FAILURES) {
-                store.addLog('error', `Token refresh failed ${MAX_REFRESH_FAILURES} times. Please re-authenticate with Spotify.`);
-                return null;
-            }
-            
-            // Mutex: If already refreshing, wait for that promise
-            if (isRefreshing && refreshPromise) {
-                return refreshPromise;
-            }
-            
-            // Start refresh with mutex
-            isRefreshing = true;
-            refreshPromise = (async () => {
-                try {
-                    store.addLog('info', 'Refreshing Spotify User Token...');
-                    const response = await fetch(TOKEN_URL, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
-                        body: new URLSearchParams({
-                            grant_type: 'refresh_token',
-                            refresh_token: spotifyRefreshToken,
-                            client_id: spotifyClientId
-                        })
-                    });
-                    
-                    if (response.status === 429) {
-                        const retryAfter = response.headers.get('Retry-After');
-                        throw new SpotifyRateLimitError(
-                            'Rate limited while refreshing token',
-                            retryAfter ? parseInt(retryAfter) : 60
-                        );
-                    }
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        const nextRefreshToken = data.refresh_token || spotifyRefreshToken;
-                        const nextExpiry = Date.now() + (data.expires_in * 1000);
-                        setSpotifyTokens(data.access_token, nextRefreshToken, nextExpiry);
-                        try {
-                            const { api } = await import('./api');
-                            await api.saveSpotifyCredentials({
-                                clientId: spotifyClientId,
-                                clientSecret: '',
-                                accessToken: data.access_token,
-                                refreshToken: nextRefreshToken,
-                                expiry: nextExpiry,
-                            });
-                        } catch (syncError) {
-                            store.addLog('warn', 'Spotify token refreshed locally but backend synchronization failed', syncError);
-                        }
-                        refreshFailureCount = 0; // Reset on success
-                        return data.access_token;
-                    } else {
-                        const errorData = await response.json().catch(() => ({}));
-                        throw new SpotifyAuthError(
-                            errorData.error_description || 'Failed to refresh token',
-                            response.status
-                        );
-                    }
-                } catch (error) {
-                    store.addLog('error', 'Error refreshing user token', error);
-                    refreshFailureCount++;
-                    if (error instanceof SpotifyRateLimitError || error instanceof SpotifyAuthError) {
-                        throw error;
-                    }
-                    throw new SpotifyNetworkError('Network error during token refresh', error);
-                } finally {
-                    isRefreshing = false;
-                    refreshPromise = null;
-                }
-            })();
-            
-            try {
-                return await refreshPromise;
-            } catch (error) {
-                store.addLog('warn', 'Token refresh failed. Falling back to client credentials.');
-                // Continue to client credentials fallback
-            }
-        }
-
-        // Public PKCE clients do not use a client-credentials fallback.
-        return null;
-    },
-
-    async getUserProfile(): Promise<SpotifyProfile | null> {
+    async getUserProfile(signal?: AbortSignal): Promise<SpotifyProfile | null> {
         return enqueue(async () => {
-            const token = await this.getAccessToken();
-            if (!token) {
-                throw new SpotifyAuthError('No access token available');
-            }
             
             try {
-                const res = await fetch(`${API_BASE}/me`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await backendSpotifyFetch(`${API_BASE}/me`, signal);
                 
-                if (res.status === 401 || res.status === 403) {
+                if (res.status === 401) {
                     throw new SpotifyAuthError('Unauthorized - token may be invalid', res.status);
                 }
                 
@@ -453,16 +340,10 @@ export const SpotifyService = {
     async searchArtist(artistName: string): Promise<ArtistMetadata | null> {
         return enqueue(async () => {
             const store = useStore.getState();
-            const token = await this.getAccessToken();
-            if (!token) {
-                throw new SpotifyAuthError('No access token available');
-            }
 
             try {
                 const query = encodeURIComponent(artistName);
-                const res = await fetch(`${API_BASE}/search?q=${query}&type=artist&limit=3`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await backendSpotifyFetch(`${API_BASE}/search?q=${query}&type=artist&limit=3`);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');
@@ -484,7 +365,7 @@ export const SpotifyService = {
                     return null;
                 }
 
-                const match = data.artists.items.find((a: any) => getSimilarity(a.name, artistName) > 0.8);
+                const match = data.artists.items.find((a: any) => a && getSimilarity(a.name, artistName) > 0.8);
                 if (!match) return null;
 
                 const imageUrl = match.images && match.images.length > 0 ? match.images[0].url : '';
@@ -511,16 +392,10 @@ export const SpotifyService = {
     async searchAlbum(albumName: string, artistName: string): Promise<AlbumMetadata | null> {
         return enqueue(async () => {
             const store = useStore.getState();
-            const token = await this.getAccessToken();
-            if (!token) {
-                throw new SpotifyAuthError('No access token available');
-            }
 
             try {
                 const query = `album:${cleanName(albumName)} artist:${cleanName(artistName)}`;
-                const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}&type=album&limit=5`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await backendSpotifyFetch(`${API_BASE}/search?q=${encodeURIComponent(query)}&type=album&limit=5`);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');
@@ -542,11 +417,10 @@ export const SpotifyService = {
                     return null;
                 }
 
-                const album = data.albums.items[0]; 
+                const album = data.albums.items.find((item: any) => item);
+                if (!album) return null;
                 
-                const fullAlbumRes = await fetch(`${API_BASE}/albums/${album.id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const fullAlbumRes = await backendSpotifyFetch(`${API_BASE}/albums/${album.id}`);
 
                 if (fullAlbumRes.status === 429) {
                     const retryAfter = fullAlbumRes.headers.get('Retry-After');
@@ -596,14 +470,12 @@ export const SpotifyService = {
         query: string, 
         types: string[] = ['album', 'playlist', 'track', 'artist'],
         limit: number = 20,
-        offset: number = 0
+        offset: number = 0,
+        options: SpotifySearchOptions = {}
     ): Promise<any> {
-        return enqueue(async () => {
+        return runInteractive(async () => {
             const store = useStore.getState();
-            const token = await this.getAccessToken();
-            if (!token) {
-                throw new SpotifyAuthError('No access token available');
-            }
+            const generation = store.spotifySessionGeneration;
 
             try {
                 const typeStr = types.join(',');
@@ -614,9 +486,7 @@ export const SpotifyService = {
                     offset: offset.toString()
                 });
                 
-                const res = await fetch(`${API_BASE}/search?${params.toString()}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await backendSpotifyFetch(`${API_BASE}/search?${params.toString()}`, options.signal);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');
@@ -634,13 +504,20 @@ export const SpotifyService = {
                 }
 
                 const results = await res.json();
+                options.signal?.throwIfAborted();
+                assertSpotifySession(generation);
+                options.onCatalogResults?.(results);
                 
                 // If searching for playlists and this is the first page (offset 0),
                 // enhance results with fallback scraper for first-party playlists
                 if (types.includes('playlist') && offset === 0) {
                     try {
                         const { api } = await import('./api');
-                        const fallbackResults = await api.searchPlaylistsFallback(query);
+                        options.signal?.throwIfAborted();
+                        assertSpotifySession(generation);
+                        const fallbackResults = await api.searchPlaylistsFallback(query, options.signal);
+                        options.signal?.throwIfAborted();
+                        assertSpotifySession(generation);
                         
                         if (fallbackResults?.playlists?.items?.length > 0) {
                             // Get existing playlist IDs from API results
@@ -664,6 +541,7 @@ export const SpotifyService = {
                             }
                         }
                     } catch (fallbackError) {
+                        if (options.signal?.aborted || fallbackError instanceof SpotifySessionChangedError) throw fallbackError;
                         // Don't fail the entire search if fallback fails
                         console.warn('[SpotifyService] Fallback playlist search failed:', fallbackError);
                     }
@@ -671,6 +549,7 @@ export const SpotifyService = {
                 
                 return results;
             } catch (error) {
+                if (options.signal?.aborted || error instanceof SpotifySessionChangedError) throw error;
                 if (error instanceof SpotifyAuthError || error instanceof SpotifyRateLimitError || error instanceof SpotifyApiError) {
                     store.addLog('error', `Spotify Search Error: ${query}`, error);
                     throw error;
@@ -678,21 +557,15 @@ export const SpotifyService = {
                 store.addLog('error', `Spotify Search Error: ${query}`, error);
                 throw new SpotifyNetworkError(`Network error during search: ${query}`, error);
             }
-        });
+        }, options.signal);
     },
 
     async getRecentlyPlayed(limit: number = 20): Promise<any> {
         return enqueue(async () => {
             const store = useStore.getState();
-            const token = await this.getAccessToken();
-            if (!token) {
-                throw new SpotifyAuthError('No access token available');
-            }
 
             try {
-                const res = await fetch(`${API_BASE}/me/player/recently-played?limit=${limit}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await backendSpotifyFetch(`${API_BASE}/me/player/recently-played?limit=${limit}`);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');
@@ -702,7 +575,7 @@ export const SpotifyService = {
                     );
                 }
 
-                if (res.status === 401 || res.status === 403) {
+                if (res.status === 401) {
                     throw new SpotifyAuthError('Unauthorized - requires user authentication', res.status);
                 }
 
@@ -728,10 +601,6 @@ export const SpotifyService = {
     async getSavedAlbums(limit: number = 20, offset: number = 0): Promise<any> {
         return enqueue(async () => {
             const store = useStore.getState();
-            const token = await this.getAccessToken();
-            if (!token) {
-                throw new SpotifyAuthError('No access token available');
-            }
 
             try {
                 const params = new URLSearchParams({
@@ -739,9 +608,7 @@ export const SpotifyService = {
                     offset: offset.toString()
                 });
 
-                const res = await fetch(`${API_BASE}/me/albums?${params.toString()}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await backendSpotifyFetch(`${API_BASE}/me/albums?${params.toString()}`);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');
@@ -751,7 +618,7 @@ export const SpotifyService = {
                     );
                 }
 
-                if (res.status === 401 || res.status === 403) {
+                if (res.status === 401) {
                     throw new SpotifyAuthError('Unauthorized - requires user authentication', res.status);
                 }
 
@@ -777,10 +644,6 @@ export const SpotifyService = {
     async getSavedPlaylists(limit: number = 20, offset: number = 0): Promise<any> {
         return enqueue(async () => {
             const store = useStore.getState();
-            const token = await this.getAccessToken();
-            if (!token) {
-                throw new SpotifyAuthError('No access token available');
-            }
 
             try {
                 const params = new URLSearchParams({
@@ -788,9 +651,7 @@ export const SpotifyService = {
                     offset: offset.toString()
                 });
 
-                const res = await fetch(`${API_BASE}/me/playlists?${params.toString()}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await backendSpotifyFetch(`${API_BASE}/me/playlists?${params.toString()}`);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');
@@ -800,7 +661,7 @@ export const SpotifyService = {
                     );
                 }
 
-                if (res.status === 401 || res.status === 403) {
+                if (res.status === 401) {
                     throw new SpotifyAuthError('Unauthorized - requires user authentication', res.status);
                 }
 
@@ -834,15 +695,9 @@ export const SpotifyService = {
     async getArtistTopTracks(artistId: string, market: string = 'US'): Promise<any> {
         return enqueue(async () => {
             const store = useStore.getState();
-            const token = await this.getAccessToken();
-            if (!token) {
-                throw new SpotifyAuthError('No access token available');
-            }
 
             try {
-                const res = await fetch(`${API_BASE}/artists/${artistId}/top-tracks?market=${market}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await backendSpotifyFetch(`${API_BASE}/artists/${artistId}/top-tracks?market=${market}`);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');
@@ -852,7 +707,7 @@ export const SpotifyService = {
                     );
                 }
 
-                if (res.status === 401 || res.status === 403) {
+                if (res.status === 401) {
                     throw new SpotifyAuthError('Unauthorized - requires user authentication', res.status);
                 }
 
@@ -885,15 +740,9 @@ export const SpotifyService = {
     async getArtist(artistId: string): Promise<any> {
         return enqueue(async () => {
             const store = useStore.getState();
-            const token = await this.getAccessToken();
-            if (!token) {
-                throw new SpotifyAuthError('No access token available');
-            }
 
             try {
-                const res = await fetch(`${API_BASE}/artists/${artistId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await backendSpotifyFetch(`${API_BASE}/artists/${artistId}`);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');

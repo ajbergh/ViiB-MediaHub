@@ -12,7 +12,7 @@
  *
  * Requirements:
  * - Backend must be reachable for album enrichment (`backendAvailable === true`)
- * - Spotify OAuth token must be present (`spotifyAccessToken` is set)
+ * - Backend Spotify session must be connected
  *
  * @module hooks/useBackgroundEnrichment
  */
@@ -28,7 +28,8 @@ export function useBackgroundEnrichment() {
     const fetchAlbumMetadata = useStore(state => state.fetchAlbumMetadata);
     const fetchArtistMetadata = useStore(state => state.fetchArtistMetadata);
     const backendAvailable = useStore(state => state.backendAvailable);
-    const spotifyAccessToken = useStore(state => state.spotifyAccessToken);
+    const generation = useStore(state => state.spotifySessionGeneration);
+    const spotifyConnected = useStore(state => state.spotifyConnected);
     const artists = useArtists();
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const artistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -36,25 +37,28 @@ export function useBackgroundEnrichment() {
     
     useEffect(() => {
         // Only run if backend is available and Spotify is connected
-        if (!backendAvailable || !spotifyAccessToken) {
+        if (!backendAvailable || !spotifyConnected) {
             return;
         }
         
+        let cancelled = false;
+        const current = () => !cancelled && useStore.getState().spotifyConnected && useStore.getState().spotifySessionGeneration === generation;
         const processNextAlbum = async () => {
-            if (processingRef.current) return;
+            if (!current() || processingRef.current) return;
             processingRef.current = true;
             
             try {
                 // Get unchecked albums from backend
                 const unchecked = await api.getUncheckedAlbumMetadata();
                 const expired = await api.getExpiredAlbumMetadata();
+                if (!current()) return;
                 
                 // Combine and pick the first one
                 const albumsToProcess = [...unchecked, ...expired];
                 
                 if (albumsToProcess.length === 0) {
                     // No albums to process, check again in 60 seconds
-                    timerRef.current = setTimeout(processNextAlbum, 60000);
+                    if (current()) timerRef.current = setTimeout(processNextAlbum, 60000);
                     return;
                 }
                 
@@ -81,15 +85,16 @@ export function useBackgroundEnrichment() {
         }, 10000);
         
         return () => {
+            cancelled = true;
             clearTimeout(startupTimer);
             if (timerRef.current) {
                 clearTimeout(timerRef.current);
             }
         };
-    }, [backendAvailable, spotifyAccessToken, fetchAlbumMetadata]);
+    }, [backendAvailable, spotifyConnected, generation, fetchAlbumMetadata]);
 
     useEffect(() => {
-        if (!spotifyAccessToken || artists.length === 0) {
+        if (!spotifyConnected || artists.length === 0) {
             return;
         }
 
@@ -107,7 +112,7 @@ export function useBackgroundEnrichment() {
         let cancelled = false;
 
         const processNextArtist = async () => {
-            if (cancelled || currentIndex >= artistsToProcess.length) {
+            if (cancelled || !useStore.getState().spotifyConnected || useStore.getState().spotifySessionGeneration !== generation || currentIndex >= artistsToProcess.length) {
                 return;
             }
 
@@ -115,7 +120,7 @@ export function useBackgroundEnrichment() {
             console.log(`🔄 Background enrichment: checking artist "${artist.name}"`);
             await fetchArtistMetadata(artist.name);
 
-            if (!cancelled && currentIndex < artistsToProcess.length) {
+            if (!cancelled && useStore.getState().spotifyConnected && useStore.getState().spotifySessionGeneration === generation && currentIndex < artistsToProcess.length) {
                 artistTimerRef.current = setTimeout(processNextArtist, 500);
             }
         };
@@ -131,5 +136,5 @@ export function useBackgroundEnrichment() {
                 artistTimerRef.current = null;
             }
         };
-    }, [artists, fetchArtistMetadata, spotifyAccessToken]);
+    }, [artists, fetchArtistMetadata, spotifyConnected, generation]);
 }

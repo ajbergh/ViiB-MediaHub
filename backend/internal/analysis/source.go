@@ -1,3 +1,4 @@
+// Resolves canonical local audio sources and their fingerprints; remote streams use explicit adapters.
 package analysis
 
 import (
@@ -5,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -59,12 +59,8 @@ func ResolveLocalSongSource(song db.Song) (ResolvedSource, error) {
 		return ResolvedSource{}, fmt.Errorf("local source is not a regular file")
 	}
 	mtime := info.ModTime().UnixMilli()
-	identity := song.FileHash
-	if identity == "" {
-		identity = "path:" + filepath.Clean(song.FilePath)
-	}
 	return ResolvedSource{SongID: song.ID, Name: filepath.Base(song.FilePath), Path: song.FilePath, Size: info.Size(), Mtime: mtime,
-		Fingerprint: identity + ":" + strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(mtime, 10)}, nil
+		Fingerprint: db.LocalSourceFingerprint(song, info)}, nil
 }
 
 // Open provides a new source stream. Decoders own and close the returned file.

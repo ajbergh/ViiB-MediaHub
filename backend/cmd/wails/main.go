@@ -44,6 +44,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2"
@@ -260,7 +261,9 @@ func main() {
 
 	// Create API handler
 	apiHandler := api.New(database, *dataDir)
-	defer apiHandler.Close()
+	var closeAPIOnce sync.Once
+	closeAPI := func() { closeAPIOnce.Do(apiHandler.Close) }
+	defer closeAPI()
 	logger.Main("API handler created")
 
 	// Get embedded frontend filesystem
@@ -283,16 +286,8 @@ func main() {
 	serverURL := fmt.Sprintf("http://127.0.0.1:%d", actualPort)
 	logger.Main("API server starting on %s", serverURL)
 
-	// Create HTTP server with timeouts
-	// Note: WriteTimeout is disabled (0) to support long-running SSE connections
-	// for operations like AI enrichment that can take several minutes per batch.
-	// ReadTimeout and IdleTimeout are kept for security.
-	httpServer := &http.Server{
-		Handler:      server.New(apiHandler, distFS),
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 0, // Disabled for SSE streams
-		IdleTimeout:  120 * time.Second,
-	}
+	httpServer, cancelRequests := newHTTPServer(server.New(apiHandler, distFS))
+	defer cancelRequests()
 
 	// Start HTTP server in background goroutine
 	go func() {
@@ -376,6 +371,10 @@ func main() {
 	}
 
 	stopSystemTray()
+
+	// Cancel long-lived streams before waiting for graceful server shutdown.
+	cancelRequests()
+	closeAPI()
 
 	// Graceful shutdown of HTTP server
 	logger.Main("Shutting down HTTP server...")

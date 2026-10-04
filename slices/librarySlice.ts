@@ -24,6 +24,7 @@
  * @module librarySlice
  */
 
+import { assertSpotifySession } from '../services/spotifyBackend';
 import { StateCreator } from 'zustand';
 import { AppState, LibrarySlice, ScanFolder } from './types';
 import { generateSmartMixes } from '../lib/smartMix';
@@ -502,6 +503,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 
   fetchArtistMetadata: async (artistName) => {
       const state = get();
+      const generation = state.spotifySessionGeneration;
       if (state.artistMetadata[artistName] || state.fetchingArtists.has(artistName)) return;
 
       // Check if we've already checked Spotify and found nothing (cached "not found")
@@ -559,7 +561,9 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 
       try {
           console.log(`🔍 Searching Spotify for artist: "${artistName}"`);
+          assertSpotifySession(generation);
           const data = await SpotifyService.searchArtist(artistName);
+          assertSpotifySession(generation);
 
           // Save result to backend cache (whether found or not)
           const cacheEntry: import('../services/api').ApiArtistMetadata = {
@@ -587,7 +591,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           if (data?.imageUrl && state.backendAvailable) {
               console.log(`📥 Downloading artist image for "${artistName}" from ${data.imageUrl}`);
               api.downloadArtistImage(artistName, data.imageUrl).then(result => {
-                  console.log(`✅ Artist image saved for "${artistName}" at: ${result.imagePath}`);
+                  if (get().spotifySessionGeneration !== generation) return;
+                   console.log(`✅ Artist image saved for "${artistName}" at: ${result.imagePath}`);
                   // Update the store with local image path
                   set((s) => {
                       const existing = s.artistMetadata[artistName];
@@ -633,6 +638,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   fetchAlbumMetadata: async (albumName, artistName) => {
       const key = `${albumName}::${artistName}`;
       const state = get();
+      const generation = state.spotifySessionGeneration;
       
       // Skip if already have metadata or currently fetching
       if (state.albumMetadata[key] || state.fetchingAlbums.has(key)) return;
@@ -656,7 +662,9 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       });
 
       try {
+          assertSpotifySession(generation);
           const data = await SpotifyService.searchAlbum(albumName, artistName);
+          assertSpotifySession(generation);
 
           // Save result to backend cache (whether found or not)
           const cacheEntry: ApiAlbumMetadata = {

@@ -31,7 +31,7 @@ const PAGES = [
   { name: 'playlists', path: '/playlists', label: 'Playlists' },
   { name: 'liked-songs', path: '/liked', label: 'Liked Songs' },
   { name: 'liked-albums', path: '/liked-albums', label: 'Liked Albums' },
-  { name: 'smart-playlists', path: '/smart-playlists', label: 'Smart Playlists / AI DJ' },
+  { name: 'smart-playlists', path: '/smart-playlists', label: 'AI Smart Mix' },
   { name: 'search', path: '/search', label: 'Search' },
   { name: 'spotify', path: '/spotify', label: 'Spotify' },
   { name: 'dj-mode', path: '/dj', label: 'DJ Mode' },

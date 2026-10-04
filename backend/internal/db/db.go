@@ -10,6 +10,8 @@
 //   - album_metadata: Cached Spotify album metadata
 //   - artist_metadata: Cached Spotify artist metadata
 //   - indexed_genres: Pre-computed genre lists for fast lookup
+//   - External recording links, optional reference observations, and refresh status
+//     are maintained by the additive external analysis schema.
 //
 // AI DJ Support:
 //   - Mood/energy/tempo/BPM fields in songs table (populated by Gemini AI)
@@ -77,13 +79,15 @@ func buildGenreLikePattern(genreName string) string {
 // songs, playlists, scan folders, Spotify downloads, and AI DJ features
 // including play history tracking and mood analysis.
 type DB struct {
-	conn               *sql.DB
-	databaseLock       *os.File
-	librarySyncOnce    sync.Once
-	librarySyncInitErr error
-	semanticOnce       sync.Once
-	semanticInitErr    error
-	genreStatsMu       sync.Mutex
+	conn                *sql.DB
+	databaseLock        *os.File
+	librarySyncOnce     sync.Once
+	librarySyncInitErr  error
+	semanticOnce        sync.Once
+	semanticInitErr     error
+	genreStatsMu        sync.Mutex
+	externalSchemaMu    sync.Mutex
+	externalSchemaReady bool
 }
 
 // Song represents a persisted audio track with metadata and file locations
@@ -375,7 +379,10 @@ func (d *DB) migrate() error {
 	}
 
 	// Run column migrations for existing databases
-	return d.migrateColumns()
+	if err := d.migrateColumns(); err != nil {
+		return err
+	}
+	return d.EnsureExternalTrackAnalysisSchema()
 }
 
 // migrateColumns adds new columns to existing tables if they don't exist.
@@ -746,7 +753,7 @@ func (d *DB) migrateColumns() error {
 //   - spotify_credentials: OAuth tokens and client secrets
 //   - gemini_api_key: Google Gemini AI API key
 func (d *DB) migrateUnencryptedSettings() error {
-	sensitiveKeys := []string{"spotify_credentials", "gemini_api_key", "llm_api_key", "lastfm_api_key", "lastfm_shared_secret", "lastfm_session_key"}
+	sensitiveKeys := []string{"spotify_webplayer_session", "spotify_credentials", "gemini_api_key", "llm_api_key", "lastfm_api_key", "lastfm_shared_secret", "lastfm_session_key"}
 
 	for _, key := range sensitiveKeys {
 		// Read raw value directly (bypass GetSetting which would try to decrypt)

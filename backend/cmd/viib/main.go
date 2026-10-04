@@ -214,12 +214,8 @@ func main() {
 	// Start HTTP server in goroutine
 	// Note: WriteTimeout is disabled (0) to support long-running SSE connections
 	// for operations like AI enrichment that can take several minutes per batch.
-	httpServer := &http.Server{
-		Handler:      srv,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 0, // Disabled for SSE streams
-		IdleTimeout:  120 * time.Second,
-	}
+	httpServer, cancelRequests := newHTTPServer(srv)
+	defer cancelRequests()
 
 	logCrash("CHECKPOINT: Before HTTP server start")
 	serverErrCh := make(chan error, 1)
@@ -318,6 +314,7 @@ func main() {
 	}
 
 	logCrash("CHECKPOINT: Context canceled, beginning HTTP server shutdown")
+	cancelRequests()
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {

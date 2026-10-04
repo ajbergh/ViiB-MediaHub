@@ -4,14 +4,14 @@
 //   - Library management: songs, playlists, folders
 //   - Likes: song and album favorites with persistence
 //   - Media serving: audio streaming, cover art
-//   - Spotify integration: OAuth, search proxy, downloads, streaming
+//   - Spotify integration: browser sign-in, cookie catalog, OAuth compatibility, downloads, streaming, optional references
 //   - Last.FM integration: settings, testing, enrichment endpoints
 //   - Metadata enrichment: AI or Last.FM based on user preference
 //   - Metadata caching: album and artist enrichment
 //   - Settings: key-value configuration storage
 //   - SSE endpoints: real-time download progress and library events
 //
-// All endpoints return JSON responses with consistent error handling.
+// Structured endpoints return JSON; media, event streams, and archive routes use their own formats.
 // Audio and cover files are served with appropriate caching headers.
 package api
 
@@ -31,6 +31,8 @@ import (
 	"sync"
 	"time"
 
+	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
+
 	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/dj"
@@ -41,6 +43,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
+	spotifyrefresh "github.com/ajbergh/viib-mediahub/internal/spotify/refresh"
 	"github.com/ajbergh/viib-mediahub/internal/version"
 	"github.com/go-chi/chi/v5"
 )
@@ -49,28 +52,41 @@ import (
 // It contains references to the database, server logger, and other shared
 // components required by handler implementations.
 type API struct {
-	spotifyStreamerMu    sync.Mutex
-	spotifyStreamer      *spotify.Streamer
-	spotifyStreamSession *spotify.SessionManager
-	db                   *db.DB
-	dataDir              string
-	coverDir             string
-	downloadManager      *DownloadManager
-	scanner              *scanner.Scanner
-	lastfmClient         *lastfm.Client
-	enrichRunning        int32 // atomic: 1 if enrichment goroutine is active
-	semanticMu           sync.RWMutex
-	semanticService      *semantic.Service
-	semanticState        semantic.EmbeddingResolution
-	semanticError        string
-	semanticClosed       bool
-	semanticGeneration   uint64
-	jobSchedulerMu       sync.Mutex
-	jobSchedulerOn       bool
-	jobWake              chan struct{}
-	analysisPressure     playbackPressure
-	plexAnalysisMu       sync.Mutex
-	plexAnalysisGates    map[string]chan struct{}
+	closeOnce             sync.Once
+	enrichmentMu          sync.Mutex
+	enrichmentContext     context.Context
+	enrichmentCancel      context.CancelFunc
+	enrichmentClosed      bool
+	enrichmentWorkers     sync.WaitGroup
+	spotifyHTTPClient     *http.Client
+	spotifyAuthMu         sync.Mutex
+	spotifyHooksOnce      sync.Once
+	spotifyAuth           *spotifyAuthRuntime
+	spotifyAnalysisMu     sync.RWMutex
+	spotifyAnalysis       *spotifyrefresh.Service
+	spotifyAnalysisClosed bool
+	spotifyStreamerMu     sync.Mutex
+	spotifyStreamer       *spotify.Streamer
+	spotifyStreamSession  *spotify.SessionManager
+	db                    *db.DB
+	dataDir               string
+	coverDir              string
+	downloadManager       *DownloadManager
+	scanner               *scanner.Scanner
+	lastfmClient          *lastfm.Client
+	enrichRunning         int32 // atomic: 1 if enrichment goroutine is active
+	semanticMu            sync.RWMutex
+	semanticService       *semantic.Service
+	semanticState         semantic.EmbeddingResolution
+	semanticError         string
+	semanticClosed        bool
+	semanticGeneration    uint64
+	jobSchedulerMu        sync.Mutex
+	jobSchedulerOn        bool
+	jobWake               chan struct{}
+	analysisPressure      playbackPressure
+	plexAnalysisMu        sync.Mutex
+	plexAnalysisGates     map[string]chan struct{}
 }
 
 // New constructs a new API instance using the given database and
@@ -106,16 +122,17 @@ func New(database *db.DB, dataDir string) *API {
 
 	logger.API("Creating download manager...")
 	// Create download manager - it will get access token from database when needed
-	dm := NewDownloadManager(database, downloadDir)
+	runtime := newSpotifyAuthRuntime(database, spotifyauth.WebPlayerOptions{})
+	dm := NewDownloadManager(database, downloadDir, runtime)
 
 	// Set scanner reference for download notifications
 	dm.SetScanner(sc)
 
 	logger.API("Starting download manager...")
-	dm.Start()
-	logger.API("Download manager started")
+	logger.API("Download manager constructed")
 
 	api := &API{
+		spotifyAuth:     runtime,
 		db:              database,
 		dataDir:         dataDir,
 		coverDir:        coverDir,
@@ -123,6 +140,9 @@ func New(database *db.DB, dataDir string) *API {
 		scanner:         sc,
 	}
 
+	api.spotifyTokens()
+	api.initSpotifyAnalysis()
+	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()
 
@@ -230,8 +250,17 @@ func (a *API) Routes() chi.Router {
 	r.Get("/spotify/me", a.spotifyGetUserProfile)
 	r.Get("/spotify/proxy", a.spotifyProxy)
 	r.Post("/spotify/proxy", a.spotifyProxy)
+	r.Get("/spotify/analysis/status", a.getSpotifyAnalysisStatus)
+	r.Get("/spotify/analysis/{trackID}", a.getSpotifyAnalysisCache)
+	r.Post("/spotify/analysis/{trackID}/refresh", a.refreshSpotifyAnalysis)
+	r.Delete("/spotify/analysis/session", a.disconnectSpotifyAnalysis)
 	r.Get("/spotify/auth/status", a.getSpotifyAuthStatus)
 	r.Post("/spotify/auth/refresh", a.refreshSpotifyAuth)
+	r.Post("/spotify/auth/browser-login", a.startSpotifyBrowserLogin)
+	r.Get("/spotify/auth/browser-login/{id}", a.getSpotifyBrowserLogin)
+	r.Delete("/spotify/auth/browser-login/{id}", a.cancelSpotifyBrowserLogin)
+	r.Post("/spotify/auth/session", a.connectSpotifySession)
+	r.Delete("/spotify/auth/session", a.disconnectSpotifySession)
 
 	// Spotify Downloads
 	r.Post("/spotify/download/track", a.downloadTrack)
@@ -2017,6 +2046,12 @@ func (a *API) detectRemasters(w http.ResponseWriter, r *http.Request) {
 // Uses a strict JSON contract to keep malformed model output from reaching storage.
 // Supports any configured LLM provider (Ollama, Gemini, OpenAI, Anthropic, X.AI).
 func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
+	ctx, finish, ok := a.beginEnrichment(r.Context())
+	if !ok {
+		http.Error(w, "Application is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	defer finish()
 	logger.API("enrichAllMetadataStream: Starting unified metadata enrichment")
 
 	// Set SSE headers
@@ -2036,6 +2071,9 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 
 	// Helper to send SSE event
 	sendEvent := func(progress EnrichmentProgress) {
+		if ctx.Err() != nil {
+			return
+		}
 		data, _ := json.Marshal(progress)
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
@@ -2043,6 +2081,9 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 
 	// Helper to send SSE keepalive comment (invisible to EventSource.onmessage)
 	sendKeepalive := func() {
+		if ctx.Err() != nil {
+			return
+		}
 		fmt.Fprintf(w, ": keepalive %d\n\n", time.Now().Unix())
 		flusher.Flush()
 	}
@@ -2130,7 +2171,7 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 		for job := range jobs {
 			// Check if client disconnected
 			select {
-			case <-r.Context().Done():
+			case <-ctx.Done():
 				return
 			default:
 			}
@@ -2138,7 +2179,10 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 			logger.API("enrichAllMetadataStream: Worker %d processing batch %d with %d songs", workerID, job.batchNum+1, len(job.songs))
 
 			// Call LLM API
-			unified, err := provider.EnrichAllMetadata(r.Context(), job.songs)
+			unified, err := provider.EnrichAllMetadata(ctx, job.songs)
+			if ctx.Err() != nil {
+				return
+			}
 
 			if err != nil {
 				logger.API("enrichAllMetadataStream: Worker %d batch %d error: %v", workerID, job.batchNum+1, err)
@@ -2165,6 +2209,9 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 					batchEmptyResults++
 				}
 				updates = append(updates, db.AIEnrichmentUpdate{SongID: song.ID, Genres: meta.Genres, Mood: meta.Mood, Energy: meta.Energy, Tempo: meta.Tempo, Instrumental: meta.Instrumental, OriginalYear: meta.OriginalYear})
+			}
+			if ctx.Err() != nil {
+				return
 			}
 			applied, updateErr := a.db.ApplyAIEnrichmentBatch(updates, force)
 			if updateErr != nil {
@@ -2204,7 +2251,7 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 			// Broadcast after both the song transaction and derived genre aggregate
 			// refresh. The revision stream supplies the changed rows; this legacy
 			// event also wakes pages with independent derived-data queries.
-			if a.scanner != nil {
+			if a.scanner != nil && ctx.Err() == nil {
 				a.scanner.EmitEvent(scanner.LibraryEvent{
 					Type:         "library_updated",
 					Message:      fmt.Sprintf("AI enrichment batch %d committed", job.batchNum+1),
@@ -2237,6 +2284,7 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 
 	// Start workers
 	var wg sync.WaitGroup
+	defer wg.Wait()
 	for w := 0; w < concurrency; w++ {
 		wg.Add(1)
 		go func(workerID int) {
@@ -2247,14 +2295,17 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 
 	// Start keepalive goroutine
 	keepaliveDone := make(chan struct{})
+	keepaliveExited := make(chan struct{})
+	defer func() { <-keepaliveExited }()
 	go func() {
+		defer close(keepaliveExited)
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-keepaliveDone:
 				return
-			case <-r.Context().Done():
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				mu.Lock()
@@ -2279,7 +2330,7 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	// Wait for all results
 	for i := 0; i < totalBatches; i++ {
 		select {
-		case <-r.Context().Done():
+		case <-ctx.Done():
 			close(keepaliveDone)
 			logger.API("enrichAllMetadataStream: Client disconnected, cancelling")
 			return
@@ -2323,7 +2374,12 @@ func (a *API) enrichOriginalYearsStream(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "No LLM configured. Set AI Provider in Settings.", http.StatusServiceUnavailable)
 		return
 	}
-	defer provider.Close()
+	providerTransferred := false
+	defer func() {
+		if !providerTransferred {
+			provider.Close()
+		}
+	}()
 
 	// Setup SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -2385,14 +2441,26 @@ func (a *API) enrichOriginalYearsStream(w http.ResponseWriter, r *http.Request) 
 	}
 	progressChan := make(chan progressUpdate, 100)
 
+	jobCtx, finish, admitted := a.beginEnrichment(context.Background())
+	if !admitted {
+		http.Error(w, "Application is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Start background goroutine for processing
+	providerTransferred = true
 	go func() {
+		defer finish()
+		defer provider.Close()
 		defer close(progressChan)
 
 		processedSongs := 0
 		updatedTotal := 0
 
 		for batch := 0; batch < totalBatches; batch++ {
+			if jobCtx.Err() != nil {
+				return
+			}
 			start := batch * batchSize
 			end := start + batchSize
 			if end > totalSongs {
@@ -2418,7 +2486,10 @@ func (a *API) enrichOriginalYearsStream(w http.ResponseWriter, r *http.Request) 
 			}
 
 			// Call LLM API
-			results, err := provider.AnalyzeOriginalYear(context.Background(), batchSongs)
+			results, err := provider.AnalyzeOriginalYear(jobCtx, batchSongs)
+			if jobCtx.Err() != nil {
+				return
+			}
 			if err != nil {
 				logger.API("enrichOriginalYearsStream: LLM API error on batch %d: %v", batch+1, err)
 				select {
@@ -2441,6 +2512,9 @@ func (a *API) enrichOriginalYearsStream(w http.ResponseWriter, r *http.Request) 
 			// Update database with results
 			batchUpdated := 0
 			for id, analysis := range results {
+				if jobCtx.Err() != nil {
+					return
+				}
 				if analysis != nil && analysis.OriginalYear > 0 {
 					if err := a.db.SetOriginalYear(id, analysis.OriginalYear); err != nil {
 						logger.API("enrichOriginalYearsStream: Failed to update year for song %s: %v", id, err)
@@ -2525,6 +2599,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		provider.Close()
 		http.Error(w, "SSE not supported", http.StatusInternalServerError)
 		return
 	}
@@ -2562,6 +2637,13 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 
 	logger.API("enrichMoodStream: Starting analysis of %d songs in %d batches", totalSongs, totalBatches)
 
+	jobCtx, finish, admitted := a.beginEnrichment(context.Background())
+	if !admitted {
+		provider.Close()
+		http.Error(w, "Application is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Send initial event to client
 	jsonData, _ := json.Marshal(EnrichmentProgress{
 		Status:       "started",
@@ -2573,16 +2655,19 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	// Broadcast to sidebar
-	a.scanner.EmitEvent(scanner.LibraryEvent{
-		Type:    "mood_started",
-		Message: fmt.Sprintf("Analyzing mood for %d songs", totalSongs),
-		Data: map[string]interface{}{
-			"processedSongs": 0,
-			"totalSongs":     totalSongs,
-			"currentBatch":   0,
-			"totalBatches":   totalBatches,
-		},
-	})
+	if a.scanner != nil && jobCtx.Err() == nil {
+		a.scanner.EmitEvent(scanner.LibraryEvent{
+			Type:    "mood_started",
+			Message: fmt.Sprintf("Analyzing mood for %d songs", totalSongs),
+			Data: map[string]interface{}{
+				"processedSongs": 0,
+				"totalSongs":     totalSongs,
+				"currentBatch":   0,
+				"totalBatches":   totalBatches,
+			},
+		})
+
+	}
 
 	// Create channels for communication between goroutine and SSE sender
 	type progressUpdate struct {
@@ -2593,6 +2678,7 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 
 	// Start background goroutine for processing (continues even if client disconnects)
 	go func() {
+		defer finish()
 		defer provider.Close()
 		defer close(progressChan)
 
@@ -2601,6 +2687,9 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 
 		// broadcastMoodEvent emits to the scanner's event system for sidebar updates
 		broadcastMoodEvent := func(eventType, message string, processed, total, currentBatch, batches int) {
+			if jobCtx.Err() != nil || a.scanner == nil {
+				return
+			}
 			a.scanner.EmitEvent(scanner.LibraryEvent{
 				Type:    eventType,
 				Message: message,
@@ -2614,6 +2703,9 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for batch := 0; batch < totalBatches; batch++ {
+			if jobCtx.Err() != nil {
+				return
+			}
 			start := batch * batchSize
 			end := start + batchSize
 			if end > totalSongs {
@@ -2642,7 +2734,10 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 			// Always broadcast to sidebar
 			broadcastMoodEvent("mood_progress", fmt.Sprintf("Analyzing batch %d/%d", batch+1, totalBatches), processedSongs, totalSongs, batch+1, totalBatches)
 
-			moodMap, err := provider.AnalyzeSongMood(context.Background(), batchSongs)
+			moodMap, err := provider.AnalyzeSongMood(jobCtx, batchSongs)
+			if jobCtx.Err() != nil {
+				return
+			}
 			if err != nil {
 				logger.API("enrichMoodStream: LLM API error on batch %d: %v", batch+1, err)
 				select {
@@ -2665,6 +2760,9 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 
 			batchUpdated := 0
 			for id, analysis := range moodMap {
+				if jobCtx.Err() != nil {
+					return
+				}
 				if err := a.db.UpdateSongMood(id, analysis.Mood, analysis.Energy, analysis.Tempo, analysis.Instrumental); err != nil {
 					logger.API("enrichMoodStream: Failed to update mood for song %s: %v", id, err)
 					continue
@@ -2696,7 +2794,11 @@ func (a *API) enrichMoodStream(w http.ResponseWriter, r *http.Request) {
 			broadcastMoodEvent("mood_progress", fmt.Sprintf("Batch %d complete: %d songs analyzed", batch+1, batchUpdated), processedSongs, totalSongs, batch+1, totalBatches)
 
 			if batch < totalBatches-1 {
-				time.Sleep(500 * time.Millisecond)
+				select {
+				case <-jobCtx.Done():
+					return
+				case <-time.After(500 * time.Millisecond):
+				}
 			}
 		}
 

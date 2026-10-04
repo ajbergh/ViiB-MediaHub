@@ -46,5 +46,5 @@ Deleting a ViiB playlist removes the playlist definition only. It does not delet
 
 - [Songs](songs.md)
 - [Liked Songs & Albums](liked.md)
-- [Smart Playlists / AI DJ](smart-playlists.md)
+- [AI Smart Mix](smart-playlists.md)
 - [Plex Music](plex-music.md)

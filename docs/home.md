@@ -32,7 +32,7 @@ These surfaces use ViiB catalog metadata and artwork. For Plex-backed albums, au
 
 Smart Mixes are derived from the ViiB catalog and listening/enrichment metadata. Plex tracks can participate after synchronization just like local catalog tracks.
 
-See [Smart Playlists / AI DJ](smart-playlists.md).
+See [AI Smart Mix](smart-playlists.md).
 
 ### Library Snapshot
 

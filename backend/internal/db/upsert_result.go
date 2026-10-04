@@ -1,6 +1,11 @@
+// Reports song inserts and updates during batch saves and reconciles Spotify download recording evidence.
 package db
 
-import "strings"
+import (
+	"context"
+	"log"
+	"strings"
+)
 
 // SongUpsertResult makes scan reporting distinguish inserts from updates.
 type SongUpsertResult struct {
@@ -43,6 +48,9 @@ func (d *DB) SaveSongsWithResult(songs []Song) (SongUpsertResult, error) {
 		return result, err
 	}
 	for _, song := range songs {
+		if err := d.ReconcileSpotifyDownload(context.Background(), song.FilePath); err != nil {
+			log.Printf("Spotify recording reconciliation failed: %v", err)
+		}
 		if _, found := existing[song.FilePath]; found {
 			result.Updated++
 		} else {

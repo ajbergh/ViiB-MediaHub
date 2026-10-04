@@ -7,6 +7,7 @@ require (
 	github.com/art-media-platform/amp.SDK v0.705.1
 	github.com/art-media-platform/librespot-go v0.0.0-20251013184957-0b9301b09744
 	github.com/braheezy/shine-mp3 v0.2.0
+	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327
 	github.com/chromedp/chromedp v0.14.2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/fsnotify/fsevents v0.2.0
@@ -33,7 +34,6 @@ require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect

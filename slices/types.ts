@@ -7,7 +7,7 @@
  * Slices:
  * - PlayerSlice: Playback, queue, and audio settings
  * - LibrarySlice: Songs, playlists, metadata, scanning
- * - SpotifySlice: OAuth tokens and user profile
+ * - SpotifySlice: Backend connection state, session generation, profile, and legacy OAuth fields
  * - UISlice: Context menus, dialogs, logs, panel states, toast notifications
  * - AIDJSlice: AI DJ search state and preferences (persisted)
  * 
@@ -57,6 +57,7 @@ export interface PlayerSlice {
   playNext: (items: Song | Song[]) => void;
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
+  retireSpotifyPlayback: () => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   playQueueItem: (index: number) => void;
   
@@ -225,6 +226,11 @@ export interface LibrarySlice {
 }
 
 export interface SpotifySlice {
+  spotifyConnected: boolean;
+  spotifySessionGeneration: number;
+  spotifyAuthRequired: boolean;
+  markSpotifyAuthRequired: () => void;
+  setSpotifyConnected: (connected: boolean) => void;
   spotifyClientId: string;
   spotifyClientSecret: string;
   spotifyAccessToken: string | null;

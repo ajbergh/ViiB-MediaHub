@@ -1,9 +1,12 @@
+/** Edits manual/tapped BPM with source-aware local or Plex handling and a separate optional Spotify reference panel. */
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
 import { djTrackSourceIdentity, formatManualBpm, tapTempoBpm } from '../../../lib/djBpmCorrection';
 import type { Song } from '../../../types';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { useStore } from '../../../store';
+import { SpotifyReference } from '../../SpotifyReference';
 
 interface DJBpmEditorProps {
   track: Song | null;
@@ -184,6 +187,7 @@ export function DJBpmEditor({ track, deck, embedded = false }: DJBpmEditorProps)
         {feature?.bpmSource === 'measured' && <span className="text-[var(--dj-text-secondary)]">Measured {feature.bpm == null ? 'unknown' : `${formatManualBpm(feature.bpm)} BPM`}</span>}
         {status && <span role="status" className="text-[var(--dj-text-secondary)]">{status}</span>}
       </div>
+      <SpotifyReference songId={track.id} sourceIdentity={sourceIdentity} />
     </div>
   </details>;
 }

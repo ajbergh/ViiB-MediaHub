@@ -65,8 +65,9 @@ For Plex tracks these edits are ViiB-local only; they are never silently written
 Creating a backup:
 
 1. Creates a consistent SQLite snapshot using `VACUUM INTO` after a WAL checkpoint.
-2. Validates the snapshot with SQLite integrity checking.
-3. Stores `library.db` and a SHA-256 manifest in a ZIP archive in the application data directory.
+2. Removes Spotify cookie-session and OAuth-credential settings from the temporary snapshot, then erases deleted credential bytes with SQLite secure-delete and `VACUUM`. The active database is unchanged.
+3. Validates the sanitized snapshot with SQLite integrity checking.
+4. Stores `library.db` and a SHA-256 manifest in a ZIP archive in the application data directory.
 
 **Preview restore** validates the archive, manifest checksum, and SQLite database without changing the active library.
 
@@ -82,7 +83,7 @@ The watcher status reports whether monitoring is running, its interval, check co
 
 ## Safety notes
 
-- Backups and restore archives contain local library metadata and may include encrypted integration credentials as part of the database. Store them with the same care as the application data directory.
+- New backups exclude Spotify cookie sessions and OAuth credentials. Sign in to Spotify again after restoring one. Other encrypted integration credentials may remain in the database, and older archives may contain Spotify credentials; store archives with the same care as the application data directory.
 - Repair and restore act only on the ViiB SQLite database. They do not delete or rewrite local audio files or Plex-hosted media.
 - Track analysis only reads audio. It never rewrites a media file's tags or contents, and it never writes measured values back to Plex.
 - Removing or changing Plex configuration performs no destructive PMS operation.

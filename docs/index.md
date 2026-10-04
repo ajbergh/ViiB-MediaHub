@@ -25,7 +25,7 @@ Spotify remains a separate integration for Spotify browsing, streaming, and down
 | [Genres](genres.md) | Genre browser |
 | [Playlists](playlists.md) | ViiB playlists that can contain local or Plex catalog tracks |
 | [Liked Songs & Albums](liked.md) | ViiB-local likes for catalog tracks and albums |
-| [Smart Playlists / AI DJ](smart-playlists.md) | AI-generated playlists and DJ sets over the ViiB catalog |
+| [AI Smart Mix](smart-playlists.md) | AI-generated playlists and DJ sets over the ViiB catalog |
 | [Search](search.md) | Indexed search across the unified ViiB catalog |
 | [Spotify](spotify.md) | Spotify integration, streaming, browse, and downloads |
 | [Plex Music](plex-music.md) | PMS discovery, account/server selection, library sync, proxied playback, explicit metadata writeback, security, and troubleshooting |
@@ -52,7 +52,7 @@ Local folders ──scan────────────┐
                                 ├──> ViiB songs catalog ──> Songs / Albums / Artists
 Plex music ────synchronize──────┘                          Search / Queue / Playlists
                                                            Likes / History / Stats
-                                                           Smart Mixes / AI DJ
+                                                           Smart Mixes / AI Smart Mix
 
 Spotify ───────separate integration──> Spotify browse / stream / download
 ```

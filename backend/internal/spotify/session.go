@@ -1,5 +1,7 @@
 // Package spotify provides Spotify integration for ViiB MediaHub.
-// This file implements session management for librespot-go authentication.
+// This file manages librespot playback/download sessions from backend bearer tokens.
+// Sessions are leased to media consumers and retired on credential or account changes;
+// cookie exchange and catalog access belong to the auth and catalog packages.
 package spotify
 
 import (
@@ -302,6 +304,16 @@ func (sm *SessionManager) GetInitTime() int64 {
 //
 // Unlike Close(), this method is designed to be called when you want to
 // force a complete session refresh while keeping the manager alive.
+// ClearCredentials retires an account after active leases drain.
+func (sm *SessionManager) ClearCredentials() {
+	sm.useMu.Lock()
+	defer sm.useMu.Unlock()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.resetSessionLocked()
+	sm.accessToken = ""
+}
+
 func (sm *SessionManager) ResetSession() {
 	sm.useMu.Lock()
 	defer sm.useMu.Unlock()
@@ -380,5 +392,8 @@ func (sm *SessionManager) Close() error {
 		sm.taskCtx.Close()
 		sm.taskCtx = nil
 	}
+	sm.accessToken = ""
+	sm.lastTokenUsed = ""
+	sm.initialized = false
 	return nil
 }

@@ -1,8 +1,10 @@
+// Tests routing of cookie catalog requests and legacy OAuth token refresh through shared request and cooldown handling.
 package api
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 )
 
 func TestPKCERefreshDoesNotRequireClientSecret(t *testing.T) {
@@ -107,5 +110,32 @@ func TestSpotifyRequestRetriesOnceAfterUnauthorized(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK || resourceCalls != 2 {
 		t.Fatalf("expected one retry and 200, got calls=%d status=%d", resourceCalls, response.StatusCode)
+	}
+}
+
+func TestSpotifyOAuthPurposeAdapterPreservesCredentials(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	original := SpotifyCredentials{ClientId: "client", AccessToken: "existing", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()}
+	raw, _ := json.Marshal(original)
+	if err := database.SetSetting("spotify_credentials", string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	manager := spotifyOAuthManager(database)
+	for _, purpose := range []spotifyauth.Purpose{spotifyauth.WebAPI, spotifyauth.Playback} {
+		token, err := manager.Token(context.Background(), purpose)
+		if err != nil || token.Kind != spotifyauth.OAuth || token.Bearer() != original.AccessToken || token.ExpiresAt.UnixMilli() != original.Expiry {
+			t.Fatalf("purpose adapter: %v", err)
+		}
+	}
+	if _, err := manager.Token(context.Background(), spotifyauth.InternalAnalysis); !errors.Is(err, spotifyauth.ErrDisabled) {
+		t.Fatalf("internal analysis enabled: %v", err)
+	}
+	stored, err := readSpotifyCredentials(database)
+	if err != nil || stored != original {
+		t.Fatalf("credential shape changed: %v", err)
 	}
 }
