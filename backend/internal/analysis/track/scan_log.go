@@ -19,7 +19,7 @@ func scanEngineDecision(observation *spotifyanalysis.Observation, hasLookup bool
 	bpm, tonalKey := observation.BPM != nil, observation.Key != nil && observation.Mode != nil
 	switch {
 	case bpm && tonalKey:
-		return "spotify", "spotify_complete"
+		return "spotify+local", "spotify_scalars_local_artifacts"
 	case bpm:
 		return "spotify+local", "spotify_missing_key"
 	case tonalKey:

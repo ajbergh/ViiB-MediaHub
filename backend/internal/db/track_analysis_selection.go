@@ -163,7 +163,9 @@ func (d *DB) ExpandAnalysisSelection(selection AnalysisSelection, analysisVersio
 	case AnalysisSelectionAll:
 		// Every eligible song; the runner still skips tracks that are valid.
 	case AnalysisSelectionMissing:
-		base += ` AND (a.song_id IS NULL OR a.algorithm_version = 'spotify-features-v1')`
+		// v2 could settle Spotify scalars without measuring energy or generating
+		// cues. Revisit that generation once, even for an ordinary missing scan.
+		base += ` AND (a.song_id IS NULL OR a.algorithm_version = 'spotify-features-v1' OR a.algorithm_version LIKE 'track-v2-spotify;%')`
 	case AnalysisSelectionStale:
 		base += ` AND (a.song_id IS NULL OR a.analysis_version != ? OR a.algorithm_version != ?)`
 		args = append(args, analysisVersion, algorithmVersion)

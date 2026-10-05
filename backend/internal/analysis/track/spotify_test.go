@@ -141,11 +141,11 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 				t.Fatal(readErr)
 			}
 			logText := string(contents)
-			expected := map[string]string{"complete": "reason=\"spotify_complete\"", "key-only": "reason=\"spotify_missing_bpm\"", "bpm-only": "reason=\"spotify_missing_key\"", "unavailable": "reason=\"spotify_unavailable\"", "canceled": "analysis_canceled"}[scenario]
+			expected := map[string]string{"complete": "reason=\"spotify_scalars_local_artifacts\"", "key-only": "reason=\"spotify_missing_bpm\"", "bpm-only": "reason=\"spotify_missing_key\"", "unavailable": "reason=\"spotify_unavailable\"", "canceled": "analysis_canceled"}[scenario]
 			if !strings.Contains(logText, expected) {
 				t.Fatalf("missing decision %q: %s", expected, logText)
 			}
-			if scenario == "complete" && (!strings.Contains(logText, "bpm_source=\"spotify\"") || !strings.Contains(logText, "key_source=\"spotify\"") || !strings.Contains(logText, "local_engine=\"skipped\"")) {
+			if scenario == "complete" && (!strings.Contains(logText, "bpm_source=\"spotify\"") || !strings.Contains(logText, "key_source=\"spotify\"") || !strings.Contains(logText, "local_engine=\"run\"")) {
 				t.Fatalf("provider result log: %s", logText)
 			}
 			if scenario == "key-only" && (!strings.Contains(logText, "bpm_source=\"local\"") || !strings.Contains(logText, "key_source=\"spotify\"") || !strings.Contains(logText, "local_engine=\"run\"")) {
@@ -168,11 +168,27 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if scenario == "complete" && opens != 0 {
-				t.Fatal("complete provider result decoded audio")
+			if opens != 1 {
+				t.Fatalf("local artifacts require one decode, got %d", opens)
 			}
-			if scenario != "complete" && opens == 0 {
-				t.Fatal("missing provider dimension did not decode audio")
+			if record.EnergyLevel == nil {
+				t.Fatal("energy level missing")
+			}
+			for _, artifact := range []struct {
+				kind      string
+				version   int
+				algorithm string
+			}{
+				{features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion},
+				{features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion},
+			} {
+				if _, err := database.GetTrackAnalysisArtifact(ids[0], artifact.kind, artifact.version, artifact.algorithm); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cues, err := database.GetDJHotCues(ids[0])
+			if err != nil || len(cues) == 0 {
+				t.Fatalf("generated cues missing: %+v %v", cues, err)
 			}
 			if scenario == "complete" || scenario == "bpm-only" {
 				if record.BPM == nil || *record.BPM != bpm || *record.BPMSource != "spotify" || record.BPMConfidence != nil {
@@ -187,5 +203,95 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSpotifyScalarOnlyRowsAreRepairedWithoutProvider(t *testing.T) {
+	database, ids := runnerCatalog(t, 1)
+	source, err := analysis.ResolveLocalSource(database, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	bpm, tonic, mode := 136.955, 8, "minor"
+	manualBPM, manualTonic, manualMode := 140.0, 0, "major"
+	override := db.TrackAnalysisOverride{SongID: ids[0], BPM: &manualBPM, KeyTonic: &manualTonic, KeyMode: &manualMode, BPMLocked: true, KeyLocked: true}
+	if err := database.UpsertTrackAnalysisOverride(override); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveDJHotCues(ids[0], []db.DJHotCue{{Slot: 8, Position: 1.25, Label: "My cue", Color: "#123456", Origin: "user", Locked: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: ids[0], Status: db.TrackAnalysisComplete,
+		AnalysisVersion: AnalysisVersion, AlgorithmVersion: "track-v2-spotify;old", SourceFingerprint: source.Fingerprint,
+		BPM: &bpm, BPMSource: ptr("spotify"), KeyTonic: &tonic, KeyMode: &mode, KeySource: ptr("spotify")}); err != nil {
+		t.Fatal(err)
+	}
+	selection := db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}
+	selected, err := database.ExpandAnalysisSelection(selection, AnalysisVersion, AlgorithmVersion)
+	if err != nil || len(selected) != 1 {
+		t.Fatalf("repair selection: %v %v", selected, err)
+	}
+	progress, err := Run(t.Context(), database, analysis.NewDefaultDecoderRegistry(), selected, RunOptions{})
+	if err != nil || progress.Analyzed != 1 {
+		t.Fatalf("repair: %+v %v", progress, err)
+	}
+	after, err := database.GetTrackAnalysis(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.EnergyLevel == nil || after.BPM == nil || *after.BPM != bpm || *after.BPMSource != "spotify" || *after.KeySource != "spotify" || *after.KeyTonic != tonic || *after.KeyMode != mode {
+		t.Fatalf("lost provider scalars or energy: %+v", after)
+	}
+	if _, err := database.GetTrackAnalysisArtifact(ids[0], features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion); err != nil {
+		t.Fatal(err)
+	}
+	cues, err := database.GetDJHotCues(ids[0])
+	if err != nil || len(cues) < 2 {
+		t.Fatalf("repair cues: %+v %v", cues, err)
+	}
+	for _, cue := range cues {
+		if cue.Slot == 8 && (cue.Position != 1.25 || cue.Label != "My cue" || cue.Origin != "user" || !cue.Locked) {
+			t.Fatalf("manual cue changed: %+v", cue)
+		}
+	}
+	retainedOverride, err := database.GetTrackAnalysisOverride(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if effective := db.ResolveEffectiveBPM(db.EffectiveBPMInputs{Analysis: &after, Override: &retainedOverride}); effective.Source != "manual" || effective.Value == nil || *effective.Value != manualBPM {
+		t.Fatalf("manual BPM changed: %+v", effective)
+	}
+	if effective := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Analysis: &after, Override: &retainedOverride}); effective.Source != "manual" || effective.Tonic == nil || *effective.Tonic != manualTonic {
+		t.Fatalf("manual key changed: %+v", effective)
+	}
+	selected, err = database.ExpandAnalysisSelection(selection, AnalysisVersion, AlgorithmVersion)
+	if err != nil || len(selected) != 0 {
+		t.Fatalf("repaired row selected again: %v %v", selected, err)
+	}
+}
+
+func TestSpotifyScalarsSurviveDecoderFailureAndRemainEligibleForRepair(t *testing.T) {
+	database, ids := runnerCatalog(t, 1)
+	bpm, tonic, mode := 128.0, 9, 0
+	progress, err := Run(t.Context(), database, analysis.NewDefaultDecoderRegistry(), ids, RunOptions{
+		ResolveSource: func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
+			source, err := analysis.ResolveLocalSource(database, id)
+			source.OpenStream = func() (io.ReadCloser, error) { return nil, errors.New("decoder unavailable") }
+			return source, err
+		},
+		SpotifyFeatures: func(context.Context, analysis.ResolvedSource) *spotifyanalysis.Observation {
+			return &spotifyanalysis.Observation{BPM: &bpm, Key: &tonic, Mode: &mode}
+		},
+	})
+	if err != nil || progress.Analyzed != 1 {
+		t.Fatalf("scalar retention: %+v %v", progress, err)
+	}
+	record, err := database.GetTrackAnalysis(ids[0])
+	if err != nil || record.BPM == nil || *record.BPM != bpm || record.EnergyLevel != nil || record.AlgorithmVersion != "spotify-features-v1" {
+		t.Fatalf("failed local pass marked current: %+v %v", record, err)
+	}
+	selected, err := database.ExpandAnalysisSelection(db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, AnalysisVersion, AlgorithmVersion)
+	if err != nil || len(selected) != 1 {
+		t.Fatalf("artifact repair eligibility: %v %v", selected, err)
 	}
 }

@@ -136,6 +136,7 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 	// Two overlapping jobs can expand the same selection. The claim ensures only
 	// one of them decodes the file; the loser treats the track as another
 	// worker's responsibility rather than duplicating the work.
+	previous, _ := database.GetTrackAnalysis(songID)
 	claimed, err := database.ClaimTrackAnalysis(songID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
 	if err != nil {
 		logger.Analysis("track claim failed song_id=%q path=%q error=%q", songID, source.Path, err)
@@ -155,17 +156,19 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		_ = database.ReleaseTrackAnalysis(songID)
 		return outcomeFailed
 	}
+	// A local artifact repair must retain already retrieved Spotify scalars
+	// for these exact bytes when Spotify is temporarily unavailable.
+	if previous.SourceFingerprint == source.Fingerprint {
+		observation = retainSpotifyScalars(observation, previous)
+	}
 	result := Result{SongID: songID, Source: source}
 	engine, reason := scanEngineDecision(observation, spotifyFeatures != nil)
 	logger.Scan("analysis_start song_id=%q file=%q engine=%q reason=%q", songID, source.Name, engine, reason)
-	localEngine := "skipped"
-	if observation == nil || observation.BPM == nil || observation.Key == nil || observation.Mode == nil {
-		localEngine = "run"
-		result, err = AnalyzeResolved(ctx, registry, source, opts)
-		if err != nil {
-			code, _ := ClassifyError(err)
-			logger.Scan("local_analysis_failed song_id=%q code=%q", songID, code)
-		}
+	localEngine := "run"
+	result, err = AnalyzeResolved(ctx, registry, source, opts)
+	if err != nil {
+		code, _ := ClassifyError(err)
+		logger.Scan("local_analysis_failed song_id=%q code=%q", songID, code)
 	}
 	if observation != nil {
 		result.Spotify = observation
@@ -214,6 +217,7 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		return outcomeFailed
 	}
 	logScanResult(result, localEngine)
+	logger.Scan("local_artifacts song_id=%q energy=%t loudness=%t beatgrid=%t cue_suggestions=%t auto_cue_mode=%q", songID, result.EnergyLevel != nil, result.Loudness != nil, result.BeatGrid != nil, result.Features != nil && len(result.Features.CueSuggestions) > 0, autoCueMode)
 	if code, message := resultIssue(result); code != "" {
 		logger.Analysis("track incomplete song_id=%q path=%q status=%q code=%q error=%q tempo_known=%t tempo_crest=%.3f key_known=%t key_flatness=%.6f",
 			songID, source.Path, result.Status, code, message, result.Tempo.Known, result.Tempo.OnsetCrestFactor, result.Key.Known, result.Key.Flatness)
@@ -222,6 +226,28 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		return outcomeFailed
 	}
 	return outcomeAnalyzed
+}
+
+func retainSpotifyScalars(observation *spotifyanalysis.Observation, previous db.TrackAnalysis) *spotifyanalysis.Observation {
+	retained := spotifyanalysis.Observation{}
+	if observation != nil {
+		retained = *observation
+	}
+	if retained.BPM == nil && previous.BPMSource != nil && *previous.BPMSource == db.EffectiveBPMSpotify {
+		retained.BPM = previous.BPM
+	}
+	if (retained.Key == nil || retained.Mode == nil) && previous.KeySource != nil && *previous.KeySource == db.EffectiveKeySpotify && previous.KeyTonic != nil && previous.KeyMode != nil {
+		retained.Key = previous.KeyTonic
+		mode := 1
+		if *previous.KeyMode == "minor" {
+			mode = 0
+		}
+		retained.Mode = &mode
+	}
+	if observation == nil && retained.BPM == nil && retained.Key == nil {
+		return nil
+	}
+	return &retained
 }
 
 // Refreshing provider scalars must not run DSP again or replace measured

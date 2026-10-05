@@ -33,7 +33,8 @@ const AnalysisVersion = 1
 // AlgorithmVersion identifies the exact analyzer combination that produced a
 // row. It is composite because one row carries both dimensions; a change in
 // either analyzer must invalidate the record.
-const AlgorithmVersion = "track-v2-spotify;" + tempo.AlgorithmVersion + ";" + key.AlgorithmVersion + ";" + features.EnergyLevelAlgorithmVersion + ";" + features.BS1770AlgorithmVersion
+// v3 restores the local artifact pass that v2 skipped for complete Spotify scalars.
+const AlgorithmVersion = "track-v3-spotify-local-artifacts;" + tempo.AlgorithmVersion + ";" + key.AlgorithmVersion + ";" + features.EnergyLevelAlgorithmVersion + ";" + features.BS1770AlgorithmVersion
 
 // Stable failure codes from the analysis lifecycle contract. They are part of
 // the persisted record and must not be reworded per call site.
@@ -303,6 +304,11 @@ func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.Autom
 	}
 	if result.Spotify != nil {
 		db.ApplySpotifyScalars(&record, *result.Spotify)
+		// Scalar data survives a decoder failure, but remains eligible for a
+		// later artifact/cue repair instead of claiming a complete local pass.
+		if result.Features == nil || result.Loudness == nil {
+			record.AlgorithmVersion = "spotify-features-v1"
+		}
 	}
 	if code, message := resultIssue(result); code != "" {
 		record.ErrorCode = &code
