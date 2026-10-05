@@ -169,7 +169,9 @@ func TestAvailableMP3TargetDoesNotOverwriteExistingFile(t *testing.T) {
 }
 
 func TestWriteID3v24IncludesDownloadMetadata(t *testing.T) {
+	bpm := 109.724
 	metadata := MP3Metadata{
+		BPM: &bpm, InitialKey: "Am",
 		Title:       "Title",
 		Artist:      "Artist",
 		Album:       "Album",
@@ -192,6 +194,7 @@ func TestWriteID3v24IncludesDownloadMetadata(t *testing.T) {
 	want := map[string]string{
 		"TIT2": "Title", "TPE1": "Artist", "TALB": "Album", "TPE2": "Album artist",
 		"TRCK": "7", "TPOS": "2", "TDRC": "2026-09-04", "TCON": "Rock",
+		"TBPM": "109.724", "TKEY": "Am",
 	}
 	for id, value := range want {
 		if frames[id] != value {

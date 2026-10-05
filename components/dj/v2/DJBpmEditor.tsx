@@ -122,7 +122,7 @@ export function DJBpmEditor({ track, deck, embedded = false }: DJBpmEditorProps)
       setFeature(measured);
       setBpmInput(measured.bpm == null ? '' : formatManualBpm(measured.bpm));
       setDeckAnalysis(deck, { bpm: measured.bpm ?? null, bpmConfidence: measured.bpmConfidence ?? null });
-      setStatus(measured.bpmSource === 'measured' ? `Restored measured ${formatManualBpm(measured.bpm!)} BPM.` : 'No measured BPM is available for this source.');
+      setStatus(measured.bpmSource === 'spotify' ? `Restored Spotify ${formatManualBpm(measured.bpm!)} BPM.` : measured.bpmSource === 'measured' ? `Restored measured ${formatManualBpm(measured.bpm!)} BPM.` : 'No measured BPM is available for this source.');
     } catch (cause) {
       if (generation !== actionGeneration.current) return;
       setStatus(cause instanceof Error ? cause.message : 'BPM could not be reset.');

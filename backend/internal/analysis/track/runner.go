@@ -6,6 +6,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 )
 
 // RunProgress is the aggregate state of one analysis run. Counts are derived
@@ -26,7 +27,10 @@ func (p RunProgress) Done() int { return p.Processed }
 
 // RunOptions configures one pass over a work list.
 type RunOptions struct {
-	Analysis Options
+	// EnrichValid permits Spotify enrichment while reusing current local DSP.
+	EnrichValid     bool
+	SpotifyFeatures func(context.Context, analysis.ResolvedSource) *spotifyanalysis.Observation
+	Analysis        Options
 	// AutoCueMode is snapshotted on durable jobs. A zero/invalid value retains
 	// the public runner's historical fill-empty behavior.
 	AutoCueMode db.AutomaticCuePointMode
@@ -66,7 +70,7 @@ func Run(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistr
 				return progress, err
 			}
 		}
-		settled := analyzeOne(ctx, database, registry, songID, opts.Analysis, opts.AutoCueMode, opts.ResolveSource)
+		settled := analyzeOne(ctx, database, registry, songID, opts.Analysis, opts.AutoCueMode, opts.ResolveSource, opts.SpotifyFeatures, opts.EnrichValid)
 		// A cancellation that arrived mid-decode leaves the track outstanding
 		// rather than failed, so it must not be counted before returning.
 		if err := ctx.Err(); err != nil {
@@ -99,7 +103,7 @@ const (
 
 // analyzeOne settles exactly one track. Every terminal condition is persisted,
 // so a source that cannot be analyzed is not retried on the next run.
-func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options, autoCueMode db.AutomaticCuePointMode, resolveSource func(context.Context, string) (analysis.ResolvedSource, error)) outcome {
+func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, songID string, opts Options, autoCueMode db.AutomaticCuePointMode, resolveSource func(context.Context, string) (analysis.ResolvedSource, error), spotifyFeatures func(context.Context, analysis.ResolvedSource) *spotifyanalysis.Observation, enrichValid bool) outcome {
 	if resolveSource == nil {
 		resolveSource = func(_ context.Context, id string) (analysis.ResolvedSource, error) {
 			return analysis.ResolveLocalSource(database, id)
@@ -115,8 +119,15 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		}
 		return outcomeFailed
 	}
+	logger.Scan("analysis_track song_id=%q file=%q", songID, source.Name)
 	valid, err := database.TrackAnalysisValid(songID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
 	if err == nil && valid {
+		if enrichValid && spotifyFeatures != nil {
+			return enrichCurrentScalars(ctx, database, source, spotifyFeatures)
+		}
+		if record, readErr := database.GetTrackAnalysis(songID); readErr == nil {
+			logScanRecord(record, "already_current", "skipped")
+		}
 		return outcomeSkipped
 	}
 	if err != nil {
@@ -125,16 +136,65 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 	// Two overlapping jobs can expand the same selection. The claim ensures only
 	// one of them decodes the file; the loser treats the track as another
 	// worker's responsibility rather than duplicating the work.
+	previous, _ := database.GetTrackAnalysis(songID)
 	claimed, err := database.ClaimTrackAnalysis(songID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
 	if err != nil {
 		logger.Analysis("track claim failed song_id=%q path=%q error=%q", songID, source.Path, err)
 		return outcomeFailed
 	}
 	if !claimed {
+		logger.Scan("analysis_skipped song_id=%q reason=claimed_by_another_worker", songID)
 		return outcomeSkipped
 	}
 
-	result, err := AnalyzeResolved(ctx, registry, source, opts)
+	var observation *spotifyanalysis.Observation
+	if spotifyFeatures != nil {
+		observation = spotifyFeatures(ctx, source)
+	}
+	if ctx.Err() != nil {
+		logger.Scan("analysis_canceled song_id=%q stage=spotify_lookup", songID)
+		_ = database.ReleaseTrackAnalysis(songID)
+		return outcomeFailed
+	}
+	// A local artifact repair must retain already retrieved Spotify scalars
+	// for these exact bytes when Spotify is temporarily unavailable.
+	if previous.SourceFingerprint == source.Fingerprint {
+		observation = retainSpotifyScalars(observation, previous)
+	}
+	result := Result{SongID: songID, Source: source}
+	engine, reason := scanEngineDecision(observation, spotifyFeatures != nil)
+	logger.Scan("analysis_start song_id=%q file=%q engine=%q reason=%q", songID, source.Name, engine, reason)
+	localEngine := "run"
+	result, err = AnalyzeResolved(ctx, registry, source, opts)
+	if err != nil {
+		code, _ := ClassifyError(err)
+		logger.Scan("local_analysis_failed song_id=%q code=%q", songID, code)
+	}
+	if observation != nil {
+		result.Spotify = observation
+		if observation.BPM != nil {
+			result.Tempo.Known = true
+			result.Tempo.BPM = *observation.BPM
+		}
+		if observation.Key != nil && observation.Mode != nil {
+			result.Key.Known = true
+			result.Key.Tonic = *observation.Key
+			result.Key.Mode = "major"
+			if *observation.Mode == 0 {
+				result.Key.Mode = "minor"
+			}
+		}
+		if observation.DurationSeconds != nil && result.DurationSeconds == 0 {
+			result.DurationSeconds = *observation.DurationSeconds
+		}
+		result.Status = combinedStatus(result.Tempo.Known, result.Key.Known)
+		// Keep usable Spotify dimensions even if the fallback decoder fails.
+		if ctx.Err() == nil && (result.Tempo.Known || result.Key.Known) {
+			err = nil
+			result.SongID = songID
+			result.Source = source
+		}
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			// Do not persist a cancellation as a track-level failure; the work
@@ -156,6 +216,8 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		logger.Analysis("track persistence failed song_id=%q path=%q status=%q error=%q", songID, source.Path, result.Status, err)
 		return outcomeFailed
 	}
+	logScanResult(result, localEngine)
+	logger.Scan("local_artifacts song_id=%q energy=%t loudness=%t beatgrid=%t cue_suggestions=%t auto_cue_mode=%q", songID, result.EnergyLevel != nil, result.Loudness != nil, result.BeatGrid != nil, result.Features != nil && len(result.Features.CueSuggestions) > 0, autoCueMode)
 	if code, message := resultIssue(result); code != "" {
 		logger.Analysis("track incomplete song_id=%q path=%q status=%q code=%q error=%q tempo_known=%t tempo_crest=%.3f key_known=%t key_flatness=%.6f",
 			songID, source.Path, result.Status, code, message, result.Tempo.Known, result.Tempo.OnsetCrestFactor, result.Key.Known, result.Key.Flatness)
@@ -163,5 +225,80 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 	if result.Status == db.TrackAnalysisFailed {
 		return outcomeFailed
 	}
+	return outcomeAnalyzed
+}
+
+func retainSpotifyScalars(observation *spotifyanalysis.Observation, previous db.TrackAnalysis) *spotifyanalysis.Observation {
+	retained := spotifyanalysis.Observation{}
+	if observation != nil {
+		retained = *observation
+	}
+	if retained.BPM == nil && previous.BPMSource != nil && *previous.BPMSource == db.EffectiveBPMSpotify {
+		retained.BPM = previous.BPM
+	}
+	if (retained.Key == nil || retained.Mode == nil) && previous.KeySource != nil && *previous.KeySource == db.EffectiveKeySpotify && previous.KeyTonic != nil && previous.KeyMode != nil {
+		retained.Key = previous.KeyTonic
+		mode := 1
+		if *previous.KeyMode == "minor" {
+			mode = 0
+		}
+		retained.Mode = &mode
+	}
+	if observation == nil && retained.BPM == nil && retained.Key == nil {
+		return nil
+	}
+	return &retained
+}
+
+// Refreshing provider scalars must not run DSP again or replace measured
+// loudness, energy, structure, or artifacts that already describe these bytes.
+func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.ResolvedSource, lookup func(context.Context, analysis.ResolvedSource) *spotifyanalysis.Observation) outcome {
+	record, err := database.GetTrackAnalysis(source.SongID)
+	if err != nil {
+		return outcomeFailed
+	}
+	if record.SourceFingerprint != source.Fingerprint {
+		return outcomeSkipped
+	}
+	switch record.Status {
+	case db.TrackAnalysisComplete, db.TrackAnalysisPartial, db.TrackAnalysisFailed, db.TrackAnalysisUnsupported:
+	default:
+		return outcomeSkipped
+	}
+	if record.BPMSource != nil && *record.BPMSource == db.EffectiveBPMSpotify && record.KeySource != nil && *record.KeySource == db.EffectiveKeySpotify {
+		logScanRecord(record, "already_current", "skipped")
+		return outcomeSkipped
+	}
+	claimed, err := database.ClaimTrackAnalysis(source.SongID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
+	if err != nil {
+		return outcomeFailed
+	}
+	if !claimed {
+		return outcomeSkipped
+	}
+	observation := lookup(ctx, source)
+	if ctx.Err() != nil || observation == nil {
+		if err := database.UpsertTrackAnalysis(record); err != nil {
+			_ = database.ReleaseTrackAnalysis(source.SongID)
+			return outcomeFailed
+		}
+		if ctx.Err() != nil {
+			logger.Scan("analysis_canceled song_id=%q stage=spotify_enrichment", source.SongID)
+		}
+		logScanRecord(record, "spotify_unavailable_retained_existing", "reused")
+		return outcomeSkipped
+	}
+	db.ApplySpotifyScalars(&record, *observation)
+	if record.BPM != nil && record.KeyTonic != nil && record.KeyMode != nil {
+		record.Status = db.TrackAnalysisComplete
+		record.ErrorCode, record.ErrorMessage = nil, nil
+	} else if record.BPM != nil || (record.KeyTonic != nil && record.KeyMode != nil) {
+		record.Status = db.TrackAnalysisPartial
+	}
+	if err := database.UpsertTrackAnalysis(record); err != nil {
+		_ = database.ReleaseTrackAnalysis(source.SongID)
+		return outcomeFailed
+	}
+	logScanRecord(record, "spotify_enriched", "reused")
 	return outcomeAnalyzed
 }

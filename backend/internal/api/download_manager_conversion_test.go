@@ -29,7 +29,9 @@ func TestConvertDownloadedOggIfEnabled(t *testing.T) {
 		Artist: "Track artist",
 		Album:  "Track album",
 	}
+	bpm := 109.724
 	metadata := &spotify.DownloadMetadata{
+		BPM: &bpm, InitialKey: "Am",
 		AlbumArtist: "Album artist",
 		TrackNumber: 4,
 		DiscNumber:  2,
@@ -62,6 +64,7 @@ func TestConvertDownloadedOggIfEnabled(t *testing.T) {
 			t.Errorf("converter path = %q, want track.ogg", path)
 		}
 		want := (audio.MP3Metadata{
+			BPM: &bpm, InitialKey: "Am",
 			Title:       "Track title",
 			Artist:      "Track artist",
 			Album:       "Track album",

@@ -68,12 +68,13 @@ const (
 	TrackAnalysisUnsupported = "unsupported"
 )
 
-// Provenance tiers for a resolved BPM. Only explicit manual overrides and
-// results produced by the local audio analyzer are eligible.
+// Resolved scalars accept locked manual overrides, local measurements and
+// Spotify features from a confirmed recording. Imported tags remain excluded.
 const (
 	EffectiveBPMUnknown  = "unknown"
 	EffectiveBPMManual   = "manual"
 	EffectiveBPMMeasured = "measured"
+	EffectiveBPMSpotify  = "spotify"
 )
 
 // EffectiveKeyUnknown, EffectiveKeyManual, and EffectiveKeyMeasured mirror the
@@ -84,6 +85,7 @@ const (
 	EffectiveKeyUnknown  = "unknown"
 	EffectiveKeyManual   = "manual"
 	EffectiveKeyMeasured = "measured"
+	EffectiveKeySpotify  = "spotify"
 )
 
 // EffectiveBPMInputs collects the only BPM tiers accepted by the application.
@@ -99,7 +101,7 @@ type EffectiveBPM struct {
 	SyncAllowed bool
 }
 
-// EffectiveKeyInputs collects the two sources that may authoritatively name a
+// EffectiveKeyInputs collects the sources that may authoritatively name a
 // track's key. Keeping this separate from EffectiveBPM prevents a future
 // caller from accidentally treating an inferred tempo tier as tonal evidence.
 type EffectiveKeyInputs struct {
@@ -116,13 +118,13 @@ type EffectiveKey struct {
 	Source string
 }
 
-// ResolveEffectiveBPM applies manual-over-local-measurement precedence.
+// ResolveEffectiveBPM applies locked manual overrides before recorded analysis.
 func ResolveEffectiveBPM(inputs EffectiveBPMInputs) EffectiveBPM {
 	if inputs.Override != nil && inputs.Override.BPMLocked && inputs.Override.BPM != nil {
 		return EffectiveBPM{Value: inputs.Override.BPM, Source: EffectiveBPMManual, SyncAllowed: true}
 	}
 	if measured := measuredBPM(inputs.Analysis); measured != nil {
-		return EffectiveBPM{Value: measured, Source: EffectiveBPMMeasured, SyncAllowed: true}
+		return EffectiveBPM{Value: measured, Source: *inputs.Analysis.BPMSource, SyncAllowed: *inputs.Analysis.BPMSource == EffectiveBPMMeasured}
 	}
 	return EffectiveBPM{Source: EffectiveBPMUnknown}
 }
@@ -150,12 +152,12 @@ func ResolveEffectiveKey(inputs EffectiveKeyInputs) EffectiveKey {
 		return EffectiveKey{Tonic: inputs.Override.KeyTonic, Mode: inputs.Override.KeyMode, Source: EffectiveKeyManual}
 	}
 	if tonic, mode := measuredKey(inputs.Analysis); tonic != nil && mode != nil {
-		return EffectiveKey{Tonic: tonic, Mode: mode, Source: EffectiveKeyMeasured}
+		return EffectiveKey{Tonic: tonic, Mode: mode, Source: *inputs.Analysis.KeySource}
 	}
 	return EffectiveKey{Source: EffectiveKeyUnknown}
 }
 
-// measuredBPM returns a local audio-derived tempo only when the record actually
+// measuredBPM returns an audio-derived or Spotify tempo only when the record actually
 // carries one. Imported tags and inferred values are deliberately rejected.
 //
 // A `partial` record is as authoritative for tempo as a `complete` one: partial
@@ -176,7 +178,7 @@ func measuredBPM(analysis *TrackAnalysis) *float64 {
 		return nil
 	}
 	switch *analysis.BPMSource {
-	case "measured":
+	case "measured", "spotify":
 		return analysis.BPM
 	default:
 		return nil
@@ -193,7 +195,7 @@ func measuredKey(analysis *TrackAnalysis) (*int, *string) {
 		return nil, nil
 	}
 	switch *analysis.KeySource {
-	case "measured":
+	case "measured", "spotify":
 		return analysis.KeyTonic, analysis.KeyMode
 	default:
 		return nil, nil

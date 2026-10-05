@@ -16,7 +16,7 @@ func (d *DB) EnsureExternalTrackAnalysisSchema() error {
  song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
  provider TEXT NOT NULL CHECK(provider='spotify'),
  external_id TEXT NOT NULL,
- link_origin TEXT NOT NULL CHECK(link_origin IN ('manual_confirmation','download_completion')),
+ link_origin TEXT NOT NULL CHECK(link_origin IN ('manual_confirmation','download_completion','automatic_search')),
  source_fingerprint TEXT NOT NULL,
  confirmed_at INTEGER NOT NULL,
  PRIMARY KEY(song_id,provider));
@@ -49,7 +49,7 @@ func (d *DB) EnsureExternalTrackAnalysisSchema() error {
 	if err = d.conn.QueryRow("SELECT sql FROM sqlite_master WHERE name='track_external_identity'").Scan(&definition); err != nil {
 		return err
 	}
-	if !strings.Contains(definition, "download_completion") {
+	if !strings.Contains(definition, "automatic_search") {
 		tx, e := d.conn.Begin()
 		if e != nil {
 			return e
@@ -58,7 +58,7 @@ func (d *DB) EnsureExternalTrackAnalysisSchema() error {
 		_, e = tx.Exec(`CREATE TABLE track_external_identity_next (
    song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
    provider TEXT NOT NULL CHECK(provider='spotify'), external_id TEXT NOT NULL,
-   link_origin TEXT NOT NULL CHECK(link_origin IN ('manual_confirmation','download_completion')),
+   link_origin TEXT NOT NULL CHECK(link_origin IN ('manual_confirmation','download_completion','automatic_search')),
    source_fingerprint TEXT NOT NULL, confirmed_at INTEGER NOT NULL, PRIMARY KEY(song_id,provider));
    INSERT INTO track_external_identity_next SELECT * FROM track_external_identity;
    DROP TABLE track_external_identity;
@@ -78,6 +78,33 @@ func (d *DB) EnsureExternalTrackAnalysisSchema() error {
   song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
   source_fingerprint TEXT NOT NULL, PRIMARY KEY(song_id,source_fingerprint));`)
 	if err == nil {
+		rows, e := d.conn.Query("PRAGMA table_info(spotify_download_evidence)")
+		if e != nil {
+			return e
+		}
+		found := false
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, typ string
+			var defaultValue any
+			if e = rows.Scan(&cid, &name, &typ, &notnull, &defaultValue, &pk); e != nil {
+				rows.Close()
+				return e
+			}
+			if name == "features_json" {
+				found = true
+			}
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		if !found {
+			if _, e = d.conn.Exec("ALTER TABLE spotify_download_evidence ADD COLUMN features_json TEXT NOT NULL DEFAULT '' CHECK(length(features_json)<=16384)"); e != nil {
+				return e
+			}
+		}
 		d.externalSchemaReady = true
 	}
 	return err

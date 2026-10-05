@@ -23,6 +23,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/tempo"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 )
 
 // AnalysisVersion is the scalar-result schema version. Increment it when the
@@ -32,7 +33,8 @@ const AnalysisVersion = 1
 // AlgorithmVersion identifies the exact analyzer combination that produced a
 // row. It is composite because one row carries both dimensions; a change in
 // either analyzer must invalidate the record.
-const AlgorithmVersion = "track-v1;" + tempo.AlgorithmVersion + ";" + key.AlgorithmVersion + ";" + features.EnergyLevelAlgorithmVersion + ";" + features.BS1770AlgorithmVersion
+// v3 restores the local artifact pass that v2 skipped for complete Spotify scalars.
+const AlgorithmVersion = "track-v3-spotify-local-artifacts;" + tempo.AlgorithmVersion + ";" + key.AlgorithmVersion + ";" + features.EnergyLevelAlgorithmVersion + ";" + features.BS1770AlgorithmVersion
 
 // Stable failure codes from the analysis lifecycle contract. They are part of
 // the persisted record and must not be reworded per call site.
@@ -49,6 +51,7 @@ const (
 // Result is the combined outcome of one analysis pass. Tempo and key carry
 // their own Known flags, so an unmeasured dimension is never mistaken for zero.
 type Result struct {
+	Spotify         *spotifyanalysis.Observation
 	SongID          string
 	Status          string
 	Tempo           tempo.Estimate
@@ -298,6 +301,14 @@ func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.Autom
 		record.CamelotKey = &result.Key.Camelot
 		record.OpenKey = &result.Key.OpenKey
 		record.KeySource = ptr("measured")
+	}
+	if result.Spotify != nil {
+		db.ApplySpotifyScalars(&record, *result.Spotify)
+		// Scalar data survives a decoder failure, but remains eligible for a
+		// later artifact/cue repair instead of claiming a complete local pass.
+		if result.Features == nil || result.Loudness == nil {
+			record.AlgorithmVersion = "spotify-features-v1"
+		}
 	}
 	if code, message := resultIssue(result); code != "" {
 		record.ErrorCode = &code

@@ -1,5 +1,6 @@
 // Package logger provides a shared logging facility for ViiB MediaHub.
-// It writes to both the viib.log file and stderr for immediate visibility.
+// It writes application diagnostics to viib.log and stderr. Scanner/analysis
+// diagnostics and detailed source decisions also go to the adjacent scan.log.
 //
 // Log levels:
 //   - DEBUG: Verbose messages for development (request logs, detailed state)
@@ -30,6 +31,7 @@ const (
 
 var (
 	logFile     *os.File
+	scanFile    *os.File
 	logMutex    sync.Mutex
 	initialized bool
 	currentDir  string
@@ -37,7 +39,7 @@ var (
 )
 
 // Init initializes the logger with the given data directory.
-// It creates the viib.log file and sets up logging.
+// It creates viib.log and scan.log and sets up logging.
 // If already initialized with the same directory, this is a no-op.
 // If initialized with a different directory, the old file is closed.
 func Init(dataDir string) error {
@@ -56,12 +58,6 @@ func InitWithDebug(dataDir string, debug bool) error {
 		return nil
 	}
 
-	// Close existing file if reinitializing with different directory
-	if logFile != nil {
-		logFile.Close()
-		logFile = nil
-	}
-
 	logPath := filepath.Join(dataDir, "viib.log")
 	// Append so operational diagnostics survive process restarts. A fresh
 	// initialization header below separates sessions in the same durable log.
@@ -69,7 +65,19 @@ func InitWithDebug(dataDir string, debug bool) error {
 	if err != nil {
 		return err
 	}
+	sf, err := os.OpenFile(filepath.Join(dataDir, "scan.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		f.Close()
+		return err
+	}
+	if logFile != nil {
+		logFile.Close()
+	}
+	if scanFile != nil {
+		scanFile.Close()
+	}
 	logFile = f
+	scanFile = sf
 	initialized = true
 	currentDir = dataDir
 	debugMode = debug
@@ -81,19 +89,25 @@ func InitWithDebug(dataDir string, debug bool) error {
 		logFile.WriteString(fmt.Sprintf("%s [INIT] Debug mode enabled - verbose logging active\n", timestamp))
 	}
 	logFile.Sync()
+	scanFile.WriteString(fmt.Sprintf("%s [INIT] === ViiB MediaHub Scan Logger Initialized ===\n", timestamp))
+	scanFile.Sync()
 
 	return nil
 }
 
-// Close closes the log file.
+// Close closes both log files.
 func Close() {
 	logMutex.Lock()
 	defer logMutex.Unlock()
 	if logFile != nil {
 		logFile.Close()
 		logFile = nil
-		initialized = false
 	}
+	if scanFile != nil {
+		scanFile.Close()
+		scanFile = nil
+	}
+	initialized = false
 }
 
 // SetDebug enables or disables debug logging at runtime.
@@ -126,7 +140,22 @@ func Log(prefix, format string, v ...interface{}) {
 		logFile.WriteString(fullMsg + "\n")
 		logFile.Sync()
 	}
+	if scanFile != nil && (prefix == "Scanner" || prefix == "Analysis") {
+		scanFile.WriteString(fullMsg + "\n")
+		scanFile.Sync()
+	}
 	logMutex.Unlock()
+}
+
+// Scan writes always-on source decisions to scan.log without flooding viib.log.
+func Scan(format string, v ...interface{}) {
+	message := fmt.Sprintf("%s [Scan] %s\n", time.Now().Format("2006/01/02 15:04:05.000000"), fmt.Sprintf(format, v...))
+	logMutex.Lock()
+	defer logMutex.Unlock()
+	if scanFile != nil {
+		scanFile.WriteString(message)
+		scanFile.Sync()
+	}
 }
 
 // Debug writes a debug-level message (only when debug mode is enabled).
