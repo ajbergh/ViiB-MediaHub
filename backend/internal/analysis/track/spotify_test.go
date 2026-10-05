@@ -7,14 +7,23 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/logger"
 	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestSpotifyEnrichesValidLocalAnalysisWithoutDecodingOrLosingArtifacts(t *testing.T) {
 	for _, scenario := range []string{"key-only", "unavailable", "canceled"} {
 		t.Run(scenario, func(t *testing.T) {
+			logDirectory := t.TempDir()
+			if err := logger.Init(logDirectory); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(logger.Close)
 			database, ids := runnerCatalog(t, 1)
 			if _, err := Run(t.Context(), database, analysis.NewDefaultDecoderRegistry(), ids, RunOptions{}); err != nil {
 				t.Fatal(err)
@@ -46,6 +55,16 @@ func TestSpotifyEnrichesValidLocalAnalysisWithoutDecodingOrLosingArtifacts(t *te
 				},
 			}
 			progress, err := Run(ctx, database, analysis.NewDefaultDecoderRegistry(), ids, options)
+			contents, readErr := os.ReadFile(filepath.Join(logDirectory, "scan.log"))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if !strings.Contains(string(contents), "local_engine=\"reused\"") {
+				t.Fatalf("missing reused analysis decision: %s", contents)
+			}
+			if scenario == "key-only" && !strings.Contains(string(contents), "action=\"spotify_enriched\"") {
+				t.Fatalf("missing enrichment decision: %s", contents)
+			}
 			if scenario == "canceled" {
 				if !errors.Is(err, context.Canceled) {
 					t.Fatal(err)
@@ -81,6 +100,11 @@ func TestSpotifyEnrichesValidLocalAnalysisWithoutDecodingOrLosingArtifacts(t *te
 func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 	for _, scenario := range []string{"complete", "key-only", "bpm-only", "unavailable", "canceled"} {
 		t.Run(scenario, func(t *testing.T) {
+			logDirectory := t.TempDir()
+			if err := logger.Init(logDirectory); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(logger.Close)
 			database, ids := runnerCatalog(t, 1)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -112,6 +136,21 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 				},
 			}
 			progress, err := Run(ctx, database, analysis.NewDefaultDecoderRegistry(), ids, options)
+			contents, readErr := os.ReadFile(filepath.Join(logDirectory, "scan.log"))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			logText := string(contents)
+			expected := map[string]string{"complete": "reason=\"spotify_complete\"", "key-only": "reason=\"spotify_missing_bpm\"", "bpm-only": "reason=\"spotify_missing_key\"", "unavailable": "reason=\"spotify_unavailable\"", "canceled": "analysis_canceled"}[scenario]
+			if !strings.Contains(logText, expected) {
+				t.Fatalf("missing decision %q: %s", expected, logText)
+			}
+			if scenario == "complete" && (!strings.Contains(logText, "bpm_source=\"spotify\"") || !strings.Contains(logText, "key_source=\"spotify\"") || !strings.Contains(logText, "local_engine=\"skipped\"")) {
+				t.Fatalf("provider result log: %s", logText)
+			}
+			if scenario == "key-only" && (!strings.Contains(logText, "bpm_source=\"local\"") || !strings.Contains(logText, "key_source=\"spotify\"") || !strings.Contains(logText, "local_engine=\"run\"")) {
+				t.Fatalf("mixed result log: %s", logText)
+			}
 			if scenario == "canceled" {
 				if !errors.Is(err, context.Canceled) || opens != 0 {
 					t.Fatalf("cancel: %v, opens %d", err, opens)

@@ -119,10 +119,14 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		}
 		return outcomeFailed
 	}
+	logger.Scan("analysis_track song_id=%q file=%q", songID, source.Name)
 	valid, err := database.TrackAnalysisValid(songID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
 	if err == nil && valid {
 		if enrichValid && spotifyFeatures != nil {
 			return enrichCurrentScalars(ctx, database, source, spotifyFeatures)
+		}
+		if record, readErr := database.GetTrackAnalysis(songID); readErr == nil {
+			logScanRecord(record, "already_current", "skipped")
 		}
 		return outcomeSkipped
 	}
@@ -138,6 +142,7 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		return outcomeFailed
 	}
 	if !claimed {
+		logger.Scan("analysis_skipped song_id=%q reason=claimed_by_another_worker", songID)
 		return outcomeSkipped
 	}
 
@@ -146,12 +151,21 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		observation = spotifyFeatures(ctx, source)
 	}
 	if ctx.Err() != nil {
+		logger.Scan("analysis_canceled song_id=%q stage=spotify_lookup", songID)
 		_ = database.ReleaseTrackAnalysis(songID)
 		return outcomeFailed
 	}
 	result := Result{SongID: songID, Source: source}
+	engine, reason := scanEngineDecision(observation, spotifyFeatures != nil)
+	logger.Scan("analysis_start song_id=%q file=%q engine=%q reason=%q", songID, source.Name, engine, reason)
+	localEngine := "skipped"
 	if observation == nil || observation.BPM == nil || observation.Key == nil || observation.Mode == nil {
+		localEngine = "run"
 		result, err = AnalyzeResolved(ctx, registry, source, opts)
+		if err != nil {
+			code, _ := ClassifyError(err)
+			logger.Scan("local_analysis_failed song_id=%q code=%q", songID, code)
+		}
 	}
 	if observation != nil {
 		result.Spotify = observation
@@ -199,6 +213,7 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		logger.Analysis("track persistence failed song_id=%q path=%q status=%q error=%q", songID, source.Path, result.Status, err)
 		return outcomeFailed
 	}
+	logScanResult(result, localEngine)
 	if code, message := resultIssue(result); code != "" {
 		logger.Analysis("track incomplete song_id=%q path=%q status=%q code=%q error=%q tempo_known=%t tempo_crest=%.3f key_known=%t key_flatness=%.6f",
 			songID, source.Path, result.Status, code, message, result.Tempo.Known, result.Tempo.OnsetCrestFactor, result.Key.Known, result.Key.Flatness)
@@ -225,6 +240,7 @@ func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.
 		return outcomeSkipped
 	}
 	if record.BPMSource != nil && *record.BPMSource == db.EffectiveBPMSpotify && record.KeySource != nil && *record.KeySource == db.EffectiveKeySpotify {
+		logScanRecord(record, "already_current", "skipped")
 		return outcomeSkipped
 	}
 	claimed, err := database.ClaimTrackAnalysis(source.SongID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
@@ -240,6 +256,10 @@ func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.
 			_ = database.ReleaseTrackAnalysis(source.SongID)
 			return outcomeFailed
 		}
+		if ctx.Err() != nil {
+			logger.Scan("analysis_canceled song_id=%q stage=spotify_enrichment", source.SongID)
+		}
+		logScanRecord(record, "spotify_unavailable_retained_existing", "reused")
 		return outcomeSkipped
 	}
 	db.ApplySpotifyScalars(&record, *observation)
@@ -253,5 +273,6 @@ func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.
 		_ = database.ReleaseTrackAnalysis(source.SongID)
 		return outcomeFailed
 	}
+	logScanRecord(record, "spotify_enriched", "reused")
 	return outcomeAnalyzed
 }
