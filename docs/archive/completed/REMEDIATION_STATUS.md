@@ -1,5 +1,7 @@
 # Remediation Status
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 This file records the current outcome of the major reliability/security remediation work. The original implementation branch was `agent/full-remediation`; completed work has since been merged into `main`.
 
 ## Security and release containment
@@ -60,4 +62,4 @@ The Plex feature's final pre-merge validation passed the full frontend/backend/W
 - [ ] Validate real-PMS behavior during release-candidate smoke testing across LAN discovery, authentication, large-library synchronization, codec coverage, and long-running playback
 - [ ] Revisit documented Plex audio transcoding only if it can preserve ViiB's seeking/session expectations without weakening the existing player contract
 
-See [Architecture](architecture.md), [Plex Music](plex-music.md), and [Library Operations](library-operations.md) for the current production model.
+See [Architecture](../../architecture.md), [Plex Music](../../plex-music.md), and [Library Operations](../../library-operations.md) for the current production model.

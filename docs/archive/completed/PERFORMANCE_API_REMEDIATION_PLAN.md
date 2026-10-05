@@ -1,5 +1,7 @@
 # Performance, API, and Capability Remediation Plan
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 Program start: 2026-08-05
 
 ## Delivery model

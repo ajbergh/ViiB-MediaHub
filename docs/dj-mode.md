@@ -120,14 +120,16 @@ The library's Virtuoso table/row and sort-header component identities are stable
 
 Run `node scripts/dj-overlay-audit.mjs` against a running Vite/backend instance (default `http://localhost:3000/dj`, override with `DJ_AUDIT_URL`). It uses an isolated browser context, a 12,000-track API fixture, and generated WAV audio to check desktop geometry, virtualization, focus/Escape, modal priority, loading, typing, and playback continuity. Artifacts go to `output/playwright/dj-overlay/`.
 
-See [the remediation validation report](dj-overlay-validation.md) for resolution findings, screenshots, commands, and native-platform limitations.
+See [the remediation validation report](archive/completed/dj-overlay-validation.md) for resolution findings, screenshots, commands, and native-platform limitations.
 
 ---
 
-## Professional track-analysis roadmap
+## Analysis status and roadmaps
 
-The planned migration from deck-load/browser analysis to persistent, audio-measured BPM, musical key, Camelot/Open Key, background library analysis, harmonic compatibility, true beatgrids, and later DJ intelligence is specified in the [DJv2 Professional Track Analysis & Harmonic Mixing Roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md).
+Persistent backend analysis, library display, beatgrid editing, energy/structure artifacts, advisory cues, and local transition recommendations are implemented. The professional accuracy, confidence-calibration, lawful-corpus, and release qualification gates remain open. Displayed measurements and suggestions are advisory; a result is not proof of professional accuracy.
 
-That roadmap treats the current browser BPM/key detectors and generated beat-grid state as verified implementation baselines, while keeping proposed backend analysis work clearly separate from current behavior.
+The [professional analysis roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) owns the detailed quality gates; the [concise context](DJV2_TRACK_ANALYSIS_CONCISE_CONTEXT.md) records dated measurement evidence and next actions. The [stems, cues, and mix planning roadmap](DJV2_PRO_STEMS_CUES_MIX_INTELLIGENCE_ROADMAP.md) distinguishes delivered capabilities from remaining work.
 
-Phases 0 through 5 are implemented: the benchmark harness, the shared pure-Go decode and DSP foundation, the persistence model, the tempo and key analyzers, the durable library analysis service with its scheduler, and the DJ-library display of persisted BPM/key/harmonic values. The roadmap's accuracy and professional-release gates remain separate validation work; displaying an available result does not claim every track has a reliable measurement.
+## Stem packages
+
+DJ Mode can consume pre-generated `.viibstems` packages. Configure separate **Stem Libraries** in [Settings](settings.md#stem-libraries), or place a matching package beside a music file, then scan and check the DJ library’s **Stem Status** column. Supported package controls depend on successful association and validation. ViiB does not generate stem packages; see the [v1 package contract](VIIB_STEM_PACKAGE_V1.md).

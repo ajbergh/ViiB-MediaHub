@@ -1,6 +1,8 @@
 # Legacy Spotify Download Rules and Metadata Standards
 
-This is a retained Supersonic-era design note, not the live ViiB MediaHub download contract. Current user-facing behavior is documented in [docs/downloads.md](../../../docs/downloads.md) and [docs/spotify.md](../../../docs/spotify.md). Current ViiB downloads begin as Ogg Vorbis, may be converted to MP3, and use Settings → Integrations & Spotify → Downloads & Conversion for destination and conversion controls.
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
+This is a retained Supersonic-era design note, not the live ViiB MediaHub download contract. Current user-facing behavior is documented in [docs/downloads.md](../../downloads.md) and [docs/spotify.md](../../spotify.md). Current ViiB downloads begin as Ogg Vorbis, may be converted to MP3, and use Settings → Integrations & Spotify → Downloads & Conversion for destination and conversion controls.
 
 ## General Rules
 

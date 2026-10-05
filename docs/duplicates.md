@@ -1,7 +1,5 @@
 # Duplicates
 
-![Duplicates page](../assets/screenshots/duplicates.png)
-
 The Duplicates page reviews groups of likely duplicate catalog tracks. It is a ViiB catalog-management surface and works with local and synchronized Plex entries through the normal catalog identity.
 
 ## Reviewing groups

@@ -12,7 +12,7 @@ The **Track Analysis** panel can prepare BPM, musical key, beat-grid, and energy
 
 ## Architecture
 
-Plex is a remote read-only media source, not a separate Plex application inside ViiB.
+Plex is a remote music source with read-only media behavior by default. The [explicit AI metadata-writeback workflow](#ai-metadata-writeback-explicit-opt-in) permits approved track genre/original-year updates; audio-file contents and tags remain unchanged.
 
 - `songs` remains the canonical ViiB catalog table.
 - Additive `plex_sources` and `plex_tracks` tables store remote source/library/PMS identity and playback keys.

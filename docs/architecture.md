@@ -75,7 +75,7 @@ Design constraints that shaped it:
 - **Facts are versioned and fingerprinted.** Each row records the analysis version, the composite algorithm version, and a fingerprint of the source bytes. A change to any of them makes the row stale, which is what lets a run skip work it has already done and re-analyze only what actually changed.
 - **The work list is derived, never stored.** Because per-track state lives in `track_analysis`, "what is left to do" is always recomputable from the catalog. A resumed job re-expands its recorded selection and skips valid rows, so a multi-day run needs no lease recovery.
 - **Unknown is a result.** An analyzer that finds no reliable evidence records that explicitly with a stable error code. It never substitutes a default tempo or key.
-- **Measured facts stay separate from inferred metadata.** Analysis writes to `track_analysis` and never to `songs.bpm`, which may hold an AI-estimated value. Manual user overrides live in their own table with independent locks and win at read time.
+- **Measured facts stay separate from inferred metadata.** Local analysis writes to `track_analysis` and never to `songs.bpm`, which may hold an AI-estimated value. Manual user overrides live in their own table with independent locks and win at read time. Optional recording-linked Spotify scalar observations keep their own provenance and can supply effective BPM/key; local analysis still supplies audio artifacts.
 
 Decoding is bounded and streaming; whole files are never held in memory. Reachable, authenticated Plex tracks are analyzed through the PMS direct-play path; tracks from an unavailable source are skipped until the source is available again.
 
@@ -96,7 +96,7 @@ Local audio playback uses ViiB's normal media route and reads the configured fil
 
 ## Plex Media Server source
 
-Plex is a remote, read-only music source.
+Plex is a remote music source with read-only media behavior by default. The explicit AI metadata-writeback workflow is the sole exception: an approved per-track preview can update and lock genres and original release year in PMS when the token has management permission. It never edits source audio-file tags, deletes media, or reconfigures PMS. See [Plex metadata writeback](plex-music.md#ai-metadata-writeback-explicit-opt-in).
 
 The `backend/internal/plex` package separates:
 
@@ -161,6 +161,14 @@ Spotify is intentionally different from Plex.
 Spotify browsing and direct streaming remain a separate integration rather than being synchronized as remote Spotify rows into the canonical ViiB catalog. Spotify downloads can become normal local media after they are saved and scanned.
 
 This distinction keeps the canonical catalog focused on media ViiB can identify persistently as either local filesystem content or a configured remote PMS music source.
+
+Normal sign-in captures a session from Spotify’s own page in an isolated Chrome/Chromium/Edge window. The backend owns encrypted session persistence, renewal, catalog adapters, and account retirement; public status responses omit cookies and bearer tokens. Legacy OAuth is a compatibility path. [Parity and platform gates](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) remain open.
+
+[Spotify BPM/key import](SPOTIFY_BPM_KEY_IMPORT.md) binds downloaded observations to final source identity and preserves manual-lock precedence and local artifact fallback. Expanded provider metadata and three-band waveform support remain [proposed](SPOTIFY_METADATA_AND_LOCAL_FALLBACK_IMPLEMENTATION_PLAN.md).
+
+## Stem packages
+
+ViiB consumes pre-generated `.viibstems` packages discovered beside music files or under separate configured Stem Libraries. Package scans associate validated stems with existing songs instead of cataloging stem audio as songs. Package generation belongs to the future ViiB-StemLab workflow. The [v1 contract](VIIB_STEM_PACKAGE_V1.md) defines identity, manifest, audio, and validation requirements.
 
 ## Frontend state
 

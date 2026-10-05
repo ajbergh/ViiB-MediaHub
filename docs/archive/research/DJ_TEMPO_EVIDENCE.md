@@ -1,5 +1,7 @@
 # DJ tempo and grid evidence
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 The browser detector samples up to five non-overlapping windows, each at most
 20 seconds, distributed across the audio duration. Positive RMS energy changes
 in 5 ms windows supply transients. Silence, sustained audio and sections with

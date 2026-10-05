@@ -1,5 +1,7 @@
 # DJv2 UI Refactor Engineering Plan
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 **Repository:** `ajbergh/ViiB-MediaHub`  
 **Target:** `main` branch DJv2 UI  
 **Primary entry point:** `pages/DJModeV2.tsx`  
@@ -16,7 +18,7 @@ The implementation target for this refactor is the approved DJv2 UI mock-up. Two
 | `assets/djv2-ui-target.png` | 1720×914, full resolution | **Canonical reference.** Use for measurement, color sampling, and visual-regression comparison. |
 | `docs/assets/djv2-ui-target.jpg` | 400×213 preview | Inline preview for this document only. Too small for measurement or screenshot comparison. |
 
-![DJv2 target UI mock-up](../assets/djv2-ui-target.png)
+![DJv2 target UI mock-up](../../../assets/djv2-ui-target.png)
 
 Use the mock-up as the visual target for hierarchy, density, palette, component styling, and deck/mixer balance. It is not a literal pixel-coordinate specification. Structural acceptance criteria in this document take precedence when adapting the design to supported resolutions.
 

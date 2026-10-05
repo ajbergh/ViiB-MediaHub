@@ -39,7 +39,7 @@ Album grouping uses ViiB catalog metadata, including album title and album-artis
 
 ViiB can enrich catalog metadata through configured metadata/AI services. Metadata changes in the ViiB database are local ViiB state.
 
-For Plex-backed tracks, ViiB does **not** write album metadata changes back to Plex. A later authoritative Plex synchronization can refresh synchronized metadata from PMS.
+For Plex-backed tracks, album title/artist edits are not written back to Plex. The separate [AI Metadata Writeback](plex-music.md#ai-metadata-writeback-explicit-opt-in) workflow can send only approved per-track genres and original release year. A later authoritative Plex synchronization can refresh synchronized metadata from PMS.
 
 ---
 

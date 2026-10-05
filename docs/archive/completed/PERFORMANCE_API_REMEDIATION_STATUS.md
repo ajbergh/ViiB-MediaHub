@@ -1,9 +1,11 @@
 # Performance, API, and Capability Remediation Status
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 Originally completed: 2026-08-05  
 Current documentation pass: 2026-08-25
 
-This file is retained as the historical record for PRs #9–#13. Those changes are merged into `main`. Subsequent CI/security and Plex work extended the same architecture; see the current-state addendum below and [Architecture](architecture.md).
+This file is retained as the historical record for PRs #9–#13. Those changes are merged into `main`. Subsequent CI/security and Plex work extended the same architecture; see the current-state addendum below and [Architecture](../../architecture.md).
 
 ## Original pull request sequence
 
@@ -70,4 +72,4 @@ After the original remediation sequence:
 - Automatic Plex audio transcoding is not claimed because the current direct-play/range contract has not been replaced with a validated transcode-session model.
 - Physical release-candidate smoke testing remains appropriate for real large libraries, device/output routing, Spotify reconnection, Plex discovery/authentication/synchronization/seeking, backup/restore, and long-running playback.
 
-For current operational behavior, prefer [Library Operations](library-operations.md), [Plex Music](plex-music.md), [Player](player.md), and [OpenAPI v2](openapi-v2.yaml).
+For current operational behavior, prefer [Library Operations](../../library-operations.md), [Plex Music](../../plex-music.md), [Player](../../player.md), and [OpenAPI v2](../../openapi-v2.yaml).

@@ -1889,7 +1889,7 @@ With Phases 1–4b merged, Phase 0 is the only thing between the codebase and Ph
 
 #### What already exists — do not rebuild it
 
-The measurement plumbing is further along than the phase description implies. Present and tested in [`internal/analysisbench`](../backend/internal/analysisbench/):
+The measurement plumbing is further along than the phase description implies. Present and tested in [`internal/analysisbench`](../backend/internal/analysisbench):
 
 - **Corpus manifest and result schemas with validation** — `CorpusManifest`/`CorpusTrack` (id, path, license, genre, split, expected BPM, accepted metrical levels, expected key, expected-unknown) and `ResultSet`/`DetectorResult` (id, bpm, key, confidence).
 - **Every accuracy metric the tripwire table names**, in `Compare()`: tempo strict ±0.5, accepted-metrical, half/double error rate, unknown rate; key exact and Camelot-compatible; expected-unknown correctness.

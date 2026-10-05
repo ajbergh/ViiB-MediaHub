@@ -72,4 +72,4 @@ For best results, configure the desired AI/metadata provider in [Settings → AI
 
 ViiB-side enrichment may add or improve genre, mood, energy, tempo, BPM, and year metadata used by Smart Mixes/AI Smart Mix.
 
-For Plex-backed tracks, ViiB enrichment is local ViiB state. ViiB does not silently write enriched metadata back to Plex; a later Plex synchronization can refresh fields that are sourced from PMS.
+For Plex-backed tracks, ViiB enrichment is local ViiB state. ViiB does not silently write enriched metadata back to Plex. The separate [AI Metadata Writeback](plex-music.md#ai-metadata-writeback-explicit-opt-in) workflow can send approved track genres and original release year after review; other enriched fields and embeddings remain ViiB-only. A later Plex synchronization can refresh fields sourced from PMS.

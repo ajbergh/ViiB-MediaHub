@@ -1,5 +1,7 @@
 # Spotify waveform research — 2026-10-04
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md). This dated research still informs the [proposed metadata and local fallback plan](../../SPOTIFY_METADATA_AND_LOCAL_FALLBACK_IMPLEMENTATION_PLAN.md); waveform integration remains proposed.
+
 The Web Player waveform column has a separate source from scalar features and detailed audio analysis. Authenticated live reads using the existing WebPlayer provider succeeded for two recordings. Production waveform integration is not implemented.
 
 ## Source and request

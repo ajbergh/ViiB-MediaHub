@@ -68,7 +68,7 @@ See [validation and live evidence](SPOTIFY_WEBPLAYER_VALIDATION.md) for exact im
 
 **Status at the early implementation stage:** Backend auth/client/research-probe slice implemented; live scalar features verified for one account/track; detailed analysis returned HTTP 404
 
-**Input:** [Original research proposal](SPOTIFY_WEBPLAYER_AUTH_AUDIO_ANALYSIS_PLAN.md)
+**Input:** [Original research proposal](archive/research/SPOTIFY_WEBPLAYER_AUTH_AUDIO_ANALYSIS_PLAN.md)
 
 **Original review scope:** Review and planning only. This deliverable does not implement authentication or authorize live-account experiments.
 

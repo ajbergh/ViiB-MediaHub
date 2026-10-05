@@ -92,11 +92,13 @@ See [Plex Media Server Music Support](docs/plex-music.md).
 
 ### Spotify
 
-- OAuth authentication
-- Saved albums, playlists, recently played, and Spotify search/browse experiences
+- Browser sign-in on Spotify using installed Chrome, Chromium, or Microsoft Edge; the backend stores the session encrypted
+- Saved albums, playlists, artist/album detail views, and Spotify search/browse experiences
+- Recently Played and extended profile fields remain subject to the [open parity gates](docs/SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md)
 - Direct Spotify streaming with configurable quality
 - Track/album/playlist downloads with metadata and progress events
 - Optional threshold-controlled local-library quick scan after completed downloads
+- Optional Spotify BPM/key import with recording identity, source provenance, manual-lock precedence, and local DJ-artifact fallback
 
 See [Spotify Integration](docs/spotify.md).
 
@@ -113,8 +115,9 @@ See [Spotify Integration](docs/spotify.md).
 ### DJ Mode
 
 - Two-deck mixing interface
-- BPM and key analysis
-- Cue points and sampler
+- Persistent BPM/key, beatgrid, energy, loudness, and structure analysis; results are advisory while professional accuracy/calibration gates remain open
+- Pre-generated `.viibstems` package playback from adjacent packages or separate Stem Libraries
+- Cue points, advisory cue suggestions, and sampler
 - Pitch/tempo controls
 - MIDI controller support through Web MIDI where available
 
@@ -154,6 +157,12 @@ go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 Platform-native build dependencies are documented by Wails. The backend uses the pure-Go `modernc.org/sqlite` driver and can build without CGO; native Wails packaging still uses the repository's platform toolchain and may enable CGO for other native dependencies.
 
 ### Development
+
+Install frontend dependencies from the repository root before starting either mode:
+
+```bash
+npm ci
+```
 
 Windows/Wails:
 
@@ -259,7 +268,7 @@ The Plex integration deliberately extends the existing catalog/playback abstract
 
 Application data is stored under the OS user configuration directory in `ViiB-MediaHub/`, including the SQLite database, artwork cache, logs, and downloaded Spotify media.
 
-Sensitive settings are encrypted before persistence using ViiB's machine-bound AES-256-GCM settings mechanism. This includes Plex account/server tokens and Plex device private-key material.
+Sensitive settings are encrypted before persistence using ViiB's machine-bound AES-256-GCM settings mechanism. This includes Plex account/server tokens, Plex device private-key material, and Spotify cookie sessions. Normal Spotify requests use backend-owned authentication; session cookies and bearer tokens are omitted from public status responses.
 
 Plex security properties:
 
@@ -270,7 +279,7 @@ Plex security properties:
 - credential-like error material is redacted;
 - cross-origin Plex asset resolution does not forward the PMS token.
 
-Backups contain the ViiB database and should be protected like the application data directory because encrypted integration credentials may be present in the database.
+New backups exclude Spotify cookie sessions and OAuth credentials, so Spotify sign-in is required after restore. Other encrypted integration credentials and older archives may still contain sensitive data; protect backups like the application data directory.
 
 ---
 
@@ -350,6 +359,8 @@ Important references:
 - [Search](docs/search.md)
 - [Spotify](docs/spotify.md)
 - [OpenAPI v2](docs/openapi-v2.yaml)
+- [Active plans, contracts, and validation](docs/index.md#maintainer-and-reference-documentation)
+- [Historical documentation archive](docs/archive/README.md)
 
 ---
 

@@ -1,5 +1,7 @@
 # DJv2 visual polish
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 The default Racks + FX layout now includes a compact whole-track waveform on each deck. The overview uses real peak data, numbered hot cues and a white playhead; it shows an explicit empty/preparing state when data is unavailable. It is a visual overview, not a seek control.
 
 Deck headers prioritize the title, BPM and remaining time. Essential labels have higher contrast and a 12px reference size inside the proportionally scaled canvas. Deck B's jog now matches the purple mixer/transport accent.

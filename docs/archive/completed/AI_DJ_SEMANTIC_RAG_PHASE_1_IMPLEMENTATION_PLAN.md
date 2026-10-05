@@ -1,5 +1,7 @@
 # AI DJ Semantic Retrieval / RAG — Phase 1 Implementation Plan
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 **Repository:** `ajbergh/ViiB-MediaHub`
 **Status:** Phase 1 and its approved reliability follow-ups are implemented, CI-validated, and squash-merged to `main` through PRs #22–#28; real-library and real-Plex behavior QA remains an operational follow-up
 **Objective:** Replace metadata-dependent AI DJ candidate selection with a semantic music retrieval pipeline that works over 20,000+ tracks even when genre, mood, album, year, and BPM tags are incomplete or absent.
@@ -2082,4 +2084,4 @@ This is a related Plex-source enhancement, not a change to the Phase 1 semantic-
 - Only genres and release year currently map to Plex. AI mood/energy/tempo/BPM, user behaviour, and semantic embeddings remain ViiB-local.
 - A failed or stale preview never writes to PMS; failed verified writes remain queued for a later review/retry.
 
-See [Plex Music](plex-music.md#source-media-and-metadata-writeback) and [Settings](settings.md#plex-media-server-music) for the operational contract.
+See [Plex Music](../../plex-music.md#source-media-and-metadata-writeback) and [Settings](../../settings.md#plex-media-server-music) for the operational contract.

@@ -1,5 +1,7 @@
 # DJ Panel Review: Loops, PERF Waveforms, and Controls
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 Date: 2026-09-23
 
 ## Fix Progress

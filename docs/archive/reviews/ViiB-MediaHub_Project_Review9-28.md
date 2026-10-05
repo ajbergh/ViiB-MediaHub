@@ -1,5 +1,7 @@
 # ViiB MediaHub - Project Review Findings
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 Review date: September 28, 2026  
 Verification pass: September 29, 2026 (every finding re-traced against commit `9240afd`; see "Revision notes")  
 Source: OneDrive-synced ViiB-MediaHub project snapshot  

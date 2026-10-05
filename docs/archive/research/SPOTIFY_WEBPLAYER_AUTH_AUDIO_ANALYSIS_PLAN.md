@@ -1,11 +1,13 @@
 # Spotify WebPlayer Authentication and Internal Audio Analysis Plan
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md). Superseded by the [implementation plan](../../SPOTIFY_WEBPLAYER_AUTH_AUDIO_ANALYSIS_IMPLEMENTATION_PLAN.md), [parity audit](../../SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md), and [validation log](../../SPOTIFY_WEBPLAYER_VALIDATION.md).
+
 **Status:** Planning / research document — implementation not yet authorized by this document  
 **Research date:** 2026-09-30  
 **Repository verification snapshot:** 9240afdb39cdf7d5539efa80988885d7a4259732 (main)  
 **Repository:** ajbergh/ViiB-MediaHub  
 **Primary scope:** Spotify authentication architecture, internal Spotify audio-analysis access, DJv2 BPM/key enrichment, and a possible future path away from mandatory Spotify Developer app setup  
-**Related roadmap:** [DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md)
+**Related roadmap:** [DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md](../../DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md)
 
 > This document preserves the September 30, 2026 design/research session around Spotify BPM/key access and WebPlayer authentication. It intentionally records the reasoning, alternatives, risks, and open questions, not only the preferred implementation. Undocumented Spotify interfaces are not stable contracts and may change without notice.
 

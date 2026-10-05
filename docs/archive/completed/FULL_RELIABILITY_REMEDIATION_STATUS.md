@@ -1,6 +1,8 @@
 # Full Reliability Remediation Status
 
-The reliability remediation originally tracked on `agent/full-reliability-remediation` is complete and merged. This file is retained as a historical phase record; current architecture/source behavior is documented in [architecture.md](architecture.md), [plex-music.md](plex-music.md), and [library-operations.md](library-operations.md).
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
+The reliability remediation originally tracked on `agent/full-reliability-remediation` is complete and merged. This file is retained as a historical phase record; current architecture/source behavior is documented in [architecture.md](../../architecture.md), [plex-music.md](../../plex-music.md), and [library-operations.md](../../library-operations.md).
 
 ## Phase 0 — Library integrity
 

@@ -34,7 +34,9 @@ Two limits are worth knowing:
 - **Plex tracks are analyzed through PMS direct play.** ViiB opens an authenticated server-side media stream; the token never enters a browser URL or analysis record. One analysis stream is allowed per Plex source, and tracks from an offline source are skipped until that source is available again.
 - **Analysis yields to DJ playback.** While a DJ deck is playing, a background run releases its worker and resumes once playback stops, so library preparation does not compete with a live set. Anything you start explicitly is not held back this way.
 
-Measured tempo and key values are not yet shown in the library. They are stored, versioned, and available to later DJ features, but the accuracy work that has to precede presenting them as reliable is not finished.
+The DJ library displays persisted BPM/key/harmonic values and configurable Energy, LUFS, True Peak, Stem Status, Analysis, Date Analyzed, Analysis Confidence, and Structure Status columns. Available values remain advisory: professional accuracy, confidence calibration, and release qualification are still open in the [analysis roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md).
+
+With Spotify connected, preparation can reuse or fetch recording-linked Spotify BPM/key observations while local decoding supplies energy, loudness, beatgrid, structure, and cues. Locked manual values win; Spotify and local observations keep separate provenance. Provider failures fall back to local analysis and preserve existing usable results. See [Spotify BPM/key import](SPOTIFY_BPM_KEY_IMPORT.md).
 
 ## Diagnostics
 

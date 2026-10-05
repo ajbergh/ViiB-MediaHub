@@ -1,5 +1,7 @@
 # DJ library overlay validation — 2026-09-05
 
+> Historical record archived on 2026-10-04. Status, branch names, and validation results below describe the recorded checkpoint; unresolved runtime/quality checks are not closed by archiving. See the [current documentation](../../index.md) and [archive index](../README.md).
+
 > Historical validation record. The current primary screenshot workflow is maintained by `scripts/take-screenshots.mjs`; the geometry and findings below describe the 2026-09-05 audit run.
 
 This pass replaces the in-flow library with `DJLibraryDrawer` and preserves the existing `DJLibraryBrowserV2`. The drawer mounts its virtualized content on first use, preserves browser state while hidden, and owns its open state independently of the performance tree. It uses CSS positioning and a 40% height (280–640px, capped to available space). Manual panel resizing, page height/collapse state, drag listeners, mode-specific panel clamps, and the panel ResizeObserver are removed.
@@ -20,12 +22,12 @@ The fullscreen gate now observes the existing resolution/fullscreen hook and rem
 
 Screenshots (browser viewports, not native Wails window captures):
 
-- [Before, 1080p](screenshots/dj-overlay/before-1080.png)
-- 1080p: [closed](screenshots/dj-overlay/1920x1080-closed.png) / [open](screenshots/dj-overlay/1920x1080-open.png)
-- 1440p: [closed](screenshots/dj-overlay/2560x1440-closed.png) / [open](screenshots/dj-overlay/2560x1440-open.png)
-- [WebGL after capability fix](screenshots/dj-overlay/webgl-1080.png)
-- Windowed-size simulation: [closed](screenshots/dj-overlay/1840x960-closed.png) / [open](screenshots/dj-overlay/1840x960-open.png)
-- Constrained desktop: [closed](screenshots/dj-overlay/1600x900-closed.png) / [open](screenshots/dj-overlay/1600x900-open.png)
+- [Before, 1080p](../../screenshots/dj-overlay/before-1080.png)
+- 1080p: [closed](../../screenshots/dj-overlay/1920x1080-closed.png) / [open](../../screenshots/dj-overlay/1920x1080-open.png)
+- 1440p: [closed](../../screenshots/dj-overlay/2560x1440-closed.png) / [open](../../screenshots/dj-overlay/2560x1440-open.png)
+- [WebGL after capability fix](../../screenshots/dj-overlay/webgl-1080.png)
+- Windowed-size simulation: [closed](../../screenshots/dj-overlay/1840x960-closed.png) / [open](../../screenshots/dj-overlay/1840x960-open.png)
+- Constrained desktop: [closed](../../screenshots/dj-overlay/1600x900-closed.png) / [open](../../screenshots/dj-overlay/1600x900-open.png)
 
 ## Measured performance findings
 

@@ -4,19 +4,6 @@
 
 The Settings page provides full configuration for all aspects of ViiB MediaHub.
 
-The screenshots below were captured at 1440×900 against a clean local backend
-state, so empty-library and unconfigured-integration states are intentional.
-
-| Settings surface | Screenshot |
-|---|---|
-| Library Sources | [Library Sources](../assets/screenshots/settings-library-sources.png) |
-| Library Operations | [Library Operations](../assets/screenshots/settings-library-operations.png) |
-| Playback & Audio | [Playback & Audio](../assets/screenshots/settings-playback-audio.png) |
-| Integrations & Spotify | [Integrations & Spotify](../assets/screenshots/settings-integrations-spotify.png) |
-| AI & Enrichment | [AI & Enrichment](../assets/screenshots/settings-ai-enrichment.png) |
-| Appearance & Now Playing | [Appearance & Now Playing](../assets/screenshots/settings-appearance-now-playing.png) |
-| System & Logs | [System & Logs](../assets/screenshots/settings-system-logs.png) |
-
 ---
 
 ## Sections
@@ -46,6 +33,12 @@ Lists all local music directories ViiB MediaHub monitors. Each folder has:
 To add a folder click **Add Folder** and use the in-app folder browser. On Windows it starts at the available drives; select a drive or folder to navigate, then choose **Add This Folder** to add the current path. **Cancel** or the close button exits without changing the configured folders.
 
 Continuous monitoring is configured directly below local folder scanning. It checks configured folders for changes between manual scans; choose 5 seconds, 15 seconds, 30 seconds, 1 minute, or 5 minutes.
+
+### Stem Libraries
+
+Use **Add Stem Library** to configure separate roots for pre-generated stem packages, then **Scan Stem Libraries** to validate and associate packages with tracks already in your music library. Artist/Album subfolders are supported; each named `.viibstems` folder is one package. Adjacent packages beside a matching music file are also checked.
+
+Stem audio is not added as separate songs. If an older scan added package audio under Music Folders, run **Full Rescan** once to remove those catalog entries. ViiB consumes packages; it does not generate stems. See the [stem package contract](VIIB_STEM_PACKAGE_V1.md) and [DJ Mode](dj-mode.md#stem-packages).
 
 ### Plex Media Server music
 
@@ -121,16 +114,13 @@ Device routing uses the Web Audio API's `setSinkId`. Devices are listed after th
 
 | Setting | Description |
 |---|---|
-| Client ID | Your Spotify Developer app Client ID |
-| Client Secret | Your Spotify Developer app Client Secret |
+| Spotify account | Sign in through Spotify in Chrome/Edge/Chromium, switch accounts, cancel a pending sign-in, or disconnect |
 | Download Location | Folder where downloaded OGG files are saved |
 | Concurrent Downloads | How many simultaneous downloads are allowed (1–10, default 3) |
 | Quick Scan After Downloads | Number of completed downloads before an automatic quick scan; 0 disables it |
 | MP3 Conversion | Optional Ogg-to-MP3 conversion and worker count |
 
-When creating the Spotify Developer app, add this exact Redirect URI: `http://127.0.0.1:34115/callback`. `wails.localhost` is not a valid Spotify callback for the desktop application.
-
-> Refer to [Spotify Integration](spotify.md) for how to create a Developer app.
+Normal Spotify sign-in requires an installed Chrome, Microsoft Edge, or Chromium browser and a reachable Go backend. Enter credentials on Spotify’s own page; ViiB captures and stores the validated session encrypted on this device. No Developer app or cookie-paste field is required. See [Spotify Integration](spotify.md) for sign-in, session expiry, and current parity limitations.
 
 ### Last.FM Integration
 
@@ -207,4 +197,4 @@ A scrollable in-app event log containing events recorded by the frontend and bac
 - Download events
 - API errors
 
-Click **Clear** to remove old entries. The log is in-memory only and does not persist after restart.
+Click **Clear** to remove entries from the in-app log, which is in memory. Backend `viib.log` and scanner/analysis `scan.log` are separate files in the application data directory and append across restarts; clearing the in-app view does not clear those files.
