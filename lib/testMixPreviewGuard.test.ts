@@ -1,3 +1,5 @@
+/** Tests and fixtures for test Mix Preview Guard behavior. */
+
 import { describe, expect, it } from 'vitest';
 import type { DeckState } from '../slices/djMixerSlice';
 import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsDeckSnapshot, stillOwnsOccupiedPreviewBaseline, stillOwnsPreviewDeck, stillOwnsPreviewRoute, stillOwnsPreviewTransport } from './testMixPreviewGuard';

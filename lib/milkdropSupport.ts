@@ -1,21 +1,13 @@
 /**
- * ViiB MediaHub - Milkdrop Support Detection
- * 
- * Utility functions to check browser compatibility for Milkdrop visualizations
- * via the Butterchurn WebGL library.
- * 
- * Requirements:
- * - WebGL 2 support (required for Butterchurn rendering)
- * - Web Audio API (already used by ViiB audio engine)
- * 
- * Browser Support:
- * - Chrome 56+ ✅
- * - Firefox 51+ ✅
- * - Safari 15+ ✅
- * - Edge 79+ ✅
- * 
+ * Checks WebGL 2 and Web Audio support for Butterchurn/Milkdrop, supplies
+ * device/GPU quality heuristics, and exposes WebGL capability diagnostics.
+ * Capability checks do not guarantee that every preset renders successfully.
+ *
  * @module milkdropSupport
  */
+
+
+
 
 
 /**

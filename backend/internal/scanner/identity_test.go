@@ -1,3 +1,5 @@
+// Tests and fixtures for identity behavior.
+
 package scanner
 
 import (

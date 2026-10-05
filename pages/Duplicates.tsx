@@ -1,3 +1,5 @@
+/** Displays duplicate catalog groups and manages ignored matches. */
+
 import React, { useCallback, useEffect, useState } from 'react';
 import { Copy, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { api, DuplicateGroup } from '../services/api';

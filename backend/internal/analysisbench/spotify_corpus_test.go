@@ -1,3 +1,5 @@
+// Tests and fixtures for spotify corpus behavior.
+
 package analysisbench
 
 import (

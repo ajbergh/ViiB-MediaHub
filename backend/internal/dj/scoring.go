@@ -1,3 +1,5 @@
+// Defines scoring functionality for package dj.
+
 package dj
 
 import (

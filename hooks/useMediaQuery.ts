@@ -1,3 +1,5 @@
+/** Tracks media-query matches and exposes application breakpoint helpers. */
+
 import { useEffect, useState } from 'react';
 
 /**

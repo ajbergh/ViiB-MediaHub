@@ -1,3 +1,5 @@
+/** Defines the common audio-source contract used by DJ decks. */
+
 import type { Song } from '../types';
 
 /** Transport and graph boundary for one DJ deck. Mixer processing stays in DJAudioEngine. */

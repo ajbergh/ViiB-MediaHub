@@ -1,3 +1,5 @@
+// Tests and fixtures for track behavior.
+
 package track
 
 import (

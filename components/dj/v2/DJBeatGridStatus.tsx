@@ -1,3 +1,5 @@
+/** Displays the loaded deck beat-grid state. */
+
 import React from 'react';
 import { useStore } from '../../../store';
 import { canSyncBeatGrid } from '../../../lib/beatGridConfidence';

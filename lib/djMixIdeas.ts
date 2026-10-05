@@ -1,3 +1,5 @@
+/** Validates, stores, and retrieves bounded local DJ mix-idea snapshots. */
+
 import type {
   TransitionComponent,
   TransitionIntent,

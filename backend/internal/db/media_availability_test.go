@@ -1,3 +1,5 @@
+// Tests and fixtures for media availability behavior.
+
 package db
 
 import (

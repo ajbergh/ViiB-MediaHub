@@ -1,3 +1,5 @@
+/** Displays the current route title and mobile navigation control. */
+
 import React from 'react';
 import { useLocation } from 'react-router';
 import { Menu } from 'lucide-react';

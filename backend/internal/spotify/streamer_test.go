@@ -1,3 +1,5 @@
+// Tests and fixtures for streamer behavior.
+
 package spotify
 
 import (

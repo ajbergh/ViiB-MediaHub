@@ -1,3 +1,5 @@
+// Tests and fixtures for embedding openrouter behavior.
+
 package semantic
 
 import (

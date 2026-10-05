@@ -1,3 +1,5 @@
+// Defines plex metadata writeback functionality for package api.
+
 package api
 
 import (

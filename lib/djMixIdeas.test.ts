@@ -1,3 +1,5 @@
+/** Tests and fixtures for dj Mix Ideas behavior. */
+
 import { describe, expect, it } from 'vitest';
 import {
   deleteDJMixIdea,

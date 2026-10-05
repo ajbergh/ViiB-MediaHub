@@ -1,3 +1,5 @@
+/** Defines the shared button variants, loading state, and interaction styling. */
+
 import React from 'react';
 import { cn } from './cn';
 import { ViibAccent, accentToBgClass } from './tokens';

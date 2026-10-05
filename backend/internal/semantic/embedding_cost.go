@@ -1,3 +1,5 @@
+// Defines embedding cost functionality for package semantic.
+
 package semantic
 
 import (

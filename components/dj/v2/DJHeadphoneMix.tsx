@@ -1,3 +1,5 @@
+/** Controls headphone cue mixing and cue output volume. */
+
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { Headphones } from 'lucide-react';
 import { useStore } from '../../../store';

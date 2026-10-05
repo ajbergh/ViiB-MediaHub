@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+
+/** Tests and fixtures for song Columns behavior. */
+
 import { afterEach, expect, it } from 'vitest';
 import { DEFAULT_SONG_COLUMNS, loadSongColumns, SONG_COLUMNS_STORAGE_KEY, songColumnValue } from './songColumns';
 import { Song } from '../types';

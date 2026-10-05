@@ -1,3 +1,5 @@
+// Defines change coordinator functionality for package scanner.
+
 package scanner
 
 import (

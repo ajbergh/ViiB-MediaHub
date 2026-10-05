@@ -1,3 +1,5 @@
+// Tests and fixtures for canonical audio behavior.
+
 package analysis
 
 import (

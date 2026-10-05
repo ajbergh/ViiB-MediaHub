@@ -1,3 +1,5 @@
+/** Manages DJ deck sources, transport, routing, effects, and synchronized previews. */
+
 import { createReverbImpulse, getBeatFXDelayTime } from './djAudioEffects';
 import { canSyncBeatGrid } from './beatGridConfidence';
 import type { DeckSource } from './deckSource';

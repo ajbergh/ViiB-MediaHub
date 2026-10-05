@@ -1,3 +1,5 @@
+// Tests and fixtures for sustained behavior.
+
 package tempo
 
 import (

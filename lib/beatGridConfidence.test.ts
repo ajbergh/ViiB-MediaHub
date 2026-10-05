@@ -1,3 +1,5 @@
+/** Tests and fixtures for beat Grid Confidence behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { canSyncBeatGrid, resolvedGridPatch, validBeatGrid } from './beatGridConfidence';
 import type { TrackAnalysisFeature } from '../services/api';

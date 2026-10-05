@@ -1,3 +1,5 @@
+// Tests and fixtures for gemini enrichment behavior.
+
 package gemini
 
 import "testing"

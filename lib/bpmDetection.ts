@@ -1,3 +1,5 @@
+/** Estimates browser-decoded tempo and derives BPM-based grid positions. */
+
 import { analysisWindows, extractOnsets, analyzeOnsetSections, measureGridAlignment, type OnsetSection, type TempoEvidence } from './tempoEvidence';
 
 const MIN_BPM = 60;

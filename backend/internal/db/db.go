@@ -14,7 +14,7 @@
 //     are maintained by the additive external analysis schema.
 //
 // AI DJ Support:
-//   - Mood/energy/tempo/BPM fields in songs table (populated by Gemini AI)
+//   - Mood/energy/tempo/BPM catalog fields from configured AI and metadata enrichment
 //   - Play history queries for discovery mode and recently played filtering
 //   - Artist preference tracking based on cumulative play counts
 //   - Genre indexing for fast local matching without API calls
@@ -2603,7 +2603,7 @@ func (d *DB) DeleteCompletedDownloads() (int64, error) {
 // GetSetting retrieves a value for a configuration key from the settings table.
 //
 // Encryption Handling:
-// Sensitive keys (spotify_credentials, gemini_api_key) are automatically decrypted
+// Settings classified as sensitive are automatically decrypted
 // using the machine-bound encryption key. If decryption fails (e.g., database was
 // moved to a different machine), an error is returned to prevent exposing
 // corrupted or encrypted data.
@@ -2638,7 +2638,7 @@ func (d *DB) GetSetting(key string) (string, error) {
 // SetSetting sets a value for a configuration key in the settings table.
 //
 // Encryption Handling:
-// Sensitive keys (spotify_credentials, gemini_api_key) are automatically encrypted
+// Settings classified as sensitive are automatically encrypted
 // using AES-256-GCM before storage. The encryption key is derived from machine-
 // specific identifiers, binding the encrypted data to this installation.
 //
@@ -3622,7 +3622,7 @@ func (d *DB) GetSongsWithMissingGenres(limit int) ([]Song, error) {
 // - Year range filtering (minYear to maxYear)
 // - Mood/Energy/Tempo filtering (exact match when provided)
 //
-// The mood/energy/tempo fields are populated by Gemini AI analysis via AnalyzeSongMood().
+// The mood/energy/tempo fields store configured AI and metadata enrichment results.
 // When these filters are provided, only songs with matching analyzed metadata are returned.
 // Songs without mood analysis are excluded when mood filters are active.
 //
@@ -3667,7 +3667,7 @@ func (d *DB) GetSongsBySmartFilter(genres []string, artists []string, minYear, m
 	}
 
 	// Mood/Energy/Tempo filters - exact match when provided
-	// These fields are populated by Gemini AI analysis via AnalyzeSongMood()
+	// These fields store configured AI and metadata enrichment results
 	if mood != "" {
 		query += " AND mood = ?"
 		args = append(args, mood)

@@ -1,3 +1,5 @@
+// Tests and fixtures for spotify search identity behavior.
+
 package db
 
 import (

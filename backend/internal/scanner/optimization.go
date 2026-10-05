@@ -1,54 +1,14 @@
 // Package scanner provides media library scanning functionality.
 //
-// optimization.go - Phase 4: Performance Optimization System
+// optimization.go defines signature configuration, sampled file-integrity
+// checks, scan timing metrics, adaptive scheduling, partial file hashes, and
+// cleanup helpers. These utilities support incremental scans; defining a
+// configuration or scheduler here does not mean every scan uses it.
 //
-// This file implements the final phase of the Ultra-Fast Startup Incremental Scan System
-// as described in FAST_SCAN_DESIGN.md. It provides performance optimizations including:
-//
-// # Signature Granularity Tuning
-//
-// The SignatureConfig type allows fine-tuning of directory signature behavior:
-//   - MaxDepth: Limit signature computation depth to reduce overhead
-//   - MinFilesForSignature: Skip directories with few audio files
-//   - SignatureExpiryHours: Automatically invalidate old signatures
-//   - UsePartialHash: Use 4KB+4KB sampling for faster (but less precise) hashing
-//
-// # Integrity Verification Sampling
-//
-// The IntegrityVerifier performs periodic random sampling of the library to detect:
-//   - Missing files (deleted from disk but still in database)
-//   - Corrupted files (unreadable or truncated)
-//   - Metadata mismatches (file changed but database not updated)
-//   - Size/mtime discrepancies
-//
-// Verification is weighted by age - files not verified recently have higher
-// priority for selection, ensuring comprehensive coverage over time.
-//
-// # Performance Profiling
-//
-// ScanMetrics and metricsCollector provide detailed timing breakdowns:
-//   - Journal query time
-//   - Signature check time
-//   - File processing time
-//   - Database save time
-//   - Files/directories processed vs skipped
-//
-// Scan history (100 entries) enables trend analysis and optimization tuning.
-//
-// # Adaptive Scan Scheduling
-//
-// ScanScheduler automatically adjusts scan frequency based on detected change rates:
-//   - High activity: Scans every 5 minutes
-//   - Low activity: Scans every hour
-//   - Gradual adjustment between extremes
-//
-// # Stale Data Cleanup
-//
-// Utility methods remove orphaned entries:
-//   - CleanupStaleSignatures: Removes signatures for deleted directories
-//   - CleanupStaleMetadataCache: Removes cache entries for deleted files
-//
-// See FAST_SCAN_DESIGN.md for complete architecture documentation.
+// Integrity sampling checks file availability, readability, size, and mtime.
+// It does not fully decode audio or certify that its audio content is intact.
+// Partial hashes sample the first and last 4 KiB instead of the complete file.
+// See docs/architecture.md for the current scanner/catalog source model.
 package scanner
 
 import (

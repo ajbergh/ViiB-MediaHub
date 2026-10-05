@@ -1,3 +1,5 @@
+/** Renders deck playback, synchronization, and transport controls. */
+
 import { canSyncBeatGrid } from '../../../lib/beatGridConfidence';
 /**
  * ViiB MediaHub - DJ Transport Buttons Component (v2)

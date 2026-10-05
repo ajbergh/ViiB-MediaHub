@@ -1,3 +1,5 @@
+/** Connects DJ store state and guarded deck loading to the audio engine lifecycle. */
+
 import { canSyncBeatGrid, resolvedGridPatch } from '../lib/beatGridConfidence';
 /**
  * ViiB MediaHub - DJ Audio Engine Hook

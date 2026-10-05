@@ -1,3 +1,5 @@
+// Defines settings functionality for package api.
+
 package api
 
 import (

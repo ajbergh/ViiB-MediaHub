@@ -1,3 +1,5 @@
+// Queries duplicate catalog groups by media fingerprint and records ignored duplicate matches.
+
 package db
 
 import "database/sql"

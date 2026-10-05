@@ -1,3 +1,5 @@
+// Defines canonical audio functionality for package analysis.
+
 package analysis
 
 import (

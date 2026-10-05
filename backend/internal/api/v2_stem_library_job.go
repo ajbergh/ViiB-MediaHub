@@ -1,3 +1,5 @@
+// Defines v2 stem library job functionality for package api.
+
 package api
 
 import (

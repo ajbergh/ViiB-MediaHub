@@ -1,3 +1,5 @@
+// Tests and fixtures for query cache behavior.
+
 package semantic
 
 import "testing"

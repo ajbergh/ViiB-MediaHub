@@ -1,3 +1,5 @@
+// Tests and fixtures for spotify credentials behavior.
+
 package api
 
 import (

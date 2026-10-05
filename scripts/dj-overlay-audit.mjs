@@ -1,3 +1,5 @@
+/** Audits DJ drawer geometry, focus, virtualization, and playback using browser fixtures. */
+
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';

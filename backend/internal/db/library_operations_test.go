@@ -1,3 +1,5 @@
+// Tests and fixtures for library operations behavior.
+
 package db
 
 import (

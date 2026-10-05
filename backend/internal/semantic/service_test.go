@@ -1,3 +1,5 @@
+// Tests and fixtures for service behavior.
+
 package semantic
 
 import (

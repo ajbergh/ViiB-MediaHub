@@ -1,3 +1,5 @@
+/** Validates Spotify track/album/playlist links and submits direct downloads. */
+
 import React, { useState } from 'react';
 import { Link2, Loader2, X, Music, Disc3, ListMusic, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../services/api';

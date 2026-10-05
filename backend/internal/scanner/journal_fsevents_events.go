@@ -1,3 +1,5 @@
+// Defines journal fsevents events functionality for package scanner.
+
 package scanner
 
 // These flags are stable CoreServices values. Keeping this small check outside

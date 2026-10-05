@@ -1,3 +1,5 @@
+// Defines recording identity functionality for package analysisbench.
+
 package analysisbench
 
 import (

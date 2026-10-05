@@ -5,11 +5,10 @@
  * Allows loading tracks to decks via drag-drop or context menu.
  * 
  * Features:
- * - Sortable columns (Name, Artist, Album, BPM, Key, Time)
- * - Search/filter
+ * - Sortable columns (Title, Artist, Album, Genre, Time, BPM)
+ * - Text search across title, artist, album, and genre
  * - Load to Deck A/B buttons
  * - Highlight currently loaded tracks
- * - Compatible key/BPM filtering (Phase 2+)
  * 
  * @module components/dj/DJLibraryBrowser
  */

@@ -10,11 +10,11 @@
  * - Rediscover Favorites: High play count but not heard in 30+ days
  * - Fresh Finds: Recently added to library
  * - Chill Acoustic Evening: Genre-based (acoustic, folk, jazz, ambient)
- * - 90s Alternative Mix: Year + genre filtering (1990-1999 rock/alternative)
+ * - 90s Alternative Mix: 1990-1999 tracks matching genre keywords, or with no genre tags
  * - High Energy Workout: Upbeat genres (pop, dance, electronic, rock)
- * - Focus Mode: Instrumental and calm (classical, ambient, lo-fi)
+ * - Focus Mode: Genre-keyword matches such as instrumental, classical, ambient, or lo-fi
  * 
- * Each mix contains up to 50 songs and updates when library changes.
+ * Each generated mix contains up to 50 songs; callers decide when to regenerate it.
  * 
  * @module smartMix
  */

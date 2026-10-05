@@ -1,3 +1,5 @@
+/** Defines analysis, beat-grid, energy, cue, and recommendation DTOs with payload normalization. */
+
 import type { DJHotCue } from './api';
 
 // Resolved server-side analysis for DJ display and timing. `bpm` deliberately

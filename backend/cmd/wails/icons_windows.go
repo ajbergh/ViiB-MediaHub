@@ -1,5 +1,7 @@
 //go:build windows
 
+// Defines icons windows functionality for package main.
+
 package main
 
 import "encoding/base64"

@@ -1,3 +1,5 @@
+// Tests and fixtures for music metadata behavior.
+
 package plex
 
 import "testing"

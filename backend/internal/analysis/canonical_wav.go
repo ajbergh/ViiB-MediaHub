@@ -1,3 +1,5 @@
+// Defines canonical wav functionality for package analysis.
+
 package analysis
 
 import (

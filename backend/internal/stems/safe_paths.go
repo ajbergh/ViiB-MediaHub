@@ -1,3 +1,5 @@
+// Defines safe paths functionality for package stems.
+
 package stems
 
 import (

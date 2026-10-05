@@ -1,25 +1,15 @@
 /**
- * ViiB MediaHub - Media Session Hook
- * 
- * Integrates with the Web Media Session API to provide Windows System Media
- * Transport Controls (SMTC) support. This enables:
- * 
- * - Display of now playing metadata in Windows media overlay
- * - Album artwork in media controls
- * - Hardware media key support (play, pause, next, previous)
- * - Lock screen controls
- * - Bluetooth headset button support
- * - Timeline/seek bar in media controls
- * 
- * The Media Session API is supported by:
- * - Chrome 73+, Edge 79+, Firefox 82+, Safari 15+
- * - WebView2 (Wails build) - Chromium-based, full support
- * 
- * @see https://developer.mozilla.org/en-US/docs/Web/API/Media_Session_API
- * @see WINDOWS_SMTC_IMPLEMENTATION.md for implementation details
- * 
+ * Publishes current-track metadata, playback state, and seek position through
+ * the Web Media Session API and registers supported transport/seek actions.
+ * This enables OS/browser media controls where the host exposes them, including
+ * Windows SMTC in a supporting WebView2 build. API presence is checked at runtime;
+ * individual action support depends on the browser and native host.
+ *
+ * @see docs/player.md
  * @module useMediaSession
  */
+
+
 
 import { useEffect, useCallback } from 'react';
 import { useStore } from '../store';

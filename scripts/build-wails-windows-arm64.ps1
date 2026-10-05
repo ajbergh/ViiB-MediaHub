@@ -4,9 +4,9 @@
 # Output: build/ViiB-MediaHub-arm64.exe
 #
 # Prerequisites:
-#   - Go 1.22+ with CGO_ENABLED=1
+#   - Go 1.26.8+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
-#   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+#   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 #   - LLVM/Clang cross-compiler for arm64 Windows:
 #       Option A: llvm-mingw (https://github.com/mstorsjo/llvm-mingw/releases)
 #                 Add llvm-mingw/bin to PATH, use aarch64-w64-mingw32-gcc

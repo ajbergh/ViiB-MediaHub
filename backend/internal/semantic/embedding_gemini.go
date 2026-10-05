@@ -1,3 +1,5 @@
+// Defines embedding gemini functionality for package semantic.
+
 package semantic
 
 import (

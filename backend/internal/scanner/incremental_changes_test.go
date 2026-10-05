@@ -1,3 +1,5 @@
+// Tests and fixtures for incremental changes behavior.
+
 package scanner
 
 import (

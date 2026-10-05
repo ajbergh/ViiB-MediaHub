@@ -1,3 +1,5 @@
+// Registers Plex credential settings as sensitive during package initialization.
+
 package crypto
 
 // Plex credentials contain account/server tokens and the private device key used

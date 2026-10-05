@@ -1,3 +1,5 @@
+/** Tests and fixtures for key Verification Keyboard behavior. */
+
 import { describe, expect, it, vi } from 'vitest';
 import { keyReferenceFrequency, keyScalePitchClasses, startKeyReferenceTone, type VerifiedKeyMode } from './keyVerificationKeyboard';
 

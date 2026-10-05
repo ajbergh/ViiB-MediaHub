@@ -1,3 +1,5 @@
+/** Offers fullscreen entry for the DJ workspace. */
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Maximize2, ArrowLeft, Monitor } from 'lucide-react';
 import { useNavigate } from 'react-router';

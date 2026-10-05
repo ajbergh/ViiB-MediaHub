@@ -1,3 +1,5 @@
+// Defines benchmark functionality for package track.
+
 package track
 
 import (

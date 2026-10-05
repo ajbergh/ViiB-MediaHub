@@ -1,3 +1,5 @@
+// Tests and fixtures for benchmark behavior.
+
 package track
 
 import (

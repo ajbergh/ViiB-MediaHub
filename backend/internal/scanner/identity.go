@@ -1,3 +1,5 @@
+// Defines identity functionality for package scanner.
+
 package scanner
 
 import (

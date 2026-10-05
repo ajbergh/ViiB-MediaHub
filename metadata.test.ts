@@ -1,3 +1,5 @@
+/** Tests and fixtures for metadata behavior. */
+
 import {afterEach,expect,it,vi} from 'vitest';
 import {managedObjectUrls} from './lib/playbackLifecycle';
 import {parseSong} from './metadata';

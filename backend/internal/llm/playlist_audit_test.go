@@ -1,3 +1,5 @@
+// Tests and fixtures for playlist audit behavior.
+
 package llm
 
 import "testing"

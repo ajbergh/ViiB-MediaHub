@@ -1,3 +1,5 @@
+/** Tests and fixtures for playback Lifecycle behavior. */
+
 import { describe, expect, it, vi } from 'vitest';
 import {
   calculateReplayGain,

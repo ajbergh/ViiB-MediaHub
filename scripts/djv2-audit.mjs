@@ -1,4 +1,4 @@
-// DJv2 accessibility + visual-baseline audit (docs/DJV2_UI_REFACTOR_ENGINEERING_PLAN.md §12, Phase 6).
+// DJv2 accessibility + visual-baseline audit (docs/archive/completed/DJV2_UI_REFACTOR_ENGINEERING_PLAN.md §12, Phase 6).
 //
 // Runs against Vite + backend: DJ_AUDIT_URL defaults to http://localhost:3000/dj.
 // For each supported geometry it captures a visual baseline and measures every

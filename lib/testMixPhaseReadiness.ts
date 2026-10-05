@@ -1,3 +1,5 @@
+/** Inspects downbeat evidence before synchronized DJ test-mix previews. */
+
 import { validBeatGrid, type BeatGridSource } from './beatGridConfidence';
 
 export interface TestMixDownbeatEvidence {

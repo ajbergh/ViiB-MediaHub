@@ -1,3 +1,5 @@
+// Defines vector codec functionality for package semantic.
+
 package semantic
 
 import (

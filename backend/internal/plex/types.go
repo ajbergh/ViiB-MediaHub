@@ -1,3 +1,5 @@
+// Defines types functionality for package plex.
+
 package plex
 
 import (

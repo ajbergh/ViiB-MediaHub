@@ -1,3 +1,5 @@
+// Tests and fixtures for semantic playlist behavior.
+
 package api
 
 import (

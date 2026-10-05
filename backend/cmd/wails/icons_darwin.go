@@ -1,5 +1,7 @@
 //go:build darwin
 
+// Defines icons darwin functionality for package main.
+
 package main
 
 import _ "embed"

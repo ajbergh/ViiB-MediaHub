@@ -1,3 +1,5 @@
+// Tests and fixtures for spotify scalars behavior.
+
 package db
 
 import (

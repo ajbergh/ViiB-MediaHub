@@ -1,3 +1,5 @@
+/** Displays a Camelot key with deterministic wheel coloring and compatibility state. */
+
 import React from 'react';
 import { getCamelotColor } from '../../../lib/camelotColors';
 

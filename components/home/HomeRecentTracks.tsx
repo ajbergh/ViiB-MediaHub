@@ -1,3 +1,5 @@
+/** Displays recent tracks and their supplied playback actions on Home. */
+
 import React from 'react';
 import { Clock, Play } from 'lucide-react';
 import { Song } from '../../types';

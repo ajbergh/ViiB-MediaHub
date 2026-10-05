@@ -1,3 +1,5 @@
+/** Coordinates first-launch source setup and completion of the onboarding flow. */
+
 import React, { useEffect, useState } from 'react';
 import { FolderOpen, Music, Server, Sparkles } from 'lucide-react';
 import FirstLaunchDialogLegacy from './FirstLaunchDialogLegacy';

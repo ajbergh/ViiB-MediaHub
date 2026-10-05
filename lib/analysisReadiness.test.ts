@@ -1,3 +1,5 @@
+/** Tests and fixtures for analysis Readiness behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { compareAnalysisReadiness, getAnalysisReadiness } from './analysisReadiness';
 

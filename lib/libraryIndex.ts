@@ -1,3 +1,5 @@
+/** Maintains the renderer library index and applies catalog updates. */
+
 import { Song } from '../types';
 import { LibraryChange } from '../services/libraryV2';
 

@@ -1,3 +1,5 @@
+/** Renders the featured Home content item and its actions. */
+
 import React from 'react';
 import { Disc3, Play, Sparkles, UserRound } from 'lucide-react';
 import { coverBackground } from '../../utils';

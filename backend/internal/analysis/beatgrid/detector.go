@@ -1,3 +1,5 @@
+// Defines detector functionality for package beatgrid.
+
 package beatgrid
 
 import (

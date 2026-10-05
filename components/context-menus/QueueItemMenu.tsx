@@ -1,3 +1,5 @@
+/** Offers playback and removal actions for a queue item. */
+
 import React from 'react';
 import { Play, ArrowUp, Trash2, Disc, Info } from 'lucide-react';
 import { useStore } from '../../store';

@@ -1,3 +1,5 @@
+// Defines plex functionality for package db.
+
 package db
 
 import (

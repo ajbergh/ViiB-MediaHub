@@ -1,35 +1,11 @@
-// Package gemini is deprecated and maintained for backward compatibility.
+// Package gemini retains the legacy Gemini client for compatibility.
 //
-// Deprecated: Use internal/llm instead for all new code.
-// The llm package provides a unified interface supporting multiple LLM providers:
-//   - Google Gemini
-//   - OpenAI (GPT-4o, GPT-4o-mini)
-//   - Anthropic Claude
-//   - Ollama (local models)
-//   - X.AI (Grok)
+// Deprecated: Use internal/llm for new multi-provider integrations.
 //
-// This package will be removed in a future version.
-//
-// Original functionality (now in internal/llm):
-//
-// Unified Metadata Enrichment (TOON Format):
-//   - EnrichAllMetadata: High-efficiency batch enrichment for up to 200 songs
-//   - Uses TOON (Token-Oriented Object Notation) for compact response format
-//   - Combines genres, mood, energy, tempo, instrumental detection, and original year
-//   - Single API call per batch for maximum efficiency
-//
-// Legacy Wrapper Methods (call EnrichAllMetadata internally):
-//   - EnrichGenres: Returns genre classifications only
-//   - AnalyzeSongMood: Returns mood, energy, tempo, and instrumental flag
-//   - AnalyzeOriginalYear: Returns original release year detection
-//
-// Playlist Filter Generation:
-//   - GeneratePlaylistFilter: Parses natural language prompts into structured filters
-//   - Extracts genres, years, mood, energy, tempo from user requests
-//   - Uses caching to avoid duplicate API calls for similar prompts
-//
-// The package includes retry logic with exponential backoff for API resilience,
-// and caching to minimize API costs for repeated queries.
+// The legacy client parses playlist intent and enriches genres, mood, energy,
+// tempo, instrumental metadata, and original year. Its enrichment path uses
+// pipe-delimited TOON requests/responses; batching is supplied by callers.
+// Client methods include request retries and cached playlist-filter results.
 package gemini
 
 import (

@@ -1,3 +1,5 @@
+// Defines track analysis repository functionality for package db.
+
 package db
 
 import (

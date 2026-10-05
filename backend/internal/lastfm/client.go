@@ -3,8 +3,8 @@
 // client.go - Last.FM API client wrapper with rate limiting and caching.
 //
 // This file wraps the gobble-fm library to provide:
-//   - Rate limiting (5 requests/second to comply with Last.FM guidelines)
-//   - LRU caching with configurable TTL (default 24h)
+//   - Rate limiting (5 requests/second in the client limiter)
+//   - Bounded TTL caching with oldest-entry eviction (default TTL 24h)
 //   - Tag mapping to mood/energy/tempo values
 //   - Mobile authentication for scrobbling support
 //

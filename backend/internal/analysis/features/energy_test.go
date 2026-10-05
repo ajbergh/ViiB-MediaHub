@@ -1,3 +1,5 @@
+// Tests and fixtures for energy behavior.
+
 package features
 
 import (

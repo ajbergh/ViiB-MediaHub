@@ -1,3 +1,5 @@
+/** Defines shared page containers, page headers, and list headers. */
+
 import React from 'react';
 import { cn } from './cn';
 

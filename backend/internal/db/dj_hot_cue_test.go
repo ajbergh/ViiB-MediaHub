@@ -1,3 +1,5 @@
+// Tests and fixtures for dj hot cue behavior.
+
 package db
 
 import (

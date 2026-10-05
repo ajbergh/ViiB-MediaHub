@@ -1,3 +1,5 @@
+// Defines playlist io functionality for package api.
+
 package api
 
 import (

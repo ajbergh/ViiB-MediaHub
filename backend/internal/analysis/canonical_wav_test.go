@@ -1,3 +1,5 @@
+// Tests and fixtures for canonical wav behavior.
+
 package analysis
 
 import (

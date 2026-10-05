@@ -1,3 +1,5 @@
+// Tests and fixtures for semantic sensitive behavior.
+
 package crypto
 
 import "testing"

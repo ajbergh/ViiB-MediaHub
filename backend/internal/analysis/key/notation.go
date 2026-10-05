@@ -1,3 +1,5 @@
+// Defines notation functionality for package key.
+
 package key
 
 import "fmt"

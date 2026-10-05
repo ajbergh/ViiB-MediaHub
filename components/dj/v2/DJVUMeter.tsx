@@ -1,8 +1,8 @@
 /**
  * ViiB MediaHub - DJ VU Meter Component
  * 
- * Real-time VU meter that reads analyser data from the DJ Audio Engine.
- * Uses requestAnimationFrame for smooth 60fps updates via canvas rendering,
+ * Canvas level meter that polls a caller-supplied getLevel callback.
+ * Uses requestAnimationFrame for canvas updates at the host’s available cadence,
  * avoiding React re-renders for performance.
  * 
  * Supports vertical bar style with green → yellow → red color gradient,

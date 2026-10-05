@@ -1,3 +1,5 @@
+/** Coordinates waveform pointer gestures with deck scratch transport. */
+
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { useScratchAvailability } from './useScratchAvailability';
 import { useStore } from '../store';

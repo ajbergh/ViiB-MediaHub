@@ -1,3 +1,5 @@
+/** Tests and fixtures for DJWeb GLRenderer behavior. */
+
 import { describe, expect, it, vi } from 'vitest';
 import { DJWebGLRenderer } from './DJWebGLRenderer';
 

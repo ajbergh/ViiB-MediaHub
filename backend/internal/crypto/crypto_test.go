@@ -1,3 +1,5 @@
+// Tests and fixtures for crypto behavior.
+
 package crypto
 
 import (

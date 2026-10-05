@@ -1,3 +1,5 @@
+// Tests and fixtures for fft behavior.
+
 package analysisbench
 
 import (

@@ -1,3 +1,5 @@
+// Installs the durable stem-package registry schema once per database handle.
+
 package db
 
 import "sync"

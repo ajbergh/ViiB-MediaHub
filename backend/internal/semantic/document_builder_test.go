@@ -1,3 +1,5 @@
+// Tests and fixtures for document builder behavior.
+
 package semantic
 
 import (

@@ -1,3 +1,5 @@
+// Defines v2 stem preview functionality for package api.
+
 package api
 
 import (

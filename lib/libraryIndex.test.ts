@@ -1,3 +1,5 @@
+/** Tests and fixtures for library Index behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { LibraryIndex } from './libraryIndex';
 import { Song } from '../types';

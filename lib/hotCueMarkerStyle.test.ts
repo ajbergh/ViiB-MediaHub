@@ -1,3 +1,5 @@
+/** Tests and fixtures for hot Cue Marker Style behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { getHotCueMarkerStyle } from './hotCueMarkerStyle';
 

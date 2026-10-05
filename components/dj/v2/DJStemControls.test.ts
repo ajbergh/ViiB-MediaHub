@@ -1,3 +1,5 @@
+/** Tests and fixtures for DJStem Controls behavior. */
+
 import { describe, expect, it } from 'vitest';
 import {
   formatDJStemStatus,

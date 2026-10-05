@@ -1,3 +1,5 @@
+// Tests and fixtures for key prototype behavior.
+
 package analysisbench
 
 import "testing"

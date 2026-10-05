@@ -1,3 +1,5 @@
+/** Selects waveform marker styling for hot cues. */
+
 import type { HotCue } from '../slices/djMixerSlice';
 
 /** Canvas marker geometry keeps custom colors while distinguishing generated cues by outline. */

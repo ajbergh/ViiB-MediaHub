@@ -1,5 +1,7 @@
 //go:build !darwin
 
+// Defines tray supported functionality for package main.
+
 package main
 
 import (

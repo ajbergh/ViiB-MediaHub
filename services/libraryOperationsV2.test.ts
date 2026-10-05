@@ -1,3 +1,5 @@
+/** Tests and fixtures for library Operations V2 behavior. */
+
 import {expect,it,vi} from 'vitest';
 vi.mock('./httpClient',()=>({requestJSON:vi.fn().mockResolvedValue({})}));
 import {requestJSON} from './httpClient';

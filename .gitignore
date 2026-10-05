@@ -1,3 +1,5 @@
+# Excludes dependencies, builds, local data, logs, and workspace scratch artifacts from Git.
+
 # Logs
 logs
 *.log

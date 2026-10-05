@@ -5,7 +5,7 @@
 # Output: build\ViiB-MediaHub.exe
 #
 # Prerequisites:
-#   - Go 1.22+ with CGO_ENABLED=1
+#   - Go 1.26.8+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
 #   - ARM64 cross-compiler (when building on amd64 host):
 #       Option A: llvm-mingw (https://github.com/mstorsjo/llvm-mingw/releases)

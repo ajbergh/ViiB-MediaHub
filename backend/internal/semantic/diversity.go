@@ -1,3 +1,5 @@
+// Defines diversity functionality for package semantic.
+
 package semantic
 
 import (

@@ -1,3 +1,5 @@
+// Tests and fixtures for stems registry behavior.
+
 package db
 
 import (

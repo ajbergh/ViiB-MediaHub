@@ -1,3 +1,5 @@
+/** Defines Plex settings state, authentication checks, and reducer transitions. */
+
 import type { PlexAccountServer, PlexLibrary, PlexServer, PlexSource } from '../services/plex';
 
 export interface PlexSettingsState {

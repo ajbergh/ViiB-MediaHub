@@ -8,8 +8,8 @@
  * - Scrolling waveform centered on playhead
  * - Click-to-seek functionality
  * - Drag-to-scratch (vinyl scratch simulation)
- * - Beat grid markers (Phase 2+)
- * - Color-coded frequency bands (Phase 3+)
+ * - Beat grid markers when a grid is available
+ * - Waveform peaks drawn in the deck color
  * 
  * @module components/dj/DJWaveform
  */

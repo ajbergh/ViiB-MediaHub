@@ -1,3 +1,5 @@
+// Tests and fixtures for ai enrichment behavior.
+
 package db
 
 import (

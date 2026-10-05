@@ -1,3 +1,5 @@
+/** Tests and fixtures for analysis Baseline Export behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { browserBaselineResult, indexManifestTracksByFilename } from './analysisBaselineExport';
 

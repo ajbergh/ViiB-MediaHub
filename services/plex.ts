@@ -1,3 +1,8 @@
+/**
+ * Defines typed requests for Plex discovery, configuration, authentication, sync, and metadata
+ * writeback.
+ */
+
 const PLEX_API_BASE = '/api/v2/plex';
 
 export interface PlexServer {

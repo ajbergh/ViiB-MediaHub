@@ -1,3 +1,5 @@
+// Defines pcm functionality for package analysis.
+
 package analysis
 
 import "errors"

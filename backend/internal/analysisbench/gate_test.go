@@ -1,3 +1,5 @@
+// Tests and fixtures for gate behavior.
+
 package analysisbench
 
 import (

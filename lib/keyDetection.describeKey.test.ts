@@ -1,3 +1,5 @@
+/** Tests and fixtures for key Detection describe Key behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { describeKey } from './keyDetection';
 

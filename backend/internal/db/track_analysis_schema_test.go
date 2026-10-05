@@ -1,3 +1,5 @@
+// Tests and fixtures for track analysis schema behavior.
+
 package db
 
 import (

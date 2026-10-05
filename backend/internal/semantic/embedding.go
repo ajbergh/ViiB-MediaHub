@@ -1,3 +1,6 @@
+// Defines embedding-provider interfaces, identities, defaults, and configuration validation
+// shared by semantic retrieval.
+
 package semantic
 
 import (

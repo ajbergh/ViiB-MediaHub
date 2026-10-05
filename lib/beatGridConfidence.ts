@@ -1,3 +1,5 @@
+/** Validates beat-grid evidence and determines whether synchronization can use it. */
+
 import type { DeckAnalysisPatch, DeckState } from '../slices/djMixerSlice';
 import type { TrackAnalysisFeature, TrackBeatGrid } from '../services/api';
 

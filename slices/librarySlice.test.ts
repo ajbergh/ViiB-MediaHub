@@ -1,3 +1,5 @@
+/** Tests and fixtures for library Slice behavior. */
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLibrarySlice } from './librarySlice';
 import { backendService } from '../services/backendService';

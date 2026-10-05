@@ -1,3 +1,5 @@
+/** Checks deck/route ownership and restoration conditions for DJ preview sessions. */
+
 import type { DeckId, DeckState } from '../slices/djMixerSlice';
 
 export interface TestMixPreviewBaseline {

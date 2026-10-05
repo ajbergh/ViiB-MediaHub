@@ -1,3 +1,5 @@
+/** Tests and fixtures for event Stream URL behavior. */
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getEventStreamURL, resetEventStreamURLCacheForTests } from './eventStreamURL';
 

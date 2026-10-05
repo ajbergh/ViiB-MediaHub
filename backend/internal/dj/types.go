@@ -4,7 +4,7 @@
 //   - DJSetPlan: Structured energy/tempo/mood curves across phases
 //   - Persona-based scoring biases for different DJ styles
 //   - Intelligent song sequencing with BPM continuity
-//   - Reactive adaptation based on listening events
+//   - Scoring from supplied preferences and aggregated listening statistics
 //
 // The DJ mode builds on top of the existing smart playlist system,
 // adding structured phase planning and deliberate sequencing.

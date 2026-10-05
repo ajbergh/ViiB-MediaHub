@@ -1,3 +1,5 @@
+// Tests and fixtures for audio key behavior.
+
 package spotify
 
 import (

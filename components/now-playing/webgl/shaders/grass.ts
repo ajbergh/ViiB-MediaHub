@@ -4,7 +4,6 @@
  * Renders vertical grass blades at the bottom that grow and sway with audio.
  * Uses bezier curves approximation for organic blade shapes.
  * 
- * Performance: ~2-4x faster than Canvas 2D version
  */
 
 export const grassFragmentShader = `#version 300 es

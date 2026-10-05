@@ -1,3 +1,5 @@
+// Tests and fixtures for client behavior.
+
 package plex
 
 import (

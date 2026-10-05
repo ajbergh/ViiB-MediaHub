@@ -8,7 +8,7 @@
  * - WAVE: Waveform display (time domain)
  * - SPECTRUM: Frequency bar graph (FFT)
  * 
- * Uses requestAnimationFrame for smooth 60fps rendering.
+ * Uses requestAnimationFrame; actual frame cadence depends on the host.
  * Automatically cleans up animation on unmount or mode change.
  * 
  * @module Visualizer

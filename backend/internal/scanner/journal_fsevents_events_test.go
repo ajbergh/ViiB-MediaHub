@@ -1,3 +1,5 @@
+// Tests and fixtures for journal fsevents events behavior.
+
 package scanner
 
 import "testing"

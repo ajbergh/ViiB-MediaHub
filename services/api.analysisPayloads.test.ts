@@ -1,3 +1,5 @@
+/** Tests and fixtures for api analysis Payloads behavior. */
+
 import { describe, expect, it } from 'vitest';
 import {
   normalizeAnalysisCueList,

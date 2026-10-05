@@ -1,5 +1,6 @@
-// Package semantic contains the pure-Go semantic retrieval primitives. It has
-// no provider or HTTP dependency in the foundation phase.
+// Package semantic builds and searches persisted semantic documents with
+// configured embedding providers. This file defines provider-neutral index,
+// document, retrieval, and embedding contracts shared by the service.
 package semantic
 
 import (

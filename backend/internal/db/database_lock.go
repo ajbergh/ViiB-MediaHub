@@ -1,3 +1,5 @@
+// Defines database lock functionality for package db.
+
 package db
 
 import (

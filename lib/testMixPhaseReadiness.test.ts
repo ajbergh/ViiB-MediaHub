@@ -1,3 +1,5 @@
+/** Tests and fixtures for test Mix Phase Readiness behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { describeTestMixPhaseEvidence, inspectTestMixDownbeatEvidence, type TestMixDownbeatEvidence } from './testMixPhaseReadiness';
 

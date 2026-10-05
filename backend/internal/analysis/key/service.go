@@ -1,3 +1,5 @@
+// Defines service functionality for package key.
+
 package key
 
 import (

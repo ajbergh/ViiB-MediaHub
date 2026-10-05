@@ -1,3 +1,5 @@
+// Tests and fixtures for plex sensitive behavior.
+
 package crypto
 
 import "testing"

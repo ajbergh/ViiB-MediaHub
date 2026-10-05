@@ -11,8 +11,8 @@
  * - Automatic texture unit management
  * 
  * Texture Format:
- * - Frequency: 256x1 R8 (normalized amplitude per frequency bin)
- * - Waveform: 256x1 R8 (time-domain samples, 128 = center)
+ * - Frequency: 256x1 LUMINANCE/UNSIGNED_BYTE (normalized amplitude per frequency bin)
+ * - Waveform: 256x1 LUMINANCE/UNSIGNED_BYTE (time-domain samples, 128 = center)
  * 
  * @module AudioTextureManager
  */

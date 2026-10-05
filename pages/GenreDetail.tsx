@@ -1,3 +1,5 @@
+/** Displays catalog songs for the selected genre. */
+
 import React, { useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useStore } from '../store';

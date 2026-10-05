@@ -1,3 +1,5 @@
+/** Tests and fixtures for vinyl Scratch behavior. */
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { VinylScratchTransport } from './vinylScratch.worklet.js';
 import { vinylMomentum } from './vinylMomentum';

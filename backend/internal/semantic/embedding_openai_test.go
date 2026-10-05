@@ -1,3 +1,5 @@
+// Tests and fixtures for embedding openai behavior.
+
 package semantic
 
 import (

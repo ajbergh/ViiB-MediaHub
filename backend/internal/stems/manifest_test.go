@@ -1,3 +1,5 @@
+// Tests and fixtures for manifest behavior.
+
 package stems
 
 import (

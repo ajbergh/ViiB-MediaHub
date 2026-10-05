@@ -1,3 +1,5 @@
+// Tests and fixtures for downloader metadata behavior.
+
 package spotify
 
 import (

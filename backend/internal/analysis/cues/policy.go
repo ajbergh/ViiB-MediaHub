@@ -1,3 +1,5 @@
+// Defines policy functionality for package cues.
+
 package cues
 
 import (

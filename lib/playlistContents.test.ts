@@ -1,3 +1,5 @@
+/** Tests and fixtures for playlist Contents behavior. */
+
 import { expect, it } from 'vitest';
 import { resolvePlaylistSongs } from './playlistContents';
 import { Song } from '../types';

@@ -1,3 +1,5 @@
+/** Displays the upcoming playback queue within Now Playing. */
+
 import React, { useState } from 'react';
 import { Play, GripVertical, Trash2, Download, CheckCircle, Loader2 } from 'lucide-react';
 import { useStore, useAlbumCovers } from '../../store';

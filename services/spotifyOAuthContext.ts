@@ -1,3 +1,5 @@
+/** Selects retained OAuth context for legacy Spotify compatibility paths. */
+
 export interface SpotifyOAuthContext {
     clientId: string;
     state: string | null;

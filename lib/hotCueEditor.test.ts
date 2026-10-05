@@ -1,3 +1,5 @@
+/** Tests and fixtures for hot Cue Editor behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { convertHotCueToManual, moveHotCueToPosition, recolorHotCue, renameHotCue } from './hotCueEditor';
 import type { HotCue } from '../slices/djMixerSlice';

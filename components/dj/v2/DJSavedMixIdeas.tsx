@@ -1,3 +1,5 @@
+/** Displays and manages locally saved DJ mix ideas. */
+
 import { useEffect, useMemo, useState } from 'react';
 import {
   deleteDJMixIdea,

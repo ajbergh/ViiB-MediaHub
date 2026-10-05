@@ -1,3 +1,5 @@
+/** Provides the Home search entry control. */
+
 import React, { useState } from 'react';
 import { ArrowRight, Search } from 'lucide-react';
 import { useNavigate } from 'react-router';

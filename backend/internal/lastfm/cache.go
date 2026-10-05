@@ -1,20 +1,19 @@
 // Package lastfm provides Last.FM API integration for ViiB MediaHub.
 //
-// cache.go - Thread-safe LRU cache for Last.FM API responses.
+// cache.go - Thread-safe TTL cache for Last.FM API responses.
 //
-// This file implements a simple time-based LRU cache to reduce API calls
+// This file implements a bounded time-based cache to reduce API calls
 // and improve response times. Features:
 //   - Configurable maximum size (default 10,000 entries)
 //   - Configurable TTL (default 24 hours)
 //   - Thread-safe operations via sync.RWMutex
 //   - Automatic expiration of stale entries
-//   - LRU eviction when at capacity
+//   - Oldest-entry eviction by creation time when at capacity
 //
 // Cache keys follow the pattern: "type:artist:track" or "type:artist:limit"
 // where type is one of: track, tracktags, similar, artist, similarartist, album
 //
 // Created: 2025-12-31
-// Last Modified: 2025-12-31
 package lastfm
 
 import (
@@ -23,7 +22,7 @@ import (
 	"time"
 )
 
-// Cache provides thread-safe LRU caching for Last.FM API responses.
+// Cache provides thread-safe TTL caching for Last.FM API responses.
 type Cache struct {
 	mu      sync.RWMutex
 	entries map[string]*cacheEntry

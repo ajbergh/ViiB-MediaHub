@@ -1,3 +1,5 @@
+/** Dispatches mapped MIDI controller actions into DJ store and transport operations. */
+
 import { useEffect, useRef, useState } from 'react';
 import { useDJAudioEngineActions } from './useDJAudioEngine';
 import { getDJMidiService, type MidiAction, type MidiMapping } from '../lib/djMidi';

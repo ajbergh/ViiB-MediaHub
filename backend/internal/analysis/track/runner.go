@@ -1,3 +1,6 @@
+// Runs analysis over a song selection with progress, cancellation, source resolution, and
+// optional Spotify enrichment.
+
 package track
 
 import (

@@ -1,19 +1,10 @@
 /**
- * Stardust Halo Visualization - WebGL Fragment Shader (OPTIMIZED v2)
+ * Stardust Halo Visualization - WebGL Fragment Shader
  * 
  * Renders a pulsing particle halo with stardust bursts on bass hits.
  * Uses procedural particle simulation for expanding trails.
  * 
- * OPTIMIZATIONS v2:
- * - Reduced wave count from 30 to 12 (3x reduction)
- * - Reduced particles per wave from 15 to 8 (2x reduction)
- * - Early exit for pixels outside visible range
- * - Hoisted expensive calculations outside inner loop
- * - Simplified glow calculation (removed exp() in inner loop)
- * - Reduced sparkle count from 12 to 8
- * - Distance squared comparisons to avoid sqrt()
- * 
- * Performance: ~2-3x faster than previous WebGL version
+
  */
 
 export const stardustFragmentShader = `#version 300 es

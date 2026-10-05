@@ -1,3 +1,5 @@
+/** Implements multi-stem deck loading, routing, transport, and scratch coordination. */
+
 import type { Song } from '../types';
 import type { DeckSource } from './deckSource';
 import { SingleTrackDeckSource } from './singleTrackDeckSource';

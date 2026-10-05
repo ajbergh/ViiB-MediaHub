@@ -1,3 +1,5 @@
+/** Tests and fixtures for webgl Shaders behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { toDJWebGL1FragmentShader } from '../components/dj/v2/webgl/DJWaveformShaders';
 import { toWebGL1FragmentShader } from '../components/now-playing/webgl/ShaderProgram';

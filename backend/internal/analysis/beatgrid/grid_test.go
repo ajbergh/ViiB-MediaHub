@@ -1,3 +1,5 @@
+// Tests and fixtures for grid behavior.
+
 package beatgrid
 
 import (

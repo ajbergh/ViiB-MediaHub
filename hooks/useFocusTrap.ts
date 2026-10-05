@@ -1,3 +1,5 @@
+/** Keeps keyboard focus within an active dialog and restores prior focus on cleanup. */
+
 import { useEffect, useRef } from 'react';
 
 const FOCUSABLE_SELECTOR = [

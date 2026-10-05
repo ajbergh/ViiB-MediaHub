@@ -1,3 +1,5 @@
+// Tests and fixtures for openrouter behavior.
+
 package llm
 
 import (

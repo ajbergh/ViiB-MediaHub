@@ -1,3 +1,5 @@
+// Tests and fixtures for enricher behavior.
+
 package lastfm
 
 import (

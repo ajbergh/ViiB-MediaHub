@@ -1,3 +1,5 @@
+// Defines semantic playlist functionality for package api.
+
 package api
 
 import (

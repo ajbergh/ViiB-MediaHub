@@ -1,3 +1,5 @@
+// Tests and fixtures for generator behavior.
+
 package cues
 
 import (

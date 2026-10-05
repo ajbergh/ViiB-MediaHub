@@ -1,3 +1,5 @@
+/** Tests and fixtures for audio behavior. */
+
 import {afterEach,expect,it,vi} from 'vitest';
 import {audioEngine} from './audio';
 afterEach(()=>vi.useRealTimers());

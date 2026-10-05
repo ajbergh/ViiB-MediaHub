@@ -1,3 +1,5 @@
+/** Tests and fixtures for playlist Artwork behavior. */
+
 import { expect, it } from 'vitest';
 import { Song } from '../types';
 import { getPlaylistArtwork } from './playlistArtwork';

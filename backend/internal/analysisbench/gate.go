@@ -1,3 +1,5 @@
+// Defines gate functionality for package analysisbench.
+
 package analysisbench
 
 import (

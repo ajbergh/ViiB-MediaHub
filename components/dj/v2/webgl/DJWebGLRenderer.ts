@@ -8,7 +8,7 @@
  * - WebGL2 primary with WebGL1 fallback
  * - Waveform peak data uploaded as Float32 texture
  * - Multi-layer compositing (waveform → beat grid → markers → playhead)
- * - Shared context across all DJ canvases
+ * - One context per renderer/canvas; the split workstation creates a renderer per deck
  * 
  * @module DJWebGLRenderer
  */

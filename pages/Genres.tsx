@@ -1,3 +1,5 @@
+/** Displays genre groupings derived from the ViiB catalog. */
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useStore } from '../store';

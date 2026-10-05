@@ -2,7 +2,8 @@
 //
 // This file contains the provider and model definitions for the LLM integration.
 // For Ollama, users enter model names manually (e.g., "qwen3:4b", "llama3.2:8b")
-// which are stored in the database. Other providers have predefined model lists.
+// which are stored in the database. Cloud providers have predefined defaults;
+// OpenRouter can replace its fallback list with dynamically retrieved text models.
 package llm
 
 import (

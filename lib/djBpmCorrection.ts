@@ -1,3 +1,5 @@
+/** Resolves source-aware BPM editing identity and formats manual/tapped tempo. */
+
 import type { Song } from '../types';
 
 type SourceAwareTrack = Pick<Song, 'id' | 'source' | 'sourceName' | 'path' | 'fileHash' | 'fileHandle'>;

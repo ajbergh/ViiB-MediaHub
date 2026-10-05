@@ -1,3 +1,5 @@
+// Defines spotify features functionality for package api.
+
 package api
 
 import (

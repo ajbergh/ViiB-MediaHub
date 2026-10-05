@@ -1,3 +1,5 @@
+// Defines query cache functionality for package semantic.
+
 package semantic
 
 import (

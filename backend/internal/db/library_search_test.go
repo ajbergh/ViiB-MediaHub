@@ -1,3 +1,5 @@
+// Tests and fixtures for library search behavior.
+
 package db
 
 import (

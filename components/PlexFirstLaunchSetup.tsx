@@ -1,3 +1,5 @@
+/** Guides initial Plex discovery, authentication, server/library selection, and synchronization. */
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileMusic, Library, Loader2, Music, RefreshCw, Search, Server } from 'lucide-react';
 import { plexService, type PlexAccountServer, type PlexLibrary, type PlexServer, type PlexSource } from '../services/plex';

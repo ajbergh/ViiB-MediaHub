@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+
+/** Tests and fixtures for DJEnergy Insights null-slices behavior. */
+
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

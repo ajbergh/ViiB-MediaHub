@@ -1,3 +1,5 @@
+// Tests and fixtures for track analysis selection behavior.
+
 package db
 
 import (

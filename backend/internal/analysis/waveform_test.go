@@ -1,3 +1,5 @@
+// Tests and fixtures for waveform behavior.
+
 package analysis
 
 import (

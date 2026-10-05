@@ -1,3 +1,5 @@
+/** Tests and fixtures for analysis Confidence behavior. */
+
 import { describe, expect, it } from 'vitest';
 import type { TrackAnalysisFeature } from '../services/api';
 import {

@@ -1,3 +1,5 @@
+// Defines audio key functionality for package spotify.
+
 package spotify
 
 import (

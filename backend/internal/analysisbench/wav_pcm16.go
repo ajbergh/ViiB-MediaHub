@@ -1,3 +1,6 @@
+// Provides the benchmark streaming reader for signed PCM16 WAV data, using the shared WAVInfo
+// contract.
+
 package analysisbench
 
 import (

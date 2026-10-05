@@ -1,3 +1,6 @@
+# Versioned local backend API contract for library, jobs, analysis, recovery, and Plex
+# management.
+
 openapi: 3.1.0
 info:
   title: ViiB MediaHub Local API

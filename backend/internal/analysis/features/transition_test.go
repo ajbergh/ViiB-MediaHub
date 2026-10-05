@@ -1,3 +1,5 @@
+// Tests and fixtures for transition behavior.
+
 package features
 
 import (

@@ -1,3 +1,5 @@
+/** Explains the minimum width required by the DJ workstation. */
+
 import React from 'react';
 import { Monitor, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router';

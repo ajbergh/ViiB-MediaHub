@@ -1,3 +1,5 @@
+// Tests and fixtures for interval consistency behavior.
+
 package tempo
 
 import (

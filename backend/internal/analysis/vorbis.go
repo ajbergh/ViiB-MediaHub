@@ -1,3 +1,5 @@
+// Adapts Ogg/Vorbis decoding to the shared streaming PCM analysis interface.
+
 package analysis
 
 import (

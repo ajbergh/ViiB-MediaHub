@@ -1,3 +1,5 @@
+// Defines profiles functionality for package key.
+
 package key
 
 import "math"

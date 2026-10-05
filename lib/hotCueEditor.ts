@@ -1,3 +1,5 @@
+/** Updates hot-cue names, colors, manual status, and positions. */
+
 import type { HotCue } from '../slices/djMixerSlice';
 
 export function renameHotCue(cue: HotCue, label: string): HotCue {

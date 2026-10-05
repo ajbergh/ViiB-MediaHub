@@ -1,3 +1,5 @@
+/** Arranges Home content as a cover-wall layout. */
+
 import React from 'react';
 import { useNavigate } from 'react-router';
 import { Music2 } from 'lucide-react';

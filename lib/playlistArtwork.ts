@@ -1,3 +1,5 @@
+/** Chooses playlist artwork from available catalog songs. */
+
 import { Song } from '../types';
 import { isPlexSourcePath } from './artwork';
 

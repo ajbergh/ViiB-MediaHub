@@ -1,3 +1,5 @@
+/** Tests and fixtures for library Service behavior. */
+
 import {afterEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({put:vi.fn().mockResolvedValue(undefined)}));
 vi.mock('./db',()=>({getDB:async()=>({transaction:()=>({store:{put:mocks.put},done:Promise.resolve()})}),closeDB:vi.fn()}));

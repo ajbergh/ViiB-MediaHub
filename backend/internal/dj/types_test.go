@@ -1,3 +1,5 @@
+// Tests and fixtures for types behavior.
+
 package dj
 
 import "testing"

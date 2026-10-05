@@ -5,7 +5,6 @@
  * The waveform is sampled from the audio texture and rendered
  * with analytical glow (no post-processing needed).
  * 
- * Performance: ~2-3x faster than Canvas 2D version
  */
 
 export const waveFragmentShader = `#version 300 es

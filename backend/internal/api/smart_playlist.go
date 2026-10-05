@@ -1,43 +1,17 @@
 // Package api provides HTTP handlers for the ViiB MediaHub API.
 //
-// smart_playlist.go implements the AI DJ feature, which generates smart playlists
-// based on natural language prompts. It uses a four-tier matching system:
+// smart_playlist.go generates playlists and AI DJ sets from natural-language
+// requests over the ViiB catalog. A ready semantic service supplies candidates
+// first; unavailable or unsuccessful semantic retrieval falls back to the
+// existing metadata matcher and configured LLM intent parsing.
 //
-//  1. Tier 0 - Artist-Based Matching: Detects "more like [artist]" patterns and
-//     returns songs from that artist plus similar artists (based on shared genres).
-//
-//  2. Tier 1 - Local Genre Matching: Direct match against indexed genre names
-//     without calling external APIs. Handles exact and partial matches.
-//
-//  3. Tier 1.5 - Mood/Activity Keyword Matching: Intercepts 85+ common mood/vibe
-//     keywords (chill, workout, focus, party, etc.) and queries by mood/energy/tempo
-//     directly, bypassing the LLM API entirely.
-//
-//  4. Tier 2 - LLM Fallback: For complex prompts, uses the configured LLM provider
-//     (Ollama, Gemini, OpenAI, Anthropic, or X.AI) to parse intent and smart-score
-//     indexed genres. Provider is selected from user settings.
-//
-// The AI DJ always uses multi-genre blending to create cross-genre playlists based
-// on the user's input query. The backend intelligently selects the best matching
-// genres and blends them proportionally for a cohesive listening experience.
-//
-// Additional features include:
-//   - Multi-genre blending with proportional song selection
-//   - Play history integration (discover mode, avoid recently played)
-//   - Time-of-day awareness for contextual recommendations
-//   - Decade extraction from prompts (supports early/mid/late qualifiers)
-//   - True random shuffling using Fisher-Yates algorithm (seeded at init)
-//   - Mood/energy/tempo filtering in database queries
-//
-// Key functions:
-//   - handleGenerateSmartPlaylist: Main HTTP handler for /api/smart-playlist
-//   - tryArtistBasedMatch: Detects artist-based prompts (Tier 0)
-//   - tryLocalGenreMatch: Matches against indexed genres locally (Tier 1)
-//   - tryMoodBasedMatch: Intercepts mood/activity keywords (Tier 1.5)
-//   - tryMatchMultipleGenres: Returns top matching genres for blending
-//   - scoreGenreMatch: Calculates genre match scores
-//   - applyPlayHistoryFilters: Filters based on play history preferences
-//   - getTimeContext: Returns current time context for recommendations
+// The fallback handles artist-based prompts, indexed genres, mood/activity
+// keywords, and more complex requests through the selected LLM provider.
+// Multi-genre blending is conditional on mixed mode rather than mandatory.
+// Source, year, listening-history, discovery, and artist-diversity constraints
+// are applied locally; time context and DJ sequencing shape eligible results.
+// Provider selection supports Ollama, Gemini, OpenAI, Anthropic, xAI, and
+// OpenRouter through the llm package.
 package api
 
 import (

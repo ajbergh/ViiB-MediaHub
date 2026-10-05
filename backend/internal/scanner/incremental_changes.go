@@ -1,3 +1,5 @@
+// Defines incremental changes functionality for package scanner.
+
 package scanner
 
 import (

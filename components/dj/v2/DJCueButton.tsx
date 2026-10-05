@@ -1,3 +1,5 @@
+/** Renders the deck cue control and its pointer interactions. */
+
 import React, { useCallback } from 'react';
 import { Headphones } from 'lucide-react';
 import { useStore } from '../../../store';

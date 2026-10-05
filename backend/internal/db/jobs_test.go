@@ -1,3 +1,5 @@
+// Tests and fixtures for jobs behavior.
+
 package db
 
 import (

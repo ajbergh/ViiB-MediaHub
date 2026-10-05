@@ -1,3 +1,8 @@
+/**
+ * Displays energy/structure analysis and manages advisory transition and test-mix preview
+ * workflows.
+ */
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { getDJAudioEngine, type SynchronizedPreviewSources } from '../../../lib/djAudio';

@@ -1,3 +1,6 @@
+// Frames mono PCM with a Hann window and a radix-2 short-time Fourier transform for shared
+// analysis.
+
 package analysis
 
 import (

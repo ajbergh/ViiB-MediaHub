@@ -1,3 +1,5 @@
+/** Tracks scratch capability for the current deck source. */
+
 import { useEffect, useState } from 'react';
 import { getDJAudioEngine } from '../lib/djAudio';
 import type { DeckId } from '../slices/djMixerSlice';

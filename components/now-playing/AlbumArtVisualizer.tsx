@@ -1,65 +1,16 @@
 /**
- * ViiB MediaHub - Album Art Visualizer Component
- * 
- * Canvas-based audio visualization that overlays the album art in the Now Playing view.
- * Renders real-time audio-reactive visualizations using Canvas 2D API for broad compatibility.
- * 
- * Architecture:
- * - Uses Web Audio API's AnalyserNode for frequency and waveform data
- * - Canvas 2D rendering with requestAnimationFrame for smooth 60 FPS
- * - Separate renderer functions for each visualization mode
- * - Fade in/out transitions using opacity interpolation with easing
- * - ResizeObserver for responsive canvas sizing with DPR support
- * 
- * Visualization Modes (21 total):
- * 
- * Classic Modes:
- * - WAVE: Smooth glowing waveform with quadratic curve interpolation
- * - SPECTRUM: Circular frequency bars radiating from center (sun-burst effect)
- * - AURORA: Ambient flowing gradients reacting to bass/mid/treble bands
- * - CIRCULAR: Enhanced circular with rotating bars, pulsing rings, inner waveform
- * - PARTICLES: Dynamic particle system with gravity effects and audio-reactive spawning
- * - NEBULA: Cosmic atmosphere with swirling nebula clouds, stars, and lens flares
- * 
- * Next-Gen Modes:
- * - FLAME_SPECTRUM: Stylized flame tongues rising with frequency-based height and color intensity
- * - STARDUST_HALO: Pulsing particle halo with stardust bursts on bass hits
- * - AURORA_RIBBON: Translucent ribbon with waveform modulation and frequency-based colors
- * - ELECTRIC_ARC: TRON-style geometric light beams with crackling effects
- * - GRASS_OSCILLOSCOPE: Organic swaying grass blades with amplitude height and stereo sway
- * - CRYSTAL_SHARDS: Prismatic diamond shards bursting outward with refraction effects
- * - WATERCOLOR_BLOOM: Painterly circular blooms with multi-layer depth
- * - ICE_FRACTURE: Cracking ice radiating from center with branching fractures
- * - FIREFLY_FIELD: Drifting fireflies with warm glow and gentle flicker
- * - VINYL_SPIN: Rotating vinyl grooves with tempo-based rotation and treble glints
- * - BEAT_ORBS: Volumetric orbs expanding on bass hits with soft gradients
- * - TUNNEL_WAVEFORM: 3D tunnel of pulsating rings with perspective depth
- * - GLASS_SHARDS: Reflective rotating glass fragments with prismatic colors
- * - WIND_FIELD: Flowing particle wind effect with bass intensity and treble sparkles
- * 
- * Audio Analysis:
- * - Frequency data: getByteFrequencyData() returns 0-255 magnitude per frequency bin
- * - Waveform data: getByteTimeDomainData() returns 0-255 time-domain samples (128 = center)
- * - Energy bands calculated: Bass (0-30 bins), Mid (30-150), Treble (150-300)
- * - FFT size: 2048 for high-resolution frequency analysis
- * 
- * Performance Optimizations:
- * - Particle systems capped at reasonable limits (40-300 particles)
- * - Animation paused when not visible (opacity = 0)
- * - ResizeObserver prevents unnecessary canvas resizing
- * - Device pixel ratio scaling for crisp rendering
- * - Efficient Canvas 2D rendering (no WebGL dependency)
- * 
- * State Management:
- * - opacityRef: Current fade opacity (0-1)
- * - fadingInRef/fadingOutRef: Track active fade transitions
- * - particlesRef/shards/etc: Persistent particle systems per visualization
- * - animationRef: requestAnimationFrame ID for cleanup
- * 
+ * Canvas 2D audio-reactive overlay for Now Playing album artwork.
+ * Renders ten active modes: WAVE, SPECTRUM, FLAME_SPECTRUM, STARDUST_HALO,
+ * AURORA_RIBBON, ELECTRIC_ARC, GRASS_OSCILLOSCOPE, FIREFLY_FIELD,
+ * TUNNEL_WAVEFORM, and WIND_FIELD. OFF and MILKDROP are handled separately.
+ *
+ * Reads analyser frequency/time-domain data, manages particle state and fades,
+ * sizes the canvas with ResizeObserver/device pixel ratio, and cleans up its
+ * requestAnimationFrame loop. The host determines the actual frame rate.
+ *
  * @module AlbumArtVisualizer
- * @requires audioEngine - Web Audio API abstraction for analyzer access
- * @requires VisualizerMode - Type definition for all supported visualization modes
  */
+
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { audioEngine } from '../../lib/audio';

@@ -5,7 +5,7 @@
  * keyboard shortcuts, dialogs, drag-and-drop loading and callback wiring.
  * Layout lives in DJPerformanceWorkspace, DJDeckPanel and DJMixerPanel.
  *
- * Layout (docs/DJV2_UI_REFACTOR_ENGINEERING_PLAN.md §3):
+ * Layout (docs/archive/completed/DJV2_UI_REFACTOR_ENGINEERING_PLAN.md §3):
  * ┌──────────────────────────────────────────────────────────────────────┐
  * │ Top bar: DJ · LIBRARY · BROWSE · FX · SCOPE      REC MIDI AUDIO ⚙ FS │
  * ├──────────────────────────────────┬───────────────────────────────────┤

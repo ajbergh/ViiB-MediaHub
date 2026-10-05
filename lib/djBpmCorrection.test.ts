@@ -1,3 +1,5 @@
+/** Tests and fixtures for dj Bpm Correction behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { djTrackSourceIdentity, formatManualBpm, tapTempoBpm } from './djBpmCorrection';
 

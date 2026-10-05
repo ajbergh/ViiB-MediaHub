@@ -1,3 +1,5 @@
+/** Tests and fixtures for camelot Colors behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { CAMELOT_BASE_HUES, getCamelotColor } from './camelotColors';
 

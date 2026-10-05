@@ -1,3 +1,5 @@
+// Defines v2 library operations helpers functionality for package api.
+
 package api
 
 import "github.com/ajbergh/viib-mediahub/internal/db"

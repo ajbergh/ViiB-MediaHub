@@ -1,3 +1,5 @@
+// Defines playlist io functionality for package db.
+
 package db
 
 import (

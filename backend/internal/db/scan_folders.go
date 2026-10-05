@@ -1,3 +1,5 @@
+// Persists and queries configured library scan folders.
+
 package db
 
 import "database/sql"

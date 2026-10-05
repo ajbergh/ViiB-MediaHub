@@ -1,3 +1,5 @@
+/** Defines musical-key reference notes and generates verification tones. */
+
 export const KEY_NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'] as const;
 
 export type VerifiedKeyMode = 'major' | 'minor';

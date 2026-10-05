@@ -1,3 +1,5 @@
+// Tests and fixtures for embedding gemini behavior.
+
 package semantic
 
 import (

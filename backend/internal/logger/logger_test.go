@@ -1,3 +1,5 @@
+// Tests and fixtures for logger behavior.
+
 package logger
 
 import (

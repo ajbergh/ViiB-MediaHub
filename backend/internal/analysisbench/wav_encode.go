@@ -1,3 +1,5 @@
+// Defines wav encode functionality for package analysisbench.
+
 package analysisbench
 
 import (

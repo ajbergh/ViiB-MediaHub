@@ -1,3 +1,5 @@
+/** Tests and fixtures for dj Library LUFS behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { compareIntegratedLUFS, formatIntegratedLUFS, isFiniteIntegratedLUFS } from './djLibraryLUFS';
 

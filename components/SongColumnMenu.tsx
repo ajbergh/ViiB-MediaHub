@@ -1,3 +1,5 @@
+/** Lets users select the visible columns in the song library. */
+
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Check } from 'lucide-react';

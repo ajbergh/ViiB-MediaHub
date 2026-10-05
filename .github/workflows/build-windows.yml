@@ -1,3 +1,5 @@
+# Validates the frontend/backend, builds Windows Wails packages, and scans packaged binaries.
+
 name: Build Windows (Wails)
 
 on:

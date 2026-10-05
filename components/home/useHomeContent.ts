@@ -1,3 +1,5 @@
+/** Derives Home shelves, spotlight items, shortcuts, and statistics from application state. */
+
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useAlbums, useArtists, useStore } from '../../store';

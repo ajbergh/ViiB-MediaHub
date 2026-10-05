@@ -1,3 +1,5 @@
+/** Synchronizes library changes from revisioned events with legacy-event fallback. */
+
 import { useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { generateSmartMixes } from '../lib/smartMix';

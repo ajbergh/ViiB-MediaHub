@@ -1,3 +1,5 @@
+/** Tests and fixtures for stem Transport worklet behavior. */
+
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';

@@ -1,3 +1,5 @@
+/** Manages Plex source configuration, synchronization, and reviewed AI metadata writeback. */
+
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ExternalLink, Eye, Loader2, Music, RefreshCw, Search, Server, ShieldCheck, Trash2, WifiOff } from 'lucide-react';
 import { Button } from './ui/Button';

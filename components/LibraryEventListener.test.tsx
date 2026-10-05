@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+
+/** Tests and fixtures for Library Event Listener behavior. */
+
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';

@@ -3,14 +3,14 @@
 #
 # Builds the web-embedded binary that serves a local HTTP server and opens
 # the default browser. Does NOT require Wails or WebView2.
-# Output: build/ViiB-MediaHub (or ViiB-MediaHub-arm64 / ViiB-MediaHub-amd64)
+# Output: build/ViiB-MediaHub (selected architecture)
 #
 # Supported architectures:
 #   arm64    - Apple Silicon (M1/M2/M3/M4) [default]
 #   amd64    - Intel x86-64
 #
 # Prerequisites:
-#   - Go 1.22+ with CGO_ENABLED=1
+#   - Go 1.26.8+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
 #   - Xcode Command Line Tools: xcode-select --install
 #

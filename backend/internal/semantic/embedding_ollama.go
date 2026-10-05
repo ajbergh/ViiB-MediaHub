@@ -1,3 +1,6 @@
+// Implements Ollama embedding requests with configured model, endpoint, batching, and
+// timeouts.
+
 package semantic
 
 import (

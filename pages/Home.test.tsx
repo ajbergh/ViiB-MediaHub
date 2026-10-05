@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+
+/** Tests and fixtures for Home behavior. */
+
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, expect, it, vi } from 'vitest';

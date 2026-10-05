@@ -1,3 +1,5 @@
+/** Displays compact library and listening statistics on Home. */
+
 import React from 'react';
 import { Disc3, Library, Music, UsersRound } from 'lucide-react';
 import { useNavigate } from 'react-router';

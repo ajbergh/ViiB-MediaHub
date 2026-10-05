@@ -1,3 +1,5 @@
+/** Tests and fixtures for plex Settings State behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { initialPlexSettingsState, plexSettingsReducer, plexSourceNeedsAuthentication } from './plexSettingsState';
 

@@ -1,3 +1,5 @@
+/** Builds and compares catalog album identities. */
+
 export const albumIdentity = (album: string, artist: string): string =>
   `${album.trim()}::${artist.trim()}`;
 

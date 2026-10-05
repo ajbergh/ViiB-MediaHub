@@ -1,3 +1,5 @@
+// Defines v2 stem frames functionality for package api.
+
 package api
 
 import (

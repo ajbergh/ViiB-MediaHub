@@ -1,3 +1,5 @@
+// Tests and fixtures for audio behavior.
+
 package analysis
 
 import (

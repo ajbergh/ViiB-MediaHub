@@ -1,3 +1,5 @@
+// Defines auth functionality for package plex.
+
 package plex
 
 import (

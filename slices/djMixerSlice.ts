@@ -1,3 +1,5 @@
+/** Defines DJ deck/mixer state and actions for transport, cues, loops, effects, and routing. */
+
 import type { TempoEvidence } from '../lib/tempoEvidence';
 import { canSyncBeatGrid, type BeatGridSource } from '../lib/beatGridConfidence';
 /**

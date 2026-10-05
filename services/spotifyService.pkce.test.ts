@@ -1,3 +1,5 @@
+/** Tests and fixtures for spotify Service pkce behavior. */
+
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SpotifyService } from './spotifyService';

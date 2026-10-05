@@ -1,3 +1,5 @@
+// Tests and fixtures for scan index behavior.
+
 package semantic
 
 import (

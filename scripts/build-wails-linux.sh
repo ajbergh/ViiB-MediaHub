@@ -2,16 +2,16 @@
 # Build script for ViiB MediaHub (Wails Linux build)
 #
 # Builds the native Linux desktop application using Wails.
-# Output: build/ViiB-MediaHub
+# Output: build/ViiB-MediaHub (amd64) or build/ViiB-MediaHub-arm64
 #
 # Supported architectures:
 #   amd64  - x86-64 [default]
 #   arm64  - ARM64 / AArch64
 #
 # Prerequisites:
-#   - Go 1.22+ with CGO_ENABLED=1
+#   - Go 1.26.8+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
-#   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+#   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 #   - CGO toolchain:
 #       amd64: gcc (e.g., sudo apt install gcc)
 #       arm64 cross-compile: gcc-aarch64-linux-gnu

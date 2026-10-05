@@ -1,5 +1,7 @@
 //go:build !windows
 
+// Defines database lock unix functionality for package db.
+
 package db
 
 import (

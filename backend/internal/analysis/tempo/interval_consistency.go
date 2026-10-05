@@ -1,3 +1,5 @@
+// Defines interval consistency functionality for package tempo.
+
 package tempo
 
 import "math"

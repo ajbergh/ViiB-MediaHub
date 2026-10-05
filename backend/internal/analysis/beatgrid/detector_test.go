@@ -1,3 +1,5 @@
+// Tests and fixtures for detector behavior.
+
 package beatgrid
 
 import (

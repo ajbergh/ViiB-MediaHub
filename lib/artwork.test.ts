@@ -1,3 +1,5 @@
+/** Tests and fixtures for artwork behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { buildAlbumCoverIndex, isAuthoritativePlexArtwork, isPlexSourcePath, resolveAlbumArtwork } from './artwork';
 

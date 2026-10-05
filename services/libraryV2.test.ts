@@ -1,3 +1,5 @@
+/** Tests and fixtures for library V2 behavior. */
+
 import {afterEach,expect,it,vi} from 'vitest';
 vi.mock('./backendService',()=>({apiSongToSong:(song:unknown)=>song}));
 import {libraryV2,LibraryResnapshotRequired} from './libraryV2';

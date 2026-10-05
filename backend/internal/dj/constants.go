@@ -1,3 +1,5 @@
+// Defines constants functionality for package dj.
+
 package dj
 
 // ============================================================================

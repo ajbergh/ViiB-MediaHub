@@ -1,3 +1,5 @@
+/** Finds playback fallback candidates for unavailable Plex tracks. */
+
 import type { Song } from '../types';
 
 /**

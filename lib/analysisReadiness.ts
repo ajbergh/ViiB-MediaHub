@@ -1,3 +1,5 @@
+/** Maps analysis and loading status to library/deck readiness descriptions. */
+
 import type { TrackAnalysisFeature } from '../services/api';
 
 export interface AnalysisReadiness {

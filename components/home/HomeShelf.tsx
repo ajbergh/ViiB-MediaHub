@@ -1,3 +1,5 @@
+/** Lays out a titled horizontal content shelf on Home. */
+
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '../ui/cn';

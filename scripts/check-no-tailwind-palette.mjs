@@ -1,3 +1,5 @@
+/** Runs the style ratchet against direct Tailwind palette classes. */
+
 import { checkStyleRatchet } from './style-ratchet.mjs';
 await checkStyleRatchet({
  name: 'Palette', baselineFile: 'palette-baseline.json', extensions: ['.ts','.tsx','.js','.jsx','.css'],

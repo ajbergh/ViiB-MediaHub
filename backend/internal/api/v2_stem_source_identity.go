@@ -1,3 +1,5 @@
+// Defines v2 stem source identity functionality for package api.
+
 package api
 
 import (

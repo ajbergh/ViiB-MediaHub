@@ -1,3 +1,5 @@
+// Registers semantic embedding credentials as sensitive during package initialization.
+
 package crypto
 
 // Semantic embedding providers can use a cloud API key. Registering the

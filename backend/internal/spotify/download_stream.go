@@ -1,3 +1,5 @@
+// Defines download stream functionality for package spotify.
+
 package spotify
 
 import (

@@ -1,3 +1,5 @@
+// Defines semantic dj functionality for package api.
+
 package api
 
 import (

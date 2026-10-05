@@ -1,5 +1,7 @@
 //go:build darwin && !cgo
 
+// Defines journal darwin nocgo functionality for package scanner.
+
 package scanner
 
 import (

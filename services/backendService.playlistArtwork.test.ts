@@ -1,3 +1,5 @@
+/** Tests and fixtures for backend Service playlist Artwork behavior. */
+
 import { afterEach, expect, it, vi } from 'vitest';
 import { backendService } from './backendService';
 import { api } from './api';

@@ -1,3 +1,5 @@
+/** Tests and fixtures for jobs V2 behavior. */
+
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   ANALYSIS_FOREGROUND_PRIORITY,

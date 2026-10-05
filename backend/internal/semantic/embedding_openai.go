@@ -1,3 +1,5 @@
+// Defines embedding openai functionality for package semantic.
+
 package semantic
 
 import (

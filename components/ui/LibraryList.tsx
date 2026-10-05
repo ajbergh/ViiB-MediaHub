@@ -1,3 +1,5 @@
+/** Defines shared library-list header and row presentation. */
+
 import React from 'react';
 
 const columns = 'grid grid-cols-[28px_minmax(0,1fr)_80px] md:grid-cols-[36px_minmax(0,2fr)_minmax(0,1fr)_120px] gap-3 items-center';

@@ -1,3 +1,5 @@
+/** Defines stem bus/mute presets and renders the deck stem controls. */
+
 import React, { useCallback, useEffect, useState } from 'react';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { useStore } from '../../../store';

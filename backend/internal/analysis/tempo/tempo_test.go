@@ -1,3 +1,5 @@
+// Tests and fixtures for tempo behavior.
+
 package tempo
 
 import (

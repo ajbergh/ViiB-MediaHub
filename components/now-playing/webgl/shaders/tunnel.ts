@@ -1,17 +1,10 @@
 /**
- * Tunnel Waveform Visualization - WebGL Fragment Shader (OPTIMIZED v2)
+ * Tunnel Waveform Visualization - WebGL Fragment Shader
  * 
  * Renders a 3D tunnel of pulsating rings with perspective depth.
  * All perspective math done in fragment shader (raymarching-style).
  * 
- * OPTIMIZATIONS v2:
- * - Reduced ring count from 24 to 16 (1.5x reduction)
- * - Early exit for pixels far from any ring
- * - Simplified HSV to RGB (fewer branches)
- * - Precomputed constants outside loop
- * - Single texture sample per ring (hoisted outside where possible)
- * 
- * Performance: ~2x faster than previous WebGL version
+
  */
 
 export const tunnelFragmentShader = `#version 300 es

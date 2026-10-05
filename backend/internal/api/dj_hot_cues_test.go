@@ -1,3 +1,5 @@
+// Tests and fixtures for dj hot cues behavior.
+
 package api
 
 import (

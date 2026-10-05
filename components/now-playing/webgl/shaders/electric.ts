@@ -1,17 +1,10 @@
 /**
- * Electric Arc Visualization - WebGL Fragment Shader (OPTIMIZED v2)
+ * Electric Arc Visualization - WebGL Fragment Shader
  * 
  * Renders TRON-style geometric light beams arcing between points.
  * Uses procedural noise for electric jitter effect.
  * 
- * OPTIMIZATIONS v2:
- * - Reduced arc count from 8 to 5 (1.6x reduction)
- * - Reduced segments per arc from 8 to 6 (1.3x reduction)
- * - Early exit for pixels far from arc bounding box
- * - Simplified distance calculation
- * - Precomputed hash values outside inner loop
- * 
- * Performance: ~2x faster than previous WebGL version
+
  */
 
 export const electricFragmentShader = `#version 300 es

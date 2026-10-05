@@ -1,3 +1,5 @@
+/** Tests and fixtures for beat Jump behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { calculateBeatJumpTimestamp, getBeatJumpControlAmounts } from './beatJump';
 

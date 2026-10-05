@@ -1,3 +1,5 @@
+// Defines loudness functionality for package features.
+
 package features
 
 import (

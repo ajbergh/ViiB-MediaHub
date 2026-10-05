@@ -1,3 +1,5 @@
+// Defines embedding openrouter functionality for package semantic.
+
 package semantic
 
 import "net/http"

@@ -1,3 +1,5 @@
+// Defines aggregate refresh functionality for package scanner.
+
 package scanner
 
 import (

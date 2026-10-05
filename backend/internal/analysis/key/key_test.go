@@ -1,3 +1,5 @@
+// Tests and fixtures for key behavior.
+
 package key
 
 import (

@@ -1,3 +1,5 @@
+// Tests and fixtures for spotify features behavior.
+
 package api
 
 import (

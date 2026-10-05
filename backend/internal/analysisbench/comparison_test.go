@@ -1,3 +1,5 @@
+// Tests and fixtures for comparison behavior.
+
 package analysisbench
 
 import (

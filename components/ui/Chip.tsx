@@ -1,3 +1,5 @@
+/** Renders a shared label/filter chip with variant styling. */
+
 import React from 'react';
 import { cn } from './cn';
 import { ViibAccent, accentToRingClass } from './tokens';

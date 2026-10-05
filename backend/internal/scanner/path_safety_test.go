@@ -1,3 +1,5 @@
+// Tests and fixtures for path safety behavior.
+
 package scanner
 
 import (

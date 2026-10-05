@@ -1,3 +1,5 @@
+// Implements the mutable exact cosine vector index used by semantic retrieval.
+
 package semantic
 
 import (

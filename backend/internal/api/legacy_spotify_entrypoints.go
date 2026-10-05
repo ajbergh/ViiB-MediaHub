@@ -1,3 +1,5 @@
+// Defines legacy spotify entrypoints functionality for package api.
+
 package api
 
 // These legacy Spotify download entry points are intentionally retained while

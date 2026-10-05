@@ -1,3 +1,5 @@
+// Tests and fixtures for dj waveform behavior.
+
 package api
 
 import (

@@ -1,3 +1,5 @@
+// Tests and fixtures for playlist io behavior.
+
 package api
 
 import (

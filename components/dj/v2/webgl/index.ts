@@ -2,7 +2,7 @@
  * DJ WebGL Module
  * 
  * High-performance WebGL2 rendering for DJ waveforms and visualizations.
- * Provides GPU-accelerated rendering for smooth 60+ FPS performance.
+ * Exports GPU renderers and hooks; animation targets depend on host frame scheduling.
  * 
  * @module components/dj/v2/webgl
  */

@@ -1,3 +1,5 @@
+/** Tests and fixtures for plex Playback behavior. */
+
 import { describe, expect, it } from 'vitest';
 import type { Song } from '../types';
 import { findPlexPlaybackFallback } from './plexPlayback';

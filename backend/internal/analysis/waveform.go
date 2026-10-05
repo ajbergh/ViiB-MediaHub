@@ -1,3 +1,5 @@
+// Accumulates amplitude peaks and generates compact waveform overviews from decoded PCM.
+
 package analysis
 
 import (

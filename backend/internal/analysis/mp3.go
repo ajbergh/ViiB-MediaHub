@@ -1,3 +1,5 @@
+// Adapts the MP3 decoder to the shared streaming PCM analysis interface.
+
 package analysis
 
 import (

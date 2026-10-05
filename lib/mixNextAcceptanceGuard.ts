@@ -1,3 +1,5 @@
+/** Checks deck ownership before accepting an advisory next-mix candidate. */
+
 import type { DeckId, DeckState } from '../slices/djMixerSlice';
 import { isPreviewDeckOffAir, isPristineEmptyPreviewDeck } from './testMixPreviewGuard';
 

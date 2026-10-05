@@ -1,3 +1,5 @@
+/** Registers application keyboard shortcuts with interactive-target guards. */
+
 import { useEffect } from 'react';
 import { useStore } from '../store';
 

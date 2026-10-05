@@ -1,3 +1,5 @@
+// Tests and fixtures for retriever behavior.
+
 package semantic
 
 import (

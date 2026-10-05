@@ -1,3 +1,5 @@
+// Tests and fixtures for smart playlist behavior.
+
 package api
 
 import (

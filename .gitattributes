@@ -1,1 +1,3 @@
+# Keeps shell scripts in LF format across platforms.
+
 *.sh text eol=lf

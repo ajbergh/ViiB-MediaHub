@@ -1,3 +1,5 @@
+// Defines genres functionality for package db.
+
 package db
 
 import (

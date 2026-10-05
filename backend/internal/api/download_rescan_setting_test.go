@@ -1,3 +1,5 @@
+// Tests and fixtures for download rescan setting behavior.
+
 package api
 
 import (

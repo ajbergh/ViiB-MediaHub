@@ -1,3 +1,5 @@
+/** Resolves hot-cue positions according to the selected quantization mode. */
+
 import type { HotCue } from '../slices/djMixerSlice';
 
 export type HotCueQuantizeMode = 'off' | 'beat' | 'half' | 'quarter';

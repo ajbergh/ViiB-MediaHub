@@ -1,3 +1,5 @@
+/** Controls the column density used by card grids. */
+
 import React from 'react';
 import { LayoutGrid, List } from 'lucide-react';
 

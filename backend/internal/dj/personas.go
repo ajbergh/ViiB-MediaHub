@@ -1,3 +1,5 @@
+// Defines personas functionality for package dj.
+
 package dj
 
 import (

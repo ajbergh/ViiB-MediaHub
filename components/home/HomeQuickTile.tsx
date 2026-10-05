@@ -1,3 +1,5 @@
+/** Renders a Home shortcut tile. */
+
 import React from 'react';
 import { Play } from 'lucide-react';
 import { coverBackground } from '../../utils';

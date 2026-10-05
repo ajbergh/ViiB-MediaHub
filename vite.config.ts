@@ -1,3 +1,5 @@
+/** Configures React/Vite builds, the source alias, and development API proxy. */
+
 import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';

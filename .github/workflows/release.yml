@@ -1,3 +1,5 @@
+# Validates release candidates and packages platform artifacts for versioned releases.
+
 name: Release binaries
 
 on:

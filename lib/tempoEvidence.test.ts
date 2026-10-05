@@ -1,3 +1,5 @@
+/** Tests and fixtures for tempo Evidence behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { analysisWindows, analyzeOnsetSections, extractOnsets, measureGridAlignment } from './tempoEvidence';
 import { generateBeatGrid } from './bpmDetection';

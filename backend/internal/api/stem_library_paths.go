@@ -1,3 +1,5 @@
+// Defines stem library paths functionality for package api.
+
 package api
 
 import (

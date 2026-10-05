@@ -1,3 +1,5 @@
+/** Parses selected audio-file metadata and associated artwork into library songs. */
+
 import { managedObjectUrls } from './playbackLifecycle';
 // @ts-ignore - URL import is handled by Vite at runtime; TS bundler resolution doesn't model it.
 import { parseBlob } from 'https://esm.sh/music-metadata@10.0.0?bundle';

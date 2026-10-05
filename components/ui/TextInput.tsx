@@ -1,3 +1,5 @@
+/** Renders the shared styled text input. */
+
 import React from 'react';
 import { cn } from './cn';
 

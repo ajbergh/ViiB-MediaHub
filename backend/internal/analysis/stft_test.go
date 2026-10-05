@@ -1,3 +1,5 @@
+// Tests and fixtures for stft behavior.
+
 package analysis
 
 import (

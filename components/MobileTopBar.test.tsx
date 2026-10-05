@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+
+/** Tests and fixtures for Mobile Top Bar behavior. */
+
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';

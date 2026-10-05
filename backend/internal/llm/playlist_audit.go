@@ -1,3 +1,5 @@
+// Defines playlist audit functionality for package llm.
+
 package llm
 
 import (

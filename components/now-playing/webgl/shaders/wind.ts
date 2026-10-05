@@ -1,17 +1,10 @@
 /**
- * Wind Field Visualization - WebGL Fragment Shader (OPTIMIZED v2)
+ * Wind Field Visualization - WebGL Fragment Shader
  * 
  * Renders flowing particle wind effect with bass intensity and treble sparkles.
  * Uses procedural particle simulation with turbulence.
  * 
- * OPTIMIZATIONS v2:
- * - Reduced particle count from 100 to 50 (2x reduction)
- * - Early exit for pixels far from particles (distance squared check)
- * - Removed flow lines (minimal visual impact, high cost)
- * - Simplified sparkle calculation
- * - Precomputed constants outside loop
- * 
- * Performance: ~2-3x faster than previous WebGL version
+
  */
 
 export const windFragmentShader = `#version 300 es

@@ -1,3 +1,5 @@
+// Tests and fixtures for jobs migration behavior.
+
 package db
 
 import (

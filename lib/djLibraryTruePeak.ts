@@ -1,3 +1,5 @@
+/** Formats and sorts true-peak values for the DJ library. */
+
 export type TruePeakOrder = 'asc' | 'desc';
 
 export function isFiniteTruePeakDBTP(value?: number): value is number {

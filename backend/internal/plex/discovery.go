@@ -1,3 +1,5 @@
+// Defines discovery functionality for package plex.
+
 package plex
 
 import (

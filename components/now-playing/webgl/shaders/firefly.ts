@@ -4,7 +4,6 @@
  * Renders drifting firefly particles with warm glow and gentle flicker.
  * Uses procedural noise for movement and flickering patterns.
  * 
- * Performance: ~3-5x faster than Canvas 2D version
  */
 
 export const fireflyFragmentShader = `#version 300 es

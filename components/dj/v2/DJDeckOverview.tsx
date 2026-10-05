@@ -1,3 +1,5 @@
+/** Draws a whole-track overview with position, loop, and cue markers. */
+
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';

@@ -1,3 +1,5 @@
+// Tests and fixtures for diversity behavior.
+
 package semantic
 
 import (

@@ -1,3 +1,5 @@
+// Defines transition functionality for package features.
+
 package features
 
 import (

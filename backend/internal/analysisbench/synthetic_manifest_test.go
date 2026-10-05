@@ -1,3 +1,5 @@
+// Tests and fixtures for synthetic manifest behavior.
+
 package analysisbench
 
 import (

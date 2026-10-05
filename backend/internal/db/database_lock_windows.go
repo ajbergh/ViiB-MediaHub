@@ -1,5 +1,7 @@
 //go:build windows
 
+// Defines database lock windows functionality for package db.
+
 package db
 
 import (

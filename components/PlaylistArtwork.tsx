@@ -1,3 +1,5 @@
+/** Renders playlist cover artwork with fallback composition. */
+
 import React, { useState } from 'react';
 import { ListMusic } from 'lucide-react';
 import { generateGradient } from '../utils';

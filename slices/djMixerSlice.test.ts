@@ -1,3 +1,5 @@
+/** Tests and fixtures for dj Mixer Slice behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { createDJMixerSlice, type DJMixerSlice } from './djMixerSlice';
 

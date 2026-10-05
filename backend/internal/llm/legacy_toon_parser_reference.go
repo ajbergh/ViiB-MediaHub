@@ -1,3 +1,5 @@
+// Defines legacy toon parser reference functionality for package llm.
+
 package llm
 
 // parseTOONLine is retained as a compatibility parser while enrichment format

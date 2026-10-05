@@ -1,3 +1,5 @@
+// Defines version functionality for package version.
+
 package version
 
 // Current is overridden at build time for tagged releases.

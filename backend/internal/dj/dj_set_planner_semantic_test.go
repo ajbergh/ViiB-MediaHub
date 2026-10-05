@@ -1,3 +1,5 @@
+// Tests and fixtures for dj set planner semantic behavior.
+
 package dj
 
 import "testing"

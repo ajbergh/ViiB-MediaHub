@@ -1,3 +1,5 @@
+// Tests and fixtures for vector codec behavior.
+
 package semantic
 
 import (

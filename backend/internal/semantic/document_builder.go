@@ -1,3 +1,5 @@
+// Defines document builder functionality for package semantic.
+
 package semantic
 
 import (

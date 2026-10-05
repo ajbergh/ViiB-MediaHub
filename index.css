@@ -1,3 +1,5 @@
+/** Application theme tokens, shared styles, and DJ workstation presentation rules. */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

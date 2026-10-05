@@ -1,3 +1,5 @@
+// Tests and fixtures for spotify downloads behavior.
+
 package db
 
 import (

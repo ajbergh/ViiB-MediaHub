@@ -1,3 +1,6 @@
+// Registers Plex configuration, discovery, authentication, library-selection, and
+// synchronization HTTP routes.
+
 package api
 
 import (

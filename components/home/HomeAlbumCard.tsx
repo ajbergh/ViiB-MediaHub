@@ -1,3 +1,5 @@
+/** Renders a Home album card and its supplied navigation/playback actions. */
+
 import React from 'react';
 import { Play } from 'lucide-react';
 import { Album } from '../../types';

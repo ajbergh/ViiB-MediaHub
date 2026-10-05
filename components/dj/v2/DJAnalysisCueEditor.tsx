@@ -1,3 +1,5 @@
+/** Reviews, applies, edits, and suppresses analysis-derived DJ cue suggestions. */
+
 import React, { useEffect, useRef, useState } from 'react';
 import { api, type AnalysisCueApplyMode, type AnalysisCueList } from '../../../services/api';
 import { useStore } from '../../../store';

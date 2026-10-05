@@ -1,3 +1,5 @@
+// Tests and fixtures for embedding behavior.
+
 package semantic
 
 import (

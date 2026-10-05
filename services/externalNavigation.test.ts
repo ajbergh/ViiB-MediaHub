@@ -1,3 +1,5 @@
+/** Tests and fixtures for external Navigation behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { shouldUseSystemBrowser } from './externalNavigation';
 

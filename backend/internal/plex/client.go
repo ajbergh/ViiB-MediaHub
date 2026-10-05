@@ -1,3 +1,5 @@
+// Defines client functionality for package plex.
+
 package plex
 
 import (

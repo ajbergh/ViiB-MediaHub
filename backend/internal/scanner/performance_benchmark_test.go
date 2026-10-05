@@ -1,3 +1,5 @@
+// Tests and fixtures for performance benchmark behavior.
+
 package scanner
 
 import (

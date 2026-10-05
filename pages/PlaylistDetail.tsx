@@ -1,3 +1,5 @@
+/** Displays and edits playlist metadata and contents with playback/queue actions. */
+
 import React, { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ArrowDown, ArrowUp, Play, Plus, Search, Trash2 } from 'lucide-react';

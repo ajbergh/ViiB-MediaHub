@@ -1,3 +1,5 @@
+/** Formats and orders analysis confidence values for library display. */
+
 import type { TrackAnalysisFeature } from '../services/api';
 
 export const CURRENT_ENERGY_ALGORITHM_VERSION = 'energy-level-v1-fixed-reference';

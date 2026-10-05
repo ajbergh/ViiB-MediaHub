@@ -1,3 +1,5 @@
+/** Tests and fixtures for plex behavior. */
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { plexService } from './plex';
 

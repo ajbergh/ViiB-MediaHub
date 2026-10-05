@@ -1,3 +1,5 @@
+/** Implements the deck-source contract for a single audio track. */
+
 import type { Song } from '../types';
 import type { DeckSource } from './deckSource';
 

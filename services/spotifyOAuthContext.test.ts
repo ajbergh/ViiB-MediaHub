@@ -1,3 +1,5 @@
+/** Tests and fixtures for spotify OAuth Context behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { selectSpotifyOAuthContext } from './spotifyOAuthContext';
 

@@ -1,3 +1,5 @@
+// Tests and fixtures for multifeature behavior.
+
 package tempo
 
 import (

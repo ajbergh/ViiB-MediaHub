@@ -1,3 +1,5 @@
+/** Provides deck timing-nudge controls. */
+
 import React, { memo, useCallback } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import type { DeckId } from '../../../slices/djMixerSlice';

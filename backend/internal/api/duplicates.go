@@ -1,3 +1,5 @@
+// Defines duplicates functionality for package api.
+
 package api
 
 import (

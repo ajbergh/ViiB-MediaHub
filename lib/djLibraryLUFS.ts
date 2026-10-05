@@ -1,3 +1,5 @@
+/** Formats and sorts integrated loudness values for the DJ library. */
+
 export type LUFSOrder = 'asc' | 'desc';
 
 export function isFiniteIntegratedLUFS(value?: number): value is number {

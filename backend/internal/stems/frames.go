@@ -1,3 +1,5 @@
+// Defines frames functionality for package stems.
+
 package stems
 
 import (

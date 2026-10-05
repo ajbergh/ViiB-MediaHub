@@ -1,5 +1,7 @@
 //go:build linux
 
+// Defines icons linux functionality for package main.
+
 package main
 
 import _ "embed"

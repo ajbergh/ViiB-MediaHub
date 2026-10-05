@@ -1,22 +1,14 @@
-// Package llm provides a unified LLM interface for ViiB MediaHub's AI DJ feature.
+// Package llm provides configured LLM providers for playlist intent, AI DJ,
+// and metadata enrichment through github.com/agentplexus/omnillm.
 //
-// This package abstracts LLM provider interactions using github.com/agentplexus/omnillm,
-// enabling support for multiple providers including:
+// Supported providers are Ollama, Gemini, OpenAI, Anthropic, xAI, and OpenRouter.
+// DefaultSettings selects local Ollama without an API key. Provider/model
+// defaults and the UI model inventory live in this package rather than in this
+// comment. OpenRouter can discover its supported text models dynamically.
 //
-//   - Ollama (local-first, no API key required) - DEFAULT
-//   - Google Gemini (current implementation)
-//   - OpenAI (GPT-4o, GPT-4o-mini)
-//   - Anthropic (Claude Opus, Sonnet, Haiku)
-//   - X.AI (Grok-4, Grok-3)
-//   - OpenRouter (access to its supported text models)
-//   - AWS Bedrock (via external module)
-//
-// The package provides:
-//
-//   - Provider: Wraps omnillm with AI DJ-specific functionality
-//   - PlaylistFilter: Structured output from natural language playlist requests
-//   - Settings: Configuration for provider selection and API keys
-//   - Factory functions for creating providers from stored settings
+// Provider wraps intent parsing and enrichment; Settings supplies the provider,
+// model, endpoint, API key, and retry configuration. PlaylistFilter remains
+// compatible with the internal/gemini schema used by existing handlers.
 //
 // Usage:
 //
@@ -25,11 +17,7 @@
 //	    log.Fatal(err)
 //	}
 //	defer provider.Close()
-//
 //	filter, err := provider.ParsePlaylistFilter(ctx, "upbeat jazz trios from the 90s")
-//
-// The package respects the existing PlaylistFilter schema from internal/gemini
-// to maintain backward compatibility with the smart_playlist handler.
 package llm
 
 import (

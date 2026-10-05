@@ -1,3 +1,5 @@
+/** Resolves playback context, event ownership, ReplayGain, and managed object-URL lifetimes. */
+
 import type { PlaybackContext } from '../types';
 
 export const resolvePlaybackContext = (

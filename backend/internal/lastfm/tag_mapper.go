@@ -16,7 +16,6 @@
 // out rare/unreliable tags.
 //
 // Created: 2025-12-31
-// Last Modified: 2025-12-31
 package lastfm
 
 import (

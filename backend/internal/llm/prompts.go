@@ -1,7 +1,7 @@
 // Package llm - System prompts for AI DJ and library enrichment
 //
-// This file contains all AI prompts used throughout ViiB MediaHub.
-// Centralized here for easy maintenance and provider-specific tuning.
+// This file contains shared AI DJ and library-enrichment system prompts.
+// Specialized audit and semantic prompts also live in their owning modules.
 //
 // Prompts are designed to work well across different LLM providers
 // (Ollama, Gemini, OpenAI, Anthropic, etc.) and produce consistent output.

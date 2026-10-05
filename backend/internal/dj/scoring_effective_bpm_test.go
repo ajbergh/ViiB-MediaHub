@@ -1,3 +1,5 @@
+// Tests and fixtures for scoring effective bpm behavior.
+
 package dj
 
 import (

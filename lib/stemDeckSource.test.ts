@@ -1,3 +1,5 @@
+/** Tests and fixtures for stem Deck Source behavior. */
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeckSource } from './deckSource';
 import { StemDeckSource } from './stemDeckSource';

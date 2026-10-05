@@ -1,6 +1,8 @@
 //go:build darwin
 // +build darwin
 
+// Defines journal platform darwin functionality for package scanner.
+
 package scanner
 
 // getPlatformDetectors returns the platform-specific change detectors for macOS.

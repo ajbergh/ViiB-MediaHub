@@ -1,3 +1,5 @@
+// Declares backend module identity, Go toolchain baseline, and dependency versions.
+
 module github.com/ajbergh/viib-mediahub
 
 go 1.26.8

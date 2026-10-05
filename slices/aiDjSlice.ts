@@ -13,7 +13,7 @@
  * - onePerArtist: Whether to limit to one song per artist
  * - useTimeContext: Whether to use time-of-day context in recommendations
  * 
- * DJ Mode State (new):
+ * DJ Mode State:
  * - djMode: Whether DJ mode is active (vs standard playlist mode)
  * - djPersona: Selected DJ persona
  * - djTargetDurationMinutes: Target set duration
@@ -23,8 +23,8 @@
  * - djPhases: Phase results with selected songs
  * - djNarration: Optional DJ talk lines
  * 
- * This slice is persisted to localStorage, allowing users to navigate away
- * and return to their previous AI DJ session with search results intact.
+ * store.ts persists selected search results and preferences to localStorage.
+ * DJ mode, persona, plan, phases, and narration are not persisted there.
  * 
  * @module aiDjSlice
  */

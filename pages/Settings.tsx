@@ -4,7 +4,7 @@
  * Tabbed settings interface for application configuration.
  * 
  * Sections:
- * - Library Sources: Local folders, monitoring, Plex, maintenance, and reset
+ * - Library Sources: Music/stem folders, monitoring, Plex, maintenance, and reset
  * - Library Operations: Track analysis, metadata operations, diagnostics, repair, and backup/restore
  * - Playback & Audio: Playback controls, EQ, and audio output routing
  * - Integrations & Spotify: Download/conversion settings, Spotify, and Last.FM
@@ -19,7 +19,7 @@
  * - Last.FM-based enrichment trigger
  * 
  * Folder browser dialogs allow navigation and selection of:
- * - Music scan directories
+ * - Music scan directories and separate stem-library roots
  * - Spotify download destination and conversion settings
  * 
  * AI Features (requires configured AI provider):

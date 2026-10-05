@@ -1,3 +1,5 @@
+/** Runs the style ratchet against raw color literals in TSX source. */
+
 import { checkStyleRatchet } from './style-ratchet.mjs';
 await checkStyleRatchet({
  name: 'Raw colors', baselineFile: 'raw-color-baseline.json', extensions: ['.ts','.tsx','.css'],

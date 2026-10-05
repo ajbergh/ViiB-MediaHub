@@ -1,3 +1,5 @@
+/** Defines shared design tokens and color/class conversion helpers. */
+
 export const VIIB = {
   colors: {
     surface: {

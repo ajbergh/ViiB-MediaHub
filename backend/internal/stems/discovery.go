@@ -1,3 +1,5 @@
+// Defines discovery functionality for package stems.
+
 package stems
 
 import (

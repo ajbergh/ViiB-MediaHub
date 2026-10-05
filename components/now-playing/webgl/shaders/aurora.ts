@@ -4,7 +4,6 @@
  * Renders translucent aurora ribbons that wave across the screen like Northern Lights.
  * Uses noise functions for organic movement and layered rendering for depth.
  * 
- * Performance: ~3-4x faster than Canvas 2D version
  */
 
 export const auroraFragmentShader = `#version 300 es

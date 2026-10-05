@@ -1,3 +1,5 @@
+/** Tests and fixtures for single Track Deck Source behavior. */
+
 import { describe, expect, it, vi } from 'vitest';
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
 

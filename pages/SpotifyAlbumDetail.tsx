@@ -4,14 +4,14 @@
  * Browse and download albums from the Spotify catalog.
  * 
  * Features:
- * - Full album metadata from Spotify API
+ * - Full album catalog metadata through the backend
  * - Track listing with duration
  * - Download entire album button
  * - Download individual tracks
  * - External link to Spotify
  * - Album artwork display
  * 
- * Requires Spotify authentication and Premium for downloads.
+ * Requires a connected backend Spotify session; media actions depend on recording availability and account capability.
  * 
  * @module SpotifyAlbumDetail
  */

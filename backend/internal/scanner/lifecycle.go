@@ -1,3 +1,5 @@
+// Defines lifecycle functionality for package scanner.
+
 package scanner
 
 // Close stops scanner background services and waits for enrichment work to exit.

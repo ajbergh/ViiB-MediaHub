@@ -1,3 +1,5 @@
+// Resolves embedding provider/model settings independently from chat configuration.
+
 package semantic
 
 import (

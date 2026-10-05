@@ -1,5 +1,7 @@
 //go:build linux
 
+// Tests and fixtures for journal linux behavior.
+
 package scanner
 
 import (

@@ -1,3 +1,5 @@
+// Defines hybrid ranker functionality for package semantic.
+
 package semantic
 
 import (

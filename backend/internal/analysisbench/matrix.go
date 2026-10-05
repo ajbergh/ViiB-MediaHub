@@ -1,3 +1,5 @@
+// Defines matrix functionality for package analysisbench.
+
 package analysisbench
 
 // CodecCapability records the current evidence and Phase 0 decision state. It

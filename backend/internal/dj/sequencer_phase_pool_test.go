@@ -1,3 +1,5 @@
+// Tests and fixtures for sequencer phase pool behavior.
+
 package dj
 
 import (

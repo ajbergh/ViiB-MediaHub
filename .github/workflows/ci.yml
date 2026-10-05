@@ -1,3 +1,5 @@
+# Runs frontend/backend checks, analysis-platform comparisons, and native build validation.
+
 name: CI
 
 on:

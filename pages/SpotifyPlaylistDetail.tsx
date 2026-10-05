@@ -4,14 +4,14 @@
  * Browse and download playlists from the Spotify catalog.
  * 
  * Features:
- * - Full playlist metadata from Spotify API
+ * - Full playlist catalog metadata through the backend
  * - Track listing with artist and album info
  * - Download entire playlist button
  * - Download individual tracks
  * - Playlist owner and track count display
  * - External link to Spotify
  * 
- * Requires Spotify authentication and Premium for downloads.
+ * Requires a connected backend Spotify session; media actions depend on recording availability and account capability.
  * 
  * @module SpotifyPlaylistDetail
  */

@@ -2,7 +2,7 @@
  * ViiB MediaHub - DJ Scope View Component
  * 
  * Real-time VU meter visualization rendered as vertical bars on a canvas.
- * Self-subscribing via rAF — zero React re-renders during playback.
+ * Polls the supplied getVULevels callback in its animation loop; drawing does not set React state.
  * 
  * @module components/dj/v2/DJScopeView
  */

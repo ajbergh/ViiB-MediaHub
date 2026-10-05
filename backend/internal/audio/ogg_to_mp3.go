@@ -1,3 +1,5 @@
+// Defines ogg to mp3 functionality for package audio.
+
 package audio
 
 import (

@@ -1,3 +1,5 @@
+/** Runs a browser audio-worklet harness for scratch transport and records its results. */
+
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';

@@ -1,3 +1,5 @@
+/** Configures master and headphone audio-output devices for DJ playback. */
+
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Headphones, Loader2, Speaker } from 'lucide-react';
 import { useStore } from '../store';

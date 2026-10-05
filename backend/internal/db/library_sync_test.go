@@ -1,3 +1,5 @@
+// Tests and fixtures for library sync behavior.
+
 package db
 
 import (

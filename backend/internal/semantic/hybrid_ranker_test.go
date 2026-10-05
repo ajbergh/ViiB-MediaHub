@@ -1,3 +1,5 @@
+// Tests and fixtures for hybrid ranker behavior.
+
 package semantic
 
 import (

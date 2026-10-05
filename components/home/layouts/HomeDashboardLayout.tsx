@@ -1,3 +1,5 @@
+/** Arranges Home content as a compact dashboard. */
+
 import React from 'react';
 import { useNavigate } from 'react-router';
 import { SmartMixCard } from '../../SmartMixCard';

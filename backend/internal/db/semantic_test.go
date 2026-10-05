@@ -1,3 +1,5 @@
+// Tests and fixtures for semantic behavior.
+
 package db
 
 import (

@@ -1,3 +1,5 @@
+// Defines scan log functionality for package track.
+
 package track
 
 import (

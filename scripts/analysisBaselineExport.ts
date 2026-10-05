@@ -1,3 +1,5 @@
+/** Binds browser BPM/key measurements to benchmark-manifest recordings for export. */
+
 import { detectBPM, type BPMResult } from '../lib/bpmDetection';
 import { detectKey, type KeyDetectionResult } from '../lib/keyDetection';
 

@@ -11,8 +11,8 @@
  * - SmartMix: Auto-generated playlists based on rules
  * 
  * Metadata:
- * - ArtistMetadata: Spotify-enriched artist info with images
- * - AlbumMetadata: Spotify-enriched album info with high-res covers
+ * - ArtistMetadata: Catalog/enrichment artist info with source-aware images
+ * - AlbumMetadata: Catalog/enrichment album info with covers
  * - SpotifyProfile: User's Spotify account information
  * 
  * Audio:
@@ -64,7 +64,7 @@ export interface Song {
   lastPlayed?: number; // timestamp
   skipCount?: number;
 
-  // AI-analyzed mood/energy fields (from Gemini)
+  // AI-analyzed mood/energy fields (from configured AI enrichment)
   mood?: string; // e.g., "happy", "sad", "energetic", "calm"
   energy?: string; // e.g., "high", "medium", "low"
   tempo?: string; // e.g., "fast", "medium", "slow"
@@ -215,9 +215,9 @@ export type HomeLayoutVariant = 'shelves' | 'coverWall' | 'dashboard';
  * - MILKDROP: Butterchurn-powered Winamp preset visualizations (GPU-accelerated)
  * 
  * Audio Mapping:
- * - Bass (0-30 Hz): Triggers bursts, expansions, intensity
- * - Mid (30-150 Hz): Controls thickness, height, density
- * - Treble (150-300 Hz): Sparkles, glints, shimmer effects
+ * - Bass (FFT bins 0-30): Triggers bursts, expansions, intensity
+ * - Mid (FFT bins 30-150): Controls thickness, height, density
+ * - Treble (FFT bins 150-300): Sparkles, glints, shimmer effects
  * 
  * Performance:
  * - Canvas 2D modes target 60 FPS rendering

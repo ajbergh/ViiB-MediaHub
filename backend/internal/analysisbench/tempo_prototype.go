@@ -1,3 +1,5 @@
+// Defines tempo prototype functionality for package analysisbench.
+
 package analysisbench
 
 import (

@@ -1,3 +1,5 @@
+// Tests and fixtures for plex artwork behavior.
+
 package db
 
 import (

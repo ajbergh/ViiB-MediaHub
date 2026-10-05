@@ -1,3 +1,5 @@
+# Scans a Windows binary with govulncheck and handles the configured advisory policy.
+
 param(
     [Parameter(Mandatory = $true)]
     [string]$BinaryPath

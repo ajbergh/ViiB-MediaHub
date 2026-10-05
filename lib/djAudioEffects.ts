@@ -1,3 +1,5 @@
+/** Builds reverb impulses and translates beat fractions into delay timing. */
+
 import type { BeatFraction } from '../slices/djMixerSlice';
 
 export function createReverbImpulse(

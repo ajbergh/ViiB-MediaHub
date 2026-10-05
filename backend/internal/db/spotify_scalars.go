@@ -1,3 +1,5 @@
+// Defines spotify scalars functionality for package db.
+
 package db
 
 import (

@@ -1,3 +1,5 @@
+/** Configures the frontend test runner and source-module alias. */
+
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

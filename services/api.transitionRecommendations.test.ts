@@ -1,3 +1,5 @@
+/** Tests and fixtures for api transition Recommendations behavior. */
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './api';
 

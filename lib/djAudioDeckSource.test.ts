@@ -1,3 +1,5 @@
+/** Tests and fixtures for dj Audio Deck Source behavior. */
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const state = {

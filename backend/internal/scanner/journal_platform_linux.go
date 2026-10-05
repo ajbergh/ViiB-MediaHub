@@ -1,6 +1,8 @@
 //go:build linux
 // +build linux
 
+// Defines journal platform linux functionality for package scanner.
+
 package scanner
 
 // getPlatformDetectors returns the platform-specific change detectors for Linux.

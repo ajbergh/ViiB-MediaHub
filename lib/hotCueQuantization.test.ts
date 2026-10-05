@@ -1,3 +1,5 @@
+/** Tests and fixtures for hot Cue Quantization behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { quantizeHotCuePosition, type HotCueQuantizeMode } from './hotCueQuantization';
 

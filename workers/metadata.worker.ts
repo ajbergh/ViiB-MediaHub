@@ -1,3 +1,5 @@
+/** Extracts selected file metadata off the main thread and posts parsed results. */
+
 import { parseSongFile } from '../lib/parsers';
 
 self.onmessage = async (e: MessageEvent) => {

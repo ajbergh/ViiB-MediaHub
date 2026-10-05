@@ -1,3 +1,5 @@
+/** Configures beat-synchronized effects, fractions, and target decks. */
+
 import React, { memo, useCallback } from 'react';
 import { Power } from 'lucide-react';
 import { useStore } from '../../../store';

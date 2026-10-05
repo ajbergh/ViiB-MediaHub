@@ -1,3 +1,5 @@
+/** Tests and fixtures for album Identity behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { albumIdentity, albumRoute } from './albumIdentity';
 

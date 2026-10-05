@@ -1,3 +1,5 @@
+/** Arranges Home content into music shelves. */
+
 import React from 'react';
 import { useNavigate } from 'react-router';
 import { SmartMixCard } from '../../SmartMixCard';

@@ -1,3 +1,5 @@
+// Defines library song scan functionality for package db.
+
 package db
 
 import (

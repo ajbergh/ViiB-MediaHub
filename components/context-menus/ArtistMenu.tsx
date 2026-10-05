@@ -1,3 +1,5 @@
+/** Offers artist playback and queue actions in the shared context-menu system. */
+
 import React from 'react';
 import { Play, ListPlus } from 'lucide-react';
 import { useStore } from '../../store';

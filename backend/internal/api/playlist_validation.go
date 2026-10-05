@@ -1,3 +1,5 @@
+// Defines playlist validation functionality for package api.
+
 package api
 
 import (

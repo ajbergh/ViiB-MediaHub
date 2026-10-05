@@ -1,5 +1,7 @@
 //go:build windows
 
+// Tests and fixtures for journal windows behavior.
+
 package scanner
 
 import (

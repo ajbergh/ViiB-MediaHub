@@ -1,3 +1,5 @@
+/** Tests and fixtures for dj Library True Peak behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { compareTruePeakDBTP, formatTruePeakDBTP, isFiniteTruePeakDBTP } from './djLibraryTruePeak';
 

@@ -1,3 +1,5 @@
+// Defines service functionality for package tempo.
+
 package tempo
 
 import (

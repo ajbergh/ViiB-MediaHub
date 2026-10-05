@@ -1,3 +1,5 @@
+// Tests and fixtures for source behavior.
+
 package analysis
 
 import (

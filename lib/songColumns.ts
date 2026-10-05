@@ -1,3 +1,5 @@
+/** Defines song columns, saved column preferences, and displayed values. */
+
 import { Song } from '../types';
 import { TrackAnalysisFeature } from '../services/trackAnalysisContracts';
 import { formatTime } from '../utils';

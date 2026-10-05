@@ -4,7 +4,6 @@
  * Renders circular frequency bars radiating from center (sun-burst effect).
  * Uses SDF for bar shapes with analytical glow.
  * 
- * Performance: ~3-5x faster than Canvas 2D version
  */
 
 export const spectrumFragmentShader = `#version 300 es

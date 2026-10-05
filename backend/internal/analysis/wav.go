@@ -1,3 +1,6 @@
+// Decodes supported RIFF/WAVE PCM into normalized samples and composes the default decoder
+// registry.
+
 package analysis
 
 import (

@@ -1,3 +1,5 @@
+/** Renders a Home artist card with artwork and supplied actions. */
+
 import React from 'react';
 import { Play, UserRound } from 'lucide-react';
 import { Artist } from '../../types';

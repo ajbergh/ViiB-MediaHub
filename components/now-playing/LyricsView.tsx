@@ -1,3 +1,5 @@
+/** Fetches and displays lyrics for the current song, including synchronized lines when available. */
+
 import React, { useEffect, useState, useRef } from 'react';
 import { Mic2 } from 'lucide-react';
 import { Song } from '../../types';

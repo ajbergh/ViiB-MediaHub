@@ -1,6 +1,8 @@
 //go:build windows
 // +build windows
 
+// Defines journal platform windows functionality for package scanner.
+
 package scanner
 
 // getPlatformDetectors returns the platform-specific change detectors for Windows.

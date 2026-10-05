@@ -1,3 +1,5 @@
+/** Tests and fixtures for webgl Safety behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { getPreferredWebGLVersion, isMacOSWails, shouldUseAdvancedWebGL } from './webglSafety';
 

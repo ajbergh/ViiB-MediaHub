@@ -1,3 +1,5 @@
+// Defines fixtures extended functionality for package analysisbench.
+
 package analysisbench
 
 import (

@@ -1,3 +1,5 @@
+/** Owns DJ library drawer visibility, focus, and viewport sizing. */
+
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Library, X } from 'lucide-react';
 import { DJLibraryBrowserV2 } from './DJLibraryBrowserV2';

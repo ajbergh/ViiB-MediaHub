@@ -16,9 +16,9 @@
 
 const WAVEFORM_RESOLUTION = 1200; // Number of peaks to generate
 const OVERVIEW_RESOLUTION = 200;  // Downsampled for overview strip (saves memory/CPU)
-const WAVEFORM_CACHE_MAX = 10;    // Max cached waveforms (LRU eviction)
+const WAVEFORM_CACHE_MAX = 10;    // Max cached waveforms (oldest-insertion eviction)
 
-// LRU waveform cache to avoid regenerating peaks for previously loaded tracks
+// Bounded insertion-ordered waveform cache to avoid regenerating peaks for previously loaded tracks
 const waveformCache = new Map<string, { peaks: number[]; overview: number[] }>();
 
 /**
@@ -112,7 +112,7 @@ export async function generateClientWaveform(
     console.log(`🎵 clientWaveform: Generated ${peaks.length} peaks`);
     onProgress?.(1.0);
     
-    // Cache the results (with LRU eviction)
+    // Cache the results (with oldest-insertion eviction)
     const overview = downsamplePeaks(peaks, OVERVIEW_RESOLUTION);
     if (waveformCache.size >= WAVEFORM_CACHE_MAX) {
       // Evict oldest entry (first key in Map)

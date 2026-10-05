@@ -1,3 +1,5 @@
+// Defines retriever functionality for package semantic.
+
 package semantic
 
 import (

@@ -1,3 +1,5 @@
+// Defines window preferences functionality for package main.
+
 package main
 
 import (

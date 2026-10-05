@@ -1,3 +1,5 @@
+// Tests and fixtures for scoring semantic behavior.
+
 package dj
 
 import (

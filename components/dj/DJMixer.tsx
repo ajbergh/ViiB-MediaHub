@@ -5,7 +5,6 @@
  * - Crossfader
  * - Per-channel volume faders
  * - 3-band EQ per channel (High/Mid/Low)
- * - VU meters
  * - Master volume
  * 
  * @module components/dj/DJMixer

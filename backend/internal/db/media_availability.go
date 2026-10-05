@@ -1,3 +1,6 @@
+// Checks local path containment and media availability before removing missing-media catalog
+// records.
+
 package db
 
 import (

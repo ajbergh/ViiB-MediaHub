@@ -1,3 +1,5 @@
+// Defines v2 jobs plex analysis functionality for package api.
+
 package api
 
 import (

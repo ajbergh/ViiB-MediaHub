@@ -1,3 +1,5 @@
+// Tests and fixtures for auth behavior.
+
 package plex
 
 import (

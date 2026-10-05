@@ -1,3 +1,5 @@
+// Defines manifest writer functionality for package analysisbench.
+
 package analysisbench
 
 import (

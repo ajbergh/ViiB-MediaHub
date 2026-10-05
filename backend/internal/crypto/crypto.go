@@ -2,8 +2,8 @@
 //
 // This package implements AES-256-GCM encryption for sensitive data such as:
 //   - Spotify session cookies and legacy OAuth credentials
-//   - Gemini API keys
-//   - Other sensitive configuration values
+//   - Configured LLM and Last.FM API keys, shared secrets, and session keys
+//   - Values explicitly passed through the encryption helpers
 //
 // The encryption key is derived from machine-specific information. Reading
 // encrypted settings requires the corresponding key derivation inputs.
@@ -69,11 +69,9 @@ var (
 
 // IsSensitiveKey returns true if the given setting key should be encrypted.
 //
-// Currently protected keys:
-//   - "spotify_credentials": Contains OAuth tokens and client secrets
-//   - "gemini_api_key": Contains the Google Gemini AI API key
-//
-// To add new sensitive keys, add them to the sensitiveKeys map.
+// The sensitiveKeys map is the authoritative list for this package; it covers
+// Spotify cookie/OAuth sessions, Gemini/generic LLM keys, and Last.FM secrets.
+// Source-specific settings may use additional classification elsewhere.
 func IsSensitiveKey(key string) bool {
 	return sensitiveKeys[key]
 }

@@ -1,3 +1,5 @@
+// Tests and fixtures for spotify behavior.
+
 package track
 
 import (

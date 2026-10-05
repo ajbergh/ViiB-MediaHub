@@ -1,3 +1,5 @@
+/** Provides reference tones for comparing and manually verifying a track key. */
+
 import React, { useEffect, useRef, useState } from 'react';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
 import { keyScalePitchClasses, KEY_NOTE_NAMES, startKeyReferenceTone, type VerifiedKeyMode } from '../../../lib/keyVerificationKeyboard';

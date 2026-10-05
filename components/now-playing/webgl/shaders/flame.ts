@@ -1,17 +1,10 @@
 /**
- * Flame Spectrum Visualization - WebGL Fragment Shader (OPTIMIZED v2)
+ * Flame Spectrum Visualization - WebGL Fragment Shader
  * 
  * Renders stylized flame tongues rising from the bottom with frequency-based intensity.
  * Uses procedural noise and particle simulation in the shader.
  * 
- * OPTIMIZATIONS v2:
- * - Reduced columns from 32 to 16 (2x reduction)
- * - Reduced FBM octaves from 3-4 to 2 (2x reduction)
- * - Early exit for pixels above flame regions
- * - Simplified color gradient (fewer branches)
- * - Precomputed sin/cos for wind
- * 
- * Performance: ~2-3x faster than previous WebGL version
+
  */
 
 export const flameFragmentShader = `#version 300 es

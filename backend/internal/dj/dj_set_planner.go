@@ -1,3 +1,5 @@
+// Defines dj set planner functionality for package dj.
+
 package dj
 
 import (

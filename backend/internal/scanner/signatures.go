@@ -1,3 +1,5 @@
+// Defines signatures functionality for package scanner.
+
 package scanner
 
 import (

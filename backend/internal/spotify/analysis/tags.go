@@ -1,3 +1,5 @@
+// Converts normalized Spotify key observations to traditional Vorbis/ID3 key notation.
+
 package analysis
 
 // InitialKey returns the traditional notation used by Vorbis and ID3 tags.

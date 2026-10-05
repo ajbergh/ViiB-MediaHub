@@ -1,3 +1,5 @@
+// Defines v2 analysis cues functionality for package api.
+
 package api
 
 import (

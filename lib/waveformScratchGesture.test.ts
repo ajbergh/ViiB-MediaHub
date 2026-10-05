@@ -1,3 +1,5 @@
+/** Tests and fixtures for waveform Scratch Gesture behavior. */
+
 import { describe, expect, it } from 'vitest';
 import { WaveformScratchGesture } from './waveformScratchGesture';
 

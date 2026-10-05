@@ -1,3 +1,5 @@
+/** Finds style violations in source and compares their counts with the configured baseline. */
+
 import fs from 'node:fs/promises';
 import path from 'node:path';
 const excluded = new Set(['node_modules', 'dist', 'build', 'backend', '.git', '.worktrees', '.wails', '.reference-bpm-venv', '.venv', 'venv', '.codex', '.agents', '.aws', '.tmp-review']);
