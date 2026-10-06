@@ -120,8 +120,65 @@ func (d *DB) MarkDownloadCompletedWithEvidence(ctx context.Context, id, path str
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO spotify_download_evidence
  (file_path,content_sha256,file_size,mtime_ns,spotify_id,completed_at,features_json)
  VALUES (?,?,?,?,?,?,COALESCE((SELECT observation_json FROM external_track_analysis
- WHERE provider='spotify' AND external_id=? AND endpoint='audio_features' AND schema_version=? AND expires_at>?),''))`,
+ WHERE provider='spotify' AND external_id=? AND endpoint='audio_features' AND schema_version=? AND expires_at>? AND (COALESCE(account_context,'')<>'' AND account_context=(SELECT value FROM settings WHERE key='spotify_metadata_active_context'))),''))`,
 		revision.path, revision.digest, revision.size, revision.mtime, recording, time.Now().UnixMilli(), recording, ExternalAnalysisSchemaVersion, time.Now().UnixMilli())
+	if err != nil {
+		return false, err
+	}
+	// Promote only this recording's fresh active-account artifacts. These
+	// final-file imports are independent of private context cache retirement.
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO spotify_download_audio_imports
+ (file_path,content_sha256,file_size,mtime_ns,spotify_id,resource,artifact_kind,
+ schema_version,adapter_revision,encoding,payload,payload_hash,decoded_size,retrieved_at,expires_at)
+ SELECT ?,?,?,?,spotify_id,resource,artifact_kind,schema_version,adapter_revision,encoding,
+ payload,payload_hash,decoded_size,retrieved_at,expires_at FROM spotify_audio_artifacts
+ WHERE spotify_id=? AND schema_version=1 AND expires_at>? AND context_key<>''
+ AND context_key=(SELECT value FROM settings WHERE key='spotify_metadata_active_context')
+ AND resource IN ('audio_features','audio_analysis','three_band_waveform')
+ AND (SELECT COALESCE(SUM(length(payload)),0) FROM spotify_audio_artifacts
+ WHERE spotify_id=? AND context_key=(SELECT value FROM settings WHERE key='spotify_metadata_active_context'))<=33554432`,
+		revision.path, revision.digest, revision.size, revision.mtime, recording, time.Now().UnixMilli(), recording)
+	if err != nil {
+		return false, err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO spotify_download_import_status
+ (file_path,content_sha256,file_size,mtime_ns,spotify_id,state,checked_at)
+ VALUES(?,?,?,?,?,CASE
+ WHEN (SELECT COALESCE(SUM(length(payload)),0) FROM spotify_audio_artifacts WHERE spotify_id=? AND context_key=(SELECT value FROM settings WHERE key='spotify_metadata_active_context'))>33554432 THEN 'oversized'
+ WHEN EXISTS(SELECT 1 FROM spotify_download_audio_imports WHERE file_path=? AND content_sha256=? AND file_size=? AND mtime_ns=? AND spotify_id=?) THEN 'available'
+ ELSE 'not_available' END,?)
+ ON CONFLICT(file_path,content_sha256,file_size,mtime_ns,spotify_id) DO UPDATE SET state=excluded.state,checked_at=excluded.checked_at`,
+		revision.path, revision.digest, revision.size, revision.mtime, recording, recording,
+		revision.path, revision.digest, revision.size, revision.mtime, recording, time.Now().UnixMilli())
+	if err != nil {
+		return false, err
+	}
+	_, err = tx.ExecContext(ctx, `WITH eligible AS (
+ SELECT s.* FROM spotify_entity_snapshots s WHERE s.context_key<>''
+ AND s.context_key=(SELECT value FROM settings WHERE key='spotify_metadata_active_context')
+ AND s.schema_version=1 AND s.expires_at>? AND (
+ (s.entity_type='track' AND s.spotify_id=?) OR (s.entity_type IN ('album','artist') AND EXISTS (
+ SELECT 1 FROM spotify_entity_relations r WHERE r.context_key=s.context_key AND r.entity_type='track' AND r.spotify_id=? AND r.child_type=s.entity_type AND r.child_id=s.spotify_id AND r.unavailable=0))))
+ INSERT OR IGNORE INTO spotify_download_catalog_imports
+ (file_path,content_sha256,file_size,mtime_ns,recording_id,entity_type,spotify_id,resource,schema_version,adapter_revision,payload,payload_hash,retrieved_at,expires_at)
+ SELECT ?,?,?,?,?,entity_type,spotify_id,resource,schema_version,adapter_revision,payload,payload_hash,retrieved_at,expires_at FROM eligible
+ WHERE (SELECT COALESCE(SUM(length(payload)),0) FROM eligible)<=8388608 AND (SELECT COUNT(*) FROM eligible)<=256`,
+		time.Now().UnixMilli(), recording, recording, revision.path, revision.digest, revision.size, revision.mtime, recording)
+	if err != nil {
+		return false, err
+	}
+	_, err = tx.ExecContext(ctx, `WITH eligible AS (
+ SELECT r.* FROM spotify_entity_relations r JOIN spotify_download_catalog_imports s
+ ON s.entity_type='track' AND s.spotify_id=r.spotify_id AND s.resource=r.resource
+ AND s.file_path=? AND s.content_sha256=? AND s.file_size=? AND s.mtime_ns=? AND s.recording_id=?
+ WHERE r.entity_type='track' AND r.spotify_id=? AND r.context_key<>''
+ AND r.context_key=(SELECT value FROM settings WHERE key='spotify_metadata_active_context'))
+ INSERT OR IGNORE INTO spotify_download_catalog_relations
+ (file_path,content_sha256,file_size,mtime_ns,recording_id,resource,relation_kind,position,child_type,child_id,unavailable,metadata_json)
+ SELECT ?,?,?,?,?,resource,relation_kind,position,child_type,child_id,unavailable,metadata_json FROM eligible
+ WHERE (SELECT COUNT(*) FROM eligible)<=20000 AND (SELECT COALESCE(SUM(length(metadata_json)),0) FROM eligible)<=2097152`,
+		revision.path, revision.digest, revision.size, revision.mtime, recording, recording,
+		revision.path, revision.digest, revision.size, revision.mtime, recording)
 	if err != nil {
 		return false, err
 	}
@@ -201,6 +258,22 @@ func (d *DB) ReconcileSpotifyDownload(ctx context.Context, path string) error {
 	if err != nil || link == nil || link.ExternalID != recording {
 		return err
 	}
+	// Bind the retained bundle even when no usable BPM/key was returned.
+	// Recheck canonical identity and suppression in the publication statement.
+	_, err = d.conn.ExecContext(ctx, `INSERT INTO spotify_download_import_bindings
+ (song_id,source_fingerprint,spotify_id,file_path,content_sha256,file_size,mtime_ns)
+ SELECT ?,?,?,?,?,?,? WHERE EXISTS (
+ SELECT 1 FROM songs s JOIN track_external_identity i ON i.song_id=s.id
+ WHERE s.id=? AND s.file_path=? AND COALESCE(s.file_hash,'')=?
+ AND i.provider='spotify' AND i.external_id=? AND i.source_fingerprint=?)
+ AND NOT EXISTS (SELECT 1 FROM track_external_identity_suppression WHERE song_id=? AND source_fingerprint=?)
+ ON CONFLICT(song_id,source_fingerprint) DO UPDATE SET spotify_id=excluded.spotify_id,
+ file_path=excluded.file_path,content_sha256=excluded.content_sha256,file_size=excluded.file_size,mtime_ns=excluded.mtime_ns`,
+		song.ID, fingerprint, recording, absolute, revision.digest, revision.size, revision.mtime,
+		song.ID, path, song.FileHash, recording, fingerprint, song.ID, fingerprint)
+	if err != nil {
+		return err
+	}
 	var encoded string
 	err = d.conn.QueryRowContext(ctx, `SELECT features_json FROM spotify_download_evidence
  WHERE file_path=? AND content_sha256=? AND file_size=? AND mtime_ns=? AND spotify_id=?`,
@@ -215,8 +288,16 @@ func (d *DB) ReconcileSpotifyDownload(ctx context.Context, path string) error {
 	if json.Unmarshal([]byte(encoded), &observation) != nil || observation.TrackID != recording || spotifyanalysis.ValidateObservation(observation) != nil {
 		return nil
 	}
-	existing, err := d.GetTrackAnalysis(song.ID)
-	if err == nil && existing.SourceFingerprint == fingerprint {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	tx, err := d.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	existing, err := getTrackAnalysis(tx, song.ID)
+	if err == nil && (existing.Status == TrackAnalysisRunning || existing.Status == TrackAnalysisPending) {
 		return nil
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -225,15 +306,31 @@ func (d *DB) ReconcileSpotifyDownload(ctx context.Context, path string) error {
 	record := TrackAnalysis{SongID: song.ID, Status: TrackAnalysisPartial, AnalysisVersion: 1,
 		AlgorithmVersion: "spotify-features-v1", SourceFingerprint: fingerprint,
 		SourceSize: &revision.size, SourceMtime: scalarPtr(info.ModTime().UnixMilli()), AnalyzedAt: scalarPtr(time.Now().UnixMilli())}
+	sameSource := err == nil && existing.SourceFingerprint == fingerprint
+	if sameSource {
+		record = existing
+		durable := func(b *SpotifyScalarBinding) bool {
+			return b != nil && b.Durable && b.TrackID == recording && b.SourceFingerprint == fingerprint
+		}
+		if record.SpotifyBindings != nil && (observation.BPM == nil || (record.BPM != nil && record.BPMSource != nil && *record.BPMSource == "spotify" && durable(record.SpotifyBindings.BPM))) && (observation.Key == nil || observation.Mode == nil || (record.KeyTonic != nil && record.KeyMode != nil && record.KeySource != nil && *record.KeySource == "spotify" && durable(record.SpotifyBindings.Key))) {
+			return nil
+		}
+	}
+	observation.DurableImport = true
 	ApplySpotifyScalars(&record, observation)
 	if record.BPM == nil && record.KeyTonic == nil {
 		return nil
 	}
-	if record.BPM != nil && record.KeyTonic != nil {
+	if !sameSource && record.BPM != nil && record.KeyTonic != nil {
 		record.Status = TrackAnalysisComplete
 	}
-	// The download algorithm marker keeps these eligible for the normal scan.
-	return d.UpsertTrackAnalysis(record)
+	// New rows retain the download marker for local preparation; existing rows
+	// retain their local completion identity. The transaction keeps the claim
+	// check and merged publication in the same SQLite snapshot.
+	if err := upsertTrackAnalysis(tx, record); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // RequeueConverting retires account-bound post-processing without restarting

@@ -30,10 +30,11 @@ const clampSeconds = (value: number) => Math.max(VISIBLE_SECONDS_MIN, Math.min(V
 
 const DJWaveformLane = React.memo(function DJWaveformLane({ deck, useWebGL }: { deck: DeckId; useWebGL: boolean }) {
   const [visibleSeconds, setVisibleSeconds] = useState(VISIBLE_SECONDS_DEFAULT);
+  const [localBands, setLocalBands] = useState(false);
   const [colorMode, setColorMode] = useState<WaveformColorMode>('rgb');
   const [webglUnavailable, setWebglUnavailable] = useState(false);
   const markUnavailable = useCallback(() => setWebglUnavailable(true), []);
-  const renderWebGL = useWebGL && !webglUnavailable;
+  const renderWebGL = useWebGL && !webglUnavailable && !localBands;
 
   const handleWheel = useCallback((event: React.WheelEvent) => {
     if (!event.ctrlKey && !event.metaKey) return;
@@ -49,6 +50,7 @@ const DJWaveformLane = React.memo(function DJWaveformLane({ deck, useWebGL }: { 
             aria-pressed={colorMode === mode} title={title} onClick={() => setColorMode(mode)}>{label}</button>
         ))}
       </div>
+      <button type='button' className='dj-btn dj-btn-xs' aria-pressed={localBands} title='Scrolling lane and overview: local low/mid/high estimates; amplitude fallback when missing or duration differs' onClick={() => setLocalBands(value => !value)}>Local bands</button>
       <div className='dj-segmented' role='group' aria-label={`Deck ${deck} waveform zoom`}>
         <button type='button' className='dj-btn dj-btn-xs dj-btn-icon' aria-label={`Zoom in Deck ${deck} waveform`}
           title='Zoom in (Ctrl+Scroll up)' onClick={() => setVisibleSeconds(value => clampSeconds(value / 1.5))}>+</button>
@@ -77,10 +79,10 @@ const DJWaveformLane = React.memo(function DJWaveformLane({ deck, useWebGL }: { 
         <DJErrorBoundary componentName={`Deck ${deck} waveform`}>
           {renderWebGL
             ? <DJWebGLWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} onUnavailable={markUnavailable} />
-            : <DJCanvasWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} />}
+            : <DJCanvasWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} localBands={localBands} />}
         </DJErrorBoundary>
       </div>
-      <DJDeckOverview deck={deck} visibleSeconds={visibleSeconds} />
+      <DJDeckOverview deck={deck} visibleSeconds={visibleSeconds} localBands={localBands} />
     </section>
   );
 });

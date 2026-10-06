@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/spotify/catalog"
 )
 
@@ -77,6 +78,10 @@ func TestCookieCatalogTrackSingleBatchAndDownloadURL(t *testing.T) {
 	var track catalog.Track
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &track) != nil || track.ID != id || track.URI != "spotify:track:"+id || track.DurationMS != 123456 || len(track.Artists) != 1 || track.Album.ReleaseDate == nil || *track.Album.ReleaseDate != "2020-03-04" || len(track.Album.Images) != 1 || track.Explicit == nil || !*track.Explicit {
 		t.Fatal("track metadata mismatch", w.Code, w.Body.String())
+	}
+	snapshot, err := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "track", SpotifyID: id, Resource: "getTrack:page:0:0", ContextKey: a.spotifyAuth.metadataContext})
+	if err != nil || snapshot == nil || !strings.Contains(string(snapshot.Payload), "firstArtist") {
+		t.Fatalf("domain snapshot missing: %+v %v", snapshot, err)
 	}
 	w = httptest.NewRecorder()
 	a.spotifyProxy(w, httptest.NewRequest("GET", "/spotify/proxy?path=tracks&ids="+id+","+missing+","+second+","+id, nil))

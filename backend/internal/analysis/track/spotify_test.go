@@ -8,12 +8,14 @@ import (
 	"errors"
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/waveformartifact"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -80,6 +82,9 @@ func TestSpotifyEnrichesValidLocalAnalysisWithoutDecodingOrLosingArtifacts(t *te
 			after, err := database.GetTrackAnalysis(ids[0])
 			if err != nil {
 				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(before.Local, after.Local) {
+				t.Fatal("provider enrichment changed local observation")
 			}
 			if after.BPM == nil || *after.BPM != *before.BPM || *after.BPMSource != "measured" {
 				t.Fatal("local BPM lost")
@@ -154,7 +159,8 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 				t.Fatalf("mixed result log: %s", logText)
 			}
 			if scenario == "canceled" {
-				if !errors.Is(err, context.Canceled) || opens != 0 {
+				// Concurrent DSP may open once before the provider cancels the parent.
+				if !errors.Is(err, context.Canceled) || opens > 1 {
 					t.Fatalf("cancel: %v, opens %d", err, opens)
 				}
 				record, _ := database.GetTrackAnalysis(ids[0])
@@ -173,6 +179,12 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 			if opens != 1 {
 				t.Fatalf("local artifacts require one decode, got %d", opens)
 			}
+			if record.Local == nil || record.Local.BPM == nil || record.Local.SourceFingerprint != record.SourceFingerprint || record.Local.AlgorithmVersion != AlgorithmVersion {
+				t.Fatalf("local tempo observation missing: %+v", record.Local)
+			}
+			if scenario == "complete" && *record.Local.BPM == bpm {
+				t.Fatal("provider tempo replaced local observation")
+			}
 			if record.EnergyLevel == nil {
 				t.Fatal("energy level missing")
 			}
@@ -183,6 +195,7 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 			}{
 				{features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion},
 				{features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion},
+				{waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion},
 			} {
 				if _, err := database.GetTrackAnalysisArtifact(ids[0], artifact.kind, artifact.version, artifact.algorithm); err != nil {
 					t.Fatal(err)
@@ -225,7 +238,8 @@ func TestSpotifyScalarOnlyRowsAreRepairedWithoutProvider(t *testing.T) {
 	}
 	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: ids[0], Status: db.TrackAnalysisComplete,
 		AnalysisVersion: AnalysisVersion, AlgorithmVersion: "track-v2-spotify;old", SourceFingerprint: source.Fingerprint,
-		BPM: &bpm, BPMSource: ptr("spotify"), KeyTonic: &tonic, KeyMode: &mode, KeySource: ptr("spotify")}); err != nil {
+		SpotifyBindings: &db.SpotifyScalarBindings{BPM: &db.SpotifyScalarBinding{TrackID: strings.Repeat("A", 22), SourceFingerprint: source.Fingerprint, Endpoint: "audio_features", Durable: true}, Key: &db.SpotifyScalarBinding{TrackID: strings.Repeat("A", 22), SourceFingerprint: source.Fingerprint, Endpoint: "audio_features", Durable: true}},
+		BPM:             &bpm, BPMSource: ptr("spotify"), KeyTonic: &tonic, KeyMode: &mode, KeySource: ptr("spotify")}); err != nil {
 		t.Fatal(err)
 	}
 	selection := db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}
@@ -293,7 +307,41 @@ func TestSpotifyScalarsSurviveDecoderFailureAndRemainEligibleForRepair(t *testin
 		t.Fatalf("failed local pass marked current: %+v %v", record, err)
 	}
 	selected, err := database.ExpandAnalysisSelection(db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, AnalysisVersion, AlgorithmVersion)
+	if err != nil || len(selected) != 0 {
+		t.Fatalf("failed artifact retry should be deferred: %v %v", selected, err)
+	}
+	states, err := database.GetTrackCapabilityStatuses(ids[0], record.SourceFingerprint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expired := []db.TrackCapabilityStatus{}
+	for _, state := range states {
+		state.RetryAt = 1
+		state.UpdatedAt++
+		expired = append(expired, state)
+	}
+	if err := database.PutTrackCapabilityStatuses(expired); err != nil {
+		t.Fatal(err)
+	}
+	selected, err = database.ExpandAnalysisSelection(db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, AnalysisVersion, AlgorithmVersion)
 	if err != nil || len(selected) != 1 {
-		t.Fatalf("artifact repair eligibility: %v %v", selected, err)
+		t.Fatalf("expired artifact repair eligibility: %v %v", selected, err)
+	}
+}
+
+func TestRepairRetentionRequiresIndependentEligibleBindings(t *testing.T) {
+	bpm, tonic, mode := 130.0, 0, "major"
+	previous := db.TrackAnalysis{BPM: &bpm, BPMSource: ptr("spotify"), KeyTonic: &tonic, KeyMode: &mode, KeySource: ptr("spotify")}
+	if got := retainSpotifyScalars(nil, previous); got != nil {
+		t.Fatalf("unbound historical values retained: %+v", got)
+	}
+	previous.SpotifyBindings = &db.SpotifyScalarBindings{BPM: &db.SpotifyScalarBinding{TrackID: "recording", Eligible: true}, Key: &db.SpotifyScalarBinding{TrackID: "recording", Eligible: false}}
+	got := retainSpotifyScalars(nil, previous)
+	if got == nil || got.BPM == nil || !got.BPMRetained || got.Key != nil {
+		t.Fatalf("independent eligibility lost: %+v", got)
+	}
+	got = retainSpotifyScalars(&spotifyanalysis.Observation{TrackID: "replacement"}, previous)
+	if got.BPM != nil || got.Key != nil {
+		t.Fatalf("changed recording retained facts: %+v", got)
 	}
 }

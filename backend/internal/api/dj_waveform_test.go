@@ -234,3 +234,51 @@ func TestGenerateWaveformDecodesWAVServerSide(t *testing.T) {
 		}
 	}
 }
+
+func TestDJWaveformRejectsLegacyCacheAndRebindsChangedSource(t *testing.T) {
+	a, _ := newBPMRouteTestAPI(t, false)
+	id := "song"
+	song, err := a.db.GetSongByID(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	samples := make([]float32, 22050)
+	for i := range samples {
+		samples[i] = .5
+	}
+	if err = os.WriteFile(song.FilePath, encodePCM16WAV(samples, 22050), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.db.SaveDJWaveform(id, &db.DJWaveform{Duration: 999, SampleRate: 22050, Resolution: 256, Peaks: []float64{1}}); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	router.Get("/api/dj/waveform/{id}", a.getDJWaveform)
+	request := func() WaveformResponse {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dj/waveform/"+id, nil))
+		if w.Code != 200 {
+			t.Fatalf("waveform: %d %s", w.Code, w.Body.String())
+		}
+		var result WaveformResponse
+		if err = json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	first := request()
+	if first.Duration != 1 || math.Abs(first.Peaks[0]-.5) > .0001 {
+		t.Fatal("unbound legacy cache served")
+	}
+	if err = os.WriteFile(song.FilePath, encodePCM16WAV(make([]float32, 44100), 22050), 0600); err != nil {
+		t.Fatal(err)
+	}
+	second := request()
+	if second.Duration != 2 || second.Peaks[0] != 0 {
+		t.Fatal("old waveform served for changed file")
+	}
+	third := request()
+	if third.Duration != second.Duration || len(third.Peaks) != len(second.Peaks) {
+		t.Fatal("bound waveform cache changed")
+	}
+}

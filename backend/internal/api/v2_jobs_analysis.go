@@ -86,11 +86,11 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 	lastWrite := time.Now()
 
 	progress, runErr := track.Run(ctx, a.db, decoderRegistry(), songIDs, track.RunOptions{
-		ResolveSource:   a.resolveAnalysisSource,
-		SpotifyFeatures: a.spotifyFeaturesForSource,
-		EnrichValid:     a.spotifyFeaturesEnabled(),
-		AutoCueMode:     selection.AutoCueMode,
-		Canceled:        func() bool { return a.jobCancellationRequested(job.ID) },
+		ResolveSource:       a.resolveAnalysisSource,
+		ProviderPreparation: a.spotifyPreparationForSource,
+		EnrichValid:         a.spotifyFeaturesEnabled(),
+		AutoCueMode:         selection.AutoCueMode,
+		Canceled:            func() bool { return a.jobCancellationRequested(job.ID) },
 		Throttle: func(context.Context) error {
 			// Consulted between tracks. Yielding releases the worker so scans
 			// and foreground analysis are not stuck behind a paused run.

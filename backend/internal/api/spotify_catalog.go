@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 
 	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
@@ -26,6 +27,7 @@ func (s *spotifyAuthRuntime) catalogClient(ctx context.Context, httpClient *http
 	if s.catalog == nil {
 		s.catalog = catalog.New(catalog.Options{
 			Client:        httpClient,
+			OnDomain:      s.persistCatalogDomain,
 			BeforeRequest: s.checkWebAPICooldown,
 			OnRateLimit: func(value string) time.Duration {
 				_ = s.recordWebAPICooldown(value)
@@ -144,4 +146,37 @@ func catalogJSONResponse(status int, value any) (*http.Response, error) {
 		return nil, catalog.ErrSchema
 	}
 	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(raw)), ContentLength: int64(len(raw))}, nil
+}
+
+func (s *spotifyAuthRuntime) persistCatalogDomain(ctx context.Context, entities []catalog.CapturedEntity) {
+	_ = s.persistCatalogDomainResult(ctx, entities)
+}
+
+func (s *spotifyAuthRuntime) persistCatalogDomainResult(ctx context.Context, entities []catalog.CapturedEntity) error {
+	if s.database == nil {
+		return nil
+	}
+	if pending, ok := ctx.Value(catalogCaptureKey{}).(*catalogCaptureBuffer); ok && pending != nil {
+		pending.add(entities)
+		return nil
+	}
+	err := s.withAccount(ctx, func() error {
+		now := time.Now().UTC()
+		snapshots := make([]db.SpotifyEntitySnapshot, 0, len(entities))
+		for _, entity := range entities {
+			snapshot := db.SpotifyEntitySnapshot{SpotifySnapshotKey: db.SpotifySnapshotKey{EntityType: entity.EntityType, SpotifyID: entity.ID, Resource: entity.Resource, ContextKey: s.metadataContext}, SchemaVersion: 1, AdapterRevision: "catalog-domain-v1", RetrievedAt: now, ExpiresAt: now.Add(24 * time.Hour), Payload: entity.Payload}
+			for _, relation := range entity.Relations {
+				snapshot.Relations = append(snapshot.Relations, db.SpotifyEntityRelation{Kind: relation.Kind, Position: relation.Position, ChildType: relation.ChildType, ChildID: relation.ChildID, Unavailable: relation.Unavailable, Metadata: relation.Metadata})
+			}
+			snapshots = append(snapshots, snapshot)
+		}
+		if traversal, ok := ctx.Value(playlistTraversalContextKey{}).(db.SpotifyPlaylistTraversal); ok {
+			return s.database.PutSpotifyPlaylistSnapshots(traversal, snapshots, true)
+		}
+		return s.database.PutSpotifyEntitySnapshotsForRuntime(db.SpotifyMetadataFence{Epoch: s.metadataEpoch, ContextKey: s.metadataContext}, snapshots)
+	})
+	if err != nil && ctx.Err() == nil {
+		logger.Scan("spotify_catalog_snapshot status=failed reason=persistence_failed")
+	}
+	return err
 }

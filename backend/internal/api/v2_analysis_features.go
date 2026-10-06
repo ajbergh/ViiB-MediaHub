@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
@@ -27,32 +28,39 @@ import (
 // snapshot for one song. It intentionally omits diagnostic and source-path
 // fields, leaving the library UI with only values it can safely display.
 type TrackAnalysisFeatureResponse struct {
-	BPMAltCandidate        *float64 `json:"bpmAltCandidate,omitempty"`
-	TempoStability         *float64 `json:"tempoStability,omitempty"`
-	TempoKind              *string  `json:"tempoKind,omitempty"`
-	SongID                 string   `json:"songId"`
-	Status                 string   `json:"status"`
-	AnalyzedAt             *int64   `json:"analyzedAt,omitempty"`
-	BPM                    *float64 `json:"bpm,omitempty"`
-	BPMConfidence          *float64 `json:"bpmConfidence,omitempty"`
-	BPMSource              string   `json:"bpmSource"`
-	SyncAllowed            bool     `json:"syncAllowed"`
-	Key                    *string  `json:"key,omitempty"`
-	CamelotKey             *string  `json:"camelotKey,omitempty"`
-	OpenKey                *string  `json:"openKey,omitempty"`
-	KeyConfidence          *float64 `json:"keyConfidence,omitempty"`
-	KeySource              string   `json:"keySource"`
-	KeyTonic               *int     `json:"keyTonic,omitempty"`
-	KeyMode                *string  `json:"keyMode,omitempty"`
-	MeasuredKeyTonic       *int     `json:"measuredKeyTonic,omitempty"`
-	MeasuredKeyMode        *string  `json:"measuredKeyMode,omitempty"`
-	EnergyLevel            *int     `json:"energyLevel,omitempty"`
-	EnergyLevelConfidence  *float64 `json:"energyLevelConfidence,omitempty"`
-	EnergyAlgorithmVersion *string  `json:"energyAlgorithmVersion,omitempty"`
-	StructureAvailable     bool     `json:"structureAvailable"`
-	IntegratedLUFSBS1770   *float64 `json:"integratedLufsBs1770,omitempty"`
-	TruePeakDBTP           *float64 `json:"truePeakDbtp,omitempty"`
-	SourceFingerprint      string   `json:"sourceFingerprint,omitempty"`
+	ProviderScores           map[string]db.SpotifyScoreSummary `json:"providerScores,omitempty"`
+	ProviderScoresUnverified bool                              `json:"providerScoresUnverified,omitempty"`
+	ProviderScalars          *SongProviderScalars              `json:"providerScalars,omitempty"`
+	MeasuredBPM              *float64                          `json:"measuredBpm,omitempty"`
+	MeasuredBPMConfidence    *float64                          `json:"measuredBpmConfidence,omitempty"`
+	MeasuredKeyConfidence    *float64                          `json:"measuredKeyConfidence,omitempty"`
+	LocalAlgorithmVersion    *string                           `json:"localAlgorithmVersion,omitempty"`
+	BPMAltCandidate          *float64                          `json:"bpmAltCandidate,omitempty"`
+	TempoStability           *float64                          `json:"tempoStability,omitempty"`
+	TempoKind                *string                           `json:"tempoKind,omitempty"`
+	SongID                   string                            `json:"songId"`
+	Status                   string                            `json:"status"`
+	AnalyzedAt               *int64                            `json:"analyzedAt,omitempty"`
+	BPM                      *float64                          `json:"bpm,omitempty"`
+	BPMConfidence            *float64                          `json:"bpmConfidence,omitempty"`
+	BPMSource                string                            `json:"bpmSource"`
+	SyncAllowed              bool                              `json:"syncAllowed"`
+	Key                      *string                           `json:"key,omitempty"`
+	CamelotKey               *string                           `json:"camelotKey,omitempty"`
+	OpenKey                  *string                           `json:"openKey,omitempty"`
+	KeyConfidence            *float64                          `json:"keyConfidence,omitempty"`
+	KeySource                string                            `json:"keySource"`
+	KeyTonic                 *int                              `json:"keyTonic,omitempty"`
+	KeyMode                  *string                           `json:"keyMode,omitempty"`
+	MeasuredKeyTonic         *int                              `json:"measuredKeyTonic,omitempty"`
+	MeasuredKeyMode          *string                           `json:"measuredKeyMode,omitempty"`
+	EnergyLevel              *int                              `json:"energyLevel,omitempty"`
+	EnergyLevelConfidence    *float64                          `json:"energyLevelConfidence,omitempty"`
+	EnergyAlgorithmVersion   *string                           `json:"energyAlgorithmVersion,omitempty"`
+	StructureAvailable       bool                              `json:"structureAvailable"`
+	IntegratedLUFSBS1770     *float64                          `json:"integratedLufsBs1770,omitempty"`
+	TruePeakDBTP             *float64                          `json:"truePeakDbtp,omitempty"`
+	SourceFingerprint        string                            `json:"sourceFingerprint,omitempty"`
 }
 
 // BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
@@ -123,13 +131,18 @@ type TransitionRecommendationResponse struct {
 // TransitionCandidateEvidence echoes the resolved measurements used by the
 // optional Mix Next filters. Stem availability means a registered ready set.
 type TransitionCandidateEvidence struct {
-	BPM            *float64 `json:"bpm,omitempty"`
-	EnergyLevel    *int     `json:"energyLevel,omitempty"`
-	StemsAvailable *bool    `json:"stemsAvailable,omitempty"`
-	LastPlayed     *int64   `json:"lastPlayed,omitempty"`
+	SpotifyScore       *db.SpotifyScoreSummary `json:"spotifyScore,omitempty"`
+	SpotifyScoreMetric string                  `json:"spotifyScoreMetric,omitempty"`
+	BPM                *float64                `json:"bpm,omitempty"`
+	EnergyLevel        *int                    `json:"energyLevel,omitempty"`
+	StemsAvailable     *bool                   `json:"stemsAvailable,omitempty"`
+	LastPlayed         *int64                  `json:"lastPlayed,omitempty"`
 }
 
 type TransitionRecommendationFilters struct {
+	SpotifyScoreMetric     string   `json:"spotifyScoreMetric,omitempty"`
+	MinSpotifyScore        *float64 `json:"minSpotifyScore,omitempty"`
+	MaxSpotifyScore        *float64 `json:"maxSpotifyScore,omitempty"`
 	MinBPM                 *float64 `json:"minBpm,omitempty"`
 	MaxBPM                 *float64 `json:"maxBpm,omitempty"`
 	MinEnergyLevel         *int     `json:"minEnergyLevel,omitempty"`
@@ -158,9 +171,9 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusBadRequest, "song ID is required")
 		return
 	}
-	analysis, err := a.db.GetTrackAnalysis(songID)
+	analysis, err := a.trackAnalysisOrUnanalyzed(songID)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "analysis not found")
+		respondError(w, http.StatusNotFound, "song not found")
 		return
 	}
 	if err != nil {
@@ -180,7 +193,16 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID]))
+	response := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID])
+	response.ProviderScalars, err = a.songProviderScalarsContext(r.Context(), songID, currentFingerprints[songID])
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
+	if response.SourceFingerprint != "" {
+		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
+	}
+	respondJSON(w, response)
 }
 
 func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request) {
@@ -289,9 +311,29 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
+	var scoreSummaries map[string]map[string]db.SpotifyScoreSummary
+	scoresUnverified := false
+	a.spotifyAuthMu.Lock()
+	scoreRuntime := a.spotifyAuth
+	a.spotifyAuthMu.Unlock()
+	if scoreRuntime != nil {
+		scoreCtx, cancel := scoreRuntime.requestContext(r.Context())
+		err := scoreRuntime.withMetadataRead(scoreCtx, func(fence db.SpotifyMetadataReadFence) error {
+			var err error
+			scoreSummaries, err = a.db.GetSpotifyScoreSummariesForRuntime(fence, currentFingerprints, time.Now())
+			scoresUnverified = fence.Pending
+			return err
+		})
+		cancel()
+		if err != nil {
+			scoreSummaries = nil
+		}
+	}
 	response := make([]TrackAnalysisFeatureResponse, 0, len(analyses))
 	for _, analysis := range analyses {
 		feature := trackAnalysisFeatureResponseWithCurrentSource(analysis, overrides[analysis.SongID], currentFingerprints[analysis.SongID])
+		feature.ProviderScores = scoreSummaries[analysis.SongID]
+		feature.ProviderScoresUnverified = scoresUnverified && len(feature.ProviderScores) > 0
 		feature.StructureAvailable = readyStructureBySongID[analysis.SongID]
 		if value, exists := lufsBySongID[analysis.SongID]; exists {
 			feature.IntegratedLUFSBS1770 = &value
@@ -429,11 +471,23 @@ func trackBS1770ListMeasurements(analysis db.TrackAnalysis, currentFingerprint s
 }
 
 func trackAnalysisFeatureResponseWithCurrentSource(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string) TrackAnalysisFeatureResponse {
-	return trackAnalysisFeatureResponseResolved(analysis, override, db.ResolveEffectiveBPMForSource(db.EffectiveBPMInputs{Override: &override, Analysis: &analysis}, currentFingerprint))
+	response := trackAnalysisFeatureResponseResolved(analysis, override, db.ResolveEffectiveBPMForSource(db.EffectiveBPMInputs{Override: &override, Analysis: &analysis}, currentFingerprint), db.ResolveEffectiveKeyForSource(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis}, currentFingerprint))
+	response.SourceFingerprint = currentFingerprint
+	if currentFingerprint == "" || currentFingerprint != analysis.SourceFingerprint {
+		response.MeasuredBPM = nil
+		response.MeasuredBPMConfidence = nil
+		response.MeasuredKeyTonic = nil
+		response.MeasuredKeyMode = nil
+		response.MeasuredKeyConfidence = nil
+		response.LocalAlgorithmVersion = nil
+		response.EnergyLevel = nil
+		response.EnergyLevelConfidence = nil
+		response.EnergyAlgorithmVersion = nil
+	}
+	return response
 }
 
-func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, effectiveBPM db.EffectiveBPM) TrackAnalysisFeatureResponse {
-	effectiveKey := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis})
+func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, effectiveBPM db.EffectiveBPM, effectiveKey db.EffectiveKey) TrackAnalysisFeatureResponse {
 	response := TrackAnalysisFeatureResponse{
 		SongID:      analysis.SongID,
 		Status:      analysis.Status,
@@ -464,10 +518,22 @@ func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db
 	if effectiveKey.Source == db.EffectiveKeyMeasured {
 		response.KeyConfidence = analysis.KeyConfidence
 	}
-	measuredKey := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Analysis: &analysis})
-	if measuredKey.Tonic != nil && measuredKey.Mode != nil {
-		response.MeasuredKeyTonic = measuredKey.Tonic
-		response.MeasuredKeyMode = measuredKey.Mode
+	if local := db.CurrentLocalScalars(&analysis); local != nil {
+		response.MeasuredBPM = local.BPM
+		response.MeasuredBPMConfidence = local.BPMConfidence
+		response.MeasuredKeyTonic = local.KeyTonic
+		response.MeasuredKeyMode = local.KeyMode
+		response.MeasuredKeyConfidence = local.KeyConfidence
+		response.LocalAlgorithmVersion = &local.AlgorithmVersion
+		if effectiveBPM.Source == db.EffectiveBPMMeasured {
+			response.BPMConfidence = local.BPMConfidence
+			response.BPMAltCandidate = local.BPMAltCandidate
+			response.TempoStability = local.TempoStability
+			response.TempoKind = local.TempoKind
+		}
+		if effectiveKey.Source == db.EffectiveKeyMeasured {
+			response.KeyConfidence = local.KeyConfidence
+		}
 	}
 	if effectiveKey.Tonic != nil && effectiveKey.Mode != nil {
 		keyName := analysiskey.FormatKey(*effectiveKey.Tonic, *effectiveKey.Mode)
@@ -552,7 +618,7 @@ func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	currentFingerprint, err := a.requireCurrentBPMSource(w, r, songID)
+	currentFingerprint, err := a.requireCurrentAnalysisSource(w, r, songID)
 	if err != nil {
 		return
 	}
@@ -562,11 +628,11 @@ func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !updated {
-		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload BPM details before editing")
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload analysis details before editing")
 		return
 	}
-	if err := a.revalidateBPMSourceAfterWrite(songID, currentFingerprint); err != nil {
-		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload BPM details before editing")
+	if err := a.revalidateAnalysisSourceAfterWrite(songID, currentFingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload analysis details before editing")
 		return
 	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
@@ -595,7 +661,7 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	currentFingerprint, err := a.requireCurrentBPMSource(w, r, songID)
+	currentFingerprint, err := a.requireCurrentAnalysisSource(w, r, songID)
 	if err != nil {
 		return
 	}
@@ -605,11 +671,11 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !reset {
-		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload BPM details before editing")
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload analysis details before editing")
 		return
 	}
-	if err := a.revalidateBPMSourceAfterWrite(songID, currentFingerprint); err != nil {
-		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload BPM details before editing")
+	if err := a.revalidateAnalysisSourceAfterWrite(songID, currentFingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload analysis details before editing")
 		return
 	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
@@ -625,7 +691,7 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, response)
 }
 
-func (a *API) requireCurrentBPMSource(w http.ResponseWriter, r *http.Request, songID string) (string, error) {
+func (a *API) requireCurrentAnalysisSource(w http.ResponseWriter, r *http.Request, songID string) (string, error) {
 	expected := strings.TrimSpace(r.Header.Get("If-Match"))
 	if expected == "" {
 		respondError(w, http.StatusPreconditionRequired, "current source fingerprint is required")
@@ -644,13 +710,13 @@ func (a *API) requireCurrentBPMSource(w http.ResponseWriter, r *http.Request, so
 		}
 	}
 	if actual == "" || strconv.Quote(actual) != expected {
-		respondError(w, http.StatusPreconditionFailed, "song source changed or is unavailable; reload BPM details before editing")
+		respondError(w, http.StatusPreconditionFailed, "song source changed or is unavailable; reload analysis details before editing")
 		return "", errors.New("source fingerprint precondition failed")
 	}
 	return actual, nil
 }
 
-func (a *API) revalidateBPMSourceAfterWrite(songID, expected string) error {
+func (a *API) revalidateAnalysisSourceAfterWrite(songID, expected string) error {
 	current, err := a.currentAnalysisSourceFingerprints([]string{songID})
 	if err != nil {
 		return err
@@ -662,7 +728,7 @@ func (a *API) revalidateBPMSourceAfterWrite(songID, expected string) error {
 		}
 	}
 	if actual == "" || actual != expected {
-		return errors.New("source changed during BPM write")
+		return errors.New("source changed during analysis write")
 	}
 	return nil
 }
@@ -704,35 +770,39 @@ func (a *API) putTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "key tonic must be 0 through 11 and mode must be major or minor")
 		return
 	}
-	analysis, err := a.db.GetTrackAnalysis(songID)
+	analysis, err := a.trackAnalysisOrUnanalyzed(songID)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "analysis not found")
+		respondError(w, http.StatusNotFound, "song not found")
 		return
 	}
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	fingerprint, err := a.requireCurrentAnalysisSource(w, r, songID)
+	if err != nil {
+		return
+	}
+	saved, err := a.db.SetTrackAnalysisKeyOverrideIfSourceCurrent(songID, *update.Tonic, update.Mode, fingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !saved {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving key; reload analysis details")
+		return
+	}
+	if err := a.revalidateAnalysisSourceAfterWrite(songID, fingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving key; reload analysis details")
 		return
 	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
-	if errors.Is(err, sql.ErrNoRows) {
-		override = db.TrackAnalysisOverride{SongID: songID}
-	} else if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	override.KeyTonic = update.Tonic
-	override.KeyMode = &update.Mode
-	override.KeyLocked = true
-	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	currentFingerprints, err := a.currentAnalysisSourceFingerprints([]string{songID})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID]))
+	w.Header().Set("ETag", strconv.Quote(fingerprint))
+	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint))
 }
 
 func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
@@ -741,35 +811,39 @@ func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "song ID is required")
 		return
 	}
-	analysis, err := a.db.GetTrackAnalysis(songID)
+	analysis, err := a.trackAnalysisOrUnanalyzed(songID)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "analysis not found")
+		respondError(w, http.StatusNotFound, "song not found")
 		return
 	}
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	fingerprint, err := a.requireCurrentAnalysisSource(w, r, songID)
+	if err != nil {
+		return
+	}
+	reset, err := a.db.ResetTrackAnalysisKeyOverrideIfSourceCurrent(songID, fingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !reset {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting key; reload analysis details")
+		return
+	}
+	if err := a.revalidateAnalysisSourceAfterWrite(songID, fingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting key; reload analysis details")
 		return
 	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
-	if errors.Is(err, sql.ErrNoRows) {
-		override = db.TrackAnalysisOverride{SongID: songID}
-	} else if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	override.KeyTonic = nil
-	override.KeyMode = nil
-	override.KeyLocked = false
-	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	currentFingerprints, err := a.currentAnalysisSourceFingerprints([]string{songID})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID]))
+	w.Header().Set("ETag", strconv.Quote(fingerprint))
+	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint))
 }
 
 func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
@@ -848,7 +922,7 @@ func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if !updated || a.revalidateBPMSourceAfterWrite(songID, currentFingerprint) != nil {
+		if !updated || a.revalidateAnalysisSourceAfterWrite(songID, currentFingerprint) != nil {
 			respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload before editing")
 			return
 		}
@@ -1101,71 +1175,195 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	recommendations := make([]TransitionRecommendationResponse, 0, len(artifacts))
-	candidatesBeforeFilters := 0
-	for _, artifact := range artifacts {
-		if artifact.SongID == songID {
-			continue
-		}
-		analysisRecord, hasAnalysis := analysisByID[artifact.SongID]
-		if !hasAnalysis || !currentEnergyArtifactMatchesSource(analysisRecord, currentFingerprints[artifact.SongID], artifact) {
-			continue
-		}
-		candidate, err := features.DecodeBounded(artifact.Data, features.MaxStructureStatusArtifactBytes)
-		if err != nil {
-			continue // a corrupt candidate must not make the deck unavailable
-		}
-		song, exists := songByID[artifact.SongID]
-		if !exists {
-			continue
-		}
-		candidatesBeforeFilters++
-		transitionMetadata := metadataByID[artifact.SongID]
-		stemAvailable := stemStatuses[artifact.SongID] == "ready"
-		if !transitionCandidateMatchesFilters(transitionMetadata, stemAvailable, filters) || !transitionLibrarySongMatchesFilters(song, playlistSongIDs, filters) {
-			continue
-		}
-		if filters.NotRecentlyPlayedHours != nil {
-			if _, playedRecently := recentlyPlayedIDs[song.ID]; playedRecently {
+	var providerScores map[string]map[string]db.SpotifyScoreSummary
+	assemble := func(providerScores map[string]map[string]db.SpotifyScoreSummary) (TransitionRecommendationsResponse, int, string) {
+		assemblyStatus := http.StatusOK
+		assemblyMessage := ""
+		recommendations := make([]TransitionRecommendationResponse, 0, len(artifacts))
+		candidatesBeforeFilters := 0
+		checkedSourceIDs := []string{songID}
+		for _, artifact := range artifacts {
+			if artifact.SongID == songID {
 				continue
 			}
+			analysisRecord, hasAnalysis := analysisByID[artifact.SongID]
+			if !hasAnalysis || !currentEnergyArtifactMatchesSource(analysisRecord, currentFingerprints[artifact.SongID], artifact) {
+				continue
+			}
+			candidate, err := features.DecodeBounded(artifact.Data, features.MaxStructureStatusArtifactBytes)
+			if err != nil {
+				continue // a corrupt candidate must not make the deck unavailable
+			}
+			song, exists := songByID[artifact.SongID]
+			if !exists {
+				continue
+			}
+			candidatesBeforeFilters++
+			checkedSourceIDs = append(checkedSourceIDs, artifact.SongID)
+			var providerScore *db.SpotifyScoreSummary
+			if filters.SpotifyScoreMetric != "" {
+				summary, exists := providerScores[artifact.SongID]["spotify_"+filters.SpotifyScoreMetric+"_score"]
+				if !exists || !transitionSpotifyScoreMatches(summary, filters, time.Now()) {
+					continue
+				}
+				providerScore = &summary
+			}
+			transitionMetadata := metadataByID[artifact.SongID]
+			stemAvailable := stemStatuses[artifact.SongID] == "ready"
+			if !transitionCandidateMatchesFilters(transitionMetadata, stemAvailable, filters) || !transitionLibrarySongMatchesFilters(song, playlistSongIDs, filters) {
+				continue
+			}
+			if filters.NotRecentlyPlayedHours != nil {
+				if _, playedRecently := recentlyPlayedIDs[song.ID]; playedRecently {
+					continue
+				}
+			}
+			score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[artifact.SongID], intent)
+			if scoreErr != nil {
+				return TransitionRecommendationsResponse{}, http.StatusBadRequest, scoreErr.Error()
+			}
+			if filters.CamelotCompatible != nil && *filters.CamelotCompatible {
+				if !validTransitionKey(analysisByID[songID], overrides[songID], currentFingerprints[songID]) || !validTransitionKey(analysisByID[artifact.SongID], overrides[artifact.SongID], currentFingerprints[artifact.SongID]) || !transitionCamelotCompatible(score.Vector.CamelotRelation) {
+					continue
+				}
+			}
+			evidence := TransitionCandidateEvidence{BPM: transitionMetadata.BPM, EnergyLevel: transitionMetadata.EnergyLevel, SpotifyScore: providerScore, SpotifyScoreMetric: filters.SpotifyScoreMetric}
+			if filters.StemsAvailable != nil {
+				evidence.StemsAvailable = &stemAvailable
+			}
+			if filters.NotRecentlyPlayedHours != nil {
+				lastPlayed := song.LastPlayed
+				evidence.LastPlayed = &lastPlayed
+			}
+			recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components, FilterEvidence: evidence})
 		}
-		score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[artifact.SongID], intent)
-		if scoreErr != nil {
-			respondError(w, http.StatusBadRequest, scoreErr.Error())
+		sort.Slice(recommendations, func(i, j int) bool {
+			if recommendations[i].Score == recommendations[j].Score {
+				return recommendations[i].SongID < recommendations[j].SongID
+			}
+			return recommendations[i].Score > recommendations[j].Score
+		})
+		candidatesAfterFilters := len(recommendations)
+		limit := parseBoundedInt(r.URL.Query().Get("limit"), 10, 50)
+		if len(recommendations) > limit {
+			recommendations = recommendations[:limit]
+		}
+		stillCurrent, sourceErr := a.transitionRecommendationSourcesCurrent(currentFingerprints, checkedSourceIDs)
+		if sourceErr != nil {
+			return TransitionRecommendationsResponse{}, http.StatusInternalServerError, sourceErr.Error()
+		}
+		if !stillCurrent {
+			return TransitionRecommendationsResponse{}, http.StatusConflict, "a recommendation source changed during assembly; refresh recommendations"
+		}
+		return TransitionRecommendationsResponse{SongID: songID, Intent: intent, AlgorithmVersion: features.TransitionAlgorithmVersion, Filters: filters, CandidatesBeforeFilters: candidatesBeforeFilters, CandidatesAfterFilters: candidatesAfterFilters, Recommendations: recommendations}, assemblyStatus, assemblyMessage
+	}
+
+	if filters.SpotifyScoreMetric == "" {
+		response, status, message := assemble(nil)
+		if status != http.StatusOK {
+			respondError(w, status, message)
+		} else {
+			respondJSON(w, response)
+		}
+		return
+	}
+	a.spotifyAuthMu.Lock()
+	runtime := a.spotifyAuth
+	a.spotifyAuthMu.Unlock()
+	if runtime == nil {
+		response, status, message := assemble(nil)
+		if status != http.StatusOK {
+			respondError(w, status, message)
+		} else {
+			respondJSON(w, response)
+		}
+		return
+	}
+	scoreCtx, cancel := runtime.requestContext(r.Context())
+	var response TransitionRecommendationsResponse
+	responseStatus := http.StatusOK
+	responseMessage := ""
+	readErr := runtime.withMetadataRead(scoreCtx, func(fence db.SpotifyMetadataReadFence) error {
+		if !fence.Pending {
+			providerScores, _ = a.db.GetSpotifyScoreSummariesForRuntime(fence, currentFingerprints, time.Now())
+		}
+		response, responseStatus, responseMessage = assemble(providerScores)
+		// Retirement cancels the captured lifetime before waiting for this read
+		// fence. Reject a response assembled after that cancellation.
+		if err := scoreCtx.Err(); err != nil {
+			return err
+		}
+		// Keep account ownership fenced through serialization so a concurrent
+		// replacement cannot publish this account's score evidence afterward.
+		if responseStatus != http.StatusOK {
+			respondError(w, responseStatus, responseMessage)
+		} else {
+			respondJSON(w, response)
+		}
+		return nil
+	})
+	cancel()
+	if readErr != nil {
+		if r.Context().Err() != nil {
 			return
 		}
-		if filters.CamelotCompatible != nil && *filters.CamelotCompatible {
-			if !validTransitionKey(analysisByID[songID], overrides[songID]) || !validTransitionKey(analysisByID[artifact.SongID], overrides[artifact.SongID]) || !transitionCamelotCompatible(score.Vector.CamelotRelation) {
-				continue
-			}
-		}
-		evidence := TransitionCandidateEvidence{BPM: transitionMetadata.BPM, EnergyLevel: transitionMetadata.EnergyLevel}
-		if filters.StemsAvailable != nil {
-			evidence.StemsAvailable = &stemAvailable
-		}
-		if filters.NotRecentlyPlayedHours != nil {
-			lastPlayed := song.LastPlayed
-			evidence.LastPlayed = &lastPlayed
-		}
-		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components, FilterEvidence: evidence})
+		respondError(w, http.StatusConflict, "Spotify session changed during recommendation assembly; refresh recommendations")
 	}
-	sort.Slice(recommendations, func(i, j int) bool {
-		if recommendations[i].Score == recommendations[j].Score {
-			return recommendations[i].SongID < recommendations[j].SongID
-		}
-		return recommendations[i].Score > recommendations[j].Score
-	})
-	candidatesAfterFilters := len(recommendations)
-	limit := parseBoundedInt(r.URL.Query().Get("limit"), 10, 50)
-	if len(recommendations) > limit {
-		recommendations = recommendations[:limit]
+}
+
+func (a *API) transitionRecommendationSourcesCurrent(expected map[string]string, songIDs []string) (bool, error) {
+	current, err := a.currentAnalysisSourceFingerprints(songIDs)
+	if err != nil {
+		return false, err
 	}
-	respondJSON(w, TransitionRecommendationsResponse{SongID: songID, Intent: intent, AlgorithmVersion: features.TransitionAlgorithmVersion, Filters: filters, CandidatesBeforeFilters: candidatesBeforeFilters, CandidatesAfterFilters: candidatesAfterFilters, Recommendations: recommendations})
+	return transitionRecommendationSourcesMatch(expected, current, songIDs), nil
+}
+
+func transitionRecommendationSourcesMatch(expected, current map[string]string, songIDs []string) bool {
+	for _, songID := range songIDs {
+		if expected[songID] == "" || current[songID] != expected[songID] {
+			return false
+		}
+	}
+	return true
 }
 
 func parseTransitionRecommendationFilters(values url.Values) (TransitionRecommendationFilters, error) {
 	var filters TransitionRecommendationFilters
+	if metric, present, err := singleQueryValue(values, "spotifyScoreMetric"); err != nil {
+		return filters, err
+	} else if present {
+		switch metric {
+		case "energy", "danceability", "acousticness", "instrumentalness", "liveness", "speechiness", "valence":
+			filters.SpotifyScoreMetric = metric
+		default:
+			return filters, errors.New("unsupported Spotify score metric")
+		}
+	}
+	for _, name := range []string{"minSpotifyScore", "maxSpotifyScore"} {
+		value, present, err := singleQueryValue(values, name)
+		if err != nil {
+			return filters, err
+		}
+		if !present {
+			continue
+		}
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > 1 {
+			return filters, fmt.Errorf("%s must be between 0 and 1", name)
+		}
+		if filters.SpotifyScoreMetric == "" {
+			return filters, errors.New("Spotify score range requires spotifyScoreMetric")
+		}
+		if name == "minSpotifyScore" {
+			filters.MinSpotifyScore = &n
+		} else {
+			filters.MaxSpotifyScore = &n
+		}
+	}
+	if filters.MinSpotifyScore != nil && filters.MaxSpotifyScore != nil && *filters.MinSpotifyScore > *filters.MaxSpotifyScore {
+		return filters, errors.New("minimum Spotify score must not exceed maximum")
+	}
 	parseFloat := func(name string) (*float64, error) {
 		value, present, err := singleQueryValue(values, name)
 		if err != nil || !present {
@@ -1344,8 +1542,8 @@ func transitionCamelotCompatible(relation string) bool {
 	}
 }
 
-func validTransitionKey(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) bool {
-	key := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis})
+func validTransitionKey(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string) bool {
+	key := db.ResolveEffectiveKeyForSource(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis}, currentFingerprint)
 	if key.Tonic == nil || key.Mode == nil || *key.Tonic < 0 || *key.Tonic > 11 {
 		return false
 	}
@@ -1400,4 +1598,12 @@ func (a *API) measuredEnergyForDJ() (map[string]float64, error) {
 		values[artifact.SongID] = total / float64(len(result.Energy))
 	}
 	return values, nil
+}
+
+// Optional native score filtering never changes the local transition score or grid.
+func transitionSpotifyScoreMatches(score db.SpotifyScoreSummary, filters TransitionRecommendationFilters, now time.Time) bool {
+	if score.Stale || !now.Before(score.ExpiresAt) || math.IsNaN(score.Value) || math.IsInf(score.Value, 0) || score.Value < 0 || score.Value > 1 {
+		return false
+	}
+	return (filters.MinSpotifyScore == nil || score.Value >= *filters.MinSpotifyScore) && (filters.MaxSpotifyScore == nil || score.Value <= *filters.MaxSpotifyScore)
 }

@@ -89,7 +89,7 @@ func TestV2TrackAnalysisFeatureResolvesManualValues(t *testing.T) {
 	manualBPM, manualTonic := 127.5, 9
 	manualMode := "minor"
 	if err := database.UpsertTrackAnalysisOverride(db.TrackAnalysisOverride{
-		SongID: "song", BPM: &manualBPM, BPMSourceFingerprint: currentFingerprint, BPMLocked: true, KeyTonic: &manualTonic, KeyMode: &manualMode, KeyLocked: true,
+		SongID: "song", BPM: &manualBPM, BPMSourceFingerprint: currentFingerprint, BPMLocked: true, KeyTonic: &manualTonic, KeyMode: &manualMode, KeyLocked: true, KeySourceFingerprint: currentFingerprint,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -131,16 +131,15 @@ func TestV2TrackAnalysisFeaturesListsResolvedRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
+	fingerprints := map[string]string{}
 	for _, id := range []string{"second", "first"} {
-		if err := database.SaveSong(&db.Song{ID: id, Title: id, Artist: "Artist", Album: "Album", FilePath: id + ".mp3", AddedAt: 1}); err != nil {
-			t.Fatal(err)
-		}
+		fingerprints[id] = saveAnalysisTestSong(t, database, id, id, nil, 1, 0)
 	}
 	bpm, tonic := 128.0, 0
 	analyzedAt := int64(1720000000123)
 	mode, source := "major", "measured"
 	for _, id := range []string{"second", "first"} {
-		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: id, AnalyzedAt: &analyzedAt, BPM: &bpm, BPMSource: &source, KeyTonic: &tonic, KeyMode: &mode, KeySource: &source}); err != nil {
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprints[id], AnalyzedAt: &analyzedAt, BPM: &bpm, BPMSource: &source, KeyTonic: &tonic, KeyMode: &mode, KeySource: &source}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1137,16 +1136,20 @@ func TestValidTransitionKeyRejectsMalformedEffectiveKey(t *testing.T) {
 	validTonic := db.TrackAnalysis{Status: db.TrackAnalysisComplete, KeyTonic: intPointer(0), KeyMode: &major, KeySource: &measured}
 	inferred := "inferred"
 	untrusted := db.TrackAnalysis{Status: db.TrackAnalysisComplete, KeyTonic: intPointer(0), KeyMode: &major, KeySource: &inferred}
-	if validTransitionKey(invalidTonic, db.TrackAnalysisOverride{}) {
+	invalidTonic.SourceFingerprint = "current-source"
+	invalidMode.SourceFingerprint = "current-source"
+	validTonic.SourceFingerprint = "current-source"
+	untrusted.SourceFingerprint = "current-source"
+	if validTransitionKey(invalidTonic, db.TrackAnalysisOverride{}, "current-source") {
 		t.Fatal("out-of-range effective key was accepted")
 	}
-	if validTransitionKey(invalidMode, db.TrackAnalysisOverride{}) {
+	if validTransitionKey(invalidMode, db.TrackAnalysisOverride{}, "current-source") {
 		t.Fatal("unknown effective key mode was accepted")
 	}
-	if !validTransitionKey(validTonic, db.TrackAnalysisOverride{}) {
+	if !validTransitionKey(validTonic, db.TrackAnalysisOverride{}, "current-source") {
 		t.Fatal("valid measured effective key was rejected")
 	}
-	if validTransitionKey(untrusted, db.TrackAnalysisOverride{}) {
+	if validTransitionKey(untrusted, db.TrackAnalysisOverride{}, "current-source") {
 		t.Fatal("inferred effective key was accepted")
 	}
 }

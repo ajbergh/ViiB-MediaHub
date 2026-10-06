@@ -10,15 +10,20 @@ import (
 	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 	spotifyrefresh "github.com/ajbergh/viib-mediahub/internal/spotify/refresh"
+	"github.com/ajbergh/viib-mediahub/internal/spotify/waveform"
 	"github.com/go-chi/chi/v5"
 	"io"
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type spotifyCacheResponse struct {
+	ReadOnly    bool                       `json:"readOnly"`
+	Unverified  bool                       `json:"unverified"`
+	Provenance  string                     `json:"provenance"`
 	State       string                     `json:"state"`
 	Endpoint    string                     `json:"endpoint"`
 	Stale       bool                       `json:"stale"`
@@ -35,6 +40,32 @@ func spotifyCacheEndpoint(r *http.Request) (string, bool) {
 	return endpoint, endpoint == "audio_features" || endpoint == "audio_analysis"
 }
 func (a *API) getSpotifyAnalysisStatus(w http.ResponseWriter, r *http.Request) {
+	a.spotifyAuthMu.Lock()
+	runtime := a.spotifyAuth
+	a.spotifyAuthMu.Unlock()
+	if runtime != nil {
+		ctx, cancel := runtime.requestContext(r.Context())
+		defer cancel()
+		pending := false
+		err := runtime.withMetadataRead(ctx, func(fence db.SpotifyMetadataReadFence) error {
+			if !fence.Pending {
+				return nil
+			}
+			pending = true
+			if err := a.db.ValidateSpotifyMetadataRead(fence); err != nil {
+				return err
+			}
+			w.Header().Set("Cache-Control", "private, no-store")
+			respondJSON(w, map[string]any{"state": "owner_confirmation_pending", "configured": true, "connected": false, "cacheOnly": true, "readOnly": true, "unverified": true, "provenance": "spotify_private_cache"})
+			return nil
+		})
+		if pending {
+			if err != nil {
+				respondError(w, 503, "Spotify retained metadata unavailable")
+			}
+			return
+		}
+	}
 	a.spotifyAnalysisMu.RLock()
 	service := a.spotifyAnalysis
 	a.spotifyAnalysisMu.RUnlock()
@@ -51,34 +82,64 @@ func (a *API) getSpotifyAnalysisCache(w http.ResponseWriter, r *http.Request) {
 		respondError(w, 400, "Invalid Spotify recording or endpoint")
 		return
 	}
-	cache, err := a.db.GetExternalAnalysis(id, endpoint)
-	if err != nil {
-		respondError(w, 500, "Cannot read Spotify reference cache")
-		return
-	}
-	failure, err := a.db.GetExternalAnalysisStatus(id, endpoint)
-	if err != nil {
-		respondError(w, 500, "Cannot read Spotify reference status")
-		return
-	}
-	result := spotifyCacheResponse{State: "not_cached", Endpoint: endpoint, Cache: cache, LastFailure: failure}
-	now := time.Now()
-	if cache != nil {
-		result.State = "available"
-		result.Stale = !now.Before(cache.ExpiresAt)
-		age := int64(now.Sub(cache.Observation.RetrievedAt).Seconds())
-		if age < 0 {
-			age = 0
+	serve := func(fence *db.SpotifyMetadataReadFence) error {
+		var cache *db.ExternalAnalysisCache
+		var failure *db.ExternalAnalysisStatus
+		var err error
+		if fence != nil {
+			cache, err = a.db.GetExternalAnalysisForRuntime(*fence, id, endpoint)
+		} else {
+			cache, err = a.db.GetExternalAnalysis(id, endpoint)
 		}
-		result.AgeSeconds = &age
-		if failure != nil && !failure.CheckedAt.After(cache.Observation.RetrievedAt) {
-			result.LastFailure = nil
+		if err != nil {
+			return err
 		}
+		if fence != nil {
+			failure, err = a.db.GetExternalAnalysisStatusForRuntime(*fence, id, endpoint)
+		} else {
+			failure, err = a.db.GetExternalAnalysisStatus(id, endpoint)
+		}
+		if err != nil {
+			return err
+		}
+		result := spotifyCacheResponse{ReadOnly: true, Provenance: "spotify_private_cache", State: "not_cached", Endpoint: endpoint, Cache: cache, LastFailure: failure}
+		if fence != nil {
+			result.Unverified = fence.Pending
+		}
+		now := time.Now()
+		if cache != nil {
+			result.State = "available"
+			result.Stale = !now.Before(cache.ExpiresAt)
+			age := int64(now.Sub(cache.Observation.RetrievedAt).Seconds())
+			if age < 0 {
+				age = 0
+			}
+			result.AgeSeconds = &age
+			if failure != nil && !failure.CheckedAt.After(cache.Observation.RetrievedAt) {
+				result.LastFailure = nil
+			}
+		}
+		if cache == nil && failure != nil {
+			result.State = string(failure.Code)
+		}
+		w.Header().Set("Cache-Control", "private, no-store")
+		respondJSON(w, result)
+		return nil
 	}
-	if cache == nil && failure != nil {
-		result.State = string(failure.Code)
+	a.spotifyAuthMu.Lock()
+	runtime := a.spotifyAuth
+	a.spotifyAuthMu.Unlock()
+	var err error
+	if runtime == nil {
+		err = serve(nil)
+	} else {
+		ctx, cancel := runtime.requestContext(r.Context())
+		defer cancel()
+		err = runtime.withMetadataRead(ctx, func(fence db.SpotifyMetadataReadFence) error { return serve(&fence) })
 	}
-	respondJSON(w, result)
+	if err != nil {
+		respondError(w, 503, "Spotify reference cache unavailable")
+	}
 }
 func (a *API) getSpotifyRecordingLink(w http.ResponseWriter, r *http.Request) {
 	songID := chi.URLParam(r, "songID")
@@ -278,11 +339,127 @@ func (a *API) initSpotifyAnalysis() {
 		return
 	}
 	contract := spotifyauth.PinnedWebPlayerContract()
-	client := spotifyanalysis.NewClient(runtime, spotifyanalysis.Options{Enabled: true, AppVersion: contract.AppVersion})
-	service, err := spotifyrefresh.New(a.db, client, spotifyrefresh.Options{Enabled: true, AdapterRevision: contract.Revision})
+	runtime.mu.RLock()
+	accountContext := runtime.metadataContext
+	epoch := runtime.metadataEpoch
+	pending := runtime.pendingOwner != nil
+	runtime.mu.RUnlock()
+	if pending {
+		return
+	}
+	client := spotifyanalysis.NewClient(runtime, spotifyanalysis.Options{Enabled: true, AppVersion: contract.AppVersion, AccountContext: accountContext})
+	store := spotifyRuntimeRefreshStore{DB: a.db, fence: db.SpotifyMetadataFence{Epoch: epoch, ContextKey: accountContext}}
+	service, err := spotifyrefresh.New(store, client, spotifyrefresh.Options{Enabled: true, AdapterRevision: contract.Revision})
 	if err != nil {
 		logger.API("Could not initialize Spotify reference service")
 		return
 	}
 	a.spotifyAnalysis = service
+}
+
+// getSpotifyAnalysisArtifact serves a bounded, explicitly requested representation.
+// It performs no provider request and fences private data to the current account.
+func (a *API) getSpotifyAnalysisArtifact(w http.ResponseWriter, r *http.Request) {
+	endpoint, valid := spotifyCacheEndpoint(r)
+	if r.URL.Query().Get("endpoint") == "three_band_waveform" {
+		endpoint = "three_band_waveform"
+		valid = true
+	}
+	id := chi.URLParam(r, "trackID")
+	kind := r.URL.Query().Get("kind")
+	if kind == "" {
+		kind = "domain"
+		if endpoint == "three_band_waveform" {
+			kind = "spotify_three_band"
+		}
+	}
+	if !valid || !db.ValidSpotifyRecordingID(id) {
+		respondError(w, 400, "Invalid Spotify recording or endpoint")
+		return
+	}
+	switch kind {
+	case "domain", "bars", "beats", "tatums", "sections", "segments", "spotify_three_band":
+	default:
+		respondError(w, 400, "Invalid artifact kind")
+		return
+	}
+	runtime := a.spotifyTokens()
+	ctx, cancel := runtime.requestContext(r.Context())
+	defer cancel()
+	err := runtime.withMetadataRead(ctx, func(fence db.SpotifyMetadataReadFence) error {
+		var artifact *db.SpotifyAudioArtifact
+		var err error
+		if fence.Pending {
+			artifact, err = a.db.GetSpotifyAudioArtifactForRuntime(fence, id, endpoint, kind)
+		} else {
+			artifact, err = a.db.GetSpotifyActiveAudioArtifactForRuntime(db.SpotifyMetadataFence{Epoch: fence.Epoch, ContextKey: fence.ContextKey}, id, endpoint, kind)
+		}
+		if err != nil {
+			return err
+		}
+		if artifact == nil {
+			respondError(w, 404, "Spotify artifact not cached")
+			return nil
+		}
+		if endpoint == "three_band_waveform" {
+			decoded, err := waveform.DecodeDomain(artifact.Payload)
+			if err != nil {
+				return err
+			}
+			offset, limit := 0, 4096
+			if value := r.URL.Query().Get("offset"); value != "" {
+				offset, err = strconv.Atoi(value)
+				if err != nil {
+					respondError(w, 400, "Invalid waveform range")
+					return nil
+				}
+			}
+			if value := r.URL.Query().Get("limit"); value != "" {
+				limit, err = strconv.Atoi(value)
+				if err != nil {
+					respondError(w, 400, "Invalid waveform range")
+					return nil
+				}
+			}
+			if offset < 0 || limit <= 0 || limit > 10000 {
+				respondError(w, 400, "Invalid waveform range")
+				return nil
+			}
+			if offset > len(decoded.Lows) {
+				respondError(w, 416, "Waveform range unavailable")
+				return nil
+			}
+			end := offset + limit
+			if end > len(decoded.Lows) {
+				end = len(decoded.Lows)
+			}
+			etag := `"` + artifact.PayloadHash + "-" + strconv.Itoa(offset) + "-" + strconv.Itoa(limit) + `"`
+			if fence.Pending {
+				etag = strings.TrimSuffix(etag, `"`) + `-unverified"`
+			}
+			w.Header().Set("ETag", etag)
+			w.Header().Set("Cache-Control", "private, no-store")
+			if r.Header.Get("If-None-Match") == etag {
+				w.WriteHeader(http.StatusNotModified)
+				return nil
+			}
+			respondJSON(w, map[string]any{"readOnly": true, "unverified": fence.Pending, "provenance": "spotify_private_cache", "trackId": id, "representation": "spotify_three_band", "sampleRate": decoded.SampleRate, "windowMilliseconds": decoded.WindowMilliseconds, "totalSamples": len(decoded.Lows), "offset": offset, "lows": decoded.Lows[offset:end], "mids": decoded.Mids[offset:end], "highs": decoded.Highs[offset:end], "durationSeconds": decoded.DurationSeconds(), "normalization": "provider_native_int32", "retrievedAt": artifact.RetrievedAt, "stale": !time.Now().Before(artifact.ExpiresAt)})
+			return nil
+		}
+		etag := `"` + artifact.PayloadHash + `"`
+		if fence.Pending {
+			etag = strings.TrimSuffix(etag, `"`) + `-unverified"`
+		}
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Cache-Control", "private, no-store")
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return nil
+		}
+		respondJSON(w, map[string]any{"readOnly": true, "unverified": fence.Pending, "provenance": "spotify_private_cache", "trackId": id, "resource": endpoint, "kind": kind, "schemaVersion": artifact.SchemaVersion, "retrievedAt": artifact.RetrievedAt, "expiresAt": artifact.ExpiresAt, "stale": !time.Now().Before(artifact.ExpiresAt), "payload": json.RawMessage(artifact.Payload)})
+		return nil
+	})
+	if err != nil {
+		respondError(w, 503, "Spotify artifact unavailable")
+	}
 }

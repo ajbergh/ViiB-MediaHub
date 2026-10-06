@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
+	"github.com/ajbergh/viib-mediahub/internal/spotify/catalog"
 	"io"
 	"log"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
 	"github.com/ajbergh/viib-mediahub/internal/validation"
@@ -94,7 +96,7 @@ func (a *API) saveSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.db.SetSetting("spotify_credentials", string(credsJSON)); err != nil {
+	if err := a.spotifyTokens().replaceOAuthCredentials(string(credsJSON)); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to save credentials")
 		return
 	}
@@ -359,20 +361,53 @@ func (a *API) spotifyGetPlaylistByScraping(w http.ResponseWriter, r *http.Reques
 // GET /api/spotify/me
 // Response: Spotify user profile JSON (proxied from /v1/me)
 func (a *API) spotifyGetUserProfile(w http.ResponseWriter, r *http.Request) {
-	resp, err := a.doSpotifyRequest(r.Context(), http.MethodGet, "https://api.spotify.com/v1/me", nil, "")
+	runtime := a.spotifyTokens()
+	ctx, cancel := runtime.requestContext(r.Context())
+	defer cancel()
+	ctx = context.WithValue(ctx, spotifyOwnerBootstrapKey{}, true)
+	if err := runtime.ownerRateLimit(ctx); err != nil {
+		respondSpotifySessionError(w, err)
+		return
+	}
+	resp, err := a.doSpotifyRequest(ctx, http.MethodGet, "https://api.spotify.com/v1/me", nil, "")
 	if err != nil {
 		respondSpotifySessionError(w, err)
 		return
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		runtime.recordOwnerRateLimit(ctx, spotifyauth.RetryAfter(resp.Header.Get("Retry-After"), time.Now()))
+	}
+	var result json.RawMessage
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result); err != nil {
+		status := http.StatusBadGateway
+		if resp.StatusCode >= 400 {
+			status = resp.StatusCode
+		}
+		if retry := resp.Header.Get("Retry-After"); retry != "" {
+			w.Header().Set("Retry-After", retry)
+		}
+		respondError(w, status, "Cannot read Spotify profile")
+		return
+	}
+	if resp.StatusCode == http.StatusOK {
+		var profile struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(result, &profile) == nil && profile.ID != "" && len(profile.ID) <= 256 {
+			if err := runtime.confirmProfileOwner(ctx, profile.ID); err != nil {
+				respondSpotifySessionError(w, err)
+				return
+			}
+			a.initSpotifyAnalysis()
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	if retry := resp.Header.Get("Retry-After"); retry != "" {
 		w.Header().Set("Retry-After", retry)
 	}
 	w.WriteHeader(resp.StatusCode)
-	var result json.RawMessage
-	json.NewDecoder(resp.Body).Decode(&result)
 	json.NewEncoder(w).Encode(result)
 }
 
@@ -1558,6 +1593,27 @@ type spotifyPlaylistItem struct {
 func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playlistName *string) ([]PlaylistTrackInfo, string, string, error) {
 	ctx, cancel := a.spotifyTokens().requestContext(ctx)
 	defer cancel()
+	if err := a.spotifyTokens().ensureMetadataOwner(ctx); err != nil {
+		return nil, "", "", err
+	}
+	release, err := a.spotifyTokens().acquirePlaylistTraversal(ctx, playlistID)
+	if err != nil {
+		return nil, "", "", err
+	}
+	defer release()
+	runtime := a.spotifyTokens()
+	var traversal db.SpotifyPlaylistTraversal
+	// Metadata persistence remains optional for the consumer, but a failed owner
+	// acquisition must never permit unguarded checkpoint/page writes.
+	_ = runtime.withAccount(ctx, func() error {
+		var err error
+		traversal, err = a.db.BeginSpotifyPlaylistTraversalForRuntime(db.SpotifyMetadataFence{Epoch: runtime.metadataEpoch, ContextKey: runtime.metadataContext}, playlistID)
+		return err
+	})
+	ctx = context.WithValue(ctx, playlistTraversalContextKey{}, traversal)
+	publicationCtx := ctx
+	capture := &catalogCaptureBuffer{}
+	ctx = context.WithValue(ctx, catalogCaptureKey{}, capture)
 	resp, err := a.doSpotifyRequest(ctx, http.MethodGet, fmt.Sprintf("https://api.spotify.com/v1/playlists/%s", playlistID), nil, "")
 	if err != nil {
 		return nil, "", "", err
@@ -1583,17 +1639,53 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 			Width  int    `json:"width"`
 		} `json:"images"`
 		Tracks struct {
-			Items []spotifyPlaylistItem `json:"items"`
-			Next  string                `json:"next"`
+			Offset int                   `json:"offset"`
+			Items  []spotifyPlaylistItem `json:"items"`
+			Next   string                `json:"next"`
 		} `json:"tracks"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&playlist); err != nil {
 		return nil, "", "", err
 	}
+	if playlist.Tracks.Offset != 0 {
+		return nil, "", "", fmt.Errorf("spotify playlist initial page did not start at zero")
+	}
 	playlistItems := playlist.Tracks.Items
+	if playlist.SnapshotID != nil {
+		if rows, ok := a.completedPlaylistRows(ctx, playlistID, *playlist.SnapshotID); ok {
+			playlistItems = rows
+			playlist.Tracks.Next = ""
+		} else if partial, ok := a.loadPlaylistPartial(ctx, playlistID, *playlist.SnapshotID); ok {
+			playlistItems = partial.Items
+			playlist.Tracks.Next = partial.Next
+			capture.add(partial.Entities)
+		}
+	}
+	expectedOffset := len(playlistItems)
+	requirePageRevision := a.spotifyTokens().status().Provider == "webplayer"
+	if playlist.Tracks.Next != "" && (playlist.SnapshotID == nil || *playlist.SnapshotID == "") {
+		return nil, "", "", fmt.Errorf("spotify playlist revision unavailable")
+	}
+	savePrefix := func(next string) {
+		if playlist.SnapshotID == nil || next == "" {
+			return
+		}
+		if entities, ok := capture.snapshot(); ok {
+			a.savePlaylistPartial(publicationCtx, playlistID, playlistPartialCheckpoint{Revision: *playlist.SnapshotID, Next: next, NextOffset: len(playlistItems), Items: playlistItems, Entities: entities})
+		}
+	}
+	savePrefix(playlist.Tracks.Next)
 	seenPages := map[string]bool{}
 	for next := playlist.Tracks.Next; next != ""; {
+		target, parseErr := url.Parse(next)
+		if parseErr != nil || target.Scheme != "https" || target.Host != "api.spotify.com" || target.User != nil || target.Fragment != "" || target.Path != "/v1/playlists/"+playlistID+"/tracks" {
+			return nil, "", "", fmt.Errorf("invalid spotify playlist page URL")
+		}
+		requestOffset, offsetErr := strconv.Atoi(target.Query().Get("offset"))
+		if offsetErr != nil || requestOffset != expectedOffset {
+			return nil, "", "", fmt.Errorf("spotify playlist page position did not advance")
+		}
 		if seenPages[next] {
 			return nil, "", "", fmt.Errorf("spotify playlist pagination did not advance")
 		}
@@ -1608,6 +1700,7 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 		}
 		var page struct {
 			SnapshotID *string               `json:"snapshot_id"`
+			Offset     *int                  `json:"offset"`
 			Items      []spotifyPlaylistItem `json:"items"`
 			Next       string                `json:"next"`
 		}
@@ -1616,11 +1709,43 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 		if decodeErr != nil {
 			return nil, "", "", decodeErr
 		}
+		if page.Offset == nil || *page.Offset != expectedOffset || (page.Next != "" && len(page.Items) == 0) {
+			return nil, "", "", fmt.Errorf("spotify playlist page position mismatch")
+		}
+		expectedOffset += len(page.Items)
+		if requirePageRevision && (page.SnapshotID == nil || *page.SnapshotID == "") {
+			return nil, "", "", fmt.Errorf("spotify playlist page revision unavailable")
+		}
 		if playlist.SnapshotID != nil && page.SnapshotID != nil && *playlist.SnapshotID != *page.SnapshotID {
 			return nil, "", "", fmt.Errorf("spotify playlist changed while loading")
 		}
 		playlistItems = append(playlistItems, page.Items...)
 		next = page.Next
+		savePrefix(next)
+	}
+
+	// REST pages lack an atomic snapshot parameter. Revalidate the root after
+	// traversal and reject changed/missing revisions before publishing any capture.
+	if !requirePageRevision && len(seenPages) > 0 {
+		check, err := a.doSpotifyRequest(ctx, http.MethodGet, fmt.Sprintf("https://api.spotify.com/v1/playlists/%s?fields=snapshot_id", playlistID), nil, "")
+		if err != nil {
+			return nil, "", "", err
+		}
+		if check.StatusCode != http.StatusOK {
+			check.Body.Close()
+			return nil, "", "", spotifyDownloadResponseError(check)
+		}
+		var latest struct {
+			SnapshotID *string `json:"snapshot_id"`
+		}
+		decodeErr := json.NewDecoder(check.Body).Decode(&latest)
+		check.Body.Close()
+		if decodeErr != nil {
+			return nil, "", "", decodeErr
+		}
+		if latest.SnapshotID == nil || *latest.SnapshotID == "" || playlist.SnapshotID == nil || *latest.SnapshotID != *playlist.SnapshotID {
+			return nil, "", "", fmt.Errorf("spotify playlist changed while loading")
+		}
 	}
 
 	// Get the largest playlist image URL (first one is usually the largest)
@@ -1649,6 +1774,21 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 		})
 	}
 
+	if ctx.Err() != nil {
+		return nil, "", "", ctx.Err()
+	}
+	if playlist.SnapshotID != nil {
+		capture.add(completedPlaylistCapture(playlistID, *playlist.SnapshotID, playlistItems))
+	}
+	if playlist.SnapshotID != nil && *playlist.SnapshotID != "" {
+		marker, _ := json.Marshal(map[string]any{"complete": true, "revision": *playlist.SnapshotID, "generation": traversal.Generation})
+		capture.add([]catalog.CapturedEntity{{EntityType: "playlist", ID: playlistID, Resource: playlistPartialResource, Payload: marker}})
+	}
+	if entities, ok := capture.snapshot(); ok {
+		if err := a.spotifyTokens().persistCatalogDomainResult(publicationCtx, entities); err == db.ErrSpotifyTraversalSuperseded || err == db.ErrSpotifyMetadataRuntimeSuperseded || err == spotifyauth.ErrAuthenticationRequired {
+			return nil, "", "", err
+		}
+	}
 	return tracks, playlist.Name, imageURL, nil
 }
 

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getEnergy: vi.fn(),
   getRecommendations: vi.fn(),
   state: {
+    spotifySessionGeneration: 0,
     djDeckA: { hotCues: [], analysisStatus: 'not_analyzed', track: null, duration: 0, position: 0, isPlaying: false },
     djDeckB: { hotCues: [], analysisStatus: 'not_analyzed', track: null, duration: 0, position: 0, isPlaying: false },
     djMixer: { crossfader: 0, masterCueEnabled: false, autoGainA: false, autoGainB: false },
@@ -78,6 +79,8 @@ describe('DJEnergyInsights energy response normalization', () => {
 
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    mocks.state.spotifySessionGeneration = 0;
+    mocks.state.djDeckA.analysisStatus = 'not_analyzed';
     mocks.getEnergy.mockReset().mockResolvedValue({
       songId: 'song', integratedLufs: -12, truePeakDbfs: -1, energy: null, sections: null,
       cueSuggestions: null, algorithmVersion: 'energy-structure-v1',
@@ -91,6 +94,7 @@ describe('DJEnergyInsights energy response normalization', () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    vi.useRealTimers();
   });
 
   it('renders an analyzed track when energy, section, and cue arrays are missing', async () => {
@@ -111,4 +115,68 @@ describe('DJEnergyInsights energy response normalization', () => {
     expect(container.textContent).toContain('0 advisory cues');
     expect(container.querySelector('[aria-label="Measured track energy"]')).not.toBeNull();
   });
+  it('rejects an old session response before React effect cleanup and reloads for the new generation', async () => {
+    let settle!: (value: unknown) => void;
+    mocks.getRecommendations.mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
+    mocks.state.djDeckA.analysisStatus = 'available';
+    await act(async () => { root.render(<DJEnergyInsights trackID="song" deck="A" />); });
+    expect(mocks.getRecommendations).toHaveBeenCalledTimes(1);
+    // Change the authoritative store before rendering the subscription update.
+    mocks.state.spotifySessionGeneration = 1;
+    await act(async () => { settle({ recommendations: [{ title: 'Old account candidate' }] }); });
+    expect(container.textContent).not.toContain('Old account candidate');
+    await act(async () => { root.render(<DJEnergyInsights trackID="song" deck="A" />); });
+    expect(mocks.getRecommendations).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('0 advisory cues');
+  });
+
+  it('re-arms score expiry timers beyond the browser timeout maximum', async () => {
+    const maxDelay = 2_147_483_647;
+    const start = new Date('2026-10-06T12:00:00.000Z');
+    const expiry = new Date(start.getTime() + maxDelay * 2 + 1000).toISOString();
+    vi.useFakeTimers();
+    vi.setSystemTime(start);
+    mocks.state.djDeckB.analysisStatus = 'available';
+    mocks.getRecommendations
+      .mockResolvedValueOnce({ songId: 'song', recommendations: [] })
+      .mockResolvedValueOnce({
+        songId: 'song', intent: 'hold', algorithmVersion: 'fixture', filters: {},
+        candidatesBeforeFilters: 1, candidatesAfterFilters: 1,
+        recommendations: [{
+          songId: 'candidate', title: 'Long-lived candidate', artist: 'Fixture', score: 0.8,
+          filterEvidence: { spotifyScoreMetric: 'energy', spotifyScore: {
+            value: 0.5, stale: false, expiresAt: expiry, retrievedAt: start.toISOString(), endpoint: 'audio_features',
+          } },
+        }],
+      })
+      .mockResolvedValue({ songId: 'song', recommendations: [] });
+
+    await act(async () => {
+      root.render(<DJEnergyInsights trackID="song" />);
+      await Promise.resolve();
+    });
+    const metric = container.querySelector('[aria-label="Mix Next Spotify score"]') as HTMLSelectElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(metric, 'energy');
+      metric.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mocks.getRecommendations).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('Recommended next: Long-lived candidate');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(maxDelay); });
+    expect(container.textContent).toContain('Recommended next: Long-lived candidate');
+    expect(container.textContent).not.toContain('Spotify score evidence expired');
+    expect(mocks.getRecommendations).toHaveBeenCalledTimes(2);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(maxDelay); });
+    expect(container.textContent).toContain('Recommended next: Long-lived candidate');
+    expect(mocks.getRecommendations).toHaveBeenCalledTimes(2);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1001); });
+    expect(container.textContent).toContain('Spotify score evidence expired. Updating candidates');
+    expect(mocks.getRecommendations).toHaveBeenCalledTimes(3);
+  });
+
 });

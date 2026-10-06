@@ -1,3 +1,4 @@
+import { PROVIDER_SCORE_OPTIONS } from '../../../lib/djProviderScores';
 /**
  * Displays energy/structure analysis and manages advisory transition and test-mix preview
  * workflows.
@@ -11,6 +12,7 @@ import { canAcceptMixNextCandidate, stillOwnsMixNextAcceptance, type MixNextAcce
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { api, normalizeTrackEnergyFeatures, type TrackBeatGrid, type TrackEnergyFeatures, type TrackTransitionRecommendations, type TransitionIntent, type TransitionRecommendationFilters } from '../../../services/api';
 import { describeTestMixPhaseEvidence } from '../../../lib/testMixPhaseReadiness';
+import { DJMixNextPlaylist } from './DJMixNextPlaylist';
 import { DJSavedMixIdeas } from './DJSavedMixIdeas';
 import type { DeckState } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
@@ -78,13 +80,21 @@ function copyDeckSnapshot(deck: DeckState): DeckState {
 // analysis output into a DJ's hot cues until the DJ accepts a specific cue.
 export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const [features, setFeatures] = useState<TrackEnergyFeatures | null>(null);
-  const [recommendations, setRecommendations] = useState<TrackTransitionRecommendations | null>(null);
+  const spotifySession = useStore(state => state.spotifySessionGeneration);
+  const [recommendationSession, setRecommendationSession] = useState(spotifySession);
+  const [storedRecommendations, setRecommendations] = useState<TrackTransitionRecommendations | null>(null);
+  const recommendations = recommendationSession === spotifySession ? storedRecommendations : null;
   const [candidatePhaseGrid, setCandidatePhaseGrid] = useState<{ trackId: string; grid: TrackBeatGrid | null; loaded: boolean } | null>(null);
   const [intent, setIntent] = useState<TransitionIntent>('hold');
   const [minBpm, setMinBpm] = useState('');
   const [maxBpm, setMaxBpm] = useState('');
   const [minEnergy, setMinEnergy] = useState('');
   const [maxEnergy, setMaxEnergy] = useState('');
+  const [scoreRevision, setScoreRevision] = useState(0);
+  const [scoreExpiryMessage, setScoreExpiryMessage] = useState('');
+  const [spotifyMetric, setSpotifyMetric] = useState('');
+  const [minSpotify, setMinSpotify] = useState('');
+  const [maxSpotify, setMaxSpotify] = useState('');
   const [stemsOnly, setStemsOnly] = useState(false);
   const [camelotOnly, setCamelotOnly] = useState(false);
   const [playlistIds, setPlaylistIds] = useState<string[]>([]);
@@ -115,6 +125,9 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const autoGainEnabled = useStore(state => previewDeckID === 'A' ? state.djMixer.autoGainA : state.djMixer.autoGainB);
   const progressRef = useRef<HTMLDivElement>(null);
   const filters: TransitionRecommendationFilters = {
+    ...(spotifyMetric ? { spotifyScoreMetric: spotifyMetric,
+      ...(minSpotify !== '' ? { minSpotifyScore: Number(minSpotify) } : {}),
+      ...(maxSpotify !== '' ? { maxSpotifyScore: Number(maxSpotify) } : {}) } : {}),
     ...(minBpm !== '' ? { minBpm: Number(minBpm) } : {}),
     ...(maxBpm !== '' ? { maxBpm: Number(maxBpm) } : {}),
     ...(minEnergy !== '' ? { minEnergyLevel: Number(minEnergy) } : {}),
@@ -129,7 +142,8 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const energyValuesValid = [minEnergy, maxEnergy].every(value => value === '' || (Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 10));
   const minBpmValid = minBpm === '' || maxBpm === '' || Number(minBpm) <= Number(maxBpm);
   const minEnergyValid = minEnergy === '' || maxEnergy === '' || Number(minEnergy) <= Number(maxEnergy);
-  const filtersValid = bpmValuesValid && energyValuesValid && minBpmValid && minEnergyValid;
+  const spotifyValid = !spotifyMetric || ([minSpotify, maxSpotify].every(value => value === '' || (Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 1)) && (minSpotify === '' || maxSpotify === '' || Number(minSpotify) <= Number(maxSpotify)));
+  const filtersValid = bpmValuesValid && energyValuesValid && minBpmValid && minEnergyValid && spotifyValid;
 
   useEffect(() => {
     if (!features || !deck) return;
@@ -167,11 +181,51 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   useEffect(() => {
     let live = true;
     setRecommendations(null);
+    const generation = spotifySession;
     if (trackID && analysisStatus === 'available' && filtersValid) {
-      api.getTrackTransitionRecommendations(trackID, 3, intent, filters).then(value => live && setRecommendations(value)).catch(() => {});
+      api.getTrackTransitionRecommendations(trackID, 3, intent, filters).then(value => {
+        if (!live || useStore.getState().spotifySessionGeneration !== generation) return;
+        const eligible = !spotifyMetric ? value.recommendations : value.recommendations.filter(candidate => {
+          const evidence = candidate.filterEvidence;
+          const score = evidence.spotifyScore;
+          return evidence.spotifyScoreMetric === spotifyMetric && score && !score.stale
+            && Number.isFinite(score.value) && score.value >= 0 && score.value <= 1
+            && Date.parse(score.expiresAt) > Date.now()
+            && (minSpotify === '' || score.value >= Number(minSpotify))
+            && (maxSpotify === '' || score.value <= Number(maxSpotify));
+        });
+        setRecommendationSession(generation);
+        setRecommendations({ ...value, recommendations: eligible });
+      }).catch(() => {});
     }
     return () => { live = false; };
-  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistIds, genre, notRecentlyPlayedHours, filtersValid]);
+  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistIds, genre, notRecentlyPlayedHours, spotifyMetric, minSpotify, maxSpotify, filtersValid, scoreRevision, spotifySession]);
+
+  useEffect(() => {
+    setScoreExpiryMessage('');
+  }, [trackID, spotifyMetric, minSpotify, maxSpotify, spotifySession]);
+
+  useEffect(() => {
+    if (!spotifyMetric || !recommendations) return;
+    let deadline = Infinity;
+    for (const candidate of recommendations.recommendations) {
+      const expiry = Date.parse(candidate.filterEvidence.spotifyScore?.expiresAt ?? '');
+      if (Number.isFinite(expiry)) deadline = Math.min(deadline, expiry);
+    }
+    if (!Number.isFinite(deadline)) return;
+    let timer: number;
+    const settle = () => {
+      if (Date.now() < deadline) {
+        timer = window.setTimeout(settle, Math.min(2147483647, deadline - Date.now() + 1));
+        return;
+      }
+      setRecommendations(null);
+      setScoreExpiryMessage('Spotify score evidence expired. Updating candidates; review your playlist selection again.');
+      setScoreRevision(value => value + 1);
+    };
+    timer = window.setTimeout(settle, Math.max(1, Math.min(2147483647, deadline - Date.now() + 1)));
+    return () => window.clearTimeout(timer);
+  }, [recommendations, spotifyMetric]);
 
   const phaseCandidateId = recommendations?.recommendations[0]?.songId ?? null;
   useEffect(() => {
@@ -598,13 +652,23 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
           className="w-12 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]" />
       </label>
       <label className="inline-flex items-center gap-1" title="Inclusive Energy Level range (1–10); candidates without a score are excluded">
-        <span>Energy</span>
+        <span>Local energy /10</span>
         <input aria-label="Minimum Energy Level" type="number" min={1} max={10} step={1} value={minEnergy} onChange={event => setMinEnergy(event.target.value)} placeholder="min"
           className="w-9 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]" />
         <span>–</span>
         <input aria-label="Maximum Energy Level" type="number" min={1} max={10} step={1} value={maxEnergy} onChange={event => setMaxEnergy(event.target.value)} placeholder="max"
           className="w-9 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1 text-[var(--dj-text-primary)]" />
       </label>
+      <div className="flex flex-wrap items-center gap-1">
+        <label>Spotify score /1 <select aria-label="Mix Next Spotify score" value={spotifyMetric} onChange={event => setSpotifyMetric(event.target.value)} className="rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1">
+          <option value="">Off</option>{PROVIDER_SCORE_OPTIONS.map(metric => <option key={metric} value={metric}>{metric}</option>)}
+        </select></label>
+        {spotifyMetric && <>
+          <input aria-label="Minimum Spotify score" type="number" min={0} max={1} step="0.01" value={minSpotify} onChange={event => setMinSpotify(event.target.value)} placeholder="min" className="w-14 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1" />
+          <span>–</span><input aria-label="Maximum Spotify score" type="number" min={0} max={1} step="0.01" value={maxSpotify} onChange={event => setMaxSpotify(event.target.value)} placeholder="max" className="w-14 rounded border border-[var(--dj-border-light)] bg-[var(--dj-bg)] px-1" />
+          <span>Fresh verified scores only; missing scores excluded. Local transition ranking stays in effect.</span>
+        </>}
+      </div>
       <label className="inline-flex items-center gap-1" title="Only include candidates with a registered ready stem set">
         <input aria-label="Stems available only" type="checkbox" checked={stemsOnly} onChange={event => setStemsOnly(event.target.checked)} />
         <span>Stems</span>
@@ -639,7 +703,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         </select>
         <span>hours</span>
       </label>
-      {!filtersValid && <span role="status" className="text-[var(--dj-warning)]">Check ranges: BPM 60–190; Energy Level 1–10; minimum must not exceed maximum.</span>}
+      {!filtersValid && <span role="status" className="text-[var(--dj-warning)]">Check ranges: BPM 60–190; Energy Level 1–10; Spotify scores 0–1; minimum must not exceed maximum.</span>}
       {features.cueSuggestions.slice(0, 3).map((cue, index) => {
         const accepted = hotCues.some(hotCue => Math.abs(hotCue.position - cue.position) < .01);
         return <button key={`${cue.kind}-${index}`} disabled={!deck || accepted} onClick={() => acceptCue(cue.position, cue.kind)} title={cue.rationale}
@@ -668,13 +732,16 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         {previewMessage && <span role="status">{previewMessage}</span>}
       </div>
       <ul className="mt-1 space-y-0.5 pl-3">
+        {top.filterEvidence.spotifyScore && <li>Spotify {top.filterEvidence.spotifyScoreMetric}: {top.filterEvidence.spotifyScore.value.toFixed(2)} /1 · {top.filterEvidence.spotifyScore.endpoint} · retrieved {new Date(top.filterEvidence.spotifyScore.retrievedAt).toLocaleString()}. This score does not establish beat alignment.</li>}
         {top.filterEvidence.lastPlayed !== undefined && <li>Last completed play: {top.filterEvidence.lastPlayed ? new Date(top.filterEvidence.lastPlayed).toLocaleString() : 'never recorded'}</li>}
         {(Array.isArray(top.components) ? top.components : []).map(component => <li key={component.name} title={component.rationale}>
           {component.name}: {Math.round(component.score * 100)}% — {component.rationale}
         </li>)}
       </ul>
     </details>}
+    {sourceTrack && recommendations && recommendations.songId === sourceTrack.id && <DJMixNextPlaylist key={`${sourceTrack.id}:${recommendations.intent}`} referenceId={sourceTrack.id} referenceTitle={sourceTrack.title} candidates={recommendations.recommendations} />}
     <DJSavedMixIdeas currentIdea={currentMixIdea} />
+    {scoreExpiryMessage && <p role="status" className="mt-1 text-[var(--dj-text-secondary)]">{scoreExpiryMessage}</p>}
     {recommendations && recommendations.candidatesAfterFilters === 0 && <p role="status" className="mt-1 text-[var(--dj-text-secondary)]">
       No analyzed candidates match these filters ({recommendations.candidatesBeforeFilters} checked).
     </p>}

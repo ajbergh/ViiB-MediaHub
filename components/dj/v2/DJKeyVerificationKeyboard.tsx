@@ -90,6 +90,7 @@ export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: D
 
   const save = async () => {
     if (!trackID || busy) return;
+    if (!feature?.sourceFingerprint) { setStatus('Reload key details before editing this source.'); return; }
     if (useStore.getState()[deckKey].track?.id !== trackID) {
       setStatus('Key edit ignored because the deck loaded a different track.');
       return;
@@ -98,7 +99,7 @@ export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: D
     setBusy(true);
     setStatus('');
     try {
-      const saved = await api.updateTrackKey(trackID, { tonic: selectedTonic, mode: selectedMode });
+      const saved = await api.updateTrackKey(trackID, { tonic: selectedTonic, mode: selectedMode }, feature.sourceFingerprint);
       if (generation !== actionGenerationRef.current || useStore.getState()[deckKey].track?.id !== trackID) return;
       setFeature(saved);
       if (updateDeckKey(saved)) setStatus(`Saved ${saved.key ?? 'manual key'} for this track.`);
@@ -113,6 +114,7 @@ export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: D
 
   const reset = async () => {
     if (!trackID || busy) return;
+    if (!feature?.sourceFingerprint) { setStatus('Reload key details before editing this source.'); return; }
     if (useStore.getState()[deckKey].track?.id !== trackID) {
       setStatus('Key reset ignored because the deck loaded a different track.');
       return;
@@ -121,7 +123,7 @@ export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: D
     setBusy(true);
     setStatus('');
     try {
-      const measured = await api.resetTrackKey(trackID);
+      const measured = await api.resetTrackKey(trackID, feature.sourceFingerprint);
       if (generation !== actionGenerationRef.current || useStore.getState()[deckKey].track?.id !== trackID) return;
       setFeature(measured);
       setSelectedTonic(measured.keyTonic ?? 0);

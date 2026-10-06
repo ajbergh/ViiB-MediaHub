@@ -5,12 +5,50 @@ import type { DJHotCue } from './api';
 // Resolved server-side analysis for DJ display and timing. `bpm` deliberately
 // excludes legacy AI estimates, and `syncAllowed` is true only for manual or
 // audio-measured tempo. Spotify scalar tempo is displayable but supplies no beat phase.
+export interface SpotifyScalarField {
+  key: string;
+  metric: string;
+  units: string;
+  value: number | { tonic: number; mode: number; modeConfidence?: number };
+  confidence?: number;
+  endpoint: 'audio_features' | 'audio_analysis';
+  schemaVersion: number;
+  adapterRevision: string;
+  retrievedAt: string;
+  expiresAt: string;
+  stale: boolean;
+}
+
 export interface TrackAnalysisFeature {
+  providerScores?: Record<string, { value: number; stale: boolean; retrievedAt: string; expiresAt: string; endpoint: 'audio_features' | 'audio_analysis' }>;
+  providerScoresUnverified?: boolean;
+  providerScalars?: {
+    readOnly?: boolean;
+    unverified?: boolean;
+    provenance?: 'spotify_private_cache';
+    recordingId: string;
+    sourceFingerprint: string;
+    fields: SpotifyScalarField[];
+    attempts: Array<{
+      key: string;
+      endpoint: 'audio_features' | 'audio_analysis';
+      state: 'available' | 'not_returned' | 'invalid_field';
+      reason?: string;
+      checkedAt: string;
+      adapterRevision: string;
+    }>;
+    selected: SpotifyScalarField[];
+    selectionPolicy: 'fresh_then_newest_v1';
+  };
   songId: string;
   status: 'pending' | 'running' | 'complete' | 'partial' | 'failed' | 'unsupported';
   analyzedAt?: number;
   bpm?: number;
   bpmConfidence?: number;
+  measuredBpm?: number;
+  measuredBpmConfidence?: number;
+  measuredKeyConfidence?: number;
+  localAlgorithmVersion?: string;
   bpmAltCandidate?: number;
   tempoStability?: number;
   tempoKind?: string;
@@ -196,6 +234,9 @@ export interface TransitionComponent {
 }
 
 export interface TransitionRecommendationFilters {
+  spotifyScoreMetric?: string;
+  minSpotifyScore?: number;
+  maxSpotifyScore?: number;
   minBpm?: number;
   maxBpm?: number;
   minEnergyLevel?: number;
@@ -209,6 +250,8 @@ export interface TransitionRecommendationFilters {
 }
 
 export interface TransitionCandidateFilterEvidence {
+  spotifyScoreMetric?: string;
+  spotifyScore?: { value: number; retrievedAt: string; expiresAt: string; endpoint: string; stale: boolean };
   bpm?: number;
   energyLevel?: number;
   stemsAvailable?: boolean;

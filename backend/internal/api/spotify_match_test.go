@@ -94,8 +94,11 @@ func TestSpotifySearchEnrichmentBindsAndReusesRecording(t *testing.T) {
 					return spotifyanalysis.Observation{}, &spotifyanalysis.Error{Code: spotifyanalysis.AnalysisUnavailable}
 				}
 				bpm := 123.456
-				return spotifyanalysis.Observation{TrackID: id, Source: "spotify_internal", SourceEndpoint: endpoint, RetrievedAt: time.Now().UTC(), BPM: &bpm}, nil
+				return spotifyanalysis.Observation{AccountContext: "api-fixture", TrackID: id, Source: "spotify_internal", SourceEndpoint: endpoint, RetrievedAt: time.Now().UTC(), BPM: &bpm}, nil
 			}}
+			if err := a.db.ActivateSpotifyMetadataContext("api-fixture"); err != nil {
+				t.Fatal(err)
+			}
 			service, err := spotifyrefresh.New(a.db, provider, spotifyrefresh.Options{Enabled: true, AdapterRevision: "fixture"})
 			if err != nil {
 				t.Fatal(err)

@@ -382,7 +382,13 @@ func (d *DB) migrate() error {
 	if err := d.migrateColumns(); err != nil {
 		return err
 	}
-	return d.EnsureExternalTrackAnalysisSchema()
+	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	if err := d.EnsureSpotifyMetadataSchema(); err != nil {
+		return err
+	}
+	return d.ActivateSpotifyMetadataContext("")
 }
 
 // migrateColumns adds new columns to existing tables if they don't exist.
@@ -5084,6 +5090,18 @@ func (d *DB) ClearDJHotCueSuppression(songID string, slot int) error {
 // locked rows. Existing analysis rows are only replaced in refresh mode, and
 // matching deletion tombstones always win.
 func (d *DB) ApplyGeneratedDJHotCues(songID string, cues []DJHotCue, mode GeneratedCueMode) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := applyGeneratedDJHotCuesTx(tx, songID, cues, mode); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func applyGeneratedDJHotCuesTx(tx *sql.Tx, songID string, cues []DJHotCue, mode GeneratedCueMode) error {
 	if songID == "" || (mode != GeneratedCueFillEmpty && mode != GeneratedCueReplaceGenerated && mode != GeneratedCueSelectedOnly) {
 		return fmt.Errorf("generated cues require a song ID and valid apply mode")
 	}
@@ -5097,11 +5115,6 @@ func (d *DB) ApplyGeneratedDJHotCues(songID string, cues []DJHotCue, mode Genera
 		}
 		seen[cue.Slot] = struct{}{}
 	}
-	tx, err := d.conn.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
 	if mode == GeneratedCueReplaceGenerated {
 		eligible := make(map[int]string, len(cues))
 		for _, cue := range cues {
@@ -5164,14 +5177,14 @@ func (d *DB) ApplyGeneratedDJHotCues(songID string, cues []DJHotCue, mode Genera
 			}
 			continue
 		}
-		_, err = tx.Exec(`INSERT INTO dj_hot_cues(song_id, slot, position, label, color, origin, generator_version, confidence, kind, locked, rationale, source_fingerprint, downbeat_aligned, updated_at, created_at)
+		_, err := tx.Exec(`INSERT INTO dj_hot_cues(song_id, slot, position, label, color, origin, generator_version, confidence, kind, locked, rationale, source_fingerprint, downbeat_aligned, updated_at, created_at)
 			VALUES (?, ?, ?, ?, ?, 'analysis', ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
 			songID, cue.Slot, cue.Position, cue.Label, cue.Color, cue.GeneratorVersion, cue.Confidence, nullableCueText(cue.Kind), nullableCueText(cue.Rationale), nullableCueText(cue.SourceFingerprint), boolToInt(cue.DownbeatAligned), time.Now().UnixMilli(), time.Now().Unix())
 		if err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func nullableCueText(value string) any {

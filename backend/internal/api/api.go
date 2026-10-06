@@ -144,7 +144,7 @@ func New(database *db.DB, dataDir string) *API {
 
 	api.spotifyTokens()
 	api.initSpotifyAnalysis()
-	dm.spotifyFeatures = api.spotifyTrackFeatures
+	dm.spotifyFeatures = api.spotifyDownloadFeatures
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()
@@ -255,7 +255,9 @@ func (a *API) Routes() chi.Router {
 	r.Post("/spotify/proxy", a.spotifyProxy)
 	r.Get("/spotify/analysis/status", a.getSpotifyAnalysisStatus)
 	r.Get("/spotify/analysis/{trackID}", a.getSpotifyAnalysisCache)
+	r.Get("/spotify/analysis/{trackID}/artifact", a.getSpotifyAnalysisArtifact)
 	r.Post("/spotify/analysis/{trackID}/refresh", a.refreshSpotifyAnalysis)
+	r.Post("/spotify/analysis/{trackID}/waveform/refresh", a.refreshSpotifyWaveform)
 	r.Delete("/spotify/analysis/session", a.disconnectSpotifyAnalysis)
 	r.Get("/spotify/auth/status", a.getSpotifyAuthStatus)
 	r.Post("/spotify/auth/refresh", a.refreshSpotifyAuth)

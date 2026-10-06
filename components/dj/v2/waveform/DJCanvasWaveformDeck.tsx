@@ -1,3 +1,5 @@
+import { api } from '../../../../services/api';
+import { loadLocalThreeBand, type LocalThreeBand } from '../../../../services/localThreeBand';
 /**
  * One deck's scrolling waveform lane rendered with Canvas 2D.
  *
@@ -8,7 +10,7 @@
  * @module components/dj/v2/waveform/DJCanvasWaveformDeck
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '../../../../store';
 import { useWaveformScratch } from '../../../../hooks/useWaveformScratch';
 import { useDJAudioEngineActions } from '../../../../hooks/useDJAudioEngine';
@@ -18,12 +20,27 @@ import { drawMainWaveform, timeAtLaneX } from './canvasWaveformRenderer';
 import type { WaveformColorMode } from './waveformPalette';
 
 interface DJCanvasWaveformDeckProps {
+  localBands?: boolean;
   deck: DeckId;
   visibleSeconds: number;
   colorMode: WaveformColorMode;
 }
 
-export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ deck, visibleSeconds, colorMode }: DJCanvasWaveformDeckProps) {
+export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ deck, visibleSeconds, colorMode, localBands = false }: DJCanvasWaveformDeckProps) {
+  const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
+  const [bands,setBands] = useState<{track: typeof track; overview: LocalThreeBand['overview']; peak: number}>();
+  useEffect(()=>{
+   let active=true;setBands(undefined);
+   if(localBands && track) void (async()=>{
+    const metadata=await api.getTrackAnalysisFeature(track.id);
+    if(!active || !metadata.sourceFingerprint)return;
+    const data=await loadLocalThreeBand(track.id,metadata.sourceFingerprint);
+    if(!active || !data || data.sourceFingerprint!==metadata.sourceFingerprint)return;
+    let peak=0;for(const band of [data.overview.low,data.overview.mid,data.overview.high])for(const value of band)peak=Math.max(peak,value);
+    setBands({track,overview:data.overview,peak});
+   })().catch(()=>{});
+   return ()=>{active=false;};
+  },[localBands,track]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scratch = useWaveformScratch(deck, visibleSeconds);
   const { seek } = useDJAudioEngineActions();
@@ -62,8 +79,9 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
       // Read position from the engine while moving for smooth 60 fps; the
       // store position is throttled.
       const position = moving && engine?.initialized ? engine.getPosition(deck) : d.position;
+      const usableBands=localBands && bands?.track===d.track && d.duration>0 && Math.abs(bands.overview.frames/bands.overview.sampleRate-d.duration)<=0.1 ? bands : undefined;
       const visual = {
-        position, peaks: d.waveformPeaks, duration: d.duration, grid: d.beatGrid, offset: d.beatGridOffset,
+        bands: usableBands, position, peaks: d.waveformPeaks, duration: d.duration, grid: d.beatGrid, offset: d.beatGridOffset,
         cue: d.cuePoint, hot: d.hotCues, loop: d.loop, track: d.track?.id, w: canvas.width, h: canvas.height,
       };
       const unchanged = last && Object.keys(visual).every(key => (visual as Record<string, unknown>)[key] === last![key]);
@@ -71,6 +89,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         drawMainWaveform(ctx, width, height, {
           deck,
+          localBands: usableBands,
           peaks: d.waveformPeaks,
           position,
           duration: d.duration,
@@ -95,7 +114,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
       cancelAnimationFrame(frameId);
       if (idleTimer) clearTimeout(idleTimer);
     };
-  }, [deck, visibleSeconds, colorMode]);
+  }, [deck, visibleSeconds, colorMode, localBands, bands]);
 
   const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();

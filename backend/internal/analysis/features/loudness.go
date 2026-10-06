@@ -7,19 +7,20 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/featurecontract"
 	"io"
 	"math"
 )
 
 const (
-	BS1770ArtifactKind      = "loudness-bs1770"
-	BS1770FormatVersion     = 1
-	BS1770LoudnessAlgorithm = "itu-r-bs1770-5-annex1-k-weight-gating-v1"
-	BS1770TruePeakAlgorithm = "itu-r-bs1770-5-annex2-4x-fir-v1"
-	BS1770AlgorithmVersion  = BS1770LoudnessAlgorithm + ";" + BS1770TruePeakAlgorithm
+	BS1770ArtifactKind      = featurecontract.BS1770ArtifactKind
+	BS1770FormatVersion     = featurecontract.BS1770FormatVersion
+	BS1770LoudnessAlgorithm = featurecontract.BS1770LoudnessAlgorithm
+	BS1770TruePeakAlgorithm = featurecontract.BS1770TruePeakAlgorithm
+	BS1770AlgorithmVersion  = featurecontract.BS1770AlgorithmVersion
 	BS1770Standard          = "ITU-R BS.1770-5"
-	BS1770Encoding          = "gzip-json-v1"
-	MaxBS1770ArtifactBytes  = 2 << 20
+	BS1770Encoding          = featurecontract.BS1770Encoding
+	MaxBS1770ArtifactBytes  = featurecontract.MaxBS1770ArtifactBytes
 )
 
 // BS1770Result is a separately versioned measurement artifact. Nil values

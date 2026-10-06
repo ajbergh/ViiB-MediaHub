@@ -5,6 +5,14 @@ package analysis
 import "time"
 
 type track struct {
+	Energy           *float64 `json:"energy"`
+	Danceability     *float64 `json:"danceability"`
+	Acousticness     *float64 `json:"acousticness"`
+	Instrumentalness *float64 `json:"instrumentalness"`
+	Liveness         *float64 `json:"liveness"`
+	Speechiness      *float64 `json:"speechiness"`
+	Valence          *float64 `json:"valence"`
+
 	Tempo                   *float64 `json:"tempo"`
 	TempoConfidence         *float64 `json:"tempo_confidence"`
 	Key                     *int     `json:"key"`
@@ -40,7 +48,31 @@ type payload struct {
 
 // Observation contains provider facts, never local effective values.
 // Nullable fields distinguish unknown values from numeric zero.
+type FieldRejection struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
 type Observation struct {
+	// Origins apply only to an in-memory compatibility projection, never provider persistence.
+	BPMOrigin            *Observation     `json:"-"`
+	KeyOrigin            *Observation     `json:"-"`
+	DomainPayload        []byte           `json:"-"`
+	BPMRetained          bool             `json:"-"`
+	KeyRetained          bool             `json:"-"`
+	DurableImport        bool             `json:"-"`
+	AccountContext       string           `json:"-"`
+	ArtifactCapabilities []string         `json:"artifactCapabilities,omitempty"`
+	RejectedFields       []FieldRejection `json:"rejectedFields,omitempty"`
+	DurationMilliseconds *float64         `json:"durationMilliseconds,omitempty"`
+	Energy               *float64         `json:"energy"`
+	Danceability         *float64         `json:"danceability"`
+	Acousticness         *float64         `json:"acousticness"`
+	Instrumentalness     *float64         `json:"instrumentalness"`
+	Liveness             *float64         `json:"liveness"`
+	Speechiness          *float64         `json:"speechiness"`
+	Valence              *float64         `json:"valence"`
+
 	SourceEndpoint          string    `json:"sourceEndpoint"`
 	TrackID                 string    `json:"trackId"`
 	Source                  string    `json:"source"`

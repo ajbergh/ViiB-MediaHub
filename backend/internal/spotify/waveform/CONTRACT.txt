@@ -1,0 +1,38 @@
+Spotify Web Player bundle evidence (web-player.a6d2a638.js, module-generated protobuf code)
+
+Request root ExtendedMetadataRequest (bundle symbol ha)
+  field 1: header, message Header (bundle hi)
+  field 2: entityRequest, repeated message EntityRequest (bundle ht)
+Header hi: field 1 country string; field 2 catalogue string; field 3 taskId bytes.
+EntityRequest ht: field 1 entityUri string; field 2 query, repeated message ExtensionQuery (bundle p9).
+ExtensionQuery p9: field 1 extensionKind int32; field 2 etag string.
+
+Response root ExtendedMetadataResponse (bundle symbol hp)
+  field 1: header, empty message
+  field 2: extendedMetadata, repeated message ExtendedMetadata (bundle hu)
+ExtendedMetadata hu:
+  field 1: header, message ProviderHeader (bundle ho)
+  field 2: extensionKind int32
+  field 3: extensionData, repeated message EntityExtension (bundle p8)
+ProviderHeader ho: field 1 providerErrorStatus int32; field 2 cacheTtlInSeconds int64; field 3 offlineTtlInSeconds int64.
+EntityExtension p8:
+  field 1: header, message EntityHeader (bundle p5)
+  field 2: entityUri string
+  field 3: extensionData, google.protobuf.Any (bundle tK)
+EntityHeader p5: field 1 statusCode int32; field 2 etag string; field 3 locale string; field 4 cacheTtlInSeconds int64; field 5 offlineTtlInSeconds int64.
+Any tK: field 1 typeUrl string; field 2 value bytes.
+
+Waveform payload (bundle module 64070)
+  field 1 sampleRate int32
+  field 2 sampleWindowSizeMs int32
+  field 3 lows repeated int32, packed or unpacked
+  field 4 mids repeated int32, packed or unpacked
+  field 5 highs repeated int32, packed or unpacked
+
+Repository research records the observed Any type URL:
+type.googleapis.com/spotify.playlistmixing.extensions.mixthreebandwaveforms.ThreeBandWaveforms
+
+Source byte ranges in downloaded bundle:
+  envelope: 2707000-2720800
+  Any: 2362805-2364000
+  waveform: 3424171-3426227

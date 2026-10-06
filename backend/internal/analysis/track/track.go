@@ -7,7 +7,6 @@ package track
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +21,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/tempo"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/threeband"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 )
@@ -51,19 +51,25 @@ const (
 // Result is the combined outcome of one analysis pass. Tempo and key carry
 // their own Known flags, so an unmeasured dimension is never mistaken for zero.
 type Result struct {
-	Spotify         *spotifyanalysis.Observation
-	SongID          string
-	Status          string
-	Tempo           tempo.Estimate
-	Key             key.Estimate
-	DurationSeconds float64
+	PreviousSpotifyBindings *db.SpotifyScalarBindings
+	PreparationError        string
+	RepairPrevious          *db.TrackAnalysis
+	RepairCapabilities      map[string]bool
+	Spotify                 *spotifyanalysis.Observation
+	SongID                  string
+	Status                  string
+	Tempo                   tempo.Estimate
+	Key                     key.Estimate
+	DurationSeconds         float64
 	// BeatGrid is optional: scalar analysis remains useful when audio has no
 	// sufficiently periodic onset evidence for safe phase alignment.
-	BeatGrid    *beatgrid.Grid
-	Features    *features.Result
-	Loudness    *features.BS1770Result
-	EnergyLevel *features.EnergyLevelEstimate
-	Source      analysis.ResolvedSource
+	BeatGrid       *beatgrid.Grid
+	Features       *features.Result
+	Loudness       *features.BS1770Result
+	LocalThreeBand *threeband.Overview
+	Waveform       *analysis.WaveformOverview
+	EnergyLevel    *features.EnergyLevelEstimate
+	Source         analysis.ResolvedSource
 }
 
 // Options selects analyzer priors for a pass.
@@ -126,6 +132,8 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 	var phase *beatgrid.PhaseAccumulator
 	var energy *features.Accumulator
 	var loudness *features.BS1770Accumulator
+	peaks := analysis.NewPeakAccumulator(analysis.DefaultWaveformResolution)
+	var bands *threeband.Accumulator
 	sampleRate := 0
 
 	err := analysis.StreamMonoFileWithOpener(ctx, registry, name, open, func(chunk analysis.MonoChunk) error {
@@ -139,6 +147,7 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 			onsets = tempo.NewOnsetAccumulatorWithOptions(chunk.SampleRate, opts.Tempo)
 			chroma = key.NewChromaAccumulatorWithOptions(chunk.SampleRate, opts.Key)
 			phase = beatgrid.NewPhaseAccumulator(chunk.SampleRate)
+			bands, _ = threeband.New(chunk.SampleRate)
 			energy = features.NewAccumulator(chunk.SampleRate)
 			var loudnessErr error
 			loudness, loudnessErr = features.NewBS1770Accumulator(chunk.SampleRate, chunk.SourceChannels)
@@ -155,6 +164,15 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		chroma.Feed(chunk.Samples)
 		phase.Feed(chunk.Samples)
 		energy.Feed(chunk.Samples)
+		peaks.Feed(chunk.Samples)
+		if bands != nil {
+			if err := bands.Feed(chunk.Samples); err != nil {
+				return err
+			}
+		}
+		if err := peaks.Err(); err != nil {
+			return err
+		}
 		if err := loudness.Feed(chunk.Interleaved); err != nil {
 			return err
 		}
@@ -173,6 +191,13 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		result.Tempo = tempo.Estimate{AlgorithmVersion: tempo.AlgorithmVersion}
 		result.Key = key.Estimate{AlgorithmVersion: key.AlgorithmVersion}
 	} else {
+		overview := peaks.Overview(sampleRate)
+		result.Waveform = &overview
+		if bands != nil {
+			if bandOverview, err := bands.Result(); err == nil {
+				result.LocalThreeBand = &bandOverview
+			}
+		}
 		measuredLoudness := loudness.Result()
 		result.Loudness = &measuredLoudness
 		result.Tempo = onsets.Estimate()
@@ -257,6 +282,7 @@ func Persist(database *db.DB, result Result) error {
 func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.AutomaticCuePointMode) error {
 	autoCueMode = db.NormalizeAutomaticCuePointMode(string(autoCueMode))
 	record := db.TrackAnalysis{
+		SpotifyBindings:   result.PreviousSpotifyBindings,
 		SongID:            result.SongID,
 		Status:            result.Status,
 		AnalysisVersion:   AnalysisVersion,
@@ -302,6 +328,11 @@ func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.Autom
 		record.OpenKey = &result.Key.OpenKey
 		record.KeySource = ptr("measured")
 	}
+	if result.PreparationError == "" {
+		record.Local = &db.LocalScalarObservation{SourceFingerprint: record.SourceFingerprint, AlgorithmVersion: AlgorithmVersion, MeasuredAt: *record.AnalyzedAt,
+			BPM: record.BPM, BPMConfidence: record.BPMConfidence, BPMAltCandidate: record.BPMAltCandidate, TempoStability: record.TempoStability, TempoKind: record.TempoKind,
+			KeyTonic: record.KeyTonic, KeyMode: record.KeyMode, KeyConfidence: record.KeyConfidence}
+	}
 	if result.Spotify != nil {
 		db.ApplySpotifyScalars(&record, *result.Spotify)
 		// Scalar data survives a decoder failure, but remains eligible for a
@@ -314,17 +345,68 @@ func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.Autom
 		record.ErrorCode = &code
 		record.ErrorMessage = &message
 	}
-	if err := database.UpsertTrackAnalysis(record); err != nil {
+	if previous := result.RepairPrevious; previous != nil {
+		merged := *previous
+		if result.RepairCapabilities["local_scalars"] {
+			merged.Local = record.Local
+			merged.SpotifyBindings = record.SpotifyBindings
+			merged.BPM = record.BPM
+			merged.BPMSource = record.BPMSource
+			merged.BPMConfidence = record.BPMConfidence
+			merged.BPMAltCandidate = record.BPMAltCandidate
+			merged.TempoStability = record.TempoStability
+			merged.TempoKind = record.TempoKind
+			merged.KeyTonic = record.KeyTonic
+			merged.KeyMode = record.KeyMode
+			merged.KeySource = record.KeySource
+			merged.KeyConfidence = record.KeyConfidence
+			merged.CamelotKey = record.CamelotKey
+			merged.OpenKey = record.OpenKey
+			merged.Status = record.Status
+			merged.ErrorCode = record.ErrorCode
+			merged.ErrorMessage = record.ErrorMessage
+		}
+		if result.RepairCapabilities["local_energy"] {
+			merged.EnergyLevel = record.EnergyLevel
+			merged.EnergyLevelConfidence = record.EnergyLevelConfidence
+			merged.EnergyAlgorithmVersion = record.EnergyAlgorithmVersion
+		}
+		record = merged
+	}
+	publication := db.TrackPreparationPublication{Analysis: record}
+	collector := &preparationArtifacts{}
+	generated := result
+	if result.RepairPrevious != nil {
+		if !result.RepairCapabilities["local_beatgrid"] {
+			result.BeatGrid = nil
+		}
+		if !result.RepairCapabilities[threeband.Kind] {
+			result.LocalThreeBand = nil
+		}
+		if !result.RepairCapabilities["local_amplitude"] {
+			result.Waveform = nil
+		}
+		if !result.RepairCapabilities["local_features"] {
+			result.Features = nil
+		}
+		if !result.RepairCapabilities["local_loudness"] {
+			result.Loudness = nil
+		}
+	}
+	if err := persistBeatGrid(collector, result); err != nil {
 		return err
 	}
-	if err := persistBeatGrid(database, result); err != nil {
+	if err := persistThreeBand(collector, result); err != nil {
 		return err
 	}
-	if err := persistFeatures(database, result); err != nil {
+	if err := persistWaveform(collector, result); err != nil {
+		return err
+	}
+	if err := persistFeatures(collector, result); err != nil {
 		return err
 	}
 	if autoCueMode != db.AutomaticCuePointsOff && autoCueMode != db.AutomaticCuePointsSuggest && result.Features != nil && result.DurationSeconds > 0 && result.Source.Fingerprint != "" {
-		generated, err := analysiscues.Generate(result.DurationSeconds, result.BeatGrid, *result.Features, result.Source.Fingerprint)
+		generated, err := analysiscues.Generate(result.DurationSeconds, generated.BeatGrid, *result.Features, result.Source.Fingerprint)
 		if err != nil {
 			return fmt.Errorf("generate DJ hot cues: %w", err)
 		}
@@ -342,41 +424,39 @@ func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.Autom
 		if autoCueMode == db.AutomaticCuePointsReplaceGenerated {
 			applyMode = db.GeneratedCueReplaceGenerated
 		}
-		if err := database.ApplyGeneratedDJHotCues(result.SongID, hotCues, applyMode); err != nil {
-			return fmt.Errorf("persist generated DJ hot cues: %w", err)
-		}
+		publication.Cues = hotCues
+		publication.CueMode = applyMode
+		publication.ApplyCues = true
 	}
-	return nil
+	publication.Artifacts = collector.artifacts
+	publication.Capabilities = preparationStatuses(generated)
+	return database.PublishTrackPreparation(publication)
 }
 
 // resultIssue returns the same stable diagnostics Persist writes, allowing
 // the runner to mirror an incomplete result into the durable application log
 // without duplicating or drifting from the database contract.
 func resultIssue(result Result) (string, string) {
+	tempoKnown, keyKnown := result.Tempo.Known, result.Key.Known
+	if result.Spotify != nil {
+		tempoKnown = tempoKnown || result.Spotify.BPM != nil
+		keyKnown = keyKnown || (result.Spotify.Key != nil && result.Spotify.Mode != nil)
+	}
 	switch {
-	case !result.Tempo.Known && !result.Key.Known:
+	case !tempoKnown && !keyKnown:
 		return ErrorInsufficientAudio, "No reliable tempo or key evidence in the decoded audio"
-	case !result.Tempo.Known:
+	case !tempoKnown:
 		return ErrorNoReliableTempo, "No reliable tempo evidence in the decoded audio"
-	case !result.Key.Known:
+	case !keyKnown:
 		return ErrorNoReliableKey, "No reliable tonal evidence in the decoded audio"
 	default:
 		return "", ""
 	}
 }
 
-func persistBeatGrid(database *db.DB, result Result) error {
+func persistBeatGrid(database artifactWriter, result Result) error {
 	if result.BeatGrid == nil {
 		return nil
-	}
-	// A locked grid is an explicit performance decision.  Re-analysis may
-	// refresh measured BPM/key but must not replace the DJ's timing edits.
-	override, err := database.GetTrackAnalysisOverride(result.SongID)
-	if err == nil && override.BeatgridLocked {
-		return nil
-	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
 	}
 	encoded, err := result.BeatGrid.Encode()
 	if err != nil {
@@ -395,7 +475,7 @@ func persistBeatGrid(database *db.DB, result Result) error {
 	})
 }
 
-func persistFeatures(database *db.DB, result Result) error {
+func persistFeatures(database artifactWriter, result Result) error {
 	if result.Features != nil {
 		encoded, err := result.Features.Encode()
 		if err != nil {
@@ -459,7 +539,8 @@ func PersistFailure(database *db.DB, songID string, source analysis.ResolvedSour
 	if code == ErrorUnsupportedCodec {
 		record.Status = db.TrackAnalysisUnsupported
 	}
-	return database.UpsertTrackAnalysis(record)
+	source.Fingerprint = fingerprint
+	return database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, Capabilities: preparationStatuses(Result{SongID: songID, Source: source, PreparationError: code})})
 }
 
 // ClassifyError maps a pass error onto a stable persisted failure code.
@@ -483,3 +564,13 @@ func ClassifyError(err error) (string, string) {
 }
 
 func ptr[T any](value T) *T { return &value }
+
+type artifactWriter interface {
+	UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact) error
+}
+type preparationArtifacts struct{ artifacts []db.TrackAnalysisArtifact }
+
+func (p *preparationArtifacts) UpsertTrackAnalysisArtifact(a db.TrackAnalysisArtifact) error {
+	p.artifacts = append(p.artifacts, a)
+	return nil
+}

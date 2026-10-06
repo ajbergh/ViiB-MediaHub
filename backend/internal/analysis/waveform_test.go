@@ -130,3 +130,18 @@ func TestDecoderRegistrySupports(t *testing.T) {
 		}
 	}
 }
+
+func TestWaveformAccumulatorBoundsLongStreamsWithoutTruncation(t *testing.T) {
+	accumulator := NewPeakAccumulator(1)
+	samples := make([]float32, 1000001)
+	samples[0] = .5
+	samples[len(samples)-1] = .75
+	accumulator.Feed(samples)
+	overview := accumulator.Overview(44100)
+	if accumulator.Err() != nil || overview.Frames != 1000001 || overview.Resolution != 2 || len(overview.Peaks) != 500001 || overview.Peaks[0] != .5 || overview.Peaks[len(overview.Peaks)-1] != .75 {
+		t.Fatalf("bounded overview invalid: frames=%d resolution=%d count=%d", overview.Frames, overview.Resolution, len(overview.Peaks))
+	}
+	if err := overview.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

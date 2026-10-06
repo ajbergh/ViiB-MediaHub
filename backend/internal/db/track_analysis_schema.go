@@ -89,6 +89,15 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 		);
 	`)
 	if err == nil {
+		err = ensureTrackCapabilitySchema(d)
+	}
+	if err == nil {
+		err = ensureLocalScalarColumn(d)
+	}
+	if err == nil {
+		err = ensureAnalysisJSONColumn(d, "spotify_bindings_json")
+	}
+	if err == nil {
 		err = ensureTrackAnalysisEnergyColumns(d)
 	}
 	if err == nil {
@@ -99,6 +108,9 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 	}
 	if err == nil {
 		err = ensureTrackAnalysisOverrideBPMSourceFingerprintColumn(d)
+	}
+	if err == nil {
+		err = ensureTrackAnalysisOverrideKeySourceFingerprintColumn(d)
 	}
 	if err == nil {
 		err = ensureSpotifyScalarSources(d)
@@ -297,4 +309,36 @@ func ensureSpotifyScalarSources(d *DB) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func ensureTrackAnalysisOverrideKeySourceFingerprintColumn(d *DB) error {
+	rows, err := d.conn.Query(`PRAGMA table_info(track_analysis_overrides)`)
+	if err != nil {
+		return err
+	}
+	hasColumn := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "key_source_fingerprint" {
+			hasColumn = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	_, err = d.conn.Exec(`ALTER TABLE track_analysis_overrides ADD COLUMN key_source_fingerprint TEXT NOT NULL DEFAULT ''`)
+	return err
 }

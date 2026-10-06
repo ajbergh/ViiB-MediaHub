@@ -5,6 +5,7 @@ package analysis
 import (
 	"context"
 	"errors"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/waveformartifact"
 	"io"
 	"math"
 	"os"
@@ -18,22 +19,7 @@ const DefaultWaveformResolution = 256
 // WaveformOverview is the compact amplitude overview of a decoded track. It is
 // the online accumulator output described by the shared analysis pipeline: the
 // full-resolution PCM is never retained, only one peak per resolution window.
-type WaveformOverview struct {
-	SampleRate int
-	Resolution int
-	Frames     int64
-	Peaks      []float64
-}
-
-// Duration reports decoded length in seconds. It is derived from the frames
-// actually decoded rather than from a container-header estimate, so a
-// truncated or mis-tagged file reports what was really read.
-func (o WaveformOverview) Duration() float64 {
-	if o.SampleRate <= 0 {
-		return 0
-	}
-	return float64(o.Frames) / float64(o.SampleRate)
-}
+type WaveformOverview = waveformartifact.Overview
 
 // PeakAccumulator reduces streamed mono PCM into fixed-width absolute peaks.
 // Feed may be called with arbitrarily sized chunks: window state carries across
@@ -45,6 +31,7 @@ type PeakAccumulator struct {
 	filled     int
 	frames     int64
 	peaks      []float64
+	err        error
 }
 
 // NewPeakAccumulator constructs an accumulator. A non-positive resolution
@@ -58,7 +45,14 @@ func NewPeakAccumulator(resolution int) *PeakAccumulator {
 
 // Feed accumulates one bounded mono chunk.
 func (a *PeakAccumulator) Feed(samples []float32) {
+	if a.err != nil {
+		return
+	}
 	for _, sample := range samples {
+		if math.IsNaN(float64(sample)) || math.IsInf(float64(sample), 0) {
+			a.err = waveformartifact.ErrInvalid
+			return
+		}
 		magnitude := math.Abs(float64(sample))
 		if magnitude > a.current {
 			a.current = magnitude
@@ -67,10 +61,23 @@ func (a *PeakAccumulator) Feed(samples []float32) {
 		if a.filled == a.resolution {
 			a.peaks = append(a.peaks, a.current)
 			a.current, a.filled = 0, 0
+			if len(a.peaks) == waveformartifact.MaxPeaks {
+				if a.resolution > math.MaxInt32/2 {
+					a.err = waveformartifact.ErrInvalid
+					return
+				}
+				for i := 0; i < len(a.peaks)/2; i++ {
+					a.peaks[i] = math.Max(a.peaks[i*2], a.peaks[i*2+1])
+				}
+				a.peaks = a.peaks[:len(a.peaks)/2]
+				a.resolution *= 2
+			}
 		}
 	}
 	a.frames += int64(len(samples))
 }
+
+func (a *PeakAccumulator) Err() error { return a.err }
 
 // Overview flushes any partial trailing window and returns the result. A track
 // shorter than one window still yields one peak, so a valid short file is not
@@ -109,7 +116,7 @@ func GenerateWaveformOverviewWithOpener(ctx context.Context, registry *DecoderRe
 			return errors.New("analysis stream sample rate changed")
 		}
 		accumulator.Feed(chunk.Samples)
-		return nil
+		return accumulator.Err()
 	})
 	if err != nil {
 		return WaveformOverview{}, err

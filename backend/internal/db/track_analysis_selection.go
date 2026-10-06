@@ -9,6 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
+	features "github.com/ajbergh/viib-mediahub/internal/analysis/featurecontract"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/threeband"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/waveformartifact"
 	"strings"
 	"time"
 )
@@ -165,7 +169,32 @@ func (d *DB) ExpandAnalysisSelection(selection AnalysisSelection, analysisVersio
 	case AnalysisSelectionMissing:
 		// v2 could settle Spotify scalars without measuring energy or generating
 		// cues. Revisit that generation once, even for an ordinary missing scan.
-		base += ` AND (a.song_id IS NULL OR a.algorithm_version = 'spotify-features-v1' OR a.algorithm_version LIKE 'track-v2-spotify;%')`
+		clauses := []string{
+			"a.song_id IS NULL",
+			"((a.algorithm_version = 'spotify-features-v1' OR a.algorithm_version LIKE 'track-v2-spotify;%') AND NOT EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=? AND (c.state='unsupported' OR (c.state='failed' AND c.retry_at>?))))",
+			"(a.status IN ('complete','partial') AND NOT EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=?))",
+			"EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=? AND c.state='failed' AND c.retry_at<=?)",
+		}
+		now := time.Now().UnixMilli()
+		args = append(args, CorePreparationVersion, now, CorePreparationVersion, CorePreparationVersion, now)
+		for _, required := range []struct {
+			capability, kind, algorithm, encoding string
+			format, min, max                      int
+		}{
+			{threeband.Kind, threeband.Kind, threeband.AlgorithmVersion, threeband.Encoding, threeband.FormatVersion, 1, threeband.MaxBytes},
+			{"local_amplitude", waveformartifact.Kind, waveformartifact.AlgorithmVersion, waveformartifact.Encoding, waveformartifact.FormatVersion, waveformartifact.HeaderBytes, waveformartifact.MaxBytes},
+			{"local_features", features.ArtifactKind, features.AlgorithmVersion, features.Encoding, features.FormatVersion, 1, features.MaxStructureStatusArtifactBytes},
+			{"local_loudness", features.BS1770ArtifactKind, features.BS1770AlgorithmVersion, features.BS1770Encoding, features.BS1770FormatVersion, 1, features.MaxBS1770ArtifactBytes},
+			{"local_beatgrid", beatgrid.ArtifactKind, beatgrid.AlgorithmVersion, beatgrid.Encoding, beatgrid.FormatVersion, 1, 16 << 20},
+		} {
+			clauses = append(clauses, `(a.status IN ('complete','partial') AND (?!='local_beatgrid' OR NOT EXISTS (SELECT 1 FROM track_analysis_overrides o WHERE o.song_id=s.id AND o.beatgrid_locked=1)) AND NOT EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability=? AND c.version=? AND (c.state IN ('unavailable','unsupported') OR (c.state='failed' AND c.retry_at>?))) AND NOT EXISTS (SELECT 1 FROM track_analysis_artifacts w WHERE w.song_id=s.id AND w.kind=? AND w.format_version=? AND w.algorithm_version=? AND w.encoding=? AND w.provenance!='unknown' AND w.source_fingerprint=a.source_fingerprint AND w.source_fingerprint!='' AND length(w.data)>=? AND length(w.data)<=?))`)
+			args = append(args, required.capability, required.capability, required.algorithm, now, required.kind, required.format, required.algorithm, required.encoding, required.min, required.max)
+		}
+		clauses = append(clauses, `(a.status IN ('complete','partial') AND EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='local_energy' AND c.state='available') AND (a.energy_level IS NULL OR a.energy_level_confidence IS NULL OR a.energy_algorithm_version IS NULL OR a.energy_algorithm_version!=?))`)
+		args = append(args, features.EnergyLevelAlgorithmVersion)
+		clauses = append(clauses, `(a.status IN ('complete','partial') AND EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='local_scalars' AND c.state='available') AND a.local_scalar_json IS NULL)`)
+		base += " AND (" + strings.Join(clauses, " OR ") + ")"
+
 	case AnalysisSelectionStale:
 		base += ` AND (a.song_id IS NULL OR a.analysis_version != ? OR a.algorithm_version != ?)`
 		args = append(args, analysisVersion, algorithmVersion)

@@ -100,7 +100,8 @@ func TestExpandAnalysisSelectionModes(t *testing.T) {
 	saveSelectionSong(t, database, "second", 2)
 	saveSelectionSong(t, database, "third", 3)
 
-	// "second" already has a current-version result; "third" has an outdated one.
+	// "second" has current scalars and "third" outdated scalars, but both lack
+	// the required source-bound waveform, so missing preparation includes them.
 	if err := database.UpsertTrackAnalysis(TrackAnalysis{
 		SongID: "second", Status: TrackAnalysisComplete, AnalysisVersion: 1,
 		AlgorithmVersion: testAlgorithmVersion, SourceFingerprint: "fp-second",
@@ -120,7 +121,7 @@ func TestExpandAnalysisSelectionModes(t *testing.T) {
 		want      []string
 	}{
 		{name: "all", selection: AnalysisSelection{Mode: AnalysisSelectionAll}, want: []string{"first", "second", "third"}},
-		{name: "missing", selection: AnalysisSelection{Mode: AnalysisSelectionMissing}, want: []string{"first"}},
+		{name: "missing", selection: AnalysisSelection{Mode: AnalysisSelectionMissing}, want: []string{"first", "second", "third"}},
 		{name: "stale", selection: AnalysisSelection{Mode: AnalysisSelectionStale}, want: []string{"first", "third"}},
 		{name: "ids", selection: AnalysisSelection{Mode: AnalysisSelectionIDs, SongIDs: []string{"third", "first"}}, want: []string{"first", "third"}},
 	} {

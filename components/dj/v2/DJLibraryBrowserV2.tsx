@@ -20,6 +20,8 @@ import { compareAnalysisReadiness, getAnalysisReadiness, type AnalysisListLoadSt
 import { formatConfidenceEvidence, getAnalysisConfidenceEvidence } from '../../../lib/analysisConfidence';
 import { compareIntegratedLUFS, formatIntegratedLUFS, isFiniteIntegratedLUFS } from '../../../lib/djLibraryLUFS';
 import { compareTruePeakDBTP, formatTruePeakDBTP, isFiniteTruePeakDBTP } from '../../../lib/djLibraryTruePeak';
+import { PROVIDER_SCORE_OPTIONS, usableProviderScore, providerScoreMatches, compareProviderScores } from '../../../lib/djProviderScores';
+import { DJSaveResultsPlaylist } from './DJSaveResultsPlaylist';
 import { CamelotChip } from './CamelotChip';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -136,7 +138,11 @@ const TrackRowCells = memo(({
   keyCompatibility,
   columnVisibility,
   columnWidths,
+  scoreMetric,
+  scoreNow,
 }: {
+  scoreMetric: string;
+  scoreNow: number;
   song: Song;
   index: number;
   loadedDeck: 'A' | 'B' | null;
@@ -240,6 +246,7 @@ const TrackRowCells = memo(({
           )}
           <span className="text-[var(--dj-text-primary)] truncate block" style={{ maxWidth: columnWidths.title - 24 }} title={song.title}>
             {song.title}
+            {scoreMetric && <small title={analysis?.providerScoresUnverified ? 'Account confirmation pending' : (analysis?.providerScores?.[`spotify_${scoreMetric}_score`]?.stale || Date.parse(analysis?.providerScores?.[`spotify_${scoreMetric}_score`]?.expiresAt ?? '') <= scoreNow) ? 'Cached score is stale' : 'Spotify cached score, native 0–1 scale'} className="block text-[var(--dj-text-secondary)]">Spotify {scoreMetric}: {usableProviderScore(analysis,scoreMetric,scoreNow)?.toFixed(2) ?? 'Unknown'} / 1</small>}
           </span>
         </div>
       </td>
@@ -496,6 +503,7 @@ const SortHeader: React.FC<{
 
 export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocusSearch = false }) => {
   const songs = useStore(state => state.songs);
+  const spotifySession = useStore(state => state.spotifySessionGeneration);
   const playlists = useStore(state => state.playlists);
   const djDeckATrack = useStore(state => state.djDeckA.track);
   const djDeckBTrack = useStore(state => state.djDeckB.track);
@@ -515,6 +523,10 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [scoreMetric,setScoreMetric] = useState('');
+  const [scoreMin,setScoreMin] = useState('');
+  const [scoreMax,setScoreMax] = useState('');
+  const [scoreOrder,setScoreOrder] = useState<'none'|'asc'|'desc'>('none');
   const [energyMin, setEnergyMin] = useState('');
   const [energyMax, setEnergyMax] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('title');
@@ -524,7 +536,20 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   const [columnVisibility, setColumnVisibility] = useState<Record<OptionalColumn, boolean>>(loadColumnVisibility);
   const [columnWidths, setColumnWidths] = useState<Record<ResizableColumn, number>>(loadColumnWidths);
   const [analysisBySongID, setAnalysisBySongID] = useState<Record<string, TrackAnalysisFeature>>({});
+  const [scoreNow,setScoreNow] = useState(Date.now);
   const [analysisListState, setAnalysisListState] = useState<AnalysisListLoadState>('loading');
+
+  // Re-evaluate cached score eligibility at the nearest expiry without fetching.
+  useEffect(() => {
+    let next = Infinity;
+    for (const feature of Object.values(analysisBySongID)) for (const score of Object.values(feature.providerScores ?? {})) {
+      const expiry = Date.parse(score.expiresAt);
+      if (Number.isFinite(expiry) && expiry > scoreNow) next = Math.min(next,expiry);
+    }
+    if (!Number.isFinite(next)) return;
+    const timer = window.setTimeout(() => setScoreNow(Date.now()),Math.max(1,Math.min(2147483647,next-Date.now()+1)));
+    return () => window.clearTimeout(timer);
+  }, [analysisBySongID,scoreNow]);
 
   // Determine active deck key for harmonic compatibility
   // Prefer playing deck, fall back to whichever has a track loaded
@@ -544,21 +569,24 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   // do not rebuild it from session-only deck state.
   useEffect(() => {
     let active = true;
+    setAnalysisBySongID({});
+    setAnalysisListState('loading');
+    const generation = spotifySession;
     api.getTrackAnalysisFeatures()
       .then(features => {
-        if (!active) return;
+        if (!active || useStore.getState().spotifySessionGeneration !== generation) return;
         setAnalysisBySongID(Object.fromEntries(features.map(feature => [feature.songId, feature])));
         setAnalysisListState('loaded');
       })
       .catch(() => {
         // Analysis is additive; legacy library rendering remains available.
-        if (active) {
+        if (active && useStore.getState().spotifySessionGeneration === generation) {
           setAnalysisBySongID({});
           setAnalysisListState('failed');
         }
       });
     return () => { active = false; };
-  }, []);
+  }, [spotifySession]);
 
   useEffect(() => {
     if (!autoFocusSearch) { resizeCleanupRef.current?.(); return; }
@@ -709,8 +737,10 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
       });
     }
 
+    if (scoreMetric) result = result.filter(song => providerScoreMatches(usableProviderScore(analysisBySongID[song.id],scoreMetric,scoreNow),scoreMin,scoreMax));
     // Sort
     result.sort((a, b) => {
+      if (scoreMetric && scoreOrder !== 'none') return compareProviderScores(usableProviderScore(analysisBySongID[a.id],scoreMetric,scoreNow),usableProviderScore(analysisBySongID[b.id],scoreMetric,scoreNow),scoreOrder);
       let comparison = 0;
 
       switch (sortKey) {
@@ -774,7 +804,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     });
 
     return result;
-  }, [categoryFilteredSongs, searchQuery, sortKey, sortDirection, analysisBySongID, analysisListState, energyMin, energyMax]);
+  }, [categoryFilteredSongs, searchQuery, sortKey, sortDirection, analysisBySongID, analysisListState, energyMin, energyMax, scoreMetric, scoreMin, scoreMax, scoreOrder, scoreNow]);
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -924,7 +954,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
             {filteredSongs.length} tracks
           </div>
           <label className="flex items-center gap-1 text-[12px] text-[var(--dj-text-secondary)]" title="Inclusive Energy Level range">
-            Energy
+            Local energy /10
             <input aria-label="Minimum Energy Level" type="number" min={1} max={10} value={energyMin} onChange={event => setEnergyMin(event.target.value)} placeholder="1" className="w-10 rounded border border-white/10 bg-surface-2 px-1 py-1 text-center text-[var(--dj-text-primary)]" />
             –
             <input aria-label="Maximum Energy Level" type="number" min={1} max={10} value={energyMax} onChange={event => setEnergyMax(event.target.value)} placeholder="10" className="w-10 rounded border border-white/10 bg-surface-2 px-1 py-1 text-center text-[var(--dj-text-primary)]" />
@@ -977,11 +1007,21 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
           )}
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs text-[var(--dj-text-secondary)] border-b border-white/10">
+          <label>Spotify score (0–1) <select aria-label="Spotify score metric" value={scoreMetric} onChange={e => { setScoreMetric(e.target.value); setScoreMin(''); setScoreMax(''); setScoreOrder('none'); }} className="bg-surface-2 rounded p-1"><option value="">Off</option>{PROVIDER_SCORE_OPTIONS.map(metric => <option key={metric} value={metric}>{metric}</option>)}</select></label>
+          {scoreMetric && <>
+            <input aria-label="Minimum Spotify score" type="number" min={0} max={1} step={0.05} value={scoreMin} onChange={e => setScoreMin(e.target.value)} placeholder="0" className="w-14 bg-surface-2 rounded p-1" />
+            <input aria-label="Maximum Spotify score" type="number" min={0} max={1} step={0.05} value={scoreMax} onChange={e => setScoreMax(e.target.value)} placeholder="1" className="w-14 bg-surface-2 rounded p-1" />
+            <select aria-label="Spotify score order" value={scoreOrder} onChange={e => setScoreOrder(e.target.value as 'none'|'asc'|'desc')} className="bg-surface-2 rounded p-1"><option value="none">Table order</option><option value="asc">Low to high</option><option value="desc">High to low</option></select>
+            <span>Fresh, confirmed cached scores only. Range filters exclude unknowns; ordering keeps unknowns last. Local energy remains /10.</span>
+          </>}
+        </div>
+        <DJSaveResultsPlaylist songIds={filteredSongs.map(song => song.id)} />
         {/* Virtualized track table */}
         <div className="flex-1 overflow-hidden">
           {filteredSongs.length === 0 ? (
             <div className="flex items-center justify-center h-24 text-[var(--dj-text-secondary)] text-sm">
-              {searchQuery ? 'No tracks match your search' : 'No tracks in library'}
+              {searchQuery || scoreMetric || energyMin || energyMax ? 'No tracks match the current filters' : 'No tracks in library'}
             </div>
           ) : (
             <TableVirtuoso
@@ -1024,6 +1064,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   keyCompatibility={computeKeyCompat(analysisBySongID[song.id]?.key)}
                   columnVisibility={columnVisibility}
                   columnWidths={columnWidths}
+                  scoreMetric={scoreMetric}
+                  scoreNow={scoreNow}
                 />
               )}
               components={libraryTableComponents}

@@ -117,6 +117,12 @@ func loadValidSpotifyCredentials(ctx context.Context, database *db.DB) (SpotifyC
 func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body []byte, contentType string) (*http.Response, error) {
 	manager := a.spotifyTokens()
 	ctx, endRequest := manager.requestContext(ctx)
+	if ctx.Value(spotifyOwnerBootstrapKey{}) != true {
+		if err := manager.ensureMetadataOwner(ctx); err != nil {
+			endRequest()
+			return nil, err
+		}
+	}
 	// The response body owns cancellation once a request succeeds.
 	finished := false
 	defer func() {
@@ -224,7 +230,7 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 			}
 			response.Header.Set("Retry-After", strconv.FormatInt(int64((manager.webAPICooldownRemaining()+time.Second-1)/time.Second), 10))
 		}
-		if response.StatusCode == http.StatusTooManyRequests && !cookieMode && rateRetries < 2 {
+		if response.StatusCode == http.StatusTooManyRequests && !cookieMode && rateRetries < 2 && ctx.Value(spotifyOwnerBootstrapKey{}) != true {
 			delaySeconds, _ := strconv.Atoi(response.Header.Get("Retry-After"))
 			if delaySeconds < 1 {
 				delaySeconds = 1
@@ -242,6 +248,12 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 			}
 			rateRetries++
 			continue
+		}
+		if !cookieMode && method == http.MethodGet && response.StatusCode == http.StatusOK {
+			parsed, parseErr := url.Parse(target)
+			if parseErr == nil {
+				a.captureOAuthCatalogResponse(ctx, manager, parsed, response)
+			}
 		}
 		response.Body = &spotifyResponseBody{ReadCloser: response.Body, end: endRequest}
 		finished = true

@@ -46,6 +46,9 @@ func fixture(t *testing.T, fn func(context.Context, string, string) (analysis.Ob
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
+	if err := database.ActivateSpotifyMetadataContext("refresh-fixture"); err != nil {
+		t.Fatal(err)
+	}
 	clock := &fixtureClock{at: time.Unix(1700000000, 0).UTC()}
 	provider := &fixtureProvider{fn: fn}
 	service, err := New(database, provider, Options{Enabled: true, AdapterRevision: "fixture-v1", Now: clock.now})
@@ -57,7 +60,7 @@ func fixture(t *testing.T, fn func(context.Context, string, string) (analysis.Ob
 }
 func observation(id, endpoint string, at time.Time) analysis.Observation {
 	bpm := 108.022
-	return analysis.Observation{TrackID: id, SourceEndpoint: endpoint, Source: "spotify_internal", RetrievedAt: at, BPM: &bpm}
+	return analysis.Observation{AccountContext: "refresh-fixture", TrackID: id, SourceEndpoint: endpoint, Source: "spotify_internal", RetrievedAt: at, BPM: &bpm}
 }
 func waitFor(t *testing.T, condition func() bool) {
 	t.Helper()

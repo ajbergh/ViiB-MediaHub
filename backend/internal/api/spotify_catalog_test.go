@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ajbergh/viib-mediahub/internal/db"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -759,6 +760,11 @@ func TestCookieCatalogPlaylistRoutingAndGroupedMetadata(t *testing.T) {
 	if tracks[0].Album != "Album" || tracks[0].Artist != "Artist" || tracks[0].ReleaseDate != "2020" {
 		t.Fatal("grouped playlist metadata lost")
 	}
+	// A second load rechecks the root but reuses the completed same-revision rows.
+	reused, _, _, reuseErr := a.fetchPlaylistTracks(context.Background(), id, nil)
+	if reuseErr != nil || len(reused) != 101 || queries != 5 {
+		t.Fatal("completed revision checkpoint was not reused", len(reused), queries, reuseErr)
+	}
 	for _, path := range []string{"playlists/bad", "playlists/" + id + "/tracks&limit=101", "playlists/" + id + "/tracks&offset=-1"} {
 		w := httptest.NewRecorder()
 		a.spotifyProxy(w, httptest.NewRequest("GET", "/spotify/proxy?path="+path, nil))
@@ -766,7 +772,7 @@ func TestCookieCatalogPlaylistRoutingAndGroupedMetadata(t *testing.T) {
 			t.Fatal("invalid playlist query accepted")
 		}
 	}
-	if queries != 4 {
+	if queries != 5 {
 		t.Fatal("invalid playlist query reached upstream")
 	}
 }
@@ -866,6 +872,11 @@ func TestCookieCatalogGroupedPlaylistRejectsChangedRevision(t *testing.T) {
 	if err == nil || tracks != nil || queries != 2 {
 		t.Fatal("changed playlist produced grouped metadata", len(tracks), err)
 	}
+	snapshot, readErr := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: "fetchPlaylist:page:0:100", ContextKey: a.spotifyAuth.metadataContext})
+	if readErr != nil || snapshot != nil {
+		t.Fatal("rejected traversal published a partial snapshot", readErr)
+	}
+
 }
 
 func TestCookieCatalogPlaylistMissingRowsFail(t *testing.T) {
@@ -1244,5 +1255,91 @@ func TestCookieCatalogArtistAlbumsRouting(t *testing.T) {
 	}
 	if requests != 1 {
 		t.Fatal("invalid requests reached upstream", requests)
+	}
+}
+
+func TestCookieCatalogGroupedPlaylistRejectsMissingRevision(t *testing.T) {
+	a, _, _ := fixtureCookieRuntime(t)
+	if err := a.spotifyAuth.connect(context.Background(), "fixture-cookie"); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("P", 22)
+	queries := 0
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		body := ""
+		if r.URL.Host == "clienttoken.spotify.com" {
+			body = "{\"granted_token\":{\"token\":\"client\",\"expires_after_seconds\":600}}"
+		} else {
+			var request struct {
+				Variables struct {
+					Offset int `json:"offset"`
+					Limit  int `json:"limit"`
+				} `json:"variables"`
+			}
+			if json.NewDecoder(r.Body).Decode(&request) != nil {
+				t.Fatal("bad query")
+			}
+			queries++
+			body = playlistCatalogFixture(id, request.Variables.Offset, request.Variables.Limit, 102)
+			if queries == 2 {
+				body = strings.ReplaceAll(body, `"revisionId":"version1",`, "")
+			}
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	tracks, _, _, err := a.fetchPlaylistTracks(context.Background(), id, nil)
+	if err == nil || tracks != nil || queries != 2 {
+		t.Fatal("unqualified playlist page produced grouped metadata", len(tracks), err)
+	}
+}
+
+func TestCookiePlaylistResumesValidatedPartialTraversal(t *testing.T) {
+	a, _, _ := fixtureCookieRuntime(t)
+	if err := a.spotifyAuth.connect(context.Background(), "fixture-cookie"); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("P", 22)
+	calls := map[int]int{}
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		body := `{"granted_token":{"token":"client","expires_after_seconds":600}}`
+		status := 200
+		if r.URL.Host != "clienttoken.spotify.com" {
+			var query struct {
+				Variables struct {
+					Offset int `json:"offset"`
+					Limit  int `json:"limit"`
+				} `json:"variables"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
+				t.Fatal(err)
+			}
+			calls[query.Variables.Offset]++
+			body = playlistCatalogFixture(id, query.Variables.Offset, query.Variables.Limit, 202)
+			if query.Variables.Offset == 200 && calls[200] == 1 {
+				status = 503
+				body = `{}`
+			}
+		}
+		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	if tracks, _, _, err := a.fetchPlaylistTracks(t.Context(), id, nil); err == nil || tracks != nil {
+		t.Fatal("interrupted traversal returned rows")
+	}
+	ctx, cancel := a.spotifyAuth.requestContext(t.Context())
+	defer cancel()
+	partial, ok := a.loadPlaylistPartial(ctx, id, "version1")
+	if !ok || partial.NextOffset != 200 || len(partial.Items) != 200 {
+		t.Fatal("validated prefix not checkpointed", partial.NextOffset, ok)
+	}
+	root, err := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: "fetchPlaylist:page:0:100", ContextKey: a.spotifyAuth.metadataContext})
+	if err != nil || root != nil {
+		t.Fatal("partial traversal published ordinary root page", err)
+	}
+	tracks, _, _, err := a.fetchPlaylistTracks(t.Context(), id, nil)
+	if err != nil || len(tracks) != 201 || calls[100] != 1 || calls[200] != 2 {
+		t.Fatal("resume duplicated or refetched prefix", len(tracks), calls, err)
+	}
+	if _, ok := a.loadPlaylistPartial(ctx, id, "version1"); ok {
+		t.Fatal("completed traversal left resumable partial")
 	}
 }

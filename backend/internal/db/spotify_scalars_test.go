@@ -3,6 +3,8 @@
 package db
 
 import (
+	"context"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,10 @@ import (
 func TestDownloadedSpotifyScalarsBecomeEffective(t *testing.T) {
 	d, path := evidenceFixture(t)
 	o := referenceObservation()
+	o.AccountContext = "download-fixture"
+	if err := d.ActivateSpotifyMetadataContext(o.AccountContext); err != nil {
+		t.Fatal(err)
+	}
 	o.RetrievedAt = time.Now().UTC()
 	o.BPMConfidence = nil
 	o.Key, o.Mode = scalarPtr(0), scalarPtr(1) // C major
@@ -77,5 +83,91 @@ func TestSpotifyScalarSchemaUpgradePreservesRows(t *testing.T) {
 	record.BPMSource = scalarPtr("spotify")
 	if err := d.UpsertTrackAnalysis(record); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A matching recording and file prove download identity, not ownership of an
+// unrelated legacy provider cache. Such values cannot become durable facts.
+func TestDownloadCompletionExcludesUnownedAndRetiredScalarCaches(t *testing.T) {
+	for _, owner := range []string{"", "retired"} {
+		t.Run("owner="+owner, func(t *testing.T) {
+			d, path := evidenceFixture(t)
+			if err := d.ActivateSpotifyMetadataContext("current"); err != nil {
+				t.Fatal(err)
+			}
+			o := referenceObservation()
+			o.AccountContext = owner
+			o.RetrievedAt = time.Now().UTC()
+			if err := d.PutExternalAnalysis(o, "historical", time.Now().Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+			if cache, err := d.GetExternalAnalysis(referenceID, "audio_features"); err != nil || cache != nil {
+				t.Fatalf("ineligible cache reused: %+v %v", cache, err)
+			}
+			finishEvidence(t, d, path, "job", referenceID)
+			var encoded string
+			if err := d.conn.QueryRow("SELECT features_json FROM spotify_download_evidence").Scan(&encoded); err != nil {
+				t.Fatal(err)
+			}
+			if encoded != "" {
+				t.Fatal("ineligible cache acquired durable download provenance")
+			}
+			fp := scanEvidence(t, d, path, "song")
+			link, err := d.GetSpotifyRecording("song", fp)
+			if err != nil || link == nil || link.ExternalID != referenceID {
+				t.Fatalf("verified recording identity lost: %+v %v", link, err)
+			}
+		})
+	}
+}
+
+func TestVerifiedDownloadRecoversExistingScalarsAndDefersClaims(t *testing.T) {
+	for _, status := range []string{TrackAnalysisComplete, TrackAnalysisRunning, TrackAnalysisPending} {
+		t.Run(status, func(t *testing.T) {
+			d, path := evidenceFixture(t)
+			o := referenceObservation()
+			o.AccountContext = "download"
+			o.RetrievedAt = time.Now().UTC()
+			if err := d.ActivateSpotifyMetadataContext(o.AccountContext); err != nil {
+				t.Fatal(err)
+			}
+			if err := d.PutExternalAnalysis(o, "fixture", time.Now().Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+			finishEvidence(t, d, path, "job", referenceID)
+			fp := scanEvidence(t, d, path, "song")
+			bpm, key, mode, energy, at := 150.0, 0, "major", 7, int64(123)
+			original := TrackAnalysis{SongID: "song", Status: status, AnalysisVersion: 1, AlgorithmVersion: "local-current", SourceFingerprint: fp, BPM: &bpm, BPMSource: scalarPtr("spotify"), KeyTonic: &key, KeyMode: &mode, KeySource: scalarPtr("measured"), EnergyLevel: &energy, EnergyLevelConfidence: scalarPtr(0.8), EnergyAlgorithmVersion: scalarPtr("energy-v1"), AnalyzedAt: &at, Local: &LocalScalarObservation{SourceFingerprint: fp, AlgorithmVersion: "local-current", BPM: &bpm, KeyTonic: &key, KeyMode: &mode}}
+			if err := d.UpsertTrackAnalysis(original); err != nil {
+				t.Fatal(err)
+			}
+			before, err := d.GetTrackAnalysis("song")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := d.ReconcileSpotifyDownload(context.Background(), path); err != nil {
+				t.Fatal(err)
+			}
+			after, err := d.GetTrackAnalysis("song")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status != TrackAnalysisComplete {
+				if !reflect.DeepEqual(before, after) {
+					t.Fatal("recovery replaced active claim")
+				}
+				return
+			}
+			if after.SpotifyBindings == nil || !after.SpotifyBindings.BPM.Durable || *after.BPM != *o.BPM || !reflect.DeepEqual(before.Local, after.Local) || *after.EnergyLevel != energy || *after.AnalyzedAt != at || after.AlgorithmVersion != before.AlgorithmVersion || *after.KeyTonic != key {
+				t.Fatalf("recovery lost independent facts: %+v", after)
+			}
+			if err := d.ReconcileSpotifyDownload(context.Background(), path); err != nil {
+				t.Fatal(err)
+			}
+			again, err := d.GetTrackAnalysis("song")
+			if err != nil || !reflect.DeepEqual(after, again) {
+				t.Fatal("recovery not idempotent")
+			}
+		})
 	}
 }

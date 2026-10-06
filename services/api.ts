@@ -1476,17 +1476,17 @@ export const api = {
     return handleResponse<TrackAnalysisFeature>(response);
   },
 
-  async updateTrackKey(trackId: string, key: { tonic: number; mode: 'major' | 'minor' }): Promise<TrackAnalysisFeature> {
+  async updateTrackKey(trackId: string, key: { tonic: number; mode: 'major' | 'minor' }, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'If-Match': JSON.stringify(sourceFingerprint) },
       body: JSON.stringify(key),
     });
     return handleResponse<TrackAnalysisFeature>(response);
   },
 
-  async resetTrackKey(trackId: string): Promise<TrackAnalysisFeature> {
-    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, { method: 'DELETE' });
+  async resetTrackKey(trackId: string, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, { method: 'DELETE', headers: { 'If-Match': JSON.stringify(sourceFingerprint) } });
     return handleResponse<TrackAnalysisFeature>(response);
   },
 
@@ -1541,10 +1541,11 @@ export const api = {
 
   async getTrackTransitionRecommendations(trackId: string, limit = 3, intent: TransitionIntent = 'hold', filters: TransitionRecommendationFilters = {}): Promise<TrackTransitionRecommendations> {
     const query = new URLSearchParams({ limit: String(Math.max(1, Math.min(50, limit))), intent });
-    for (const key of ['minBpm', 'maxBpm', 'minEnergyLevel', 'maxEnergyLevel'] as const) {
+    for (const key of ['minBpm', 'maxBpm', 'minEnergyLevel', 'maxEnergyLevel', 'minSpotifyScore', 'maxSpotifyScore'] as const) {
       const value = filters[key];
       if (value !== undefined) query.set(key, String(value));
     }
+    if (filters.spotifyScoreMetric) query.set('spotifyScoreMetric', filters.spotifyScoreMetric);
     if (filters.stemsAvailable !== undefined) query.set('stemsAvailable', String(filters.stemsAvailable));
     if (filters.camelotCompatible !== undefined) query.set('camelotCompatible', String(filters.camelotCompatible));
     if (filters.playlistIds?.length) {

@@ -32,8 +32,14 @@ func normalize(id string, data payload, now time.Time) (Observation, error) {
 	if t.Key != nil && *t.Key == -1 {
 		t.Key = nil
 	}
-	if t.Tempo == nil && (t.Key == nil || t.Mode == nil) {
-		return Observation{}, failure(AnalysisUnavailable, 0)
+	// Scores are independent provider measurements; zero is a usable score.
+	scores := []*float64{t.Energy, t.Danceability, t.Acousticness, t.Instrumentalness, t.Liveness, t.Speechiness, t.Valence}
+	hasScore := false
+	for _, score := range scores {
+		if !confidence(score) {
+			return Observation{}, failure(ProviderChanged, 0)
+		}
+		hasScore = hasScore || score != nil
 	}
 	for _, intervals := range [][]interval{data.Bars, data.Beats, data.Tatums, data.Sections} {
 		if len(intervals) > 20000 {
@@ -63,12 +69,31 @@ func normalize(id string, data payload, now time.Time) (Observation, error) {
 			}
 		}
 	}
+	if !hasScore && t.Tempo == nil && t.Key == nil && t.Mode == nil && t.Loudness == nil && t.Duration == nil && t.TimeSignature == nil && len(data.Bars)+len(data.Beats)+len(data.Tatums)+len(data.Sections)+len(data.Segments) == 0 {
+		return Observation{}, failure(AnalysisUnavailable, 0)
+	}
 	observation := Observation{
+		Energy:           t.Energy,
+		Danceability:     t.Danceability,
+		Acousticness:     t.Acousticness,
+		Instrumentalness: t.Instrumentalness,
+		Liveness:         t.Liveness,
+		Speechiness:      t.Speechiness,
+		Valence:          t.Valence,
+
 		SourceEndpoint: "audio_analysis",
 		TrackID:        id, Source: "spotify_internal", RetrievedAt: now.UTC(), AnalyzerVersion: data.Meta.AnalyzerVersion,
 		BPM: t.Tempo, BPMConfidence: t.TempoConfidence, Key: t.Key, KeyConfidence: t.KeyConfidence,
 		Mode: t.Mode, ModeConfidence: t.ModeConfidence, LoudnessDB: t.Loudness,
 		TimeSignature: t.TimeSignature, TimeSignatureConfidence: t.TimeSignatureConfidence, DurationSeconds: t.Duration,
+	}
+	for _, artifact := range []struct {
+		name  string
+		count int
+	}{{"bars", len(data.Bars)}, {"beats", len(data.Beats)}, {"tatums", len(data.Tatums)}, {"sections", len(data.Sections)}, {"segments", len(data.Segments)}} {
+		if artifact.count > 0 {
+			observation.ArtifactCapabilities = append(observation.ArtifactCapabilities, artifact.name)
+		}
 	}
 	if t.Key != nil && t.Mode != nil {
 		// Keep scalar notation independent of the local DSP/database service.

@@ -121,7 +121,7 @@ const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
             <button ref={triggerRef} type='button' className='dj-btn dj-btn-icon dj-deck-inspector-trigger' data-deck-accent={deck}
               aria-expanded={inspectorOpen} aria-pressed={inspectorOpen}
               aria-label={`Deck ${deck} analysis and editing${needsAttention ? ' (track not analysed)' : ''}`}
-              title='Analysis, key, BPM, cue and grid editing' onClick={() => setInspectorOpen(open => !open)}>
+              title='Analysis, audio waveforms, key, BPM, cue and grid editing' onClick={() => setInspectorOpen(open => !open)}>
               <SlidersHorizontal size={15} aria-hidden='true' />
               {needsAttention && <span className='dj-status-dot dj-trigger-dot' data-state='warn' aria-hidden='true' />}
             </button>

@@ -1,3 +1,4 @@
+import type { LocalThreeBand } from '../../../../services/localThreeBand';
 /**
  * Canvas 2D drawing helpers for one deck's scrolling waveform.
  *
@@ -13,6 +14,7 @@ import { getHotCueMarkerStyle } from '../../../../lib/hotCueMarkerStyle';
 import { DECK_WAVEFORM_PALETTE, LEVEL_COLORS, WAVEFORM_CHROME, canvasGradientStops, type WaveformColorMode } from './waveformPalette';
 
 export interface MainWaveformFrame {
+  localBands?: { overview: LocalThreeBand['overview']; peak: number };
   deck: DeckId;
   peaks: number[] | null;
   position: number;
@@ -44,7 +46,7 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
   ctx.fillStyle = WAVEFORM_CHROME.background;
   ctx.fillRect(0, 0, width, h);
 
-  if (!peaks || peaks.length === 0 || !duration || duration <= 0) {
+  if ((!frame.localBands && (!peaks || peaks.length === 0)) || !duration || duration <= 0) {
     ctx.strokeStyle = WAVEFORM_CHROME.placeholderGrid;
     ctx.lineWidth = 1;
     for (let x = 0; x < width; x += 48) {
@@ -63,18 +65,36 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
   const secondsPerPixel = visibleSeconds / width;
   const visibleStartTime = position - playheadX * secondsPerPixel;
   const visibleEndTime = position + (width - playheadX) * secondsPerPixel;
-  const peaksPerSecond = peaks.length / duration;
+  const peaksPerSecond = (peaks?.length ?? 0) / duration;
   const maxAmplitude = h / 2 - 4;
 
   const sampleAt = (x: number): number => {
     const pixelTime = position + (x - playheadX) * secondsPerPixel;
     if (pixelTime < 0 || pixelTime > duration) return 0;
     const first = Math.max(0, Math.floor((pixelTime - secondsPerPixel / 2) * peaksPerSecond));
-    const last = Math.min(peaks.length, Math.max(first + 1, Math.ceil((pixelTime + secondsPerPixel / 2) * peaksPerSecond)));
-    return peakBetween(peaks, first, last);
+    const last = Math.min(peaks?.length ?? 0, Math.max(first + 1, Math.ceil((pixelTime + secondsPerPixel / 2) * peaksPerSecond)));
+    return peakBetween(peaks ?? [], first, last);
   };
 
-  if (colorMode === '3band') {
+  if(frame.localBands) {
+    const {overview,peak}=frame.localBands;
+    const arrays=[overview.low,overview.mid,overview.high];
+    const colors=[palette.gradient.center,palette.gradient.mid,palette.gradient.edge];
+    const samplesPerSecond=overview.sampleRate/overview.resolution;
+    for(let band=0;band<3;band++) {
+      const center=(band+0.5)*h/3;const height=Math.max(0,h/6-2);
+      ctx.fillStyle=colors[band];ctx.beginPath();
+      for(let x=0;x<width;x++) {
+        const time=position+(x-playheadX)*secondsPerPixel;
+        if(time<0 || time>duration)continue;
+        const first=Math.max(0,Math.floor((time-secondsPerPixel/2)*samplesPerSecond));
+        const last=Math.min(arrays[band].length,Math.max(first+1,Math.ceil((time+secondsPerPixel/2)*samplesPerSecond)));
+        const amplitude=peak>0?peakBetween(arrays[band],first,last)/peak*height:0;
+        if(amplitude>0)ctx.rect(x,center-amplitude,1,amplitude*2);
+      }
+      ctx.fill();ctx.font='9px system-ui';ctx.textAlign='left';ctx.fillText(['Low','Mid','High'][band],4,band*h/3+10);
+    }
+  } else if (colorMode === '3band') {
     // Level mode uses amplitude thresholds and therefore separate fills.
     for (let x = 0; x < width; x++) {
       const peak = sampleAt(x);

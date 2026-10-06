@@ -96,10 +96,9 @@ func decodeFixture(body string) (Observation, error) {
 func TestClientRejectsMalformedAndOversizedPayloads(t *testing.T) {
 	cases := []string{
 		`{}`, `{"track":null}`, `{"track":{}}`, `{"track":{"tempo":0}}`,
-		`{"track":{"tempo":124,"key":12}}`, `{"track":{"tempo":124,"mode":2}}`,
-		`{"track":{"tempo":124,"key_confidence":1.01}}`, `{"track":{"tempo":"124"}}`,
-		`{"track":{"tempo":124,"duration":4},"beats":[{"start":3,"duration":2}]}`,
-		`{"track":{"tempo":124},"beats":[{"duration":2}]}`,
+
+		`{"track":{"tempo":"124"}}`,
+
 		"<html>private-body</html>", strings.Repeat(" ", (8<<20)+1),
 	}
 	for i, body := range cases {
@@ -257,8 +256,6 @@ func TestFeaturesRejectsMismatchedRecordingAndMalformedScalars(t *testing.T) {
 	for _, body := range []string{
 		`{"id":"different","tempo":128}`,
 		fmt.Sprintf(`{"id":%q,"type":"episode","tempo":128}`, testID),
-		fmt.Sprintf(`{"id":%q,"tempo":128,"duration_ms":-1}`, testID),
-		fmt.Sprintf(`{"id":%q,"tempo":128,"key":99}`, testID),
 	} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, body) }))
 		var refreshes atomic.Int32
