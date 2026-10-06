@@ -6,7 +6,7 @@ export function LocalBandPreview({ songId, fingerprint }: { songId: string; fing
   useEffect(() => {
     let active = true;
     setSnapshot(undefined);
-    void loadLocalThreeBand(songId).then(data => {
+    void loadLocalThreeBand(songId, fingerprint).then(data => {
       if (active) setSnapshot({ id: songId, fp: fingerprint, data: data?.sourceFingerprint === fingerprint ? data : null });
     }, () => { if (active) setSnapshot({ id: songId, fp: fingerprint, data: null, error: true }); });
     return () => { active = false; };

@@ -492,7 +492,7 @@ Use the two verified recordings for bounded live regression: waveform succeeds i
 
 ## 15. Acceptance checklist
 
-**Last reviewed: 2026-10-06, through milestone 137.** **2 of 12 gates checked; 10 remain partial.** Checked items have implementation and regression evidence for the stated behavior. Unchecked items remain acceptance gates even where substantial pieces are implemented. Fixture coverage does not establish live provider availability or corpus/platform qualification.
+**Last reviewed: 2026-10-06, through milestone 138.** **2 of 12 gates checked; 10 remain partial.** Checked items have implementation and regression evidence for the stated behavior. Unchecked items remain acceptance gates even where substantial pieces are implemented. Fixture coverage does not establish live provider availability or corpus/platform qualification.
 
 - [ ] **Partial — complete metadata capture.** Supported OAuth/Web Player catalog resources, scalar domain JSON, detailed arrays and native waveforms have bounded sanitized storage and retrieval. Final-file durable audio artifact promotion is implemented for fresh cached resources (milestone 97); Independent download audio fetching, scanner bindings and physical-source-qualified waveform retrieval are implemented with partial-resource/restart regressions (milestones 97–109). Bounded catalog snapshots and ordered track relations are now promoted with final-file evidence; related album/artist snapshots are retained when already cached (milestones 111–116). Detailed imported/private arrays have a paginated source-qualified viewer with section/segment scalar and vector inspection (milestones 117–124). Pending-capture staging, complete related-entity graphs, scalar import consumers and complete import lifecycle qualification remain incomplete. Offline retention policy and remaining restart lifecycle qualification, related-entity freshness/deduplication and complete real-response inventories remain outstanding. See milestones 3–6, 38–42 and 46–66.
 - [ ] **Partial — original units and provenance for mode, loudness, meter and duration.** Nullable provider fields, original duration units, source-bound candidates and the song detail panel are implemented. Complete effective per-field resolution, freshness/last-good semantics and all detail/list consumers still need qualification. See milestones 2 and 18–21.
@@ -1607,6 +1607,17 @@ All changes remain on `feature/spotify-metadata-foundation` and uncommitted. No 
 Validation: `DJSessionLifecycle.test.tsx` passed (4 tests), including the integrated recommendation/draft switch scenario. The affected Mix Next, playlist draft, waveform, and overview suites passed (17 tests); frontend type/boundary checks and production build passed with existing warnings. The full API suite passed (`go test ./internal/api -count=1`, 43.935s). The full frontend suite was not run for this milestone. The test is an isolated mounted-component lifecycle qualification; it does not establish the full routed application's backend disconnect/reconnect flow, visual layout across viewports or full accessibility. The acceptance gate therefore remains partial.
 
 **Remaining:** Complete full-app rendered disconnect/reconnect and viewport/accessibility qualification; close generic metadata resolution, download/catalog lifecycle, local fallback estimator qualification, waveform live/performance qualification, playlist persistence/ranking and broad acceptance. All nine phases remain tracked; two acceptance gates are checked and ten remain partial.
+
+All changes remain on `feature/spotify-metadata-foundation` and uncommitted. No merge or deployment has been performed.
+
+
+### Milestone 138: Song-detail waveform requests use captured source identity
+
+**Implemented with focused regression coverage.** The shared song Audio metadata local-band preview now passes its captured physical-source fingerprint into the in-flight request key, matching the DJ overview and scrolling waveform consumers. A relink/replacement therefore starts an independent fetch rather than joining a stale same-song request. The response fingerprint is still checked before display, and effect cleanup prevents a late prior-source result from updating the current view.
+
+Validation: `LocalBandPreview.test.tsx` covers the requested fingerprint and deferred old/new source requests; focused frontend tests, typecheck and broader checks are pending. This closes a source-isolation implementation detail only. It does not qualify full account disconnect/reconnect, waveform provider timing/scaling, accessibility, or long-track rendering. The acceptance checklist remains two checked gates and ten partial gates.
+
+**Remaining:** Full-app rendered disconnect/reconnect and viewport/accessibility qualification; generic metadata resolution; download/catalog lifecycle; local fallback estimator qualification; live waveform contract and performance; playlist persistence/ranking; migration, corpus and broad acceptance. All nine phases remain tracked.
 
 All changes remain on `feature/spotify-metadata-foundation` and uncommitted. No merge or deployment has been performed.
 
