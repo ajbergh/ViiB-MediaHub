@@ -49,6 +49,7 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 
 	batch := make([]preparedIncrementalSong, 0, incrementalBatchSize)
 	processedPaths := make([]string, 0, incrementalBatchSize)
+	retentionPaths := make([]string, 0, len(filesToProcess))
 	processed := 0
 
 	flush := func() error {
@@ -78,6 +79,7 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 		}
 		batch = append(batch, prepared)
 		processedPaths = append(processedPaths, prepared.song.FilePath)
+		retentionPaths = append(retentionPaths, prepared.song.FilePath)
 		result.TotalFiles++
 		if len(batch) >= incrementalBatchSize {
 			if err := flush(); err != nil {
@@ -112,6 +114,11 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 				RemovedSongs: removed,
 			})
 		}
+	}
+
+	if result.Errors == 0 {
+		s.maintainDownloadedEvidence(nil, append(retentionPaths, filesToDelete...), startTime)
+		s.maintainPrivateSpotifyCache()
 	}
 
 	if result.NewSongs > 0 || result.UpdatedSongs > 0 || result.RemovedSongs > 0 {

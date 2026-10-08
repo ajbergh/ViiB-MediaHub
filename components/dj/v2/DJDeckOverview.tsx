@@ -1,3 +1,4 @@
+import { reportAudioReadFailure } from '../../../services/audioReadDiagnostics';
 /** Draws a whole-track overview with position, loop, and cue markers. */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -26,13 +27,15 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds, localBands = f
   const [bands, setBands] = useState<{ track: typeof track; data: LocalThreeBand }>();
   useEffect(() => {
     let active = true;
+    let readingMetadata = true;
     setBands(undefined);
     if (localBands && track) void (async () => {
       const metadata = await api.getTrackAnalysisFeature(track.id);
       if (!active || !metadata.sourceFingerprint) return;
+      readingMetadata = false;
       const data = await loadLocalThreeBand(track.id, metadata.sourceFingerprint);
       if (active && data?.sourceFingerprint === metadata.sourceFingerprint) setBands({ track, data });
-    })().catch(() => { /* Amplitude remains available when local bands are missing. */ });
+    })().catch(error => { if (active) reportAudioReadFailure(readingMetadata ? 'audio_metadata' : 'local_bands', error); });
     return () => { active = false; };
   }, [track, localBands]);
   const ref = useRef<HTMLCanvasElement>(null);

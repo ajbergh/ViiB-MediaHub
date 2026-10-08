@@ -763,6 +763,15 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 		}
 	}
 
+	retentionRoots := make([]string, 0, len(deletionSafeFolderPaths))
+	for root := range deletionSafeFolderPaths {
+		retentionRoots = append(retentionRoots, root)
+	}
+	s.maintainDownloadedEvidence(retentionRoots, nil, startTime)
+	if result.Errors == 0 {
+		s.maintainPrivateSpotifyCache()
+	}
+
 	result.Duration = time.Since(startTime)
 	s.setProgress(fmt.Sprintf("Scan complete: %d files found, %d new, %d updated, %d removed (%s)",
 		result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.RemovedSongs, result.Duration.Round(time.Millisecond)))

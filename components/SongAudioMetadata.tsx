@@ -1,3 +1,4 @@
+import { reportAudioReadFailure } from '../services/audioReadDiagnostics';
 import { SpotifyCatalogEvidence } from './SpotifyCatalogEvidence';
 import { useAudioMetadataRevision } from '../hooks/useAudioMetadataRevision';
 import { ManualAudioMetadata } from './ManualAudioMetadata';
@@ -48,7 +49,7 @@ export function SongAudioMetadata({ songId }: { songId: string }) {
     setRefreshing(true);
     void api.getTrackAnalysisFeature(songId).then(data => {
       if (active && requestGeneration === metadataGeneration.current) { setSnapshot({ songId, session, data }); setRefreshing(false); }
-    }, () => { if (active && requestGeneration === metadataGeneration.current) { setSnapshot(previous => ({ songId, session, data: previous?.songId === songId && previous.session === session ? previous.data : undefined, error: true })); setRefreshing(false); } });
+    }, error => { if (active && requestGeneration === metadataGeneration.current) { reportAudioReadFailure('audio_metadata', error); setSnapshot(previous => ({ songId, session, data: previous?.songId === songId && previous.session === session ? previous.data : undefined, error: true })); setRefreshing(false); } });
     return () => { active = false; };
   }, [songId, session, revision, metadataRevision, metadataGeneration]);
   const current = snapshot?.songId === songId && snapshot.session === session ? snapshot : undefined;

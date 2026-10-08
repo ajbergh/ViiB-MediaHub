@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
+	"os"
+	"path/filepath"
 )
 
 // Revision tombstones survive library removal. They express a user choice,
@@ -74,4 +76,58 @@ func (d *DB) restoreDownloadSuppression(ctx context.Context, song Song, fingerpr
 		return false, err
 	}
 	return suppressed, nil
+}
+
+// currentDownloadSuppression discovers retained user choices independently of
+// scanner restoration. Unrelated paths require no filesystem reads. A path
+// with retained choices is hashed so coarse fingerprint collisions cannot
+// suppress a different physical revision.
+func (d *DB) currentDownloadSuppression(ctx context.Context, songID, fingerprint string) (Song, downloadFileRevision, bool, error) {
+	var song Song
+	var file downloadFileRevision
+	err := d.conn.QueryRowContext(ctx, `SELECT id,file_path,COALESCE(file_hash,'') FROM songs WHERE id=?`, songID).Scan(&song.ID, &song.FilePath, &song.FileHash)
+	if err != nil {
+		return song, file, false, err
+	}
+	absolute, err := filepath.Abs(song.FilePath)
+	if err != nil {
+		return song, file, false, err
+	}
+	file.path = filepath.Clean(absolute)
+	var candidate bool
+	if err = d.conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM spotify_download_revision_suppression WHERE file_path=?)`, file.path).Scan(&candidate); err != nil {
+		return song, file, false, err
+	}
+	if !candidate {
+		return song, file, false, nil
+	}
+	actual, err := readDownloadRevision(ctx, file.path)
+	if err != nil {
+		return song, file, true, err
+	}
+	info, err := os.Lstat(file.path)
+	if err != nil {
+		return song, file, true, err
+	}
+	if info.Size() != actual.size || info.ModTime().UnixNano() != actual.mtime || LocalSourceFingerprint(song, info) != fingerprint {
+		return song, file, true, nil
+	}
+	file = actual
+	var blocked bool
+	err = d.conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM spotify_download_revision_suppression WHERE file_path=? AND content_sha256=? AND file_size=? AND mtime_ns=?)`, file.path, file.digest, file.size, file.mtime).Scan(&blocked)
+	return song, file, blocked, err
+}
+
+// Automatic admission may retire an obsolete projection after verifying new
+// bytes. Confirmation retains it until its stricter stale-choice check runs.
+func (d *DB) currentAutomaticDownloadSuppression(ctx context.Context, songID, fingerprint string) (Song, downloadFileRevision, bool, error) {
+	song, file, blocked, err := d.currentDownloadSuppression(ctx, songID, fingerprint)
+	if err == nil && !blocked && file.digest != "" {
+		var obsolete bool
+		err = d.conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM spotify_download_suppression_bindings WHERE song_id=? AND source_fingerprint=? AND (file_path!=? OR content_sha256!=? OR file_size!=? OR mtime_ns!=?))`, songID, fingerprint, file.path, file.digest, file.size, file.mtime).Scan(&obsolete)
+		if err == nil && obsolete {
+			_, err = d.restoreDownloadSuppression(ctx, song, fingerprint, "", file)
+		}
+	}
+	return song, file, blocked, err
 }

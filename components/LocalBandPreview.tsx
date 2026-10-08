@@ -1,3 +1,4 @@
+import { reportAudioReadFailure } from '../services/audioReadDiagnostics';
 import { useEffect, useState } from 'react';
 import { bandDisplay, loadLocalThreeBand, type LocalThreeBand } from '../services/localThreeBand';
 
@@ -9,7 +10,7 @@ export function LocalBandPreview({ songId, fingerprint }: { songId: string; fing
     setSnapshot(undefined);
     void loadLocalThreeBand(songId, fingerprint).then(data => {
       if (active) setSnapshot({ id: songId, fp: fingerprint, data: data?.sourceFingerprint === fingerprint ? data : null });
-    }, () => { if (active) setSnapshot({ id: songId, fp: fingerprint, data: null, error: true }); });
+    }, error => { if (active) { reportAudioReadFailure('local_bands', error); setSnapshot({ id: songId, fp: fingerprint, data: null, error: true }); } });
     return () => { active = false; };
   }, [songId, fingerprint, revision]);
   const current = snapshot?.id === songId && snapshot.fp === fingerprint ? snapshot : undefined;

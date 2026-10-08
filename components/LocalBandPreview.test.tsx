@@ -2,8 +2,9 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ load: vi.fn() }));
+const mocks = vi.hoisted(() => ({ load: vi.fn(), report: vi.fn() }));
 vi.mock('../services/localThreeBand', async original => ({ ...await original<typeof import('../services/localThreeBand')>(), loadLocalThreeBand: mocks.load }));
+vi.mock('../services/audioReadDiagnostics',()=>({reportAudioReadFailure:mocks.report}));
 import { LocalBandPreview } from './LocalBandPreview';
 it('renders three distinct envelopes and excludes another source', async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,6 +28,7 @@ it('recovers a transient load failure without reloading the application', async 
  try {
   await act(async()=>root.render(<LocalBandPreview songId="song" fingerprint="fp"/>));
   expect(host.textContent).toContain('could not be loaded');
+  expect(mocks.report).toHaveBeenCalledWith('local_bands',expect.any(Error));
   await act(async()=>(host.querySelector('button') as HTMLButtonElement).click());
   expect(host.querySelectorAll('svg')).toHaveLength(3);
   expect(host.textContent).not.toContain('could not be loaded');

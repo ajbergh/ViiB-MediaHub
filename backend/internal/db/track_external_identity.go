@@ -21,10 +21,15 @@ func (d *DB) SpotifySearchAllowed(songID, fingerprint string) (bool, error) {
 	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
 		return false, err
 	}
+	_, file, blocked, err := d.currentAutomaticDownloadSuppression(context.Background(), songID, fingerprint)
+	if err != nil || blocked {
+		return false, err
+	}
 	var allowed bool
-	err := d.conn.QueryRow(`SELECT NOT EXISTS (
+	err = d.conn.QueryRow(`SELECT NOT EXISTS (
  SELECT 1 FROM track_external_identity_suppression WHERE song_id=? AND source_fingerprint=?)
- AND NOT EXISTS (SELECT 1 FROM track_external_identity WHERE song_id=? AND provider='spotify' AND link_origin!='automatic_search')`, songID, fingerprint, songID).Scan(&allowed)
+ AND NOT EXISTS (SELECT 1 FROM track_external_identity WHERE song_id=? AND provider='spotify' AND link_origin!='automatic_search')
+ AND NOT EXISTS (SELECT 1 FROM spotify_download_revision_suppression WHERE file_path=? AND (?='' OR (content_sha256=? AND file_size=? AND mtime_ns=?)))`, songID, fingerprint, songID, file.path, file.digest, file.digest, file.size, file.mtime).Scan(&allowed)
 	return allowed, err
 }
 
@@ -39,14 +44,20 @@ func (d *DB) SaveSpotifySearchMatch(songID, id, fingerprint string) (bool, error
 	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
 		return false, err
 	}
+	song, file, blocked, err := d.currentAutomaticDownloadSuppression(context.Background(), songID, fingerprint)
+	if err != nil || blocked {
+		return false, err
+	}
 	result, err := d.conn.Exec(`INSERT INTO track_external_identity
  (song_id,provider,external_id,link_origin,source_fingerprint,confirmed_at)
  SELECT ?,'spotify',?,'automatic_search',?,? WHERE EXISTS (
  SELECT 1 FROM track_analysis_source_revisions WHERE song_id=? AND source_fingerprint=?)
  AND NOT EXISTS (SELECT 1 FROM track_external_identity_suppression WHERE song_id=? AND source_fingerprint=?)
+ AND EXISTS(SELECT 1 FROM songs WHERE id=? AND file_path=? AND COALESCE(file_hash,'')=?)
+ AND NOT EXISTS(SELECT 1 FROM spotify_download_revision_suppression WHERE file_path=? AND (?='' OR (content_sha256=? AND file_size=? AND mtime_ns=?)))
  ON CONFLICT(song_id,provider) DO UPDATE SET external_id=excluded.external_id,
  link_origin=excluded.link_origin,source_fingerprint=excluded.source_fingerprint,confirmed_at=excluded.confirmed_at
- WHERE track_external_identity.link_origin='automatic_search'`, songID, id, fingerprint, time.Now().UnixMilli(), songID, fingerprint, songID, fingerprint)
+ WHERE track_external_identity.link_origin='automatic_search'`, songID, id, fingerprint, time.Now().UnixMilli(), songID, fingerprint, songID, fingerprint, song.ID, song.FilePath, song.FileHash, file.path, file.digest, file.digest, file.size, file.mtime)
 	if err != nil {
 		return false, err
 	}
@@ -74,6 +85,20 @@ func (d *DB) ConfirmSpotifyRecording(songID, id, fingerprint string, confirmed b
 	}
 	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
 		return false, err
+	}
+	// An orphan tombstone may have no song-scoped projection after deletion or
+	// a failed scan. Discover it from the actual canonical file before relinking.
+	currentSong, currentFile, blocked, discoverErr := d.currentDownloadSuppression(context.Background(), songID, fingerprint)
+	if discoverErr != nil {
+		return false, discoverErr
+	}
+	if blocked {
+		if currentFile.digest == "" {
+			return false, nil
+		}
+		if _, err := d.restoreDownloadSuppression(context.Background(), currentSong, fingerprint, "", currentFile); err != nil {
+			return false, err
+		}
 	}
 	var suppressedFile downloadFileRevision
 	var suppressedHash, suppressedCurrentPath string

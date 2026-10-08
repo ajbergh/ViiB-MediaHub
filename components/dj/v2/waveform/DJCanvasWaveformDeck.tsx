@@ -1,3 +1,4 @@
+import { reportAudioReadFailure } from '../../../../services/audioReadDiagnostics';
 import { api } from '../../../../services/api';
 import { loadLocalThreeBand, type LocalThreeBand } from '../../../../services/localThreeBand';
 /**
@@ -30,15 +31,16 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
   const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
   const [bands,setBands] = useState<{track: typeof track; overview: LocalThreeBand['overview']; peak: number}>();
   useEffect(()=>{
-   let active=true;setBands(undefined);
+   let active=true;let readingMetadata=true;setBands(undefined);
    if(localBands && track) void (async()=>{
     const metadata=await api.getTrackAnalysisFeature(track.id);
     if(!active || !metadata.sourceFingerprint)return;
+    readingMetadata=false;
     const data=await loadLocalThreeBand(track.id,metadata.sourceFingerprint);
     if(!active || !data || data.sourceFingerprint!==metadata.sourceFingerprint)return;
     let peak=0;for(const band of [data.overview.low,data.overview.mid,data.overview.high])for(const value of band)peak=Math.max(peak,value);
     setBands({track,overview:data.overview,peak});
-   })().catch(()=>{});
+   })().catch(error=>{if(active) reportAudioReadFailure(readingMetadata ? 'audio_metadata' : 'local_bands',error);});
    return ()=>{active=false;};
   },[localBands,track]);
   const canvasRef = useRef<HTMLCanvasElement>(null);

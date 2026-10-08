@@ -244,7 +244,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
             Back
           </Button>
 
-          <div className="flex gap-8 items-end">
+          <div className="flex flex-col gap-6 sm:flex-row sm:gap-8 sm:items-end">
             <div className="w-64 h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden">
               <img 
                 src={album.images[0]?.url} 
@@ -253,10 +253,10 @@ export const SpotifyAlbumDetail: React.FC = () => {
               />
             </div>
 
-            <div className="flex-1 pb-4">
+            <div className="min-w-0 w-full flex-1 pb-4">
               <p className="text-sm font-bold uppercase tracking-wider text-text-secondary mb-2">Album</p>
-              <h1 className="text-display font-bold mb-4 leading-tight">{album.name}</h1>
-              <div className="flex items-center gap-2 text-text-secondary">
+              <h1 className="text-display font-bold mb-4 leading-tight break-words">{album.name}</h1>
+              <div className="flex flex-wrap items-center gap-2 text-text-secondary">
                 <span className="font-bold text-text-main">
                   <SpotifyArtistLinks artists={album.artists} />
                 </span>
@@ -276,7 +276,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
       </div>
 
       {/* Actions */}
-      <div className="px-8 py-6 flex items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
+      <div className="px-8 py-6 flex flex-wrap items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
         <Button
           variant="primary"
           accent="brand"

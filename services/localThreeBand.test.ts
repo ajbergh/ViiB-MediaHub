@@ -68,3 +68,10 @@ it('treats a source-change race as unavailable and allows a subsequent read', as
  await expect(loadLocalThreeBand('source-race','fp')).resolves.toBeNull();
  expect(fetchMock).toHaveBeenCalledTimes(2);
 });
+
+it('preserves HTTP status and validation category for sanitized diagnostics', async () => {
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({status:503,ok:false}));
+ await expect(loadLocalThreeBand('diagnostic-http')).rejects.toMatchObject({status:503});
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({status:200,ok:true,json:async()=>({overview:{}})}));
+ await expect(loadLocalThreeBand('diagnostic-payload')).rejects.toMatchObject({category:'invalid_payload'});
+});

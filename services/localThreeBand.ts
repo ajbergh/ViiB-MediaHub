@@ -36,7 +36,7 @@ async function fetchLocalThreeBand(songId: string, sourceFingerprint?: string): 
   const response = await fetch(`/api/v2/analysis/${encodeURIComponent(songId)}/waveform/local-three-band`, { cache: 'no-store' });
   // A source revision changed during the read; never render the old artifact.
   if (response.status === 404 || response.status === 412) return null;
-  if (!response.ok) throw new Error('Local waveform unavailable');
+  if (!response.ok) throw Object.assign(new Error('Local waveform unavailable'), { status: response.status });
   const data = await response.json() as LocalThreeBand;
   const overview = data.overview;
   if (data.songId !== songId || data.representation !== 'local_three_band_estimate'
@@ -52,10 +52,10 @@ async function fetchLocalThreeBand(songId: string, sourceFingerprint?: string): 
     || overview.low.length === 0 || overview.low.length > 100000
     || overview.mid.length !== overview.low.length || overview.high.length !== overview.low.length
     || Math.ceil(overview.frames / overview.resolution) !== overview.low.length) {
-    throw new Error('Invalid local waveform');
+    throw Object.assign(new Error('Invalid local waveform'), { category: 'invalid_payload' });
   }
   for (const band of [overview.low, overview.mid, overview.high]) {
-    for (const value of band) if (!Number.isFinite(value) || value < 0) throw new Error('Invalid local waveform');
+    for (const value of band) if (!Number.isFinite(value) || value < 0) throw Object.assign(new Error('Invalid local waveform'), { category: 'invalid_payload' });
   }
   return data;
 }

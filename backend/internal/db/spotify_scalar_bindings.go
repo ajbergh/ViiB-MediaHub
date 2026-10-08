@@ -12,6 +12,7 @@ type SpotifyScalarBinding struct {
 	Endpoint          string `json:"endpoint"`
 	RetrievedAt       int64  `json:"retrievedAt"`
 	Durable           bool   `json:"durable,omitempty"`
+	DownloadRevision  string `json:"downloadRevision,omitempty"`
 	Eligible          bool   `json:"-"`
 }
 type SpotifyScalarBindings struct {

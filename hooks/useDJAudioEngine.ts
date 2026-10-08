@@ -1,3 +1,4 @@
+import { reportAudioReadFailure } from '../services/audioReadDiagnostics';
 /** Connects DJ store state and guarded deck loading to the audio engine lifecycle. */
 
 import { canSyncBeatGrid, resolvedGridPatch } from '../lib/beatGridConfidence';
@@ -364,7 +365,10 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           }
         }
       } catch (analysisErr) {
-        if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'error');
+        if (isTrackStillLoaded()) {
+          reportAudioReadFailure('deck_analysis', analysisErr);
+          useStore.getState().setDeckAnalysisStatus(deck, 'error');
+        }
         logger.debug(`Persisted analysis unavailable for Deck ${deck}`, analysisErr);
       }
       
@@ -1144,8 +1148,11 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
           useStore.getState().setDeckAnalysisStatus(deck, 'available');
         }
       }
-    } catch {
-      if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'error');
+    } catch (analysisErr) {
+      if (isTrackStillLoaded()) {
+        reportAudioReadFailure('deck_analysis', analysisErr);
+        useStore.getState().setDeckAnalysisStatus(deck, 'error');
+      }
     }
 
     // Hot cues (async, non-blocking)

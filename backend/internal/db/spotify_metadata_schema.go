@@ -155,5 +155,8 @@ func (d *DB) EnsureSpotifyMetadataSchema() error {
 	if err = migrateDownloadSuppression(tx); err != nil {
 		return err
 	}
+	if err = migrateDownloadRetention(tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }

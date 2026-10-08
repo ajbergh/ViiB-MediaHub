@@ -346,3 +346,176 @@ func TestDownloadPublicationPreservesDifferentManualRecording(t *testing.T) {
 		t.Fatal("wrong recording scalars published", count, err)
 	}
 }
+
+func TestDownloadSuppressionGatesWithoutScanProjection(t *testing.T) {
+	for _, mode := range []string{"skipped", "failed"} {
+		t.Run(mode, func(t *testing.T) {
+			d, path := evidenceFixture(t)
+			finishEvidence(t, d, path, "job", referenceID)
+			scanEvidence(t, d, path, "old")
+			if err := d.DeleteSpotifyRecording("old"); err != nil {
+				t.Fatal(err)
+			}
+			if err := d.DeleteSong("old"); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			song := Song{ID: "new", FilePath: path, FileHash: "stable-hash", Title: "Fixture", Artist: "Artist", Album: "Album", AddedAt: 1}
+			fp := LocalSourceFingerprint(song, info)
+			if mode == "failed" {
+				if _, err := d.conn.Exec(`CREATE TRIGGER fail_projection BEFORE INSERT ON track_external_identity_suppression BEGIN SELECT RAISE(ABORT,'fixture'); END`); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := d.SaveSongsWithResult([]Song{song}); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := d.SaveSong(&song); err != nil {
+				t.Fatal(err)
+			}
+			var n int
+			if err := d.conn.QueryRow("SELECT COUNT(*) FROM spotify_download_suppression_bindings").Scan(&n); err != nil || n != 0 {
+				t.Fatal("fixture unexpectedly restored", n, err)
+			}
+			if allowed, err := d.SpotifySearchAllowed("new", fp); err != nil || allowed {
+				t.Fatal("admission bypass", allowed, err)
+			}
+			if err := d.RefreshTrackAnalysisSourceRevision("new", fp); err != nil {
+				t.Fatal(err)
+			}
+			if changed, err := d.SaveSpotifySearchMatch("new", referenceID, fp); err != nil || changed {
+				t.Fatal("publication bypass", changed, err)
+			}
+			if mode == "failed" {
+				if _, err := d.conn.Exec("DROP TRIGGER fail_projection"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if changed, err := d.ConfirmSpotifyRecording("new", referenceID, fp, true); err != nil || !changed {
+				t.Fatal("orphan explicit relink failed", changed, err)
+			}
+			if err := d.conn.QueryRow("SELECT COUNT(*) FROM spotify_download_revision_suppression").Scan(&n); err != nil || n != 0 {
+				t.Fatal("orphan tombstone not cleared", n, err)
+			}
+			var binding string
+			if err := d.conn.QueryRow("SELECT spotify_id FROM spotify_download_import_bindings WHERE song_id='new'").Scan(&binding); err != nil || binding != referenceID {
+				t.Fatal(binding, err)
+			}
+			if err := d.DeleteSong("new"); err != nil {
+				t.Fatal(err)
+			}
+			fp = scanEvidence(t, d, path, "third")
+			if link, err := d.GetSpotifyRecording("third", fp); err != nil || link == nil {
+				t.Fatal("reconfirmation lost on rescan", link, err)
+			}
+		})
+	}
+}
+
+func TestDownloadSuppressionGateChangedBytesAndUnavailable(t *testing.T) {
+	d, path := evidenceFixture(t)
+	finishEvidence(t, d, path, "job", referenceID)
+	scanEvidence(t, d, path, "old")
+	if err := d.DeleteSpotifyRecording("old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.DeleteSong("old"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[0] ^= 1
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	song := Song{ID: "new", FilePath: path, FileHash: "stable-hash", Title: "Fixture", AddedAt: 1}
+	if err := d.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	fp := LocalSourceFingerprint(song, info)
+	if allowed, err := d.SpotifySearchAllowed("new", fp); err != nil || !allowed {
+		t.Fatal("different bytes suppressed", allowed, err)
+	}
+	if err := d.RefreshTrackAnalysisSourceRevision("new", fp); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := d.SaveSpotifySearchMatch("new", referenceID, fp); err != nil || !changed {
+		t.Fatal("different bytes cannot publish", changed, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := d.SpotifySearchAllowed("new", fp); err == nil || allowed {
+		t.Fatal("unavailable candidate failed open", allowed, err)
+	}
+	if changed, err := d.SaveSpotifySearchMatch("new", referenceID, fp); err == nil || changed {
+		t.Fatal("unavailable publication failed open", changed, err)
+	}
+}
+
+func TestSpotifySearchUnrelatedPathNeedsNoFilesystem(t *testing.T) {
+	d, _ := evidenceFixture(t)
+	song := Song{ID: "unrelated", FilePath: filepath.Join(t.TempDir(), "not-on-disk.mp3"), Title: "Fixture", AddedAt: 1}
+	if err := d.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := d.SpotifySearchAllowed(song.ID, "fixture-source"); err != nil || !allowed {
+		t.Fatal(allowed, err)
+	}
+	if err := d.RefreshTrackAnalysisSourceRevision(song.ID, "fixture-source"); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := d.SaveSpotifySearchMatch(song.ID, referenceID, "fixture-source"); err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+}
+
+func TestDownloadSuppressionGateRetiresCollidingProjection(t *testing.T) {
+	d, path := evidenceFixture(t)
+	finishEvidence(t, d, path, "job", referenceID)
+	fp := scanEvidence(t, d, path, "song")
+	if err := d.DeleteSpotifyRecording("song"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[0] ^= 1
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	// Deliberately skip scanning: admission must distinguish the new exact bytes
+	// from the old projected choice even though the source token collides.
+	if allowed, err := d.SpotifySearchAllowed("song", fp); err != nil || !allowed {
+		t.Fatal("obsolete projection blocked different bytes", allowed, err)
+	}
+	if err := d.RefreshTrackAnalysisSourceRevision("song", fp); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := d.SaveSpotifySearchMatch("song", referenceID, fp); err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	var n int
+	if err := d.conn.QueryRow("SELECT COUNT(*) FROM spotify_download_revision_suppression").Scan(&n); err != nil || n != 1 {
+		t.Fatal("original choice deleted", n, err)
+	}
+}

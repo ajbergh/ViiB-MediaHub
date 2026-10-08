@@ -126,6 +126,9 @@ func (d *DB) MarkDownloadCompletedWithEvidence(ctx context.Context, id, path str
 	if err != nil {
 		return false, err
 	}
+	if err = retainCompletedDownload(tx, revision, time.Now().UnixNano()); err != nil {
+		return false, err
+	}
 	// Promote only this recording's fresh active-account artifacts. These
 	// final-file imports are independent of private context cache retirement.
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO spotify_download_audio_imports
@@ -366,7 +369,7 @@ func (d *DB) ReconcileSpotifyDownload(ctx context.Context, path string) error {
 	if sameSource {
 		record = existing
 		durable := func(b *SpotifyScalarBinding) bool {
-			return b != nil && b.Durable && b.TrackID == recording && b.SourceFingerprint == fingerprint
+			return b != nil && b.Durable && b.TrackID == recording && b.SourceFingerprint == fingerprint && b.DownloadRevision == downloadRevisionIdentity(revision)
 		}
 		if record.SpotifyBindings != nil && (observation.BPM == nil || (record.BPM != nil && record.BPMSource != nil && *record.BPMSource == "spotify" && durable(record.SpotifyBindings.BPM))) && (observation.Key == nil || observation.Mode == nil || (record.KeyTonic != nil && record.KeyMode != nil && record.KeySource != nil && *record.KeySource == "spotify" && durable(record.SpotifyBindings.Key))) {
 			return nil
@@ -374,6 +377,15 @@ func (d *DB) ReconcileSpotifyDownload(ctx context.Context, path string) error {
 	}
 	observation.DurableImport = true
 	ApplySpotifyScalars(&record, observation)
+	if record.SpotifyBindings != nil {
+		if observation.BPM != nil && record.SpotifyBindings.BPM != nil {
+			record.SpotifyBindings.BPM.DownloadRevision = downloadRevisionIdentity(revision)
+		}
+		if observation.Key != nil && observation.Mode != nil && record.SpotifyBindings.Key != nil {
+			record.SpotifyBindings.Key.DownloadRevision = downloadRevisionIdentity(revision)
+		}
+	}
+
 	if record.BPM == nil && record.KeyTonic == nil {
 		return nil
 	}
