@@ -2170,27 +2170,33 @@ func (d *DB) DeletePlaylist(id string) error {
 // in the database. It contains metadata about the requested download and
 // its current progress/status.
 type SpotifyDownload struct {
-	ID          string `json:"id"`
-	SpotifyID   string `json:"spotifyId"`
-	SpotifyURI  string `json:"spotifyUri"`
-	Type        string `json:"type"` // "track", "album", "playlist"
-	Title       string `json:"title"`
-	Artist      string `json:"artist,omitempty"`
-	Album       string `json:"album,omitempty"`
-	Status      string `json:"status"` // "queued", "downloading", "converting", "completed", "failed"
-	Progress    int    `json:"progress"`
-	Error       string `json:"error,omitempty"`
-	FilePath    string `json:"filePath,omitempty"`
-	AddedAt     int64  `json:"addedAt"`
-	StartedAt   int64  `json:"startedAt,omitempty"`
-	CompletedAt int64  `json:"completedAt,omitempty"`
-	Metadata    string `json:"metadata,omitempty"` // JSON string for additional data
+	Origins     []SpotifyDownloadOrigin `json:"-"`
+	ID          string                  `json:"id"`
+	SpotifyID   string                  `json:"spotifyId"`
+	SpotifyURI  string                  `json:"spotifyUri"`
+	Type        string                  `json:"type"` // "track", "album", "playlist"
+	Title       string                  `json:"title"`
+	Artist      string                  `json:"artist,omitempty"`
+	Album       string                  `json:"album,omitempty"`
+	Status      string                  `json:"status"` // "queued", "downloading", "converting", "completed", "failed"
+	Progress    int                     `json:"progress"`
+	Error       string                  `json:"error,omitempty"`
+	FilePath    string                  `json:"filePath,omitempty"`
+	AddedAt     int64                   `json:"addedAt"`
+	StartedAt   int64                   `json:"startedAt,omitempty"`
+	CompletedAt int64                   `json:"completedAt,omitempty"`
+	Metadata    string                  `json:"metadata,omitempty"` // JSON string for additional data
 }
 
 // AddDownload inserts a new SpotifyDownload into the download queue.
 // AddDownload inserts a new SpotifyDownload into the download queue table.
 func (d *DB) AddDownload(download *SpotifyDownload) error {
-	_, err := d.conn.Exec(`
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`
 		INSERT INTO spotify_downloads (
 			id, spotify_id, spotify_uri, type, title, artist, album,
 			status, progress, error, file_path, added_at, started_at,
@@ -2200,7 +2206,13 @@ func (d *DB) AddDownload(download *SpotifyDownload) error {
 		download.Title, download.Artist, download.Album, download.Status,
 		download.Progress, download.Error, download.FilePath, download.AddedAt,
 		download.StartedAt, download.CompletedAt, download.Metadata)
-	return err
+	if err != nil {
+		return err
+	}
+	if err = stageDownloadOrigins(tx, download.ID, download.Origins); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // AddDownloads inserts a logical album or playlist as one transaction. Either
@@ -2234,6 +2246,9 @@ func (d *DB) AddDownloads(downloads []*SpotifyDownload) ([]string, error) {
 			ORDER BY added_at ASC LIMIT 1
 		`, download.SpotifyID, download.Metadata).Scan(&existingID)
 		if err == nil {
+			if err := stageDownloadOrigins(tx, existingID, download.Origins); err != nil {
+				return nil, err
+			}
 			ids = append(ids, existingID)
 			continue
 		}
@@ -2244,6 +2259,9 @@ func (d *DB) AddDownloads(downloads []*SpotifyDownload) ([]string, error) {
 			download.Type, download.Title, download.Artist, download.Album, download.Status,
 			download.Progress, download.Error, download.FilePath, download.AddedAt,
 			download.StartedAt, download.CompletedAt, download.Metadata); err != nil {
+			return nil, err
+		}
+		if err := stageDownloadOrigins(tx, download.ID, download.Origins); err != nil {
 			return nil, err
 		}
 		ids = append(ids, download.ID)

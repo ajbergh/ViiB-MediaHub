@@ -38,6 +38,33 @@ it('coalesces simultaneous overview and scrolling-lane requests by source finger
   fetchMock.mockImplementationOnce(() => new Promise(resolveRequest => { resolveNext = resolveRequest; }));
   const changedSource = loadLocalThreeBand('song', 'source-v2');
   expect(fetchMock).toHaveBeenCalledTimes(2);
-  resolveNext({ status: 404, ok: false });
-  await expect(changedSource).resolves.toBeNull();
+  resolveNext({
+    status: 200, ok: true,
+    json: async () => ({
+      songId: 'song', sourceFingerprint: 'source-v1', representation: 'local_three_band_estimate',
+      algorithmVersion: 'onepole-band-peaks-v1',
+      overview: { sampleRate: 10000, frames: 20, resolution: 10, low: [1, 0], mid: [0.5, 0], high: [0.25, 0], units: 'filtered_pcm_absolute_peak', filter: 'one_pole_250_4000_hz_residual_v1', normalization: 'none_equal_channel_mono' },
+    }),
+  });
+  await expect(changedSource).rejects.toThrow('Invalid local waveform');
+
+  fetchMock.mockImplementationOnce(() => Promise.resolve({
+    status: 200, ok: true,
+    json: async () => ({
+      songId: 'song', sourceFingerprint: 'source-v2', representation: 'local_three_band_estimate',
+      algorithmVersion: 'onepole-band-peaks-v1',
+      overview: { sampleRate: 10000, frames: 20, resolution: 10, low: [1, 0], mid: [0.5, 0], high: [0.25, 0], units: 'filtered_pcm_absolute_peak', filter: 'one_pole_250_4000_hz_residual_v1', normalization: 'none_equal_channel_mono' },
+    }),
+  }));
+  const retriedSource = loadLocalThreeBand('song', 'source-v2');
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  await expect(retriedSource).resolves.toMatchObject({ sourceFingerprint: 'source-v2' });
+});
+
+it('treats a source-change race as unavailable and allows a subsequent read', async () => {
+ const fetchMock = vi.fn().mockResolvedValueOnce({status:412,ok:false}).mockResolvedValueOnce({status:404,ok:false});
+ vi.stubGlobal('fetch',fetchMock);
+ await expect(loadLocalThreeBand('source-race','fp')).resolves.toBeNull();
+ await expect(loadLocalThreeBand('source-race','fp')).resolves.toBeNull();
+ expect(fetchMock).toHaveBeenCalledTimes(2);
 });

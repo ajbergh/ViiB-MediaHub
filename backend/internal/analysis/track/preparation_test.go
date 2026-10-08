@@ -1,14 +1,17 @@
 package track
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/waveformartifact"
+	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 	"io"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -59,6 +62,25 @@ func TestPreparationRepairsMultipleMissingCapabilitiesInOneDecode(t *testing.T) 
 	after.EnergyLevel = nil
 	after.EnergyLevelConfidence = nil
 	after.EnergyAlgorithmVersion = nil
+	// Repaired energy/loudness observations carry new measurement timestamps;
+	// compare the remaining scalar dimensions, including decoded duration.
+	retainUnrelated := func(local *db.LocalScalarObservation) *db.LocalScalarObservation {
+		if local == nil {
+			return nil
+		}
+		copy := *local
+		copy.Fields = nil
+		for _, field := range local.Fields {
+			switch field.Key {
+			case "local_energy_level", "integrated_lufs_bs1770", "true_peak_dbtp":
+				continue
+			}
+			copy.Fields = append(copy.Fields, field)
+		}
+		return &copy
+	}
+	before.Local = retainUnrelated(before.Local)
+	after.Local = retainUnrelated(after.Local)
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("unrelated scalar observations changed")
 	}
@@ -129,5 +151,106 @@ func TestProviderScalarsDoNotCauseRepeatedFailedLocalPreparation(t *testing.T) {
 	}
 	if _, err := Run(t.Context(), database, registry, selected, options); err != nil || opens != 2 {
 		t.Fatal("expired failure not retried")
+	}
+}
+
+func TestMissingDecodedDurationRepairsOnce(t *testing.T) {
+	database, ids := runnerCatalog(t, 1)
+	registry := analysis.NewDefaultDecoderRegistry()
+	if _, err := Run(t.Context(), database, registry, ids, RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := database.GetTrackAnalysis(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := before.Local.Fields
+	before.Local.Fields = nil
+	for _, field := range fields {
+		if field.Key != "local_duration_seconds" {
+			before.Local.Fields = append(before.Local.Fields, field)
+		}
+	}
+	if err := database.UpsertTrackAnalysis(before); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := ExpandPreparationSelection(t.Context(), database, db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, nil)
+	if err != nil || len(selected) != 1 {
+		t.Fatalf("missing duration selection: %v %v", selected, err)
+	}
+	opens := 0
+	options := RunOptions{ResolveSource: func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
+		source, err := analysis.ResolveLocalSource(database, id)
+		open := source.Open
+		source.OpenStream = func() (io.ReadCloser, error) { opens++; return open() }
+		return source, err
+	}}
+	if progress, err := Run(t.Context(), database, registry, selected, options); err != nil || progress.Analyzed != 1 || opens != 1 {
+		t.Fatalf("duration repair: %+v %v opens=%d", progress, err, opens)
+	}
+	selected, err = ExpandPreparationSelection(t.Context(), database, db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, nil)
+	if err != nil || len(selected) != 0 {
+		t.Fatalf("duration repair repeated: %v %v", selected, err)
+	}
+}
+
+func TestNoDecodedDurationSettlesUnavailable(t *testing.T) {
+	database, ids := runnerCatalog(t, 1)
+	source, err := analysis.ResolveLocalSource(database, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := Result{SongID: ids[0], Source: source, Status: db.TrackAnalysisPartial}
+	if err := Persist(database, result); err != nil {
+		t.Fatal(err)
+	}
+	states, err := database.GetTrackCapabilityStatuses(ids[0], source.Fingerprint)
+	if err != nil || states["local_duration"].State != "unavailable" || states["local_duration"].Reason != "no_decoded_duration" || states["local_duration"].RetryAt != 0 {
+		t.Fatalf("no PCM settlement: %+v %v", states, err)
+	}
+	record, err := database.GetTrackAnalysis(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing, err := missingPreparation(database, source, record)
+	if err != nil || missing["local_duration"] {
+		t.Fatalf("settled no PCM repeatedly selected: %+v %v", missing, err)
+	}
+}
+
+func TestProviderDurationCannotBecomeDecodedDuration(t *testing.T) {
+	database, ids := runnerCatalog(t, 1)
+	source, err := analysis.ResolveLocalSource(database, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var empty bytes.Buffer
+	if err := analysisbench.WriteWAVPCM16(&empty, analysisbench.PCMFixture{SampleRate: 22050, Channels: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source.Path, empty.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bpm, duration := 120.0, 240.0
+	options := RunOptions{SpotifyFeatures: func(context.Context, analysis.ResolvedSource) *spotifyanalysis.Observation {
+		return &spotifyanalysis.Observation{BPM: &bpm, DurationSeconds: &duration}
+	}}
+	if _, err := Run(t.Context(), database, analysis.NewDefaultDecoderRegistry(), ids, options); err != nil {
+		t.Fatal(err)
+	}
+	record, err := database.GetTrackAnalysis(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Local != nil {
+		for _, field := range record.Local.Fields {
+			if field.Key == "local_duration_seconds" {
+				t.Fatalf("provider duration fabricated local duration: %+v", field)
+			}
+		}
+	}
+	states, err := database.GetTrackCapabilityStatuses(ids[0], record.SourceFingerprint)
+	if err != nil || states["local_duration"].State == "available" {
+		t.Fatalf("provider duration settled local measurement: %+v %v", states, err)
 	}
 }

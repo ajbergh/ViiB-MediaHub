@@ -4,6 +4,7 @@ package api
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -13,9 +14,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	trackanalysis "github.com/ajbergh/viib-mediahub/internal/analysis/track"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/go-chi/chi/v5"
 )
@@ -94,6 +99,15 @@ func TestUnsupportedPlexDJWaveformFallsBackWithoutStreaming(t *testing.T) {
 	if _, _, _, err := database.SyncPlexLibrary(track.SourceID, track.LibraryID, []db.PlexCatalogTrack{track}); err != nil {
 		t.Fatal(err)
 	}
+	source, err := api.resolveAnalysisSource(t.Context(), track.SongID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, claimed, err := database.ClaimTrackAnalysisLease(track.SongID, source.Fingerprint, 1, "unsupported-test")
+	if err != nil || !claimed {
+		t.Fatal(claimed, err)
+	}
+	defer database.ReleaseTrackAnalysisLease(track.SongID, claim)
 	router := chi.NewRouter()
 	router.Get("/api/dj/waveform/{id}", api.getDJWaveform)
 	recorder := httptest.NewRecorder()
@@ -280,5 +294,140 @@ func TestDJWaveformRejectsLegacyCacheAndRebindsChangedSource(t *testing.T) {
 	third := request()
 	if third.Duration != second.Duration || len(third.Peaks) != len(second.Peaks) {
 		t.Fatal("bound waveform cache changed")
+	}
+}
+
+func TestConcurrentPlexWaveformsShareDecodeWithoutScalarRow(t *testing.T) {
+	audio := encodePCM16WAV(make([]float32, 22050), 22050)
+	entered := make(chan struct{}, 8)
+	release := make(chan struct{})
+	var opens atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		opens.Add(1)
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		_, _ = w.Write(audio)
+	}))
+	defer upstream.Close()
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	database, api, track := setupPlexProxyTest(t, upstream.URL, "/audio", "secret", true)
+	track.Container = "wav"
+	if _, _, _, err := database.SyncPlexLibrary(track.SourceID, track.LibraryID, []db.PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	router.Get("/api/dj/waveform/{id}", api.getDJWaveform)
+	results := make(chan *httptest.ResponseRecorder, 8)
+	for range 8 {
+		go func() {
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dj/waveform/"+track.SongID, nil))
+			results <- w
+		}()
+	}
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no decode started")
+	}
+	// Keep the owner blocked while the other requests contend on SQLite.
+	time.Sleep(100 * time.Millisecond)
+	if opens.Load() != 1 {
+		t.Fatalf("concurrent source opens=%d", opens.Load())
+	}
+	unblock()
+	for range 8 {
+		select {
+		case w := <-results:
+			if w.Code != 200 {
+				t.Fatalf("waveform %d: %s", w.Code, w.Body.String())
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("waveform waiter stuck")
+		}
+	}
+	if opens.Load() != 1 {
+		t.Fatalf("total source opens=%d", opens.Load())
+	}
+	if _, err := database.GetTrackAnalysis(track.SongID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("lazy waveform fabricated scalar row", err)
+	}
+}
+
+func TestLazyWaveformWaitsForFullPreparationArtifact(t *testing.T) {
+	audio := encodePCM16WAV(make([]float32, 22050), 22050)
+	entered := make(chan struct{}, 4)
+	release := make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	defer unblock()
+	var opens atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		opens.Add(1)
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		_, _ = w.Write(audio)
+	}))
+	defer func() { unblock(); upstream.Close() }()
+	database, api, catalog := setupPlexProxyTest(t, upstream.URL, "/audio", "secret", true)
+	catalog.Container = "wav"
+	if _, _, _, err := database.SyncPlexLibrary(catalog.SourceID, catalog.LibraryID, []db.PlexCatalogTrack{catalog}); err != nil {
+		t.Fatal(err)
+	}
+	prepared := make(chan error, 1)
+	go func() {
+		_, err := trackanalysis.Run(t.Context(), database, analysis.NewDefaultDecoderRegistry(), []string{catalog.SongID}, trackanalysis.RunOptions{ResolveSource: api.resolveAnalysisSource})
+		prepared <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("preparation did not open source")
+	}
+	router := chi.NewRouter()
+	router.Get("/api/dj/waveform/{id}", api.getDJWaveform)
+	response := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dj/waveform/"+catalog.SongID, nil))
+		response <- w
+	}()
+	select {
+	case w := <-response:
+		t.Fatalf("lazy request did not wait: %d", w.Code)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if opens.Load() != 1 {
+		t.Fatalf("duplicate decode: %d", opens.Load())
+	}
+	unblock()
+	select {
+	case err := <-prepared:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("preparation stuck")
+	}
+	select {
+	case w := <-response:
+		if w.Code != 200 {
+			t.Fatalf("waveform %d: %s", w.Code, w.Body.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("lazy waiter stuck")
+	}
+	if opens.Load() != 1 {
+		t.Fatalf("lazy request decoded completed preparation again: %d", opens.Load())
 	}
 }

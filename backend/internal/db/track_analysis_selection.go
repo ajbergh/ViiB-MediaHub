@@ -13,6 +13,7 @@ import (
 	features "github.com/ajbergh/viib-mediahub/internal/analysis/featurecontract"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/threeband"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/waveformartifact"
+	"github.com/google/uuid"
 	"strings"
 	"time"
 )
@@ -171,12 +172,15 @@ func (d *DB) ExpandAnalysisSelection(selection AnalysisSelection, analysisVersio
 		// cues. Revisit that generation once, even for an ordinary missing scan.
 		clauses := []string{
 			"a.song_id IS NULL",
+			"(a.status='pending' AND NOT EXISTS(SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=? AND c.state='failed' AND c.retry_at>?))",
+			"(a.status='running' AND (a.analyzed_at IS NULL OR a.analyzed_at<=?))",
+			"EXISTS(SELECT 1 FROM track_analysis_source_revisions r WHERE r.song_id=s.id AND r.source_fingerprint<>a.source_fingerprint)",
 			"((a.algorithm_version = 'spotify-features-v1' OR a.algorithm_version LIKE 'track-v2-spotify;%') AND NOT EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=? AND (c.state='unsupported' OR (c.state='failed' AND c.retry_at>?))))",
 			"(a.status IN ('complete','partial') AND NOT EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=?))",
 			"EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=? AND c.state='failed' AND c.retry_at<=?)",
 		}
 		now := time.Now().UnixMilli()
-		args = append(args, CorePreparationVersion, now, CorePreparationVersion, CorePreparationVersion, now)
+		args = append(args, CorePreparationVersion, now, now-TrackAnalysisLeaseMillis, CorePreparationVersion, now, CorePreparationVersion, CorePreparationVersion, now)
 		for _, required := range []struct {
 			capability, kind, algorithm, encoding string
 			format, min, max                      int
@@ -264,6 +268,9 @@ func inPlaceholders(values []string) (string, []any) {
 // stay short enough that a crashed run does not park work for long.
 const TrackAnalysisLeaseMillis int64 = 10 * 60 * 1000
 
+// ErrTrackAnalysisLeaseLost means a worker no longer owns the preparation row.
+var ErrTrackAnalysisLeaseLost = errors.New("track analysis lease lost")
+
 // ClaimTrackAnalysis atomically marks one song as being analyzed and reports
 // whether this caller won the claim. It is what single-flights two overlapping
 // jobs that expanded the same selection: without it, both would decode the
@@ -273,44 +280,99 @@ const TrackAnalysisLeaseMillis int64 = 10 * 60 * 1000
 // holder's lease expired, which is how work orphaned by a crash is recovered.
 // Measured columns are untouched, so a lost claim never destroys a result.
 func (d *DB) ClaimTrackAnalysis(songID, sourceFingerprint string, analysisVersion int, algorithmVersion string) (bool, error) {
+	return d.claimTrackAnalysis(songID, sourceFingerprint, analysisVersion, algorithmVersion, "")
+}
+
+// ClaimTrackAnalysisLease returns an opaque generation for renewal/publication.
+// An empty token with claimed=false means another live worker owns the row.
+func (d *DB) ClaimTrackAnalysisLease(songID, fingerprint string, version int, algorithm string) (string, bool, error) {
+	token := uuid.NewString()
+	claimed, err := d.claimTrackAnalysis(songID, fingerprint, version, algorithm, token)
+	if !claimed || err != nil {
+		return "", false, err
+	}
+	return token, true, nil
+}
+
+func (d *DB) claimTrackAnalysis(songID, sourceFingerprint string, analysisVersion int, algorithmVersion, token string) (bool, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return false, err
 	}
 	now := time.Now().UnixMilli()
 	result, err := d.conn.Exec(`
-		INSERT INTO track_analysis(song_id, status, analysis_version, algorithm_version, source_fingerprint, analyzed_at)
-		VALUES(?, ?, ?, ?, ?, ?)
-		ON CONFLICT(song_id) DO UPDATE SET
-			status = excluded.status,
-			analysis_version = excluded.analysis_version,
-			algorithm_version = excluded.algorithm_version,
-			source_fingerprint = excluded.source_fingerprint,
-			analyzed_at = excluded.analyzed_at
-		WHERE track_analysis.status != ?
-		   OR track_analysis.analyzed_at IS NULL
-		   OR track_analysis.analyzed_at < ?`,
-		songID, TrackAnalysisRunning, analysisVersion, algorithmVersion, sourceFingerprint, now,
-		TrackAnalysisRunning, now-TrackAnalysisLeaseMillis)
+ INSERT INTO track_analysis(song_id,status,analysis_version,algorithm_version,source_fingerprint,analyzed_at,claim_token)
+ SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM track_waveform_leases WHERE song_id=? AND renewed_at>?) ON CONFLICT(song_id) DO UPDATE SET
+ status=excluded.status,analysis_version=excluded.analysis_version,algorithm_version=excluded.algorithm_version,
+ source_fingerprint=excluded.source_fingerprint,analyzed_at=excluded.analyzed_at,claim_token=excluded.claim_token
+ WHERE track_analysis.status!=? OR track_analysis.analyzed_at IS NULL OR track_analysis.analyzed_at<=?`,
+		songID, TrackAnalysisRunning, analysisVersion, algorithmVersion, sourceFingerprint, now, token, songID, now-TrackAnalysisLeaseMillis, TrackAnalysisRunning, now-TrackAnalysisLeaseMillis)
 	if err != nil {
 		return false, err
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, err
+	n, err := result.RowsAffected()
+	if err == nil && n == 0 {
+		var busy bool
+		if e := d.conn.QueryRow(`SELECT EXISTS(SELECT 1 FROM track_waveform_leases WHERE song_id=? AND renewed_at>?)`, songID, now-TrackAnalysisLeaseMillis).Scan(&busy); e != nil {
+			return false, e
+		} else if busy {
+			return false, ErrWaveformLeaseBusy
+		}
 	}
-	return rows > 0, nil
+	return n > 0, err
 }
 
-// ReleaseTrackAnalysis returns a claimed track to the work list without
-// recording a result. A canceled run must call it, otherwise the track stays
-// leased and an immediate resume would skip it for the whole lease window.
+// RenewTrackAnalysisLease cannot revive an expired or superseded generation.
+func (d *DB) RenewTrackAnalysisLease(songID, fingerprint, token string) error {
+	if token == "" {
+		return ErrTrackAnalysisLeaseLost
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	now := time.Now().UnixMilli()
+	result, err := d.conn.Exec(`UPDATE track_analysis SET analyzed_at=? WHERE song_id=? AND source_fingerprint=? AND status=? AND claim_token=? AND analyzed_at>?`, now, songID, fingerprint, TrackAnalysisRunning, token, now-TrackAnalysisLeaseMillis)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrTrackAnalysisLeaseLost
+	}
+	return nil
+}
+
+// ReleaseTrackAnalysis only releases legacy unowned claims. Managed workers must
+// supply their generation; a late legacy release cannot cancel a managed worker.
 func (d *DB) ReleaseTrackAnalysis(songID string) error {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return err
 	}
-	_, err := d.conn.Exec(`UPDATE track_analysis SET status = ?, analyzed_at = NULL WHERE song_id = ? AND status = ?`,
-		TrackAnalysisPending, songID, TrackAnalysisRunning)
+	_, err := d.conn.Exec(`UPDATE track_analysis SET status=?,analyzed_at=NULL,claim_token=NULL WHERE song_id=? AND status=? AND COALESCE(claim_token,'')=''`, TrackAnalysisPending, songID, TrackAnalysisRunning)
 	return err
+}
+
+func (d *DB) ReleaseTrackAnalysisLease(songID, token string) error {
+	if token == "" {
+		return ErrTrackAnalysisLeaseLost
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	result, err := d.conn.Exec(`UPDATE track_analysis SET status=?,analyzed_at=NULL,claim_token=NULL WHERE song_id=? AND status=? AND claim_token=?`, TrackAnalysisPending, songID, TrackAnalysisRunning, token)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrTrackAnalysisLeaseLost
+	}
+	return nil
 }
 
 // TrackAnalysisValid reports whether an existing record was produced by the

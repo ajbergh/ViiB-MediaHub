@@ -57,7 +57,7 @@ func TestV2AnalysisCueListAndApplyPolicies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:grid", SongID: "song", Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: string(beatgrid.ProvenanceManual), Data: gridData}); err != nil {
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:grid", SongID: "song", Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: string(beatgrid.ProvenanceManual), SourceFingerprint: resolvedSource.Fingerprint, Data: gridData}); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.SaveDJHotCues("song", []db.DJHotCue{{Slot: 1, Position: 1, Label: "User cue", Color: "#abcdef", Origin: "user"}}); err != nil {
@@ -118,6 +118,24 @@ func TestV2AnalysisCueListAndApplyPolicies(t *testing.T) {
 			t.Fatalf("selected-only changed unrelated slot %d: %#v", cue.Slot, cue)
 		}
 	}
+	gridArtifact, err := database.GetTrackAnalysisArtifact("song", beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gridArtifact.SourceFingerprint = "obsolete-source"
+	if err := database.UpsertTrackAnalysisArtifact(gridArtifact); err != nil {
+		t.Fatal(err)
+	}
+	unresolved, err := (&API{db: database}).analysisCueList("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range unresolved.GeneratedCandidates {
+		if candidate.DownbeatAligned {
+			t.Fatal("stale manual grid supplied cue alignment", candidate)
+		}
+	}
+
 }
 
 func TestV2AnalysisCueApplyValidatesModeAndSelection(t *testing.T) {

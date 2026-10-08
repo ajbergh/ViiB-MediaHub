@@ -22,7 +22,16 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 		return value.(trackAnalysisSchemaResult).err
 	}
 	_, err := d.conn.Exec(`
-		CREATE TABLE IF NOT EXISTS track_analysis (
+ CREATE TABLE IF NOT EXISTS track_metadata_overrides (
+ song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+ field_key TEXT NOT NULL, value_json TEXT NOT NULL, source_fingerprint TEXT NOT NULL,
+ updated_at INTEGER NOT NULL, PRIMARY KEY(song_id,field_key));
+
+		CREATE TABLE IF NOT EXISTS track_waveform_leases (
+ song_id TEXT PRIMARY KEY REFERENCES songs(id) ON DELETE CASCADE,
+ source_fingerprint TEXT NOT NULL, token TEXT NOT NULL, renewed_at INTEGER NOT NULL
+ );
+ CREATE TABLE IF NOT EXISTS track_analysis (
 			song_id TEXT PRIMARY KEY REFERENCES songs(id) ON DELETE CASCADE,
 			status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'complete', 'partial', 'failed', 'unsupported')),
 			analysis_version INTEGER NOT NULL,
@@ -89,6 +98,9 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 		);
 	`)
 	if err == nil {
+		err = ensureTextColumn(d, "track_analysis", "claim_token")
+	}
+	if err == nil {
 		err = ensureTrackCapabilitySchema(d)
 	}
 	if err == nil {
@@ -115,10 +127,10 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 	if err == nil {
 		err = ensureSpotifyScalarSources(d)
 	}
-	result := trackAnalysisSchemaResult{err: err}
-	actual, loaded := trackAnalysisSchemas.LoadOrStore(d, result)
-	if loaded {
-		return actual.(trackAnalysisSchemaResult).err
+	// Cache only completed initialization. A transient lock or connection
+	// failure must be retryable on the next metadata/waveform request.
+	if err == nil {
+		trackAnalysisSchemas.Store(d, trackAnalysisSchemaResult{})
 	}
 	return err
 }

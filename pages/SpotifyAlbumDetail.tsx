@@ -1,3 +1,4 @@
+import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Album Detail Page
  * 
@@ -19,7 +20,7 @@
 import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, CheckCircle } from 'lucide-react';
 import { SpotifyService } from '../services/spotifyService';
 import { useStore } from '../store';
@@ -58,6 +59,9 @@ interface SpotifyAlbumFull {
 export const SpotifyAlbumDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const sessionGeneration = useStore(s => s.spotifySessionGeneration);
+  const downloadOrigins = savedLibraryDownloadOrigins(location.state, id, sessionGeneration);
   const { addLog, playSong, addToQueue, showToast, openContextMenu } = useStore();
   
   const [album, setAlbum] = useState<SpotifyAlbumFull | null>(null);
@@ -72,7 +76,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
     
     setIsDownloading(true);
     try {
-      await api.downloadAlbum(album.id, album.name, album.artists[0]?.name || 'Unknown Artist');
+      await api.downloadAlbum(album.id, album.name, album.artists[0]?.name || 'Unknown Artist', downloadOrigins);
       addLog('success', `Started download for album: ${album.name}`);
     } catch (err) {
       console.error('Download failed:', err);
@@ -133,7 +137,9 @@ export const SpotifyAlbumDetail: React.FC = () => {
         track.name,
         track.artists?.map(a => a.name).join(', ') || album?.artists[0]?.name || 'Unknown Artist',
         album?.name || 'Unknown Album',
-        Math.floor(track.duration_ms / 1000)
+        Math.floor(track.duration_ms / 1000),
+        album ? [...(downloadOrigins || []), { kind: 'album', id: album.id,
+          position: Number.isInteger(track.track_number) && track.track_number > 0 ? track.track_number - 1 : -1 }] : downloadOrigins
       );
       showToast({ type: 'success', message: `Queued for download: ${track.name}` });
     } catch (error) {

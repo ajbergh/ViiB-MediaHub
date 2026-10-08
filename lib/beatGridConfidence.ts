@@ -16,7 +16,10 @@ export function resolvedGridPatch(feature: TrackAnalysisFeature | null, grid: Tr
   const patch: DeckAnalysisPatch = { automatic: true, bpm, bpmConfidence: feature?.bpmConfidence ?? null };
   patch.tempoEvidence = feature?.bpmSource === 'measured' ? { source: 'server', bpm: bpm ?? undefined, score: feature.bpmConfidence, alternateBpm: feature.bpmAltCandidate ?? null, stability: feature.tempoStability ?? null } : null;
   if (feature?.key) patch.key = feature.key;
-  if (grid && validBeatGrid(grid.beats)) {
+  patch.beatGridUnavailable = grid?.resolution === 'unavailable';
+  if (grid) patch.beatGridSourceFingerprint = grid.sourceFingerprint ?? feature?.sourceFingerprint ?? null;
+  else if (feature?.sourceFingerprint) patch.beatGridSourceFingerprint = feature.sourceFingerprint;
+  if (grid && grid.resolution !== 'unavailable' && validBeatGrid(grid.beats)) {
     patch.beatGrid = grid.beats;
     patch.downbeatIndices = grid.downbeatIndices;
     patch.beatGridLocked = grid.locked;
@@ -27,7 +30,7 @@ export function resolvedGridPatch(feature: TrackAnalysisFeature | null, grid: Tr
     // browser. The backend analyzer persists phase-aligned grids atomically.
     patch.beatGrid = null;
     patch.beatGridSource = 'unknown';
-    patch.beatGridLocked = false;
+    patch.beatGridLocked = grid?.locked ?? false;
     patch.downbeatIndices = null;
   }
   return patch;

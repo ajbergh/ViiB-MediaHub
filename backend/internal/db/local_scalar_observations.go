@@ -2,23 +2,26 @@ package db
 
 import (
 	"errors"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/featurecontract"
 	"math"
+	"strings"
 )
 
 // LocalScalarObservation retains local alternatives independently of the
 // provider-selected compatibility projection. Nil values mean abstention.
 type LocalScalarObservation struct {
-	SourceFingerprint string   `json:"sourceFingerprint"`
-	AlgorithmVersion  string   `json:"algorithmVersion"`
-	MeasuredAt        int64    `json:"measuredAt"`
-	BPM               *float64 `json:"bpm,omitempty"`
-	BPMConfidence     *float64 `json:"bpmConfidence,omitempty"`
-	BPMAltCandidate   *float64 `json:"bpmAltCandidate,omitempty"`
-	TempoStability    *float64 `json:"tempoStability,omitempty"`
-	TempoKind         *string  `json:"tempoKind,omitempty"`
-	KeyTonic          *int     `json:"keyTonic,omitempty"`
-	KeyMode           *string  `json:"keyMode,omitempty"`
-	KeyConfidence     *float64 `json:"keyConfidence,omitempty"`
+	Fields            []SpotifyScalarField `json:"fields,omitempty"`
+	SourceFingerprint string               `json:"sourceFingerprint"`
+	AlgorithmVersion  string               `json:"algorithmVersion"`
+	MeasuredAt        int64                `json:"measuredAt"`
+	BPM               *float64             `json:"bpm,omitempty"`
+	BPMConfidence     *float64             `json:"bpmConfidence,omitempty"`
+	BPMAltCandidate   *float64             `json:"bpmAltCandidate,omitempty"`
+	TempoStability    *float64             `json:"tempoStability,omitempty"`
+	TempoKind         *string              `json:"tempoKind,omitempty"`
+	KeyTonic          *int                 `json:"keyTonic,omitempty"`
+	KeyMode           *string              `json:"keyMode,omitempty"`
+	KeyConfidence     *float64             `json:"keyConfidence,omitempty"`
 }
 
 func ensureLocalScalarColumn(d *DB) error { return ensureAnalysisJSONColumn(d, "local_scalar_json") }
@@ -63,6 +66,16 @@ func validateLocalScalars(local *LocalScalarObservation) error {
 	}
 	if local.SourceFingerprint == "" || local.AlgorithmVersion == "" || len(local.SourceFingerprint) > 1024 || len(local.AlgorithmVersion) > 1024 || local.MeasuredAt < 0 {
 		return errors.New("invalid local scalar provenance")
+	}
+	if len(local.Fields) > 32 {
+		return errors.New("too many local scalar fields")
+	}
+	seen := map[string]bool{}
+	for _, field := range local.Fields {
+		if !validLocalScalarField(field) || seen[field.Key] {
+			return errors.New("invalid local scalar field")
+		}
+		seen[field.Key] = true
 	}
 	finite := func(v *float64, min, max float64) bool {
 		return v == nil || (!math.IsNaN(*v) && !math.IsInf(*v, 0) && *v >= min && *v <= max)
@@ -123,8 +136,102 @@ func CurrentLocalScalars(a *TrackAnalysis) *LocalScalarObservation {
 	if l == nil {
 		l = legacyLocalScalars(*a)
 	}
-	if l == nil || l.SourceFingerprint != a.SourceFingerprint || validateLocalScalars(l) != nil {
+	if l == nil || l.SourceFingerprint != a.SourceFingerprint {
 		return nil
 	}
-	return l
+	qualified := qualifyLocalScalarFields(*l)
+	if validateLocalScalars(&qualified) != nil {
+		return nil
+	}
+	return &qualified
+}
+
+// Local metrics have their own registry: provider definitions cannot substitute.
+func validLocalScalarField(f SpotifyScalarField) bool {
+	metric, units := "", ""
+	switch f.Key {
+	case "local_duration_seconds":
+		metric, units = "decoded_file_duration", "seconds"
+	case "local_energy_level":
+		metric, units = "local_energy_level", "level_1_10"
+	case "integrated_lufs_bs1770":
+		metric, units = "bs1770_integrated_loudness", "LUFS"
+	case "true_peak_dbtp":
+		metric, units = "bs1770_true_peak", "dBTP"
+	default:
+		return false
+	}
+	var value float64
+	if strings.TrimSpace(string(f.Value)) == "null" {
+		return false
+	}
+	if f.Metric != metric || f.Units != units || f.AdapterRevision == "" || f.RetrievedAt.IsZero() || f.Endpoint != "" || f.DurableImport || f.Stale || !decodeFiniteScalar(f.Value, &value) {
+		return false
+	}
+	if f.Confidence != nil && (math.IsNaN(*f.Confidence) || math.IsInf(*f.Confidence, 0) || *f.Confidence < 0 || *f.Confidence > 1) {
+		return false
+	}
+	switch f.Key {
+	case "local_duration_seconds":
+		return value > 0
+	case "local_energy_level":
+		return value >= 1 && value <= 10 && math.Trunc(value) == value
+	}
+	return true
+}
+
+// Reads isolate optional field corruption; writes still reject invalid data.
+// Duplicate keys are ambiguous, so neither duplicate is applied.
+func qualifyLocalScalarFields(local LocalScalarObservation) LocalScalarObservation {
+	fields := local.Fields
+	local.Fields = nil
+	if len(fields) > 32 {
+		return local
+	}
+	counts := map[string]int{}
+	for _, field := range fields {
+		counts[field.Key]++
+	}
+	for _, field := range fields {
+		if counts[field.Key] == 1 && validLocalScalarField(field) {
+			local.Fields = append(local.Fields, field)
+		}
+	}
+	return local
+}
+
+// Decoded duration measures PCM frames, independently of musical estimators.
+const LocalDurationAlgorithmVersion = "decoded-pcm-duration-v1"
+
+func currentLocalScalarField(f SpotifyScalarField) bool {
+	if !validLocalScalarField(f) {
+		return false
+	}
+	switch f.Key {
+	case "local_duration_seconds":
+		return f.AdapterRevision == LocalDurationAlgorithmVersion
+	case "local_energy_level":
+		return f.AdapterRevision == featurecontract.EnergyLevelAlgorithmVersion
+	case "integrated_lufs_bs1770", "true_peak_dbtp":
+		return f.AdapterRevision == featurecontract.BS1770AlgorithmVersion
+	}
+	return false
+}
+
+// HasCurrentLocalScalarField checks persisted preparation evidence independently
+// of claim status. Effective consumers must still use CurrentLocalScalars.
+func HasCurrentLocalScalarField(local *LocalScalarObservation, fingerprint, key string) bool {
+	if local == nil || fingerprint == "" || local.SourceFingerprint != fingerprint {
+		return false
+	}
+	qualified := qualifyLocalScalarFields(*local)
+	if validateLocalScalars(&qualified) != nil {
+		return false
+	}
+	for _, field := range qualified.Fields {
+		if field.Key == key && currentLocalScalarField(field) {
+			return true
+		}
+	}
+	return false
 }

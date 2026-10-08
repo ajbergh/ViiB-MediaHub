@@ -416,3 +416,51 @@ func TestClaimTrackAnalysisRecoversExpiredLease(t *testing.T) {
 		t.Fatal("an expired lease must be reclaimable")
 	}
 }
+
+func TestMissingSelectionRecoversPendingAndExpiredClaims(t *testing.T) {
+	d := selectionDatabase(t)
+	for _, id := range []string{"pending", "expired", "live"} {
+		saveSelectionSong(t, d, id, 1)
+	}
+	if err := d.UpsertTrackAnalysis(TrackAnalysis{SongID: "pending", SourceFingerprint: "fp", Status: TrackAnalysisPending, AnalysisVersion: 1, AlgorithmVersion: testAlgorithmVersion}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"expired", "live"} {
+		if _, ok, err := d.ClaimTrackAnalysisLease(id, "fp", 1, testAlgorithmVersion); err != nil || !ok {
+			t.Fatal(ok, err)
+		}
+	}
+	if _, err := d.conn.Exec(`UPDATE track_analysis SET analyzed_at=? WHERE song_id='expired'`, time.Now().UnixMilli()-TrackAnalysisLeaseMillis-1); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := d.ExpandAnalysisSelection(AnalysisSelection{Mode: AnalysisSelectionMissing}, 1, testAlgorithmVersion)
+	if err != nil || !equalStrings(selected, []string{"expired", "pending"}) {
+		t.Fatal(selected, err)
+	}
+	if err := d.PutTrackCapabilityStatuses([]TrackCapabilityStatus{{SongID: "pending", SourceFingerprint: "fp", Capability: "core_preparation", Version: CorePreparationVersion, State: "failed", Reason: "source_unavailable", RetryAt: time.Now().Add(time.Hour).UnixMilli()}}); err != nil {
+		t.Fatal(err)
+	}
+	selected, err = d.ExpandAnalysisSelection(AnalysisSelection{Mode: AnalysisSelectionMissing}, 1, testAlgorithmVersion)
+	if err != nil || !equalStrings(selected, []string{"expired"}) {
+		t.Fatal("cooldown selected", selected, err)
+	}
+}
+
+func TestMissingSelectionRevisitsObservedReplacementOfSettledSource(t *testing.T) {
+	d := selectionDatabase(t)
+	saveSelectionSong(t, d, "song", 1)
+	if err := d.UpsertTrackAnalysis(TrackAnalysis{SongID: "song", SourceFingerprint: "old", Status: TrackAnalysisUnsupported, AnalysisVersion: 1, AlgorithmVersion: testAlgorithmVersion}); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := d.ExpandAnalysisSelection(AnalysisSelection{Mode: AnalysisSelectionMissing}, 1, testAlgorithmVersion)
+	if err != nil || len(selected) != 0 {
+		t.Fatal(selected, err)
+	}
+	if err := d.RefreshTrackAnalysisSourceRevision("song", "new"); err != nil {
+		t.Fatal(err)
+	}
+	selected, err = d.ExpandAnalysisSelection(AnalysisSelection{Mode: AnalysisSelectionMissing}, 1, testAlgorithmVersion)
+	if err != nil || !equalStrings(selected, []string{"song"}) {
+		t.Fatal(selected, err)
+	}
+}

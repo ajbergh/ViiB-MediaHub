@@ -47,6 +47,33 @@ function isSupersededTrackLoad(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
+/** Discard only this load's audio; a newer deck operation always owns its own cleanup. */
+function discardUncommittedLoad(engine: ReturnType<typeof getDJAudioEngine>, deck: DeckId, generation: number) {
+  if (engine.getDeckLoadGeneration(deck) !== generation) return;
+  engine.unloadDeck(deck);
+  const current = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+  if (current.track === null) useStore.getState().setDeckDuration(deck, 0);
+}
+
+/** A transient read may recover once, only while this audio load still owns the deck. */
+async function readDeckAnalysis(trackId: string, stillOwned: () => boolean) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (!stillOwned()) return null;
+    try {
+      return await api.getTrackAnalysisFeature(trackId);
+    } catch (error) {
+      const status = (error as { status?: number } | null)?.status;
+      if (status === 404) return null;
+      const transient = status === undefined ? error instanceof TypeError
+        : status >= 500 && status <= 599;
+      if ((error as { name?: string } | null)?.name === 'AbortError'
+        || !transient || attempt === 1 || !stillOwned()) throw error;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+  }
+  return null;
+}
+
 export interface GuardedDeckLoad {
   /** Generation observed before the explicit load action started. */
   expectedLoadGeneration: number;
@@ -254,24 +281,38 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
   }, [djCrossfader, djHeadphoneMix, djHeadphoneVolume, djMasterCueEnabled, djMasterVolume, setDeckPlaying]);
 
   // Load track to deck
-  const loadTrack = useCallback(async (deck: DeckId, track: Song) => {
+  const loadTrack = useCallback(async (deck: DeckId, track: Song, guard?: GuardedDeckLoad) => {
     logger.info(`Loading track to Deck ${deck}: ${track.title}`);
     const engine = getDJAudioEngine();
+    if (guard && (!engine.initialized || engine.getDeckLoadGeneration(deck) !== guard.expectedLoadGeneration || !guard.shouldCommit())) return;
     if (!engine.initialized) {
       logger.info('Engine not initialized, initializing...');
       await initialize();
     }
 
+    if (guard && (engine.getDeckLoadGeneration(deck) !== guard.expectedLoadGeneration || !guard.shouldCommit())) return;
+    const loadGeneration = engine.getDeckLoadGeneration(deck) + 1;
+    const loadSession = useStore.getState().spotifySessionGeneration;
     try {
       logger.debug(`Calling engine.loadTrack for Deck ${deck}...`);
       await engine.loadTrack(deck, track);
       logger.debug(`engine.loadTrack complete, updating store...`);
+      if (engine.getDeckLoadGeneration(deck) !== loadGeneration
+        || engine.getDeckLoadedTrackId(deck) !== track.id || !engine.isLoaded(deck)
+        || useStore.getState().spotifySessionGeneration !== loadSession
+        || (guard && !guard.shouldCommit())) {
+        discardUncommittedLoad(engine, deck, loadGeneration);
+        return;
+      }
       loadTrackToDeck(deck, track);
       
       // Helper to check if the deck is still playing the same track
       const isTrackStillLoaded = () => {
         const currentDeckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-        return currentDeckState.track?.id === track.id;
+        return currentDeckState.track?.id === track.id
+          && engine.getDeckLoadGeneration(deck) === loadGeneration
+          && engine.getDeckLoadedTrackId(deck) === track.id && engine.isLoaded(deck)
+          && useStore.getState().spotifySessionGeneration === loadSession;
       };
       
       // Fetch waveform data from backend, with client-side fallback
@@ -310,13 +351,11 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       // Fetch the feature record first. A missing record means there cannot be
       // a persisted beat grid, so do not issue a second guaranteed 404.
       try {
-        const feature = await api.getTrackAnalysisFeature(track.id).catch(error => {
-          if ((error as Error & { status?: number })?.status === 404) return null;
-          throw error;
-        });
+        const feature = await readDeckAnalysis(track.id, isTrackStillLoaded);
         if (!feature) {
           if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
         } else {
+          if (!isTrackStillLoaded()) return;
           const grid = await api.getTrackBeatGrid(track.id).catch(() => null);
           if (isTrackStillLoaded()) {
             const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
@@ -355,6 +394,9 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       
       loadSavedHotCues();
     } catch (error) {
+      if (guard && engine.getDeckLoadedTrackId(deck) === null) {
+        discardUncommittedLoad(engine, deck, loadGeneration);
+      }
       if (isSupersededTrackLoad(error)) return;
       logger.logError(error, `Failed to load track to Deck ${deck}`);
       throw error;
@@ -1028,6 +1070,8 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     if (guard && (!engine.initialized || engine.getDeckLoadGeneration(deck) !== guard.expectedLoadGeneration || !guard.shouldCommit())) return;
     if (!engine.initialized) await initialize();
 
+    const loadGeneration = engine.getDeckLoadGeneration(deck) + 1;
+    const loadSession = useStore.getState().spotifySessionGeneration;
     try {
       await engine.loadTrack(deck, track);
     } catch (error) {
@@ -1053,11 +1097,20 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
       }
       return;
     }
+    if (engine.getDeckLoadGeneration(deck) !== loadGeneration
+      || engine.getDeckLoadedTrackId(deck) !== track.id || !engine.isLoaded(deck)
+      || useStore.getState().spotifySessionGeneration !== loadSession) {
+      discardUncommittedLoad(engine, deck, loadGeneration);
+      return;
+    }
     useStore.getState().loadTrackToDeck(deck, track);
 
     const isTrackStillLoaded = () => {
       const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-      return ds.track?.id === track.id;
+      return ds.track?.id === track.id
+        && engine.getDeckLoadGeneration(deck) === loadGeneration
+        && engine.getDeckLoadedTrackId(deck) === track.id && engine.isLoaded(deck)
+        && useStore.getState().spotifySessionGeneration === loadSession;
     };
 
     // Waveform (async, non-blocking)
@@ -1079,13 +1132,11 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     // analysis feature, and issuing both requests together creates avoidable
     // 404s for tracks that have not been analysed.
     try {
-      const feature = await api.getTrackAnalysisFeature(track.id).catch(error => {
-        if ((error as Error & { status?: number })?.status === 404) return null;
-        throw error;
-      });
+      const feature = await readDeckAnalysis(track.id, isTrackStillLoaded);
       if (!feature) {
         if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
       } else {
+        if (!isTrackStillLoaded()) return;
         const grid = await api.getTrackBeatGrid(track.id).catch(() => null);
         if (isTrackStillLoaded()) {
           const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;

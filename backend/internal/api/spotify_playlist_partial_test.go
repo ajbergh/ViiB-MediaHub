@@ -23,6 +23,17 @@ func TestPlaylistPartialIsBoundedAndDoesNotPublishEntities(t *testing.T) {
 	if !ok || len(got.Items) != 2 || len(got.Entities) != 1 || string(got.Entities[0].Payload) != string(entity.Payload) {
 		t.Fatalf("partial round trip: %+v %v", got, ok)
 	}
+	if got.Entities[0].CaptureRevision != p.Revision {
+		t.Fatal("partial lost explicit binding", got.Entities)
+	}
+	invalidRevision := p
+	invalidRevision.Entities = []catalog.CapturedEntity{{EntityType: "playlist", ID: id, Resource: "wrong-page", CaptureRevision: "other-revision", Payload: []byte(`{}`)}}
+	if a.savePlaylistPartial(ctx, id, invalidRevision) {
+		t.Fatal("mismatched embedded revision saved")
+	}
+	if previous, ok := a.loadPlaylistPartial(ctx, id, p.Revision); !ok || len(previous.Entities) != 1 || previous.Entities[0].Resource != entity.Resource {
+		t.Fatal("bad partial replaced last-good", previous, ok)
+	}
 	published, err := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: entity.Resource, ContextKey: runtime.metadataContext})
 	if err != nil || published != nil {
 		t.Fatal("partial published original page", err)

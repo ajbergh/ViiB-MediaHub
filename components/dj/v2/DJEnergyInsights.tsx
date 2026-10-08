@@ -1,3 +1,4 @@
+import { useAudioMetadataRevision } from '../../../hooks/useAudioMetadataRevision';
 import { PROVIDER_SCORE_OPTIONS } from '../../../lib/djProviderScores';
 /**
  * Displays energy/structure analysis and manages advisory transition and test-mix preview
@@ -178,13 +179,16 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     return () => { live = false; };
   }, [trackID, analysisStatus]);
 
+  const { revision: metadataRevision, generation: metadataGeneration } = useAudioMetadataRevision(undefined, true);
+
   useEffect(() => {
     let live = true;
     setRecommendations(null);
     const generation = spotifySession;
+    const requestGeneration = metadataGeneration.current;
     if (trackID && analysisStatus === 'available' && filtersValid) {
       api.getTrackTransitionRecommendations(trackID, 3, intent, filters).then(value => {
-        if (!live || useStore.getState().spotifySessionGeneration !== generation) return;
+        if (!live || requestGeneration !== metadataGeneration.current || useStore.getState().spotifySessionGeneration !== generation) return;
         const eligible = !spotifyMetric ? value.recommendations : value.recommendations.filter(candidate => {
           const evidence = candidate.filterEvidence;
           const score = evidence.spotifyScore;
@@ -199,7 +203,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
       }).catch(() => {});
     }
     return () => { live = false; };
-  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistIds, genre, notRecentlyPlayedHours, spotifyMetric, minSpotify, maxSpotify, filtersValid, scoreRevision, spotifySession]);
+  }, [trackID, analysisStatus, intent, minBpm, maxBpm, minEnergy, maxEnergy, stemsOnly, camelotOnly, playlistIds, genre, notRecentlyPlayedHours, spotifyMetric, minSpotify, maxSpotify, filtersValid, scoreRevision, spotifySession, metadataRevision, metadataGeneration]);
 
   useEffect(() => {
     setScoreExpiryMessage('');

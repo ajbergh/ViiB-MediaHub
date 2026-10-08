@@ -19,3 +19,16 @@ it('renders three distinct envelopes and excludes another source', async () => {
     expect(host.textContent).toContain('not prepared');
   } finally { await act(async () => root.unmount()); }
 });
+
+it('recovers a transient load failure without reloading the application', async () => {
+ (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+ mocks.load.mockRejectedValueOnce(new Error('temporary')).mockResolvedValue({sourceFingerprint:'fp',overview:{frames:960,sampleRate:48000,resolution:960,low:[.5],mid:[.2],high:[.1]}});
+ const host=document.createElement('div');const root=createRoot(host);
+ try {
+  await act(async()=>root.render(<LocalBandPreview songId="song" fingerprint="fp"/>));
+  expect(host.textContent).toContain('could not be loaded');
+  await act(async()=>(host.querySelector('button') as HTMLButtonElement).click());
+  expect(host.querySelectorAll('svg')).toHaveLength(3);
+  expect(host.textContent).not.toContain('could not be loaded');
+ }finally{await act(async()=>root.unmount());}
+});

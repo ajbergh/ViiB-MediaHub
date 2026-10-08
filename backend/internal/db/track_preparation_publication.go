@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"errors"
+	"time"
 )
 
 type preparationExecutor interface {
@@ -11,6 +12,7 @@ type preparationExecutor interface {
 }
 
 type TrackPreparationPublication struct {
+	ClaimToken   string
 	Analysis     TrackAnalysis
 	Artifacts    []TrackAnalysisArtifact
 	Cues         []DJHotCue
@@ -34,6 +36,32 @@ func (d *DB) PublishTrackPreparation(p TrackPreparationPublication) error {
 		return err
 	}
 	defer tx.Rollback()
+	// Take the SQLite write lock and consume the generation before any domain
+	// writes. Rollback restores the token if a later artifact/cue/status fails.
+	if p.ClaimToken != "" {
+		result, err := tx.Exec(`UPDATE track_analysis SET claim_token=NULL WHERE song_id=? AND source_fingerprint=? AND status=? AND claim_token=? AND analyzed_at>?`, p.Analysis.SongID, p.Analysis.SourceFingerprint, TrackAnalysisRunning, p.ClaimToken, time.Now().UnixMilli()-TrackAnalysisLeaseMillis)
+		if err != nil {
+			return err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return ErrTrackAnalysisLeaseLost
+		}
+	} else {
+		if _, err := tx.Exec(`UPDATE track_analysis SET claim_token=claim_token WHERE song_id=?`, p.Analysis.SongID); err != nil {
+			return err
+		}
+		var managed bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM track_analysis WHERE song_id=? AND status=? AND COALESCE(claim_token,'')!='')`, p.Analysis.SongID, TrackAnalysisRunning).Scan(&managed); err != nil {
+			return err
+		}
+		if managed {
+			return ErrTrackAnalysisLeaseLost
+		}
+	}
 	if err := upsertTrackAnalysis(tx, p.Analysis); err != nil {
 		return err
 	}
@@ -62,6 +90,22 @@ func (d *DB) PublishTrackPreparation(p TrackPreparationPublication) error {
 		}
 		if err := applyGeneratedDJHotCuesTx(tx, p.Analysis.SongID, p.Cues, p.CueMode); err != nil {
 			return err
+		}
+	}
+	lockedState, err := lockedBeatGridCapability(tx, p.Analysis.SongID, p.Analysis.SourceFingerprint)
+	if err != nil {
+		return err
+	}
+	if lockedState != nil {
+		found := false
+		for i := range p.Capabilities {
+			if p.Capabilities[i].Capability == "local_beatgrid" {
+				p.Capabilities[i] = *lockedState
+				found = true
+			}
+		}
+		if !found {
+			p.Capabilities = append(p.Capabilities, *lockedState)
 		}
 	}
 	for _, s := range p.Capabilities {

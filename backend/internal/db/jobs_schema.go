@@ -89,13 +89,13 @@ func (d *DB) EnsureJobSchema() error {
 	}
 	if err == nil {
 		now := time.Now().UnixMilli()
-		_, err = d.conn.Exec(`
-			UPDATE operation_jobs
-			SET status = ?, error_code = 'process_restarted',
-			    error_message = 'The application restarted while the job was active',
-			    completed_at = ?, updated_at = ?
-			WHERE status IN (?, ?)
-		`, JobStatusInterrupted, now, now, JobStatusRunning, JobStatusCanceling)
+		_, err = d.conn.Exec(`UPDATE operation_jobs
+ SET status=CASE WHEN status='canceling' THEN 'canceled' WHEN type='analyze_tracks' THEN 'queued' ELSE 'interrupted' END,
+ message=CASE WHEN status='canceling' THEN 'Canceled during application restart' WHEN type='analyze_tracks' THEN 'Resuming analysis after application restart' ELSE message END,
+ error_code='process_restarted',error_message='The application restarted while the job was active',
+ completed_at=CASE WHEN type='analyze_tracks' AND status!='canceling' THEN NULL ELSE ? END,
+ available_at=CASE WHEN type='analyze_tracks' THEN 0 ELSE available_at END,updated_at=?
+ WHERE status IN ('running','canceling') OR (status='interrupted' AND type='analyze_tracks')`, now, now)
 	}
 	result := jobSchemaResult{err: err}
 	actual, loaded := jobSchemas.LoadOrStore(d, result)

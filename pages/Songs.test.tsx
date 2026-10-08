@@ -77,3 +77,16 @@ it('uses metadata BPM and unknown Key if analysis fails, then refreshes when the
     expect(container.querySelector('[data-song-id="a"] [data-column=key]')?.textContent).toBe('D major');
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+
+it('refreshes Energy Level on a successful manual metadata event', async () => {
+  localStorage.setItem(SONG_COLUMNS_STORAGE_KEY, JSON.stringify(['energy']));
+  mocks.analysis.mockResolvedValueOnce([{ songId: 'a', energyLevel: 4 }]).mockResolvedValue([{ songId: 'a', energyLevel: 9, energyLevelSource: 'manual' }]);
+  const { root, container } = setup();
+  try {
+    await act(async () => root.render(<Songs/>));
+    expect(container.querySelector('[data-song-id="a"] [data-column=energy]')?.textContent).toBe('4');
+    await act(async () => window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'manual_audio_metadata', songId: 'a', sourceFingerprint: 'fp', field: 'local_energy_level' } })));
+    expect(container.querySelector('[data-song-id="a"] [data-column=energy]')?.textContent).toBe('9');
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});

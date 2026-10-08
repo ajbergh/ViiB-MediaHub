@@ -7,6 +7,7 @@ package track
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -280,6 +281,10 @@ func Persist(database *db.DB, result Result) error {
 // according to the snapshotted installation preference. Suggest/off retain the
 // artifacts needed for candidate GETs but do not persist new generated cues.
 func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.AutomaticCuePointMode) error {
+	return persistWithAutoCueModeClaimed(database, result, autoCueMode, "")
+}
+
+func persistWithAutoCueModeClaimed(database *db.DB, result Result, autoCueMode db.AutomaticCuePointMode, token string) error {
 	autoCueMode = db.NormalizeAutomaticCuePointMode(string(autoCueMode))
 	record := db.TrackAnalysis{
 		SpotifyBindings:   result.PreviousSpotifyBindings,
@@ -333,6 +338,29 @@ func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.Autom
 			BPM: record.BPM, BPMConfidence: record.BPMConfidence, BPMAltCandidate: record.BPMAltCandidate, TempoStability: record.TempoStability, TempoKind: record.TempoKind,
 			KeyTonic: record.KeyTonic, KeyMode: record.KeyMode, KeyConfidence: record.KeyConfidence}
 	}
+	if record.Local != nil {
+		add := func(key, metric, units, algorithm string, value any, confidence *float64) {
+			raw, err := json.Marshal(value)
+			if err != nil {
+				return
+			}
+			record.Local.Fields = append(record.Local.Fields, db.SpotifyScalarField{Key: key, Metric: metric, Units: units, Value: raw, Confidence: confidence, AdapterRevision: algorithm, RetrievedAt: time.UnixMilli(*record.AnalyzedAt).UTC()})
+		}
+		if result.DurationSeconds > 0 {
+			add("local_duration_seconds", "decoded_file_duration", "seconds", db.LocalDurationAlgorithmVersion, result.DurationSeconds, nil)
+		}
+		if result.EnergyLevel != nil {
+			add("local_energy_level", "local_energy_level", "level_1_10", result.EnergyLevel.AlgorithmVersion, result.EnergyLevel.Level, &result.EnergyLevel.Confidence)
+		}
+		if l := result.Loudness; l != nil {
+			if l.LoudnessStatus == "available" && l.IntegratedLUFS != nil {
+				add("integrated_lufs_bs1770", "bs1770_integrated_loudness", "LUFS", features.BS1770AlgorithmVersion, l.IntegratedLUFS, nil)
+			}
+			if l.TruePeakStatus == "available" && l.TruePeakDBTP != nil {
+				add("true_peak_dbtp", "bs1770_true_peak", "dBTP", features.BS1770AlgorithmVersion, l.TruePeakDBTP, nil)
+			}
+		}
+	}
 	if result.Spotify != nil {
 		db.ApplySpotifyScalars(&record, *result.Spotify)
 		// Scalar data survives a decoder failure, but remains eligible for a
@@ -347,7 +375,7 @@ func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.Autom
 	}
 	if previous := result.RepairPrevious; previous != nil {
 		merged := *previous
-		if result.RepairCapabilities["local_scalars"] {
+		if result.RepairCapabilities["local_scalars"] && record.Local != nil {
 			merged.Local = record.Local
 			merged.SpotifyBindings = record.SpotifyBindings
 			merged.BPM = record.BPM
@@ -366,14 +394,42 @@ func PersistWithAutoCueMode(database *db.DB, result Result, autoCueMode db.Autom
 			merged.ErrorCode = record.ErrorCode
 			merged.ErrorMessage = record.ErrorMessage
 		}
-		if result.RepairCapabilities["local_energy"] {
+		if result.RepairCapabilities["local_energy"] && record.Local != nil {
 			merged.EnergyLevel = record.EnergyLevel
 			merged.EnergyLevelConfidence = record.EnergyLevelConfidence
 			merged.EnergyAlgorithmVersion = record.EnergyAlgorithmVersion
 		}
+		if record.Local != nil && merged.Local != nil {
+			updated := *merged.Local
+			updated.Fields = nil
+			capability := func(key string) string {
+				switch key {
+				case "local_duration_seconds":
+					return "local_duration"
+				case "local_energy_level":
+					return "local_energy"
+				case "integrated_lufs_bs1770", "true_peak_dbtp":
+					return "local_loudness"
+				}
+				return "local_scalars"
+			}
+			if previous.Local != nil {
+				for _, field := range previous.Local.Fields {
+					if !result.RepairCapabilities[capability(field.Key)] {
+						updated.Fields = append(updated.Fields, field)
+					}
+				}
+			}
+			for _, field := range record.Local.Fields {
+				if result.RepairCapabilities[capability(field.Key)] {
+					updated.Fields = append(updated.Fields, field)
+				}
+			}
+			merged.Local = &updated
+		}
 		record = merged
 	}
-	publication := db.TrackPreparationPublication{Analysis: record}
+	publication := db.TrackPreparationPublication{Analysis: record, ClaimToken: token}
 	collector := &preparationArtifacts{}
 	generated := result
 	if result.RepairPrevious != nil {
@@ -519,6 +575,10 @@ func persistFeatures(database artifactWriter, result Result) error {
 // retried on every pass. The fingerprint is required by the record contract, so
 // an unresolvable source is recorded against a synthetic unavailable marker.
 func PersistFailure(database *db.DB, songID string, source analysis.ResolvedSource, code, message string) error {
+	return persistFailureClaimed(database, songID, source, code, message, "")
+}
+
+func persistFailureClaimed(database *db.DB, songID string, source analysis.ResolvedSource, code, message, token string) error {
 	fingerprint := source.Fingerprint
 	if fingerprint == "" {
 		fingerprint = "unresolved:" + songID
@@ -540,7 +600,7 @@ func PersistFailure(database *db.DB, songID string, source analysis.ResolvedSour
 		record.Status = db.TrackAnalysisUnsupported
 	}
 	source.Fingerprint = fingerprint
-	return database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, Capabilities: preparationStatuses(Result{SongID: songID, Source: source, PreparationError: code})})
+	return database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, ClaimToken: token, Capabilities: preparationStatuses(Result{SongID: songID, Source: source, PreparationError: code})})
 }
 
 // ClassifyError maps a pass error onto a stable persisted failure code.

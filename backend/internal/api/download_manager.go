@@ -177,6 +177,7 @@ type DownloadMetadata struct {
 }
 
 type QueueDownloadRequest struct {
+	Origins    []db.SpotifyDownloadOrigin
 	SpotifyID  string
 	SpotifyURI string
 	Type       string
@@ -645,7 +646,7 @@ func (dm *DownloadManager) QueueDownloads(requests []QueueDownloadRequest) ([]st
 		downloads = append(downloads, &db.SpotifyDownload{
 			ID: id, SpotifyID: request.SpotifyID, SpotifyURI: request.SpotifyURI,
 			Type: request.Type, Title: title, Artist: artist, Album: request.Album,
-			Status: "queued", Progress: 0, AddedAt: addedAt, Metadata: metadataJSON,
+			Status: "queued", Progress: 0, AddedAt: addedAt, Metadata: metadataJSON, Origins: request.Origins,
 		})
 	}
 	queuedIDs, err := dm.db.AddDownloads(downloads)

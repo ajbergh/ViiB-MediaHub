@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ajbergh/viib-mediahub/internal/spotify/metadata"
 )
@@ -25,6 +27,7 @@ type SpotifyEntityRelation struct {
 	Metadata    []byte `json:"-"`
 }
 type SpotifyEntitySnapshot struct {
+	CaptureRevision string `json:"captureRevision,omitempty"`
 	SpotifySnapshotKey
 	SchemaVersion   int                     `json:"schemaVersion"`
 	AdapterRevision string                  `json:"adapterRevision"`
@@ -114,8 +117,12 @@ func (d *DB) putSpotifyEntitySnapshots(snapshots []SpotifyEntitySnapshot, traver
 	return tx.Commit()
 }
 
+func validSnapshotCaptureRevision(snapshot SpotifyEntitySnapshot) bool {
+	return len(snapshot.CaptureRevision) <= 256 && strings.IndexFunc(snapshot.CaptureRevision, unicode.IsControl) < 0 && (snapshot.CaptureRevision == "" || snapshot.EntityType == "playlist")
+}
+
 func putSpotifyEntitySnapshotTx(tx *sql.Tx, snapshot SpotifyEntitySnapshot) error {
-	if !validSnapshotKey(snapshot.SpotifySnapshotKey) || snapshot.SchemaVersion <= 0 || snapshot.AdapterRevision == "" || len(snapshot.AdapterRevision) > 256 || snapshot.RetrievedAt.IsZero() || !snapshot.ExpiresAt.After(snapshot.RetrievedAt) || len(snapshot.Relations) > 20000 {
+	if !validSnapshotCaptureRevision(snapshot) || !validSnapshotKey(snapshot.SpotifySnapshotKey) || snapshot.SchemaVersion <= 0 || snapshot.AdapterRevision == "" || len(snapshot.AdapterRevision) > 256 || snapshot.RetrievedAt.IsZero() || !snapshot.ExpiresAt.After(snapshot.RetrievedAt) || len(snapshot.Relations) > 20000 {
 		return errors.New("invalid Spotify snapshot provenance")
 	}
 	payload, err := metadata.Sanitize(snapshot.Payload, metadata.CatalogLimit)
@@ -153,16 +160,16 @@ func putSpotifyEntitySnapshotTx(tx *sql.Tx, snapshot SpotifyEntitySnapshot) erro
 	// Partial traversals from concurrent workers may arrive out of order. For
 	// the same revision retain the farthest prefix, and make completion terminal.
 	// Enforce this in the UPSERT so read/check/write races cannot regress progress.
-	result, err := tx.Exec(`INSERT INTO spotify_entity_snapshots(entity_type,spotify_id,resource,context_key,schema_version,adapter_revision,payload,payload_hash,retrieved_at,expires_at)
- VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(entity_type,spotify_id,resource,context_key) DO UPDATE SET
- schema_version=excluded.schema_version,adapter_revision=excluded.adapter_revision,payload=excluded.payload,payload_hash=excluded.payload_hash,retrieved_at=excluded.retrieved_at,expires_at=excluded.expires_at
+	result, err := tx.Exec(`INSERT INTO spotify_entity_snapshots(entity_type,spotify_id,resource,context_key,schema_version,adapter_revision,payload,payload_hash,retrieved_at,expires_at,capture_revision)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(entity_type,spotify_id,resource,context_key) DO UPDATE SET
+ schema_version=excluded.schema_version,adapter_revision=excluded.adapter_revision,payload=excluded.payload,payload_hash=excluded.payload_hash,retrieved_at=excluded.retrieved_at,expires_at=excluded.expires_at,capture_revision=excluded.capture_revision
   WHERE excluded.retrieved_at>=spotify_entity_snapshots.retrieved_at
   AND (excluded.resource!='playlist_traversal_partial_v1'
     OR COALESCE(json_extract(excluded.payload,'$.generation'),0)>COALESCE(json_extract(spotify_entity_snapshots.payload,'$.generation'),0)
     OR COALESCE(json_extract(excluded.payload,'$.revision'),'')!=COALESCE(json_extract(spotify_entity_snapshots.payload,'$.revision'),'')
     OR COALESCE(json_extract(excluded.payload,'$.complete'),0)=1
     OR (COALESCE(json_extract(spotify_entity_snapshots.payload,'$.complete'),0)!=1
-      AND COALESCE(json_extract(excluded.payload,'$.nextOffset'),0)>=COALESCE(json_extract(spotify_entity_snapshots.payload,'$.nextOffset'),0)))`, snapshot.EntityType, snapshot.SpotifyID, snapshot.Resource, snapshot.ContextKey, snapshot.SchemaVersion, snapshot.AdapterRevision, payload, hex.EncodeToString(sum[:]), snapshot.RetrievedAt.UnixMilli(), snapshot.ExpiresAt.UnixMilli())
+      AND COALESCE(json_extract(excluded.payload,'$.nextOffset'),0)>=COALESCE(json_extract(spotify_entity_snapshots.payload,'$.nextOffset'),0)))`, snapshot.EntityType, snapshot.SpotifyID, snapshot.Resource, snapshot.ContextKey, snapshot.SchemaVersion, snapshot.AdapterRevision, payload, hex.EncodeToString(sum[:]), snapshot.RetrievedAt.UnixMilli(), snapshot.ExpiresAt.UnixMilli(), snapshot.CaptureRevision)
 	if err != nil {
 		return err
 	}
@@ -191,12 +198,15 @@ func (d *DB) GetSpotifyEntitySnapshot(key SpotifySnapshotKey) (*SpotifyEntitySna
 	}
 	value := SpotifyEntitySnapshot{SpotifySnapshotKey: key}
 	var retrieved, expires int64
-	err := d.conn.QueryRow(`SELECT schema_version,adapter_revision,payload,payload_hash,retrieved_at,expires_at FROM spotify_entity_snapshots WHERE entity_type=? AND spotify_id=? AND resource=? AND context_key=?`, key.EntityType, key.SpotifyID, key.Resource, key.ContextKey).Scan(&value.SchemaVersion, &value.AdapterRevision, &value.Payload, &value.PayloadHash, &retrieved, &expires)
+	err := d.conn.QueryRow(`SELECT schema_version,adapter_revision,payload,payload_hash,retrieved_at,expires_at,capture_revision FROM spotify_entity_snapshots WHERE entity_type=? AND spotify_id=? AND resource=? AND context_key=?`, key.EntityType, key.SpotifyID, key.Resource, key.ContextKey).Scan(&value.SchemaVersion, &value.AdapterRevision, &value.Payload, &value.PayloadHash, &retrieved, &expires, &value.CaptureRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if !validSnapshotCaptureRevision(value) {
+		return nil, errors.New("invalid Spotify snapshot capture revision")
 	}
 	sanitized, err := metadata.Sanitize(value.Payload, metadata.CatalogLimit)
 	if err != nil {
@@ -234,7 +244,7 @@ func (d *DB) RetireSpotifyMetadataContext(contextKey string) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"spotify_entity_relations", "spotify_entity_snapshots", "spotify_metadata_resource_status", "spotify_audio_artifacts", "spotify_playlist_traversals", "spotify_metadata_owner"} {
+	for _, table := range []string{"spotify_download_lineage_staging", "spotify_entity_relations", "spotify_entity_snapshots", "spotify_metadata_resource_status", "spotify_audio_artifacts", "spotify_playlist_traversals", "spotify_metadata_owner"} {
 		if _, err = tx.Exec("DELETE FROM "+table+" WHERE context_key=?", contextKey); err != nil {
 			return err
 		}
@@ -310,7 +320,7 @@ func (d *DB) PurgeSpotifyMetadata() error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"spotify_entity_relations", "spotify_entity_snapshots", "spotify_metadata_resource_status", "spotify_audio_artifacts", "spotify_playlist_traversals", "spotify_metadata_owner"} {
+	for _, table := range []string{"spotify_download_lineage_staging", "spotify_entity_relations", "spotify_entity_snapshots", "spotify_metadata_resource_status", "spotify_audio_artifacts", "spotify_playlist_traversals", "spotify_metadata_owner"} {
 		if _, err = tx.Exec("DELETE FROM " + table); err != nil {
 			return err
 		}

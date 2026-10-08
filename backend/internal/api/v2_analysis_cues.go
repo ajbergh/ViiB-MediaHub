@@ -179,17 +179,11 @@ func (a *API) analysisCueList(songID string) (AnalysisCueListResponse, error) {
 		return AnalysisCueListResponse{}, err
 	}
 	var grid *beatgrid.Grid
-	gridArtifact, err := a.db.GetTrackAnalysisArtifact(songID, beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion)
-	if err == nil {
-		decoded, decodeErr := beatgrid.Decode(gridArtifact.Data)
-		if decodeErr != nil {
-			return AnalysisCueListResponse{}, decodeErr
-		}
-		decoded.Provenance = beatgrid.Provenance(gridArtifact.Provenance)
-		grid = &decoded
-	} else if !errors.Is(err, sql.ErrNoRows) {
+	resolvedGrid, err := a.db.ResolveBeatGrid(songID, resolved.Fingerprint)
+	if err != nil {
 		return AnalysisCueListResponse{}, err
 	}
+	grid = resolvedGrid.Grid
 	candidates, err := analysiscues.Generate(song.Duration, grid, structure, trackAnalysis.SourceFingerprint)
 	if err != nil {
 		return AnalysisCueListResponse{}, err

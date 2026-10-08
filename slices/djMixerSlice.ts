@@ -140,6 +140,7 @@ export interface DeckState {
   beatGrid: number[] | null;
   downbeatIndices: number[] | null;
   beatGridLocked: boolean;
+  beatGridSourceFingerprint?: string | null;
   beatGridSource: BeatGridSource;
   bpmConfidence: number | null;
   tempoEvidence: TempoEvidence | null;
@@ -168,6 +169,8 @@ export interface DeckAnalysisPatch {
   beatGrid?: number[] | null;
   downbeatIndices?: number[] | null;
   beatGridLocked?: boolean;
+  beatGridUnavailable?: boolean;
+  beatGridSourceFingerprint?: string | null;
   beatGridSource?: BeatGridSource;
   bpmConfidence?: number | null;
   tempoEvidence?: TempoEvidence | null;
@@ -426,6 +429,7 @@ const createDefaultDeckState = (): DeckState => ({
   beatGrid: null,
   downbeatIndices: null,
   beatGridLocked: false,
+  beatGridSourceFingerprint: null,
   beatGridSource: 'unknown',
   bpmConfidence: null,
   tempoEvidence: null,
@@ -725,12 +729,13 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
     const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
     set((state) => {
       const current = state[deckKey];
-      if (current.beatGridLocked && current.beatGridSource === 'manual' && patch.automatic) {
+      if (current.beatGridLocked && current.beatGridSource === 'manual' && patch.automatic && !patch.beatGridUnavailable && (patch.beatGridSourceFingerprint === undefined || patch.beatGridSourceFingerprint === current.beatGridSourceFingerprint)) {
         patch = { ...patch };
         delete patch.beatGrid;
         delete patch.downbeatIndices;
         delete patch.beatGridLocked;
         delete patch.beatGridSource;
+        delete patch.beatGridSourceFingerprint;
         delete patch.tempoEvidence;
         if (current.originalBpm !== null) {
           delete patch.bpm;
@@ -752,6 +757,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
           beatGrid: hasBeatGrid ? patch.beatGrid ?? null : current.beatGrid,
           downbeatIndices: hasDownbeats ? patch.downbeatIndices ?? null : current.downbeatIndices,
           beatGridLocked: hasBeatGridLock ? Boolean(patch.beatGridLocked) : current.beatGridLocked,
+          beatGridSourceFingerprint: Object.hasOwn(patch, 'beatGridSourceFingerprint') ? patch.beatGridSourceFingerprint ?? null : current.beatGridSourceFingerprint,
           beatGridSource: hasBeatGrid ? (patch.beatGrid?.length ? patch.beatGridSource ?? 'unknown' : 'unknown') : current.beatGridSource,
           bpmConfidence: Object.hasOwn(patch, 'bpmConfidence') ? patch.bpmConfidence ?? null : hasBPM ? null : current.bpmConfidence,
           tempoEvidence: Object.hasOwn(patch, 'tempoEvidence') ? patch.tempoEvidence ?? null : hasBeatGrid || hasBPM ? null : current.tempoEvidence,

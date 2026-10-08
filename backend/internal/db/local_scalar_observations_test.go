@@ -1,10 +1,13 @@
 package db
 
 import (
+	"encoding/json"
 	"math"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestIndependentLocalScalarsPersistResolveAndMigrate(t *testing.T) {
@@ -104,5 +107,94 @@ func TestSpotifyLegacySlotsDoNotInventLocalMeasurements(t *testing.T) {
 	}
 	if CurrentLocalScalars(&a) != nil {
 		t.Fatal("provider legacy projection invented local measurement")
+	}
+}
+
+func TestOptionalLocalFieldCorruptionIsIsolatedOnRead(t *testing.T) {
+	d, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err := d.SaveSong(&Song{ID: "song", Title: "Song", FilePath: "song.wav", AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	bpm := 120.0
+	local := LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", BPM: &bpm, Fields: []SpotifyScalarField{{Key: "local_duration_seconds", Metric: "decoded_file_duration", Units: "seconds", Value: json.RawMessage("12"), AdapterRevision: "v1", RetrievedAt: time.Now()}}}
+	record := TrackAnalysis{SongID: "song", Status: TrackAnalysisPartial, AnalysisVersion: 1, AlgorithmVersion: "v1", SourceFingerprint: "fp", Local: &local}
+	if err := d.UpsertTrackAnalysis(record); err != nil {
+		t.Fatal(err)
+	}
+	local.Fields = append(local.Fields, SpotifyScalarField{Key: "integrated_lufs_bs1770", Value: json.RawMessage("null")})
+	record.Local = &local
+	if err := d.UpsertTrackAnalysis(record); err == nil {
+		t.Fatal("invalid optional field accepted on write")
+	}
+	raw, _ := json.Marshal(local)
+	if _, err := d.conn.Exec(`UPDATE track_analysis SET local_scalar_json=? WHERE song_id='song'`, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.GetTrackAnalysis("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	qualified := CurrentLocalScalars(&got)
+	if qualified == nil || qualified.BPM == nil || *qualified.BPM != 120 || len(qualified.Fields) != 1 {
+		t.Fatalf("valid siblings suppressed: %+v", qualified)
+	}
+	local.Fields = []SpotifyScalarField{qualified.Fields[0], qualified.Fields[0]}
+	raw, _ = json.Marshal(local)
+	if _, err := d.conn.Exec(`UPDATE track_analysis SET local_scalar_json=? WHERE song_id='song'`, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	got, err = d.GetTrackAnalysis("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	qualified = CurrentLocalScalars(&got)
+	if qualified == nil || qualified.BPM == nil || len(qualified.Fields) != 0 {
+		t.Fatalf("duplicate field ambiguity was applied: %+v", qualified)
+	}
+	if _, err := d.conn.Exec(`UPDATE track_analysis SET local_scalar_json='{' WHERE song_id='song'`); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := d.GetTrackAnalysis("song"); err != nil || CurrentLocalScalars(&got) != nil {
+		t.Fatalf("corrupt envelope should be unreadable evidence, readable row: %+v %v", got, err)
+	}
+	if _, err := d.ListTrackAnalysis(); err != nil {
+		t.Fatalf("one corrupt observation broke library: %v", err)
+	}
+}
+
+func TestLocalEnvelopePresenceSurvivesCorruptionAndLegacyReconstruction(t *testing.T) {
+	d, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err := d.SaveSong(&Song{ID: "song", Title: "Song", FilePath: "song.wav", AddedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	bpm, source := 120.0, "measured"
+	record := TrackAnalysis{SongID: "song", Status: TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "v1", SourceFingerprint: "fp", BPM: &bpm, BPMSource: &source}
+	if err := d.UpsertTrackAnalysis(record); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := d.GetTrackAnalysis("song")
+	if err != nil || legacy.Local == nil || legacy.LocalScalarEnvelopePresent {
+		t.Fatalf("legacy distinction lost: %+v %v", legacy, err)
+	}
+	for _, raw := range []string{`{`, `{}`, `{"sourceFingerprint":"fp","algorithmVersion":"v1"}`, strings.Repeat("x", 4097)} {
+		if _, err := d.conn.Exec(`UPDATE track_analysis SET local_scalar_json=? WHERE song_id='song'`, raw); err != nil {
+			t.Fatal(err)
+		}
+		got, err := d.GetTrackAnalysis("song")
+		if err != nil || !got.LocalScalarEnvelopePresent {
+			t.Fatalf("explicit distinction lost: %+v %v", got, err)
+		}
+		rows, err := d.ListTrackAnalysis()
+		if err != nil || len(rows) != 1 || !rows[0].LocalScalarEnvelopePresent {
+			t.Fatalf("list distinction lost: %+v %v", rows, err)
+		}
 	}
 }

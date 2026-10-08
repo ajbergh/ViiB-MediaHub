@@ -1,4 +1,4 @@
-// Synthetic browser audit: no real library/account writes.
+// Synthetic library/audio/analysis browser audit. Optional playlist backend must be an isolated test API.
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
@@ -18,7 +18,7 @@ page.on('pageerror',error=>console.error('BROWSER ERROR:',error.message));
 page.on('console',message=>{if(message.type()==='error') console.error('BROWSER CONSOLE:',message.text());});
 const songs=['Zero','High','Stale','Unknown'].map((name,i)=>({id:`score-${i}`,title:name,artist:'Fixture',album:'Score audit',duration:12,filePath:`/api/audio/score-${i}`,genre:[]}));
 const features=songs.map((song,i)=>({songId:song.id,status:'complete',bpm:120,bpmSource:'measured',keySource:'unknown',syncAllowed:true,energyLevel:7,...(i<3?{providerScores:{spotify_energy_score:{value:i===0?0:0.9,stale:i===2,retrievedAt:'2026-10-05T00:00:00Z',expiresAt:'2100-01-01T00:00:00Z',endpoint:'audio_features'}}}:{})}));
-let saves=[]; let recommendationQueries=[]; let awaitExpirySettled=false;
+let saves=[]; let persistedPlaylists=[]; let readbackMode='exact'; let recommendationQueries=[]; let awaitExpirySettled=false;
 await page.route('https://fonts.googleapis.com/**',r=>r.abort()); await page.route('https://fonts.gstatic.com/**',r=>r.abort());
 await page.route('**/api/**',r=>r.fulfill({status:404,json:{error:'Not provided by synthetic audit'}}));
 for (const path of ['folders','albums/metadata','artists/metadata']) await page.route(`**/api/${path}`,r=>r.fulfill({json:[]}));
@@ -36,6 +36,7 @@ if(loadedBands) {
  });
  await page.route('**/api/v2/analysis/score-0',r=>r.fulfill({json:{...features[0],sourceFingerprint:'fixture-fp'}}));
  if(mixAudit) {
+  await page.route('**/api/v2/analysis/score-0/energy',r=>r.fulfill({json:{songId:'score-0',integratedLufs:-10,truePeakDbfs:-1,energy:[{time:0,value:0.5}],sections:[],cueSuggestions:[],algorithmVersion:'fixture'}}));
   await page.route('**/api/v2/analysis/score-0/recommendations?*',r=>{
    const query=new URL(r.request().url()).searchParams;recommendationQueries.push(Object.fromEntries(query));
    const filtered=query.get('spotifyScoreMetric')==='energy';
@@ -50,8 +51,16 @@ if(loadedBands) {
 }
 
 await page.route('**/api/playlists',async r=>{
- if(r.request().method()==='POST') {const body=r.request().postDataJSON(); saves.push(body); await r.fulfill({json:{id:'created',...body,createdAt:1}});}
- else await r.fulfill({json:[]});
+ if(process.env.DJ_AUDIT_PLAYLIST_BACKEND) {
+  const response=await r.fetch({url:process.env.DJ_AUDIT_PLAYLIST_BACKEND});
+  assert.equal(response.status(),200,'Persistent playlist endpoint succeeds');
+  const body=await response.json();
+  if(r.request().method()==='POST') { saves.push(r.request().postDataJSON()); await r.fulfill({response,json:body}); }
+  else { persistedPlaylists=body; await r.fulfill({response,json:readbackMode==='missing'?[]:readbackMode==='mismatch'?body.map(p=>({...p,songIds:[...p.songIds].reverse()})):body}); }
+  return;
+ }
+ if(r.request().method()==='POST') {const body=r.request().postDataJSON(); saves.push(body); const saved={id:'created-'+saves.length,...body,createdAt:1}; persistedPlaylists.push(saved); await r.fulfill({json:saved});}
+ else await r.fulfill({json:readbackMode==='missing'?[]:readbackMode==='mismatch'?persistedPlaylists.map(p=>({...p,songIds:[...p.songIds].reverse()})):persistedPlaylists});
 });
 try {
  await page.goto(process.env.DJ_AUDIT_URL||'http://127.0.0.1:4173/dj',{waitUntil:'domcontentloaded'});
@@ -90,6 +99,7 @@ try {
   await page.getByRole('button',{name:/^Deck A analysis and editing/}).click();
   const inspector=page.locator('[data-dj-deck-inspector="A"]');
   if(mixAudit) {
+   await inspector.getByRole('tab',{name:'Analysis',exact:true}).click();
    await inspector.getByText('Build a playlist from 2 Mix Next candidates',{exact:true}).click();
    await inspector.getByRole('checkbox',{name:'Include High in playlist',exact:true}).uncheck();
    await inspector.getByRole('button',{name:'Save 2 results as playlist',exact:true}).click();
@@ -117,6 +127,25 @@ try {
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
    await page.screenshot({path:`${output}/native-score-mix-${auditWidth}x${auditHeight}.png`});
    console.log('PASS: optional native score controls serialize inclusive zero range and preserve reference-first filtered playlist selection.');
+   if(!mixExpiry) {
+    await inspector.getByRole('button',{name:'Save 2 results as playlist',exact:true}).click();
+    const draft=inspector.getByRole('textbox',{name:'Playlist name'});
+    await draft.fill('  Verified retry mix  ');
+    for(const mode of ['missing','mismatch']) {
+     readbackMode=mode;
+     await inspector.getByRole('button',{name:'Create playlist',exact:true}).click();
+     await inspector.getByRole('alert').filter({hasText:'could not be verified'}).waitFor();
+     assert.equal(await draft.inputValue(),'  Verified retry mix  ');
+     assert.equal(await inspector.getByText('Saved 2 tracks as “Verified retry mix”.',{exact:true}).count(),0);
+    }
+    readbackMode='exact';
+    await inspector.getByRole('button',{name:'Create playlist',exact:true}).click();
+    await inspector.getByText('Saved 2 tracks as “Verified retry mix”.',{exact:true}).waitFor();
+    const verifiedRetry=persistedPlaylists.find(p=>p.name==='Verified retry mix');
+    assert.ok(verifiedRetry);
+    assert.deepEqual(verifiedRetry.songIds,['score-0','score-3']);
+    console.log('PASS: missing/mismatched synthetic GET retains draft; exact normalized name and ordered IDs permit success.');
+   }
    if(mixExpiry) {
     await inspector.getByRole('button',{name:'Save 2 results as playlist',exact:true}).click();
     await inspector.getByRole('textbox',{name:'Playlist name'}).fill('Expired draft');
@@ -168,7 +197,7 @@ try {
    console.log('PASS: waveform-only durable import renders three bands without provider scalar summaries; refresh stays disabled.');
   }
   await inspector.getByText('Local analysis coverage and limits',{exact:true}).click();
-  const limits=inspector.getByText(/Treat these fields as unavailable locally/);
+  const limits=inspector.getByRole('table',{name:'Audio analysis capability status'});
   await limits.scrollIntoViewIfNeeded();
   assert.equal(await limits.isVisible(),true);
   assert.equal(await inspector.getByText(/Missing Spotify fields do not imply zero/).count(),1);
@@ -188,5 +217,5 @@ try {
   console.log('PASS: loaded 12-second synthetic audio, source-matched local-band overview, three inspector envelopes and scrollable metadata. No DSP/live-provider qualification.');
  }
 
- console.log('PASS: native zero score, unknown-last order, range exclusion, captured playlist payload and no horizontal page overflow. Synthetic API fixtures only.');
+ console.log('PASS: native zero score, unknown-last order, range exclusion, captured playlist payload and no horizontal page overflow. '+(process.env.DJ_AUDIT_PLAYLIST_BACKEND?'Playlist HTTP/SQLite backend; other APIs synthetic.':'Synthetic API fixtures only.'));
 } catch(error) { await page.screenshot({path:`${output}/failure.png`}); console.error((await page.locator('body').innerText()).slice(0,600)); throw error; } finally {await browser.close();}

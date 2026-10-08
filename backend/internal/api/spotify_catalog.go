@@ -164,7 +164,7 @@ func (s *spotifyAuthRuntime) persistCatalogDomainResult(ctx context.Context, ent
 		now := time.Now().UTC()
 		snapshots := make([]db.SpotifyEntitySnapshot, 0, len(entities))
 		for _, entity := range entities {
-			snapshot := db.SpotifyEntitySnapshot{SpotifySnapshotKey: db.SpotifySnapshotKey{EntityType: entity.EntityType, SpotifyID: entity.ID, Resource: entity.Resource, ContextKey: s.metadataContext}, SchemaVersion: 1, AdapterRevision: "catalog-domain-v1", RetrievedAt: now, ExpiresAt: now.Add(24 * time.Hour), Payload: entity.Payload}
+			snapshot := db.SpotifyEntitySnapshot{CaptureRevision: entity.CaptureRevision, SpotifySnapshotKey: db.SpotifySnapshotKey{EntityType: entity.EntityType, SpotifyID: entity.ID, Resource: entity.Resource, ContextKey: s.metadataContext}, SchemaVersion: 1, AdapterRevision: "catalog-domain-v1", RetrievedAt: now, ExpiresAt: now.Add(24 * time.Hour), Payload: entity.Payload}
 			for _, relation := range entity.Relations {
 				snapshot.Relations = append(snapshot.Relations, db.SpotifyEntityRelation{Kind: relation.Kind, Position: relation.Position, ChildType: relation.ChildType, ChildID: relation.ChildID, Unavailable: relation.Unavailable, Metadata: relation.Metadata})
 			}

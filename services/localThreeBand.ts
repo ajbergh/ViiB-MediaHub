@@ -34,7 +34,8 @@ export function loadLocalThreeBand(songId: string, sourceFingerprint?: string): 
 
 async function fetchLocalThreeBand(songId: string, sourceFingerprint?: string): Promise<LocalThreeBand | null> {
   const response = await fetch(`/api/v2/analysis/${encodeURIComponent(songId)}/waveform/local-three-band`, { cache: 'no-store' });
-  if (response.status === 404) return null;
+  // A source revision changed during the read; never render the old artifact.
+  if (response.status === 404 || response.status === 412) return null;
   if (!response.ok) throw new Error('Local waveform unavailable');
   const data = await response.json() as LocalThreeBand;
   const overview = data.overview;

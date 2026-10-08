@@ -62,13 +62,29 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 		_ = a.db.FailJob(job.ID, "invalid_analysis_selection", err.Error())
 		return
 	}
-	songIDs, err := a.db.ExpandAnalysisSelection(selection, track.AnalysisVersion, track.AlgorithmVersion)
+	ctx, cancel := a.analysisJobContext(job.ID)
+	defer cancel()
+	songIDs, err := track.ExpandPreparationJobSelection(ctx, a.db, selection, func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
+		if a.jobCancellationRequested(job.ID) {
+			cancel()
+			return analysis.ResolvedSource{}, context.Canceled
+		}
+		return a.resolveAnalysisSource(ctx, id)
+	})
 	if err != nil {
+		if errors.Is(err, track.ErrPreparationBusy) {
+			a.deferPreparationClaimJob(job.ID)
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			_ = a.db.CancelJob(job.ID, "Canceled during preparation discovery")
+			return
+		}
 		_ = a.db.FailJob(job.ID, "analysis_selection_failed", err.Error())
 		return
 	}
 	if len(songIDs) == 0 {
-		_ = a.db.CompleteJob(job.ID, map[string]any{"mode": selection.Mode, "total": 0, "analyzed": 0, "skipped": 0, "failed": 0},
+		_, _ = a.completeCancelableJob(job.ID, map[string]any{"mode": selection.Mode, "total": 0, "analyzed": 0, "skipped": 0, "failed": 0},
 			"No tracks matched the analysis selection")
 		return
 	}
@@ -78,9 +94,6 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 		return
 	}
 	logger.Analysis("job started job_id=%q mode=%q tracks=%d algorithm=%q", job.ID, selection.Mode, len(songIDs), track.AlgorithmVersion)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	_ = a.db.UpdateJobProgress(job.ID, 0, int64(len(songIDs)), fmt.Sprintf("Analyzing %d tracks", len(songIDs)))
 	lastWrite := time.Now()
@@ -137,19 +150,42 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 		logger.Analysis("job failed job_id=%q mode=%q processed=%d total=%d error=%q", job.ID, selection.Mode, progress.Processed, progress.Total, runErr)
 		return
 	}
-	if err := a.db.CompleteJob(job.ID, result,
-		fmt.Sprintf("Analysis complete: %d analyzed, %d skipped, %d failed", progress.Analyzed, progress.Skipped, progress.Failed)); err != nil {
-		logger.Analysis("job completion persistence failed job_id=%q mode=%q error=%q", job.ID, selection.Mode, err)
+	if claimErr := track.CheckPreparationSelectionClaims(ctx, a.db, selection); claimErr != nil {
+		if errors.Is(claimErr, track.ErrPreparationBusy) {
+			a.deferPreparationClaimJob(job.ID)
+			return
+		}
+		if errors.Is(claimErr, context.Canceled) {
+			_ = a.db.CancelJob(job.ID, "Analysis canceled before completion")
+			return
+		}
+		_ = a.db.FailJob(job.ID, "analysis_claim_check_failed", claimErr.Error())
+		return
+	}
+	completed, completeErr := a.completeCancelableJob(job.ID, result,
+		fmt.Sprintf("Analysis complete: %d analyzed, %d skipped, %d failed", progress.Analyzed, progress.Skipped, progress.Failed))
+	if completeErr != nil {
+		logger.Analysis("job completion persistence failed job_id=%q mode=%q error=%q", job.ID, selection.Mode, completeErr)
+		return
+	}
+	if !completed {
 		return
 	}
 	logger.Analysis("job completed job_id=%q mode=%q total=%d analyzed=%d skipped=%d failed=%d", job.ID, selection.Mode, progress.Total, progress.Analyzed, progress.Skipped, progress.Failed)
 }
 
 // deferAnalysisJob returns a job to the durable queue so it resumes once
-// playback pressure clears. If the transition is refused the job is no longer
-// running — it was canceled or completed concurrently — and needs no action.
+// playback pressure clears. A concurrent cancellation is finalized when the
+// running-to-queued transition is refused.
 func (a *API) deferAnalysisJob(id string) {
-	_, _ = a.db.RequeueJob(id, "Waiting for DJ playback to finish before analyzing", analysisDeferBackoff)
+	if a.jobCancellationRequested(id) {
+		_ = a.db.CancelJob(id, "Analysis canceled while waiting for playback")
+		return
+	}
+	requeued, _ := a.db.RequeueJob(id, "Waiting for DJ playback to finish before analyzing", analysisDeferBackoff)
+	if !requeued && a.jobCancellationRequested(id) {
+		_ = a.db.CancelJob(id, "Analysis canceled while waiting for playback")
+	}
 }
 
 // SettingAutoAnalyzeNewTracks enables queueing analysis for tracks a scan just
@@ -169,18 +205,15 @@ func (a *API) queueAutoAnalysis(trigger string) {
 	if err != nil || (strings.TrimSpace(value) != "" && !isEnabledSetting(value)) {
 		return
 	}
-	// A run that has not started yet already covers whatever the scan added,
-	// because the work list is expanded at claim time rather than now.
-	pending, err := a.db.CountPendingJobsByType(JobTypeAnalyzeTracks)
-	if err != nil || pending > 0 {
-		return
-	}
+	// Only an unstarted local missing-selection run covers newly scanned tracks.
+	// A running job has already expanded its work list and needs one follow-up.
 	job := db.Job{
 		ID: uuid.NewString(), Type: JobTypeAnalyzeTracks, Status: db.JobStatusQueued,
 		Parameters: autoAnalysisParameters(db.AnalysisSelection{Mode: db.AnalysisSelectionMissing, AutoCueMode: a.analysisAutoCueMode()}), Priority: autoAnalyzePriority,
 		Message: "Queued automatically after " + trigger,
 	}
-	if err := a.db.CreateJob(job); err != nil {
+	queued, err := a.db.QueueMissingAnalysisIfNeeded(job)
+	if err != nil || !queued {
 		return
 	}
 	a.wakeJobScheduler()
@@ -211,4 +244,62 @@ func isEnabledSetting(value string) bool {
 	default:
 		return false
 	}
+}
+
+func (a *API) completeCancelableJob(id string, result any, message string) (bool, error) {
+	completed, err := a.db.CompleteJobIfRunning(id, result, message)
+	if err == nil && !completed && a.jobCancellationRequested(id) {
+		return false, a.db.CancelJob(id, "Operation canceled before completion")
+	}
+	return completed, err
+}
+
+func (a *API) deferPreparationClaimJob(id string) {
+	if a.jobCancellationRequested(id) {
+		_ = a.db.CancelJob(id, "Analysis canceled while waiting for preparation ownership")
+		return
+	}
+	queued, _ := a.db.RequeueJob(id, "Waiting for an existing preparation worker", time.Second)
+	if queued {
+		// The idle scheduler poll is 30s. Wake existing workers when this short
+		// contention backoff ends instead of stranding otherwise-ready jobs.
+		time.AfterFunc(time.Second, func() {
+			a.jobSchedulerMu.Lock()
+			wake := a.jobWake
+			a.jobSchedulerMu.Unlock()
+			if wake != nil {
+				select {
+				case wake <- struct{}{}:
+				default:
+				}
+			}
+		})
+	}
+	if !queued && a.jobCancellationRequested(id) {
+		_ = a.db.CancelJob(id, "Analysis canceled while waiting for preparation ownership")
+	}
+}
+
+// Cancellation must reach source reads and lease waits, not just track boundaries.
+func (a *API) analysisJobContext(id string) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if a.jobCancellationRequested(id) {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	var once sync.Once
+	return ctx, func() { once.Do(func() { cancel(); <-done }) }
 }

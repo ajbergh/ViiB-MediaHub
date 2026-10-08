@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { bandDisplay, loadLocalThreeBand, type LocalThreeBand } from '../services/localThreeBand';
 
 export function LocalBandPreview({ songId, fingerprint }: { songId: string; fingerprint: string }) {
+  const [revision, setRevision] = useState(0);
   const [snapshot, setSnapshot] = useState<{ id: string; fp: string; data: LocalThreeBand | null; error?: boolean }>();
   useEffect(() => {
     let active = true;
@@ -10,10 +11,10 @@ export function LocalBandPreview({ songId, fingerprint }: { songId: string; fing
       if (active) setSnapshot({ id: songId, fp: fingerprint, data: data?.sourceFingerprint === fingerprint ? data : null });
     }, () => { if (active) setSnapshot({ id: songId, fp: fingerprint, data: null, error: true }); });
     return () => { active = false; };
-  }, [songId, fingerprint]);
+  }, [songId, fingerprint, revision]);
   const current = snapshot?.id === songId && snapshot.fp === fingerprint ? snapshot : undefined;
   if (!current) return <p role="status">Loading local bands…</p>;
-  if (!current.data) return <p>{current.error ? 'Local bands could not be loaded.' : 'Local bands are not prepared for this file.'}</p>;
+  if (!current.data) return <div><p>{current.error ? 'Local bands could not be loaded.' : 'Local bands are not prepared for the current file.'}</p><button type="button" onClick={() => setRevision(value => value + 1)}>Retry local bands</button></div>;
   const o = current.data.overview;
   const display = bandDisplay([o.low, o.mid, o.high]);
   return <section aria-label="Local three-band waveform" className="space-y-2">

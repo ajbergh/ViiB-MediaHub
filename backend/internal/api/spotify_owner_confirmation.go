@@ -37,7 +37,7 @@ func (s *spotifyAuthRuntime) confirmProfileOwner(ctx context.Context, id string)
 	s.pendingOwner = nil
 	if changed {
 		s.endLifetime()
-		s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+		s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
 		return errSpotifyAccountChanged
 	}
 	return nil

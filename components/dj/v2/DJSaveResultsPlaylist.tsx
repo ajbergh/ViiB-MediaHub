@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../../../store';
+import { api } from '../../../services/api';
 
 export function DJSaveResultsPlaylist({ songIds }: { songIds: string[] }) {
  const spotifySessionGeneration = useStore(state => state.spotifySessionGeneration);
@@ -21,14 +22,27 @@ export function DJSaveResultsPlaylist({ songIds }: { songIds: string[] }) {
   if (!currentSelection?.length || !name.trim() || busy) return;
   const generation = useStore.getState().spotifySessionGeneration;
   if (selection?.generation !== generation) return;
+  const capturedSongIds = [...currentSelection];
   setBusy(true); setError('');
   try {
-   await createPlaylist(name.trim(),[...currentSelection]);
+   const created = await createPlaylist(name.trim(),capturedSongIds);
    if (useStore.getState().spotifySessionGeneration !== generation) return;
-   setMessage(`Saved ${currentSelection.length} tracks as “${name.trim()}”.`);
+  if (!created || !created.id) {
+   setError('Playlist could not be verified after saving. Your selection is retained; try again.');
+   return;
+  }
+  const persisted = await api.getPlaylists();
+   if (useStore.getState().spotifySessionGeneration !== generation) return;
+   const saved = persisted.find(playlist => playlist.id === created.id);
+  if (!saved || saved.name !== name.trim() || saved.songIds.length !== capturedSongIds.length
+   || saved.songIds.some((id, index) => id !== capturedSongIds[index])) {
+    setError('Playlist could not be verified after saving. Your selection is retained; try again.');
+    return;
+   }
+   setMessage(`Saved ${capturedSongIds.length} tracks as “${name.trim()}”.`);
    setSelection(null); setName('');
   } catch {
-   if (useStore.getState().spotifySessionGeneration === generation) setError('Playlist could not be saved. Your selection is retained; try again.');
+     if (useStore.getState().spotifySessionGeneration === generation) setError('Playlist could not be saved or verified. Your selection is retained; retry after checking your playlists.');
   } finally {
    if (useStore.getState().spotifySessionGeneration === generation) setBusy(false);
   }

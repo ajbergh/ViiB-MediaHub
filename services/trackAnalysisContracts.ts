@@ -17,15 +17,32 @@ export interface SpotifyScalarField {
   retrievedAt: string;
   expiresAt: string;
   stale: boolean;
+  durableImport?: boolean;
+}
+
+/** Source-bound candidates; stale provider evidence is inspection-only here. */
+export interface EffectiveScalarCandidate extends Omit<SpotifyScalarField, 'endpoint'> {
+  endpoint: 'audio_features' | 'audio_analysis' | '';
+  source: 'manual' | 'local' | 'spotify_private' | 'spotify_download_import';
+  sourceFingerprint: string;
+  locked?: boolean;
+}
+
+export interface EffectiveScalar {
+  key: string;
+  state: 'available' | 'unknown';
+  selected?: EffectiveScalarCandidate;
+  lastGood?: EffectiveScalarCandidate;
 }
 
 export interface TrackAnalysisFeature {
+  effectiveFields?: EffectiveScalar[];
   providerScores?: Record<string, { value: number; stale: boolean; retrievedAt: string; expiresAt: string; endpoint: 'audio_features' | 'audio_analysis' }>;
   providerScoresUnverified?: boolean;
   providerScalars?: {
     readOnly?: boolean;
     unverified?: boolean;
-    provenance?: 'spotify_private_cache';
+    provenance?: 'spotify_private_cache' | 'spotify_download_import' | 'spotify_mixed_private_and_download_import';
     recordingId: string;
     sourceFingerprint: string;
     fields: SpotifyScalarField[];
@@ -36,6 +53,7 @@ export interface TrackAnalysisFeature {
       reason?: string;
       checkedAt: string;
       adapterRevision: string;
+      durableImport?: boolean;
     }>;
     selected: SpotifyScalarField[];
     selectionPolicy: 'fresh_then_newest_v1';
@@ -63,6 +81,8 @@ export interface TrackAnalysisFeature {
   measuredKeyMode?: 'major' | 'minor';
   keyConfidence?: number;
   keySource: 'unknown' | 'manual' | 'measured' | 'spotify';
+  measuredEnergyLevel?: number;
+  energyLevelSource?: string;
   energyLevel?: number;
   energyLevelConfidence?: number;
   energyAlgorithmVersion?: string;
@@ -79,6 +99,9 @@ export interface TrackAnalysisFeature {
 // deck Sync can use measured beat positions without recreating a zero-offset
 // browser grid.
 export interface TrackBeatGrid {
+  sourceFingerprint?: string;
+  resolution?: 'available' | 'unavailable';
+  reason?: string;
   songId: string;
   beats: number[];
   downbeatIndices: number[];

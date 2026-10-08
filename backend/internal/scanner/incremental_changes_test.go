@@ -3,6 +3,12 @@
 package scanner
 
 import (
+	"bytes"
+	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/track"
+	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
+	"github.com/ajbergh/viib-mediahub/internal/db"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -64,5 +70,49 @@ func TestCoalesceDeleteThenCreateAsModification(t *testing.T) {
 	})
 	if len(changes) != 1 || changes[0].ChangeType != ChangeTypeModified {
 		t.Fatalf("delete/create replacement should become one modification: %#v", changes)
+	}
+}
+
+func TestIncrementalSavedReplacementReachesMissingPreparation(t *testing.T) {
+	directory := t.TempDir()
+	database, err := db.New(filepath.Join(directory, "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	fixture, err := analysisbench.NewClickTrack("clicks", 128, 3, 22050, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wav bytes.Buffer
+	if err := analysisbench.WriteWAVPCM16(&wav, fixture); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "song.wav")
+	if err := os.WriteFile(path, wav.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	song := db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: path, FileHash: "original-content-hash", AddedAt: 1}
+	if err := database.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := track.Run(t.Context(), database, analysis.NewDefaultDecoderRegistry(), []string{song.ID}, track.RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	selection := db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}
+	selected, err := track.ExpandPreparationSelection(t.Context(), database, selection, nil)
+	if err != nil || len(selected) != 0 {
+		t.Fatal(selected, err)
+	}
+	// Exercise the actual incremental batch-save seam with a changed scanner hash,
+	// retaining path/size/mtime and canonical song ID.
+	song.FileHash = "replacement-content-hash"
+	scanner := &Scanner{db: database}
+	if err := scanner.saveIncrementalBatch([]preparedIncrementalSong{{song: song}}, []string{path}, &ScanResult{}); err != nil {
+		t.Fatal(err)
+	}
+	selected, err = track.ExpandPreparationSelection(t.Context(), database, selection, nil)
+	if err != nil || len(selected) != 1 || selected[0] != song.ID {
+		t.Fatal("scanner replacement omitted", selected, err)
 	}
 }

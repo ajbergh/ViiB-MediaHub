@@ -75,7 +75,7 @@ func (d *DB) ConfirmSpotifyMetadataOwner(epoch, provider, accountID, newContext 
 	if err == nil && previous.Provider == provider && previous.AccountID == accountID && previous.ContextKey != "" {
 		contextKey = previous.ContextKey
 	} else {
-		for _, table := range []string{"spotify_entity_relations", "spotify_entity_snapshots", "spotify_metadata_resource_status", "spotify_audio_artifacts", "spotify_playlist_traversals", "spotify_audio_field_attempts", "spotify_audio_observations", "external_track_analysis", "external_track_analysis_status"} {
+		for _, table := range []string{"spotify_download_lineage_staging", "spotify_entity_relations", "spotify_entity_snapshots", "spotify_metadata_resource_status", "spotify_audio_artifacts", "spotify_playlist_traversals", "spotify_audio_field_attempts", "spotify_audio_observations", "external_track_analysis", "external_track_analysis_status"} {
 			if _, err := tx.Exec("DELETE FROM " + table); err != nil {
 				return "", err
 			}

@@ -28,3 +28,9 @@ describe('beat-grid provenance', () => {
     expect(resolvedGridPatch(null, null, 10)).toMatchObject({ bpm: null, beatGrid: null, beatGridSource: 'unknown' });
   });
 });
+
+it('retains lock intent without timing for an unresolved source-bound grid', () => {
+ const patch = resolvedGridPatch(feature, { songId: 'one', beats: [], downbeatIndices: [], locked: true, algorithmVersion: 'v1', resolution: 'unavailable', reason: 'source_mismatch', sourceFingerprint: 'new' }, 10);
+ expect(patch).toMatchObject({ beatGrid: null, beatGridLocked: true, beatGridUnavailable: true, beatGridSourceFingerprint: 'new' });
+ expect(canSyncBeatGrid({ beatGrid: patch.beatGrid!, beatGridSource: 'unknown', beatGridLocked: true })).toBe(false);
+});

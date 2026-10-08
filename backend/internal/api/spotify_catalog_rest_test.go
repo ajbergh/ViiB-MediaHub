@@ -185,6 +185,9 @@ func TestOAuthPlaylistFinalRevisionFence(t *testing.T) {
 			if readErr != nil || (snapshot != nil) != (revision == "version1") {
 				t.Fatalf("traversal publication: %+v %v", snapshot, readErr)
 			}
+			if snapshot != nil && snapshot.CaptureRevision != "version1" {
+				t.Fatal("root revision not persisted", snapshot)
+			}
 		})
 	}
 }
@@ -284,6 +287,10 @@ func TestOAuthPlaylistPartialResumeRevisionFence(t *testing.T) {
 			}
 			if rows, ok := a.completedPlaylistRows(ctx, id, revision); !ok || len(rows) != 3 {
 				t.Fatal("completion lost unavailable positions")
+			}
+			page, err := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: "rest:/v1/playlists/" + id + "/tracks:page:1:1", ContextKey: a.spotifyTokens().metadataContext})
+			if err != nil || page == nil || page.CaptureRevision != revision {
+				t.Fatal("resumed page revision not persisted", page, err)
 			}
 		})
 	}

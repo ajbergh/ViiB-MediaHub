@@ -36,6 +36,16 @@ func (a *API) savePlaylistPartial(ctx context.Context, id string, p playlistPart
 	if !validPlaylistPartial(id, p) {
 		return false
 	}
+	buffer := &catalogCaptureBuffer{}
+	if !buffer.bindPlaylistRevision(id, p.Revision) {
+		return false
+	}
+	buffer.add(p.Entities)
+	var captured bool
+	p.Entities, captured = buffer.snapshot()
+	if !captured {
+		return false
+	}
 	if traversal, ok := ctx.Value(playlistTraversalContextKey{}).(db.SpotifyPlaylistTraversal); ok {
 		p.Generation = traversal.Generation
 	}
@@ -68,8 +78,16 @@ func (a *API) loadPlaylistPartial(ctx context.Context, id, revision string) (pla
 	}
 	// Restore through the same aggregate bounds used by live capture.
 	buffer := &catalogCaptureBuffer{}
+	if !buffer.bindPlaylistRevision(id, p.Revision) {
+		return playlistPartialCheckpoint{}, false
+	}
 	buffer.add(p.Entities)
-	if buffer.overflow {
+	if !buffer.bindPlaylistRevision(id, p.Revision) {
+		return playlistPartialCheckpoint{}, false
+	}
+	var captured bool
+	p.Entities, captured = buffer.snapshot()
+	if !captured {
 		return playlistPartialCheckpoint{}, false
 	}
 	return p, true

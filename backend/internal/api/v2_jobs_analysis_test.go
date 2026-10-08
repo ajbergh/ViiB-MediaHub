@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/track"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -383,5 +385,191 @@ func TestAnalyzeTracksJobsStayWithinWorkerBound(t *testing.T) {
 	}
 	if len(succeeded) != submitted {
 		t.Fatalf("%d jobs succeeded, want %d", len(succeeded), submitted)
+	}
+}
+
+func TestAnalysisCancellationWinsCompletionAndDefer(t *testing.T) {
+	for _, action := range []string{"complete", "empty", "defer"} {
+		t.Run(action, func(t *testing.T) {
+			database, _, _ := analysisCatalog(t, 0)
+			api := &API{db: database}
+			job := db.Job{ID: "cancel", Type: JobTypeAnalyzeTracks, Status: db.JobStatusRunning, Parameters: json.RawMessage(`{"mode":"missing"}`)}
+			if err := database.CreateJob(job); err != nil {
+				t.Fatal(err)
+			}
+			if requested, err := database.RequestJobCancellation(job.ID); err != nil || !requested {
+				t.Fatal(requested, err)
+			}
+			switch action {
+			case "complete":
+				if completed, err := api.completeCancelableJob(job.ID, map[string]int{"total": 1}, "done"); err != nil || completed {
+					t.Fatal(err)
+				}
+			case "empty":
+				api.runAnalyzeTracksJob(job)
+			case "defer":
+				api.deferAnalysisJob(job.ID)
+			}
+			after, err := database.GetJob(job.ID)
+			if err != nil || after.Status != db.JobStatusCanceled {
+				t.Fatal(after, err)
+			}
+		})
+	}
+}
+
+func TestMissingAnalysisJobRepairsSizedCorruptArtifact(t *testing.T) {
+	database, _, ids := analysisCatalog(t, 1)
+	if _, err := track.Run(t.Context(), database, decoderRegistry(), ids, track.RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := database.GetTrackAnalysisArtifact(ids[0], features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact.Data = []byte("invalid nonempty compressed payload")
+	if err := database.UpsertTrackAnalysisArtifact(artifact); err != nil {
+		t.Fatal(err)
+	}
+	job := db.Job{ID: "repair", Type: JobTypeAnalyzeTracks, Status: db.JobStatusRunning, Parameters: json.RawMessage(`{"mode":"missing"}`)}
+	if err := database.CreateJob(job); err != nil {
+		t.Fatal(err)
+	}
+	api := &API{db: database}
+	api.runAnalyzeTracksJob(job)
+	finished, err := database.GetJob(job.ID)
+	if err != nil || finished.Status != db.JobStatusSucceeded {
+		t.Fatal(finished, err)
+	}
+	var result struct {
+		Total    int `json:"total"`
+		Analyzed int `json:"analyzed"`
+	}
+	if err := json.Unmarshal(finished.Result, &result); err != nil || result.Total != 1 || result.Analyzed != 1 {
+		t.Fatal(result, err)
+	}
+	repaired, err := database.GetTrackAnalysisArtifact(ids[0], features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := features.DecodeBounded(repaired.Data, features.MaxStructureStatusArtifactBytes); err != nil {
+		t.Fatal("corrupt artifact remained", err)
+	}
+}
+
+func TestActiveAnalysisRestartWaitsForOldClaimAndResumesUnfinishedWork(t *testing.T) {
+	database, directory, ids := analysisCatalog(t, 4)
+	if _, err := track.Run(t.Context(), database, decoderRegistry(), ids[:1], track.RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	source, err := analysis.ResolveLocalSource(database, ids[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, ok, err := database.ClaimTrackAnalysisLease(ids[1], source.Fingerprint, track.AnalysisVersion, track.AlgorithmVersion)
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if err := database.CreateJob(db.Job{ID: "active-restart", Type: JobTypeAnalyzeTracks, Status: db.JobStatusRunning, Parameters: json.RawMessage(`{"mode":"missing"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+	reopened, err := db.New(filepath.Join(directory, "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	api := &API{db: reopened}
+	api.V2JobRoutes()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		job, err := reopened.GetJob("active-restart")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.Status == db.JobStatusQueued && strings.Contains(job.Message, "existing preparation") {
+			break
+		}
+		if job.Status == db.JobStatusSucceeded {
+			t.Fatal("resumed job lost live-claimed unfinished work")
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("job did not defer live claim", job)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// Release simulates an owner settling/abandoning before lease expiry. DB lease
+	// tests separately establish expiry/reclaim; this integration need not sleep 10m.
+	if err := reopened.ReleaseTrackAnalysisLease(ids[1], token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.ClearJobBackoff(); err != nil {
+		t.Fatal(err)
+	}
+	api.wakeJobScheduler()
+	finished := awaitJobStatus(t, reopened, "active-restart", db.JobStatusSucceeded)
+	var result struct {
+		Total    int `json:"total"`
+		Analyzed int `json:"analyzed"`
+	}
+	if err := json.Unmarshal(finished.Result, &result); err != nil || result.Total != 3 || result.Analyzed != 3 {
+		t.Fatal(result, err)
+	}
+}
+func TestAnalysisJobContextCancelsWhileWaiting(t *testing.T) {
+	database, _, _ := analysisCatalog(t, 0)
+	api := &API{db: database}
+	if err := database.CreateJob(db.Job{ID: "wait", Type: JobTypeAnalyzeTracks, Status: db.JobStatusRunning}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := api.analysisJobContext("wait")
+	defer stop()
+	if ok, err := database.RequestJobCancellation("wait"); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancellation did not reach wait context")
+	}
+}
+
+func TestAnalysisCancellationInterruptsLazyWaveformLeaseWait(t *testing.T) {
+	database, _, ids := analysisCatalog(t, 1)
+	api := &API{db: database}
+	source, err := analysis.ResolveLocalSource(database, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, ok, err := database.ClaimWaveformLease(ids[0], source.Fingerprint)
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	defer database.ReleaseWaveformLease(ids[0], token)
+	job := db.Job{ID: "waiting-lazy", Type: JobTypeAnalyzeTracks, Status: db.JobStatusRunning, Parameters: json.RawMessage(`{"mode":"missing"}`)}
+	if err := database.CreateJob(job); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { defer close(done); api.runAnalyzeTracksJob(job) }()
+	select {
+	case <-done:
+		t.Fatal("job skipped active lazy owner")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if ok, err := database.RequestJobCancellation(job.ID); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("canceled job stuck in lease wait")
+	}
+	finished, err := database.GetJob(job.ID)
+	if err != nil || finished.Status != db.JobStatusCanceled {
+		t.Fatal(finished, err)
+	}
+	if err := database.RenewWaveformLease(ids[0], source.Fingerprint, token); err != nil {
+		t.Fatal("cancellation released another worker", err)
 	}
 }

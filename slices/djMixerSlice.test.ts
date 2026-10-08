@@ -99,3 +99,12 @@ describe('reviewed beat grids', () => {
     expect(state.djDeckA.position).toBeCloseTo(0.4);
   });
 });
+
+it('replaces obsolete manual timing with an authoritative unresolved lock', () => {
+ const state = createTestMixerState();
+ state.setDeckAnalysis('A', { beatGrid: [0, .5], beatGridSource: 'manual', beatGridLocked: true, beatGridSourceFingerprint: 'old' });
+ state.setDeckAnalysis('A', { automatic: true, beatGrid: null, beatGridLocked: true, beatGridUnavailable: true, beatGridSourceFingerprint: 'new' });
+ expect(state.djDeckA.beatGrid).toBeNull();
+ expect(state.djDeckA.beatGridLocked).toBe(true);
+ expect(state.djDeckA.beatGridSourceFingerprint).toBe('new');
+});

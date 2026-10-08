@@ -122,7 +122,41 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 	source, err := resolveSource(ctx, songID)
 	if err != nil {
 		code, message := ClassifyError(err)
-		if persistErr := PersistFailure(database, songID, analysis.ResolvedSource{}, code, message); persistErr != nil {
+		if ctx.Err() != nil {
+			return outcomeFailed
+		}
+		previous, previousErr := database.GetTrackAnalysis(songID)
+		fingerprint := "unresolved:" + songID
+		if previousErr == nil {
+			fingerprint = previous.SourceFingerprint
+		}
+		priorStates, stateErr := database.GetTrackCapabilityStatuses(songID, fingerprint)
+		if stateErr != nil {
+			return outcomeFailed
+		}
+		if attempt, ok := priorStates["core_preparation"]; ok && attempt.Version == db.CorePreparationVersion && attempt.Reason == ErrorSourceUnavailable && attempt.RetryAt > time.Now().UnixMilli() {
+			return outcomeSkipped
+		}
+		token, claimed, claimErr := database.ClaimTrackAnalysisLease(songID, fingerprint, AnalysisVersion, AlgorithmVersion)
+		if claimErr != nil {
+			return outcomeFailed
+		}
+		if !claimed {
+			return outcomeSkipped
+		}
+		defer database.ReleaseTrackAnalysisLease(songID, token)
+		var persistErr error
+		if previousErr == nil {
+			// A failed attempt is separate from the last-good source-bound projection.
+			// The claim temporarily changed its row; restore exactly the prior facts.
+			if previous.Status == db.TrackAnalysisRunning {
+				previous.Status = db.TrackAnalysisPending
+			}
+			persistErr = database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: previous, ClaimToken: token, Capabilities: preparationStatuses(Result{SongID: songID, Source: analysis.ResolvedSource{Fingerprint: fingerprint}, PreparationError: code})})
+		} else {
+			persistErr = persistFailureClaimed(database, songID, analysis.ResolvedSource{}, code, message, token)
+		}
+		if persistErr != nil {
 			logger.Analysis("track failed song_id=%q code=%q error=%q persist_error=%q", songID, code, message, persistErr)
 		} else {
 			logger.Analysis("track failed song_id=%q code=%q error=%q", songID, code, message)
@@ -164,11 +198,36 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 			repairMissing = missing
 			logger.Scan("local_preparation song_id=%q action=shared_repair missing=%d", songID, len(missing))
 		} else {
-			if err := database.PutTrackCapabilityStatuses([]db.TrackCapabilityStatus{{SongID: songID, SourceFingerprint: source.Fingerprint, Capability: "core_preparation", Version: db.CorePreparationVersion, State: "available"}}); err != nil {
+			core := states["core_preparation"]
+			lockedState, stateErr := database.LockedBeatGridCapability(songID, source.Fingerprint)
+			if stateErr != nil {
+				return outcomeFailed
+			}
+			lockedSettled := true
+			if lockedState != nil {
+				stored := states["local_beatgrid"]
+				lockedSettled = stored.Version == lockedState.Version && stored.State == lockedState.State && stored.Reason == lockedState.Reason
+			}
+			if core.Version == db.CorePreparationVersion && core.State == "available" && lockedSettled {
+				if enrichValid && spotifyFeatures != nil {
+					return enrichCurrentScalars(ctx, database, source, spotifyFeatures, resolveSource)
+				}
+				logScanRecord(record, "already_current", "skipped")
+				return outcomeSkipped
+			}
+			token, claimed, err := claimPreparation(ctx, database, songID, source.Fingerprint)
+			if err != nil {
+				return outcomeFailed
+			}
+			if !claimed {
+				return outcomeSkipped
+			}
+			if err := database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, ClaimToken: token, Capabilities: []db.TrackCapabilityStatus{{SongID: songID, SourceFingerprint: source.Fingerprint, Capability: "core_preparation", Version: db.CorePreparationVersion, State: "available"}}}); err != nil {
+				_ = database.ReleaseTrackAnalysisLease(songID, token)
 				return outcomeFailed
 			}
 			if enrichValid && spotifyFeatures != nil {
-				return enrichCurrentScalars(ctx, database, source, spotifyFeatures)
+				return enrichCurrentScalars(ctx, database, source, spotifyFeatures, resolveSource)
 			}
 			if record, readErr := database.GetTrackAnalysis(songID); readErr == nil {
 				logScanRecord(record, "already_current", "skipped")
@@ -183,7 +242,7 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 	// one of them decodes the file; the loser treats the track as another
 	// worker's responsibility rather than duplicating the work.
 	previous, _ := database.GetTrackAnalysis(songID)
-	claimed, err := database.ClaimTrackAnalysis(songID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
+	token, claimed, err := claimPreparation(ctx, database, songID, source.Fingerprint)
 	if err != nil {
 		logger.Analysis("track claim failed song_id=%q path=%q error=%q", songID, source.Path, err)
 		return outcomeFailed
@@ -192,6 +251,9 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		logger.Scan("analysis_skipped song_id=%q reason=claimed_by_another_worker", songID)
 		return outcomeSkipped
 	}
+
+	ctx, stopLease := maintainTrackAnalysisLease(ctx, database, songID, source.Fingerprint, token, claimHeartbeatInterval)
+	defer func() { stopLease(); _ = database.ReleaseTrackAnalysisLease(songID, token) }()
 
 	// Provider work and the local PCM pass share cancellation but run independently.
 	lookupCtx, cancelLookup := context.WithTimeout(ctx, 45*time.Second)
@@ -212,7 +274,7 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 	}
 	if ctx.Err() != nil {
 		logger.Scan("analysis_canceled song_id=%q stage=concurrent_preparation", songID)
-		_ = database.ReleaseTrackAnalysis(songID)
+		_ = database.ReleaseTrackAnalysisLease(songID, token)
 		return outcomeFailed
 	}
 	if previous.SourceFingerprint == source.Fingerprint {
@@ -230,9 +292,6 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 	}
 	if observation != nil {
 		result.Spotify = observation
-		if observation.DurationSeconds != nil && result.DurationSeconds == 0 {
-			result.DurationSeconds = *observation.DurationSeconds
-		}
 		result.Status = combinedStatus(result.Tempo.Known || observation.BPM != nil, result.Key.Known || (observation.Key != nil && observation.Mode != nil))
 		// Keep usable Spotify dimensions even if the fallback decoder fails.
 		if ctx.Err() == nil && (result.Tempo.Known || result.Key.Known || observation.BPM != nil || (observation.Key != nil && observation.Mode != nil)) {
@@ -246,11 +305,11 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 			// Do not persist a cancellation as a track-level failure; the work
 			// is still outstanding, so the claim has to be given back or an
 			// immediate resume would skip it for the whole lease window.
-			_ = database.ReleaseTrackAnalysis(songID)
+			_ = database.ReleaseTrackAnalysisLease(songID, token)
 			return outcomeFailed
 		}
 		code, message := ClassifyError(err)
-		if persistErr := PersistFailure(database, songID, source, code, message); persistErr != nil {
+		if persistErr := persistFailureClaimed(database, songID, source, code, message, token); persistErr != nil {
 			logger.Analysis("track failed song_id=%q path=%q code=%q error=%q persist_error=%q", songID, source.Path, code, message, persistErr)
 		} else {
 			logger.Analysis("track failed song_id=%q path=%q code=%q error=%q", songID, source.Path, code, message)
@@ -259,7 +318,7 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 	}
 	current, sourceErr := resolveSource(ctx, songID)
 	if sourceErr != nil || ctx.Err() != nil || current.Fingerprint != source.Fingerprint {
-		_ = database.ReleaseTrackAnalysis(songID)
+		_ = database.ReleaseTrackAnalysisLease(songID, token)
 		logger.Scan("analysis_canceled song_id=%q stage=persistence reason=source_changed_or_unavailable", songID)
 		return outcomeFailed
 	}
@@ -267,8 +326,8 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		result.RepairPrevious = &previous
 		result.RepairCapabilities = repairMissing
 	}
-	if err := PersistWithAutoCueMode(database, result, autoCueMode); err != nil {
-		_ = database.ReleaseTrackAnalysis(songID)
+	if err := persistWithAutoCueModeClaimed(database, result, autoCueMode, token); err != nil {
+		_ = database.ReleaseTrackAnalysisLease(songID, token)
 		logger.Analysis("track persistence failed song_id=%q path=%q status=%q error=%q", songID, source.Path, result.Status, err)
 		return outcomeFailed
 	}
@@ -312,7 +371,7 @@ func retainSpotifyScalars(observation *spotifyanalysis.Observation, previous db.
 
 // Refreshing provider scalars must not run DSP again or replace measured
 // loudness, energy, structure, or artifacts that already describe these bytes.
-func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.ResolvedSource, lookup func(context.Context, analysis.ResolvedSource) *spotifyanalysis.Observation) outcome {
+func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.ResolvedSource, lookup func(context.Context, analysis.ResolvedSource) *spotifyanalysis.Observation, resolve func(context.Context, string) (analysis.ResolvedSource, error)) outcome {
 	record, err := database.GetTrackAnalysis(source.SongID)
 	if err != nil {
 		return outcomeFailed
@@ -329,17 +388,23 @@ func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.
 		logScanRecord(record, "already_current", "skipped")
 		return outcomeSkipped
 	}
-	claimed, err := database.ClaimTrackAnalysis(source.SongID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
+	token, claimed, err := claimPreparation(ctx, database, source.SongID, source.Fingerprint)
 	if err != nil {
 		return outcomeFailed
 	}
 	if !claimed {
 		return outcomeSkipped
 	}
+	ctx, stopLease := maintainTrackAnalysisLease(ctx, database, source.SongID, source.Fingerprint, token, claimHeartbeatInterval)
+	defer func() { stopLease(); _ = database.ReleaseTrackAnalysisLease(source.SongID, token) }()
 	observation := lookup(ctx, source)
-	if ctx.Err() != nil || observation == nil {
-		if err := database.UpsertTrackAnalysis(record); err != nil {
-			_ = database.ReleaseTrackAnalysis(source.SongID)
+	current, sourceErr := resolve(ctx, source.SongID)
+	if ctx.Err() != nil || sourceErr != nil || current.Fingerprint != source.Fingerprint {
+		return outcomeFailed
+	}
+	if observation == nil {
+		if err := database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, ClaimToken: token}); err != nil {
+			_ = database.ReleaseTrackAnalysisLease(source.SongID, token)
 			return outcomeFailed
 		}
 		if ctx.Err() != nil {
@@ -355,8 +420,8 @@ func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.
 	} else if record.BPM != nil || (record.KeyTonic != nil && record.KeyMode != nil) {
 		record.Status = db.TrackAnalysisPartial
 	}
-	if err := database.UpsertTrackAnalysis(record); err != nil {
-		_ = database.ReleaseTrackAnalysis(source.SongID)
+	if err := database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, ClaimToken: token}); err != nil {
+		_ = database.ReleaseTrackAnalysisLease(source.SongID, token)
 		return outcomeFailed
 	}
 	logScanRecord(record, "spotify_enriched", "reused")

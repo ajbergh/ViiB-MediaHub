@@ -63,7 +63,7 @@ func TestSpotifyEnrichesValidLocalAnalysisWithoutDecodingOrLosingArtifacts(t *te
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			if !strings.Contains(string(contents), "local_engine=\"reused\"") {
+			if scenario != "canceled" && !strings.Contains(string(contents), "local_engine=\"reused\"") {
 				t.Fatalf("missing reused analysis decision: %s", contents)
 			}
 			if scenario == "key-only" && !strings.Contains(string(contents), "action=\"spotify_enriched\"") {
@@ -92,6 +92,10 @@ func TestSpotifyEnrichesValidLocalAnalysisWithoutDecodingOrLosingArtifacts(t *te
 			if scenario == "key-only" {
 				if progress.Analyzed != 1 || *after.KeySource != "spotify" || *after.KeyMode != "major" {
 					t.Fatalf("enrichment: %+v %+v", progress, after)
+				}
+			} else if scenario == "canceled" {
+				if after.Status != "pending" {
+					t.Fatalf("canceled claim status = %q, want pending", after.Status)
 				}
 			} else if after.Status != before.Status {
 				t.Fatal("failed lookup lost prior status")

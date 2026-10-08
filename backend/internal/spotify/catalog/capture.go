@@ -18,11 +18,12 @@ type CapturedRelation struct {
 	Metadata    []byte
 }
 type CapturedEntity struct {
-	EntityType string
-	ID         string
-	Resource   string
-	Payload    []byte
-	Relations  []CapturedRelation
+	CaptureRevision string `json:",omitempty"`
+	EntityType      string
+	ID              string
+	Resource        string
+	Payload         []byte
+	Relations       []CapturedRelation
 }
 
 // CaptureDomain extracts domain objects only; credentials, profile data and

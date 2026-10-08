@@ -1,3 +1,4 @@
+import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Playlist Detail Page
  * 
@@ -20,7 +21,7 @@ import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
 import { backendSpotifyFetch } from '../services/spotifyBackend';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download } from 'lucide-react';
 import { SpotifyService } from '../services/spotifyService';
 import { useStore } from '../store';
@@ -62,6 +63,9 @@ interface SpotifyPlaylistFull {
 export const SpotifyPlaylistDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const sessionGeneration = useStore(s => s.spotifySessionGeneration);
+  const downloadOrigins = savedLibraryDownloadOrigins(location.state, id, sessionGeneration);
   const { addLog, playSong, addToQueue, showToast } = useStore();
   
   const [playlist, setPlaylist] = useState<SpotifyPlaylistFull | null>(null);
@@ -103,7 +107,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
     
     setIsDownloading(true);
     try {
-      await api.downloadPlaylist(playlist.id, playlist.name, playlist.owner.display_name);
+      await api.downloadPlaylist(playlist.id, playlist.name, playlist.owner.display_name, downloadOrigins);
       addLog('success', `Started download for playlist: ${playlist.name}`);
     } catch (err) {
       console.error('Download failed:', err);

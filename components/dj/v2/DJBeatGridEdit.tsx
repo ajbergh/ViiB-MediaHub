@@ -28,20 +28,21 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
     if (!deckState.track || nextBeats.length < 2) return;
     setSaving(true); setError(null);
     try {
+      if (!deckState.beatGridSourceFingerprint) throw new Error('Reload this track before editing its grid.');
       const saved = await api.updateTrackBeatGrid(deckState.track.id, {
         beats: nextBeats, downbeatIndices: nextDownbeats, locked: nextLocked,
         ...(isDynamic ? {} : { bpm: bpm ?? deckState.originalBpm ?? undefined }),
-      });
+      }, deckState.beatGridSourceFingerprint);
       const current = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-      if (current.track?.id !== deckState.track.id) return;
+      if (current.track?.id !== deckState.track.id || current.beatGridSourceFingerprint !== deckState.beatGridSourceFingerprint) return;
       setDeckAnalysis(deck, {
         beatGridSource: 'manual', beatGrid: saved.beats, downbeatIndices: saved.downbeatIndices,
-        beatGridLocked: saved.locked, ...(bpm === undefined ? {} : { bpm }),
+        beatGridLocked: saved.locked, beatGridSourceFingerprint: saved.sourceFingerprint, ...(bpm === undefined ? {} : { bpm }),
       });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save grid');
     } finally { setSaving(false); }
-  }, [deck, deckState.originalBpm, deckState.track, isDynamic, setDeckAnalysis]);
+  }, [deck, deckState.originalBpm, deckState.track, deckState.beatGridSourceFingerprint, isDynamic, setDeckAnalysis]);
 
   const shift = useCallback((delta: number) => {
     if (!beats || locked || saving) return;
@@ -57,16 +58,21 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
     if (!deckState.track || saving) return;
     setSaving(true); setError(null);
     try {
-      await api.resetTrackBeatGrid(deckState.track.id);
+      if (!deckState.beatGridSourceFingerprint) throw new Error('Reload this track before resetting its grid.');
+      await api.resetTrackBeatGrid(deckState.track.id, deckState.beatGridSourceFingerprint);
       const current = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-      if (current.track?.id === deckState.track.id) {
+      if (current.track?.id === deckState.track.id && current.beatGridSourceFingerprint === deckState.beatGridSourceFingerprint) {
         setDeckAnalysis(deck, { beatGridSource: 'unknown', beatGrid: null, downbeatIndices: null, beatGridLocked: false });
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not reset grid'); }
     finally { setSaving(false); }
-  }, [deck, deckState.track, saving, setDeckAnalysis]);
+  }, [deck, deckState.track, deckState.beatGridSourceFingerprint, saving, setDeckAnalysis]);
 
-  if (!beats?.length) return null;
+  if (!beats?.length) return locked ? <div className='flex flex-col items-center gap-2' aria-live='polite'>
+    <span className='text-xs text-text-secondary'>{deckState.beatGridSourceFingerprint ? 'Your grid is locked but unavailable for this source. Reset it to allow analysis.' : 'Your grid is locked. Restore or reconnect this source before editing or resetting it.'}</span>
+    <button disabled={saving || !deckState.beatGridSourceFingerprint} onClick={() => void reset()} className={BTN} aria-label='Reset unavailable beatgrid'><RotateCcw size={16} /></button>
+    {error && <span className='text-xs text-text-secondary'>{error}</span>}
+  </div> : null;
   const disabled = saving;
   return <div className='flex flex-col items-center gap-2 px-1 py-0.5' aria-live='polite'>
     <span className='text-[12px] text-text-secondary'>{locked ? 'Reviewed grid' : 'Check intro, middle, and outro before locking.'}</span>

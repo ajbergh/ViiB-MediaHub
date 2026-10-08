@@ -95,7 +95,7 @@ func newSpotifyAuthRuntime(database *db.DB, options spotifyauth.WebPlayerOptions
 			}
 		}
 	}
-	s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+	s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
 	s.metadataContext = uuid.NewString()
 	s.metadataEpoch = uuid.NewString()
 	if s.database != nil {
@@ -145,12 +145,20 @@ func (s *spotifyAuthRuntime) requestContext(parent context.Context) (context.Con
 	s.mu.RUnlock()
 	ctx, cancel := context.WithCancelCause(parent)
 	ctx = context.WithValue(ctx, spotifyAccountContextKey{}, lifetime)
-	stop := context.AfterFunc(lifetime, func() { cancel(errSpotifyAccountChanged) })
+	unregister := registerSpotifyAccountRequest(lifetime, cancel)
+	// Compatibility for explicitly supplied external lifetimes.
+	var stop func() bool
+	if _, ok := lifetime.Value(spotifyLifetimeRegistryKey{}).(*spotifyLifetimeRegistry); !ok {
+		stop = context.AfterFunc(lifetime, func() { cancel(errSpotifyAccountChanged) })
+	}
 	if lifetime.Err() != nil {
 		cancel(errSpotifyAccountChanged)
 	}
 	return ctx, func() {
-		stop()
+		unregister()
+		if stop != nil {
+			stop()
+		}
 		if lifetime.Err() != nil {
 			cancel(errSpotifyAccountChanged)
 		} else {
@@ -323,7 +331,7 @@ func (s *spotifyAuthRuntime) connectGuarded(ctx context.Context, cookie string, 
 			_ = s.storeSession(previous)
 			s.mu.Lock()
 			if !s.closed {
-				s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+				s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
 				s.metadataContext = uuid.NewString()
 				s.pendingOwner = nil
 				if s.database != nil {
@@ -354,7 +362,7 @@ func (s *spotifyAuthRuntime) connectGuarded(ctx context.Context, cookie string, 
 	if s.provider != nil {
 		s.provider.Disconnect()
 	}
-	s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+	s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
 	s.metadataContext = uuid.NewString()
 	s.pendingOwner = nil
 	if s.database != nil {
@@ -395,7 +403,7 @@ func (s *spotifyAuthRuntime) disconnect() error {
 	if s.provider != nil {
 		s.provider.Disconnect()
 	}
-	s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+	s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
 	s.metadataContext = nextContext
 	s.pendingOwner = nil
 	s.provider = nil
@@ -573,7 +581,7 @@ func (s *spotifyAuthRuntime) replaceOAuthCredentials(raw string) error {
 	if s.provider != nil {
 		s.provider.Disconnect()
 	}
-	s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+	s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
 	s.metadataContext = nextContext
 	s.pendingOwner = nil
 	s.provider = nil

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -154,6 +155,16 @@ func TestV2TrackAnalysisFeaturesListsResolvedRecords(t *testing.T) {
 	}
 	if len(response) != 2 || response[0].SongID != "first" || response[1].SongID != "second" || response[0].CamelotKey == nil || *response[0].CamelotKey != "8B" || response[0].AnalyzedAt == nil || *response[0].AnalyzedAt != analyzedAt {
 		t.Fatalf("feature list = %#v, want sorted resolved records", response)
+	}
+	for _, row := range response {
+		if len(row.EffectiveFields) != 17 {
+			t.Fatalf("list effective fields missing: %+v", row.EffectiveFields)
+		}
+		for _, field := range row.EffectiveFields {
+			if field.Key == "key_mode" && (field.Selected == nil || field.Selected.Source != "local") {
+				t.Fatalf("list local key: %+v", field)
+			}
+		}
 	}
 }
 
@@ -476,12 +487,12 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 	handler := (&API{db: database}).V2Routes()
 	body := `{"beats":[0.125,0.625,1.125,1.625],"downbeatIndices":[0],"locked":true}`
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(body)))
+	handler.ServeHTTP(recorder, beatGridTestRequest(t, database, http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(body)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("PUT beatgrid = %d: %s", recorder.Code, recorder.Body.String())
 	}
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/song/beatgrid", nil))
+	handler.ServeHTTP(recorder, beatGridTestRequest(t, database, http.MethodGet, "/analysis/song/beatgrid", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("GET beatgrid = %d: %s", recorder.Code, recorder.Body.String())
 	}
@@ -502,7 +513,7 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 	}
 	// Applying a detected tempo must survive reloading along with its grid.
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0.13,0.63,1.13],"downbeatIndices":[],"locked":true,"bpm":120}`)))
+	handler.ServeHTTP(recorder, beatGridTestRequest(t, database, http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0.13,0.63,1.13],"downbeatIndices":[],"locked":true,"bpm":120}`)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("save corrected tempo: %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -511,7 +522,7 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 		t.Fatalf("corrected tempo did not persist: %#v, %v", override, err)
 	}
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0,0.5,1],"locked":true,"bpm":-1}`)))
+	handler.ServeHTTP(recorder, beatGridTestRequest(t, database, http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0,0.5,1],"locked":true,"bpm":-1}`)))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("invalid tempo accepted: %d", recorder.Code)
 	}
@@ -523,9 +534,8 @@ func TestV2BeatGridResetClearsOnlyGridOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
-		t.Fatal(err)
-	}
+	saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
+
 	manual := 126.0
 	if err := database.UpsertTrackAnalysisOverride(db.TrackAnalysisOverride{SongID: "song", BPM: &manual, BPMLocked: true}); err != nil {
 		t.Fatal(err)
@@ -533,12 +543,12 @@ func TestV2BeatGridResetClearsOnlyGridOverride(t *testing.T) {
 	handler := (&API{db: database}).V2Routes()
 	body := `{"beats":[0.125,0.625,1.125,1.625],"downbeatIndices":[0],"locked":true}`
 	put := httptest.NewRecorder()
-	handler.ServeHTTP(put, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(body)))
+	handler.ServeHTTP(put, beatGridTestRequest(t, database, http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(body)))
 	if put.Code != http.StatusOK {
 		t.Fatalf("PUT beatgrid = %d: %s", put.Code, put.Body.String())
 	}
 	reset := httptest.NewRecorder()
-	handler.ServeHTTP(reset, httptest.NewRequest(http.MethodDelete, "/analysis/song/beatgrid", nil))
+	handler.ServeHTTP(reset, beatGridTestRequest(t, database, http.MethodDelete, "/analysis/song/beatgrid", nil))
 	if reset.Code != http.StatusNoContent {
 		t.Fatalf("DELETE beatgrid = %d: %s", reset.Code, reset.Body.String())
 	}
@@ -894,6 +904,47 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	if unfiltered.CandidatesBeforeFilters != 2 || unfiltered.CandidatesAfterFilters != 2 || unfiltered.Filters.PlaylistID != nil || len(unfiltered.Filters.PlaylistIDs) != 0 || unfiltered.Filters.Genre != nil {
 		t.Fatalf("omitted library filters changed behavior: %#v", unfiltered)
 	}
+	manualRequest := httptest.NewRequest(http.MethodPut, "/analysis/compatible/fields/local_energy_level", strings.NewReader(`{"value":9}`))
+	manualRequest.Header.Set("If-Match", strconv.Quote(fingerprints["compatible"]))
+	manualResponse := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(manualResponse, manualRequest)
+	if manualResponse.Code != http.StatusNoContent {
+		t.Fatalf("manual save: %d %s", manualResponse.Code, manualResponse.Body.String())
+	}
+	manualFiltered := getFiltered("?minEnergyLevel=9&maxEnergyLevel=9")
+	if len(manualFiltered.Recommendations) != 1 || manualFiltered.Recommendations[0].SongID != "compatible" || manualFiltered.Recommendations[0].FilterEvidence.EnergyLevel == nil || *manualFiltered.Recommendations[0].FilterEvidence.EnergyLevel != 9 || manualFiltered.Recommendations[0].Vector.EnergyLevelDelta == nil || *manualFiltered.Recommendations[0].Vector.EnergyLevelDelta != 4 {
+		t.Fatalf("manual energy not used for filter/ranking: %+v", manualFiltered)
+	}
+	if old := getFiltered("?minEnergyLevel=6&maxEnergyLevel=6"); len(old.Recommendations) != 0 {
+		t.Fatalf("old measured energy still effective: %+v", old)
+	}
+	resetRequest := httptest.NewRequest(http.MethodDelete, "/analysis/compatible/fields/local_energy_level", nil)
+	resetRequest.Header.Set("If-Match", strconv.Quote(fingerprints["compatible"]))
+	resetResponse := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(resetResponse, resetRequest)
+	if resetResponse.Code != http.StatusNoContent {
+		t.Fatal(resetResponse.Code)
+	}
+	if reset := getFiltered("?minEnergyLevel=6&maxEnergyLevel=6"); len(reset.Recommendations) != 1 || reset.Recommendations[0].SongID != "compatible" {
+		t.Fatalf("reset failed to restore measured energy: %+v", reset)
+	}
+
+	explicit, err := database.GetTrackAnalysis("compatible")
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit.Local = &db.LocalScalarObservation{SourceFingerprint: fingerprints["compatible"], AlgorithmVersion: "v1"}
+	if err := database.UpsertTrackAnalysis(explicit); err != nil {
+		t.Fatal(err)
+	}
+	if missing := getFiltered("?minEnergyLevel=6&maxEnergyLevel=6"); len(missing.Recommendations) != 0 {
+		t.Fatalf("explicit missing energy passed range filter: %+v", missing)
+	}
+	unqualified := getFiltered("?playlistId=mix")
+	if len(unqualified.Recommendations) != 1 || unqualified.Recommendations[0].FilterEvidence.EnergyLevel != nil || unqualified.Recommendations[0].Vector.EnergyLevelDelta != nil {
+		t.Fatalf("explicit missing energy leaked into evidence/ranking: %+v", unqualified)
+	}
+
 }
 
 func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
@@ -1172,16 +1223,14 @@ func TestV2BeatGridProvenance(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer database.Close()
-			if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
-				t.Fatal(err)
-			}
+			fp := saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
 			grid := beatgrid.Grid{Beats: []float64{0.1, 0.6, 1.1}, DownbeatIndices: []int{0}}
 			encoded, err := grid.Encode()
 			if err != nil {
 				t.Fatal(err)
 			}
 			id := "song:" + beatgrid.AlgorithmVersion
-			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id, SongID: "song", Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: test.provenance, Data: encoded}); err != nil {
+			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id, SongID: "song", Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: test.provenance, SourceFingerprint: fp, Data: encoded}); err != nil {
 				t.Fatal(err)
 			}
 			if test.override {
@@ -1190,7 +1239,7 @@ func TestV2BeatGridProvenance(t *testing.T) {
 				}
 			}
 			response := httptest.NewRecorder()
-			(&API{db: database}).V2Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/analysis/song/beatgrid", nil))
+			(&API{db: database}).V2Routes().ServeHTTP(response, beatGridTestRequest(t, database, http.MethodGet, "/analysis/song/beatgrid", nil))
 			if response.Code != http.StatusOK {
 				t.Fatalf("GET: %d %s", response.Code, response.Body.String())
 			}
@@ -1202,5 +1251,103 @@ func TestV2BeatGridProvenance(t *testing.T) {
 				t.Fatalf("source=%s provenance=%s, want %s", gridResponse.Source, gridResponse.Provenance, test.provenance)
 			}
 		})
+	}
+}
+
+func beatGridTestRequest(t *testing.T, database *db.DB, method, target string, body io.Reader) *http.Request {
+	t.Helper()
+	r := httptest.NewRequest(method, target, body)
+	if method == http.MethodPut || method == http.MethodDelete {
+		fps, err := (&API{db: database}).currentAnalysisSourceFingerprints([]string{"song"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Header.Set("If-Match", strconv.Quote(fps["song"]))
+	}
+	return r
+}
+
+func TestEffectiveManualEnergyPreservesMeasurementAndInvalidatesWithSource(t *testing.T) {
+	level, confidence, version := 4, .8, features.EnergyLevelAlgorithmVersion
+	record := db.TrackAnalysis{SourceFingerprint: "fp", Status: db.TrackAnalysisComplete, EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
+	candidate, err := db.ManualScalarCandidate("local_energy_level", "fp", json.RawMessage("9"), time.Now().UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	override := db.TrackAnalysisOverride{Fields: []db.ScalarCandidate{candidate}}
+	resolved := trackAnalysisFeatureResponseWithCurrentSource(record, override, "fp")
+	if resolved.EnergyLevel == nil || *resolved.EnergyLevel != 9 || resolved.MeasuredEnergyLevel == nil || *resolved.MeasuredEnergyLevel != 4 || resolved.EnergyLevelConfidence != nil {
+		t.Fatalf("manual/measured conflated: %+v", resolved)
+	}
+	if stale := trackAnalysisFeatureResponseWithCurrentSource(record, override, "replacement"); stale.EnergyLevel != nil || stale.MeasuredEnergyLevel != nil {
+		t.Fatalf("stale energy: %+v", stale)
+	}
+	if reset := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{}, "fp"); reset.EnergyLevel == nil || *reset.EnergyLevel != 4 || reset.EnergyLevelSource != "local" {
+		t.Fatalf("reset energy: %+v", reset)
+	}
+}
+
+func TestExplicitEnergyEnvelopeCannotFallBackToCompatibility(t *testing.T) {
+	level, confidence, version := 8, .8, features.EnergyLevelAlgorithmVersion
+	valid := db.SpotifyScalarField{Key: "local_energy_level", Metric: "local_energy_level", Units: "level_1_10", Value: json.RawMessage("4"), Confidence: &confidence, AdapterRevision: version, RetrievedAt: time.Now()}
+	old := valid
+	old.AdapterRevision = "obsolete"
+	invalid := valid
+	invalid.Value = json.RawMessage("null")
+	manual, err := db.ManualScalarCandidate("local_energy_level", "fp", json.RawMessage("9"), time.Now().UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		local  *db.LocalScalarObservation
+		status string
+		want   int
+	}{
+		{"missing", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1"}, db.TrackAnalysisComplete, 0},
+		{"corrupt", &db.LocalScalarObservation{}, db.TrackAnalysisComplete, 0},
+		{"obsolete", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{old}}, db.TrackAnalysisComplete, 0},
+		{"invalid", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{invalid}}, db.TrackAnalysisComplete, 0},
+		{"duplicate", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{valid, valid}}, db.TrackAnalysisComplete, 0},
+		{"current", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{valid}}, db.TrackAnalysisComplete, 4},
+		{"running", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{valid}}, db.TrackAnalysisRunning, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			record := db.TrackAnalysis{SourceFingerprint: "fp", Status: tc.status, Local: tc.local, LocalScalarEnvelopePresent: true, EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
+			resolved := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{}, "fp")
+			transition := resolvedTransitionMetadata(record, db.TrackAnalysisOverride{}, "fp")
+			if tc.want == 0 {
+				if resolved.EnergyLevel != nil || resolved.MeasuredEnergyLevel != nil || transition.EnergyLevel != nil {
+					t.Fatalf("compatibility leaked: %+v %+v", resolved, transition)
+				}
+			} else if resolved.EnergyLevel == nil || *resolved.EnergyLevel != tc.want || resolved.MeasuredEnergyLevel == nil || *resolved.MeasuredEnergyLevel != tc.want || transition.EnergyLevel == nil || *transition.EnergyLevel != tc.want {
+				t.Fatalf("qualified measurement lost: %+v %+v", resolved, transition)
+			}
+			overridden := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{Fields: []db.ScalarCandidate{manual}}, "fp")
+			if overridden.EnergyLevel == nil || *overridden.EnergyLevel != 9 || overridden.EnergyLevelSource != "manual" {
+				t.Fatalf("manual lost: %+v", overridden)
+			}
+			if tc.want == 0 && overridden.MeasuredEnergyLevel != nil {
+				t.Fatal("manual fabricated measurement")
+			}
+			if tc.want != 0 && (overridden.MeasuredEnergyLevel == nil || *overridden.MeasuredEnergyLevel != tc.want) {
+				t.Fatal("manual hid qualified measurement")
+			}
+		})
+	}
+}
+
+func TestLegacyEnergyFallbackSettledStates(t *testing.T) {
+	level, confidence, version := 6, .8, features.EnergyLevelAlgorithmVersion
+	for _, status := range []string{db.TrackAnalysisComplete, db.TrackAnalysisPartial, db.TrackAnalysisFailed, db.TrackAnalysisRunning} {
+		record := db.TrackAnalysis{Status: status, SourceFingerprint: "fp", EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
+		got := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{}, "fp")
+		if status == db.TrackAnalysisRunning {
+			if got.EnergyLevel != nil {
+				t.Fatal("running legacy value applied")
+			}
+		} else if got.EnergyLevel == nil || *got.EnergyLevel != level {
+			t.Fatalf("legacy %s fallback lost: %+v", status, got)
+		}
 	}
 }

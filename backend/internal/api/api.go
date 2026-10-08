@@ -753,9 +753,14 @@ func (a *API) getPlaylists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) createPlaylist(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	var p db.Playlist
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+	if message := validateLocalPlaylist(&p); message != "" {
+		respondError(w, http.StatusBadRequest, message)
 		return
 	}
 
@@ -774,6 +779,7 @@ func (a *API) createPlaylist(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) updatePlaylist(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	id := chi.URLParam(r, "id")
 
 	var p db.Playlist
@@ -781,7 +787,28 @@ func (a *API) updatePlaylist(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "Invalid JSON")
 		return
 	}
+	if message := validateLocalPlaylist(&p); message != "" {
+		respondError(w, http.StatusBadRequest, message)
+		return
+	}
 	p.ID = id
+	existing, err := a.db.GetAllPlaylists()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	found := false
+	for _, playlist := range existing {
+		if playlist.ID == id {
+			p.CreatedAt = playlist.CreatedAt
+			found = true
+			break
+		}
+	}
+	if !found {
+		respondError(w, http.StatusNotFound, "Playlist not found")
+		return
+	}
 
 	if err := a.db.SavePlaylist(&p); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -789,6 +816,19 @@ func (a *API) updatePlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, p)
+}
+
+func validateLocalPlaylist(p *db.Playlist) string {
+	if p == nil || strings.TrimSpace(p.Name) == "" || len(p.Name) > 200 || len(p.SongIDs) > 10000 || len(p.CoverPath) > 2048 {
+		return "Invalid playlist name or track count"
+	}
+	for _, songID := range p.SongIDs {
+		if songID == "" || len(songID) > 256 {
+			return "Invalid playlist track ID"
+		}
+	}
+	p.Name = strings.TrimSpace(p.Name)
+	return ""
 }
 
 func (a *API) deletePlaylist(w http.ResponseWriter, r *http.Request) {

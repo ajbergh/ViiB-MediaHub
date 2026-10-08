@@ -50,6 +50,7 @@ type TrackAnalysisArtifactPayload struct {
 // TrackAnalysisOverride records explicit user choices independently of
 // measured facts, so re-analysis never overwrites a locked value.
 type TrackAnalysisOverride struct {
+	Fields               []ScalarCandidate
 	SongID               string
 	BPM                  *float64
 	KeySourceFingerprint string
@@ -240,6 +241,10 @@ func measuredKey(analysis *TrackAnalysis) (*int, *string) {
 // TrackAnalysis is the durable scalar result for one canonical song. Nullable
 // measured values use pointers so zero is never confused with unknown.
 type TrackAnalysis struct {
+	// Read-side distinction: explicit empty/corrupt observations must never
+	// reconstruct energy from compatibility columns. Not a persisted column.
+	LocalScalarEnvelopePresent bool
+
 	SpotifyBindings        *SpotifyScalarBindings
 	Local                  *LocalScalarObservation
 	SongID                 string
@@ -275,18 +280,7 @@ type TrackAnalysis struct {
 // Callers must supply the source fingerprint they decoded so stale results can
 // be identified without re-decoding the media.
 func (d *DB) UpsertTrackAnalysis(analysis TrackAnalysis) error {
-	if err := d.EnsureTrackAnalysisSchema(); err != nil {
-		return err
-	}
-	tx, err := d.conn.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := upsertTrackAnalysis(tx, analysis); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return d.PublishTrackPreparation(TrackPreparationPublication{Analysis: analysis})
 }
 
 func upsertTrackAnalysis(executor preparationExecutor, analysis TrackAnalysis) error {
@@ -608,11 +602,23 @@ func (d *DB) RefreshTrackAnalysisSourceRevision(songID, fingerprint string) erro
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return err
 	}
-	_, err := d.conn.Exec(`INSERT INTO track_analysis_source_revisions(song_id, source_fingerprint, updated_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(song_id) DO UPDATE SET source_fingerprint=excluded.source_fingerprint, updated_at=excluded.updated_at`,
-		songID, fingerprint, time.Now().UnixMilli())
-	return err
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`INSERT INTO track_analysis_source_revisions(song_id,source_fingerprint,updated_at) VALUES(?,?,?) ON CONFLICT(song_id) DO UPDATE SET source_fingerprint=excluded.source_fingerprint,updated_at=excluded.updated_at`, songID, fingerprint, time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	// Observing replacement bytes revokes the previous preparation generation.
+	// Retain its measurements, but do not let its worker settle the new source.
+	if _, err = tx.Exec(`UPDATE track_analysis SET status=?,analyzed_at=NULL,claim_token=NULL WHERE song_id=? AND status=? AND source_fingerprint<>?`, TrackAnalysisPending, songID, TrackAnalysisRunning, fingerprint); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM track_waveform_leases WHERE song_id=? AND source_fingerprint<>?`, songID, fingerprint); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SetTrackAnalysisBPMOverrideIfSourceCurrent atomically compares the request's
@@ -854,18 +860,19 @@ func scanTrackAnalysis(row trackAnalysisScanner) (TrackAnalysis, error) {
 	analysis.AnalyzedAt = optionalInt64(analyzedAt)
 	analysis.ErrorCode = optionalString(errorCode)
 	analysis.ErrorMessage = optionalString(errorMessage)
+	analysis.LocalScalarEnvelopePresent = localJSON.Valid
 	if localJSON.Valid {
 		var local LocalScalarObservation
-		if len(localJSON.String) > 4096 {
-			return TrackAnalysis{}, errors.New("local scalar observation too large")
+		// An invalid optional observation must not make the library row unreadable.
+		// Keep an empty envelope on failure to avoid reconstructing evidence from
+		// a compatibility projection when explicit local storage is corrupt.
+		analysis.Local = &LocalScalarObservation{}
+		if len(localJSON.String) <= 4096 && json.Unmarshal([]byte(localJSON.String), &local) == nil {
+			local = qualifyLocalScalarFields(local)
+			if validateLocalScalars(&local) == nil {
+				analysis.Local = &local
+			}
 		}
-		if err := json.Unmarshal([]byte(localJSON.String), &local); err != nil {
-			return TrackAnalysis{}, err
-		}
-		if err := validateLocalScalars(&local); err != nil {
-			return TrackAnalysis{}, err
-		}
-		analysis.Local = &local
 	} else {
 		analysis.Local = legacyLocalScalars(analysis)
 	}

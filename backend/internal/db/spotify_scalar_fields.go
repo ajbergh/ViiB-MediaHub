@@ -13,6 +13,7 @@ import (
 // SpotifyScalarField retains native provider semantics independently of local
 // measurements and compatibility projections. Context ownership stays private.
 type SpotifyScalarField struct {
+	RecordingID     string          `json:"recordingId,omitempty"`
 	Key             string          `json:"key"`
 	Metric          string          `json:"metric"`
 	Units           string          `json:"units"`
@@ -24,6 +25,7 @@ type SpotifyScalarField struct {
 	RetrievedAt     time.Time       `json:"retrievedAt"`
 	ExpiresAt       time.Time       `json:"expiresAt"`
 	Stale           bool            `json:"stale"`
+	DurableImport   bool            `json:"durableImport,omitempty"`
 }
 
 func putSpotifyScalarFieldsTx(tx preparationExecutor, o spotifyanalysis.Observation, revision string, expires time.Time) error {
@@ -149,6 +151,7 @@ type SpotifyFieldAttempt struct {
 	Reason          string    `json:"reason,omitempty"`
 	CheckedAt       time.Time `json:"checkedAt"`
 	AdapterRevision string    `json:"adapterRevision"`
+	DurableImport   bool      `json:"durableImport,omitempty"`
 }
 
 func (d *DB) GetSpotifyFieldAttempts(id string) ([]SpotifyFieldAttempt, error) {

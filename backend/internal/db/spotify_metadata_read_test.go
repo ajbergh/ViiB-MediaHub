@@ -205,6 +205,12 @@ func TestScoreSummaryRequiresCurrentSourceAndPreservesZero(t *testing.T) {
 	if err := d.PutExternalAnalysis(spotifyanalysis.Observation{TrackID: referenceID, AccountContext: "owner", Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now, Energy: &zero}, "fixture", now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
+	bpm, loudness, duration := 123.0, -9.0, 180.0
+	tonic, mode, meter := 0, 0, 4
+	camelot := "5A"
+	if err := d.PutExternalAnalysis(spotifyanalysis.Observation{TrackID: referenceID, AccountContext: "owner", Source: "spotify_internal", SourceEndpoint: "audio_analysis", RetrievedAt: now, BPM: &bpm, Key: &tonic, Mode: &mode, Camelot: &camelot, LoudnessDB: &loudness, DurationSeconds: &duration, TimeSignature: &meter}, "fixture", now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 	fence := SpotifyMetadataReadFence{Epoch: "epoch", ContextKey: "owner"}
 	got, err := d.GetSpotifyScoreSummariesForRuntime(fence, map[string]string{"song": "fp"}, now)
 	if err != nil || len(got["song"]) != 1 || got["song"]["spotify_energy_score"].Value != 0 {
@@ -213,10 +219,53 @@ func TestScoreSummaryRequiresCurrentSourceAndPreservesZero(t *testing.T) {
 	if got["song"]["spotify_energy_score"].ExpiresAt.UnixMilli() != now.Add(time.Hour).UnixMilli() {
 		t.Fatal("summary expiry lost", got)
 	}
+	batch, err := d.GetSpotifyScalarCandidateBatchForRuntime(fence, map[string]string{"song": "fp"}, now)
+	if err != nil || len(batch["song"]) != 6 {
+		t.Fatalf("all scalar batch: %+v %v", batch, err)
+	}
+	keys := map[string]bool{}
+	for _, field := range batch["song"] {
+		keys[field.Key] = true
+		if field.AdapterRevision != "fixture" {
+			t.Fatal("lost adapter provenance")
+		}
+	}
+	for _, key := range []string{"tempo_bpm", "key_mode", "provider_loudness_db", "time_signature", "duration_seconds", "spotify_energy_score"} {
+		if !keys[key] {
+			t.Fatalf("missing %s", key)
+		}
+	}
 	got, err = d.GetSpotifyScoreSummariesForRuntime(fence, map[string]string{"song": "changed"}, now)
 	if err != nil || len(got) != 0 {
 		t.Fatal("old source score exposed", got, err)
 	}
+	captured := batch
+	if err := d.DeleteSpotifyRecording("song"); err != nil {
+		t.Fatal(err)
+	}
+	filtered, err := d.RevalidateSpotifyScalarCandidateBatch(map[string]string{"song": "fp"}, captured)
+	if err != nil || len(filtered) != 0 {
+		t.Fatalf("captured unlink evidence applied: %+v %v", filtered, err)
+	}
+	if ok, err := d.ConfirmSpotifyRecording("song", "AAAAAAAAAAAAAAAAAAAAAA", "fp", true); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	filtered, err = d.RevalidateSpotifyScalarCandidateBatch(map[string]string{"song": "fp"}, captured)
+	if err != nil || len(filtered) != 0 {
+		t.Fatalf("captured old recording borrowed same source: %+v %v", filtered, err)
+	}
+	if ok, err := d.ConfirmSpotifyRecording("song", referenceID, "fp", true); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	filtered, err = d.RevalidateSpotifyScalarCandidateBatch(map[string]string{"song": "fp"}, captured)
+	if err != nil || len(filtered["song"]) != 6 {
+		t.Fatalf("restored explicit recording lost: %+v %v", filtered, err)
+	}
+	filtered, err = d.RevalidateSpotifyScalarCandidateBatch(map[string]string{"song": "replaced"}, captured)
+	if err != nil || len(filtered) != 0 {
+		t.Fatalf("captured old source applied: %+v %v", filtered, err)
+	}
+
 }
 
 func TestFreshTrackCatalogRequiresFullResourceAndActiveRuntime(t *testing.T) {

@@ -487,15 +487,21 @@ func (a *API) spotifyProxy(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) downloadTrack(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		SpotifyID string `json:"spotifyId"`
-		Title     string `json:"title"`
-		Artist    string `json:"artist"`
-		Album     string `json:"album"`
+		Origins   []db.SpotifyDownloadOrigin `json:"origins,omitempty"`
+		SpotifyID string                     `json:"spotifyId"`
+		Title     string                     `json:"title"`
+		Artist    string                     `json:"artist"`
+		Album     string                     `json:"album"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("Error decoding download track request: %v", err)
 		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := db.ValidateSpotifyDownloadOrigins(req.Origins); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -507,15 +513,23 @@ func (a *API) downloadTrack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Queue the download (nil metadata for single track downloads - uses fallback path)
-	downloadID, err := a.downloadManager.QueueDownload(
-		req.SpotifyID,
-		fmt.Sprintf("spotify:track:%s", req.SpotifyID),
-		"track",
-		req.Title,
-		req.Artist,
-		req.Album,
-		nil, // No metadata for single track downloads
-	)
+	var ids []string
+	ctx, cancel := a.spotifyTokens().requestContext(r.Context())
+	defer cancel()
+	queue := func() error {
+		var queueErr error
+		ids, queueErr = a.downloadManager.QueueDownloads([]QueueDownloadRequest{{SpotifyID: req.SpotifyID, SpotifyURI: "spotify:track:" + req.SpotifyID, Type: "track", Title: req.Title, Artist: req.Artist, Album: req.Album, Origins: req.Origins}})
+		return queueErr
+	}
+	var err error
+	if len(req.Origins) == 0 {
+		err = queue()
+	} else {
+		err = a.spotifyTokens().ensureMetadataOwner(ctx)
+		if err == nil {
+			err = a.spotifyTokens().withAccount(ctx, queue)
+		}
+	}
 
 	if err != nil {
 		respondSpotifyDownloadError(w, err, http.StatusInternalServerError, "Failed to queue download")
@@ -523,7 +537,7 @@ func (a *API) downloadTrack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, map[string]interface{}{
-		"id":      downloadID,
+		"id":      ids[0],
 		"status":  "queued",
 		"message": "Track download queued successfully",
 	})
@@ -533,14 +547,25 @@ func (a *API) downloadAlbum(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := a.spotifyTokens().requestContext(r.Context())
 	defer cancel()
 	var req struct {
-		SpotifyID string `json:"spotifyId"`
-		Title     string `json:"title"`
-		Artist    string `json:"artist"`
+		Origins   []db.SpotifyDownloadOrigin `json:"origins,omitempty"`
+		SpotifyID string                     `json:"spotifyId"`
+		Title     string                     `json:"title"`
+		Artist    string                     `json:"artist"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("Error decoding download album request: %v", err)
 		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := db.ValidateSpotifyDownloadOrigins(req.Origins); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if len(req.Origins) > 31 {
+		respondError(w, http.StatusBadRequest, "too many download origins")
 		return
 	}
 
@@ -575,6 +600,7 @@ func (a *API) downloadAlbum(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, QueueDownloadRequest{
 			SpotifyID: track.ID, SpotifyURI: fmt.Sprintf("spotify:track:%s", track.ID),
 			Type: "track", Title: track.Name, Artist: track.Artist, Album: track.Album, Metadata: metadata,
+			Origins: append(append([]db.SpotifyDownloadOrigin{}, req.Origins...), db.SpotifyDownloadOrigin{Kind: "album", ID: req.SpotifyID, Position: track.TrackNumber - 1}),
 		})
 	}
 	var ids []string
@@ -600,14 +626,25 @@ func (a *API) downloadPlaylist(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := a.spotifyTokens().requestContext(r.Context())
 	defer cancel()
 	var req struct {
-		SpotifyID string `json:"spotifyId"`
-		Name      string `json:"name"`
-		Owner     string `json:"owner"`
+		Origins   []db.SpotifyDownloadOrigin `json:"origins,omitempty"`
+		SpotifyID string                     `json:"spotifyId"`
+		Name      string                     `json:"name"`
+		Owner     string                     `json:"owner"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("Error decoding download playlist request: %v", err)
 		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := db.ValidateSpotifyDownloadOrigins(req.Origins); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if len(req.Origins) > 31 {
+		respondError(w, http.StatusBadRequest, "too many download origins")
 		return
 	}
 
@@ -646,6 +683,7 @@ func (a *API) downloadPlaylist(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, QueueDownloadRequest{
 			SpotifyID: track.ID, SpotifyURI: fmt.Sprintf("spotify:track:%s", track.ID),
 			Type: "track", Title: track.Name, Artist: track.Artist, Album: track.Album, Metadata: metadata,
+			Origins: append(append([]db.SpotifyDownloadOrigin{}, req.Origins...), playlistDownloadOrigin(req.SpotifyID, track)),
 		})
 	}
 	var ids []string
@@ -849,6 +887,7 @@ func (a *API) downloadAlbumByIDPaginated(w http.ResponseWriter, ctx context.Cont
 		requests = append(requests, QueueDownloadRequest{
 			SpotifyID: track.ID, SpotifyURI: "spotify:track:" + track.ID, Type: "track",
 			Title: track.Name, Artist: track.Artist, Album: track.Album,
+			Origins: []db.SpotifyDownloadOrigin{{Kind: "album", ID: spotifyID, Position: track.TrackNumber - 1}},
 			Metadata: &DownloadMetadata{TrackNumber: track.TrackNumber, DiscNumber: track.DiscNumber,
 				AlbumArtist: track.AlbumArtist, ReleaseDate: track.ReleaseDate, ImageURL: imageURL},
 		})
@@ -886,6 +925,7 @@ func (a *API) downloadPlaylistByIDPaginated(w http.ResponseWriter, ctx context.C
 		requests = append(requests, QueueDownloadRequest{
 			SpotifyID: track.ID, SpotifyURI: "spotify:track:" + track.ID, Type: "track",
 			Title: track.Name, Artist: track.Artist, Album: track.Album,
+			Origins: []db.SpotifyDownloadOrigin{playlistDownloadOrigin(spotifyID, track)},
 			Metadata: &DownloadMetadata{PlaylistName: playlistName, PlaylistOrder: index + 1,
 				ReleaseDate: track.ReleaseDate, ImageURL: imageURL},
 		})
@@ -1569,11 +1609,13 @@ func (a *API) fetchAlbumTracks(ctx context.Context, albumID string) ([]AlbumTrac
 
 // PlaylistTrackInfo contains metadata for a track within a playlist download
 type PlaylistTrackInfo struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Artist      string `json:"artist"`
-	Album       string `json:"album"`
-	ReleaseDate string `json:"releaseDate"`
+	OriginPosition *int   `json:"-"`
+	OriginRevision string `json:"-"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Artist         string `json:"artist"`
+	Album          string `json:"album"`
+	ReleaseDate    string `json:"releaseDate"`
 }
 
 type spotifyPlaylistItem struct {
@@ -1650,6 +1692,9 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 	}
 	if playlist.Tracks.Offset != 0 {
 		return nil, "", "", fmt.Errorf("spotify playlist initial page did not start at zero")
+	}
+	if playlist.SnapshotID != nil && *playlist.SnapshotID != "" && !capture.bindPlaylistRevision(playlistID, *playlist.SnapshotID) {
+		return nil, "", "", catalog.ErrSchema
 	}
 	playlistItems := playlist.Tracks.Items
 	if playlist.SnapshotID != nil {
@@ -1755,7 +1800,7 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 	}
 
 	var tracks []PlaylistTrackInfo
-	for _, item := range playlistItems {
+	for position, item := range playlistItems {
 		if item.Track.ID == "" {
 			continue // Skip local files or invalid tracks
 		}
@@ -1765,7 +1810,12 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 			artist = item.Track.Artists[0].Name
 		}
 
+		revision := ""
+		if playlist.SnapshotID != nil {
+			revision = *playlist.SnapshotID
+		}
 		tracks = append(tracks, PlaylistTrackInfo{
+			OriginPosition: &position, OriginRevision: revision,
 			ID:          item.Track.ID,
 			Name:        item.Track.Name,
 			Artist:      artist,
@@ -1783,6 +1833,9 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 	if playlist.SnapshotID != nil && *playlist.SnapshotID != "" {
 		marker, _ := json.Marshal(map[string]any{"complete": true, "revision": *playlist.SnapshotID, "generation": traversal.Generation})
 		capture.add([]catalog.CapturedEntity{{EntityType: "playlist", ID: playlistID, Resource: playlistPartialResource, Payload: marker}})
+	}
+	if playlist.SnapshotID != nil && *playlist.SnapshotID != "" && !capture.bindPlaylistRevision(playlistID, *playlist.SnapshotID) {
+		return nil, "", "", catalog.ErrSchema
 	}
 	if entities, ok := capture.snapshot(); ok {
 		if err := a.spotifyTokens().persistCatalogDomainResult(publicationCtx, entities); err == db.ErrSpotifyTraversalSuperseded || err == db.ErrSpotifyMetadataRuntimeSuperseded || err == spotifyauth.ErrAuthenticationRequired {
@@ -2016,4 +2069,12 @@ func (a *API) streamerForSession(manager *spotify.SessionManager) *spotify.Strea
 		a.spotifyStreamer = spotify.NewStreamer(manager)
 	}
 	return a.spotifyStreamer
+}
+
+func playlistDownloadOrigin(id string, track PlaylistTrackInfo) db.SpotifyDownloadOrigin {
+	position := -1
+	if track.OriginPosition != nil {
+		position = *track.OriginPosition
+	}
+	return db.SpotifyDownloadOrigin{Kind: "playlist", ID: id, Revision: track.OriginRevision, Position: position}
 }

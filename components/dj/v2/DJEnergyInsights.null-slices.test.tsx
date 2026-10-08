@@ -130,6 +130,20 @@ describe('DJEnergyInsights energy response normalization', () => {
     expect(container.textContent).toContain('0 advisory cues');
   });
 
+  it('refreshes recommendations for candidate Energy Level changes and discards old responses', async () => {
+    let settle!: (value: unknown) => void;
+    mocks.state.djDeckA.analysisStatus = 'available';
+    mocks.getRecommendations.mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
+    await act(async () => root.render(<DJEnergyInsights trackID="song" deck="A" />));
+    const change = (field: string) => window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'manual_audio_metadata', songId: 'candidate', sourceFingerprint: 'fp', field } }));
+    await act(async () => change('time_signature'));
+    expect(mocks.getRecommendations).toHaveBeenCalledTimes(1);
+    await act(async () => { change('local_energy_level'); settle({ recommendations: [{ title: 'Pre-edit candidate' }] }); });
+    expect(mocks.getRecommendations).toHaveBeenCalledTimes(2);
+    expect(mocks.getEnergy).toHaveBeenCalledTimes(1);
+    expect(container.textContent).not.toContain('Pre-edit candidate');
+  });
+
   it('re-arms score expiry timers beyond the browser timeout maximum', async () => {
     const maxDelay = 2_147_483_647;
     const start = new Date('2026-10-06T12:00:00.000Z');

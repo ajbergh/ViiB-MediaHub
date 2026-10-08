@@ -33,36 +33,36 @@ func currentWaveform(database *db.DB, source analysis.ResolvedSource) bool {
 // Repair only the missing waveform; current scalars, other DSP artifacts, cues
 // and their timestamps are preserved. The existing claim fences overlapping jobs.
 func repairCurrentWaveform(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, source analysis.ResolvedSource, record db.TrackAnalysis, resolve func(context.Context, string) (analysis.ResolvedSource, error)) (result outcome) {
-	claimed, err := database.ClaimTrackAnalysis(source.SongID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
+	token, claimed, err := claimPreparation(ctx, database, source.SongID, source.Fingerprint)
 	if err != nil {
 		return outcomeFailed
 	}
 	if !claimed {
 		return outcomeSkipped
 	}
-	published := false
-	defer func() {
-		if published {
-			return
-		}
-		if err := database.UpsertTrackAnalysis(record); err != nil {
-			_ = database.ReleaseTrackAnalysis(source.SongID)
-			result = outcomeFailed
-		}
-	}()
+	ctx, stopLease := maintainTrackAnalysisLease(ctx, database, source.SongID, source.Fingerprint, token, claimHeartbeatInterval)
+	defer func() { stopLease(); _ = database.ReleaseTrackAnalysisLease(source.SongID, token) }()
 	if currentWaveform(database, source) {
+		current, err := resolve(ctx, source.SongID)
+		if err != nil || ctx.Err() != nil || current.Fingerprint != source.Fingerprint {
+			return outcomeFailed
+		}
+		if err := database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, ClaimToken: token}); err != nil {
+			return outcomeFailed
+		}
 		return outcomeSkipped
 	}
 	overview, err := analysis.GenerateWaveformOverviewWithOpener(ctx, registry, source.Name, source.Open, analysis.DefaultWaveformResolution)
 	if err != nil {
 		code, _ := ClassifyError(err)
-		if ctx.Err() == nil {
+		current, sourceErr := resolve(ctx, source.SongID)
+		if ctx.Err() == nil && sourceErr == nil && current.Fingerprint == source.Fingerprint {
 			status := db.TrackCapabilityStatus{SongID: source.SongID, SourceFingerprint: source.Fingerprint, Capability: "local_amplitude", Version: waveformartifact.AlgorithmVersion, State: "failed", Reason: code, RetryAt: time.Now().Add(24 * time.Hour).UnixMilli()}
 			if code == ErrorUnsupportedCodec {
 				status.State = "unsupported"
 				status.RetryAt = 0
 			}
-			_ = database.PutTrackCapabilityStatuses([]db.TrackCapabilityStatus{status})
+			_ = database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, ClaimToken: token, Capabilities: []db.TrackCapabilityStatus{status}})
 		}
 		logger.Scan("local_artifact song_id=%q capability=local_amplitude status=failed", source.SongID)
 		return outcomeFailed
@@ -77,10 +77,9 @@ func repairCurrentWaveform(ctx context.Context, database *db.DB, registry *analy
 		return outcomeFailed
 	}
 	statuses := []db.TrackCapabilityStatus{{SongID: source.SongID, SourceFingerprint: source.Fingerprint, Capability: "local_amplitude", Version: waveformartifact.AlgorithmVersion, State: "available"}, {SongID: source.SongID, SourceFingerprint: source.Fingerprint, Capability: "core_preparation", Version: db.CorePreparationVersion, State: "available"}}
-	if err := database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, Artifacts: collector.artifacts, Capabilities: statuses}); err != nil {
+	if err := database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, ClaimToken: token, Artifacts: collector.artifacts, Capabilities: statuses}); err != nil {
 		return outcomeFailed
 	}
-	published = true
 	logger.Scan("local_artifact song_id=%q capability=local_amplitude status=available action=waveform_only_repair", source.SongID)
 	return outcomeAnalyzed
 }
