@@ -776,6 +776,13 @@ func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, err
 // ListEffectiveBPM returns only manual or locally measured tempo rounded for
 // AI-DJ scoring. A missing entry deliberately remains unknown.
 func (d *DB) ListEffectiveBPM(currentFingerprints map[string]string) (map[string]int, error) {
+	return d.ListEffectiveBPMWithProvider(currentFingerprints, nil)
+}
+
+// ListEffectiveBPMWithProvider resolves DJ-scoring tempo with shared manual >
+// current provider > local precedence. Spotify values remain scoring metadata,
+// not sync-safe beat-grid instructions.
+func (d *DB) ListEffectiveBPMWithProvider(currentFingerprints map[string]string, providerFields map[string][]SpotifyScalarField) (map[string]int, error) {
 	analyses, err := d.ListTrackAnalysis()
 	if err != nil {
 		return nil, err
@@ -784,11 +791,23 @@ func (d *DB) ListEffectiveBPM(currentFingerprints map[string]string) (map[string
 	if err != nil {
 		return nil, err
 	}
-	results := make(map[string]int, len(analyses))
+	analysisBySong := make(map[string]TrackAnalysis, len(analyses))
 	for _, analysis := range analyses {
-		effective := ResolveEffectiveBPMForSource(EffectiveBPMInputs{Override: ptrTrackAnalysisOverride(overrides, analysis.SongID), Analysis: &analysis}, currentFingerprints[analysis.SongID])
-		if effective.Value != nil && effective.SyncAllowed {
-			results[analysis.SongID] = int(math.Round(*effective.Value))
+		analysisBySong[analysis.SongID] = analysis
+	}
+	results := make(map[string]int, len(currentFingerprints))
+	for songID, fingerprint := range currentFingerprints {
+		analysis := analysisBySong[songID]
+		effective := ResolveAnalysisScalarFields(analysis, overrides[songID], fingerprint, providerFields[songID])
+		for _, field := range effective {
+			if field.Key != "tempo_bpm" || field.Selected == nil {
+				continue
+			}
+			var bpm float64
+			if json.Unmarshal(field.Selected.Value, &bpm) == nil && bpm > 0 && !math.IsNaN(bpm) && !math.IsInf(bpm, 0) {
+				results[songID] = int(math.Round(bpm))
+			}
+			break
 		}
 	}
 	return results, nil

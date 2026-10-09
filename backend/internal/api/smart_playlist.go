@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
+	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 )
 
 // LocalPlaylistFilter represents the filter criteria used to generate a playlist.
@@ -2049,121 +2051,247 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		logger.API("DJ Mode semantic retrieval: %d candidates across phase pools %v", semanticDJ.CandidateCount, semanticDJ.PhaseCandidateCount)
 	}
 
-	// Create score context
+	// The scorer only needs source-current BPM for candidate songs. Include both
+	// semantic pools and the legacy fallback pool, including songs with no local
+	// analysis row so provider-only tempo can still be considered.
+	candidateIDs := make(map[string]struct{})
+	for _, song := range candidates {
+		candidateIDs[song.ID] = struct{}{}
+	}
+	if semanticUsed {
+		for _, pool := range semanticDJ.Pools {
+			for _, song := range pool.Songs {
+				candidateIDs[song.ID] = struct{}{}
+			}
+		}
+	}
+	currentFingerprints, fingerprintErr := a.currentAnalysisSourceFingerprints(sortedSongIDs(candidateIDs))
+	if fingerprintErr != nil {
+		logger.API("DJ Mode: failed to resolve current candidate source identities; BPM remains unknown: %v", fingerprintErr)
+		currentFingerprints = map[string]string{}
+	}
+	localBPM, bpmErr := a.db.ListEffectiveBPM(currentFingerprints)
+	if bpmErr != nil {
+		logger.API("DJ Mode: failed to load local BPM; tracks without tempo remain unknown: %v", bpmErr)
+		localBPM = map[string]int{}
+	}
 	scoreCtx := dj.NewScoreContext()
 	scoreCtx.DiscoverMode = discoverMode
 	scoreCtx.FlowStrictness = flowStrictness
 	scoreCtx.RecentlyPlayedIDs = recentlyPlayedIDs
-	analysisRows, analysisErr := a.db.ListTrackAnalysis()
-	analysisIDs := make([]string, 0, len(analysisRows))
-	if analysisErr == nil {
-		for _, analysis := range analysisRows {
-			analysisIDs = append(analysisIDs, analysis.SongID)
-		}
-	}
-	currentFingerprints, fingerprintErr := a.currentAnalysisSourceFingerprints(analysisIDs)
-	if analysisErr != nil {
-		logger.API("DJ Mode: failed to load analysis source identities; tracks without verified current BPM remain unknown: %v", analysisErr)
-	} else if fingerprintErr != nil {
-		logger.API("DJ Mode: failed to resolve current source identities; tracks without verified current BPM remain unknown: %v", fingerprintErr)
-	} else if measuredBPM, measuredErr := a.db.ListEffectiveBPM(currentFingerprints); measuredErr != nil {
-		logger.API("DJ Mode: failed to load local BPM; tracks without measurements remain unknown: %v", measuredErr)
-	} else {
-		scoreCtx.EffectiveBPM = measuredBPM
-	}
+	scoreCtx.EffectiveBPM = localBPM
 	if measuredEnergy, measuredErr := a.measuredEnergyForDJ(); measuredErr != nil {
 		logger.API("DJ Mode: failed to load measured energy; using tag fallback: %v", measuredErr)
 	} else {
 		scoreCtx.EffectiveEnergy = measuredEnergy
 	}
 
-	// Create the sequencer
-	sequencer := dj.NewSequencer()
+	assemble := func(providerFields map[string][]db.SpotifyScalarField) (map[string]interface{}, int, string) {
+		scoreCtx.EffectiveBPM = localBPM
+		if len(providerFields) > 0 {
+			effectiveBPM, effectiveErr := a.db.ListEffectiveBPMWithProvider(currentFingerprints, providerFields)
+			if effectiveErr != nil {
+				logger.API("DJ Mode: failed to resolve provider BPM; retaining local/manual tempo: %v", effectiveErr)
+			} else {
+				scoreCtx.EffectiveBPM = effectiveBPM
+			}
+		}
+		sequencer := dj.NewSequencer()
+		var queue []db.Song
+		var phaseResults []dj.PhaseResult
+		var buildErr error
+		if semanticUsed {
+			queue, phaseResults, buildErr = sequencer.BuildQueueFromPhasePools(semanticDJ.Pools, plan, personaDef, scoreCtx)
+		} else {
+			queue, phaseResults, buildErr = sequencer.BuildQueue(candidates, plan, personaDef, scoreCtx)
+		}
+		if buildErr != nil {
+			logger.API("DJ Mode: Failed to build queue: %v", buildErr)
+			return nil, http.StatusInternalServerError, fmt.Sprintf("Failed to build DJ queue: %v", buildErr)
+		}
 
-	// Build the queue from semantic phase pools when available. The legacy
-	// single-candidate path remains the fallback for unavailable semantic state.
-	var queue []db.Song
-	var phaseResults []dj.PhaseResult
-	if semanticUsed {
-		queue, phaseResults, err = sequencer.BuildQueueFromPhasePools(semanticDJ.Pools, plan, personaDef, scoreCtx)
-	} else {
-		queue, phaseResults, err = sequencer.BuildQueue(candidates, plan, personaDef, scoreCtx)
+		logger.API("DJ Mode: Built queue with %d songs across %d phases", len(queue), len(phaseResults))
+		queue, validation := a.auditPlaylistSongs(ctx, prompt, intent, queue)
+		if semanticUsed {
+			validation.HardExcluded = semanticDJ.Diagnostics.HardExcluded
+			validation.StyleMismatches = semanticDJ.Diagnostics.StyleMismatches
+			validation.NegativeRejected = semanticDJ.Diagnostics.NegativeRejected
+			validation.RankingFiltered = semanticDJ.RankingFiltered
+		} else {
+			validation.HardExcluded = constraintDiagnostics.HardExcluded
+			validation.StyleMismatches = constraintDiagnostics.StyleMismatches
+		}
+		plannedSongCount := 0
+		for _, phase := range plan.Phases {
+			plannedSongCount += max(phase.TargetCount, 1)
+		}
+		validation.Shortened = len(queue) < plannedSongCount
+		if validation.AuditRejected > 0 {
+			phaseResults = reconcileDJPhaseResults(queue, phaseResults, scoreCtx.EffectiveBPM)
+		}
+
+		var narration *dj.DJNarration
+		if talkMode && len(queue) > 0 {
+			narration, buildErr = planner.GenerateNarration(ctx, plan)
+			if buildErr != nil {
+				logger.API("Failed to generate DJ narration: %v", buildErr)
+			}
+		}
+		songsAny := make([]any, len(queue))
+		for i, song := range queue {
+			songsAny[i] = song
+		}
+		songsAny = transformSongsForAPI(songsAny)
+		response := map[string]interface{}{
+			"filter": map[string]interface{}{
+				"mode": "dj", "persona": persona, "prompt": prompt, "genres": seedGenres,
+				"artists": seedArtists, "minYear": promptMinYear, "maxYear": promptMaxYear, "source": source,
+			},
+			"songs":      songsAny,
+			"dj":         dj.DJResponse{Plan: plan, Phases: phaseResults, Narration: narration},
+			"validation": validation,
+		}
+		if semanticUsed {
+			response["retrieval"] = map[string]interface{}{
+				"mode": "semantic", "candidateCount": semanticDJ.CandidateCount,
+				"phaseCandidateCounts": semanticDJ.PhaseCandidateCount, "fallbackUsed": false,
+			}
+		}
+		logger.API("DJ Mode: Returning %d songs for prompt %q", len(queue), prompt)
+		return response, http.StatusOK, ""
 	}
-	if err != nil {
-		logger.API("DJ Mode: Failed to build queue: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to build DJ queue: %v", err), http.StatusInternalServerError)
+
+	a.spotifyAuthMu.Lock()
+	runtime := a.spotifyAuth
+	a.spotifyAuthMu.Unlock()
+	if runtime == nil {
+		providerFields, readErr := a.db.GetDownloadedSpotifyScalarCandidateBatchAll(currentFingerprints, time.Now())
+		if readErr != nil {
+			logger.API("DJ Mode: downloaded scalar candidates unavailable; retaining local/manual tempo: %v", readErr)
+			providerFields = nil
+		}
+		response, status, message := assemble(providerFields)
+		if status != http.StatusOK {
+			http.Error(w, message, status)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
 		return
 	}
 
-	logger.API("DJ Mode: Built queue with %d songs across %d phases", len(queue), len(phaseResults))
-	queue, validation := a.auditPlaylistSongs(ctx, prompt, intent, queue)
-	if semanticUsed {
-		validation.HardExcluded = semanticDJ.Diagnostics.HardExcluded
-		validation.StyleMismatches = semanticDJ.Diagnostics.StyleMismatches
-		validation.NegativeRejected = semanticDJ.Diagnostics.NegativeRejected
-		validation.RankingFiltered = semanticDJ.RankingFiltered
-	} else {
-		validation.HardExcluded = constraintDiagnostics.HardExcluded
-		validation.StyleMismatches = constraintDiagnostics.StyleMismatches
-	}
-	plannedSongCount := 0
-	for _, phase := range plan.Phases {
-		plannedSongCount += max(phase.TargetCount, 1)
-	}
-	validation.Shortened = len(queue) < plannedSongCount
-	if validation.AuditRejected > 0 {
-		phaseResults = reconcileDJPhaseResults(queue, phaseResults, scoreCtx.EffectiveBPM)
+	readCtx, cancel := runtime.requestContext(r.Context())
+	defer cancel()
+	var capturedFence db.SpotifyMetadataReadFence
+	var providerFields map[string][]db.SpotifyScalarField
+	readErr := runtime.withMetadataRead(readCtx, func(fence db.SpotifyMetadataReadFence) error {
+		capturedFence = fence
+		if fence.Pending {
+			providerFields = map[string][]db.SpotifyScalarField{}
+			return nil
+		}
+		var err error
+		providerFields, err = a.db.GetSpotifyScalarCandidateBatchForRuntimeAll(fence, currentFingerprints, time.Now())
+		return err
+	})
+	if readErr != nil {
+		if r.Context().Err() != nil {
+			return
+		}
+		logger.API("DJ Mode: Spotify metadata fence unavailable; retaining local/manual tempo: %v", readErr)
+		response, status, message := assemble(nil)
+		if status != http.StatusOK {
+			http.Error(w, message, status)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+		return
 	}
 
-	// Generate narration if talk mode is enabled
-	var narration *dj.DJNarration
-	if talkMode && len(queue) > 0 {
-		narration, err = planner.GenerateNarration(ctx, plan)
+	response, status, message := assemble(providerFields)
+	if status != http.StatusOK {
+		http.Error(w, message, status)
+		return
+	}
+	if readCtx.Err() != nil && r.Context().Err() != nil {
+		return
+	}
+	publish := func() error {
+		if err := readCtx.Err(); err != nil {
+			return err
+		}
+		latestFingerprints, err := a.currentAnalysisSourceFingerprints(sortedSongIDs(candidateIDs))
 		if err != nil {
-			logger.API("Failed to generate DJ narration: %v", err)
+			return err
+		}
+		for songID, fingerprint := range currentFingerprints {
+			if latestFingerprints[songID] != fingerprint {
+				return fmt.Errorf("DJ candidate source changed during assembly")
+			}
+		}
+		if len(providerFields) > 0 {
+			validatedFields, err := a.db.RevalidateSpotifyScalarCandidateBatch(currentFingerprints, providerFields)
+			if err != nil {
+				return err
+			}
+			validatedBPM, err := a.db.ListEffectiveBPMWithProvider(currentFingerprints, validatedFields)
+			if err != nil {
+				return err
+			}
+			for songID, bpm := range scoreCtx.EffectiveBPM {
+				if validatedBPM[songID] != bpm {
+					return fmt.Errorf("DJ provider recording changed during assembly")
+				}
+			}
+			for songID, bpm := range validatedBPM {
+				if scoreCtx.EffectiveBPM[songID] != bpm {
+					return fmt.Errorf("DJ provider recording changed during assembly")
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		return json.NewEncoder(w).Encode(response)
+	}
+	var publicationErr error
+	if hasPrivateTempoCandidate(providerFields) {
+		publicationErr = runtime.withMetadataRead(readCtx, func(fence db.SpotifyMetadataReadFence) error {
+			if fence != capturedFence {
+				return spotifyauth.ErrAuthenticationRequired
+			}
+			return publish()
+		})
+	} else {
+		publicationErr = publish()
+	}
+	if publicationErr != nil {
+		if r.Context().Err() != nil {
+			return
+		}
+		logger.API("DJ Mode: session/source changed before response publication: %v", publicationErr)
+		http.Error(w, "Spotify session or DJ candidate sources changed during assembly; refresh the recommendation", http.StatusConflict)
+	}
+
+}
+
+func hasPrivateTempoCandidate(fields map[string][]db.SpotifyScalarField) bool {
+	for _, candidates := range fields {
+		for _, field := range candidates {
+			if field.Key == "tempo_bpm" && !field.DurableImport {
+				return true
+			}
 		}
 	}
+	return false
+}
 
-	// Transform paths to API URLs
-	songsAny := make([]any, len(queue))
-	for i, s := range queue {
-		songsAny[i] = s
-	}
-	songsAny = transformSongsForAPI(songsAny)
-
-	// Build the DJ response
-	djResponse := dj.DJResponse{
-		Plan:      plan,
-		Phases:    phaseResults,
-		Narration: narration,
-	}
-
-	logger.API("DJ Mode: Returning %d songs for prompt %q", len(queue), prompt)
-
-	// Return combined response
-	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
-		"filter": map[string]interface{}{
-			"mode":    "dj",
-			"persona": persona,
-			"prompt":  prompt,
-			"genres":  seedGenres,
-			"artists": seedArtists,
-			"minYear": promptMinYear,
-			"maxYear": promptMaxYear,
-			"source":  source,
-		},
-		"songs":      songsAny,
-		"dj":         djResponse,
-		"validation": validation,
-	}
-	if semanticUsed {
-		response["retrieval"] = map[string]interface{}{
-			"mode":                 "semantic",
-			"candidateCount":       semanticDJ.CandidateCount,
-			"phaseCandidateCounts": semanticDJ.PhaseCandidateCount,
-			"fallbackUsed":         false,
+func sortedSongIDs(ids map[string]struct{}) []string {
+	result := make([]string, 0, len(ids))
+	for id := range ids {
+		if id != "" {
+			result = append(result, id)
 		}
 	}
-	json.NewEncoder(w).Encode(response)
+	sort.Strings(result)
+	return result
 }

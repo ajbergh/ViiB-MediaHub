@@ -1,7 +1,7 @@
 # DJv2 Track Analysis — Concise Context and Next Actions
 
 **Source:** `DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md`  
-**Snapshot:** 2026-09-18
+**Snapshot:** 2026-10-08
 
 **Purpose:** Operational handoff of the active context, completed work, quality gate, and next actions. The source roadmap remains the detailed research, design, and evidence record.
 
@@ -99,3 +99,9 @@ Local audit artifacts: `phase0-spotify-manifest-r4.json`, `phase0-spotify-import
 ## Definition of done for the evidence gate
 
 Call the system professionally ready only after a lawful, genre-stratified corpus of at least 200 tracks with a held-out third demonstrates the recorded BPM, key, half/double, unknown/refusal, confidence, throughput, codec, and Windows/macOS/Linux determinism targets. Until then, shipped features should be presented as advisory analysis rather than professionally accurate measurement.
+
+## Latest held-out quality evidence — 2026-10-08
+
+The fresh current-code default-analyzer run on r5 held-out reported 41/54 strict BPM (75.93%), 3.70% half/double errors, exact key 38/54 (70.37%), Camelot-compatible key 45/54 (83.33%), and 31.91× real-time throughput; one Ogg source failed checksum validation. The runner’s temporary output was not retained as a repository artifact. This is evidence for the current no-go decision, not a tuning set.
+
+The manifest contains 176 independent recording groups: 122 tuning and 54 held out. It is short by 24 total recordings, including 13 held out, and lacks required genre coverage, held-out stable-electronic examples, and labeled real expected-unknown cases. The Phase 0 gate remains fail-closed. Do not tune on held-out recordings; obtain lawful independently grouped/labeled data and rerun a reproducible qualification. Shipped analysis remains advisory until the complete evidence gate passes.

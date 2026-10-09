@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -139,9 +140,9 @@ func TestDownloadAudioImportSurvivesPrivateRetirement(t *testing.T) {
 	if _, err = d.conn.Exec(`UPDATE spotify_download_catalog_imports SET payload_hash=? WHERE entity_type='track'`, catalogHash); err != nil {
 		t.Fatal(err)
 	}
-	importedFields, importedAttempts, importedRecording, err := d.GetDownloadedSpotifyScalarCandidates(t.Context(), "imported", fingerprint)
-	if err != nil || importedRecording != referenceID || len(importedFields) == 0 || len(importedAttempts) == 0 {
-		t.Fatalf("durable scalar import: fields=%d attempts=%d recording=%s err=%v", len(importedFields), len(importedAttempts), importedRecording, err)
+	importedFields, importedAttempts, importedRecording, importedStatus, err := d.GetDownloadedSpotifyScalarCandidates(t.Context(), "imported", fingerprint)
+	if err != nil || importedRecording != referenceID || len(importedFields) == 0 || len(importedAttempts) == 0 || importedStatus == nil || importedStatus.State != "available" {
+		t.Fatalf("durable scalar import: fields=%d attempts=%d recording=%s status=%+v err=%v", len(importedFields), len(importedAttempts), importedRecording, importedStatus, err)
 	}
 	for _, field := range importedFields {
 		if !field.DurableImport {
@@ -208,7 +209,7 @@ func TestDownloadAudioImportSurvivesPrivateRetirement(t *testing.T) {
 	if artifact, err = d.GetDownloadedSpotifyAudioArtifact(t.Context(), "imported", fingerprint, "audio_analysis", "beats"); err != nil || artifact != nil {
 		t.Fatal("removed link admitted", err)
 	}
-	if fields, attempts, _, err := d.GetDownloadedSpotifyScalarCandidates(t.Context(), "imported", fingerprint); err != nil || len(fields) != 0 || len(attempts) != 0 {
+	if fields, attempts, _, _, err := d.GetDownloadedSpotifyScalarCandidates(t.Context(), "imported", fingerprint); err != nil || len(fields) != 0 || len(attempts) != 0 {
 		t.Fatalf("removed link admitted durable scalars: %d %d %v", len(fields), len(attempts), err)
 	}
 	var status string
@@ -245,7 +246,7 @@ func TestDownloadedSpotifyScoreSummariesStaySourceBound(t *testing.T) {
 		t.Fatalf("complete download: %v %v", changed, err)
 	}
 	fingerprint := scanEvidence(t, d, path, "score-imported")
-	if _, _, recording, err := d.GetDownloadedSpotifyScalarCandidates(t.Context(), "score-imported", fingerprint); err != nil || recording != referenceID {
+	if _, _, recording, _, err := d.GetDownloadedSpotifyScalarCandidates(t.Context(), "score-imported", fingerprint); err != nil || recording != referenceID {
 		t.Fatal(err)
 	}
 	if _, err := d.DeleteCompletedDownloads(); err != nil {
@@ -263,9 +264,13 @@ func TestDownloadedSpotifyScoreSummariesStaySourceBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	batch, batchErr := d.GetDownloadedSpotifyScalarCandidateBatch(map[string]string{"score-imported": fingerprint}, time.Now())
-	if batchErr != nil || len(batch["score-imported"]) != 3 {
-		t.Fatalf("durable generic batch: %+v %v", batch, batchErr)
+	var verificationCalls int
+	batch, batchErr := d.getDownloadedSpotifyScalarCandidateBatch(map[string]string{"score-imported": fingerprint}, time.Now(), func(ctx context.Context, path string) (downloadFileRevision, error) {
+		verificationCalls++
+		return readDownloadRevision(ctx, path)
+	})
+	if batchErr != nil || len(batch["score-imported"]) != 3 || verificationCalls != 1 {
+		t.Fatalf("durable generic batch: fields=%+v calls=%d err=%v", batch, verificationCalls, batchErr)
 	}
 	for _, field := range batch["score-imported"] {
 		if !field.DurableImport {
@@ -356,6 +361,86 @@ func TestDownloadedSpotifyScoreSummariesStaySourceBound(t *testing.T) {
 	}
 }
 
+func TestDownloadedSpotifyScalarBatchSkipsHashWithoutValidScore(t *testing.T) {
+	d, path := evidenceFixture(t)
+	const owner = "score-cost-import-owner"
+	if err := d.ActivateSpotifyMetadataContext(owner); err != nil {
+		t.Fatal(err)
+	}
+	bpm, meter, tonic, mode := 125.0, 3, 0, 0
+	camelot := "5A"
+	observation := spotifyanalysis.Observation{TrackID: referenceID, AccountContext: owner, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: time.Now(), BPM: &bpm, Key: &tonic, Mode: &mode, Camelot: &camelot, TimeSignature: &meter}
+	if err := d.PutExternalAnalysis(observation, "fixture", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	finishEvidence(t, d, path, "score-cost-job", referenceID)
+	fingerprint := scanEvidence(t, d, path, "score-cost-song")
+	if _, err := d.conn.Exec(`DELETE FROM spotify_download_scalar_imports WHERE field_key LIKE 'spotify_%_score'`); err != nil {
+		t.Fatal(err)
+	}
+	var verificationCalls int
+	batch, err := d.getDownloadedSpotifyScalarCandidateBatch(map[string]string{"score-cost-song": fingerprint}, time.Now(), func(ctx context.Context, path string) (downloadFileRevision, error) {
+		verificationCalls++
+		return readDownloadRevision(ctx, path)
+	})
+	if err != nil || verificationCalls != 0 || len(batch["score-cost-song"]) != 0 {
+		t.Fatalf("non-score list import should skip verification: calls=%d batch=%+v err=%v", verificationCalls, batch, err)
+	}
+	allCalls := 0
+	allFields, err := d.getDownloadedSpotifyScalarCandidateBatchMode(map[string]string{"score-cost-song": fingerprint}, time.Now(), false, func(ctx context.Context, path string) (downloadFileRevision, error) {
+		allCalls++
+		return readDownloadRevision(ctx, path)
+	})
+	if err != nil || allCalls != 1 || len(allFields["score-cost-song"]) != 3 {
+		t.Fatalf("DJ all-scalar import should verify and retain scoreless BPM/key: calls=%d fields=%+v err=%v", allCalls, allFields, err)
+	}
+	const epoch = "score-cost-runtime-epoch"
+	if _, err := d.ReserveSpotifyMetadataRuntime(epoch); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ConfirmSpotifyMetadataOwner(epoch, "oauth", "score-cost-account", owner); err != nil {
+		t.Fatal(err)
+	}
+	fence := SpotifyMetadataReadFence{Epoch: epoch, ContextKey: owner, Provider: "oauth"}
+	runtimeBatch, err := d.GetSpotifyScalarCandidateBatchForRuntimeAll(fence, map[string]string{"score-cost-song": fingerprint}, time.Now())
+	if err != nil {
+		t.Fatalf("runtime all-scalar batch: %v", err)
+	}
+	var durableBPM, durableKey, scoreGatedBPM bool
+	for _, field := range runtimeBatch["score-cost-song"] {
+		durableBPM = durableBPM || (field.Key == "tempo_bpm" && field.DurableImport)
+		durableKey = durableKey || (field.Key == "key_mode" && field.DurableImport)
+	}
+	if !durableBPM || !durableKey {
+		t.Fatalf("runtime all-scalar batch omitted durable BPM/key: %+v", runtimeBatch)
+	}
+	scoreBatch, err := d.GetSpotifyScalarCandidateBatchForRuntime(fence, map[string]string{"score-cost-song": fingerprint}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range scoreBatch["score-cost-song"] {
+		if field.Key == "tempo_bpm" && field.DurableImport {
+			scoreGatedBPM = true
+		}
+	}
+	if scoreGatedBPM {
+		t.Fatalf("score-only runtime batch admitted scoreless durable BPM: %+v", scoreBatch)
+	}
+	pendingEpoch := "score-cost-pending-epoch"
+	if retained, err := d.ReserveSpotifyMetadataRuntime(pendingEpoch); err != nil || retained == nil || retained.ContextKey != owner {
+		t.Fatalf("reserve pending owner: retained=%+v err=%v", retained, err)
+	}
+	pendingFence := SpotifyMetadataReadFence{Epoch: pendingEpoch, ContextKey: owner, Provider: "oauth", Pending: true}
+	pending, err := d.GetSpotifyScalarCandidateBatchForRuntimeAll(pendingFence, map[string]string{"score-cost-song": fingerprint}, time.Now())
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("pending owner exposed effective durable fields: %+v err=%v", pending, err)
+	}
+	fields, _, recording, _, err := d.GetDownloadedSpotifyScalarCandidates(t.Context(), "score-cost-song", fingerprint)
+	if err != nil || recording != referenceID || len(fields) != 3 {
+		t.Fatalf("detail reader should retain non-score fields: fields=%+v recording=%s err=%v", fields, recording, err)
+	}
+}
+
 func TestDownloadAudioOversizedStatusDoesNotFailCompletion(t *testing.T) {
 	d, path := evidenceFixture(t)
 	if err := d.SetSetting("spotify_metadata_active_context", "owner"); err != nil {
@@ -375,5 +460,10 @@ func TestDownloadAudioOversizedStatusDoesNotFailCompletion(t *testing.T) {
 	}
 	if err := d.conn.QueryRow(`SELECT COUNT(*) FROM spotify_download_audio_imports`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("oversized imported %d %v", count, err)
+	}
+	fingerprint := scanEvidence(t, d, path, "oversized-song")
+	fields, attempts, recording, status, err := d.GetDownloadedSpotifyScalarCandidates(t.Context(), "oversized-song", fingerprint)
+	if err != nil || recording != referenceID || status == nil || status.State != "oversized" || len(fields) != 0 || len(attempts) != 0 {
+		t.Fatalf("status-only oversized read: fields=%d attempts=%d recording=%s status=%+v err=%v", len(fields), len(attempts), recording, status, err)
 	}
 }

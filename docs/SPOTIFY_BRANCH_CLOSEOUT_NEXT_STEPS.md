@@ -1,7 +1,7 @@
 # Spotify metadata branch closeout plan
 
 **Branch:** `feature/spotify-metadata-foundation`  
-**Branch state at handoff:** one commit ahead of `origin/feature/spotify-metadata-foundation`, with substantial uncommitted work across backend, frontend, tests, and the implementation plan.  
+**Branch state at 2026-10-08 review:** HEAD matched `origin/feature/spotify-metadata-foundation` before closeout work; the current worktree contains uncommitted changes recorded through Milestone 198. Recheck branch and worktree before any release action.
 **Acceptance status:** keep at **2/12 checked, 10/12 partial** until the remaining broad criteria below are met.  
 **Last reviewed:** 2026-10-08.
 
@@ -35,7 +35,7 @@ Active analysis restart continuation: running/interrupted analysis jobs now reco
 
 Locked-grid continuation: shared resolution now requires current source identity, expected representation/encoding/provenance, a valid bounded payload and usable beat positions. GET returns empty timing plus explicit unavailable reason while preserving lock intent; cue generation uses no grid when resolution fails. Manual grid save/reset require the loaded source via If-Match and atomically update artifact, grid lock, optional source-bound BPM and capability state, preserving unrelated overrides. Failed transactions and stale preconditions preserve prior data. Preparation preserves locked invalid artifacts, records unavailable reasons instead of labeling skipped generated output available, and settles the status without an audio decode. Tests cover missing/corrupt/stale/unbound locks, source-replacement full preparation, no repeated repair, late transaction rollback, stale edit/reset rejection, and cue alignment abstention. Deck state retains unresolved locks, disables phase sync, and exposes reset when the source is available; late UI results cannot overwrite a changed loaded source. Mounted editor and API-header tests pass. Full DB/track/API passed (12.740s/12.815s/54.976s); focused grid race checks passed (4.364s/13.232s/12.685s), with full source-replacement/locked-grid race checks at 8.713s. Full npm check passed: 97 files/394 tests, type/boundary/palette/raw checks and production build. Existing Browserslist, mixed import and large-chunk warnings remain. Formatting/whitespace checks pass.
 
-Next implementation slice: qualify requested-origin UI flows and full playlist/library catalog payload retention, then bounded orphan/retention policy and remaining catalog inventory qualification. Scalar/manual persistence, source-qualified consumer resolution, legacy energy parity and mounted metadata refresh now have local regression evidence (milestones 164–171); offline catalog reading and explicit completion outcomes follow in milestones 172–173. These do not complete the broad acceptance gates. Full backfill/lifecycle, scanner/watch extraction, live waveform/route contracts and representative corpus/platform/performance qualification remain open. Detail/energy GETs read existing local artifacts. Approved live fixtures and a representative corpus have been requested; their availability is not assumed.
+Current closeout direction: analysis detail, BPM, the DJ library list and Mix Next transition recommendations retain local/manual behavior when optional Spotify scalar reads fail; the DJ BPM editor reloads after session-generation changes, and the deck overview offers retry after a transient local-band failure (milestones 196–198). The original user-reported runtime error still needs a native reproduction with response/status or stack trace. Continue repository work where behavior is specified; do not invent retention/admission limits for residual private-cache families or list-time full-file hashing tradeoffs. Live-provider fixtures, a reviewed labeled corpus, supported-platform/runtime measurements and long-track accessibility/performance evidence remain open.
 
 ## Historical pause point and evidence
 
@@ -68,26 +68,29 @@ Do not reset or overwrite these files; the user may have edited some since the e
 
 Current runtime change of special importance: durable imported scores are intended for offline/confirmed-owner list and Mix Next use; a pending owner must not expose private or durable scores. Explicit manual confirmation may clear suppression for that exact current source revision. Re-test owner/source/unlink/relink cases before treating these paths as complete.
 
+## Status reconciliation — 2026-10-08
+
+The ordered score-consumer checks 86–90, repeated-playlist validation check 98, migration/reopen/retention checks 104–106, and imported-attempt UI check 107 are now marked complete against milestones 172–192. Their detailed DB/API/browser/migration evidence is in the milestone history below. The broad acceptance tally stays 2/12 checked, 10/12 partial; these local sub-checks do not satisfy whole metadata, runtime, catalog, platform, provider, or DSP gates.
 ## Ordered closeout work
 
 ### 1. Stabilize and reconcile branch state
 
-- [ ] Inspect `git status`, current branch, and the diff; identify any user edits since the last review.
-- [ ] Read the latest changes to the high-risk files listed above before touching them.
-- [ ] Review the durable score summary implementation for query bounds, cancellation, source revision checks, verified recording-link/suppression checks, and per-field freshness/last-good precedence.
-- [ ] Fix any duplicate, malformed, or stale status text in the implementation plan. Keep the plan's acceptance tally at 2/12 checked unless every specific criterion of another entire gate is evidenced.
-- [ ] Ensure no secrets, live account payloads, build outputs, scratch probes, or environment artifacts are staged.
-- [ ] Run `git diff --check` and `gofmt -d` on changed Go files; do not normalize line endings just to silence Git's LF/CRLF notices.
+- [x] Inspect `git status`, current branch, and the diff; identify any user edits since the last review.
+- [x] Read the latest changes to the high-risk files listed above before touching them.
+- [x] Review the durable score summary implementation for query bounds, cancellation, source revision checks, verified recording-link/suppression checks, and per-field freshness/last-good precedence.
+- [x] Fix any duplicate, malformed, or stale status text in the implementation plan. Keep the plan's acceptance tally at 2/12 checked unless every specific criterion of another entire gate is evidenced.
+- [x] Ensure no secrets, live account payloads, build outputs, scratch probes, or environment artifacts are staged.
+- [x] Run `git diff --check` and `gofmt -d` on changed Go files; do not normalize line endings just to silence Git's LF/CRLF notices.
 
 ### 2. Finish durable provider-score consumer coverage
 
-The new summary projection is the newest slice and deserves an end-to-end focused test pass before broadening work.
+Milestones 172–192 provide the focused import, endpoint, offline, restart, unlink/relink, and rendered-flow evidence for checks 86–90, including a regression proving non-score-only durable imports skip list-time file hashing while detail fields remain available.
 
-- [ ] Add/confirm DB tests for private score → durable download import → queue cleanup/account retirement → offline summary read, including zero, freshness, endpoint tie-break, stale observation and malformed/out-of-range values.
-- [ ] Verify explicit unlink removes durable score visibility; explicit manual confirmation of the exact current source restores it; source replacement, same-size/mtime byte replacement, mismatch or suppression does not.
-- [ ] Verify pending-owner list and Mix Next reads expose no private or durable score evidence while retaining local behavior; after owner confirmation, eligible private/durable candidates follow the declared per-field freshness rule.
-- [ ] Exercise actual `GET /v2/analysis` list response and Mix Next recommendation filtering using an imported score, not only helper/DB methods. Verify `providerScoresUnverified`, zero filtering, expiry, source replacement and no provider I/O.
-- [ ] Confirm repository/index changes upgrade an existing database without data loss and stay within the intended bounded list-request cost. Pay attention to per-song file hashing and avoid a hash pass for songs with no imported score.
+- [x] Add/confirm DB tests for private score → durable download import → queue cleanup/account retirement → offline summary read, including zero, freshness, endpoint tie-break, stale observation and malformed/out-of-range values.
+- [x] Verify explicit unlink removes durable score visibility; explicit manual confirmation of the exact current source restores it; source replacement, same-size/mtime byte replacement, mismatch or suppression does not.
+- [x] Verify pending-owner list and Mix Next reads expose no private or durable score evidence while retaining local behavior; after owner confirmation, eligible private/durable candidates follow the declared per-field freshness rule.
+- [x] Exercise actual `GET /v2/analysis` list response and Mix Next recommendation filtering using an imported score, not only helper/DB methods. Verify `providerScoresUnverified`, zero filtering, expiry, source replacement and no provider I/O.
+- [x] Confirm repository/index changes upgrade an existing database without data loss and stay within the intended bounded list-request cost. The release-schema migration fixture preserves populated data/indexes; list-batch regression proves zero revision verification for non-score-only imports and one verification for a score-bearing song while retaining all its scalar fields.
 - [x] Decide and document precisely whether expiry freshness wins over recency across private and durable copies, then make song detail/list/Mix Next selection consistent.
 
 ### 3. Close the playlist browser-to-backend evidence gap
@@ -95,22 +98,22 @@ The new summary projection is the newest slice and deserves an end-to-end focuse
 - [x] Extend the existing synthetic Mix Next browser audit so a saved playlist is read back and asserted with exact normalized name and reference-first ordered IDs; assert mismatch/missing readback keeps the draft and communicates failure.
 - [x] Add a mounted save-form test for create API success, create rejection, GET readback success/mismatch/failure, account generation change during readback, and no false-success/selection clearing.
 - [x] Where the repository's browser harness permits, run the mounted/routed frontend against a persistent local backend for create → GET persistence. If impossible, record the exact fixture boundary; do not label component or mocked transport evidence as routed E2E.
-- [ ] Retain intentional repeated song IDs; explicitly test accepted bounds, invalid body/name/track IDs, update-not-create behavior, and no mutation after rejected update.
+- [x] Retain intentional repeated song IDs; explicitly test accepted bounds, invalid body/name/track IDs, update-not-create behavior, and no mutation after rejected update.
 - [ ] Keep ranking quality, transition quality, optional-metadata saved evidence, and real corpus evaluation separate from persistence correctness.
 
 ### 4. Establish migrations and restart behavior
 
 - [x] Add or update a fixture representing the previous released SQLite schema; open it with the new app and verify additive migrations/indexes, foreign keys, local analysis, manual locks, cues, recordings, and download evidence survive.
-- [ ] Reopen after completed download and after queue cleanup; verify scalar/attempt imports and source-bound score summaries remain available offline.
-- [ ] Cover conflicting completion evidence, import size limits, incomplete/expired resource cases, and rebind/replacement cases.
-- [ ] Verify cleanup/retention behavior for private owner rows versus final-file imports; private retirement must not delete valid durable imports, and invalid/retired identities must not leak into user-visible projections.
-- [ ] Review whether score fields imported for completed downloads need durable attempt state and error/oversized status distinctions consistently exposed to UI.
+- [x] Reopen after completed download and after queue cleanup; verify scalar/attempt imports and source-bound score summaries remain available offline.
+- [x] Cover conflicting completion evidence, import size limits, incomplete/expired resource cases, and rebind/replacement cases.
+- [x] Verify cleanup/retention behavior for private owner rows versus final-file imports; private retirement must not delete valid durable imports, and invalid/retired identities must not leak into user-visible projections.
+- [x] Review whether score fields imported for completed downloads need durable attempt state and error/oversized status distinctions consistently exposed to UI. Source/revision-bound `available`, `not_available`, and `oversized` status now appears separately from scalar fields; status-only API/rendered tests, pending-owner suppression, unlink/relink, and same-size/mtime replacement checks pass. Attempt details remain available through the existing detail reader.
 
 ### 5. Finish the broad metadata and local fallback gates (or explicitly scope them out)
 
 Do not attempt to mark the ten broad gates complete by stitching together partial tests. For each gate in section 15 of the implementation plan:
 
-- [ ] List exact unmet criteria and assign implementation, evidence, or explicit scope-deferral decisions.
+- [x] List exact unmet criteria and assign implementation/evidence owners in the “Remaining gate assignments” section below. No scope deferral is approved.
 - [ ] Per-field precedence: integrate current manual/local/provider/durable observations into a documented resolver across detail, list, and mixing consumers; protect local observations and manual locks.
 - [ ] Catalog completeness: finish related entity graph, requested playlist/library facts, unknown/tag presentation, bounded retention/orphan cleanup, and field inventory evidence.
 - [ ] Local fallback: qualify or explicitly show unsupported/low-confidence for meter/downbeats/subdivisions, segments/chroma/timbre, and perceptual scores; do not fabricate values.
@@ -120,29 +123,48 @@ Do not attempt to mark the ten broad gates complete by stitching together partia
 - [ ] Performance/platform: record one-track and 105-track measurements for fresh/warm/offline conditions, memory/artifact/API sizes, decoder count, and supported Windows build/runtime requirements.
 - [ ] Live route contracts are opt-in, account-safe, sanitized and non-committing; fixtures do not prove provider availability.
 
+
+#### Remaining gate assignments — 2026-10-08
+
+No scope reduction is approved. For each partial gate, Codex owns local implementation and regression coverage; the evidence owner named below must provide or run evidence outside what repository fixtures can establish.
+
+| Canonical partial gate | Remaining work and evidence required | Evidence owner |
+| --- | --- | --- |
+| Complete metadata capture | Finish pending capture/staging, related-entity graph closure, import lifecycle and restart/retention behavior; inventory real supported resource responses, including missing/partial/error outcomes. | Codex for code/tests; user supplies sanitized approved live-response fixtures for provider inventory. |
+| Original units and provenance for mode, loudness, meter and duration | Complete effective resolution for every registered field across detail/list/mixing; preserve original units, source, freshness/last-good and manual/local alternatives with consumer-parity regressions. | Codex for resolver and local fixtures; user-approved provider fixtures for contract confirmation. |
+| Spotify three-band waveform | Verify provider band scaling/meaning and source-timeline alignment; qualify long tracks, loaded layouts, accessibility and rendering performance. | User supplies approved provider fixtures; Codex adds contract tests/UI fixes; build owner runs platform/performance qualification. |
+| Every audio-derived local fallback | Qualify BPM/key/energy/loudness/structure and establish honest unsupported/low-confidence behavior for measured meter/downbeats/subdivisions, segments/chroma/timbre and perceptual scores using representative labeled audio. | Codex for estimators/UI/tests; user supplies lawful reviewed corpus; independent held-out evaluator owns accuracy decision. |
+| Provider-only catalog facts | Complete requested playlist/library lineage, related-entity closure/freshness/deduplication, field inventory, tagged/unknown presentation and bounded orphan/retention review. | Codex for implementation and fixture tests; user supplies approved route fixtures where live contracts are needed. |
+| Spotify-first precedence and manual locks | Detail/list/Mix Next/BPM/key routes and DJ smart-playlist sequencing now use shared source-aware resolution; private DJ tempo is fenced through publication and scoreless durable fields are admitted only after exact-file verification. Decide whether scoreless durable BPM/key can be exposed in cost-bounded library lists without full-file hashing; retain local/manual alternatives and last-good rules. | Codex for safe API/DB design and tests; owner reviews any list latency/freshness tradeoff using fixtures, with no scope reduction. |
+| Energy, loudness, structure and DJ cue preparation | Complete corpus qualification and one-/105-track fresh/warm/offline preparation measurements; recheck cancellation, retries, claims and duplicate decode/provider-storm limits in supported runtimes. | Codex for instrumentation/regressions; user supplies reviewed corpus; build owner measures supported Windows runtime. |
+| Source/account changes, partial responses, 404s and cooldowns | Complete connected/pending/confirmed/rejected/offline state coverage across detail, list, waveform, catalog and playlist; validate late-response fencing and restart-persistent retry settlement. | Codex for routed/session tests; user supplies account-safe fixtures; build owner runs runtime lifecycle checks. |
+| Missing-capability scans and backfill | Finish broad-library capability rollout, corrupt/source-replacement discovery, cancellation/retry and bounded work measurements; prove no duplicate decoding during concurrent scan/lazy/preparation paths. | Codex for implementation/DB/API tests; build owner runs 105-track measurements. |
+| Migration, parser, orchestration, API compatibility, UI and performance | Add Windows/macOS/Linux build/runtime evidence, live route-contract checks, long-track accessibility, one-/105-track latency/memory/artifact/API-size/decoder measurements and final end-to-end review. | Codex for local fixes/tests; build owner runs platforms/performance; user approves live fixtures and any external-account route. |
+
+The exact original acceptance language remains in section 15 of the implementation plan. These assignments identify who must perform the next work; they do not mark any broad gate complete.
 If these are intentionally too broad for this branch, make a deliberate narrower branch scope, update objective/acceptance language, and get the branch owner to approve the scope. Keep the omitted gates visibly open rather than silently weakening their criteria.
 
 ### 6. Run final validation and review
 
 From the repository root:
 
-- [ ] `npm run check:palette`
-- [ ] `npm run check:raw-colors`
-- [ ] `npm run typecheck`
-- [ ] `npm test`
-- [ ] `npm run build`
-- [ ] From `backend`: `go test ./internal/db -count=1`
-- [ ] From `backend`: `go test ./internal/api -count=1`
-- [ ] Run relevant focused race checks if changed concurrency/owner fences justify it; on Windows follow `docs`/repo guidance for `CGO_ENABLED=1`, `CC=C:/msys64/mingw64/bin/gcc.exe`, and `PATH`.
-- [ ] `git diff --check`, `gofmt -d`, and a final diff review; confirm no unrelated edits were introduced.
-- [ ] Record exact outcomes and existing non-blocking build warnings in both this handoff and the implementation plan.
+- [x] `npm run check:palette` (passed within the final `npm run check`).
+- [x] `npm run check:raw-colors` (passed within the final `npm run check`).
+- [x] `npm run typecheck` (passed within the final `npm run check`).
+- [x] `npm test` (passed within the final `npm run check`).
+- [x] `npm run build` (passed; existing Browserslist, mixed-import, and large-chunk warnings remain).
+- [x] From `backend`: `go test ./internal/db -count=1` (covered by full `go test ./...`).
+- [x] From `backend`: `go test ./internal/api -count=1` (covered by full `go test ./...`).
+- [ ] Run relevant focused race checks if changed concurrency/owner fences justify it; not available here because CGO is disabled and GCC is absent. Standard full Go and focused functional tests pass.
+- [x] `git diff --check`, `gofmt -d`, and a final diff review; confirm no unrelated edits were introduced.
+- [x] Record exact outcomes and existing non-blocking build warnings in both this handoff and the implementation plan.
 
 ### 7. Prepare branch closure
 
-- [ ] Confirm with the branch owner whether the ten partial acceptance gates must truly be completed on this branch or whether an approved scope reduction is acceptable. User asked to close all ten previously; no scope reduction is assumed here.
-- [ ] Review every modified file and ensure tests/documentation match the code actually present.
-- [ ] Commit only when requested/authorized; current work is uncommitted and should remain so until approval.
-- [ ] Push the branch only when requested; it is currently one commit ahead plus uncommitted changes.
+- [x] Branch-owner direction: continue until the remaining branch tasks are closed. No scope reduction is authorized; all ten partial gates remain required.
+- [x] Review every modified file and ensure tests/documentation match the code actually present.
+- [ ] Commit only when requested/authorized; current work remains uncommitted.
+- [ ] Push the branch only when requested; HEAD still matches `origin/feature/spotify-metadata-foundation`, with uncommitted worktree changes.
 - [ ] Create/update the pull request, summarize verified behavior and known warnings, and state explicitly that live/corpus/platform/performance/routed E2E evidence is missing wherever it remains missing.
 - [ ] Do not merge/deploy until required checks pass and the branch owner approves.
 
@@ -154,11 +176,11 @@ The two checked gates are retained provider score facts (verified in fixtures/st
 
 ## Recommended next session entry point
 
-1. Read this file and section 15 plus milestones 140–148 in the implementation plan.
+1. Read this file and canonical section 15; inspect the latest closeout milestones, including 196–198.
 2. Reinspect the current workspace diff before editing; the branch may have received user changes after this handoff.
-3. Finish the durable score consumer tests and fix any failures before starting another broad feature.
-4. Then close the playlist browser/backend persistence evidence gap.
-5. Re-run full validation and decide branch scope with the owner. Preserve the 2/12 tally until a true gate is closed.
+3. Continue the open, specified repository-local checks in the gate assignments; durable score-consumer and playlist persistence subchecks are already recorded complete.
+4. Do not implement residual private-cache expiry/admission rules or list-time full-file hashing until the owner supplies the missing policy decisions.
+5. Reproduce the intermittent DJ metadata issue on a native build and capture its response/status or stack trace. A synthetic fence regression does not establish the original runtime cause. Re-run full validation and preserve 2/12 until a whole gate is proven.
 
 Shared provider scalar resolution continuation (milestone 156): provider detail now delegates registered metric/unit validation and freshness/recency/detailed-endpoint selection to the database layer. Private and durable score summaries share that validation and ordering. Zero remains a valid score; whitespace null scores, null key components, unknown field semantics and incompatible units are rejected. Stale last-good inspection remains separate from effective mixing eligibility; account/source/file admission fences are unchanged. New tests cover malformed/null/unknown candidates, private-versus-durable freshness, zero and order-independent detailed endpoint ties. Focused DB/API tests passed (0.265s/0.779s), full DB/API passed (9.878s/56.313s), and focused final-source race tests passed (4.339s/9.279s). Formatting and whitespace checks pass. This consolidates provider resolution only: generic manual/local field storage and full effective resolution remain open, along with catalog graph/retention and the other broad acceptance gates. Acceptance remains 2/12 checked and 10/12 partial; the branch is not closed out.
 
@@ -456,3 +478,65 @@ Initial rendered/SQLite audit passed (7.440s package time); initial race audit p
 Original broad acceptance remains 2/12 checked, 10/12 partial. The rendered saved-library action gap is narrowed by this isolated route/staging proof; real-account/provider/corpus/native/DSP/performance/accessibility gates are not inferred from it. Global cache quotas were a later operational follow-up, not an original acceptance requirement, and should not displace those gates. The intermittent DJ error remains unconfirmed.
 
 Milestone 190 final validation: complete frontend check passed 107 files / 469 tests, palette/raw-color checks, type/boundary checks and production build (17.02s), log output/spotify-library-ui-check.log. Final opt-in browser/API/SQLite audit passed under the race detector (12.070s), log output/spotify-library-browser-ui-final.log; includes keyboard album-card activation, positive-history control, independent stale-session/wrong-entity omission, exact active-context/revision persistence and narrow header geometry. Final 480x900 screenshots were visually reviewed: both headers/metadata fit and album actions wrap. Desktop captures are 1440x1000. Separate debug executable rebuilt from final assets (13.731s), log output/spotify-library-ui-desktop.log. Formatting and whitespace checks passed. Existing preview server was reused without stopping it; the test-owned HTTP server and Chromium closed. No normal executable/user process or library was replaced.
+
+### Milestone 191 — retry transient first-load DJ metadata and Local Bands reads
+
+The reported Local Bands/BPM/metadata error still has no captured exception or native reproduction, so its root cause remains unconfirmed. Current code review found that these first-load paths made one request while deck analysis already retries one transient failure. Added a shared, bounded retry for analysis/BPM metadata and Local Three Band reads: one retry after 250 ms for fetch `TypeError` or HTTP 5xx only. Caller ownership/generation checks gate retries and existing post-read fingerprint checks remain in place. Abort, 404, 412, other HTTP failures, malformed JSON, and invalid waveform payloads are not retried; expected 404/412 waveform fallback remains unchanged. This improves recovery when the first request races backend readiness, but does not establish that it fixes the user’s thrown UI error.
+
+The runtime-source change touches eight files: the two audio-read services, `SongAudioMetadata`, `LocalBandPreview`, and the DJ BPM, key, overview, and Canvas waveform components. The existing LocalBandPreview test expectation now includes the ownership callback argument. Final `npm run check` passed the palette/raw-color guards, TypeScript/boundary checks, all 107 files / 469 tests, and the production build (21.24s). Existing build warnings remain for stale Browserslist data, mixed static/dynamic imports, and a large application chunk. `git diff --check` is clean. Native runtime reproduction remains needed; the original exception is still unconfirmed.
+
+Current Phase 0 held-out evidence is a no-go. A fresh default analyzer run over the existing r5 held-out split reported strict BPM 41/54 (75.93%), half/double errors 3.70%, exact key 38/54 (70.37%), Camelot-compatible key 45/54 (83.33%), and 31.91× real-time throughput. The run also reported one wrong-checksum Ogg source. Its transient output was not archived in the repository. The corpus has 176 independent groups (122 tuning, 54 held out), leaving 24 total and 13 held-out recordings to the minimum; required genre coverage is incomplete, there is no held-out stable-electronic subset, and no real expected-unknown fixtures are labeled. BPM, compatible-key, corpus, stable-electronic, refusal, calibration, and determinism gates remain open. Do not tune against this held-out split. Acceptance remains 2/12 checked, 10/12 partial.
+### Milestone 192 — close durable import status and bound list-time hashing
+
+Completed-download import outcomes are now returned as source/revision-bound status independently of optional scalar fields. The DJ metadata panel renders `available`, `not_available`, and `oversized` explanations without implying that a retained status guarantees field values. Pending Spotify ownership suppresses durable status. API/DB tests cover status-only responses, unlink/relink, pending ownership and a same-size/mtime byte replacement; the mounted metadata test covers all three states.
+
+The durable list batch now checks for at least one valid Spotify score candidate before reading the local file revision. BPM/key-only imports therefore do not trigger a full SHA-256 pass; score-bearing tracks still return all valid durable scalar fields. The test-local verifier seam proves zero checks for non-score-only rows and exactly one for a score-bearing fixture; the detail reader still returns the non-score fields. The single-song detail path is unchanged. Existing released-schema migration coverage verifies additive schema/index upgrade and retained data.
+
+Final validation for this slice: full `go test ./...` passed (API 90.538s, DB 46.590s; all listed packages passed); the focused list-cost tests passed. The second complete `npm run check` passed frontend guards, types/boundaries, tests and production build (16.22s; existing Browserslist, mixed-import and large-chunk warnings remain). `git diff --check` passed before the final checklist edit and is rerun at closeout. No race-detector run was available for the Go changes in the CGO-disabled environment. The branch remains uncommitted, and the broad acceptance tally remains 2/12 checked, 10/12 partial.
+### Milestone 193 — use shared scalar precedence in analysis and Mix Next responses
+
+Analysis detail and library-list compatibility BPM/key fields now project the selected values from `ResolveAnalysisScalarFields`; an unknown/stale-only selection clears legacy compatibility values instead of leaving a value from the old projection. Mix Next reads the already admitted private/durable candidate batch even without a Spotify-score filter, resolves BPM/key/energy through the same resolver, and keeps account-owned reads and serialization inside the existing metadata fence. Dedicated BPM GET/edit/reset and key edit/reset responses use the same admitted candidates after their existing source preconditions and post-write revalidation.
+
+A real SQLite/API regression imports provider BPM/key/score data for a source with different local tempo/key, retires the private owner, then checks provider precedence on detail, list, Mix Next without a score filter, and BPM/key edit responses; BPM reset restores provider selection, and the manual key lock wins in the list. The focused regression passed. Full API suite passed (69.727s); full `go test ./...` passed, including API (74.082s; DB and other packages passed/cached). Frontend was unchanged in this slice. `gofmt -d` and `git diff --check` passed.
+
+The broad per-field precedence checkbox remains open. The older `/dj/smart-playlist` path still uses `ListEffectiveBPM`, which selects only manual/local tempo. Any provider integration there must keep owner fencing active through response publication; returning account-owned tempo from a short-lived read fence would be unsafe. Durable scoreless BPM/key imports also remain intentionally absent from list batches to preserve the no-hash cost bound, although song detail continues to show them. These exact boundaries need a safe design and route-level tests before the broad gate can be checked.
+
+### Milestone 194 — metadata remains available during first-use/session startup races
+
+The user reported that Local Bands, BPM and other song metadata failed on first interaction, then recovered after application reload. The exact HTTP status/error was unavailable, so the original event remains unconfirmed. Code-path review found two concrete shared failure windows: concurrent first `ListPlexTrackSources` calls could race unguarded Plex schema DDL/additive `ALTER`, and a provisional/retired Spotify metadata session could make optional account-scoped provider candidates fail an otherwise local analysis/BPM/key response.
+
+`EnsurePlexSchema` now serializes per-DB initialization, caches only success, and retries a failed setup on later calls, matching the repository's established schema-init pattern. Analysis detail and dedicated BPM/key response assembly now omit provider candidates only when Spotify authentication/session ownership is rejected; local/manual effective fields remain available. Request cancellation and non-authentication/database errors still fail normally. This keeps account-owned evidence behind the session fence while decoupling local panel reads from account restoration.
+
+Regressions cover twenty simultaneous first Plex-source reads against a fresh DB and analysis/BPM route behavior with an invalid Spotify runtime; both prove clean schema initialization/local BPM preservation and that provider candidates are absent during the invalid session. Focused DB/API tests passed after the final cache-on-success adjustment; full `go test ./...` passed before that last adjustment (API 89.756s, DB 44.471s, scanner 7.704s, semantic 9.397s). The focused DB/API regressions passed again afterward. This narrows likely startup causes but is not a native reproduction of the user's original event. The older smart-playlist DJ scoring path still uses local/manual-only BPM; provider precedence there remains open because it needs ownership fenced through queue publication. Broad acceptance remains 2/12 checked, 10/12 partial.
+
+### Milestone 195 — shared provider tempo in the smart-playlist DJ sequencer
+
+The DJ-mode `/smart-playlist` path now uses the shared manual > fresh provider > current local BPM resolver for its scorer and phase summaries. It collects source fingerprints for the actual bounded candidate set, including songs without a `track_analysis` row. A separate all-scalar durable batch admits current downloaded BPM/key facts for DJ use while the existing Mix Next/library score path keeps its score-only full-file hash gate.
+
+Live private candidates are read under the captured metadata fence. The queue is assembled and audited after that short read lock is released; before JSON publication, private-tempo responses reacquire the runtime fence, require the same epoch/context/provider/pending state, and recheck candidate source fingerprints. If the session changes during audit, the handler returns 409 rather than publishing queue order derived from a retired account. If Spotify metadata is unavailable before candidate acquisition, DJ mode remains usable with local/manual tempo.
+
+The route regression uses a local SQLite library and an HTTP fixture that makes LLM calls fail deterministically. It proves provider tempo wins over a different local tempo in DJ phase statistics, retirement can proceed while the audit is blocked, stale-account results are rejected, and a subsequent retired-session request succeeds with local BPM only. DB tests cover manual > fresh provider > local, stale-provider fallback, scoreless durable BPM/key admission through the runtime all-scalar batch, preservation of the score-only gate, and suppression during pending-owner state. Full `go test ./...` passed (API 95.590s, DB 47.501s, scanner 10.820s, semantic 11.841s); after final recording-link revalidation, the full API suite passed again (82.565s), and the final full DB suite passed (28.279s). `gofmt` and `git diff --check` passed.
+
+The broad list/detail precedence gate remains partial: scoreless durable BPM/key stay excluded from cost-bounded library batches because verifying their bytes requires full-file revision hashing. Detail and DJ paths can admit them with per-source validation. Do not trust only size/mtime or the coarse library fingerprint: same-size/mtime byte replacement must remain excluded. Provider/corpus/native/platform/performance/accessibility gates and the full acceptance audit remain open; acceptance is still 2/12 checked, 10/12 partial.
+
+### Milestone 196 — keep local analysis available during optional provider-read failures
+
+The analysis detail and BPM routes now treat Spotify scalar reads as optional for local/manual response construction. Non-cancellation errors from that provider-candidate read are logged, omitted from the response, and do not turn an available local BPM into HTTP 500. Request cancellation and deadlines still stop response assembly; required local analysis, override, source and schema errors remain fatal. A DB-backed API regression replaces the active metadata fence and verifies both detail and BPM routes still return the current measured BPM without provider candidates.
+
+The DJ BPM editor now watches spotifySessionGeneration and refetches for the same loaded source when account/session ownership changes. Its mounted component regression verifies the displayed BPM updates on session generation change. Focused API regression passed; full API suite passed (68.582s); focused DJ BPM editor test passed (4 tests). Native reproduction of the user-reported intermittent failure remains outstanding, so this narrows a concrete failure path without claiming to establish the original event. Broad acceptance remains 2/12 checked, 10/12 partial.
+
+Local Bands overview and scrolling-lane consumers also share their in-flight metadata read only for identical song, source identity and Spotify session generation; source/session changes start a separate read, and settled responses are not cached. Focused coalescing/DJ tests passed. Final npm run check passed palette/raw-color guards, type/boundary checks, 107 files / 472 tests and the production build (19.56s; existing Browserslist, mixed-import and large-chunk warnings remain).
+
+### Milestone 197 — local-only Mix Next recommendations after optional score-read failures
+
+The /analysis/{songID}/recommendations transition route now treats provider scalar batch/fence acquisition failures as optional and assembles recommendations from local/manual evidence, matching the other consumers. Request cancellation still aborts; source-change checks and serialization inside an acquired metadata fence remain intact. An invalid-runtime regression verifies both unfiltered recommendations and Spotify-score-filtered recommendations (the latter return zero candidates without score evidence). The existing retirement-through-serialization regression also passes.
+
+Focused transition/offline tests and TestTransitionSpotifyScoreResponseSerializesBeforeAccountRetirement passed. Final go test ./internal/api -count=1 passed. The frontend was unchanged after the complete npm run check recorded in milestone 196. The user-reported intermittent UI error remains without a native reproduction or captured status/stack trace; this change closes a locally reproducible route inconsistency, not the diagnosis. Acceptance remains 2/12 checked, 10/12 partial.
+
+### Milestone 198 — protect DJ library list fallback and add local-band retry
+
+The GET /analysis library list now has a regression proving an invalid Spotify runtime still returns the current local BPM and manual energy value while omitting provider scalar/score evidence and unverified-score claims. Existing source and database boundaries remain fatal; this test exercises the optional session-fence fallback.
+
+The DJ deck overview now reports when its local metadata/band read fails, keeps the amplitude overview available, and offers an accessible Retry local bands button. Retrying advances the read generation; it does not claim or persist provider data. A mounted component regression verifies a transient local-band failure recovers after the action.
+
+Focused detail/BPM/list API regressions passed, followed by the full API suite (92.061s). The mounted overview suite passed (3 tests). Final npm run check passed palette/raw-color guards, TypeScript/boundary checks, 107 files / 473 tests, and production build (23.57s). Existing Browserslist, mixed-import and large-chunk warnings remain. These changes improve a locally supported recovery path; the user's original intermittent error still has no native response/status or stack trace. Broad acceptance remains 2/12 checked, 10/12 partial.

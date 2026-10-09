@@ -4,8 +4,10 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestTrackAnalysisSchemaPreservesLegacySongBPM(t *testing.T) {
@@ -223,6 +225,45 @@ func TestTrackAnalysisArtifactAndOverrideRepositories(t *testing.T) {
 	override, err := database.GetTrackAnalysisOverride("song")
 	if err != nil || override.BPM == nil || *override.BPM != bpm || override.KeyTonic == nil || *override.KeyTonic != tonic || !override.BPMLocked || !override.KeyLocked || !override.BeatgridLocked {
 		t.Fatalf("override = %#v, %v", override, err)
+	}
+}
+
+func TestListEffectiveBPMWithProviderUsesSharedPrecedence(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.SaveSong(&Song{ID: "song", Title: "Song", FilePath: filepath.Join(t.TempDir(), "song.wav")}); err != nil {
+		t.Fatal(err)
+	}
+	localBPM := 120.0
+	local := &LocalScalarObservation{SourceFingerprint: "current", AlgorithmVersion: "local-v1", MeasuredAt: time.Now().UnixMilli(), BPM: &localBPM}
+	if err := database.UpsertTrackAnalysis(TrackAnalysis{SongID: "song", Status: TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "local-v1", SourceFingerprint: "current", Local: local}); err != nil {
+		t.Fatal(err)
+	}
+	provider := SpotifyScalarField{Key: "tempo_bpm", Metric: "tempo", Units: "bpm", Value: json.RawMessage("125.4"), AdapterRevision: "provider-v1", RetrievedAt: time.Now()}
+	sources := map[string]string{"song": "current"}
+	providerFields := map[string][]SpotifyScalarField{"song": {provider}}
+	got, err := database.ListEffectiveBPMWithProvider(sources, providerFields)
+	if err != nil || got["song"] != 125 {
+		t.Fatalf("provider BPM = %v, err=%v; want rounded fresh provider tempo", got, err)
+	}
+	manualBPM := 131.0
+	if err := database.UpsertTrackAnalysisOverride(TrackAnalysisOverride{SongID: "song", BPM: &manualBPM, BPMLocked: true, BPMSourceFingerprint: "current"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = database.ListEffectiveBPMWithProvider(sources, providerFields)
+	if err != nil || got["song"] != 131 {
+		t.Fatalf("manual BPM did not win: %v, err=%v", got, err)
+	}
+	if err := database.UpsertTrackAnalysisOverride(TrackAnalysisOverride{SongID: "song", BPMSourceFingerprint: "current"}); err != nil {
+		t.Fatal(err)
+	}
+	provider.Stale = true
+	got, err = database.ListEffectiveBPMWithProvider(sources, map[string][]SpotifyScalarField{"song": {provider}})
+	if err != nil || got["song"] != 120 {
+		t.Fatalf("stale provider should fall back to current local BPM: %v, err=%v", got, err)
 	}
 }
 

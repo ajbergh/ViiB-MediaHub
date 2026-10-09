@@ -1,4 +1,4 @@
-import { reportAudioReadFailure } from '../services/audioReadDiagnostics';
+import { reportAudioReadFailure, withTransientReadRetry } from '../services/audioReadDiagnostics';
 import { SpotifyCatalogEvidence } from './SpotifyCatalogEvidence';
 import { useAudioMetadataRevision } from '../hooks/useAudioMetadataRevision';
 import { ManualAudioMetadata } from './ManualAudioMetadata';
@@ -47,7 +47,7 @@ export function SongAudioMetadata({ songId }: { songId: string }) {
     let active = true;
     const requestGeneration = metadataGeneration.current;
     setRefreshing(true);
-    void api.getTrackAnalysisFeature(songId).then(data => {
+    void withTransientReadRetry(() => api.getTrackAnalysisFeature(songId), () => active && requestGeneration === metadataGeneration.current).then(data => {
       if (active && requestGeneration === metadataGeneration.current) { setSnapshot({ songId, session, data }); setRefreshing(false); }
     }, error => { if (active && requestGeneration === metadataGeneration.current) { reportAudioReadFailure('audio_metadata', error); setSnapshot(previous => ({ songId, session, data: previous?.songId === songId && previous.session === session ? previous.data : undefined, error: true })); setRefreshing(false); } });
     return () => { active = false; };
@@ -136,6 +136,7 @@ export function SongAudioMetadata({ songId }: { songId: string }) {
     {data.sourceFingerprint && <ProviderResourceActions songId={songId} fingerprint={data.sourceFingerprint} session={session} onReload={() => setRevision(value => value + 1)} />}
     {provider ? <>
       {provider.unverified && <p>Retained Spotify observations · Account confirmation pending. Available for viewing only.</p>}
+      {provider.durableImportStatus && <p>Downloaded audio/scalar import: {provider.durableImportStatus.state === 'available' ? 'some provider evidence retained; scalar fields may be empty' : provider.durableImportStatus.state === 'oversized' ? 'too large to retain' : 'no eligible provider evidence at download time'} · checked {new Date(provider.durableImportStatus.checkedAt).toLocaleString()}</p>}
       {(provider.provenance === 'spotify_download_import' || provider.provenance === 'spotify_mixed_private_and_download_import') && <p>Downloaded Spotify observations · retained with the current file and available offline{provider.provenance === 'spotify_mixed_private_and_download_import' ? ' alongside current account cache' : ''}.</p>}
       <a href={`https://open.spotify.com/track/${provider.recordingId}`} target="_blank" rel="noopener noreferrer">Open Spotify recording</a>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{provider.selected.map(field => <ProviderField key={field.key} field={field} />)}</div>

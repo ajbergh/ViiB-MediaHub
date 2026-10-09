@@ -37,3 +37,25 @@ it('never lets malformed errors or logger failures break recovery', async () => 
  warn.mockImplementation(()=>{throw new Error('logger');});
  expect(()=>report('audio_metadata',new Error('failed'))).not.toThrow();
 });
+it('coalesces only matching in-flight metadata reads and releases them after settlement', async () => {
+ const { withSharedAudioMetadataRead: readShared } = await import('./audioReadDiagnostics');
+ let resolveFirst!: (value: { sourceFingerprint: string }) => void;
+ const read = vi.fn(() => new Promise<{ sourceFingerprint: string }>(resolve => { resolveFirst = resolve; }));
+ const ownerA = vi.fn(() => true);
+ const ownerB = vi.fn(() => true);
+ const first = readShared('["song","source-a",1]', read, ownerA);
+ const second = readShared('["song","source-a",1]', read, ownerB);
+ expect(read).toHaveBeenCalledTimes(1);
+ resolveFirst({ sourceFingerprint: 'source-a' });
+ await expect(Promise.all([first, second])).resolves.toEqual([{ sourceFingerprint: 'source-a' }, { sourceFingerprint: 'source-a' }]);
+
+ const otherSourceRead = vi.fn().mockResolvedValue({ sourceFingerprint: 'source-b' });
+ await expect(readShared('["song","source-b",1]', otherSourceRead)).resolves.toEqual({ sourceFingerprint: 'source-b' });
+ expect(otherSourceRead).toHaveBeenCalledTimes(1);
+ const otherSessionRead = vi.fn().mockResolvedValue({ sourceFingerprint: 'source-a' });
+ await expect(readShared('["song","source-a",2]', otherSessionRead)).resolves.toEqual({ sourceFingerprint: 'source-a' });
+ expect(otherSessionRead).toHaveBeenCalledTimes(1);
+ const afterSettlementRead = vi.fn().mockResolvedValue({ sourceFingerprint: 'source-a' });
+ await expect(readShared('["song","source-a",1]', afterSettlementRead)).resolves.toEqual({ sourceFingerprint: 'source-a' });
+ expect(afterSettlementRead).toHaveBeenCalledTimes(1);
+});

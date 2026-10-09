@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,8 @@ import (
 	analysiskey "github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/dj"
+	"github.com/ajbergh/viib-mediahub/internal/logger"
+	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -207,8 +210,14 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 	}
 	response := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID])
 	response.ProviderScalars, err = a.songProviderScalarsContext(r.Context(), songID, currentFingerprints[songID])
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+	if err != nil && !errors.Is(err, spotifyauth.ErrAuthenticationRequired) {
+		if r.Context().Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		logger.API("Optional Spotify scalar read failed for song %s; returning local/manual analysis: %v", songID, err)
+		response.ProviderScalars = nil
+	}
+	if r.Context().Err() != nil {
 		return
 	}
 	var admitted []db.SpotifyScalarField
@@ -216,6 +225,7 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 		admitted = response.ProviderScalars.Fields
 	}
 	response.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, override, currentFingerprints[songID], admitted)
+	applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
 	if response.SourceFingerprint != "" {
 		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
 	}
@@ -372,6 +382,7 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		for _, analysis := range analyses {
 			feature := trackAnalysisFeatureResponseWithCurrentSource(analysis, overrides[analysis.SongID], currentFingerprints[analysis.SongID])
 			feature.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, overrides[analysis.SongID], currentFingerprints[analysis.SongID], providerFields[analysis.SongID])
+			applyEffectiveScalarCompatibilityFields(&feature, feature.EffectiveFields)
 			feature.ProviderScores = scoreSummaries[analysis.SongID]
 			feature.ProviderScoresUnverified = scoresUnverified && len(feature.ProviderScores) > 0
 			feature.StructureAvailable = readyStructureBySongID[analysis.SongID]
@@ -588,6 +599,115 @@ func trackAnalysisFeatureResponseWithCurrentSource(analysis db.TrackAnalysis, ov
 	return response
 }
 
+func (a *API) trackAnalysisFeatureResponseWithProviderCandidates(ctx context.Context, songID string, analysis db.TrackAnalysis, override db.TrackAnalysisOverride, fingerprint string) (TrackAnalysisFeatureResponse, error) {
+	manualFields, err := a.db.GetTrackMetadataOverrides(songID)
+	if err != nil {
+		return TrackAnalysisFeatureResponse{}, err
+	}
+	override.Fields = manualFields
+	providerScalars, err := a.songProviderScalarsContext(ctx, songID, fingerprint)
+	if err != nil && !errors.Is(err, spotifyauth.ErrAuthenticationRequired) {
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return TrackAnalysisFeatureResponse{}, err
+		}
+		logger.API("Optional Spotify scalar read failed for song %s; returning local/manual analysis: %v", songID, err)
+		providerScalars = nil
+	}
+	if err := ctx.Err(); err != nil {
+		return TrackAnalysisFeatureResponse{}, err
+	}
+	var admitted []db.SpotifyScalarField
+	if providerScalars != nil && !providerScalars.Unverified {
+		admitted = providerScalars.Fields
+	}
+	response := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint)
+	response.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, override, fingerprint, admitted)
+	applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
+	return response, nil
+}
+
+func applyEffectiveScalarCompatibilityFields(response *TrackAnalysisFeatureResponse, effective []db.EffectiveScalar) {
+	if response == nil {
+		return
+	}
+	for _, field := range effective {
+		switch field.Key {
+		case "tempo_bpm":
+			response.BPM = nil
+			response.BPMConfidence = nil
+			response.BPMSource = db.EffectiveBPMUnknown
+			response.SyncAllowed = false
+			response.BPMAltCandidate = nil
+			response.TempoStability = nil
+			response.TempoKind = nil
+		case "key_mode":
+			response.Key = nil
+			response.CamelotKey = nil
+			response.OpenKey = nil
+			response.KeyTonic = nil
+			response.KeyMode = nil
+			response.KeyConfidence = nil
+			response.KeySource = db.EffectiveKeyUnknown
+		default:
+			continue
+		}
+		if field.Selected == nil {
+			continue
+		}
+		selected := field.Selected
+		switch field.Key {
+		case "tempo_bpm":
+			var value float64
+			if json.Unmarshal(selected.Value, &value) != nil {
+				continue
+			}
+			response.BPM = &value
+			response.BPMConfidence = selected.Confidence
+			response.BPMSource = compatibilityScalarSource(selected.Source)
+			response.SyncAllowed = selected.Source == "manual" || selected.Source == "local"
+			if selected.Source != "local" {
+				response.BPMAltCandidate = nil
+				response.TempoStability = nil
+				response.TempoKind = nil
+			}
+		case "key_mode":
+			var value struct {
+				Tonic int `json:"tonic"`
+				Mode  int `json:"mode"`
+			}
+			if json.Unmarshal(selected.Value, &value) != nil || value.Tonic < 0 || value.Tonic > 11 || (value.Mode != 0 && value.Mode != 1) {
+				continue
+			}
+			mode := "minor"
+			if value.Mode == 1 {
+				mode = "major"
+			}
+			response.KeyTonic = &value.Tonic
+			response.KeyMode = &mode
+			response.KeyConfidence = selected.Confidence
+			response.KeySource = compatibilityScalarSource(selected.Source)
+			keyName := analysiskey.FormatKey(value.Tonic, mode)
+			camelot := analysiskey.Camelot(value.Tonic, mode)
+			openKey := analysiskey.OpenKey(value.Tonic, mode)
+			response.Key = &keyName
+			response.CamelotKey = &camelot
+			response.OpenKey = &openKey
+		}
+	}
+}
+
+func compatibilityScalarSource(source string) string {
+	switch source {
+	case "manual":
+		return db.EffectiveBPMManual
+	case "local":
+		return db.EffectiveBPMMeasured
+	case "spotify_private", "spotify_download_import":
+		return db.EffectiveBPMSpotify
+	default:
+		return db.EffectiveBPMUnknown
+	}
+}
 func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, effectiveBPM db.EffectiveBPM, effectiveKey db.EffectiveKey) TrackAnalysisFeatureResponse {
 	response := TrackAnalysisFeatureResponse{
 		SongID:      analysis.SongID,
@@ -675,7 +795,14 @@ func (a *API) getTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, currentFingerprints[songID])
+	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, trackAnalysis, override, currentFingerprints[songID])
+	if err != nil {
+		if r.Context().Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
 	response.SourceFingerprint = currentFingerprints[songID]
 	if response.SourceFingerprint != "" {
 		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
@@ -731,7 +858,11 @@ func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, currentFingerprint)
+	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, trackAnalysis, override, currentFingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
 	response.SourceFingerprint = currentFingerprint
 	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
 	respondJSON(w, response)
@@ -776,7 +907,11 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, currentFingerprint)
+	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, trackAnalysis, override, currentFingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
 	response.SourceFingerprint = currentFingerprint
 	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
 	respondJSON(w, response)
@@ -892,8 +1027,13 @@ func (a *API) putTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, analysis, override, fingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
 	w.Header().Set("ETag", strconv.Quote(fingerprint))
-	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint))
+	respondJSON(w, response)
 }
 
 func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
@@ -933,8 +1073,13 @@ func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, analysis, override, fingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
 	w.Header().Set("ETag", strconv.Quote(fingerprint))
-	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint))
+	respondJSON(w, response)
 }
 
 func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
@@ -1217,10 +1362,6 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		override.Fields = fields
 		overrides[id] = override
 	}
-	metadataByID := make(map[string]features.TransitionMetadata, len(analysisByID))
-	for id, record := range analysisByID {
-		metadataByID[id] = resolvedTransitionMetadata(record, overrides[id], currentFingerprints[id])
-	}
 	stemStatuses := map[string]string{}
 	if filters.StemsAvailable != nil {
 		candidateIDs := make([]string, 0, len(artifacts))
@@ -1237,8 +1378,12 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	var providerScores map[string]map[string]db.SpotifyScoreSummary
-	assemble := func(providerScores map[string]map[string]db.SpotifyScoreSummary) (TransitionRecommendationsResponse, int, string) {
+	assemble := func(providerFields map[string][]db.SpotifyScalarField) (TransitionRecommendationsResponse, int, string) {
+		providerScores := db.SpotifyScoreSummariesFromFields(providerFields)
+		metadataByID := make(map[string]features.TransitionMetadata, len(analysisByID))
+		for id, record := range analysisByID {
+			metadataByID[id] = resolvedTransitionMetadata(record, overrides[id], currentFingerprints[id], providerFields[id])
+		}
 		assemblyStatus := http.StatusOK
 		assemblyMessage := ""
 		recommendations := make([]TransitionRecommendationResponse, 0, len(artifacts))
@@ -1285,7 +1430,7 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 				return TransitionRecommendationsResponse{}, http.StatusBadRequest, scoreErr.Error()
 			}
 			if filters.CamelotCompatible != nil && *filters.CamelotCompatible {
-				if !validTransitionKey(analysisByID[songID], overrides[songID], currentFingerprints[songID]) || !validTransitionKey(analysisByID[artifact.SongID], overrides[artifact.SongID], currentFingerprints[artifact.SongID]) || !transitionCamelotCompatible(score.Vector.CamelotRelation) {
+				if !validTransitionMetadataKey(metadataByID[songID]) || !validTransitionMetadataKey(metadataByID[artifact.SongID]) || !transitionCamelotCompatible(score.Vector.CamelotRelation) {
 					continue
 				}
 			}
@@ -1320,25 +1465,19 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		return TransitionRecommendationsResponse{SongID: songID, Intent: intent, AlgorithmVersion: features.TransitionAlgorithmVersion, Filters: filters, CandidatesBeforeFilters: candidatesBeforeFilters, CandidatesAfterFilters: candidatesAfterFilters, Recommendations: recommendations}, assemblyStatus, assemblyMessage
 	}
 
-	if filters.SpotifyScoreMetric == "" {
-		response, status, message := assemble(nil)
-		if status != http.StatusOK {
-			respondError(w, status, message)
-		} else {
-			respondJSON(w, response)
-		}
-		return
-	}
 	a.spotifyAuthMu.Lock()
 	runtime := a.spotifyAuth
 	a.spotifyAuthMu.Unlock()
 	if runtime == nil {
-		providerScores, err = a.db.GetDownloadedSpotifyScoreSummaries(currentFingerprints, time.Now())
+		providerFields, err := a.db.GetDownloadedSpotifyScalarCandidateBatch(currentFingerprints, time.Now())
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "metadata unavailable")
-			return
+			if r.Context().Err() != nil {
+				return
+			}
+			logger.API("Optional Spotify score read failed; returning local transition recommendations: %v", err)
+			providerFields = map[string][]db.SpotifyScalarField{}
 		}
-		response, status, message := assemble(providerScores)
+		response, status, message := assemble(providerFields)
 		if status != http.StatusOK {
 			respondError(w, status, message)
 		} else {
@@ -1351,13 +1490,14 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	responseStatus := http.StatusOK
 	responseMessage := ""
 	readErr := runtime.withMetadataRead(scoreCtx, func(fence db.SpotifyMetadataReadFence) error {
+		providerFields := map[string][]db.SpotifyScalarField{}
 		if !fence.Pending {
-			providerScores, err = a.db.GetSpotifyScoreSummariesForRuntime(fence, currentFingerprints, time.Now())
+			providerFields, err = a.db.GetSpotifyScalarCandidateBatchForRuntime(fence, currentFingerprints, time.Now())
 			if err != nil {
 				return err
 			}
 		}
-		response, responseStatus, responseMessage = assemble(providerScores)
+		response, responseStatus, responseMessage = assemble(providerFields)
 		// Retirement cancels the captured lifetime before waiting for this read
 		// fence. Reject a response assembled after that cancellation.
 		if err := scoreCtx.Err(); err != nil {
@@ -1377,7 +1517,13 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		if r.Context().Err() != nil {
 			return
 		}
-		respondError(w, http.StatusConflict, "Spotify session changed during recommendation assembly; refresh recommendations")
+		logger.API("Optional Spotify score read/fence failed; returning local transition recommendations: %v", readErr)
+		response, status, message := assemble(nil)
+		if status != http.StatusOK {
+			respondError(w, status, message)
+		} else {
+			respondJSON(w, response)
+		}
 	}
 }
 
@@ -1620,8 +1766,18 @@ func validTransitionKey(analysis db.TrackAnalysis, override db.TrackAnalysisOver
 	return *key.Mode == analysiskey.ModeMajor || *key.Mode == analysiskey.ModeMinor
 }
 
-func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string) features.TransitionMetadata {
+func validTransitionMetadataKey(metadata features.TransitionMetadata) bool {
+	return metadata.CamelotKey != nil && metadata.KeySource != db.EffectiveBPMUnknown
+}
+
+func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string, providerCandidates ...[]db.SpotifyScalarField) features.TransitionMetadata {
 	resolved := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprint)
+	var provider []db.SpotifyScalarField
+	if len(providerCandidates) > 0 {
+		provider = providerCandidates[0]
+	}
+	effective := db.ResolveAnalysisScalarFields(analysis, override, currentFingerprint, provider)
+	applyEffectiveScalarCompatibilityFields(&resolved, effective)
 	return features.TransitionMetadata{
 		BPM: resolved.BPM, BPMSource: resolved.BPMSource, BPMConfidence: resolved.BPMConfidence,
 		CamelotKey: resolved.CamelotKey, KeySource: resolved.KeySource, KeyConfidence: resolved.KeyConfidence,

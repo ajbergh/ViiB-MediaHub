@@ -11,10 +11,16 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
 const PlexCredentialsSettingKey = "plex_credentials"
+
+type plexSchemaResult struct{ err error }
+
+var plexSchemaMu sync.Mutex
+var plexSchemas sync.Map // map[*DB]plexSchemaResult
 
 // AIDJSource controls which catalog source may contribute tracks to an AI DJ
 // result. "all" deliberately includes only Plex sources that are currently
@@ -250,6 +256,11 @@ func (d *DB) GetAIDJLibrarySummary(ctx context.Context, requestedSource string) 
 // EnsurePlexSchema installs additive source metadata without changing the
 // existing songs schema. songs remains the single catalog used by all ViiB UI.
 func (d *DB) EnsurePlexSchema() error {
+	plexSchemaMu.Lock()
+	defer plexSchemaMu.Unlock()
+	if value, ok := plexSchemas.Load(d); ok {
+		return value.(plexSchemaResult).err
+	}
 	if err := d.EnsureLibrarySyncSchema(); err != nil {
 		return err
 	}
@@ -316,6 +327,7 @@ func (d *DB) EnsurePlexSchema() error {
 	if _, err := d.conn.Exec(`ALTER TABLE plex_tracks ADD COLUMN artist_artwork_key TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return fmt.Errorf("add Plex artist artwork column: %w", err)
 	}
+	plexSchemas.Store(d, plexSchemaResult{})
 	return nil
 }
 

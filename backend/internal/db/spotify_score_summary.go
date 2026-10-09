@@ -29,6 +29,16 @@ type importedSpotifyScoreCandidate struct {
 // One private read transaction for linked, current-source library score summaries.
 // No provider requests or waveform/detailed payloads are involved.
 func (d *DB) GetSpotifyScalarCandidateBatchForRuntime(fence SpotifyMetadataReadFence, sources map[string]string, now time.Time) (map[string][]SpotifyScalarField, error) {
+	return d.getSpotifyScalarCandidateBatchForRuntime(fence, sources, now, false)
+}
+
+// GetSpotifyScalarCandidateBatchForRuntimeAll includes scoreless durable fields;
+// use only for consumers that require scalar facts such as DJ tempo.
+func (d *DB) GetSpotifyScalarCandidateBatchForRuntimeAll(fence SpotifyMetadataReadFence, sources map[string]string, now time.Time) (map[string][]SpotifyScalarField, error) {
+	return d.getSpotifyScalarCandidateBatchForRuntime(fence, sources, now, true)
+}
+
+func (d *DB) getSpotifyScalarCandidateBatchForRuntime(fence SpotifyMetadataReadFence, sources map[string]string, now time.Time, includeScorelessImports bool) (map[string][]SpotifyScalarField, error) {
 	tx, err := d.conn.Begin()
 	if err != nil {
 		return nil, err
@@ -99,7 +109,12 @@ func (d *DB) GetSpotifyScalarCandidateBatchForRuntime(fence SpotifyMetadataReadF
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	durable, err := d.GetDownloadedSpotifyScalarCandidateBatch(sources, now)
+	var durable map[string][]SpotifyScalarField
+	if includeScorelessImports {
+		durable, err = d.GetDownloadedSpotifyScalarCandidateBatchAll(sources, now)
+	} else {
+		durable, err = d.GetDownloadedSpotifyScalarCandidateBatch(sources, now)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +156,20 @@ func (d *DB) GetDownloadedSpotifyScoreSummaries(sources map[string]string, now t
 }
 
 func (d *DB) GetDownloadedSpotifyScalarCandidateBatch(sources map[string]string, now time.Time) (map[string][]SpotifyScalarField, error) {
+	return d.getDownloadedSpotifyScalarCandidateBatchMode(sources, now, true, readDownloadRevision)
+}
+
+// GetDownloadedSpotifyScalarCandidateBatchAll includes valid scoreless BPM/key
+// facts for detail and DJ consumers; list score summaries keep the score gate.
+func (d *DB) GetDownloadedSpotifyScalarCandidateBatchAll(sources map[string]string, now time.Time) (map[string][]SpotifyScalarField, error) {
+	return d.getDownloadedSpotifyScalarCandidateBatchMode(sources, now, false, readDownloadRevision)
+}
+
+func (d *DB) getDownloadedSpotifyScalarCandidateBatch(sources map[string]string, now time.Time, verifyRevision func(context.Context, string) (downloadFileRevision, error)) (map[string][]SpotifyScalarField, error) {
+	return d.getDownloadedSpotifyScalarCandidateBatchMode(sources, now, true, verifyRevision)
+}
+
+func (d *DB) getDownloadedSpotifyScalarCandidateBatchMode(sources map[string]string, now time.Time, requireScore bool, verifyRevision func(context.Context, string) (downloadFileRevision, error)) (map[string][]SpotifyScalarField, error) {
 	result := map[string][]SpotifyScalarField{}
 	ids := make([]string, 0, len(sources))
 	for songID, fingerprint := range sources {
@@ -219,11 +248,21 @@ func (d *DB) GetDownloadedSpotifyScalarCandidateBatch(sources map[string]string,
 		if len(items) == 0 {
 			continue
 		}
+		hasValidScore := false
+		for _, item := range items {
+			if isSpotifyScoreField(item.field.Key) && validProviderScalarCandidate(item.field) {
+				hasValidScore = true
+				break
+			}
+		}
+		if requireScore && !hasValidScore {
+			continue
+		}
 		expected := items[0].revision
 		if info, err := os.Lstat(expected.path); err != nil || !info.Mode().IsRegular() || info.Size() != expected.size || info.ModTime().UnixNano() != expected.mtime || LocalSourceFingerprint(Song{FilePath: expected.path, FileHash: items[0].fileHash}, info) != sources[songID] {
 			continue
 		}
-		actual, err := readDownloadRevision(context.Background(), expected.path)
+		actual, err := verifyRevision(context.Background(), expected.path)
 		if err != nil || actual != expected {
 			continue
 		}

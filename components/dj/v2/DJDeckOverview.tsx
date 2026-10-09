@@ -1,9 +1,10 @@
-import { reportAudioReadFailure } from '../../../services/audioReadDiagnostics';
+import { reportAudioReadFailure, withSharedAudioMetadataRead } from '../../../services/audioReadDiagnostics';
 /** Draws a whole-track overview with position, loop, and cue markers. */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../services/api';
 import { loadLocalThreeBand, type LocalThreeBand } from '../../../services/localThreeBand';
+import { djTrackSourceIdentity } from '../../../lib/djBpmCorrection';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getHotCueMarkerStyle } from '../../../lib/hotCueMarkerStyle';
@@ -24,20 +25,25 @@ interface DJDeckOverviewProps {
 export const DJDeckOverview = React.memo(({ deck, visibleSeconds, localBands = false }: DJDeckOverviewProps) => {
   const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
   const duration = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).duration);
+  const spotifySessionGeneration = useStore(s => s.spotifySessionGeneration);
+  const trackSourceIdentity = djTrackSourceIdentity(track);
   const [bands, setBands] = useState<{ track: typeof track; data: LocalThreeBand }>();
+  const [bandsReadFailed, setBandsReadFailed] = useState(false);
+  const [retryGeneration, setRetryGeneration] = useState(0);
   useEffect(() => {
     let active = true;
     let readingMetadata = true;
     setBands(undefined);
+    setBandsReadFailed(false);
     if (localBands && track) void (async () => {
-      const metadata = await api.getTrackAnalysisFeature(track.id);
+      const metadata = await withSharedAudioMetadataRead(JSON.stringify([track.id, trackSourceIdentity, spotifySessionGeneration]), () => api.getTrackAnalysisFeature(track.id), () => active);
       if (!active || !metadata.sourceFingerprint) return;
       readingMetadata = false;
-      const data = await loadLocalThreeBand(track.id, metadata.sourceFingerprint);
+      const data = await loadLocalThreeBand(track.id, metadata.sourceFingerprint, () => active);
       if (active && data?.sourceFingerprint === metadata.sourceFingerprint) setBands({ track, data });
-    })().catch(error => { if (active) reportAudioReadFailure(readingMetadata ? 'audio_metadata' : 'local_bands', error); });
+    })().catch(error => { if (active) { setBandsReadFailed(true); reportAudioReadFailure(readingMetadata ? 'audio_metadata' : 'local_bands', error); } });
     return () => { active = false; };
-  }, [track, localBands]);
+  }, [track, localBands, trackSourceIdentity, spotifySessionGeneration, retryGeneration]);
   const ref = useRef<HTMLCanvasElement>(null);
   const { seek } = useDJAudioEngineActions();
 
@@ -163,6 +169,7 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds, localBands = f
   const eligible = bands && bands.track === track && duration > 0 && Math.abs(bands.data.overview.frames / bands.data.overview.sampleRate - duration) <= 0.1;
   return (<>
     {localBands && <span className='dj-label' role='status'>{eligible ? 'Local bands - Low / Mid / High - Common peak scale' : 'Amplitude overview - Local bands unavailable or duration differs'}</span>}
+    {localBands && bandsReadFailed && track && <span className='dj-label' role='status'>Local bands could not be loaded. Amplitude overview remains available. <button type='button' onClick={() => setRetryGeneration(value => value + 1)}>Retry local bands</button></span>}
     <canvas
       ref={ref}
       className='dj-deck-overview'

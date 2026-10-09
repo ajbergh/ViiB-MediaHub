@@ -262,6 +262,15 @@ func TestTransitionSpotifyScoreEndpointFiltersBeforeLimit(t *testing.T) {
 	if got := get(""); got.CandidatesAfterFilters != 4 {
 		t.Fatalf("account retirement disabled local mixing %#v", got)
 	}
+	runtime.invalid.Store(true)
+	invalidLocal := get("")
+	if invalidLocal.CandidatesAfterFilters != 4 || len(invalidLocal.Recommendations) != 1 || invalidLocal.Recommendations[0].FilterEvidence.SpotifyScore != nil {
+		t.Fatalf("invalid runtime did not retain local-only recommendations: %#v", invalidLocal)
+	}
+	invalidFiltered := get(query)
+	if invalidFiltered.CandidatesBeforeFilters != 4 || invalidFiltered.CandidatesAfterFilters != 0 || len(invalidFiltered.Recommendations) != 0 {
+		t.Fatalf("invalid runtime admitted Spotify-score candidates or failed the local fallback: %#v", invalidFiltered)
+	}
 	if calls.Load() != before {
 		t.Fatal("score filter made provider calls")
 	}

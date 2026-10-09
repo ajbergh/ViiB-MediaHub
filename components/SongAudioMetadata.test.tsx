@@ -48,6 +48,24 @@ it('labels durable imported score provenance as available offline', async () => 
   } finally { await act(async () => root.unmount()); }
 });
 
+it('shows durable audio/scalar import status even when the status has no scalar values', async () => {
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  const host = document.createElement('div'); const root = createRoot(host);
+  const states = [
+    ['available', 'some provider evidence retained; scalar fields may be empty'],
+    ['not_available', 'no eligible provider evidence at download time'],
+    ['oversized', 'too large to retain'],
+  ] as const;
+  try {
+    for (const [state, label] of states) {
+      mocks.load.mockResolvedValue({ songId: state, bpmSource: 'unknown', keySource: 'unknown', providerScalars: { readOnly: true, provenance: 'spotify_download_import', recordingId: 'recording', sourceFingerprint: 'source-v1', fields: [], selected: [], attempts: [], durableImportStatus: { state, checkedAt: '2026-10-01T00:00:00Z' } } });
+      await act(async () => root.render(<SongAudioMetadata songId={state} />));
+      expect(host.textContent).toContain(`Downloaded audio/scalar import: ${label} · checked`);
+      expect(host.textContent).toContain('2026');
+    }
+  } finally { await act(async () => root.unmount()); }
+});
+
 it('labels retained provider meter separately from unavailable local meter estimation', async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   const timeSignature = { key: 'time_signature', metric: 'measured_meter', units: 'beats_per_bar', value: 3, endpoint: 'audio_features', retrievedAt: '2026-10-01T00:00:00Z', expiresAt: '2026-10-02T00:00:00Z', stale: false };

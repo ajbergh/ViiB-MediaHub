@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
+import { withTransientReadRetry } from '../../../services/audioReadDiagnostics';
 import { keyScalePitchClasses, KEY_NOTE_NAMES, startKeyReferenceTone, type VerifiedKeyMode } from '../../../lib/keyVerificationKeyboard';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { useStore } from '../../../store';
@@ -36,7 +37,7 @@ export function DJKeyVerificationKeyboard({ trackID, deck, embedded = false }: D
     setStatus('');
     setBusy(false);
     if (trackID) {
-      api.getTrackAnalysisFeature(trackID).then(value => {
+      withTransientReadRetry(() => api.getTrackAnalysisFeature(trackID), () => current).then(value => {
         if (!current) return;
         setFeature(value);
         setSelectedTonic(value.keyTonic ?? 0);

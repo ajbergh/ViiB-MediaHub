@@ -43,6 +43,7 @@ export interface TrackAnalysisFeature {
     readOnly?: boolean;
     unverified?: boolean;
     provenance?: 'spotify_private_cache' | 'spotify_download_import' | 'spotify_mixed_private_and_download_import';
+    durableImportStatus?: { state: 'available' | 'not_available' | 'oversized'; checkedAt: string };
     recordingId: string;
     sourceFingerprint: string;
     fields: SpotifyScalarField[];

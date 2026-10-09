@@ -47,3 +47,29 @@ it('draws all three lanes and preserves playback-time seeking and cue markers', 
   expect(mocks.seek).toHaveBeenCalledWith('A',7.5);
  } finally { await act(async () => root.unmount()); vi.restoreAllMocks(); }
 });
+
+it('retries a transient local-band read failure from an accessible action', async () => {
+ (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+ vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+ mocks.state.djDeckA.track = { id: 'retry' };
+ mocks.state.djDeckA.duration = 10;
+ mocks.metadata.mockResolvedValue({ sourceFingerprint: 'retry-fp' });
+ mocks.load.mockRejectedValueOnce(new Error('transient read failure')).mockResolvedValueOnce({
+  sourceFingerprint: 'retry-fp',
+  overview: { frames: 100, sampleRate: 10, low: [1], mid: [0.5], high: [0.25] },
+ });
+ const host = document.createElement('div');
+ const root = createRoot(host);
+ try {
+  await act(async () => root.render(<DJDeckOverview deck="A" localBands />));
+  expect(host.textContent).toContain('Amplitude overview remains available.');
+  const retry = host.querySelector('button');
+  expect(retry?.textContent).toBe('Retry local bands');
+  await act(async () => retry?.click());
+  expect(host.textContent).toContain('Low / Mid / High');
+  expect(mocks.load).toHaveBeenCalledTimes(2);
+ } finally {
+  await act(async () => root.unmount());
+  vi.restoreAllMocks();
+ }
+});

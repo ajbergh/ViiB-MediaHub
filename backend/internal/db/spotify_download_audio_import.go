@@ -67,11 +67,16 @@ func (d *DB) GetDownloadedSpotifyAudioArtifact(ctx context.Context, songID, fing
 	return decodeSpotifyAudioArtifact(value, encoding, encoded, size, retrieved, expires)
 }
 
+type DownloadedAudioImportStatus struct {
+	State     string    `json:"state"`
+	CheckedAt time.Time `json:"checkedAt"`
+}
+
 // GetDownloadedSpotifyScalarCandidates returns final-file-bound provider scalar
 // facts and latest endpoint attempts, independent of the current Spotify account.
-func (d *DB) GetDownloadedSpotifyScalarCandidates(ctx context.Context, songID, fingerprint string) ([]SpotifyScalarField, []SpotifyFieldAttempt, string, error) {
+func (d *DB) GetDownloadedSpotifyScalarCandidates(ctx context.Context, songID, fingerprint string) ([]SpotifyScalarField, []SpotifyFieldAttempt, string, *DownloadedAudioImportStatus, error) {
 	if songID == "" || fingerprint == "" {
-		return nil, nil, "", errors.New("current source required")
+		return nil, nil, "", nil, errors.New("current source required")
 	}
 	var expected downloadFileRevision
 	var recording, fileHash string
@@ -82,64 +87,83 @@ func (d *DB) GetDownloadedSpotifyScalarCandidates(ctx context.Context, songID, f
  SELECT 1 FROM track_external_identity_suppression x WHERE x.song_id=b.song_id AND x.source_fingerprint=b.source_fingerprint)`, songID, fingerprint).
 		Scan(&recording, &expected.path, &expected.digest, &expected.size, &expected.mtime, &fileHash)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil, "", nil
+		return nil, nil, "", nil, nil
 	}
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	actual, err := readDownloadRevision(ctx, expected.path)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, nil, "", ctx.Err()
+			return nil, nil, "", nil, ctx.Err()
 		}
-		return nil, nil, "", nil
+		return nil, nil, "", nil, nil
 	}
 	if actual != expected {
-		return nil, nil, "", nil
+		return nil, nil, "", nil, nil
 	}
 	info, err := os.Lstat(expected.path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() != expected.size || info.ModTime().UnixNano() != expected.mtime || LocalSourceFingerprint(Song{FilePath: expected.path, FileHash: fileHash}, info) != fingerprint {
-		return nil, nil, "", nil
+		return nil, nil, "", nil, nil
 	}
 	var admitted int
 	err = d.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM songs s JOIN track_external_identity i ON i.song_id=s.id
  WHERE s.id=? AND s.file_path=? AND COALESCE(s.file_hash,'')=? AND i.provider='spotify' AND i.external_id=? AND i.source_fingerprint=?
  AND NOT EXISTS (SELECT 1 FROM track_external_identity_suppression x WHERE x.song_id=s.id AND x.source_fingerprint=?)`, songID, expected.path, fileHash, recording, fingerprint, fingerprint).Scan(&admitted)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if admitted != 1 {
-		return nil, nil, "", nil
+		return nil, nil, "", nil, nil
 	}
 	fields, err := d.queryDownloadedSpotifyScalarFields(ctx, expected, recording, time.Now())
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	attempts, err := d.queryDownloadedSpotifyFieldAttempts(ctx, expected, recording)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
+	}
+	var importStatus *DownloadedAudioImportStatus
+	var statusState string
+	var statusChecked int64
+	statusErr := d.conn.QueryRowContext(ctx, `SELECT state,checked_at FROM spotify_download_import_status
+ WHERE file_path=? AND content_sha256=? AND file_size=? AND mtime_ns=? AND spotify_id=?`, expected.path, expected.digest, expected.size, expected.mtime, recording).Scan(&statusState, &statusChecked)
+	if statusErr != nil && !errors.Is(statusErr, sql.ErrNoRows) {
+		return nil, nil, "", nil, statusErr
+	}
+	if statusErr == nil {
+		switch statusState {
+		case "available", "not_available", "oversized":
+		default:
+			return nil, nil, "", nil, errors.New("invalid downloaded audio import status")
+		}
+		if statusChecked < 0 {
+			return nil, nil, "", nil, errors.New("invalid downloaded audio import status time")
+		}
+		importStatus = &DownloadedAudioImportStatus{State: statusState, CheckedAt: time.UnixMilli(statusChecked).UTC()}
 	}
 	finalRevision, err := readDownloadRevision(ctx, expected.path)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, nil, "", ctx.Err()
+			return nil, nil, "", nil, ctx.Err()
 		}
-		return nil, nil, "", nil
+		return nil, nil, "", nil, nil
 	}
 	if finalRevision != expected {
-		return nil, nil, "", nil
+		return nil, nil, "", nil, nil
 	}
 	var finalAdmitted int
 	err = d.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM songs s JOIN track_external_identity i ON i.song_id=s.id
  WHERE s.id=? AND s.file_path=? AND COALESCE(s.file_hash,'')=? AND i.provider='spotify' AND i.external_id=? AND i.source_fingerprint=?
  AND NOT EXISTS (SELECT 1 FROM track_external_identity_suppression x WHERE x.song_id=s.id AND x.source_fingerprint=?)`, songID, expected.path, fileHash, recording, fingerprint, fingerprint).Scan(&finalAdmitted)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if finalAdmitted != 1 {
-		return nil, nil, "", nil
+		return nil, nil, "", nil, nil
 	}
-	return fields, attempts, recording, nil
+	return fields, attempts, recording, importStatus, nil
 }
 
 func (d *DB) queryDownloadedSpotifyScalarFields(ctx context.Context, revision downloadFileRevision, recording string, now time.Time) ([]SpotifyScalarField, error) {

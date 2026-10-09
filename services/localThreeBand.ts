@@ -1,3 +1,5 @@
+import { withTransientReadRetry } from './audioReadDiagnostics';
+
 export interface LocalThreeBand {
   songId: string;
   sourceFingerprint: string;
@@ -16,27 +18,39 @@ export interface LocalThreeBand {
   };
 }
 
-const pendingLoads = new Map<string, Promise<LocalThreeBand | null>>();
+type PendingLoad = { promise: Promise<LocalThreeBand | null>; owners: Set<() => boolean> };
+const pendingLoads = new Map<string, PendingLoad>();
 
 /** Coalesce simultaneous overview and scrolling-lane reads for the same song revision. */
-export function loadLocalThreeBand(songId: string, sourceFingerprint?: string): Promise<LocalThreeBand | null> {
+export function loadLocalThreeBand(songId: string, sourceFingerprint?: string, isCurrent: () => boolean = () => true): Promise<LocalThreeBand | null> {
   const key = `${songId}\0${sourceFingerprint ?? ''}`;
   const pending = pendingLoads.get(key);
-  if (pending) return pending;
+  if (pending) {
+    pending.owners.add(isCurrent);
+    return pending.promise;
+  }
 
-  const request = fetchLocalThreeBand(songId, sourceFingerprint);
-  pendingLoads.set(key, request);
+  const owners = new Set([isCurrent]);
+  const shouldRetry = () => [...owners].some(owner => {
+    try { return owner(); } catch { return false; }
+  });
+  const request = fetchLocalThreeBand(songId, sourceFingerprint, shouldRetry);
+  const entry = { promise: request, owners };
+  pendingLoads.set(key, entry);
   void request.finally(() => {
-    if (pendingLoads.get(key) === request) pendingLoads.delete(key);
+    if (pendingLoads.get(key) === entry) pendingLoads.delete(key);
   }).catch(() => {});
   return request;
 }
 
-async function fetchLocalThreeBand(songId: string, sourceFingerprint?: string): Promise<LocalThreeBand | null> {
-  const response = await fetch(`/api/v2/analysis/${encodeURIComponent(songId)}/waveform/local-three-band`, { cache: 'no-store' });
+async function fetchLocalThreeBand(songId: string, sourceFingerprint: string | undefined, shouldRetry: () => boolean): Promise<LocalThreeBand | null> {
+  const response = await withTransientReadRetry(async () => {
+    const value = await fetch(`/api/v2/analysis/${encodeURIComponent(songId)}/waveform/local-three-band`, { cache: 'no-store' });
+    if (value.ok || value.status === 404 || value.status === 412) return value;
+    throw Object.assign(new Error('Local waveform unavailable'), { status: value.status });
+  }, shouldRetry);
   // A source revision changed during the read; never render the old artifact.
   if (response.status === 404 || response.status === 412) return null;
-  if (!response.ok) throw Object.assign(new Error('Local waveform unavailable'), { status: response.status });
   const data = await response.json() as LocalThreeBand;
   const overview = data.overview;
   if (data.songId !== songId || data.representation !== 'local_three_band_estimate'

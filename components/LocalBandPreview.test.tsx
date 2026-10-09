@@ -12,7 +12,7 @@ it('renders three distinct envelopes and excludes another source', async () => {
   const host = document.createElement('div'); const root = createRoot(host);
   try {
     await act(async () => root.render(<LocalBandPreview songId="song" fingerprint="source" />));
-    expect(host.querySelectorAll('svg')).toHaveLength(3); expect(mocks.load).toHaveBeenLastCalledWith('song', 'source');
+    expect(host.querySelectorAll('svg')).toHaveLength(3); expect(mocks.load).toHaveBeenLastCalledWith('song', 'source', expect.any(Function));
     expect(host.textContent).toContain('0.02 seconds');
     expect(host.textContent).toContain('Common peak display scale');
     await act(async () => root.render(<LocalBandPreview songId="song" fingerprint="replacement" />));

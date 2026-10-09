@@ -8,7 +8,7 @@ export function LocalBandPreview({ songId, fingerprint }: { songId: string; fing
   useEffect(() => {
     let active = true;
     setSnapshot(undefined);
-    void loadLocalThreeBand(songId, fingerprint).then(data => {
+    void loadLocalThreeBand(songId, fingerprint, () => active).then(data => {
       if (active) setSnapshot({ id: songId, fp: fingerprint, data: data?.sourceFingerprint === fingerprint ? data : null });
     }, error => { if (active) { reportAudioReadFailure('local_bands', error); setSnapshot({ id: songId, fp: fingerprint, data: null, error: true }); } });
     return () => { active = false; };

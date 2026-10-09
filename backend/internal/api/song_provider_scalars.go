@@ -11,15 +11,16 @@ import (
 // SongProviderScalars are provider candidates for the verified current recording.
 // They remain separate from local energy, playback duration and BS.1770 metrics.
 type SongProviderScalars struct {
-	ReadOnly          bool                     `json:"readOnly"`
-	Unverified        bool                     `json:"unverified"`
-	Provenance        string                   `json:"provenance"`
-	RecordingID       string                   `json:"recordingId"`
-	SourceFingerprint string                   `json:"sourceFingerprint"`
-	Fields            []db.SpotifyScalarField  `json:"fields"`
-	Selected          []db.SpotifyScalarField  `json:"selected"`
-	Attempts          []db.SpotifyFieldAttempt `json:"attempts"`
-	SelectionPolicy   string                   `json:"selectionPolicy"`
+	ReadOnly            bool                            `json:"readOnly"`
+	Unverified          bool                            `json:"unverified"`
+	Provenance          string                          `json:"provenance"`
+	RecordingID         string                          `json:"recordingId"`
+	SourceFingerprint   string                          `json:"sourceFingerprint"`
+	Fields              []db.SpotifyScalarField         `json:"fields"`
+	Selected            []db.SpotifyScalarField         `json:"selected"`
+	Attempts            []db.SpotifyFieldAttempt        `json:"attempts"`
+	SelectionPolicy     string                          `json:"selectionPolicy"`
+	DurableImportStatus *db.DownloadedAudioImportStatus `json:"durableImportStatus,omitempty"`
 }
 
 func (a *API) songProviderScalars(songID, fingerprint string) (*SongProviderScalars, error) {
@@ -88,9 +89,10 @@ func (a *API) readSongProviderScalars(ctx context.Context, songID, fingerprint s
 	var importedFields []db.SpotifyScalarField
 	var importedAttempts []db.SpotifyFieldAttempt
 	var importedRecording string
+	var importedStatus *db.DownloadedAudioImportStatus
 	var importErr error
 	if fence == nil || !fence.Pending {
-		importedFields, importedAttempts, importedRecording, importErr = a.db.GetDownloadedSpotifyScalarCandidates(ctx, songID, fingerprint)
+		importedFields, importedAttempts, importedRecording, importedStatus, importErr = a.db.GetDownloadedSpotifyScalarCandidates(ctx, songID, fingerprint)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -121,7 +123,7 @@ func (a *API) readSongProviderScalars(ctx context.Context, songID, fingerprint s
 			attempts = attempts[:len(attempts)-len(importedAttempts)]
 		}
 	}
-	if len(fields) == 0 && len(attempts) == 0 {
+	if len(fields) == 0 && len(attempts) == 0 && importedStatus == nil {
 		return nil, nil
 	}
 	// Recheck the live bytes, recording decision and generation after storage
@@ -154,7 +156,8 @@ func (a *API) readSongProviderScalars(ctx context.Context, songID, fingerprint s
 		return nil, nil
 	}
 	provenance := "spotify_private_cache"
-	var hasPrivate, hasDurable bool
+	var hasPrivate bool
+	hasDurable := importedStatus != nil
 	for _, field := range fields {
 		hasDurable = hasDurable || field.DurableImport
 		hasPrivate = hasPrivate || !field.DurableImport
@@ -168,7 +171,17 @@ func (a *API) readSongProviderScalars(ctx context.Context, songID, fingerprint s
 	} else if hasDurable {
 		provenance = "spotify_download_import"
 	}
-	return &SongProviderScalars{ReadOnly: true, Unverified: fence != nil && fence.Pending, Provenance: provenance, RecordingID: link.ExternalID, SourceFingerprint: fingerprint, Fields: fields, Attempts: attempts, Selected: selectProviderScalarFields(fields), SelectionPolicy: "fresh_then_newest_v1"}, nil
+	if fields == nil {
+		fields = []db.SpotifyScalarField{}
+	}
+	if attempts == nil {
+		attempts = []db.SpotifyFieldAttempt{}
+	}
+	selected := selectProviderScalarFields(fields)
+	if selected == nil {
+		selected = []db.SpotifyScalarField{}
+	}
+	return &SongProviderScalars{ReadOnly: true, Unverified: fence != nil && fence.Pending, Provenance: provenance, RecordingID: link.ExternalID, SourceFingerprint: fingerprint, Fields: fields, Attempts: attempts, Selected: selected, SelectionPolicy: "fresh_then_newest_v1", DurableImportStatus: importedStatus}, nil
 }
 
 func selectProviderScalarFields(fields []db.SpotifyScalarField) []db.SpotifyScalarField {

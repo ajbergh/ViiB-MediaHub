@@ -322,7 +322,7 @@ func TestSongProviderFieldsPendingOwnerDoesNotExposeDurableDownloadCandidates(t 
 		t.Fatal("expected prior owner awaiting profile confirmation")
 	}
 	fields, err := a.songProviderScalars("song", source.Fingerprint)
-	if err != nil || fields == nil || !fields.Unverified || fields.Provenance != "spotify_private_cache" {
+	if err != nil || fields == nil || !fields.Unverified || fields.Provenance != "spotify_private_cache" || fields.DurableImportStatus != nil {
 		t.Fatalf("pending owner private candidate state: %+v, err=%v", fields, err)
 	}
 	for _, field := range fields.Fields {
@@ -383,8 +383,8 @@ func TestSongProviderScalarDetailFallsBackToDurableDownloadImportOffline(t *test
 	if err := database.RetireSpotifyMetadataContext("download-owner"); err != nil {
 		t.Fatal(err)
 	}
-	directFields, directAttempts, directRecording, directErr := database.GetDownloadedSpotifyScalarCandidates(t.Context(), "song", source.Fingerprint)
-	if directErr != nil || directRecording != cachedSpotifyID || len(directFields) == 0 || len(directAttempts) == 0 {
+	directFields, directAttempts, directRecording, directStatus, directErr := database.GetDownloadedSpotifyScalarCandidates(t.Context(), "song", source.Fingerprint)
+	if directErr != nil || directRecording != cachedSpotifyID || len(directFields) == 0 || len(directAttempts) == 0 || directStatus == nil || directStatus.State != "available" {
 		t.Fatalf("direct import read: fields=%d attempts=%d recording=%s err=%v", len(directFields), len(directAttempts), directRecording, directErr)
 	}
 	fields, err := a.songProviderScalars("song", source.Fingerprint)
@@ -428,8 +428,8 @@ func TestSongProviderScalarDetailMergesDurableAndPrivateCandidatesPerField(t *te
 	if changed, err := database.MarkDownloadCompletedWithEvidence(t.Context(), "mixed", path); err != nil || !changed {
 		t.Fatal(changed, err)
 	}
-	importedFields, importedAttempts, importedRecording, importErr := database.GetDownloadedSpotifyScalarCandidates(t.Context(), "song", initialSource.Fingerprint)
-	if importErr != nil || len(importedFields) == 0 || importedRecording != cachedSpotifyID {
+	importedFields, importedAttempts, importedRecording, importedStatus, importErr := database.GetDownloadedSpotifyScalarCandidates(t.Context(), "song", initialSource.Fingerprint)
+	if importErr != nil || len(importedFields) == 0 || importedRecording != cachedSpotifyID || importedStatus == nil || importedStatus.State != "available" {
 		t.Fatalf("completed download scalar import = %d fields, recording=%s err=%v; attempts=%d", len(importedFields), importedRecording, importErr, len(importedAttempts))
 	}
 	if err := database.SetSetting("spotify_metadata_active_context", ""); err != nil {
@@ -481,5 +481,67 @@ func TestSongProviderFieldsCanceledRequest(t *testing.T) {
 	cancel()
 	if fields, err := a.songProviderScalarsContext(ctx, "song", "fingerprint"); fields != nil || err != context.Canceled {
 		t.Fatal(fields, err)
+	}
+}
+func TestSongProviderDurableImportStatusOnlyAndSourceFence(t *testing.T) {
+	a, path := newBPMRouteTestAPI(t, false)
+	source, err := analysis.ResolveLocalSource(a.db, "song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.RefreshTrackAnalysisSourceRevision("song", source.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := a.db.ConfirmSpotifyRecording("song", cachedSpotifyID, source.Fingerprint, true); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if err := a.db.AddDownload(&db.SpotifyDownload{ID: "status-only", SpotifyID: cachedSpotifyID, Type: "track", Title: "Track", Status: "queued", FilePath: path, AddedAt: time.Now().UnixMilli()}); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := a.db.MarkDownloadStarted("status-only"); err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	if changed, err := a.db.MarkDownloadConverting("status-only", path); err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	if changed, err := a.db.MarkDownloadCompletedWithEvidence(t.Context(), "status-only", path); err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+
+	fields, err := a.songProviderScalars("song", source.Fingerprint)
+	if err != nil || fields == nil || fields.DurableImportStatus == nil || fields.DurableImportStatus.State != "not_available" || len(fields.Fields) != 0 || len(fields.Attempts) != 0 || len(fields.Selected) != 0 {
+		t.Fatalf("status-only not-available response = %+v err=%v", fields, err)
+	}
+	if err := a.db.DeleteSpotifyRecording("song"); err != nil {
+		t.Fatal(err)
+	}
+	if fields, err = a.songProviderScalars("song", source.Fingerprint); err != nil || fields != nil {
+		t.Fatalf("unlinked import status = %+v err=%v", fields, err)
+	}
+	if ok, err := a.db.ConfirmSpotifyRecording("song", cachedSpotifyID, source.Fingerprint, true); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if fields, err = a.songProviderScalars("song", source.Fingerprint); err != nil || fields == nil || fields.DurableImportStatus == nil || fields.DurableImportStatus.State != "not_available" {
+		t.Fatalf("explicitly relinked status = %+v err=%v", fields, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := append([]byte(nil), original...)
+	replacement[0] ^= 0xff
+	if err := os.WriteFile(path, replacement, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	fields, err = a.songProviderScalars("song", source.Fingerprint)
+	if err != nil || fields != nil {
+		t.Fatalf("same-size/mtime replacement exposed durable status: %+v err=%v", fields, err)
 	}
 }
