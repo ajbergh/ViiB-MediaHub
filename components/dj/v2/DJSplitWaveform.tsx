@@ -31,6 +31,7 @@ const clampSeconds = (value: number) => Math.max(VISIBLE_SECONDS_MIN, Math.min(V
 const DJWaveformLane = React.memo(function DJWaveformLane({ deck, useWebGL }: { deck: DeckId; useWebGL: boolean }) {
   const [visibleSeconds, setVisibleSeconds] = useState(VISIBLE_SECONDS_DEFAULT);
   const [localBands, setLocalBands] = useState(false);
+  const [retryGeneration, setRetryGeneration] = useState(0);
   const [colorMode, setColorMode] = useState<WaveformColorMode>('rgb');
   const [webglUnavailable, setWebglUnavailable] = useState(false);
   const markUnavailable = useCallback(() => setWebglUnavailable(true), []);
@@ -79,10 +80,10 @@ const DJWaveformLane = React.memo(function DJWaveformLane({ deck, useWebGL }: { 
         <DJErrorBoundary componentName={`Deck ${deck} waveform`}>
           {renderWebGL
             ? <DJWebGLWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} onUnavailable={markUnavailable} />
-            : <DJCanvasWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} localBands={localBands} />}
+            : <DJCanvasWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} localBands={localBands} retryGeneration={retryGeneration} />}
         </DJErrorBoundary>
       </div>
-      <DJDeckOverview deck={deck} visibleSeconds={visibleSeconds} localBands={localBands} />
+      <DJDeckOverview deck={deck} visibleSeconds={visibleSeconds} localBands={localBands} retryGeneration={retryGeneration} onRetryLocalBands={() => setRetryGeneration(value => value + 1)} />
     </section>
   );
 });

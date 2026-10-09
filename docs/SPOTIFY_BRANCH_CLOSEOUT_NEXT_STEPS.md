@@ -1,7 +1,7 @@
 # Spotify metadata branch closeout plan
 
 **Branch:** `feature/spotify-metadata-foundation`  
-**Branch state at 2026-10-08 review:** HEAD matched `origin/feature/spotify-metadata-foundation` before closeout work; the current worktree contains uncommitted changes recorded through Milestone 198. Recheck branch and worktree before any release action.
+**Branch state at 2026-10-08 review:** HEAD matched `origin/feature/spotify-metadata-foundation` before closeout work; the current worktree contains uncommitted changes recorded through Milestone 201. Recheck branch and worktree before any release action.
 **Acceptance status:** keep at **2/12 checked, 10/12 partial** until the remaining broad criteria below are met.  
 **Last reviewed:** 2026-10-08.
 
@@ -35,7 +35,7 @@ Active analysis restart continuation: running/interrupted analysis jobs now reco
 
 Locked-grid continuation: shared resolution now requires current source identity, expected representation/encoding/provenance, a valid bounded payload and usable beat positions. GET returns empty timing plus explicit unavailable reason while preserving lock intent; cue generation uses no grid when resolution fails. Manual grid save/reset require the loaded source via If-Match and atomically update artifact, grid lock, optional source-bound BPM and capability state, preserving unrelated overrides. Failed transactions and stale preconditions preserve prior data. Preparation preserves locked invalid artifacts, records unavailable reasons instead of labeling skipped generated output available, and settles the status without an audio decode. Tests cover missing/corrupt/stale/unbound locks, source-replacement full preparation, no repeated repair, late transaction rollback, stale edit/reset rejection, and cue alignment abstention. Deck state retains unresolved locks, disables phase sync, and exposes reset when the source is available; late UI results cannot overwrite a changed loaded source. Mounted editor and API-header tests pass. Full DB/track/API passed (12.740s/12.815s/54.976s); focused grid race checks passed (4.364s/13.232s/12.685s), with full source-replacement/locked-grid race checks at 8.713s. Full npm check passed: 97 files/394 tests, type/boundary/palette/raw checks and production build. Existing Browserslist, mixed import and large-chunk warnings remain. Formatting/whitespace checks pass.
 
-Current closeout direction: analysis detail, BPM, the DJ library list and Mix Next transition recommendations retain local/manual behavior when optional Spotify scalar reads fail; the DJ BPM editor reloads after session-generation changes, and the deck overview offers retry after a transient local-band failure (milestones 196–198). The original user-reported runtime error still needs a native reproduction with response/status or stack trace. Continue repository work where behavior is specified; do not invent retention/admission limits for residual private-cache families or list-time full-file hashing tradeoffs. Live-provider fixtures, a reviewed labeled corpus, supported-platform/runtime measurements and long-track accessibility/performance evidence remain open.
+Current closeout direction: analysis detail, BPM, the DJ library list and Mix Next transition recommendations retain local/manual behavior when optional Spotify scalar reads fail; the DJ BPM editor reloads after session-generation changes; Local Bands retry now refreshes both overview and scrolling lane; first-party playlist scraping retains explicitly unbound catalog observations; and REST track captures retain reachable album edges (milestones 196–201). The original user-reported runtime error still needs a native reproduction with response/status or stack trace. Continue repository work where behavior is specified; do not invent retention/admission limits for residual private-cache families or list-time full-file hashing tradeoffs. Live-provider fixtures, a reviewed labeled corpus, supported-platform/runtime measurements and long-track accessibility/performance evidence remain open.
 
 ## Historical pause point and evidence
 
@@ -176,7 +176,7 @@ The two checked gates are retained provider score facts (verified in fixtures/st
 
 ## Recommended next session entry point
 
-1. Read this file and canonical section 15; inspect the latest closeout milestones, including 196–198.
+1. Read this file and canonical section 15; inspect the latest closeout milestones, including 199–201.
 2. Reinspect the current workspace diff before editing; the branch may have received user changes after this handoff.
 3. Continue the open, specified repository-local checks in the gate assignments; durable score-consumer and playlist persistence subchecks are already recorded complete.
 4. Do not implement residual private-cache expiry/admission rules or list-time full-file hashing until the owner supplies the missing policy decisions.
@@ -540,3 +540,23 @@ The GET /analysis library list now has a regression proving an invalid Spotify r
 The DJ deck overview now reports when its local metadata/band read fails, keeps the amplitude overview available, and offers an accessible Retry local bands button. Retrying advances the read generation; it does not claim or persist provider data. A mounted component regression verifies a transient local-band failure recovers after the action.
 
 Focused detail/BPM/list API regressions passed, followed by the full API suite (92.061s). The mounted overview suite passed (3 tests). Final npm run check passed palette/raw-color guards, TypeScript/boundary checks, 107 files / 473 tests, and production build (23.57s). Existing Browserslist, mixed-import and large-chunk warnings remain. These changes improve a locally supported recovery path; the user's original intermittent error still has no native response/status or stack trace. Broad acceptance remains 2/12 checked, 10/12 partial.
+
+### Milestone 199 — retain explicitly unbound first-party playlist scraper evidence
+
+When the first-party playlist route falls back after HTTP 403/404, its scraper result and batched track metadata now enter a shared capture flush with the same account lifetime and playlist traversal generation fences as the ordinary catalog path. The playlist snapshot has a distinct embed-scrape resource/provenance, an empty capture revision, and ordered playlist-item relations. Duplicate positions are preserved; invalid IDs are unavailable, and valid IDs missing from batch metadata are marked unavailable. Captured track and related entities publish in the same transaction. Unbound scrape evidence is not a completed REST checkpoint or proof of current membership, and existing requested-collection admission rejects empty playlist revisions.
+
+Cookie-session integration tests cover 403 and 404 fallback, duplicated positions, missing track metadata, captured track entities, explicit unbound provenance, and publication rejection after active-owner replacement. Existing resumed-traversal and superseded-generation regressions pass. go test ./... passed; API completed in 103.553s and DB in 41.945s. Frontend code was unchanged since milestone 198. Acceptance remains 2/12 checked, 10/12 partial; live resource inventories and broader catalog lifecycle evidence remain open.
+
+### Milestone 200 — retain REST track-to-album graph reachability
+
+REST track capture now records the validated nested album as a positioned track→album relation as well as capturing its sanitized album entity. Missing or malformed album identity is represented as an unavailable relation; a supplied inconsistent album URI is rejected. This makes albums from OAuth single-track and batch-track REST captures traversable by the same durable graph importer used for GraphQL observations.
+
+Parser tests cover individual and batch track responses and malformed album identity. The OAuth capture test verifies the persisted edge and nested album snapshot. A durable DB regression promotes the parser-captured graph, clears the download queue, retires the private context, reopens SQLite, and confirms the album remains reachable in source-qualified offline evidence. Full `go test ./...` passed (API 95.350s, DB 47.612s; remaining packages passed or were cached). Frontend was unchanged in this milestone. This closes the local REST album-reachability gap; full provider inventory, catalog lifecycle and broad acceptance gates remain open at 2/12 checked, 10/12 partial.
+
+### Milestone 201 — retry Local Bands across both DJ waveform consumers
+
+The visible Retry local bands action now advances a retry generation owned by the shared DJ waveform lane. The overview and scrolling Canvas lane both receive that generation, and the scrolling lane reruns its metadata and local-band reads when it changes. A standalone overview retains its own retry behavior when no lane callback is supplied. This fixes the concrete asymmetry where the UI action could recover the overview while leaving the scrolling lane in its failed state; it does not identify the original native error.
+
+Focused mounted DJ tests passed: the overview recovery regression and a scrolling-lane fail-then-success retry-generation regression (4 tests across 2 files). Full `npm run check` passed palette/raw-color guards, TypeScript and boundary checks, 108 files / 474 tests, and production build (24.88s). Existing Browserslist, mixed static/dynamic import and large-chunk warnings remain. The user's original intermittent event remains unconfirmed without a captured response/status or native reproduction; broad acceptance remains 2/12 checked, 10/12 partial.
+
+Current next work: continue the remaining open branch checklist, starting with any additional specified repository-local checks; keep native/provider/corpus/platform evidence gates visibly open until verified. Native build/runtime reproduction, provider fixtures/inventory, reviewed held-out audio evidence and platform/performance/accessibility qualification remain required evidence; do not mark those gates complete from unit coverage.

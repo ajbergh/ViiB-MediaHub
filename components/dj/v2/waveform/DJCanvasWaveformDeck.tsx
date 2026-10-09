@@ -23,12 +23,13 @@ import type { WaveformColorMode } from './waveformPalette';
 
 interface DJCanvasWaveformDeckProps {
   localBands?: boolean;
+  retryGeneration?: number;
   deck: DeckId;
   visibleSeconds: number;
   colorMode: WaveformColorMode;
 }
 
-export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ deck, visibleSeconds, colorMode, localBands = false }: DJCanvasWaveformDeckProps) {
+export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ deck, visibleSeconds, colorMode, localBands = false, retryGeneration = 0 }: DJCanvasWaveformDeckProps) {
   const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
   const spotifySessionGeneration = useStore(s => s.spotifySessionGeneration);
   const trackSourceIdentity = djTrackSourceIdentity(track);
@@ -45,7 +46,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
     setBands({track,overview:data.overview,peak});
    })().catch(error=>{if(active) reportAudioReadFailure(readingMetadata ? 'audio_metadata' : 'local_bands',error);});
    return ()=>{active=false;};
-  },[localBands,track,trackSourceIdentity,spotifySessionGeneration]);
+  },[localBands,track,trackSourceIdentity,spotifySessionGeneration,retryGeneration]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scratch = useWaveformScratch(deck, visibleSeconds);
   const { seek } = useDJAudioEngineActions();

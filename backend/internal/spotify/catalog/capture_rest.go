@@ -145,6 +145,33 @@ func CaptureREST(target *url.URL, raw []byte) ([]CapturedEntity, error) {
 			if err := add("artists", object["artists"], 0); err != nil {
 				return err
 			}
+			if kind == "track" {
+				if albumRaw, exists := object["album"]; exists {
+					var album map[string]json.RawMessage
+					_ = json.Unmarshal(albumRaw, &album)
+					albumID := captureString(album["id"])
+					albumType := captureString(album["type"])
+					albumURI := captureString(album["uri"])
+					if albumURI != "" && objectID.MatchString(albumID) && albumURI != "spotify:album:"+albumID {
+						return ErrSchema
+					}
+					unavailable := albumType != "album" || !objectID.MatchString(albumID)
+					relation := CapturedRelation{Kind: "album", Position: 0, ChildType: "album", ChildID: albumID, Unavailable: unavailable}
+					if unavailable {
+						relation.ChildType = ""
+						relation.ChildID = ""
+					}
+					relationPayload := albumRaw
+					if string(albumRaw) == "null" {
+						relationPayload = json.RawMessage("{}")
+					}
+					relation.Metadata, err = metadata.Sanitize(relationPayload, metadata.ScalarLimit)
+					if err != nil {
+						return err
+					}
+					relations = append(relations, relation)
+				}
+			}
 			var page map[string]json.RawMessage
 			if json.Unmarshal(object["tracks"], &page) == nil {
 				base := offset

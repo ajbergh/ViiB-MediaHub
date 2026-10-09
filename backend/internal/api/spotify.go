@@ -1665,7 +1665,14 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 	// Check if this is a first-party playlist that requires scraping fallback
 	if spotify.IsFirstPartyPlaylistError(resp.StatusCode) {
 		log.Printf("Playlist %s returned %d - attempting embed page scrape fallback", playlistID, resp.StatusCode)
-		return a.fetchPlaylistTracksByScraping(ctx, playlistID)
+		tracks, name, imageURL, scrapeErr := a.fetchPlaylistTracksByScraping(ctx, playlistID)
+		if scrapeErr != nil {
+			return nil, "", "", scrapeErr
+		}
+		if flushErr := a.publishPlaylistCatalogCapture(publicationCtx, capture); flushErr != nil {
+			return nil, "", "", flushErr
+		}
+		return tracks, name, imageURL, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -1837,19 +1844,36 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 	if playlist.SnapshotID != nil && *playlist.SnapshotID != "" && !capture.bindPlaylistRevision(playlistID, *playlist.SnapshotID) {
 		return nil, "", "", catalog.ErrSchema
 	}
-	if entities, ok := capture.snapshot(); ok {
-		if err := a.spotifyTokens().persistCatalogDomainResult(publicationCtx, entities); err == db.ErrSpotifyTraversalSuperseded || err == db.ErrSpotifyMetadataRuntimeSuperseded || err == spotifyauth.ErrAuthenticationRequired {
-			return nil, "", "", err
-		}
+	if err := a.publishPlaylistCatalogCapture(publicationCtx, capture); err != nil {
+		return nil, "", "", err
 	}
 	return tracks, playlist.Name, imageURL, nil
+}
+
+func (a *API) publishPlaylistCatalogCapture(publicationCtx context.Context, capture *catalogCaptureBuffer) error {
+	if capture == nil {
+		return nil
+	}
+	entities, ok := capture.snapshot()
+	if !ok || len(entities) == 0 {
+		return nil
+	}
+	err := a.spotifyTokens().persistCatalogDomainResult(publicationCtx, entities)
+	if err == db.ErrSpotifyTraversalSuperseded || err == db.ErrSpotifyMetadataRuntimeSuperseded || err == spotifyauth.ErrAuthenticationRequired {
+		return err
+	}
+	return nil
 }
 
 // fetchPlaylistTracksByScraping uses web scraping to fetch first-party playlist tracks
 // that are not accessible via the Web API, then fetches individual track metadata.
 func (a *API) fetchPlaylistTracksByScraping(ctx context.Context, playlistID string) ([]PlaylistTrackInfo, string, string, error) {
 	// Scrape playlist data from embed page
-	scraped, err := spotify.ScrapePlaylistContext(ctx, playlistID)
+	scraper := a.spotifyPlaylistScraper
+	if scraper == nil {
+		scraper = spotify.ScrapePlaylistContext
+	}
+	scraped, err := scraper(ctx, playlistID)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed to scrape playlist: %w", err)
 	}
@@ -1903,6 +1927,9 @@ func (a *API) fetchPlaylistTracksByScraping(ctx context.Context, playlistID stri
 			byID[track.ID] = PlaylistTrackInfo{ID: track.ID, Name: track.Name, Artist: artist,
 				Album: track.Album.Name, ReleaseDate: track.Album.ReleaseDate}
 		}
+	}
+	if capture, ok := ctx.Value(catalogCaptureKey{}).(*catalogCaptureBuffer); ok && capture != nil {
+		capture.add(scrapedPlaylistCapture(playlistID, scraped, byID))
 	}
 	tracks := make([]PlaylistTrackInfo, 0, len(scraped.Tracks))
 	for _, id := range scraped.Tracks {

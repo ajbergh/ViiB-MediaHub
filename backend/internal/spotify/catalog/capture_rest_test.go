@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"encoding/json"
 	"net/url"
 	"strings"
 	"testing"
@@ -72,4 +73,82 @@ func TestCaptureRESTStandaloneTrackPage(t *testing.T) {
 	if _, err := CaptureREST(target, []byte(`{"items":[],"offset":0}`)); err == nil {
 		t.Fatal("invalid checkpoint offset accepted")
 	}
+}
+
+func TestCaptureRESTTrackAlbumGraph(t *testing.T) {
+	trackID := strings.Repeat("T", 22)
+	albumID := strings.Repeat("A", 22)
+	artistID := strings.Repeat("B", 22)
+	artist := map[string]any{"id": artistID, "type": "artist", "uri": "spotify:artist:" + artistID, "name": "Artist"}
+	album := map[string]any{"id": albumID, "type": "album", "uri": "spotify:album:" + albumID, "name": "Album", "artists": []any{artist}}
+	track := map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "name": "Track", "duration_ms": 180000, "artists": []any{artist}, "album": album}
+	for _, fixture := range []struct {
+		name   string
+		target string
+		body   any
+	}{
+		{name: "individual", target: "https://api.spotify.com/v1/tracks/" + trackID, body: track},
+		{name: "batch", target: "https://api.spotify.com/v1/tracks?ids=" + trackID, body: map[string]any{"tracks": []any{track}}},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			target, err := url.Parse(fixture.target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := json.Marshal(fixture.body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			entities, err := CaptureREST(target, raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var root, capturedAlbum bool
+			for _, entity := range entities {
+				if entity.EntityType == "track" && entity.ID == trackID {
+					root = true
+					foundAlbum := false
+					for _, relation := range entity.Relations {
+						if relation.Kind == "album" && relation.Position == 0 && relation.ChildType == "album" && relation.ChildID == albumID && !relation.Unavailable {
+							foundAlbum = true
+						}
+					}
+					if !foundAlbum {
+						t.Fatalf("track-to-album edge missing: %+v", entity.Relations)
+					}
+				}
+				if entity.EntityType == "album" && entity.ID == albumID {
+					capturedAlbum = true
+				}
+			}
+			if !root || !capturedAlbum {
+				t.Fatalf("REST graph did not capture track and album entities: %+v", entities)
+			}
+		})
+	}
+}
+
+func TestCaptureRESTTrackMalformedAlbumIsUnavailable(t *testing.T) {
+	trackID := strings.Repeat("T", 22)
+	raw, err := json.Marshal(map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "name": "Track", "duration_ms": 180000, "album": map[string]any{"id": "bad", "type": "album"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, _ := url.Parse("https://api.spotify.com/v1/tracks/" + trackID)
+	entities, err := CaptureREST(target, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entity := range entities {
+		if entity.EntityType != "track" || entity.ID != trackID {
+			continue
+		}
+		for _, relation := range entity.Relations {
+			if relation.Kind == "album" && relation.Unavailable && relation.ChildID == "" && relation.ChildType == "" {
+				return
+			}
+		}
+		t.Fatalf("malformed album identity was admitted: %+v", entity.Relations)
+	}
+	t.Fatal("track entity not captured")
 }

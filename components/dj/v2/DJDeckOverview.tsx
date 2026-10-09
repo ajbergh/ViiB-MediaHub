@@ -16,20 +16,22 @@ interface DJDeckOverviewProps {
   localBands?: boolean;
   /** Main-lane zoom window in seconds; draws the visible region box when set. */
   visibleSeconds?: number;
+  retryGeneration?: number;
+  onRetryLocalBands?: () => void;
 }
 
 /** Whole-track overview: peak data, cues, loop, zoom window and playhead,
  * without a position subscription that would re-render the surrounding deck.
  * Clicking seeks this deck only. Drawn with Canvas 2D so the split waveform
  * keeps WebGL contexts to the two main lanes. */
-export const DJDeckOverview = React.memo(({ deck, visibleSeconds, localBands = false }: DJDeckOverviewProps) => {
+export const DJDeckOverview = React.memo(({ deck, visibleSeconds, localBands = false, retryGeneration = 0, onRetryLocalBands }: DJDeckOverviewProps) => {
   const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
   const duration = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).duration);
   const spotifySessionGeneration = useStore(s => s.spotifySessionGeneration);
   const trackSourceIdentity = djTrackSourceIdentity(track);
   const [bands, setBands] = useState<{ track: typeof track; data: LocalThreeBand }>();
   const [bandsReadFailed, setBandsReadFailed] = useState(false);
-  const [retryGeneration, setRetryGeneration] = useState(0);
+  const [localRetryGeneration, setLocalRetryGeneration] = useState(0);
   useEffect(() => {
     let active = true;
     let readingMetadata = true;
@@ -43,7 +45,7 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds, localBands = f
       if (active && data?.sourceFingerprint === metadata.sourceFingerprint) setBands({ track, data });
     })().catch(error => { if (active) { setBandsReadFailed(true); reportAudioReadFailure(readingMetadata ? 'audio_metadata' : 'local_bands', error); } });
     return () => { active = false; };
-  }, [track, localBands, trackSourceIdentity, spotifySessionGeneration, retryGeneration]);
+  }, [track, localBands, trackSourceIdentity, spotifySessionGeneration, retryGeneration, localRetryGeneration]);
   const ref = useRef<HTMLCanvasElement>(null);
   const { seek } = useDJAudioEngineActions();
 
@@ -169,7 +171,7 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds, localBands = f
   const eligible = bands && bands.track === track && duration > 0 && Math.abs(bands.data.overview.frames / bands.data.overview.sampleRate - duration) <= 0.1;
   return (<>
     {localBands && <span className='dj-label' role='status'>{eligible ? 'Local bands - Low / Mid / High - Common peak scale' : 'Amplitude overview - Local bands unavailable or duration differs'}</span>}
-    {localBands && bandsReadFailed && track && <span className='dj-label' role='status'>Local bands could not be loaded. Amplitude overview remains available. <button type='button' onClick={() => setRetryGeneration(value => value + 1)}>Retry local bands</button></span>}
+    {localBands && bandsReadFailed && track && <span className='dj-label' role='status'>Local bands could not be loaded. Amplitude overview remains available. <button type='button' onClick={onRetryLocalBands ?? (() => setLocalRetryGeneration(value => value + 1))}>Retry local bands</button></span>}
     <canvas
       ref={ref}
       className='dj-deck-overview'

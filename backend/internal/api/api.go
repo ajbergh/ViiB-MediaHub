@@ -53,42 +53,43 @@ import (
 // It contains references to the database, server logger, and other shared
 // components required by handler implementations.
 type API struct {
-	closeOnce             sync.Once
-	enrichmentMu          sync.Mutex
-	enrichmentContext     context.Context
-	enrichmentCancel      context.CancelFunc
-	enrichmentClosed      bool
-	enrichmentWorkers     sync.WaitGroup
-	spotifyHTTPClient     *http.Client
-	spotifyTrackSearch    func(context.Context, string) ([]*catalog.Track, error)
-	spotifyAuthMu         sync.Mutex
-	spotifyHooksOnce      sync.Once
-	spotifyAuth           *spotifyAuthRuntime
-	spotifyAnalysisMu     sync.RWMutex
-	spotifyAnalysis       *spotifyrefresh.Service
-	spotifyAnalysisClosed bool
-	spotifyStreamerMu     sync.Mutex
-	spotifyStreamer       *spotify.Streamer
-	spotifyStreamSession  *spotify.SessionManager
-	db                    *db.DB
-	dataDir               string
-	coverDir              string
-	downloadManager       *DownloadManager
-	scanner               *scanner.Scanner
-	lastfmClient          *lastfm.Client
-	enrichRunning         int32 // atomic: 1 if enrichment goroutine is active
-	semanticMu            sync.RWMutex
-	semanticService       *semantic.Service
-	semanticState         semantic.EmbeddingResolution
-	semanticError         string
-	semanticClosed        bool
-	semanticGeneration    uint64
-	jobSchedulerMu        sync.Mutex
-	jobSchedulerOn        bool
-	jobWake               chan struct{}
-	analysisPressure      playbackPressure
-	plexAnalysisMu        sync.Mutex
-	plexAnalysisGates     map[string]chan struct{}
+	closeOnce              sync.Once
+	enrichmentMu           sync.Mutex
+	enrichmentContext      context.Context
+	enrichmentCancel       context.CancelFunc
+	enrichmentClosed       bool
+	enrichmentWorkers      sync.WaitGroup
+	spotifyHTTPClient      *http.Client
+	spotifyTrackSearch     func(context.Context, string) ([]*catalog.Track, error)
+	spotifyPlaylistScraper func(context.Context, string) (*spotify.ScrapedPlaylist, error)
+	spotifyAuthMu          sync.Mutex
+	spotifyHooksOnce       sync.Once
+	spotifyAuth            *spotifyAuthRuntime
+	spotifyAnalysisMu      sync.RWMutex
+	spotifyAnalysis        *spotifyrefresh.Service
+	spotifyAnalysisClosed  bool
+	spotifyStreamerMu      sync.Mutex
+	spotifyStreamer        *spotify.Streamer
+	spotifyStreamSession   *spotify.SessionManager
+	db                     *db.DB
+	dataDir                string
+	coverDir               string
+	downloadManager        *DownloadManager
+	scanner                *scanner.Scanner
+	lastfmClient           *lastfm.Client
+	enrichRunning          int32 // atomic: 1 if enrichment goroutine is active
+	semanticMu             sync.RWMutex
+	semanticService        *semantic.Service
+	semanticState          semantic.EmbeddingResolution
+	semanticError          string
+	semanticClosed         bool
+	semanticGeneration     uint64
+	jobSchedulerMu         sync.Mutex
+	jobSchedulerOn         bool
+	jobWake                chan struct{}
+	analysisPressure       playbackPressure
+	plexAnalysisMu         sync.Mutex
+	plexAnalysisGates      map[string]chan struct{}
 }
 
 // New constructs a new API instance using the given database and

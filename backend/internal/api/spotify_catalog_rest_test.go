@@ -28,7 +28,12 @@ func TestOAuthCatalogResponseCapturedAndReplayed(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := strings.Repeat("T", 22)
-	raw := `{"type":"track","id":"` + id + `","uri":"spotify:track:` + id + `","future_domain":0,"token":"secret"}`
+	albumID := strings.Repeat("A", 22)
+	artistID := strings.Repeat("B", 22)
+	album := map[string]any{"id": albumID, "type": "album", "uri": "spotify:album:" + albumID, "name": "Album"}
+	artist := map[string]any{"id": artistID, "type": "artist", "uri": "spotify:artist:" + artistID, "name": "Artist"}
+	rawBytes, _ := json.Marshal(map[string]any{"id": id, "type": "track", "uri": "spotify:track:" + id, "name": "Song", "duration_ms": 180000, "future_domain": 0, "token": "secret", "album": album, "artists": []any{artist}})
+	raw := string(rawBytes)
 	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
 	})}}
@@ -45,6 +50,19 @@ func TestOAuthCatalogResponseCapturedAndReplayed(t *testing.T) {
 	snapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "track", SpotifyID: id, Resource: "rest:/v1/tracks/" + id + ":page::", ContextKey: runtime.metadataContext})
 	if err != nil || snapshot == nil || !strings.Contains(string(snapshot.Payload), "future_domain") || strings.Contains(string(snapshot.Payload), "secret") {
 		t.Fatalf("snapshot: %+v %v", snapshot, err)
+	}
+	foundAlbumEdge := false
+	for _, relation := range snapshot.Relations {
+		if relation.Kind == "album" && relation.ChildType == "album" && relation.ChildID == albumID && !relation.Unavailable {
+			foundAlbumEdge = true
+		}
+	}
+	if !foundAlbumEdge {
+		t.Fatalf("OAuth REST track snapshot lost its album edge: %+v", snapshot.Relations)
+	}
+	albumSnapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "album", SpotifyID: albumID, Resource: "rest:/v1/tracks/" + id + ":page:::related", ContextKey: runtime.metadataContext})
+	if err != nil || albumSnapshot == nil {
+		t.Fatalf("OAuth REST response did not persist its nested album: %+v %v", albumSnapshot, err)
 	}
 }
 
@@ -149,6 +167,7 @@ func TestOAuthSavedLibraryPageCapturedAndReplayed(t *testing.T) {
 	if err != nil || snapshot == nil || !strings.Contains(string(snapshot.Payload), "future_domain") || strings.Contains(string(snapshot.Payload), "secret") {
 		t.Fatalf("snapshot: %+v %v", snapshot, err)
 	}
+
 }
 
 func TestOAuthPlaylistFinalRevisionFence(t *testing.T) {
