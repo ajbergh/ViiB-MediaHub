@@ -3,7 +3,7 @@
 import type { DeckAnalysisPatch, DeckState } from '../slices/djMixerSlice';
 import type { TrackAnalysisFeature, TrackBeatGrid } from '../services/api';
 
-export type BeatGridSource = 'unknown' | 'generated' | 'measured' | 'inferred-from-meter' | 'manual';
+export type BeatGridSource = 'unknown' | 'generated' | 'measured' | 'spotify' | 'inferred-from-meter' | 'manual';
 export function validBeatGrid(beats: number[] | null | undefined): boolean {
   return !!beats && beats.length >= 2 && beats.every((beat, i) => Number.isFinite(beat) && beat >= 0 && (i === 0 || beat > beats[i - 1]));
 }

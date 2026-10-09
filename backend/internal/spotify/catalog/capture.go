@@ -144,20 +144,9 @@ func CaptureDomain(stage string, request any, raw []byte) ([]CapturedEntity, err
 	if err := walk(root, "root", query.Variables.URI); err != nil {
 		return nil, err
 	}
-	dedup := map[string]int{}
-	unique := []CapturedEntity{}
-	for _, entity := range objects {
-		key := entity.EntityType + ":" + entity.ID + ":" + entity.Resource
-		if index, ok := dedup[key]; ok {
-			if len(entity.Payload) > len(unique[index].Payload) {
-				unique[index] = entity
-			}
-		} else {
-			dedup[key] = len(unique)
-			unique = append(unique, entity)
-		}
-	}
-	return unique, nil
+
+	return DeduplicateCapturedEntities(objects), nil
+
 }
 func captureString(raw json.RawMessage) string {
 	var value string

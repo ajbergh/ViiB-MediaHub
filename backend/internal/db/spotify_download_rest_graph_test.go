@@ -22,11 +22,12 @@ func TestDownloadedRESTTrackRetainsReachableAlbumAfterQueueClear(t *testing.T) {
 	artist := map[string]any{"id": artistID, "type": "artist", "uri": "spotify:artist:" + artistID, "name": "Fixture Artist"}
 	album := map[string]any{"id": albumID, "type": "album", "uri": "spotify:album:" + albumID, "name": "Fixture Album", "artists": []any{artist}}
 	track := map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "name": "Fixture Track", "duration_ms": 180000, "artists": []any{artist}, "album": album}
-	raw, err := json.Marshal(track)
+	sparseLong := map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "opaque_extra": strings.Repeat("x", 1024)}
+	raw, err := json.Marshal(map[string]any{"tracks": []any{track, sparseLong}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, _ := url.Parse("https://api.spotify.com/v1/tracks/" + trackID)
+	target, _ := url.Parse("https://api.spotify.com/v1/tracks?ids=" + trackID + "," + trackID)
 	entities, err := catalog.CaptureREST(target, raw)
 	if err != nil {
 		t.Fatal(err)
@@ -67,18 +68,24 @@ func TestDownloadedRESTTrackRetainsReachableAlbumAfterQueueClear(t *testing.T) {
 	if err != nil || got == nil || got.CatalogStatus == nil || got.CatalogStatus.State != "available" {
 		t.Fatalf("durable REST graph unavailable: %+v %v", got, err)
 	}
-	foundAlbum, foundEdge := false, false
+	foundAlbum, foundTrackAlbum, foundArtist, foundAlbumArtist := false, false, false, false
 	for _, snapshot := range got.Snapshots {
 		if snapshot.EntityType == "album" && snapshot.SpotifyID == albumID {
 			foundAlbum = true
 		}
+		if snapshot.EntityType == "artist" && snapshot.SpotifyID == artistID {
+			foundArtist = true
+		}
 	}
 	for _, relation := range got.Relations {
 		if relation.ParentType == "track" && relation.ParentID == trackID && relation.Kind == "album" && relation.ChildType == "album" && relation.ChildID == albumID && !relation.Unavailable {
-			foundEdge = true
+			foundTrackAlbum = true
+		}
+		if relation.ParentType == "album" && relation.ParentID == albumID && relation.Kind == "artists" && relation.ChildType == "artist" && relation.ChildID == artistID && !relation.Unavailable {
+			foundAlbumArtist = true
 		}
 	}
-	if !foundAlbum || !foundEdge {
-		t.Fatalf("queue cleanup/retirement lost REST album reachability: album=%v edge=%v graph=%+v", foundAlbum, foundEdge, got)
+	if !foundAlbum || !foundTrackAlbum || !foundArtist || !foundAlbumArtist {
+		t.Fatalf("queue cleanup/retirement lost REST track→album→artist graph: album=%v track_album=%v artist=%v album_artist=%v graph=%+v", foundAlbum, foundTrackAlbum, foundArtist, foundAlbumArtist, got)
 	}
 }

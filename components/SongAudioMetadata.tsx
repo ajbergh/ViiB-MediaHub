@@ -4,8 +4,7 @@ import { useAudioMetadataRevision } from '../hooks/useAudioMetadataRevision';
 import { ManualAudioMetadata } from './ManualAudioMetadata';
 import { ImportedAnalysisPreview } from './ImportedAnalysisPreview';
 import { ProviderResourceActions } from './ProviderResourceActions';
-import { ProviderBandPreview } from './ProviderBandPreview';
-import { LocalBandPreview } from './LocalBandPreview';
+import { TrackThreeBandPreview } from './TrackThreeBandPreview';
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import type { TrackAnalysisFeature, SpotifyScalarField } from '../services/trackAnalysisContracts';
@@ -129,10 +128,9 @@ export function SongAudioMetadata({ songId }: { songId: string }) {
       <p className="mt-2">A four-beat grid is a working default, not measured meter. Band overviews show spectral level estimates; they do not establish beat alignment or transition quality.</p>
       <p className="mt-2">Missing Spotify fields do not imply zero. Use current local tempo, key, energy and cue evidence where available, and audition transitions.</p>
     </details>
-    {data.sourceFingerprint && <LocalBandPreview songId={songId} fingerprint={data.sourceFingerprint} />}
     {data.sourceFingerprint && <ImportedAnalysisPreview key={`${songId}:${data.sourceFingerprint}`} songId={songId} fingerprint={data.sourceFingerprint} />}
     <h4 className="font-semibold text-text-main">Spotify observations</h4>
-    {data.sourceFingerprint && <ProviderBandPreview songId={songId} fingerprint={data.sourceFingerprint} recordingId={provider?.recordingId} session={session} />}
+    {data.sourceFingerprint && <TrackThreeBandPreview songId={songId} fingerprint={data.sourceFingerprint} recordingId={provider?.recordingId} session={session} />}
     {data.sourceFingerprint && <ProviderResourceActions songId={songId} fingerprint={data.sourceFingerprint} session={session} onReload={() => setRevision(value => value + 1)} />}
     {provider ? <>
       {provider.unverified && <p>Retained Spotify observations · Account confirmation pending. Available for viewing only.</p>}

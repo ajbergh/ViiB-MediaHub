@@ -39,6 +39,7 @@ type Provenance string
 
 const (
 	ProvenanceMeasured          Provenance = "measured"
+	ProvenanceSpotify           Provenance = "spotify"
 	ProvenanceInferredFromMeter Provenance = "inferred-from-meter"
 	ProvenanceManual            Provenance = "manual"
 	ProvenanceUnknown           Provenance = "unknown"
@@ -46,7 +47,7 @@ const (
 
 func (p Provenance) Valid() bool {
 	switch p {
-	case ProvenanceMeasured, ProvenanceInferredFromMeter, ProvenanceManual, ProvenanceUnknown:
+	case ProvenanceMeasured, ProvenanceSpotify, ProvenanceInferredFromMeter, ProvenanceManual, ProvenanceUnknown:
 		return true
 	default:
 		return false

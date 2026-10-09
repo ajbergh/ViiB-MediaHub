@@ -1,4 +1,4 @@
-import type { LocalThreeBand } from '../../../../services/localThreeBand';
+import type { TrackThreeBand } from '../../../../services/trackThreeBand';
 /**
  * Canvas 2D drawing helpers for one deck's scrolling waveform.
  *
@@ -14,7 +14,7 @@ import { getHotCueMarkerStyle } from '../../../../lib/hotCueMarkerStyle';
 import { DECK_WAVEFORM_PALETTE, LEVEL_COLORS, WAVEFORM_CHROME, canvasGradientStops, type WaveformColorMode } from './waveformPalette';
 
 export interface MainWaveformFrame {
-  localBands?: { overview: LocalThreeBand['overview']; peak: number };
+  threeBands?: { data: TrackThreeBand; peak: number };
   deck: DeckId;
   peaks: number[] | null;
   position: number;
@@ -46,7 +46,7 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
   ctx.fillStyle = WAVEFORM_CHROME.background;
   ctx.fillRect(0, 0, width, h);
 
-  if ((!frame.localBands && (!peaks || peaks.length === 0)) || !duration || duration <= 0) {
+  if ((!frame.threeBands && (!peaks || peaks.length === 0)) || !duration || duration <= 0) {
     ctx.strokeStyle = WAVEFORM_CHROME.placeholderGrid;
     ctx.lineWidth = 1;
     for (let x = 0; x < width; x += 48) {
@@ -76,23 +76,28 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
     return peakBetween(peaks ?? [], first, last);
   };
 
-  if(frame.localBands) {
-    const {overview,peak}=frame.localBands;
-    const arrays=[overview.low,overview.mid,overview.high];
-    const colors=[palette.gradient.center,palette.gradient.mid,palette.gradient.edge];
-    const samplesPerSecond=overview.sampleRate/overview.resolution;
-    for(let band=0;band<3;band++) {
-      const center=(band+0.5)*h/3;const height=Math.max(0,h/6-2);
-      ctx.fillStyle=colors[band];ctx.beginPath();
-      for(let x=0;x<width;x++) {
-        const time=position+(x-playheadX)*secondsPerPixel;
-        if(time<0 || time>duration)continue;
-        const first=Math.max(0,Math.floor((time-secondsPerPixel/2)*samplesPerSecond));
-        const last=Math.min(arrays[band].length,Math.max(first+1,Math.ceil((time+secondsPerPixel/2)*samplesPerSecond)));
-        const amplitude=peak>0?peakBetween(arrays[band],first,last)/peak*height:0;
-        if(amplitude>0)ctx.rect(x,center-amplitude,1,amplitude*2);
+  if (frame.threeBands) {
+    const { data, peak } = frame.threeBands;
+    const arrays = [data.low, data.mid, data.high];
+    const colors = [palette.gradient.center, palette.gradient.mid, palette.gradient.edge];
+    const samplesPerSecond = arrays[0].length / data.durationSeconds;
+    for (let band = 0; band < 3; band++) {
+      const center = (band + 0.5) * h / 3;
+      const height = Math.max(0, h / 6 - 2);
+      ctx.fillStyle = colors[band];
+      ctx.beginPath();
+      for (let x = 0; x < width; x++) {
+        const time = position + (x - playheadX) * secondsPerPixel;
+        if (time < 0 || time > duration) continue;
+        const first = Math.max(0, Math.floor((time - secondsPerPixel / 2) * samplesPerSecond));
+        const last = Math.min(arrays[band].length, Math.max(first + 1, Math.ceil((time + secondsPerPixel / 2) * samplesPerSecond)));
+        const amplitude = peak > 0 ? peakBetween(arrays[band], first, last) / peak * height : 0;
+        if (amplitude > 0) ctx.rect(x, center - amplitude, 1, amplitude * 2);
       }
-      ctx.fill();ctx.font='9px system-ui';ctx.textAlign='left';ctx.fillText(['Low','Mid','High'][band],4,band*h/3+10);
+      ctx.fill();
+      ctx.font = '9px system-ui';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${data.source === 'spotify' ? 'Spotify' : 'Local'} ${['Low', 'Mid', 'High'][band]}`, 4, band * h / 3 + 10);
     }
   } else if (colorMode === '3band') {
     // Level mode uses amplitude thresholds and therefore separate fills.

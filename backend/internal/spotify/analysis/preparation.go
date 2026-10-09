@@ -11,6 +11,9 @@ func PreparationScalars(features, detailed *Observation) *Observation {
 	if detailed == nil || features.TrackID != detailed.TrackID || features.AccountContext != detailed.AccountContext {
 		return &result
 	}
+	if detailed.ProviderBeatGrid != nil {
+		result.ProviderBeatGrid = detailed.ProviderBeatGrid
+	}
 	if result.BPM == nil && detailed.BPM != nil {
 		result.BPM = detailed.BPM
 		result.BPMConfidence = detailed.BPMConfidence

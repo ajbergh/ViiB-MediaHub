@@ -747,3 +747,91 @@ func TestLibraryScalarResponseSerializesBeforeAccountRetirement(t *testing.T) {
 		t.Fatalf("serialized library lost pre-retirement zero: %+v", response)
 	}
 }
+
+func TestSingleAnalysisAndBPMResponsesSerializeBeforeAccountRetirement(t *testing.T) {
+	for _, path := range []string{"/analysis/song", "/analysis/song/bpm"} {
+		t.Run(path, func(t *testing.T) {
+			a, _, _ := fixtureCookieRuntime(t)
+			runtime := a.spotifyTokens()
+			if err := runtime.connect(context.Background(), "fixture-cookie"); err != nil {
+				t.Fatal(err)
+			}
+			fingerprint := saveAnalysisTestSong(t, a.db, "song", "song", nil, 1, 0)
+			if err := a.db.RefreshTrackAnalysisSourceRevision("song", fingerprint); err != nil {
+				t.Fatal(err)
+			}
+			recording := "BBBBBBBBBBBBBBBBBBBBBB"
+			if ok, err := a.db.ConfirmSpotifyRecording("song", recording, fingerprint, true); err != nil || !ok {
+				t.Fatal(ok, err)
+			}
+			bpm := 123.5
+			if err := a.db.PutExternalAnalysis(spotifyanalysis.Observation{TrackID: recording, AccountContext: runtime.metadataContext, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: time.Now(), BPM: &bpm}, "fixture", time.Now().Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+			writer := &blockingTransitionResponseWriter{ResponseRecorder: httptest.NewRecorder(), entered: make(chan struct{}), release: make(chan struct{}), written: make(chan struct{})}
+			retirementAfterWrite := make(chan bool, 1)
+			previousRetire := runtime.onRetire
+			runtime.onRetire = func() error {
+				select {
+				case <-writer.written:
+					retirementAfterWrite <- true
+				default:
+					retirementAfterWrite <- false
+				}
+				if previousRetire != nil {
+					return previousRetire()
+				}
+				return nil
+			}
+			handlerDone := make(chan struct{})
+			go func() {
+				a.V2Routes().ServeHTTP(writer, httptest.NewRequest(http.MethodGet, path, nil))
+				close(handlerDone)
+			}()
+			select {
+			case <-writer.entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("single-track response did not reach serialization")
+			}
+			retirementDone := make(chan error, 1)
+			go func() { retirementDone <- runtime.disconnect() }()
+			deadline := time.After(3 * time.Second)
+			for runtime.changeMu.TryLock() {
+				runtime.changeMu.Unlock()
+				select {
+				case <-deadline:
+					t.Fatal("account retirement did not enter its lifecycle lock")
+				default:
+					goruntime.Gosched()
+				}
+			}
+			close(writer.release)
+			select {
+			case <-handlerDone:
+			case <-time.After(3 * time.Second):
+				t.Fatal("single-track response did not finish")
+			}
+			select {
+			case err := <-retirementDone:
+				if err != nil {
+					t.Fatal("retire Spotify account:", err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("account retirement did not finish after response serialization")
+			}
+			if afterWrite := <-retirementAfterWrite; !afterWrite {
+				t.Fatal("account retirement reached private-data cleanup before response serialization")
+			}
+			if writer.Code != http.StatusOK {
+				t.Fatalf("GET %s = %d: %s", path, writer.Code, writer.Body.String())
+			}
+			var response TrackAnalysisFeatureResponse
+			if err := json.Unmarshal(writer.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if response.SourceFingerprint != fingerprint {
+				t.Fatalf("response source fingerprint = %q, want %q", response.SourceFingerprint, fingerprint)
+			}
+		})
+	}
+}

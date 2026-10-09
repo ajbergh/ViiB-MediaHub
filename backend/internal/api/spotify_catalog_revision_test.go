@@ -101,3 +101,15 @@ func TestCompletedPlaylistReuseDoesNotRelabelIndependentPages(t *testing.T) {
 		t.Fatal("normalized checkpoint lost binding", checkpoint, err)
 	}
 }
+
+func TestCatalogCaptureBufferMergesRelationCoverage(t *testing.T) {
+	trackID := strings.Repeat("T", 22)
+	albumID := strings.Repeat("A", 22)
+	buffer := &catalogCaptureBuffer{}
+	buffer.add([]catalog.CapturedEntity{{EntityType: "track", ID: trackID, Resource: "resource", Payload: []byte(`{}`), Relations: []catalog.CapturedRelation{{Kind: "album", Position: 0, ChildType: "album", ChildID: albumID}}}})
+	buffer.add([]catalog.CapturedEntity{{EntityType: "track", ID: trackID, Resource: "resource", Payload: []byte(`{"opaque":"longer"}`)}})
+	entities, ok := buffer.snapshot()
+	if !ok || len(entities) != 1 || len(entities[0].Relations) != 1 || entities[0].Relations[0].ChildID != albumID || entities[0].Relations[0].Unavailable {
+		t.Fatalf("buffer snapshot lost relation coverage: ok=%v entities=%+v", ok, entities)
+	}
+}

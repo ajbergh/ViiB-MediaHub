@@ -420,6 +420,10 @@ func upsertTrackAnalysisArtifact(executor preparationExecutor, artifact TrackAna
 	}
 	switch artifact.Provenance {
 	case "measured", "inferred-from-meter", "manual", "unknown":
+	case "spotify":
+		if artifact.Kind != "beatgrid" {
+			return errors.New("Spotify provenance is only valid for beat-grid artifacts")
+		}
 	default:
 		return errors.New("invalid track analysis artifact provenance")
 	}
@@ -567,6 +571,20 @@ func (d *DB) DeleteTrackAnalysisArtifact(songID, kind string, formatVersion int,
 		return err
 	}
 	_, err := d.conn.Exec(`DELETE FROM track_analysis_artifacts WHERE song_id = ? AND kind = ? AND format_version = ? AND algorithm_version = ?`, songID, kind, formatVersion, algorithmVersion)
+	return err
+}
+
+// DeleteTrackAnalysisArtifactForSource removes only a versioned artifact
+// still bound to the expected source revision. Provider-backed replacements use
+// this to retire the local waveform without touching a newer file's artifact.
+func (d *DB) DeleteTrackAnalysisArtifactForSource(songID, sourceFingerprint, kind string, formatVersion int, algorithmVersion string) error {
+	if songID == "" || sourceFingerprint == "" || kind == "" || algorithmVersion == "" {
+		return errors.New("source-bound artifact deletion requires song, source and artifact identity")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	_, err := d.conn.Exec(`DELETE FROM track_analysis_artifacts WHERE song_id=? AND source_fingerprint=? AND kind=? AND format_version=? AND algorithm_version=?`, songID, sourceFingerprint, kind, formatVersion, algorithmVersion)
 	return err
 }
 

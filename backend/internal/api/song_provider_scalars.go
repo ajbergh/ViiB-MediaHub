@@ -52,6 +52,43 @@ func (a *API) songProviderScalarsContext(parent context.Context, songID, fingerp
 	return result, err
 }
 
+// withSongProviderScalars keeps account ownership fenced through publication.
+// Callers that serialize a response from provider metadata publish from this
+// callback so account retirement cannot purge its source before the response.
+func (a *API) withSongProviderScalars(parent context.Context, songID, fingerprint string, publish func(*SongProviderScalars, error)) error {
+	if err := parent.Err(); err != nil {
+		return err
+	}
+	a.spotifyAuthMu.Lock()
+	runtime := a.spotifyAuth
+	a.spotifyAuthMu.Unlock()
+	if runtime == nil {
+		provider, err := a.readSongProviderScalars(parent, songID, fingerprint, nil)
+		publish(provider, err)
+		return nil
+	}
+	ctx, cancel := runtime.requestContext(parent)
+	defer cancel()
+	readErr := runtime.withMetadataRead(ctx, func(fence db.SpotifyMetadataReadFence) error {
+		provider, err := a.readSongProviderScalars(ctx, songID, fingerprint, &fence)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		publish(provider, err)
+		return nil
+	})
+	if readErr == nil {
+		return nil
+	}
+	if parent.Err() != nil {
+		return parent.Err()
+	}
+	// Authentication/retirement failures may still return local/manual values,
+	// but never provider candidates from the retired runtime.
+	publish(nil, readErr)
+	return nil
+}
+
 func (a *API) readSongProviderScalars(ctx context.Context, songID, fingerprint string, fence *db.SpotifyMetadataReadFence) (*SongProviderScalars, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

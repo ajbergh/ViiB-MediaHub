@@ -109,8 +109,8 @@ export interface TrackBeatGrid {
   locked: boolean;
   algorithmVersion: string;
   /** Legacy alias retained for clients that predate explicit provenance. */
-  source?: 'unknown' | 'measured' | 'inferred-from-meter' | 'manual';
-  provenance?: 'unknown' | 'measured' | 'inferred-from-meter' | 'manual';
+  source?: 'unknown' | 'measured' | 'spotify' | 'inferred-from-meter' | 'manual';
+  provenance?: 'unknown' | 'measured' | 'spotify' | 'inferred-from-meter' | 'manual';
 }
 
 export interface TrackBeatGridUpdate {

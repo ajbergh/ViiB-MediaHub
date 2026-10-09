@@ -208,28 +208,43 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	response := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID])
-	response.ProviderScalars, err = a.songProviderScalarsContext(r.Context(), songID, currentFingerprints[songID])
-	if err != nil && !errors.Is(err, spotifyauth.ErrAuthenticationRequired) {
-		if r.Context().Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	fingerprint := currentFingerprints[songID]
+	err = a.withSongProviderScalars(r.Context(), songID, fingerprint, func(providerScalars *SongProviderScalars, providerErr error) {
+		if r.Context().Err() != nil {
 			return
 		}
-		logger.API("Optional Spotify scalar read failed for song %s; returning local/manual analysis: %v", songID, err)
-		response.ProviderScalars = nil
+		latest, sourceErr := a.currentAnalysisSourceFingerprints([]string{songID})
+		if sourceErr != nil {
+			respondError(w, http.StatusInternalServerError, "source unavailable")
+			return
+		}
+		if latest[songID] != fingerprint {
+			respondError(w, http.StatusPreconditionFailed, "song source changed while reading analysis; reload analysis details")
+			return
+		}
+		if providerErr != nil && !errors.Is(providerErr, spotifyauth.ErrAuthenticationRequired) {
+			if errors.Is(providerErr, context.Canceled) || errors.Is(providerErr, context.DeadlineExceeded) {
+				return
+			}
+			logger.API("Optional Spotify scalar read failed for song %s; returning local/manual analysis: %v", songID, providerErr)
+			providerScalars = nil
+		}
+		response := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint)
+		response.ProviderScalars = providerScalars
+		var admitted []db.SpotifyScalarField
+		if providerScalars != nil && !providerScalars.Unverified {
+			admitted = providerScalars.Fields
+		}
+		response.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, override, fingerprint, admitted)
+		applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
+		if response.SourceFingerprint != "" {
+			w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
+		}
+		respondJSON(w, response)
+	})
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
 	}
-	if r.Context().Err() != nil {
-		return
-	}
-	var admitted []db.SpotifyScalarField
-	if response.ProviderScalars != nil && !response.ProviderScalars.Unverified {
-		admitted = response.ProviderScalars.Fields
-	}
-	response.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, override, currentFingerprints[songID], admitted)
-	applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
-	if response.SourceFingerprint != "" {
-		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
-	}
-	respondJSON(w, response)
 }
 
 func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request) {
@@ -795,19 +810,49 @@ func (a *API) getTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, trackAnalysis, override, currentFingerprints[songID])
+	manualFields, err := a.db.GetTrackMetadataOverrides(songID)
 	if err != nil {
-		if r.Context().Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
-		}
-		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		respondError(w, http.StatusInternalServerError, "manual metadata unavailable")
 		return
 	}
-	response.SourceFingerprint = currentFingerprints[songID]
-	if response.SourceFingerprint != "" {
-		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
+	override.Fields = manualFields
+	fingerprint := currentFingerprints[songID]
+	err = a.withSongProviderScalars(r.Context(), songID, fingerprint, func(providerScalars *SongProviderScalars, providerErr error) {
+		if r.Context().Err() != nil {
+			return
+		}
+		latest, sourceErr := a.currentAnalysisSourceFingerprints([]string{songID})
+		if sourceErr != nil {
+			respondError(w, http.StatusInternalServerError, "source unavailable")
+			return
+		}
+		if latest[songID] != fingerprint {
+			respondError(w, http.StatusPreconditionFailed, "song source changed while reading analysis; reload analysis details")
+			return
+		}
+		if providerErr != nil && !errors.Is(providerErr, spotifyauth.ErrAuthenticationRequired) {
+			if errors.Is(providerErr, context.Canceled) || errors.Is(providerErr, context.DeadlineExceeded) {
+				return
+			}
+			logger.API("Optional Spotify scalar read failed for song %s; returning local/manual analysis: %v", songID, providerErr)
+			providerScalars = nil
+		}
+		var admitted []db.SpotifyScalarField
+		if providerScalars != nil && !providerScalars.Unverified {
+			admitted = providerScalars.Fields
+		}
+		response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, fingerprint)
+		response.ProviderScalars = providerScalars
+		response.EffectiveFields = db.ResolveAnalysisScalarFields(trackAnalysis, override, fingerprint, admitted)
+		applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
+		if response.SourceFingerprint != "" {
+			w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
+		}
+		respondJSON(w, response)
+	})
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
 	}
-	respondJSON(w, response)
 }
 
 func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {

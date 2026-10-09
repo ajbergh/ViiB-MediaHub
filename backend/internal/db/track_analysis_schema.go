@@ -70,7 +70,7 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 			format_version INTEGER NOT NULL,
 			algorithm_version TEXT NOT NULL,
 			encoding TEXT NOT NULL,
-			provenance TEXT NOT NULL DEFAULT 'unknown' CHECK(provenance IN ('measured', 'inferred-from-meter', 'manual', 'unknown')),
+			provenance TEXT NOT NULL DEFAULT 'unknown' CHECK(provenance IN ('measured', 'spotify', 'inferred-from-meter', 'manual', 'unknown')),
 			source_fingerprint TEXT NOT NULL DEFAULT '',
 			data BLOB NOT NULL,
 			created_at INTEGER NOT NULL,
@@ -114,6 +114,9 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 	}
 	if err == nil {
 		err = ensureTrackAnalysisArtifactProvenanceColumn(d)
+	}
+	if err == nil {
+		err = ensureSpotifyBeatGridArtifactProvenance(d)
 	}
 	if err == nil {
 		err = ensureTrackAnalysisArtifactSourceFingerprintColumn(d)
@@ -253,6 +256,36 @@ func ensureTrackAnalysisArtifactProvenanceColumn(d *DB) error {
 // ensureTrackAnalysisEnergyColumns upgrades installations created before the
 // Energy Level fields existed. SQLite ALTER TABLE ADD COLUMN is additive and
 // safe to rerun when guarded by PRAGMA table_info.
+// SQLite cannot widen the beat-grid provenance CHECK constraint with ALTER.
+func ensureSpotifyBeatGridArtifactProvenance(d *DB) error {
+	var definition string
+	if err := d.conn.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='track_analysis_artifacts'").Scan(&definition); err != nil {
+		return err
+	}
+	if strings.Contains(definition, "'spotify'") {
+		return nil
+	}
+	definition = strings.Replace(definition, "'measured',", "'measured', 'spotify',", 1)
+	definition = strings.Replace(definition, "track_analysis_artifacts", "track_analysis_artifacts_spotify_upgrade", 1)
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, statement := range []string{
+		definition,
+		"INSERT INTO track_analysis_artifacts_spotify_upgrade SELECT * FROM track_analysis_artifacts",
+		"DROP TABLE track_analysis_artifacts",
+		"ALTER TABLE track_analysis_artifacts_spotify_upgrade RENAME TO track_analysis_artifacts",
+		"CREATE INDEX idx_track_analysis_artifacts_song ON track_analysis_artifacts(song_id)",
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func ensureTrackAnalysisEnergyColumns(d *DB) error {
 	rows, err := d.conn.Query(`PRAGMA table_info(track_analysis)`)
 	if err != nil {

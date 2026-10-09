@@ -51,7 +51,7 @@ const DJWaveformLane = React.memo(function DJWaveformLane({ deck, useWebGL }: { 
             aria-pressed={colorMode === mode} title={title} onClick={() => setColorMode(mode)}>{label}</button>
         ))}
       </div>
-      <button type='button' className='dj-btn dj-btn-xs' aria-pressed={localBands} title='Scrolling lane and overview: local low/mid/high estimates; amplitude fallback when missing or duration differs' onClick={() => setLocalBands(value => !value)}>Local bands</button>
+      <button type='button' className='dj-btn dj-btn-xs' aria-pressed={localBands} title='Scrolling lane and overview: Spotify low/mid/high first, local estimate only when provider data is unavailable; amplitude fallback when timelines differ' onClick={() => setLocalBands(value => !value)}>Three-band</button>
       <div className='dj-segmented' role='group' aria-label={`Deck ${deck} waveform zoom`}>
         <button type='button' className='dj-btn dj-btn-xs dj-btn-icon' aria-label={`Zoom in Deck ${deck} waveform`}
           title='Zoom in (Ctrl+Scroll up)' onClick={() => setVisibleSeconds(value => clampSeconds(value / 1.5))}>+</button>

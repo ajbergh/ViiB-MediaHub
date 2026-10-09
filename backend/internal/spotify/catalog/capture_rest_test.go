@@ -152,3 +152,63 @@ func TestCaptureRESTTrackMalformedAlbumIsUnavailable(t *testing.T) {
 	}
 	t.Fatal("track entity not captured")
 }
+
+func TestCaptureRESTDeduplicatesTrackProjectionsWithoutLosingRelations(t *testing.T) {
+	trackID := strings.Repeat("T", 22)
+	albumID := strings.Repeat("A", 22)
+	artistID := strings.Repeat("B", 22)
+	artist := map[string]any{"id": artistID, "type": "artist", "uri": "spotify:artist:" + artistID, "name": "Artist"}
+	album := map[string]any{"id": albumID, "type": "album", "uri": "spotify:album:" + albumID, "name": "Album", "artists": []any{artist}}
+	rich := map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "name": "Track", "artists": []any{artist}, "album": album}
+	sparseLong := map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "opaque_extra": strings.Repeat("x", 1024)}
+	raw, err := json.Marshal(map[string]any{"tracks": []any{rich, sparseLong}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, _ := url.Parse("https://api.spotify.com/v1/tracks?ids=" + trackID + "," + trackID)
+	entities, err := CaptureREST(target, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var track *CapturedEntity
+	albumCaptured, artistCaptured := false, false
+	for i := range entities {
+		entity := &entities[i]
+		if entity.EntityType == "track" && entity.ID == trackID {
+			track = entity
+		}
+		albumCaptured = albumCaptured || entity.EntityType == "album" && entity.ID == albumID
+		artistCaptured = artistCaptured || entity.EntityType == "artist" && entity.ID == artistID
+	}
+	if track == nil || !albumCaptured || !artistCaptured {
+		t.Fatalf("duplicate batch lost related entities: %+v", entities)
+	}
+	foundAlbum, foundArtist := false, false
+	for _, relation := range track.Relations {
+		if relation.Kind == "album" && relation.ChildType == "album" && relation.ChildID == albumID && !relation.Unavailable {
+			foundAlbum = true
+		}
+		if relation.Kind == "artists" && relation.ChildType == "artist" && relation.ChildID == artistID && !relation.Unavailable {
+			foundArtist = true
+		}
+	}
+	if !foundAlbum || !foundArtist {
+		t.Fatalf("longer sparse duplicate dropped graph edges: %+v", track.Relations)
+	}
+}
+
+func TestDeduplicateCapturedEntitiesPrefersValidEdgesAndRejectsConflicts(t *testing.T) {
+	base := CapturedEntity{EntityType: "track", ID: strings.Repeat("T", 22), Resource: "resource", Payload: []byte(`{}`)}
+	valid := CapturedRelation{Kind: "album", Position: 0, ChildType: "album", ChildID: strings.Repeat("A", 22)}
+	missing := CapturedRelation{Kind: "album", Position: 0, Unavailable: true}
+	merged := DeduplicateCapturedEntities([]CapturedEntity{{EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Payload: base.Payload, Relations: []CapturedRelation{valid}}, {EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Payload: []byte(`{"larger":"payload"}`), Relations: []CapturedRelation{missing}}})
+	if len(merged) != 1 || len(merged[0].Relations) != 1 || merged[0].Relations[0].Unavailable || merged[0].Relations[0].ChildID != valid.ChildID {
+		t.Fatalf("unavailable duplicate erased valid edge: %+v", merged)
+	}
+	conflict := valid
+	conflict.ChildID = strings.Repeat("C", 22)
+	merged = DeduplicateCapturedEntities([]CapturedEntity{{EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Relations: []CapturedRelation{valid}}, {EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Relations: []CapturedRelation{conflict}}, {EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Relations: []CapturedRelation{valid}}})
+	if len(merged) != 1 || len(merged[0].Relations) != 1 || !merged[0].Relations[0].Unavailable || merged[0].Relations[0].ChildID != "" {
+		t.Fatalf("conflicting relation identities were guessed: %+v", merged)
+	}
+}

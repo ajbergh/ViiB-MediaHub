@@ -6,8 +6,10 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
@@ -113,6 +115,91 @@ func TestCookieFirstPartyPlaylistScraperCapturesUnboundEvidence(t *testing.T) {
 	}
 }
 
+func TestOAuthFirstPartyPlaylistFallbackCapturesBatchAndReturnsTracks(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	playlistID := strings.Repeat("P", 22)
+	trackIDs := []string{strings.Repeat("T", 22), strings.Repeat("S", 22)}
+	albumIDs := []string{strings.Repeat("A", 22), strings.Repeat("B", 22)}
+	tracks := make([]any, 0, len(trackIDs))
+	for i, trackID := range trackIDs {
+		album := map[string]any{"id": albumIDs[i], "type": "album", "uri": "spotify:album:" + albumIDs[i], "name": "Album " + string(rune('1'+i)), "release_date": "2020-01-01"}
+		artist := map[string]any{"id": strings.Repeat("X", 22), "type": "artist", "uri": "spotify:artist:" + strings.Repeat("X", 22), "name": "Artist"}
+		tracks = append(tracks, map[string]any{
+			"id": trackID, "type": "track", "uri": "spotify:track:" + trackID,
+			"name": "Song " + string(rune('1'+i)), "duration_ms": 180000, "artists": []any{artist}, "album": album,
+		})
+	}
+	batchBytes, err := json.Marshal(map[string]any{"tracks": tracks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "api.spotify.com" || r.Header.Get("Authorization") == "" {
+			t.Fatalf("unexpected or unauthenticated OAuth request: %s", r.URL)
+		}
+		switch r.URL.Path {
+		case "/v1/playlists/" + playlistID:
+			return &http.Response{StatusCode: http.StatusForbidden, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("{}"))}, nil
+		case "/v1/tracks":
+			if r.URL.Query().Get("ids") != strings.Join(trackIDs, ",") {
+				t.Fatalf("batch IDs changed: %q", r.URL.Query().Get("ids"))
+			}
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(batchBytes)))}, nil
+		default:
+			t.Fatalf("unexpected OAuth route %s", r.URL)
+			return nil, nil
+		}
+	})}}
+	a.spotifyPlaylistScraper = func(ctx context.Context, id string) (*spotify.ScrapedPlaylist, error) {
+		if err := ctx.Err(); err != nil || id != playlistID {
+			t.Fatalf("scraper context or identity: %v %s", err, id)
+		}
+		return &spotify.ScrapedPlaylist{Name: "First Party Mix", Tracks: trackIDs}, nil
+	}
+
+	got, name, _, err := a.fetchPlaylistTracks(t.Context(), playlistID, nil)
+	if err != nil || name != "First Party Mix" || len(got) != len(trackIDs) {
+		t.Fatalf("OAuth scraper fallback failed: name=%q tracks=%+v err=%v", name, got, err)
+	}
+	for i := range trackIDs {
+		if got[i].ID != trackIDs[i] || got[i].Name != "Song "+string(rune('1'+i)) || got[i].Album != "Album "+string(rune('1'+i)) || got[i].ReleaseDate != "2020-01-01" {
+			t.Fatalf("batch track %d was not returned in order with metadata: %+v", i, got[i])
+		}
+	}
+	runtime := a.spotifyTokens()
+	resource := "rest:/v1/tracks:page:::related"
+	for i := range trackIDs {
+		trackSnapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "track", SpotifyID: trackIDs[i], Resource: resource, ContextKey: runtime.metadataContext})
+		if err != nil || trackSnapshot == nil {
+			t.Fatalf("scraper OAuth batch track %s: %+v %v", trackIDs[i], trackSnapshot, err)
+		}
+		foundAlbumEdge := false
+		for _, relation := range trackSnapshot.Relations {
+			if relation.Kind == "album" && relation.ChildType == "album" && relation.ChildID == albumIDs[i] && !relation.Unavailable {
+				foundAlbumEdge = true
+			}
+		}
+		if !foundAlbumEdge {
+			t.Fatalf("scraper OAuth batch track %s lost album edge: %+v", trackIDs[i], trackSnapshot.Relations)
+		}
+		albumSnapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "album", SpotifyID: albumIDs[i], Resource: resource, ContextKey: runtime.metadataContext})
+		if err != nil || albumSnapshot == nil {
+			t.Fatalf("scraper OAuth batch album %s: %+v %v", albumIDs[i], albumSnapshot, err)
+		}
+	}
+	playlistSnapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: playlistID, Resource: scrapedPlaylistUnboundResource, ContextKey: runtime.metadataContext})
+	if err != nil || playlistSnapshot == nil || playlistSnapshot.CaptureRevision != "" || len(playlistSnapshot.Relations) != len(trackIDs) {
+		t.Fatalf("unbound playlist capture was not published: %+v %v", playlistSnapshot, err)
+	}
+}
 func TestCookieScrapedPlaylistCaptureRejectsRetiredOwner(t *testing.T) {
 	a, _, _ := fixtureCookieRuntime(t)
 	if err := a.spotifyAuth.connect(context.Background(), "fixture-cookie"); err != nil {

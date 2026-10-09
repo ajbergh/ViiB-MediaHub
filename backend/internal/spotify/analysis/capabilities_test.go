@@ -28,3 +28,16 @@ func TestCapabilitySemanticsAndCoverage(t *testing.T) {
 		t.Fatal("mutable shared registry")
 	}
 }
+
+func TestSpotifyTimingCapabilitiesDeclareAudioAnalysisResources(t *testing.T) {
+	byKey := map[string]CapabilityDefinition{}
+	for _, capability := range Capabilities() {
+		byKey[capability.Key] = capability
+	}
+	for _, key := range []string{"beat_intervals", "bar_intervals", "tatum_intervals"} {
+		capability := byKey[key]
+		if capability.FieldGroup != "provider_artifact" || len(capability.SpotifyResources) != 1 || capability.SpotifyResources[0] != "audio_analysis" {
+			t.Fatalf("%s capability omits its Spotify source: %+v", key, capability)
+		}
+	}
+}

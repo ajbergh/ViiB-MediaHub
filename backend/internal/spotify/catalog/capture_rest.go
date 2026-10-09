@@ -195,19 +195,7 @@ func CaptureREST(target *url.URL, raw []byte) ([]CapturedEntity, error) {
 	if err := walk(safe, true); err != nil {
 		return nil, err
 	}
-	// Duplicate nested projections cannot let a sparse object erase a richer one.
-	unique := []CapturedEntity{}
-	seen := map[string]int{}
-	for _, entity := range entities {
-		key := entity.EntityType + ":" + entity.ID + ":" + entity.Resource
-		if index, ok := seen[key]; ok {
-			if len(entity.Payload) > len(unique[index].Payload) {
-				unique[index] = entity
-			}
-		} else {
-			seen[key] = len(unique)
-			unique = append(unique, entity)
-		}
-	}
-	return unique, nil
+
+	return DeduplicateCapturedEntities(entities), nil
+
 }

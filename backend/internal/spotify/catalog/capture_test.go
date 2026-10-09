@@ -57,3 +57,23 @@ func TestCaptureRetainsUnplayableFactsAndLibraryRows(t *testing.T) {
 		t.Fatalf("saved library relation lost: %+v %v", entities, err)
 	}
 }
+
+func TestCaptureDomainMergesDuplicateTrackRelationCoverage(t *testing.T) {
+	playlistID := strings.Repeat("P", 22)
+	trackID := strings.Repeat("T", 22)
+	artistID := strings.Repeat("A", 22)
+	raw := []byte(`{"data":{"playlistV2":{"__typename":"Playlist","uri":"spotify:playlist:` + playlistID + `","content":{"items":[{"itemV2":{"data":{"__typename":"Track","uri":"spotify:track:` + trackID + `","artists":{"items":[{"__typename":"Artist","uri":"spotify:artist:` + artistID + `"}]}}}},{"itemV2":{"data":{"__typename":"Track","uri":"spotify:track:` + trackID + `","opaque_extra":"` + strings.Repeat("x", 1024) + `"}}}]}}}}`)
+	entities, err := CaptureDomain("playlist", map[string]any{"operationName": "getPlaylist", "variables": map[string]any{"uri": "spotify:playlist:" + playlistID}}, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var track *CapturedEntity
+	for i := range entities {
+		if entities[i].EntityType == "track" && entities[i].ID == trackID {
+			track = &entities[i]
+		}
+	}
+	if track == nil || len(track.Relations) != 1 || track.Relations[0].Kind != "artists" || track.Relations[0].ChildType != "artist" || track.Relations[0].ChildID != artistID || track.Relations[0].Unavailable {
+		t.Fatalf("duplicate GraphQL projection dropped artist edge: %+v", entities)
+	}
+}

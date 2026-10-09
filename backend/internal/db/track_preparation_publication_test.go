@@ -1,6 +1,8 @@
 package db
 
 import (
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -94,4 +96,31 @@ func TestPreparationPublicationRollsBackLateDatabaseFailure(t *testing.T) {
 		t.Fatal("source rejection partially replaced scalars")
 	}
 
+}
+
+func TestDeleteTrackAnalysisArtifactForSourceIsConditional(t *testing.T) {
+	d, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err := d.SaveSong(&Song{ID: "song", Title: "Song", FilePath: "song.wav"}); err != nil {
+		t.Fatal(err)
+	}
+	artifact := TrackAnalysisArtifact{ID: "song:bands", SongID: "song", Kind: "three_band", FormatVersion: 1, AlgorithmVersion: "bands-v1", Encoding: "binary-v1", Provenance: "measured", SourceFingerprint: "current-source", Data: []byte{1}}
+	if err := d.UpsertTrackAnalysisArtifact(artifact); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.DeleteTrackAnalysisArtifactForSource("song", "old-source", artifact.Kind, artifact.FormatVersion, artifact.AlgorithmVersion); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.GetTrackAnalysisArtifact("song", artifact.Kind, artifact.FormatVersion, artifact.AlgorithmVersion); err != nil {
+		t.Fatalf("replacement-source artifact was deleted: %v", err)
+	}
+	if err := d.DeleteTrackAnalysisArtifactForSource("song", "current-source", artifact.Kind, artifact.FormatVersion, artifact.AlgorithmVersion); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.GetTrackAnalysisArtifact("song", artifact.Kind, artifact.FormatVersion, artifact.AlgorithmVersion); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("matching local artifact was retained: %v", err)
+	}
 }

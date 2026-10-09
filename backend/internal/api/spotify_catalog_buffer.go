@@ -51,20 +51,9 @@ func (b *catalogCaptureBuffer) snapshot() ([]catalog.CapturedEntity, bool) {
 	if b.overflow || b.revisionInvalid {
 		return nil, false
 	}
-	unique := []catalog.CapturedEntity{}
-	seen := map[string]int{}
-	for _, entity := range b.entities {
-		key := entity.EntityType + ":" + entity.ID + ":" + entity.Resource
-		if index, ok := seen[key]; ok {
-			if len(entity.Payload) > len(unique[index].Payload) {
-				unique[index] = entity
-			}
-		} else {
-			seen[key] = len(unique)
-			unique = append(unique, entity)
-		}
-	}
-	return unique, true
+
+	return catalog.DeduplicateCapturedEntities(b.entities), true
+
 }
 
 // Root capture occurs before its compatibility response is decoded. Bind it

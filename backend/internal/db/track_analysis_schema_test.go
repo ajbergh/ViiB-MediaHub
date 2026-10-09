@@ -109,6 +109,10 @@ func TestBeatGridArtifactProvenanceMigration(t *testing.T) {
 			t.Fatalf("artifact %s provenance/source=%q/%q err=%v, want %q/empty for legacy row", test.id, artifact.Provenance, artifact.SourceFingerprint, err, test.want)
 		}
 	}
+	providerGrid := TrackAnalysisArtifact{ID: "spotify-grid", SongID: "song", Kind: "beatgrid", FormatVersion: 1, AlgorithmVersion: "spotify-v1", Encoding: "fixture", Provenance: "spotify", SourceFingerprint: "fp", Data: []byte{3}}
+	if err := database.UpsertTrackAnalysisArtifact(providerGrid); err != nil {
+		t.Fatalf("Spotify beat-grid provenance was rejected after migration: %v", err)
+	}
 }
 
 func TestTrackAnalysisSchemaCascadesArtifactsAndOverrides(t *testing.T) {

@@ -64,19 +64,34 @@ type Result struct {
 	DurationSeconds         float64
 	// BeatGrid is optional: scalar analysis remains useful when audio has no
 	// sufficiently periodic onset evidence for safe phase alignment.
-	BeatGrid       *beatgrid.Grid
-	Features       *features.Result
-	Loudness       *features.BS1770Result
-	LocalThreeBand *threeband.Overview
-	Waveform       *analysis.WaveformOverview
-	EnergyLevel    *features.EnergyLevelEstimate
-	Source         analysis.ResolvedSource
+	BeatGrid                   *beatgrid.Grid
+	Features                   *features.Result
+	Loudness                   *features.BS1770Result
+	LocalThreeBand             *threeband.Overview
+	Waveform                   *analysis.WaveformOverview
+	EnergyLevel                *features.EnergyLevelEstimate
+	Source                     analysis.ResolvedSource
+	ProviderThreeBandAvailable bool
 }
 
 // Options selects analyzer priors for a pass.
 type Options struct {
 	Tempo tempo.Options
 	Key   key.Options
+	// SkipTempo/SkipKey are set only when a validated, source-bound Spotify
+	// observation already supplies that field. The shared PCM pass may still
+	// feed onset analysis for local-only outputs, but it will not estimate or
+	// publish a duplicate local scalar.
+	SkipTempo bool
+	SkipKey   bool
+	// GridBPM supplies provider tempo for local phase alignment when Spotify
+	// did not return a usable beat/bar timing artifact. It is never persisted
+	// as a local tempo estimate.
+	GridBPM *float64
+	// ProviderBeatGrid is a validated, source-linked Spotify beats/bars
+	// projection; it replaces local phase-grid estimation for this pass.
+	ProviderBeatGrid *beatgrid.Grid
+	SkipThreeBand    bool
 }
 
 // FileTiming separates decoder/streaming work from DSP work for a Phase 0
@@ -127,6 +142,9 @@ type sourceOpener func() (io.ReadCloser, error)
 
 func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name string, open sourceOpener, songID string, opts Options) (Result, FileTiming, error) {
 	started := time.Now()
+	if opts.ProviderBeatGrid != nil && opts.ProviderBeatGrid.Validate() != nil {
+		opts.ProviderBeatGrid = nil
+	}
 	var timing FileTiming
 	var onsets *tempo.OnsetAccumulator
 	var chroma *key.ChromaAccumulator
@@ -146,9 +164,15 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 				timing.DeclaredAudioSeconds = float64(chunk.DeclaredFrames) / float64(chunk.SampleRate)
 			}
 			onsets = tempo.NewOnsetAccumulatorWithOptions(chunk.SampleRate, opts.Tempo)
-			chroma = key.NewChromaAccumulatorWithOptions(chunk.SampleRate, opts.Key)
-			phase = beatgrid.NewPhaseAccumulator(chunk.SampleRate)
-			bands, _ = threeband.New(chunk.SampleRate)
+			if !opts.SkipKey {
+				chroma = key.NewChromaAccumulatorWithOptions(chunk.SampleRate, opts.Key)
+			}
+			if opts.ProviderBeatGrid == nil {
+				phase = beatgrid.NewPhaseAccumulator(chunk.SampleRate)
+			}
+			if !opts.SkipThreeBand {
+				bands, _ = threeband.New(chunk.SampleRate)
+			}
 			energy = features.NewAccumulator(chunk.SampleRate)
 			var loudnessErr error
 			loudness, loudnessErr = features.NewBS1770Accumulator(chunk.SampleRate, chunk.SourceChannels)
@@ -162,8 +186,12 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		timing.AudioSeconds += float64(len(chunk.Samples)) / float64(chunk.SampleRate)
 		dspStarted := time.Now()
 		onsets.Feed(chunk.Samples)
-		chroma.Feed(chunk.Samples)
-		phase.Feed(chunk.Samples)
+		if chroma != nil {
+			chroma.Feed(chunk.Samples)
+		}
+		if phase != nil {
+			phase.Feed(chunk.Samples)
+		}
 		energy.Feed(chunk.Samples)
 		peaks.Feed(chunk.Samples)
 		if bands != nil {
@@ -201,11 +229,30 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		}
 		measuredLoudness := loudness.Result()
 		result.Loudness = &measuredLoudness
-		result.Tempo = onsets.Estimate()
-		result.Key = chroma.Estimate()
-		if result.Tempo.Known {
-			if grid, gridErr := phase.Build(result.Tempo.BPM, timing.AudioSeconds, 4); gridErr == nil {
-				result.BeatGrid = &grid
+		localOnsetCrestFactor := 0.0
+		if opts.SkipTempo {
+			// Spotify already supplied BPM. Preserve only the distinct rhythmic
+			// activity input used by local DJ energy; don't run the local BPM
+			// candidate estimator as hidden duplicate work.
+			localOnsetCrestFactor = onsets.OnsetCrestFactor()
+		} else {
+			result.Tempo = onsets.Estimate()
+			localOnsetCrestFactor = result.Tempo.OnsetCrestFactor
+		}
+		if chroma != nil {
+			result.Key = chroma.Estimate()
+		}
+		if opts.ProviderBeatGrid != nil {
+			result.BeatGrid = opts.ProviderBeatGrid
+		} else {
+			gridBPM := result.Tempo.BPM
+			if opts.SkipTempo && opts.GridBPM != nil {
+				gridBPM = *opts.GridBPM
+			}
+			if gridBPM > 0 && phase != nil {
+				if grid, gridErr := phase.Build(gridBPM, timing.AudioSeconds, 4); gridErr == nil {
+					result.BeatGrid = &grid
+				}
 			}
 		}
 		if measured, featureErr := energy.Result(); featureErr == nil {
@@ -219,7 +266,7 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 					break
 				}
 			}
-			if level, ok := features.EstimateEnergyLevel(features.EnergyLevelInputs{LoudnessProxyDB: measured.IntegratedLUFS, PeakDBFS: measured.TruePeakDBFS, OnsetCrestFactor: result.Tempo.OnsetCrestFactor, HasAudio: hasSignal}); ok {
+			if level, ok := features.EstimateEnergyLevel(features.EnergyLevelInputs{LoudnessProxyDB: measured.IntegratedLUFS, PeakDBFS: measured.TruePeakDBFS, OnsetCrestFactor: localOnsetCrestFactor, HasAudio: hasSignal}); ok {
 				result.EnergyLevel = &level
 			}
 		}

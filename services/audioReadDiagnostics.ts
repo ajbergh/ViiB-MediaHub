@@ -1,7 +1,7 @@
 import { createLogger } from './loggerService';
 
 const logger = createLogger('AudioRead');
-type AudioReadOperation = 'audio_metadata' | 'local_bands' | 'deck_analysis';
+type AudioReadOperation = 'audio_metadata' | 'local_bands' | 'provider_bands' | 'deck_analysis';
 const reported = new WeakSet<object>();
 
 /** Retry a narrowly defined transient read once without retrying missing or stale data. */

@@ -188,6 +188,23 @@ func (a *OnsetAccumulator) feedSpectralFlux(samples []float32) {
 	a.fluxPending = a.fluxPending[frames*a.fluxSTFT.HopSize:]
 }
 
+// OnsetCrestFactor returns the envelope's transient-to-average ratio without
+// running tempo candidate selection. Local-only consumers such as DJ energy
+// can keep this input when Spotify supplies BPM without estimating BPM again.
+func (a *OnsetAccumulator) OnsetCrestFactor() float64 {
+	if a == nil || a.sampleRate <= 0 || len(a.envelope) < 3 || maxValue(a.envelope) < 1e-7 {
+		return 0
+	}
+	onsets := make([]float64, len(a.envelope))
+	for i := 1; i < len(a.envelope); i++ {
+		onsets[i] = maxFloat(0, a.envelope[i]-a.envelope[i-1])
+	}
+	mean, _ := meanDeviation(onsets)
+	if mean <= 0 {
+		return 0
+	}
+	return maxValue(onsets) / mean
+}
 func (a *OnsetAccumulator) Estimate() Estimate {
 	if a.sampleRate <= 0 || len(a.envelope) < 3 || maxValue(a.envelope) < 1e-7 {
 		return Estimate{AlgorithmVersion: AlgorithmVersion}

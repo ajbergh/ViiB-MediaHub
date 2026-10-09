@@ -66,6 +66,67 @@ func TestOAuthCatalogResponseCapturedAndReplayed(t *testing.T) {
 	}
 }
 
+func TestOAuthBatchCatalogResponseCapturedAndReplayed(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	trackIDs := []string{strings.Repeat("T", 22), strings.Repeat("S", 22)}
+	albumIDs := []string{strings.Repeat("A", 22), strings.Repeat("B", 22)}
+	tracks := make([]any, 0, len(trackIDs))
+	for i, trackID := range trackIDs {
+		album := map[string]any{"id": albumIDs[i], "type": "album", "uri": "spotify:album:" + albumIDs[i], "name": "Album"}
+		tracks = append(tracks, map[string]any{
+			"id": trackID, "type": "track", "uri": "spotify:track:" + trackID,
+			"name": "Song", "duration_ms": 180000, "token": "secret", "album": album,
+		})
+	}
+	rawBytes, err := json.Marshal(map[string]any{"tracks": tracks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := string(rawBytes)
+	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+	})}}
+	requestURL := "https://api.spotify.com/v1/tracks?ids=" + url.QueryEscape(strings.Join(trackIDs, ","))
+	response, err := a.doSpotifyRequest(context.Background(), "GET", requestURL, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || string(body) != raw {
+		t.Fatalf("consumer response changed: err=%v body=%s", err, body)
+	}
+	runtime := a.spotifyTokens()
+	resource := "rest:/v1/tracks:page:::related"
+	for i := range trackIDs {
+		trackSnapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "track", SpotifyID: trackIDs[i], Resource: resource, ContextKey: runtime.metadataContext})
+		if err != nil || trackSnapshot == nil || strings.Contains(string(trackSnapshot.Payload), "secret") {
+			t.Fatalf("batch track snapshot %s: %+v %v", trackIDs[i], trackSnapshot, err)
+		}
+		foundAlbumEdge := false
+		for _, relation := range trackSnapshot.Relations {
+			if relation.Kind == "album" && relation.ChildType == "album" && relation.ChildID == albumIDs[i] && !relation.Unavailable {
+				foundAlbumEdge = true
+			}
+		}
+		if !foundAlbumEdge {
+			t.Fatalf("batch track %s lost album edge: %+v", trackIDs[i], trackSnapshot.Relations)
+		}
+		albumSnapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "album", SpotifyID: albumIDs[i], Resource: resource, ContextKey: runtime.metadataContext})
+		if err != nil || albumSnapshot == nil {
+			t.Fatalf("batch nested album %s: %+v %v", albumIDs[i], albumSnapshot, err)
+		}
+	}
+}
+
 type captureTestBody struct {
 	io.Reader
 	closed bool

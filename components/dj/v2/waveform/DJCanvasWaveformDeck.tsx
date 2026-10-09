@@ -1,6 +1,6 @@
 import { reportAudioReadFailure, withSharedAudioMetadataRead } from '../../../../services/audioReadDiagnostics';
 import { api } from '../../../../services/api';
-import { loadLocalThreeBand, type LocalThreeBand } from '../../../../services/localThreeBand';
+import { loadTrackThreeBand, type TrackThreeBand } from '../../../../services/trackThreeBand';
 import { djTrackSourceIdentity } from '../../../../lib/djBpmCorrection';
 /**
  * One deck's scrolling waveform lane rendered with Canvas 2D.
@@ -33,20 +33,25 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
   const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
   const spotifySessionGeneration = useStore(s => s.spotifySessionGeneration);
   const trackSourceIdentity = djTrackSourceIdentity(track);
-  const [bands,setBands] = useState<{track: typeof track; overview: LocalThreeBand['overview']; peak: number}>();
-  useEffect(()=>{
-   let active=true;let readingMetadata=true;setBands(undefined);
-   if(localBands && track) void (async()=>{
-    const metadata=await withSharedAudioMetadataRead(JSON.stringify([track.id, trackSourceIdentity, spotifySessionGeneration]),()=>api.getTrackAnalysisFeature(track.id),()=>active);
-    if(!active || !metadata.sourceFingerprint)return;
-    readingMetadata=false;
-    const data=await loadLocalThreeBand(track.id,metadata.sourceFingerprint,()=>active);
-    if(!active || !data || data.sourceFingerprint!==metadata.sourceFingerprint)return;
-    let peak=0;for(const band of [data.overview.low,data.overview.mid,data.overview.high])for(const value of band)peak=Math.max(peak,value);
-    setBands({track,overview:data.overview,peak});
-   })().catch(error=>{if(active) reportAudioReadFailure(readingMetadata ? 'audio_metadata' : 'local_bands',error);});
-   return ()=>{active=false;};
-  },[localBands,track,trackSourceIdentity,spotifySessionGeneration,retryGeneration]);
+  const [bands,setBands] = useState<{track: typeof track; data: TrackThreeBand; peak: number}>();
+  useEffect(() => {
+    let active = true;
+    let readingMetadata = true;
+    setBands(undefined);
+    if (localBands && track) void (async () => {
+      const metadata = await withSharedAudioMetadataRead(JSON.stringify([track.id, trackSourceIdentity, spotifySessionGeneration]), () => api.getTrackAnalysisFeature(track.id), () => active);
+      if (!active || !metadata.sourceFingerprint) return;
+      readingMetadata = false;
+      const loaded = await loadTrackThreeBand(track.id, metadata.sourceFingerprint, spotifySessionGeneration, () => active);
+      if (!active) return;
+      if (loaded.providerError) reportAudioReadFailure('provider_bands', loaded.providerError);
+      if (loaded.localError) reportAudioReadFailure('local_bands', loaded.localError);
+      if (!loaded.data) return;
+      const peak = Math.max(0, ...loaded.data.low, ...loaded.data.mid, ...loaded.data.high);
+      setBands({ track, data: loaded.data, peak });
+    })().catch(error => { if (active) reportAudioReadFailure(readingMetadata ? 'audio_metadata' : 'local_bands', error); });
+    return () => { active = false; };
+  }, [localBands, track, trackSourceIdentity, spotifySessionGeneration, retryGeneration]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scratch = useWaveformScratch(deck, visibleSeconds);
   const { seek } = useDJAudioEngineActions();
@@ -85,7 +90,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
       // Read position from the engine while moving for smooth 60 fps; the
       // store position is throttled.
       const position = moving && engine?.initialized ? engine.getPosition(deck) : d.position;
-      const usableBands=localBands && bands?.track===d.track && d.duration>0 && Math.abs(bands.overview.frames/bands.overview.sampleRate-d.duration)<=0.1 ? bands : undefined;
+      const usableBands = localBands && bands?.track === d.track && d.duration > 0 && Math.abs(bands.data.durationSeconds - d.duration) <= 0.1 ? bands : undefined;
       const visual = {
         bands: usableBands, position, peaks: d.waveformPeaks, duration: d.duration, grid: d.beatGrid, offset: d.beatGridOffset,
         cue: d.cuePoint, hot: d.hotCues, loop: d.loop, track: d.track?.id, w: canvas.width, h: canvas.height,
@@ -95,7 +100,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         drawMainWaveform(ctx, width, height, {
           deck,
-          localBands: usableBands,
+          threeBands: usableBands ? { data: usableBands.data, peak: usableBands.peak } : undefined,
           peaks: d.waveformPeaks,
           position,
           duration: d.duration,

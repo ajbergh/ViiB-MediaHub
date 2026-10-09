@@ -4,13 +4,49 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
+	"github.com/ajbergh/viib-mediahub/internal/db"
 	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 	spotifyrefresh "github.com/ajbergh/viib-mediahub/internal/spotify/refresh"
 	"os"
 	"testing"
 	"time"
 )
+
+func TestDownloadedPreparationUsesFreshSpotifyFieldsAndPreservesProvenance(t *testing.T) {
+	confidence := .8
+	fields := []db.SpotifyScalarField{
+		{Key: "tempo_bpm", Metric: "tempo", Units: "bpm", Value: json.RawMessage(`123.5`), Confidence: &confidence, Endpoint: "audio_features", RetrievedAt: time.Now(), DurableImport: true},
+		{Key: "key_mode", Metric: "tonic_and_mode", Units: "pitch_class_and_mode", Value: json.RawMessage(`{"tonic":9,"mode":0}`), Endpoint: "audio_analysis", RetrievedAt: time.Now(), DurableImport: true},
+		{Key: "tempo_bpm", Metric: "tempo", Units: "bpm", Value: json.RawMessage(`111`), Endpoint: "audio_features", RetrievedAt: time.Now().Add(-time.Hour), ExpiresAt: time.Now().Add(-time.Minute), Stale: true, DurableImport: true},
+	}
+	observation := downloadedPreparationObservation(fields, cachedSpotifyID)
+	if observation == nil || observation.BPM == nil || *observation.BPM != 123.5 || observation.Key == nil || *observation.Key != 9 || observation.Mode == nil || *observation.Mode != 0 {
+		t.Fatalf("downloaded provider preparation: %+v", observation)
+	}
+	record := db.TrackAnalysis{SongID: "song", SourceFingerprint: "current"}
+	db.ApplySpotifyScalars(&record, *observation)
+	if record.SpotifyBindings == nil || record.SpotifyBindings.BPM == nil || !record.SpotifyBindings.BPM.Durable || record.SpotifyBindings.BPM.Endpoint != "audio_features" || record.SpotifyBindings.Key == nil || !record.SpotifyBindings.Key.Durable || record.SpotifyBindings.Key.Endpoint != "audio_analysis" {
+		t.Fatalf("durable source provenance was lost: %+v", record.SpotifyBindings)
+	}
+	staleOnly := downloadedPreparationObservation(fields[2:], cachedSpotifyID)
+	if staleOnly != nil {
+		t.Fatalf("stale durable fields must leave room for local fallback: %+v", staleOnly)
+	}
+}
+
+func TestPreparationObservationUsesFreshSpotifyFieldsBeforeLocalFallback(t *testing.T) {
+	primaryBPM, fallbackBPM, fallbackKey, fallbackMode := 100.0, 120.0, 4, 1
+	primary := &spotifyanalysis.Observation{TrackID: cachedSpotifyID, BPM: &primaryBPM}
+	providerGrid := &beatgrid.Grid{Beats: []float64{0, .5, 1}, DownbeatIndices: []int{0, 2}, Provenance: beatgrid.ProvenanceSpotify}
+	fallback := &spotifyanalysis.Observation{TrackID: cachedSpotifyID, BPM: &fallbackBPM, Key: &fallbackKey, Mode: &fallbackMode, ProviderThreeBandAvailable: true, ProviderBeatGrid: providerGrid}
+	got := mergePreparationObservations(primary, fallback)
+	if got.BPM == nil || *got.BPM != primaryBPM || got.Key == nil || *got.Key != fallbackKey || !got.ProviderThreeBandAvailable || got.ProviderBeatGrid != providerGrid {
+		t.Fatalf("provider precedence/fallback merge: %+v", got)
+	}
+}
 
 func TestAutomaticSpotifyFeaturesRequireCurrentRecordingAndReuseCache(t *testing.T) {
 	a, path := newBPMRouteTestAPI(t, false)
@@ -407,5 +443,27 @@ func TestPreparationRejectsRecordingRelinkedDuringProviderWork(t *testing.T) {
 	cache, err := a.db.GetExternalAnalysis(cachedSpotifyID, spotifyrefresh.Features)
 	if err != nil || cache == nil {
 		t.Fatalf("old recording cache should survive relinking: %+v %v", cache, err)
+	}
+}
+
+func TestSpotifyBeatGridRequiresUsableOrderedProviderBeatsAndBars(t *testing.T) {
+	valid := spotifyBeatGridFromArtifacts(
+		[]byte("{\"beats\":[{\"start\":0},{\"start\":0.5},{\"start\":1},{\"start\":1.5}]}"),
+		[]byte("{\"bars\":[{\"start\":0},{\"start\":1}]}"),
+	)
+	if valid == nil || valid.Provenance != beatgrid.ProvenanceSpotify || len(valid.Beats) != 4 || len(valid.DownbeatIndices) != 2 || valid.DownbeatIndices[1] != 2 {
+		t.Fatalf("provider beat grid projection: %+v", valid)
+	}
+	for name, fixture := range map[string][2]string{
+		"missing-bars":        {"{\"beats\":[{\"start\":0},{\"start\":0.5}]}", "{\"bars\":[]}"},
+		"unsorted-beats":      {"{\"beats\":[{\"start\":0.5},{\"start\":0.4}]}", "{\"bars\":[{\"start\":0}]}"},
+		"unmatched-bar":       {"{\"beats\":[{\"start\":0},{\"start\":0.5}]}", "{\"bars\":[{\"start\":0.2}]}"},
+		"duplicate-downbeats": {"{\"beats\":[{\"start\":0},{\"start\":0.5},{\"start\":1}]}", "{\"bars\":[{\"start\":0},{\"start\":0.0005}]}"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := spotifyBeatGridFromArtifacts([]byte(fixture[0]), []byte(fixture[1])); got != nil {
+				t.Fatalf("invalid provider timing accepted: %+v", got)
+			}
+		})
 	}
 }

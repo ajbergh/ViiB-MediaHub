@@ -6,22 +6,22 @@ const mocks = vi.hoisted(() => ({ load: vi.fn(), metadata: vi.fn(), seek: vi.fn(
 vi.mock('../../../store', () => ({ useStore: Object.assign((select: any) => select(mocks.state), { getState: () => mocks.state }) }));
 vi.mock('../../../hooks/useDJAudioEngine', () => ({ useDJAudioEngineActions: () => ({ seek: mocks.seek }) }));
 vi.mock('../../../services/api', () => ({ api: { getTrackAnalysisFeature: mocks.metadata } }));
-vi.mock('../../../services/localThreeBand', () => ({ loadLocalThreeBand: mocks.load }));
+vi.mock('../../../services/trackThreeBand', () => ({ loadTrackThreeBand: mocks.load }));
 import { DJDeckOverview } from './DJDeckOverview';
-it('labels eligible local bands and falls back when the source or duration differs', async () => {
+it('shows current Spotify bands first and falls back to amplitude for mismatched or unavailable bands', async () => {
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
  vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue(null);
  mocks.metadata.mockResolvedValue({ sourceFingerprint: 'fp' });
- mocks.load.mockResolvedValue({ sourceFingerprint: 'fp', overview: { frames: 100, sampleRate: 10 } });
+ mocks.load.mockResolvedValue({ data: { source: 'spotify', sourceFingerprint: 'fp', durationSeconds: 10, low: [1], mid: [0.5], high: [0.25] } });
  const host = document.createElement('div'); const root = createRoot(host);
  try {
   await act(async () => root.render(<DJDeckOverview deck="A" localBands />));
-  expect(host.textContent).toContain('Low / Mid / High');
+  expect(host.textContent).toContain('Spotify bands - Low / Mid / High');
   mocks.state.djDeckA.duration = 20;
   await act(async () => root.render(<DJDeckOverview deck="A" localBands visibleSeconds={8} />));
-  expect(host.textContent).toContain('duration differs');
+  expect(host.textContent).toContain('different timeline');
   mocks.state.djDeckA.track = { id: 'replacement' };
-  mocks.load.mockResolvedValue({ sourceFingerprint: 'old', overview: { frames: 200, sampleRate: 10 } });
+  mocks.load.mockResolvedValue({ data: null });
   await act(async () => root.render(<DJDeckOverview deck="A" localBands visibleSeconds={10} />));
   expect(host.textContent).toContain('Amplitude overview');
  } finally { await act(async () => root.unmount()); vi.restoreAllMocks(); }
@@ -35,7 +35,7 @@ it('draws all three lanes and preserves playback-time seeking and cue markers', 
  vi.spyOn(HTMLCanvasElement.prototype,'getBoundingClientRect').mockReturnValue({ left: 0, width: 100 } as DOMRect);
  Object.assign(mocks.state.djDeckA,{ track: { id: 'draw' }, duration: 10, position: 2, waveformPeaks: null, loop: { start: 0,end: 0,enabled: false }, hotCues: [{ position: 5,color: 'cue',origin: 'manual' }] });
  mocks.metadata.mockResolvedValue({ sourceFingerprint: 'fp' });
- mocks.load.mockResolvedValue({ sourceFingerprint: 'fp',overview: { frames: 100,sampleRate: 10,low:[1],mid:[0.5],high:[0.25] } });
+ mocks.load.mockResolvedValue({ data: { source: 'spotify', sourceFingerprint: 'fp', durationSeconds: 10, low: [1], mid: [0.5], high: [0.25] } });
  const host = document.createElement('div'); const root = createRoot(host);
  try {
   await act(async () => root.render(<DJDeckOverview deck="A" localBands visibleSeconds={4} />));
@@ -48,15 +48,14 @@ it('draws all three lanes and preserves playback-time seeking and cue markers', 
  } finally { await act(async () => root.unmount()); vi.restoreAllMocks(); }
 });
 
-it('retries a transient local-band read failure from an accessible action', async () => {
+it('retries a transient provider/local band read failure from an accessible action', async () => {
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
  mocks.state.djDeckA.track = { id: 'retry' };
  mocks.state.djDeckA.duration = 10;
  mocks.metadata.mockResolvedValue({ sourceFingerprint: 'retry-fp' });
- mocks.load.mockRejectedValueOnce(new Error('transient read failure')).mockResolvedValueOnce({
-  sourceFingerprint: 'retry-fp',
-  overview: { frames: 100, sampleRate: 10, low: [1], mid: [0.5], high: [0.25] },
+ mocks.load.mockResolvedValueOnce({ data: null, localError: new Error('transient read failure') }).mockResolvedValueOnce({
+  data: { source: 'local', sourceFingerprint: 'retry-fp', durationSeconds: 10, low: [1], mid: [0.5], high: [0.25] },
  });
  const host = document.createElement('div');
  const root = createRoot(host);
@@ -64,9 +63,9 @@ it('retries a transient local-band read failure from an accessible action', asyn
   await act(async () => root.render(<DJDeckOverview deck="A" localBands />));
   expect(host.textContent).toContain('Amplitude overview remains available.');
   const retry = host.querySelector('button');
-  expect(retry?.textContent).toBe('Retry local bands');
+  expect(retry?.textContent).toBe('Retry three-band');
   await act(async () => retry?.click());
-  expect(host.textContent).toContain('Low / Mid / High');
+  expect(host.textContent).toContain('Local bands - Low / Mid / High');
   expect(mocks.load).toHaveBeenCalledTimes(2);
  } finally {
   await act(async () => root.unmount());

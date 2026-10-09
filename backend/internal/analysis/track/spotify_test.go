@@ -5,9 +5,12 @@ package track
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/threeband"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/waveformartifact"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
@@ -109,7 +112,8 @@ func TestSpotifyEnrichesValidLocalAnalysisWithoutDecodingOrLosingArtifacts(t *te
 }
 
 func TestSpotifyFirstAndLocalFallback(t *testing.T) {
-	for _, scenario := range []string{"complete", "key-only", "bpm-only", "unavailable", "canceled"} {
+	energyLevels := map[string]int{}
+	for _, scenario := range []string{"complete", "key-only", "bpm-only", "provider-waveform", "provider-timing", "unavailable", "canceled"} {
 		t.Run(scenario, func(t *testing.T) {
 			logDirectory := t.TempDir()
 			if err := logger.Init(logDirectory); err != nil {
@@ -121,6 +125,15 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 			defer cancel()
 			opens := 0
 			bpm, tonic, mode := 109.724, 9, 0 // A minor
+			if scenario == "provider-waveform" {
+				currentSource, sourceErr := analysis.ResolveLocalSource(database, ids[0])
+				if sourceErr != nil {
+					t.Fatal(sourceErr)
+				}
+				if artifactErr := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: ids[0] + ":local-bands", SongID: ids[0], Kind: threeband.Kind, FormatVersion: threeband.FormatVersion, AlgorithmVersion: threeband.AlgorithmVersion, Encoding: threeband.Encoding, Provenance: "measured", SourceFingerprint: currentSource.Fingerprint, Data: []byte{1}}); artifactErr != nil {
+					t.Fatal(artifactErr)
+				}
+			}
 			options := RunOptions{
 				ResolveSource: func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
 					source, err := analysis.ResolveLocalSource(database, id)
@@ -129,6 +142,13 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 					return source, err
 				},
 				SpotifyFeatures: func(context.Context, analysis.ResolvedSource) *spotifyanalysis.Observation {
+					if scenario == "provider-waveform" {
+						return &spotifyanalysis.Observation{ProviderThreeBandAvailable: true}
+					}
+					if scenario == "provider-timing" {
+						grid := &beatgrid.Grid{Beats: []float64{0, 0.5, 1, 1.5}, DownbeatIndices: []int{0, 2}, Provenance: beatgrid.ProvenanceSpotify}
+						return &spotifyanalysis.Observation{BPM: &bpm, Key: &tonic, Mode: &mode, ProviderBeatGrid: grid}
+					}
 					if scenario == "unavailable" {
 						return nil
 					}
@@ -152,7 +172,7 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 				t.Fatal(readErr)
 			}
 			logText := string(contents)
-			expected := map[string]string{"complete": "reason=\"spotify_scalars_local_artifacts\"", "key-only": "reason=\"spotify_missing_bpm\"", "bpm-only": "reason=\"spotify_missing_key\"", "unavailable": "reason=\"spotify_unavailable\"", "canceled": "analysis_canceled"}[scenario]
+			expected := map[string]string{"complete": "reason=\"spotify_scalars_local_artifacts\"", "key-only": "reason=\"spotify_missing_bpm\"", "bpm-only": "reason=\"spotify_missing_key\"", "provider-waveform": "reason=\"spotify_missing_bpm_and_key\"", "provider-timing": "reason=\"spotify_scalars_local_artifacts\"", "unavailable": "reason=\"spotify_unavailable\"", "canceled": "analysis_canceled"}[scenario]
 			if !strings.Contains(logText, expected) {
 				t.Fatalf("missing decision %q: %s", expected, logText)
 			}
@@ -183,15 +203,30 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 			if opens != 1 {
 				t.Fatalf("local artifacts require one decode, got %d", opens)
 			}
-			if record.Local == nil || record.Local.BPM == nil || record.Local.SourceFingerprint != record.SourceFingerprint || record.Local.AlgorithmVersion != AlgorithmVersion {
-				t.Fatalf("local tempo observation missing: %+v", record.Local)
+			if record.Local == nil || record.Local.SourceFingerprint != record.SourceFingerprint || record.Local.AlgorithmVersion != AlgorithmVersion {
+				t.Fatalf("local observation missing: %+v", record.Local)
 			}
-			if scenario == "complete" && *record.Local.BPM == bpm {
-				t.Fatal("provider tempo replaced local observation")
+			expectLocalBPM := scenario == "key-only" || scenario == "provider-waveform" || scenario == "unavailable"
+			if (record.Local.BPM != nil) != expectLocalBPM {
+				t.Fatalf("local BPM fallback did not match Spotify availability: scenario=%s local=%+v", scenario, record.Local)
+			}
+			if scenario == "complete" || scenario == "bpm-only" || scenario == "provider-timing" {
+				grid, gridErr := database.GetTrackAnalysisArtifact(ids[0], beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion)
+				expectProvenance := string(beatgrid.ProvenanceInferredFromMeter)
+				if scenario == "provider-timing" {
+					expectProvenance = string(beatgrid.ProvenanceSpotify)
+				}
+				if gridErr != nil || grid.Provenance != expectProvenance {
+					t.Fatalf("beat-grid selection provenance = %+v %v, want %s", grid, gridErr, expectProvenance)
+				}
+			}
+			if (scenario == "complete" || scenario == "key-only" || scenario == "provider-timing") && record.Local.KeyTonic != nil {
+				t.Fatalf("Spotify key was redundantly estimated locally: %+v", record.Local)
 			}
 			if record.EnergyLevel == nil {
 				t.Fatal("energy level missing")
 			}
+			energyLevels[scenario] = *record.EnergyLevel
 			for _, artifact := range []struct {
 				kind      string
 				version   int
@@ -205,11 +240,23 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			localBands, bandErr := database.GetTrackAnalysisArtifact(ids[0], threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion)
+			if scenario == "provider-waveform" {
+				if !errors.Is(bandErr, sql.ErrNoRows) {
+					t.Fatalf("provider waveform retained duplicate local bands: artifact=%+v err=%v", localBands, bandErr)
+				}
+				states, stateErr := database.GetTrackCapabilityStatuses(ids[0], record.SourceFingerprint)
+				if stateErr != nil || states[threeband.Kind].State != "available" || states[threeband.Kind].Reason != "provider_three_band" {
+					t.Fatalf("provider waveform capability not retained: %+v %v", states[threeband.Kind], stateErr)
+				}
+			} else if bandErr != nil {
+				t.Fatalf("local three-band fallback missing: %v", bandErr)
+			}
 			cues, err := database.GetDJHotCues(ids[0])
 			if err != nil || len(cues) == 0 {
 				t.Fatalf("generated cues missing: %+v %v", cues, err)
 			}
-			if scenario == "complete" || scenario == "bpm-only" {
+			if scenario == "complete" || scenario == "bpm-only" || scenario == "provider-timing" {
 				if record.BPM == nil || *record.BPM != bpm || *record.BPMSource != "spotify" || record.BPMConfidence != nil {
 					t.Fatalf("provider BPM: %+v", record)
 				}
@@ -222,6 +269,9 @@ func TestSpotifyFirstAndLocalFallback(t *testing.T) {
 				}
 			}
 		})
+	}
+	if energyLevels["complete"] != energyLevels["unavailable"] {
+		t.Fatalf("Spotify BPM changed the local DJ energy result: provider=%d local=%d", energyLevels["complete"], energyLevels["unavailable"])
 	}
 }
 

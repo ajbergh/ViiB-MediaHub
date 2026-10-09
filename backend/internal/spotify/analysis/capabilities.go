@@ -61,6 +61,16 @@ func Capabilities() []CapabilityDefinition {
 		d.FieldGroup = "local_artifact"
 		d.ValueType = "artifact"
 		d.ValidationPolicy = "versioned_source_fingerprint"
+		if item.key == "beat_intervals" || item.key == "bar_intervals" || item.key == "tatum_intervals" {
+			d.FieldGroup = "provider_artifact"
+			d.SpotifyResources = []string{"audio_analysis"}
+			d.LocalEstimator = ""
+			d.ValidationPolicy = "validated_ordered_interval_array"
+			d.FallbackPolicy = "provider_only"
+			if item.key == "beat_intervals" || item.key == "bar_intervals" {
+				d.FallbackPolicy = "local_phase_alignment_when_provider_unusable"
+			}
+		}
 		values = append(values, d)
 	}
 	for _, item := range []struct{ key, resource string }{{"spotify_three_band", "three_band_waveform"}, {"spotify_detailed_analysis", "audio_analysis"}} {

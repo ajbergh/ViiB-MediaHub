@@ -28,9 +28,13 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 		return err == nil && a.SourceFingerprint == source.Fingerprint && a.Encoding == encoding && a.Provenance != "unknown" && decode(a.Data)
 	}
 	durationAvailable := db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "local_duration_seconds")
+	providerThreeBand := false
+	if state, ok := states[threeband.Kind]; ok && state.Version == versions[threeband.Kind] && state.State == "available" && state.Reason == "provider_three_band" {
+		providerThreeBand = true
+	}
 	valid := map[string]bool{
 		"local_duration":  durationAvailable,
-		threeband.Kind:    artifactValid(threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion, threeband.Encoding, func(b []byte) bool { _, e := threeband.Decode(b); return e == nil }),
+		threeband.Kind:    providerThreeBand || artifactValid(threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion, threeband.Encoding, func(b []byte) bool { _, e := threeband.Decode(b); return e == nil }),
 		"local_scalars":   record.Local != nil && record.Local.SourceFingerprint == source.Fingerprint && record.Local.AlgorithmVersion == AlgorithmVersion,
 		"local_energy":    record.EnergyLevel != nil && record.EnergyLevelConfidence != nil && record.EnergyAlgorithmVersion != nil && *record.EnergyAlgorithmVersion == features.EnergyLevelAlgorithmVersion,
 		"local_amplitude": currentWaveform(database, source),
@@ -62,7 +66,7 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 }
 
 func preparationStatuses(result Result) []db.TrackCapabilityStatus {
-	available := map[string]bool{"local_duration": result.PreparationError == "" && result.DurationSeconds > 0, threeband.Kind: result.LocalThreeBand != nil, "local_scalars": result.PreparationError == "", "local_energy": result.EnergyLevel != nil, "local_features": result.Features != nil, "local_loudness": result.Loudness != nil, "local_amplitude": result.Waveform != nil, "local_beatgrid": result.BeatGrid != nil}
+	available := map[string]bool{"local_duration": result.PreparationError == "" && result.DurationSeconds > 0, threeband.Kind: result.LocalThreeBand != nil || result.ProviderThreeBandAvailable, "local_scalars": result.PreparationError == "", "local_energy": result.EnergyLevel != nil, "local_features": result.Features != nil, "local_loudness": result.Loudness != nil, "local_amplitude": result.Waveform != nil, "local_beatgrid": result.BeatGrid != nil}
 	states := []db.TrackCapabilityStatus{}
 	for capability, version := range preparationVersions() {
 		if result.RepairPrevious != nil && !result.RepairCapabilities[capability] {
@@ -75,12 +79,15 @@ func preparationStatuses(result Result) []db.TrackCapabilityStatus {
 		if available[capability] {
 			s.State = "available"
 			s.Reason = ""
+			if capability == threeband.Kind && result.ProviderThreeBandAvailable && result.LocalThreeBand == nil {
+				s.Reason = "provider_three_band"
+			}
 		}
-		if capability == threeband.Kind && result.LocalThreeBand == nil && result.Waveform != nil && result.Waveform.SampleRate < 10000 {
+		if capability == threeband.Kind && !result.ProviderThreeBandAvailable && result.LocalThreeBand == nil && result.Waveform != nil && result.Waveform.SampleRate < 10000 {
 			s.State = "unsupported"
 			s.Reason = "sample_rate_unsupported"
 		}
-		if result.PreparationError != "" {
+		if result.PreparationError != "" && !(capability == threeband.Kind && result.ProviderThreeBandAvailable) {
 			s.State = "failed"
 			s.Reason = result.PreparationError
 			s.RetryAt = time.Now().Add(24 * time.Hour).UnixMilli()

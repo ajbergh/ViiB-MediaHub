@@ -2,7 +2,11 @@
 // It does not select effective local BPM/key or control DJ timing.
 package analysis
 
-import "time"
+import (
+	"time"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
+)
 
 type track struct {
 	Energy           *float64 `json:"energy"`
@@ -64,14 +68,18 @@ type Observation struct {
 	AccountContext       string           `json:"-"`
 	ArtifactCapabilities []string         `json:"artifactCapabilities,omitempty"`
 	RejectedFields       []FieldRejection `json:"rejectedFields,omitempty"`
-	DurationMilliseconds *float64         `json:"durationMilliseconds,omitempty"`
-	Energy               *float64         `json:"energy"`
-	Danceability         *float64         `json:"danceability"`
-	Acousticness         *float64         `json:"acousticness"`
-	Instrumentalness     *float64         `json:"instrumentalness"`
-	Liveness             *float64         `json:"liveness"`
-	Speechiness          *float64         `json:"speechiness"`
-	Valence              *float64         `json:"valence"`
+	// ProviderThreeBandAvailable is an in-memory, source/link-validated
+	// preparation signal; it is not part of the provider scalar payload.
+	ProviderThreeBandAvailable bool           `json:"-"`
+	ProviderBeatGrid           *beatgrid.Grid `json:"-"`
+	DurationMilliseconds       *float64       `json:"durationMilliseconds,omitempty"`
+	Energy                     *float64       `json:"energy"`
+	Danceability               *float64       `json:"danceability"`
+	Acousticness               *float64       `json:"acousticness"`
+	Instrumentalness           *float64       `json:"instrumentalness"`
+	Liveness                   *float64       `json:"liveness"`
+	Speechiness                *float64       `json:"speechiness"`
+	Valence                    *float64       `json:"valence"`
 
 	SourceEndpoint          string    `json:"sourceEndpoint"`
 	TrackID                 string    `json:"trackId"`
