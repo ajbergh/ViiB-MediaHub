@@ -519,6 +519,14 @@ func (a *API) currentAnalysisSourceFingerprints(songIDs []string) (map[string]st
 }
 
 func currentEnergyArtifactMatchesSource(analysis db.TrackAnalysis, currentFingerprint string, artifact db.TrackAnalysisArtifact) bool {
+	return currentEnergyArtifactMetadataMatchesSource(analysis, currentFingerprint, db.TrackAnalysisArtifactMetadata{
+		SongID: artifact.SongID, Kind: artifact.Kind, FormatVersion: artifact.FormatVersion,
+		AlgorithmVersion: artifact.AlgorithmVersion, Encoding: artifact.Encoding,
+		Provenance: artifact.Provenance, SourceFingerprint: artifact.SourceFingerprint,
+	})
+}
+
+func currentEnergyArtifactMetadataMatchesSource(analysis db.TrackAnalysis, currentFingerprint string, artifact db.TrackAnalysisArtifactMetadata) bool {
 	return trackStructureSourceEligible(analysis) && currentFingerprint != "" && currentFingerprint == analysis.SourceFingerprint &&
 		artifact.SongID == analysis.SongID && artifact.SourceFingerprint != "" && artifact.SourceFingerprint == analysis.SourceFingerprint &&
 		artifact.Kind == features.ArtifactKind && artifact.FormatVersion == features.FormatVersion && artifact.AlgorithmVersion == features.AlgorithmVersion &&
@@ -1272,7 +1280,7 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	artifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	artifact, err := a.db.GetTrackAnalysisArtifactBounded(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		respondError(w, http.StatusNotFound, "energy features not found")
 		return
@@ -1357,7 +1365,7 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusBadRequest, "intent must be one of hold, lift, reset, or harmonic; surprise and vocal-safe require evidence not yet available")
 		return
 	}
-	sourceArtifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	sourceArtifact, err := a.db.GetTrackAnalysisArtifactBounded(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		respondError(w, http.StatusNotFound, "energy features not found")
 		return
@@ -1366,7 +1374,7 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	artifacts, err := a.db.ListTrackAnalysisArtifacts(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	artifacts, err := a.db.ListTrackAnalysisArtifactMetadata(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1438,6 +1446,22 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusConflict, "energy features are stale or cannot be verified for the current source")
 		return
 	}
+	candidateIDs := make([]string, 0, len(artifacts))
+	artifactMetadataByID := make(map[string]db.TrackAnalysisArtifactMetadata, len(artifacts))
+	for _, artifact := range artifacts {
+		if artifact.SongID == songID || artifact.PayloadBytes <= 0 || artifact.PayloadBytes > features.MaxStructureStatusArtifactBytes {
+			continue
+		}
+		analysisRecord, hasAnalysis := analysisByID[artifact.SongID]
+		if !hasAnalysis || !currentEnergyArtifactMetadataMatchesSource(analysisRecord, currentFingerprints[artifact.SongID], artifact) {
+			continue
+		}
+		if _, exists := songByID[artifact.SongID]; !exists {
+			continue
+		}
+		artifactMetadataByID[artifact.SongID] = artifact
+		candidateIDs = append(candidateIDs, artifact.SongID)
+	}
 	source, err := features.DecodeBounded(sourceArtifact.Data, features.MaxStructureStatusArtifactBytes)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -1460,14 +1484,6 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	}
 	stemStatuses := map[string]string{}
 	if filters.StemsAvailable != nil {
-		candidateIDs := make([]string, 0, len(artifacts))
-		for _, artifact := range artifacts {
-			if artifact.SongID != songID {
-				if _, exists := songByID[artifact.SongID]; exists {
-					candidateIDs = append(candidateIDs, artifact.SongID)
-				}
-			}
-		}
 		stemStatuses, err = a.db.ListStemStatuses(candidateIDs)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err.Error())
@@ -1482,63 +1498,70 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		}
 		assemblyStatus := http.StatusOK
 		assemblyMessage := ""
-		recommendations := make([]TransitionRecommendationResponse, 0, len(artifacts))
+		recommendations := make([]TransitionRecommendationResponse, 0, len(candidateIDs))
 		candidatesBeforeFilters := 0
 		checkedSourceIDs := []string{songID}
-		for _, artifact := range artifacts {
-			if artifact.SongID == songID {
-				continue
-			}
-			analysisRecord, hasAnalysis := analysisByID[artifact.SongID]
-			if !hasAnalysis || !currentEnergyArtifactMatchesSource(analysisRecord, currentFingerprints[artifact.SongID], artifact) {
-				continue
-			}
-			candidate, err := features.DecodeBounded(artifact.Data, features.MaxStructureStatusArtifactBytes)
-			if err != nil {
-				continue // a corrupt candidate must not make the deck unavailable
-			}
-			song, exists := songByID[artifact.SongID]
-			if !exists {
-				continue
-			}
-			candidatesBeforeFilters++
-			checkedSourceIDs = append(checkedSourceIDs, artifact.SongID)
-			var providerScore *db.SpotifyScoreSummary
-			if filters.SpotifyScoreMetric != "" {
-				summary, exists := providerScores[artifact.SongID]["spotify_"+filters.SpotifyScoreMetric+"_score"]
-				if !exists || !transitionSpotifyScoreMatches(summary, filters, time.Now()) {
-					continue
+		var scoreFailure string
+		visitErr := a.db.VisitTrackAnalysisArtifactPayloadsBounded(candidateIDs, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes,
+			func(candidateID, payloadFingerprint string, data []byte) error {
+				artifact, exists := artifactMetadataByID[candidateID]
+				if !exists || payloadFingerprint == "" || payloadFingerprint != artifact.SourceFingerprint {
+					return nil
 				}
-				providerScore = &summary
-			}
-			transitionMetadata := metadataByID[artifact.SongID]
-			stemAvailable := stemStatuses[artifact.SongID] == "ready"
-			if !transitionCandidateMatchesFilters(transitionMetadata, stemAvailable, filters) || !transitionLibrarySongMatchesFilters(song, playlistSongIDs, filters) {
-				continue
-			}
-			if filters.NotRecentlyPlayedHours != nil {
-				if _, playedRecently := recentlyPlayedIDs[song.ID]; playedRecently {
-					continue
+				candidate, decodeErr := features.DecodeBounded(data, features.MaxStructureStatusArtifactBytes)
+				if decodeErr != nil {
+					return nil // a corrupt candidate must not make the deck unavailable
 				}
-			}
-			score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[artifact.SongID], intent)
-			if scoreErr != nil {
-				return TransitionRecommendationsResponse{}, http.StatusBadRequest, scoreErr.Error()
-			}
-			if filters.CamelotCompatible != nil && *filters.CamelotCompatible {
-				if !validTransitionMetadataKey(metadataByID[songID]) || !validTransitionMetadataKey(metadataByID[artifact.SongID]) || !transitionCamelotCompatible(score.Vector.CamelotRelation) {
-					continue
+				song, exists := songByID[candidateID]
+				if !exists {
+					return nil
 				}
+				candidatesBeforeFilters++
+				checkedSourceIDs = append(checkedSourceIDs, candidateID)
+				var providerScore *db.SpotifyScoreSummary
+				if filters.SpotifyScoreMetric != "" {
+					summary, exists := providerScores[candidateID]["spotify_"+filters.SpotifyScoreMetric+"_score"]
+					if !exists || !transitionSpotifyScoreMatches(summary, filters, time.Now()) {
+						return nil
+					}
+					providerScore = &summary
+				}
+				transitionMetadata := metadataByID[candidateID]
+				stemAvailable := stemStatuses[candidateID] == "ready"
+				if !transitionCandidateMatchesFilters(transitionMetadata, stemAvailable, filters) || !transitionLibrarySongMatchesFilters(song, playlistSongIDs, filters) {
+					return nil
+				}
+				if filters.NotRecentlyPlayedHours != nil {
+					if _, playedRecently := recentlyPlayedIDs[song.ID]; playedRecently {
+						return nil
+					}
+				}
+				score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[candidateID], intent)
+				if scoreErr != nil {
+					scoreFailure = scoreErr.Error()
+					return scoreErr
+				}
+				if filters.CamelotCompatible != nil && *filters.CamelotCompatible {
+					if !validTransitionMetadataKey(metadataByID[songID]) || !validTransitionMetadataKey(metadataByID[candidateID]) || !transitionCamelotCompatible(score.Vector.CamelotRelation) {
+						return nil
+					}
+				}
+				evidence := TransitionCandidateEvidence{BPM: transitionMetadata.BPM, EnergyLevel: transitionMetadata.EnergyLevel, SpotifyScore: providerScore, SpotifyScoreMetric: filters.SpotifyScoreMetric}
+				if filters.StemsAvailable != nil {
+					evidence.StemsAvailable = &stemAvailable
+				}
+				if filters.NotRecentlyPlayedHours != nil {
+					lastPlayed := song.LastPlayed
+					evidence.LastPlayed = &lastPlayed
+				}
+				recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components, FilterEvidence: evidence})
+				return nil
+			})
+		if visitErr != nil {
+			if scoreFailure != "" {
+				return TransitionRecommendationsResponse{}, http.StatusBadRequest, scoreFailure
 			}
-			evidence := TransitionCandidateEvidence{BPM: transitionMetadata.BPM, EnergyLevel: transitionMetadata.EnergyLevel, SpotifyScore: providerScore, SpotifyScoreMetric: filters.SpotifyScoreMetric}
-			if filters.StemsAvailable != nil {
-				evidence.StemsAvailable = &stemAvailable
-			}
-			if filters.NotRecentlyPlayedHours != nil {
-				lastPlayed := song.LastPlayed
-				evidence.LastPlayed = &lastPlayed
-			}
-			recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components, FilterEvidence: evidence})
+			return TransitionRecommendationsResponse{}, http.StatusInternalServerError, visitErr.Error()
 		}
 		sort.Slice(recommendations, func(i, j int) bool {
 			if recommendations[i].Score == recommendations[j].Score {
@@ -1899,25 +1922,39 @@ func (a *API) measuredEnergyForDJ() (map[string]float64, error) {
 	if err != nil {
 		return nil, err
 	}
-	artifacts, err := a.db.ListTrackAnalysisArtifacts(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	artifacts, err := a.db.ListTrackAnalysisArtifactMetadata(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
 	if err != nil {
 		return nil, err
 	}
 	values := make(map[string]float64, len(artifacts))
+	candidateIDs := make([]string, 0, len(artifacts))
 	for _, artifact := range artifacts {
 		analysis, exists := analysisBySongID[artifact.SongID]
-		if !exists || !currentEnergyArtifactMatchesSource(analysis, currentFingerprints[artifact.SongID], artifact) {
+		if !exists || artifact.PayloadBytes <= 0 || artifact.PayloadBytes > features.MaxStructureStatusArtifactBytes ||
+			!currentEnergyArtifactMetadataMatchesSource(analysis, currentFingerprints[artifact.SongID], artifact) {
 			continue
 		}
-		result, err := features.Decode(artifact.Data)
-		if err != nil || len(result.Energy) == 0 {
-			continue
-		}
-		var total float64
-		for _, point := range result.Energy {
-			total += point.Value
-		}
-		values[artifact.SongID] = total / float64(len(result.Energy))
+		candidateIDs = append(candidateIDs, artifact.SongID)
+	}
+	err = a.db.VisitTrackAnalysisArtifactPayloadsBounded(candidateIDs, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes,
+		func(songID, payloadFingerprint string, data []byte) error {
+			analysis, exists := analysisBySongID[songID]
+			if !exists || payloadFingerprint == "" || payloadFingerprint != analysis.SourceFingerprint || currentFingerprints[songID] != analysis.SourceFingerprint {
+				return nil
+			}
+			result, decodeErr := features.DecodeBounded(data, features.MaxStructureStatusArtifactBytes)
+			if decodeErr != nil || len(result.Energy) == 0 {
+				return nil
+			}
+			var total float64
+			for _, point := range result.Energy {
+				total += point.Value
+			}
+			values[songID] = total / float64(len(result.Energy))
+			return nil
+		})
+	if err != nil {
+		return nil, err
 	}
 	return values, nil
 }

@@ -170,11 +170,11 @@ func (a *API) analysisCueList(songID string) (AnalysisCueListResponse, error) {
 	if err != nil || resolved.Fingerprint != trackAnalysis.SourceFingerprint {
 		return AnalysisCueListResponse{}, errStaleAnalysisCueSource
 	}
-	energyArtifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	energyArtifact, err := a.db.GetTrackAnalysisArtifactBounded(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes)
 	if err != nil {
 		return AnalysisCueListResponse{}, err
 	}
-	structure, err := features.Decode(energyArtifact.Data)
+	structure, err := features.DecodeBounded(energyArtifact.Data, features.MaxStructureStatusArtifactBytes)
 	if err != nil {
 		return AnalysisCueListResponse{}, err
 	}

@@ -47,6 +47,8 @@ type TrackAnalysisArtifactPayload struct {
 	Data              []byte
 }
 
+var ErrTrackAnalysisArtifactTooLarge = errors.New("track analysis artifact exceeds payload limit")
+
 // TrackAnalysisOverride records explicit user choices independently of
 // measured facts, so re-analysis never overwrites a locked value.
 type TrackAnalysisOverride struct {
@@ -450,6 +452,31 @@ func (d *DB) GetTrackAnalysisArtifact(songID, kind string, formatVersion int, al
 	return artifact, err
 }
 
+// GetTrackAnalysisArtifactBounded avoids materializing an oversized BLOB from
+// SQLite. The size check and conditional payload projection happen in one
+// query, so a concurrent artifact replacement cannot bypass the limit.
+func (d *DB) GetTrackAnalysisArtifactBounded(songID, kind string, formatVersion int, algorithmVersion string, maxPayloadBytes int64) (TrackAnalysisArtifact, error) {
+	if maxPayloadBytes <= 0 {
+		return TrackAnalysisArtifact{}, errors.New("artifact payload limit must be positive")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return TrackAnalysisArtifact{}, err
+	}
+	var artifact TrackAnalysisArtifact
+	var payloadBytes int64
+	err := d.conn.QueryRow(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint,
+		CASE WHEN LENGTH(data)<=? THEN data ELSE NULL END, created_at, LENGTH(data)
+		FROM track_analysis_artifacts WHERE song_id=? AND kind=? AND format_version=? AND algorithm_version=?`, maxPayloadBytes, songID, kind, formatVersion, algorithmVersion).
+		Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.SourceFingerprint, &artifact.Data, &artifact.CreatedAt, &payloadBytes)
+	if err != nil {
+		return TrackAnalysisArtifact{}, err
+	}
+	if payloadBytes > maxPayloadBytes {
+		return TrackAnalysisArtifact{}, ErrTrackAnalysisArtifactTooLarge
+	}
+	return artifact, nil
+}
+
 // ListTrackAnalysisArtifacts returns one representation per song for a
 // versioned feature family.  AI and UI callers use this bounded metadata read
 // instead of decoding a file or issuing an N+1 artifact query per library row.
@@ -501,6 +528,19 @@ func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, a
 // batches and lets the caller validate each BLOB before the next is scanned.
 // The callback must not issue another query on this DB connection.
 func (d *DB) VisitTrackAnalysisArtifactPayloads(songIDs []string, kind string, formatVersion int, algorithmVersion string, visit func(songID, sourceFingerprint string, data []byte) error) error {
+	return d.visitTrackAnalysisArtifactPayloads(songIDs, kind, formatVersion, algorithmVersion, 0, visit)
+}
+
+// VisitTrackAnalysisArtifactPayloadsBounded visits only non-oversized payloads
+// and keeps each bounded SQL batch alive only while its callbacks run.
+func (d *DB) VisitTrackAnalysisArtifactPayloadsBounded(songIDs []string, kind string, formatVersion int, algorithmVersion string, maxPayloadBytes int64, visit func(songID, sourceFingerprint string, data []byte) error) error {
+	if maxPayloadBytes <= 0 {
+		return errors.New("artifact payload limit must be positive")
+	}
+	return d.visitTrackAnalysisArtifactPayloads(songIDs, kind, formatVersion, algorithmVersion, maxPayloadBytes, visit)
+}
+
+func (d *DB) visitTrackAnalysisArtifactPayloads(songIDs []string, kind string, formatVersion int, algorithmVersion string, maxPayloadBytes int64, visit func(songID, sourceFingerprint string, data []byte) error) error {
 	if len(songIDs) == 0 {
 		return nil
 	}
@@ -535,8 +575,13 @@ func (d *DB) VisitTrackAnalysisArtifactPayloads(songIDs []string, kind string, f
 		for _, songID := range chunk {
 			args = append(args, songID)
 		}
-		rows, err := d.conn.Query(`SELECT song_id, source_fingerprint, data FROM track_analysis_artifacts
-			WHERE kind = ? AND format_version = ? AND algorithm_version = ? AND song_id IN (`+placeholders+`)`, args...)
+		query := `SELECT song_id, source_fingerprint, data FROM track_analysis_artifacts
+			WHERE kind = ? AND format_version = ? AND algorithm_version = ? AND song_id IN (` + placeholders + `)`
+		if maxPayloadBytes > 0 {
+			query += ` AND LENGTH(data)<=?`
+			args = append(args, maxPayloadBytes)
+		}
+		rows, err := d.conn.Query(query, args...)
 		if err != nil {
 			return err
 		}

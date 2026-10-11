@@ -1,6 +1,6 @@
 # Spotify metadata, waveforms, and local fallback implementation plan
 
-**Status:** Implementation active on `feature/spotify-metadata-foundation`; closeout evidence is recorded through Milestone 241 (milestones are not phase completion). All nine phases remain tracked; full acceptance is not yet achieved. The broad acceptance tally remains 2/12 checked and 10/12 partial.
+**Status:** Implementation active on `feature/spotify-metadata-foundation`; closeout evidence is recorded through Milestone 242 (milestones are not phase completion). All nine phases remain tracked; full acceptance is not yet achieved. The broad acceptance tally remains 2/12 checked and 10/12 partial.
 
 **Created:** 2026-10-04
 
@@ -2200,6 +2200,10 @@ Preparation discovery now validates local BPM/key scalar-envelope values indepen
 
 The owner decided that scoreless imported BPM/key remain excluded from library list batches. List reads must not hash full audio files to qualify them; detail and Mix Next can continue to admit these values through their exact-file verification paths. This resolves the policy question only. The broad precedence gate remains open for remaining field/consumer parity, with acceptance unchanged at 2/12 checked and 10/12 partial. No tests or code changes were needed for this policy decision.
 
-### Milestone 241 — reject oversized BS.1770 artifacts consistently
+### Milestone 241 — confirm the BS.1770 decoder size bound
 
-`DecodeBS1770` now rejects empty payloads and stored data larger than `MaxBS1770ArtifactBytes`. The missing-selection SQL already treated over-limit artifacts as missing, but per-track preparation used the decoder without an equivalent raw-byte bound and could therefore accept a decodable oversized artifact instead of repairing it. The shared decoder now enforces the same limit for preparation and other callers. No tests were added or run in this continuation; run authorization remains absent. Build/static verification is recorded after this milestone. Broad acceptance remains 2/12 checked and 10/12 partial.
+The investigation suspected `DecodeBS1770` accepted oversized stored payloads, but source inspection against the current checkout shows it already rejects empty data and payloads above `MaxBS1770ArtifactBytes`. No implementation change was required. The actual bounded-read follow-up is recorded in Milestone 242. Broad acceptance remains 2/12 checked and 10/12 partial.
+
+### Milestone 242 — bound local structure artifact reads across consumers
+
+Cue listing, transition recommendations, and AI-DJ energy summaries now use bounded gzip decoding. Bulk consumers list artifact metadata first and fetch eligible payloads through a size-limited visitor, avoiding eager materialization of every stored BLOB. Single-artifact energy reads use an atomic SQL size guard before returning payload bytes. Preparation applies kind-specific raw-byte limits to stored feature, three-band, beat-grid, and BS.1770 artifacts, so oversized/corrupt rows are rediscovered rather than loaded as valid. Spotify score gating and source-fingerprint checks remain unchanged. `go build -buildvcs=false ./...`, targeted `go vet`, `gofmt`, and `git diff --check` passed. Tests were not added or run in this continuation; runtime verification remains open. Broad acceptance is still 2/12 checked and 10/12 partial.
