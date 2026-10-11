@@ -144,13 +144,83 @@ func TestCaptureRESTTrackMalformedAlbumIsUnavailable(t *testing.T) {
 			continue
 		}
 		for _, relation := range entity.Relations {
-			if relation.Kind == "album" && relation.Unavailable && relation.ChildID == "" && relation.ChildType == "" {
+			if relation.Kind == "album" && relation.Unavailable && relation.ChildID == "" && relation.ChildType == "album" {
 				return
 			}
 		}
 		t.Fatalf("malformed album identity was admitted: %+v", entity.Relations)
 	}
 	t.Fatal("track entity not captured")
+}
+
+func TestCaptureRESTPreservesUnavailableRelationType(t *testing.T) {
+	playlistID := strings.Repeat("P", 22)
+	raw := []byte(`{"type":"playlist","id":"` + playlistID + `","tracks":{"offset":4,"items":[{"track":{"type":"episode","name":"Episode"}}]}}`)
+	target, _ := url.Parse("https://api.spotify.com/v1/playlists/" + playlistID)
+	entities, err := CaptureREST(target, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entities) == 0 || len(entities[0].Relations) != 1 {
+		t.Fatalf("captured playlist relation = %+v", entities)
+	}
+	relation := entities[0].Relations[0]
+	if relation.Kind != "tracks" || relation.Position != 4 || !relation.Unavailable || relation.ChildType != "episode" || relation.ChildID != "" {
+		t.Fatalf("unavailable episode relation = %+v", relation)
+	}
+}
+
+func TestCaptureRESTTrackAlbumAndArtistIdentityCanComeFromURI(t *testing.T) {
+	trackID := strings.Repeat("T", 22)
+	albumID := strings.Repeat("A", 22)
+	artistID := strings.Repeat("B", 22)
+	track := map[string]any{
+		"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "name": "Track",
+		"album":   map[string]any{"type": "album", "uri": "spotify:album:" + albumID, "name": "Album"},
+		"artists": []any{map[string]any{"type": "artist", "uri": "spotify:artist:" + artistID, "name": "Artist"}},
+	}
+	raw, err := json.Marshal(track)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, _ := url.Parse("https://api.spotify.com/v1/tracks/" + trackID)
+	entities, err := CaptureREST(target, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var albumCaptured, artistCaptured bool
+	for _, entity := range entities {
+		switch {
+		case entity.EntityType == "track" && entity.ID == trackID:
+			foundAlbum, foundArtist := false, false
+			for _, relation := range entity.Relations {
+				if relation.Kind == "album" && relation.Position == 0 && relation.ChildType == "album" && relation.ChildID == albumID && !relation.Unavailable {
+					foundAlbum = true
+				}
+				if relation.Kind == "artists" && relation.Position == 0 && relation.ChildType == "artist" && relation.ChildID == artistID && !relation.Unavailable {
+					foundArtist = true
+				}
+			}
+			if !foundAlbum || !foundArtist {
+				t.Fatalf("URI-only relations were not resolved: %+v", entity.Relations)
+			}
+		case entity.EntityType == "album" && entity.ID == albumID:
+			albumCaptured = true
+		case entity.EntityType == "artist" && entity.ID == artistID:
+			artistCaptured = true
+		}
+	}
+	if !albumCaptured || !artistCaptured {
+		t.Fatalf("URI-only related entities were not captured: %+v", entities)
+	}
+	track["album"] = map[string]any{"id": albumID, "type": "album", "uri": "spotify:track:" + albumID, "name": "Conflicting album"}
+	raw, err = json.Marshal(track)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = CaptureREST(target, raw); err == nil {
+		t.Fatal("album URI/type mismatch accepted")
+	}
 }
 
 func TestCaptureRESTDeduplicatesTrackProjectionsWithoutLosingRelations(t *testing.T) {
@@ -210,5 +280,11 @@ func TestDeduplicateCapturedEntitiesPrefersValidEdgesAndRejectsConflicts(t *test
 	merged = DeduplicateCapturedEntities([]CapturedEntity{{EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Relations: []CapturedRelation{valid}}, {EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Relations: []CapturedRelation{conflict}}, {EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Relations: []CapturedRelation{valid}}})
 	if len(merged) != 1 || len(merged[0].Relations) != 1 || !merged[0].Relations[0].Unavailable || merged[0].Relations[0].ChildID != "" {
 		t.Fatalf("conflicting relation identities were guessed: %+v", merged)
+	}
+	typedUnavailable := CapturedRelation{Kind: "tracks", Position: 1, ChildType: "episode", Unavailable: true}
+	unknownUnavailable := CapturedRelation{Kind: "tracks", Position: 1, Unavailable: true}
+	merged = DeduplicateCapturedEntities([]CapturedEntity{{EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Relations: []CapturedRelation{typedUnavailable}}, {EntityType: base.EntityType, ID: base.ID, Resource: base.Resource, Relations: []CapturedRelation{unknownUnavailable}}})
+	if len(merged) != 1 || len(merged[0].Relations) != 1 || !merged[0].Relations[0].Unavailable || merged[0].Relations[0].ChildType != "episode" {
+		t.Fatalf("unavailable type evidence was lost: %+v", merged)
 	}
 }

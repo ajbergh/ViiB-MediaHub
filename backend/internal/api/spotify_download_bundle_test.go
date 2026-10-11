@@ -110,6 +110,9 @@ func TestDownloadBundleCapturesSanitizedCatalog(t *testing.T) {
 	var catalogCalls atomic.Int32
 	raw := `{"type":"track","id":"` + cachedSpotifyID + `","uri":"spotify:track:` + cachedSpotifyID + `","popularity":0,"future_domain":false,"token":"secret"}`
 	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"download-owner"}`))}, nil
+		}
 		if r.URL.Path == "/v1/tracks/"+cachedSpotifyID {
 			catalogCalls.Add(1)
 			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil

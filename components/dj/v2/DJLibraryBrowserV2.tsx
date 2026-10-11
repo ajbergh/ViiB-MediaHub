@@ -45,7 +45,7 @@ type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
 type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'lufs' | 'truePeak' | 'stemStatus' | 'analysis' | 'dateAnalyzed';
-type OptionalColumn = 'bpm' | 'key' | 'energy' | 'lufs' | 'truePeak' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed' | 'analysisConfidence' | 'structureStatus';
+type OptionalColumn = 'bpm' | 'key' | 'energy' | 'meter' | 'lufs' | 'truePeak' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed' | 'analysisConfidence' | 'structureStatus';
 type ResizableColumn = 'title' | 'artist' | 'album';
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'viib.dj.library.columnVisibility';
@@ -55,6 +55,7 @@ const DEFAULT_COLUMN_VISIBILITY: Record<OptionalColumn, boolean> = {
   bpm: true,
   key: true,
   energy: true,
+  meter: false,
   lufs: false,
   truePeak: false,
   album: true,
@@ -161,6 +162,15 @@ const TrackRowCells = memo(({
   const displayBPM = analysis?.bpm;
   const songKey = analysis?.key;
   const displayKey = analysis?.camelotKey ?? songKey;
+  const meterField = analysis?.effectiveFields?.find(field => field.key === 'time_signature');
+  const rawMeter = meterField?.state === 'available' ? meterField.selected?.value : undefined;
+  const beatsPerBar = typeof rawMeter === 'number' && Number.isInteger(rawMeter) && rawMeter >= 1 && rawMeter <= 32 ? rawMeter : undefined;
+  const meterSource = meterField?.selected?.source;
+  const meterSourceLabel = meterSource === 'manual' ? 'Manual override'
+    : meterSource === 'spotify_private' ? 'Spotify'
+      : meterSource === 'spotify_download_import' ? 'Spotify download'
+        : meterSource === 'local' ? 'Local measurement'
+          : 'Unknown';
   const analysisReadiness = getAnalysisReadiness(analysis?.status, analysisListState);
   const analyzedAt = analysis?.analyzedAt;
   const confidenceEvidence = getAnalysisConfidenceEvidence(analysis);
@@ -301,6 +311,18 @@ const TrackRowCells = memo(({
               {analysis.energyLevel}
             </span>
           ) : <span className="text-[var(--dj-text-secondary)]">-</span>}
+        </td>
+      )}
+
+      {columnVisibility.meter && (
+        <td className="px-2 py-1.5 w-14 text-center">
+          {beatsPerBar !== undefined ? (
+            <span className="font-mono text-[12px] text-[var(--dj-text-secondary)]"
+              aria-label={`Meter: ${beatsPerBar} beats per bar`}
+              title={`Meter / time signature · ${meterSourceLabel}; does not set beat-grid timing`}>
+              {beatsPerBar}
+            </span>
+          ) : <span className="text-[var(--dj-text-secondary)]" aria-label="Meter unavailable" title="No current effective meter is available">—</span>}
         </td>
       )}
 
@@ -995,6 +1017,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                 ['bpm', 'BPM'],
                 ['key', 'Key'],
                 ['energy', 'Energy'],
+                ['meter', 'Meter'],
                 ['lufs', 'LUFS'],
                 ['truePeak', 'True Peak'],
                 ['album', 'Album'],
@@ -1054,6 +1077,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   {columnVisibility.bpm && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="BPM" sortKeyValue="bpm" className="w-12 text-right" />}
                   {columnVisibility.key && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Key" sortKeyValue="key" className="w-14 text-center" />}
                   {columnVisibility.energy && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Energy" sortKeyValue="energy" className="w-14 text-center" />}
+                  {columnVisibility.meter && <th className="w-14 px-2 py-1.5 text-center text-[12px] font-medium text-[var(--dj-text-secondary)]" title="Current effective beats per bar; it does not change beat-grid timing.">Meter</th>}
                   {columnVisibility.lufs && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="LUFS" sortKeyValue="lufs" className="w-16 text-center" />}
                   {columnVisibility.truePeak && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="True Peak" sortKeyValue="truePeak" className="w-20 text-center" />}
                   {columnVisibility.album && <SortHeader sortKey={sortKey} sortDirection={sortDirection} handleSort={handleSort} startColumnResize={startColumnResize} label="Album" sortKeyValue="album" className="hidden xl:table-cell" width={columnWidths.album} resizable="album" />}

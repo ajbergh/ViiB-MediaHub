@@ -146,6 +146,8 @@ func TestOAuthFirstPartyPlaylistFallbackCapturesBatchAndReturnsTracks(t *testing
 			t.Fatalf("unexpected or unauthenticated OAuth request: %s", r.URL)
 		}
 		switch r.URL.Path {
+		case "/v1/me":
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"playlist-owner"}`))}, nil
 		case "/v1/playlists/" + playlistID:
 			return &http.Response{StatusCode: http.StatusForbidden, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("{}"))}, nil
 		case "/v1/tracks":

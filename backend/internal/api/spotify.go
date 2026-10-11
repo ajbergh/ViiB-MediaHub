@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 	"github.com/ajbergh/viib-mediahub/internal/spotify/catalog"
@@ -396,7 +397,7 @@ func (a *API) spotifyGetUserProfile(w http.ResponseWriter, r *http.Request) {
 			ID string `json:"id"`
 		}
 		if json.Unmarshal(result, &profile) == nil && profile.ID != "" && len(profile.ID) <= 256 {
-			if err := runtime.confirmProfileOwner(ctx, profile.ID); err != nil {
+			if err := runtime.confirmProfileOwner(ctx, profile.ID); err != nil && !errors.Is(err, errSpotifyAccountChanged) {
 				respondSpotifySessionError(w, err)
 				return
 			}

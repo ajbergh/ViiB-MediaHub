@@ -26,16 +26,27 @@ func (s *spotifyAuthRuntime) confirmProfileOwner(ctx context.Context, id string)
 		if err == db.ErrSpotifyMetadataRuntimeSuperseded {
 			s.invalid.Store(true)
 		}
+		if err == nil {
+			s.setOwnerRetryIdentity(provider, s.metadataContext)
+		}
 		return err
 	}
-	contextKey, err := s.database.ConfirmSpotifyMetadataOwner(s.metadataEpoch, provider, id, uuid.NewString())
+	newContext := uuid.NewString()
+	if s.pendingOwner.AccountID == "" && s.pendingOwner.ContextKey != "" {
+		newContext = s.pendingOwner.ContextKey
+	}
+	contextKey, err := s.database.ConfirmSpotifyMetadataOwner(s.metadataEpoch, provider, id, newContext)
 	if err != nil {
 		return err
 	}
 	changed := contextKey != s.metadataContext
 	s.metadataContext = contextKey
 	s.pendingOwner = nil
+	s.setOwnerRetryIdentity(provider, contextKey)
 	if changed {
+		if err := s.database.ClearProviderThreeBandCapabilityStatuses("", ""); err != nil {
+			return err
+		}
 		s.endLifetime()
 		s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
 		return errSpotifyAccountChanged

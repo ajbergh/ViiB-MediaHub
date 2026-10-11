@@ -1,5 +1,10 @@
 package analysis
 
+import (
+	"github.com/ajbergh/viib-mediahub/internal/analysis/featurecontract"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
+)
+
 // CapabilityDefinition keeps semantic alternatives separate and makes gaps explicit.
 // Unqualified estimators must never satisfy preparation by fabricating a value.
 type CapabilityDefinition struct {
@@ -32,9 +37,25 @@ func Capabilities() []CapabilityDefinition {
 		scalar("key_mode", "tonic_and_mode", "pitch_class_and_mode", "key", true),
 		scalar("time_signature", "measured_meter", "beats_per_bar", "", false),
 		scalar("provider_loudness_db", "spotify_track_loudness", "dB", "", false),
-		scalar("duration_seconds", "recording_duration", "seconds", "decoded_frames", false),
+		scalar("duration_seconds", "recording_duration", "seconds", "", false),
+		scalar("duration_milliseconds", "recording_duration", "milliseconds", "", false),
 	}
-	values[1].ValueType = "key_mode_pair"
+	for i := range values {
+		switch values[i].Key {
+		case "tempo_bpm":
+			values[i].EstimatorVersion = localcontract.TempoAlgorithmVersion
+		case "key_mode":
+			values[i].EstimatorVersion = localcontract.KeyAlgorithmVersion
+		}
+	}
+	for i := range values {
+		switch values[i].Key {
+		case "key_mode":
+			values[i].ValueType = "key_mode_pair"
+		case "duration_milliseconds":
+			values[i].SpotifyResources = []string{"audio_features"}
+		}
+	}
 	for _, name := range []string{"energy", "danceability", "acousticness", "instrumentalness", "liveness", "speechiness", "valence"} {
 		definition := scalar("spotify_"+name+"_score", "spotify_"+name, "unit_interval", "", false)
 		definition.SpotifyResources = []string{"audio_features"}
@@ -42,25 +63,38 @@ func Capabilities() []CapabilityDefinition {
 		values = append(values, definition)
 	}
 	for _, item := range []struct {
-		key, metric, units, estimator string
-		required                      bool
+		key, metric, units, estimator, version string
+		required                               bool
 	}{
-		{"integrated_lufs", "bs1770_integrated_loudness", "LUFS", "bs1770", true},
-		{"local_energy_level", "dj_energy_level", "level_1_10", "features", true},
-		{"local_structure", "energy_structure", "seconds", "features", true},
-		{"local_amplitude", "amplitude_envelope", "normalized_peak", "waveform", true},
-		{"local_three_band_estimate", "local_band_envelopes", "normalized_band_peak", "", false},
-		{"beat_intervals", "measured_beat_intervals", "seconds", "", false},
-		{"bar_intervals", "measured_downbeats", "seconds", "", false},
-		{"tatum_intervals", "measured_subdivisions", "seconds", "", false},
-		{"local_segments", "local_spectral_segments", "seconds", "", false},
-		{"dj_cue_candidates", "dj_cue_candidates", "seconds", "features", true},
+		{"local_energy_level", "local_energy_level", "level_1_10", "features", featurecontract.EnergyLevelAlgorithmVersion, true},
+		{"local_duration_seconds", "decoded_file_duration", "seconds", "decoded_frames", featurecontract.LocalDurationAlgorithmVersion, false},
+		{"integrated_lufs_bs1770", "bs1770_integrated_loudness", "LUFS", "bs1770", featurecontract.BS1770AlgorithmVersion, true},
+		{"true_peak_dbtp", "bs1770_true_peak", "dBTP", "bs1770", featurecontract.BS1770AlgorithmVersion, false},
+	} {
+		d := scalar(item.key, item.metric, item.units, item.estimator, item.required)
+		d.SpotifyResources = nil
+		d.EstimatorVersion = item.version
+		values = append(values, d)
+	}
+	for _, item := range []struct {
+		key, metric, units, estimator, version string
+		required                               bool
+	}{
+		{"local_structure", "energy_structure", "seconds", "features", featurecontract.AlgorithmVersion, true},
+		{"local_amplitude", "amplitude_envelope", "normalized_peak", "waveform", localcontract.AmplitudeAlgorithmVersion, true},
+		{"local_three_band_estimate", "local_band_envelopes", "filtered_pcm_absolute_peak", "threeband", localcontract.ThreeBandAlgorithmVersion, false},
+		{"beat_intervals", "measured_beat_intervals", "seconds", "", "", false},
+		{"bar_intervals", "measured_downbeats", "seconds", "", "", false},
+		{"tatum_intervals", "measured_subdivisions", "seconds", "", "", false},
+		{"local_segments", "local_spectral_segments", "seconds", "", "", false},
+		{"dj_cue_candidates", "dj_cue_candidates", "seconds", "features", localcontract.CueGeneratorVersion, true},
 	} {
 		d := scalar(item.key, item.metric, item.units, item.estimator, item.required)
 		d.SpotifyResources = nil
 		d.FieldGroup = "local_artifact"
 		d.ValueType = "artifact"
 		d.ValidationPolicy = "versioned_source_fingerprint"
+		d.EstimatorVersion = item.version
 		if item.key == "beat_intervals" || item.key == "bar_intervals" || item.key == "tatum_intervals" {
 			d.FieldGroup = "provider_artifact"
 			d.SpotifyResources = []string{"audio_analysis"}

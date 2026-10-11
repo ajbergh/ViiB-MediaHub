@@ -105,7 +105,7 @@ func requestedCollectionPages(ctx context.Context, tx *sql.Tx, o SpotifyDownload
 				return nil, false, "relation_limit", nil
 			}
 			safe, e := metadata.Sanitize(r.Metadata, metadata.ScalarLimit)
-			if e != nil || !bytes.Equal(safe, r.Metadata) || r.Kind == "" || len(r.Kind) > 128 || r.Position < 0 || len(r.ChildType) > 128 || (r.ChildID != "" && !ValidSpotifyRecordingID(r.ChildID)) {
+			if e != nil || !bytes.Equal(safe, r.Metadata) || r.Kind == "" || len(r.Kind) > 128 || r.Position < 0 || len(r.ChildType) > 128 || !validSpotifyRelationIdentity(r.ChildType, r.ChildID, r.Unavailable) {
 				complete = false
 				continue
 			}

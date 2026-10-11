@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
 )
 
 // RangePreset constrains tempo candidates to an expected DJ operating range.
@@ -79,7 +80,7 @@ type Estimate struct {
 	AlgorithmVersion string
 }
 
-const AlgorithmVersion = "tempo-v3-multifeature-half-bpm"
+const AlgorithmVersion = localcontract.TempoAlgorithmVersion
 
 // minOnsetCrestFactor is the least impulsive an onset envelope may be before
 // tempo is refused. A sustained source — a drone, pad, sine tone, or spoken

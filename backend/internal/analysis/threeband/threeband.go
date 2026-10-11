@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
 )
 
 const Kind = "local_three_band_estimate"
-const AlgorithmVersion = "onepole-band-peaks-v1"
+const AlgorithmVersion = localcontract.ThreeBandAlgorithmVersion
 const FormatVersion = 1
 const Encoding = "local-threeband-json-v1"
 const MaxWindows = 100000

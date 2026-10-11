@@ -121,7 +121,7 @@ func (d *DB) GetDownloadedSpotifyCatalog(ctx context.Context, songID, fingerprin
 			return nil, errors.New("invalid catalog import status provenance")
 		}
 		status.CheckedAt = time.UnixMilli(checked).UTC()
-		if status.Scope != "track_and_direct_relations_v1" && status.Scope != downloadedCatalogGraphScope {
+		if status.Scope != "track_and_direct_relations_v1" && status.Scope != downloadedCatalogGraphPreviousScope && status.Scope != downloadedCatalogGraphScope {
 			return nil, errors.New("invalid catalog import scope")
 		}
 		result.CatalogStatus = &status
@@ -181,7 +181,7 @@ func (d *DB) GetDownloadedSpotifyCatalog(ctx context.Context, songID, fingerprin
 		relation.Metadata = json.RawMessage(rawMetadata)
 		total += len(relation.Metadata)
 		sanitized, err := metadata.Sanitize(relation.Metadata, metadata.ScalarLimit)
-		if !parentResources[[3]string{relation.ParentType, relation.ParentID, relation.Resource}] || relation.Kind == "" || len(relation.Kind) > 128 || len(relation.ChildType) > 128 || (relation.ChildID != "" && !ValidSpotifyRecordingID(relation.ChildID)) || err != nil || !bytes.Equal(sanitized, relation.Metadata) || relation.Position < 0 || len(result.Relations) >= 20000 || total > 2<<20 {
+		if !parentResources[[3]string{relation.ParentType, relation.ParentID, relation.Resource}] || relation.Kind == "" || len(relation.Kind) > 128 || len(relation.ChildType) > 128 || !validSpotifyRelationIdentity(relation.ChildType, relation.ChildID, relation.Unavailable) || err != nil || !bytes.Equal(sanitized, relation.Metadata) || relation.Position < 0 || len(result.Relations) >= 20000 || total > 2<<20 {
 			rows.Close()
 			return nil, errors.New("invalid retained catalog relation")
 		}

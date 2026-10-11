@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -29,9 +30,10 @@ type stemValidationCacheEntry struct {
 
 const maxStemValidationCacheEntries = 64
 
-// validatedStemPackage fully validates and hashes a package when its current
-// manifest/artifact signatures change. Frame requests after that only stat the
-// files and verify their WAV geometry while reading the requested byte range.
+// validatedStemPackage hashes current artifact bytes before consulting the
+// cache. Size and modification time alone are not enough to identify an
+// artifact: a replacement can preserve both and otherwise reuse stale package
+// validation.
 func validatedStemPackage(packagePath string) (stems.Validation, error) {
 	root, err := filepath.Abs(packagePath)
 	if err != nil {
@@ -122,7 +124,27 @@ func stemPackageSignature(root string) (string, stems.Manifest, error) {
 		if !stat.Mode().IsRegular() {
 			return "", zero, fmt.Errorf("stem artifact is not a regular file")
 		}
-		_, _ = fmt.Fprintf(h, "\x00%s\x00%d\x00%d\x00%s", name, stat.Size(), stat.ModTime().UnixNano(), strings.ToLower(artifact.SHA256))
+		actualHash, hashErr := stemArtifactSHA256(path)
+		if hashErr != nil {
+			return "", zero, hashErr
+		}
+		if !strings.EqualFold(actualHash, artifact.SHA256) {
+			return "", zero, fmt.Errorf("stem %q checksum mismatch", name)
+		}
+		_, _ = fmt.Fprintf(h, "\x00%s\x00%d\x00%d\x00%s\x00%s", name, stat.Size(), stat.ModTime().UnixNano(), strings.ToLower(artifact.SHA256), actualHash)
 	}
 	return hex.EncodeToString(h.Sum(nil)), manifest, nil
+}
+
+func stemArtifactSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err = io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

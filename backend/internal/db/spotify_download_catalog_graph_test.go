@@ -37,6 +37,9 @@ func TestDownloadedCatalogReachableGraphLifecycle(t *testing.T) {
 				nested.Unavailable = true
 			}
 			albumEdges := []SpotifyEntityRelation{edge("members", "artist", artist, 0), edge("tracks", "track", sibling, 0)}
+			typedUnavailable := edge("items", "episode", "", 3)
+			typedUnavailable.Unavailable = true
+			albumEdges = append(albumEdges, typedUnavailable)
 			if mode != "cycle" {
 				albumEdges = append(albumEdges, nested)
 			}
@@ -80,7 +83,7 @@ func TestDownloadedCatalogReachableGraphLifecycle(t *testing.T) {
 			if len(got.Snapshots) != 3 {
 				t.Fatalf("unrelated or stale nodes captured: %+v", got.Snapshots)
 			}
-			expected := 5
+			expected := 6
 			if mode != "cycle" {
 				expected++
 			}
@@ -95,6 +98,15 @@ func TestDownloadedCatalogReachableGraphLifecycle(t *testing.T) {
 			}
 			if len(parents) != 3 {
 				t.Fatalf("parent identities collided: %+v", parents)
+			}
+			foundUnavailableEpisode := false
+			for _, relation := range got.Relations {
+				if relation.ParentType == "album" && relation.ParentID == album && relation.Kind == "items" && relation.Position == 3 && relation.ChildType == "episode" && relation.ChildID == "" && relation.Unavailable {
+					foundUnavailableEpisode = true
+				}
+			}
+			if !foundUnavailableEpisode {
+				t.Fatalf("typed unavailable catalog relation was dropped: %+v", got.Relations)
 			}
 		})
 	}

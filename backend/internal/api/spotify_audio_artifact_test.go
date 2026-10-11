@@ -40,9 +40,7 @@ func TestSpotifyArtifactRouteIsBoundedAccountScopedAndReadOnly(t *testing.T) {
 		t.Fatalf("artifact response: %d %s", w.Code, w.Body.String())
 	}
 
-	if err := a.db.BindSpotifyMetadataOwner(runtime.metadataEpoch, "webplayer", "retained-account", runtime.metadataContext); err != nil {
-		t.Fatal(err)
-	}
+	confirmTestSpotifyMetadataOwner(t, runtime, "retained-account")
 	now := time.Now()
 	if err := a.db.PutExternalAnalysisStatusForRuntime(db.SpotifyMetadataFence{Epoch: runtime.metadataEpoch, ContextKey: runtime.metadataContext}, cachedSpotifyID, "audio_analysis", db.ExternalAnalysisStatus{Code: spotifyanalysis.RateLimited, CheckedAt: now, RetryAt: now.Add(time.Minute)}); err != nil {
 		t.Fatal(err)

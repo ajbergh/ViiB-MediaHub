@@ -205,9 +205,7 @@ func TestTransitionSpotifyScoreEndpointFiltersBeforeLimit(t *testing.T) {
 	if got := get(query); got.CandidatesAfterFilters != 1 {
 		t.Fatalf("restored exact source was not eligible %#v", got)
 	}
-	if err := a.db.BindSpotifyMetadataOwner(runtime.metadataEpoch, "webplayer", "fixture-account", runtime.metadataContext); err != nil {
-		t.Fatal(err)
-	}
+	confirmTestSpotifyMetadataOwner(t, runtime, "fixture-account")
 	owner, err := a.db.ReserveSpotifyMetadataRuntime(runtime.metadataEpoch)
 	if err != nil {
 		t.Fatal(err)
@@ -486,9 +484,7 @@ func TestOfflineDurableScoreListAndMixNext(t *testing.T) {
 	if _, err := a.db.DeleteCompletedDownloads(); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.db.BindSpotifyMetadataOwner(runtime.metadataEpoch, "webplayer", "fixture-account", runtime.metadataContext); err != nil {
-		t.Fatal(err)
-	}
+	confirmTestSpotifyMetadataOwner(t, runtime, "fixture-account")
 	owner, err := a.db.ReserveSpotifyMetadataRuntime(runtime.metadataEpoch)
 	if err != nil {
 		t.Fatal(err)

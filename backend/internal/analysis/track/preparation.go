@@ -28,6 +28,23 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 		return err == nil && a.SourceFingerprint == source.Fingerprint && a.Encoding == encoding && a.Provenance != "unknown" && decode(a.Data)
 	}
 	durationAvailable := db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "local_duration_seconds")
+	localScalarsAvailable := record.Local != nil && record.Local.AlgorithmVersion == AlgorithmVersion && db.ValidLocalScalarObservation(record.Local, source.Fingerprint)
+	localEnergyAvailable := record.EnergyLevel != nil && record.EnergyLevelConfidence != nil && record.EnergyAlgorithmVersion != nil && *record.EnergyAlgorithmVersion == features.EnergyLevelAlgorithmVersion
+	if record.LocalScalarEnvelopePresent {
+		localEnergyAvailable = localEnergyAvailable && db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "local_energy_level")
+	}
+	loudnessAvailable := false
+	if artifact, artifactErr := database.GetTrackAnalysisArtifact(source.SongID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion); artifactErr == nil && artifact.SourceFingerprint == source.Fingerprint && artifact.Encoding == features.BS1770Encoding && artifact.Provenance != "unknown" {
+		if measurements, decodeErr := features.DecodeBS1770(artifact.Data); decodeErr == nil {
+			loudnessAvailable = true
+			if measurements.LoudnessStatus == "available" && measurements.IntegratedLUFS != nil {
+				loudnessAvailable = loudnessAvailable && db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "integrated_lufs_bs1770")
+			}
+			if measurements.TruePeakStatus == "available" && measurements.TruePeakDBTP != nil {
+				loudnessAvailable = loudnessAvailable && db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "true_peak_dbtp")
+			}
+		}
+	}
 	providerThreeBand := false
 	if state, ok := states[threeband.Kind]; ok && state.Version == versions[threeband.Kind] && state.State == "available" && state.Reason == "provider_three_band" {
 		providerThreeBand = true
@@ -35,14 +52,14 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 	valid := map[string]bool{
 		"local_duration":  durationAvailable,
 		threeband.Kind:    providerThreeBand || artifactValid(threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion, threeband.Encoding, func(b []byte) bool { _, e := threeband.Decode(b); return e == nil }),
-		"local_scalars":   record.Local != nil && record.Local.SourceFingerprint == source.Fingerprint && record.Local.AlgorithmVersion == AlgorithmVersion,
-		"local_energy":    record.EnergyLevel != nil && record.EnergyLevelConfidence != nil && record.EnergyAlgorithmVersion != nil && *record.EnergyAlgorithmVersion == features.EnergyLevelAlgorithmVersion,
+		"local_scalars":   localScalarsAvailable,
+		"local_energy":    localEnergyAvailable,
 		"local_amplitude": currentWaveform(database, source),
 		"local_features": artifactValid(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.Encoding, func(b []byte) bool {
 			_, e := features.DecodeBounded(b, features.MaxStructureStatusArtifactBytes)
 			return e == nil
 		}),
-		"local_loudness": artifactValid(features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, features.BS1770Encoding, func(b []byte) bool { _, e := features.DecodeBS1770(b); return e == nil }),
+		"local_loudness": loudnessAvailable,
 		"local_beatgrid": artifactValid(beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion, beatgrid.Encoding, func(b []byte) bool { _, e := beatgrid.Decode(b); return e == nil }),
 	}
 	locked := false

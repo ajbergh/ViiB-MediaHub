@@ -58,6 +58,36 @@ func TestCaptureRetainsUnplayableFactsAndLibraryRows(t *testing.T) {
 	}
 }
 
+func TestCaptureTrackPreservesUnavailableAlbumRelations(t *testing.T) {
+	trackID := strings.Repeat("T", 22)
+	cases := []struct {
+		name, album, wantType, wantMetadata string
+	}{
+		{name: "not found", album: `{"__typename":"NotFound","reason":"removed"}`, wantType: "NotFound", wantMetadata: "removed"},
+		{name: "null", album: `null`, wantMetadata: `{}`},
+		{name: "malformed URI", album: `{"__typename":"Album","uri":"not-a-spotify-uri","name":"Unavailable album"}`, wantType: "Album", wantMetadata: "Unavailable album"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			raw := []byte(`{"data":{"trackUnion":{"__typename":"Track","uri":"spotify:track:` + trackID + `","albumOfTrack":` + test.album + `}}}`)
+			entities, err := CaptureDomain("track", map[string]any{"operationName": "getTrack", "variables": map[string]any{"uri": "spotify:track:" + trackID}}, raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entities) != 1 || len(entities[0].Relations) != 1 {
+				t.Fatalf("captured track relation = %+v", entities)
+			}
+			relation := entities[0].Relations[0]
+			if relation.Kind != "album" || relation.Position != 0 || !relation.Unavailable || relation.ChildType != test.wantType || relation.ChildID != "" {
+				t.Fatalf("unavailable album relation = %+v", relation)
+			}
+			if !bytes.Contains(relation.Metadata, []byte(test.wantMetadata)) {
+				t.Fatalf("album relation metadata = %s, want %q", relation.Metadata, test.wantMetadata)
+			}
+		})
+	}
+}
+
 func TestCaptureDomainMergesDuplicateTrackRelationCoverage(t *testing.T) {
 	playlistID := strings.Repeat("P", 22)
 	trackID := strings.Repeat("T", 22)

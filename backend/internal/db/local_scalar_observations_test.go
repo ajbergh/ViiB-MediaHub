@@ -192,6 +192,9 @@ func TestLocalEnvelopePresenceSurvivesCorruptionAndLegacyReconstruction(t *testi
 		if err != nil || !got.LocalScalarEnvelopePresent {
 			t.Fatalf("explicit distinction lost: %+v %v", got, err)
 		}
+		if current := CurrentLocalScalars(&got); current != nil && (current.BPM != nil || current.KeyTonic != nil || current.KeyMode != nil) {
+			t.Fatalf("explicit corrupt/empty envelope reconstructed legacy local scalar values: %+v", current)
+		}
 		rows, err := d.ListTrackAnalysis()
 		if err != nil || len(rows) != 1 || !rows[0].LocalScalarEnvelopePresent {
 			t.Fatalf("list distinction lost: %+v %v", rows, err)

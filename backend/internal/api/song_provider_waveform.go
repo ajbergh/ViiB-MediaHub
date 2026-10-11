@@ -69,8 +69,21 @@ func (a *API) getSongProviderWaveform(w http.ResponseWriter, r *http.Request) {
 				alignment = "duration_compatible"
 			}
 		}
+		response := map[string]any{"readOnly": true, "unverified": pending, "provenance": provenance, "songId": id, "sourceFingerprint": fp, "recordingId": link.ExternalID, "representation": "spotify_three_band", "lows": pool(decoded.Lows), "mids": pool(decoded.Mids), "highs": pool(decoded.Highs), "totalSamples": len(decoded.Lows), "sampleRate": decoded.SampleRate, "windowMilliseconds": decoded.WindowMilliseconds, "displayStride": stride, "displayAggregation": "signed_absolute_max_v1", "durationSeconds": decoded.DurationSeconds(), "localDurationSeconds": localDuration, "alignment": alignment, "retrievedAt": artifact.RetrievedAt, "stale": !time.Now().Before(artifact.ExpiresAt)}
+		current, e := a.analysisSourceMatchesCurrent(id, fp)
+		if e != nil {
+			return e
+		}
+		finalLink, e = a.db.GetSpotifyRecording(id, fp)
+		if e != nil {
+			return e
+		}
+		if !current || finalLink == nil || finalLink.ExternalID != link.ExternalID {
+			respondError(w, 412, "source or recording changed")
+			return nil
+		}
 		w.Header().Set("Cache-Control", "private, no-store")
-		respondJSON(w, map[string]any{"readOnly": true, "unverified": pending, "provenance": provenance, "songId": id, "sourceFingerprint": fp, "recordingId": link.ExternalID, "representation": "spotify_three_band", "lows": pool(decoded.Lows), "mids": pool(decoded.Mids), "highs": pool(decoded.Highs), "totalSamples": len(decoded.Lows), "sampleRate": decoded.SampleRate, "windowMilliseconds": decoded.WindowMilliseconds, "displayStride": stride, "displayAggregation": "signed_absolute_max_v1", "durationSeconds": decoded.DurationSeconds(), "localDurationSeconds": localDuration, "alignment": alignment, "retrievedAt": artifact.RetrievedAt, "stale": !time.Now().Before(artifact.ExpiresAt)})
+		respondJSON(w, response)
 		return nil
 	}
 

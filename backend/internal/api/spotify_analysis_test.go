@@ -261,6 +261,7 @@ func TestProductionReferenceCompositionFollowsCookieLifetime(t *testing.T) {
 	if err := runtime.connect(context.Background(), "fixture-cookie"); err != nil {
 		t.Fatal(err)
 	}
+	confirmTestSpotifyMetadataOwner(t, runtime, "cookie-owner")
 	original := a.spotifyAnalysis
 	if original == nil || !original.Status().Configured || calls.Load() != 1 {
 		t.Fatal("connection did not install inert service")
@@ -272,13 +273,14 @@ func TestProductionReferenceCompositionFollowsCookieLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	restoredRuntime := newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
+	confirmTestSpotifyMetadataOwner(t, restoredRuntime, "cookie-owner")
 	restored := &API{db: a.db, spotifyAuth: restoredRuntime}
 	restored.initSpotifyAnalysis()
 	if restored.spotifyAnalysis == nil || calls.Load() != 1 {
 		t.Fatal("restore performed auth I/O or did not compose service")
 	}
-	if cache, err := a.db.GetExternalAnalysis(cachedSpotifyID, "audio_features"); err != nil || cache != nil {
-		t.Fatal("new runtime generation reused prior reference")
+	if cache, err := a.db.GetExternalAnalysis(cachedSpotifyID, "audio_features"); err != nil || cache == nil {
+		t.Fatal("verified same-owner restore did not reuse its reference", err)
 	}
 	restored.spotifyAnalysis.Close()
 	restoredRuntime.close()

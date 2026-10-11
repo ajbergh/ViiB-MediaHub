@@ -230,6 +230,20 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 			providerScalars = nil
 		}
 		response := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint)
+		measurement, measurementErr := a.db.GetTrackAnalysisArtifact(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
+		if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) {
+			respondError(w, http.StatusInternalServerError, "local loudness unavailable")
+			return
+		}
+		if measurementErr == nil {
+			lufs, truePeak := trackBS1770ListMeasurements(analysis, fingerprint, db.TrackAnalysisArtifactMetadata{
+				SongID: measurement.SongID, Kind: measurement.Kind, FormatVersion: measurement.FormatVersion,
+				AlgorithmVersion: measurement.AlgorithmVersion, Encoding: measurement.Encoding,
+				Provenance: measurement.Provenance, SourceFingerprint: measurement.SourceFingerprint,
+			}, measurement.Data)
+			response.IntegratedLUFSBS1770 = lufs
+			response.TruePeakDBTP = truePeak
+		}
 		response.ProviderScalars = providerScalars
 		var admitted []db.SpotifyScalarField
 		if providerScalars != nil && !providerScalars.Unverified {
@@ -237,14 +251,38 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 		}
 		response.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, override, fingerprint, admitted)
 		applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
-		if response.SourceFingerprint != "" {
-			w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
-		}
-		respondJSON(w, response)
+		a.respondCurrentTrackAnalysisFeature(w, songID, fingerprint, response)
 	})
 	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		respondError(w, http.StatusInternalServerError, "metadata unavailable")
 	}
+}
+
+// respondCurrentTrackAnalysisFeature fences the final publication point too:
+// source-bound local artifacts may be read after the provider callback's
+// earlier check, and the file can be replaced during that read.
+func (a *API) respondCurrentTrackAnalysisFeature(w http.ResponseWriter, songID, expectedFingerprint string, response TrackAnalysisFeatureResponse) {
+	current, err := a.analysisSourceMatchesCurrent(songID, expectedFingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "source unavailable")
+		return
+	}
+	if !current {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while reading analysis; reload analysis details")
+		return
+	}
+	if response.SourceFingerprint != "" {
+		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
+	}
+	respondJSON(w, response)
+}
+
+func (a *API) analysisSourceMatchesCurrent(songID, expectedFingerprint string) (bool, error) {
+	latest, err := a.currentAnalysisSourceFingerprints([]string{songID})
+	if err != nil {
+		return false, err
+	}
+	return latest[songID] == expectedFingerprint, nil
 }
 
 func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request) {
@@ -845,10 +883,7 @@ func (a *API) getTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		response.ProviderScalars = providerScalars
 		response.EffectiveFields = db.ResolveAnalysisScalarFields(trackAnalysis, override, fingerprint, admitted)
 		applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
-		if response.SourceFingerprint != "" {
-			w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
-		}
-		respondJSON(w, response)
+		a.respondCurrentTrackAnalysisFeature(w, songID, fingerprint, response)
 	})
 	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		respondError(w, http.StatusInternalServerError, "metadata unavailable")
@@ -909,8 +944,7 @@ func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.SourceFingerprint = currentFingerprint
-	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
-	respondJSON(w, response)
+	a.respondCurrentTrackAnalysisFeature(w, songID, currentFingerprint, response)
 }
 
 func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
@@ -958,8 +992,7 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.SourceFingerprint = currentFingerprint
-	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
-	respondJSON(w, response)
+	a.respondCurrentTrackAnalysisFeature(w, songID, currentFingerprint, response)
 }
 
 func (a *API) requireCurrentAnalysisSource(w http.ResponseWriter, r *http.Request, songID string) (string, error) {
@@ -1077,8 +1110,8 @@ func (a *API) putTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "metadata unavailable")
 		return
 	}
-	w.Header().Set("ETag", strconv.Quote(fingerprint))
-	respondJSON(w, response)
+	response.SourceFingerprint = fingerprint
+	a.respondCurrentTrackAnalysisFeature(w, songID, fingerprint, response)
 }
 
 func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
@@ -1123,8 +1156,8 @@ func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "metadata unavailable")
 		return
 	}
-	w.Header().Set("ETag", strconv.Quote(fingerprint))
-	respondJSON(w, response)
+	response.SourceFingerprint = fingerprint
+	a.respondCurrentTrackAnalysisFeature(w, songID, fingerprint, response)
 }
 
 func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
@@ -1156,6 +1189,15 @@ func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
 		response.DownbeatIndices = resolved.Grid.DownbeatIndices
 		response.Source = string(resolved.Grid.Provenance)
 		response.Provenance = response.Source
+	}
+	current, err := a.analysisSourceMatchesCurrent(song, fp)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "source unavailable")
+		return
+	}
+	if !current {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while reading beatgrid")
+		return
 	}
 	respondJSON(w, response)
 }
@@ -1283,6 +1325,15 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 			response.LoudnessStatus = &standards.LoudnessStatus
 			response.TruePeakStatus = &standards.TruePeakStatus
 		}
+	}
+	current, sourceErr := a.analysisSourceMatchesCurrent(songID, currentFingerprints[songID])
+	if sourceErr != nil {
+		respondError(w, http.StatusInternalServerError, "source unavailable")
+		return
+	}
+	if !current {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while reading energy features; reload analysis details")
+		return
 	}
 	respondJSON(w, response)
 }
@@ -1514,7 +1565,7 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	runtime := a.spotifyAuth
 	a.spotifyAuthMu.Unlock()
 	if runtime == nil {
-		providerFields, err := a.db.GetDownloadedSpotifyScalarCandidateBatch(currentFingerprints, time.Now())
+		providerFields, err := a.db.GetDownloadedSpotifyScalarCandidateBatchAll(currentFingerprints, time.Now())
 		if err != nil {
 			if r.Context().Err() != nil {
 				return
@@ -1537,7 +1588,7 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 	readErr := runtime.withMetadataRead(scoreCtx, func(fence db.SpotifyMetadataReadFence) error {
 		providerFields := map[string][]db.SpotifyScalarField{}
 		if !fence.Pending {
-			providerFields, err = a.db.GetSpotifyScalarCandidateBatchForRuntime(fence, currentFingerprints, time.Now())
+			providerFields, err = a.db.GetSpotifyScalarCandidateBatchForRuntimeAll(fence, currentFingerprints, time.Now())
 			if err != nil {
 				return err
 			}

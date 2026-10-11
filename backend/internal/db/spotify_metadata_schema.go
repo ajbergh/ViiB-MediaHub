@@ -71,6 +71,11 @@ func (d *DB) EnsureSpotifyMetadataSchema() error {
  CREATE TABLE IF NOT EXISTS spotify_metadata_owner (
  singleton INTEGER PRIMARY KEY CHECK(singleton=1), provider TEXT NOT NULL,
  account_id TEXT NOT NULL, context_key TEXT NOT NULL, verified_at INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS spotify_owner_validation_retry (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), provider TEXT NOT NULL CHECK(provider IN ('oauth','webplayer')),
+ retry_key TEXT NOT NULL, failures INTEGER NOT NULL CHECK(failures>0), checked_at INTEGER NOT NULL,
+ retry_at INTEGER NOT NULL, outcome TEXT NOT NULL CHECK(outcome IN ('network','http','invalid_response')),
+ http_status INTEGER NOT NULL CHECK(http_status BETWEEN 0 AND 599));
  CREATE TABLE IF NOT EXISTS spotify_playlist_traversals (
  context_key TEXT NOT NULL, spotify_id TEXT NOT NULL, generation INTEGER NOT NULL,
  complete INTEGER NOT NULL DEFAULT 0 CHECK(complete IN (0,1)),

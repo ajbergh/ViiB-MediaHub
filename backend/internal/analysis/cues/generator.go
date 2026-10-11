@@ -9,9 +9,10 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
 )
 
-const GeneratorVersion = "auto-cues-v1"
+const GeneratorVersion = localcontract.CueGeneratorVersion
 
 // Cue is an analysis-owned candidate with enough metadata to persist and
 // distinguish it from user-authored hot cues.

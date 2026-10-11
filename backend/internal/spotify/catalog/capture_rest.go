@@ -70,10 +70,13 @@ func CaptureREST(target *url.URL, raw []byte) ([]CapturedEntity, error) {
 					break
 				}
 			}
-			kind, id := captureString(candidate["type"]), captureString(candidate["id"])
-			unavailable := !objectID.MatchString(id) || (kind != "track" && kind != "album" && kind != "playlist")
+			kind, id, available, err := captureRESTIdentity(candidate)
+			if err != nil {
+				return nil, err
+			}
+			unavailable := !available
 			if unavailable {
-				kind, id = "", ""
+				kind, id = captureRESTUnavailableType(candidate), ""
 			}
 			relationPayload := row
 			if string(row) == "null" {
@@ -101,12 +104,9 @@ func CaptureREST(target *url.URL, raw []byte) ([]CapturedEntity, error) {
 			}
 			return nil
 		}
-		kind := captureString(object["type"])
-		id := captureString(object["id"])
-		valid := (kind == "track" || kind == "album" || kind == "artist" || kind == "playlist") && objectID.MatchString(id)
-		uri := captureString(object["uri"])
-		if valid && uri != "" && uri != "spotify:"+kind+":"+id {
-			return ErrSchema
+		kind, id, valid, err := captureRESTIdentity(object)
+		if err != nil {
+			return err
 		}
 		if valid {
 			key := resource + ":related"
@@ -125,10 +125,13 @@ func CaptureREST(target *url.URL, raw []byte) ([]CapturedEntity, error) {
 					if track, ok := child["track"]; ok {
 						_ = json.Unmarshal(track, &child)
 					}
-					typ, childID := captureString(child["type"]), captureString(child["id"])
-					unavailable := !objectID.MatchString(childID) || (typ != "track" && typ != "album" && typ != "artist" && typ != "playlist")
+					typ, childID, available, err := captureRESTIdentity(child)
+					if err != nil {
+						return err
+					}
+					unavailable := !available
 					if unavailable {
-						typ, childID = "", ""
+						typ, childID = captureRESTUnavailableType(child), ""
 					}
 					relationPayload := row
 					if string(row) == "null" {
@@ -150,15 +153,18 @@ func CaptureREST(target *url.URL, raw []byte) ([]CapturedEntity, error) {
 					var album map[string]json.RawMessage
 					_ = json.Unmarshal(albumRaw, &album)
 					albumID := captureString(album["id"])
-					albumType := captureString(album["type"])
 					albumURI := captureString(album["uri"])
 					if albumURI != "" && objectID.MatchString(albumID) && albumURI != "spotify:album:"+albumID {
 						return ErrSchema
 					}
-					unavailable := albumType != "album" || !objectID.MatchString(albumID)
-					relation := CapturedRelation{Kind: "album", Position: 0, ChildType: "album", ChildID: albumID, Unavailable: unavailable}
+					albumType, albumID, available, err := captureRESTIdentity(album)
+					if err != nil {
+						return err
+					}
+					unavailable := !available || albumType != "album"
+					relation := CapturedRelation{Kind: "album", Position: 0, ChildType: albumType, ChildID: albumID, Unavailable: unavailable}
 					if unavailable {
-						relation.ChildType = ""
+						relation.ChildType = captureRESTUnavailableType(album)
 						relation.ChildID = ""
 					}
 					relationPayload := albumRaw
@@ -198,4 +204,56 @@ func CaptureREST(target *url.URL, raw []byte) ([]CapturedEntity, error) {
 
 	return DeduplicateCapturedEntities(entities), nil
 
+}
+
+func captureRESTIdentity(object map[string]json.RawMessage) (kind, id string, available bool, err error) {
+	kind, id = captureString(object["type"]), captureString(object["id"])
+	uri := captureString(object["uri"])
+	uriParts := strings.Split(uri, ":")
+	uriKind, uriID := "", ""
+	if len(uriParts) == 3 && uriParts[0] == "spotify" && objectID.MatchString(uriParts[2]) {
+		switch uriParts[1] {
+		case "track", "album", "artist", "playlist":
+			uriKind, uriID = uriParts[1], uriParts[2]
+		}
+	}
+	if uri != "" && objectID.MatchString(id) && kind != "" && uri != "spotify:"+kind+":"+id {
+		return "", "", false, ErrSchema
+	}
+	if uriKind != "" {
+		if kind != "" && kind != uriKind || id != "" && id != uriID {
+			return "", "", false, ErrSchema
+		}
+		if kind == "" {
+			kind = uriKind
+		}
+		if id == "" {
+			id = uriID
+		}
+	}
+	available = objectID.MatchString(id) && (kind == "track" || kind == "album" || kind == "artist" || kind == "playlist")
+	if !available {
+		return "", "", false, nil
+	}
+	return kind, id, true, nil
+}
+
+func captureRESTUnavailableType(object map[string]json.RawMessage) string {
+	kind := captureString(object["type"])
+	if kind == "" {
+		parts := strings.Split(captureString(object["uri"]), ":")
+		if len(parts) == 3 && parts[0] == "spotify" && objectID.MatchString(parts[2]) {
+			kind = parts[1]
+		}
+	}
+	if kind == "" || len(kind) > 128 {
+		return ""
+	}
+	for _, character := range kind {
+		if (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') && character != '_' && character != '-' {
+			return ""
+		}
+	}
+	return kind
 }

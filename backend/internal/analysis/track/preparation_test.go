@@ -106,6 +106,72 @@ func TestPreparationRepairsMultipleMissingCapabilitiesInOneDecode(t *testing.T) 
 	}
 }
 
+func TestMissingLocalEnergyEnvelopeFieldIsSelectedAndRepaired(t *testing.T) {
+	database, ids := runnerCatalog(t, 1)
+	registry := analysis.NewDefaultDecoderRegistry()
+	if progress, err := Run(t.Context(), database, registry, ids, RunOptions{}); err != nil || progress.Analyzed != 1 {
+		t.Fatalf("initial preparation: %+v %v", progress, err)
+	}
+	record, err := database.GetTrackAnalysis(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.EnergyLevel == nil || record.Local == nil || !record.LocalScalarEnvelopePresent {
+		t.Fatalf("expected explicit local energy envelope: %+v", record)
+	}
+	fields := record.Local.Fields[:0]
+	for _, field := range record.Local.Fields {
+		if field.Key != "local_energy_level" {
+			fields = append(fields, field)
+		}
+	}
+	record.Local.Fields = fields
+	if err := database.UpsertTrackAnalysis(record); err != nil {
+		t.Fatal(err)
+	}
+	record, err = database.GetTrackAnalysis(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range db.ResolveAnalysisScalarFields(record, db.TrackAnalysisOverride{}, record.SourceFingerprint, nil) {
+		if field.Key == "local_energy_level" && field.Selected != nil {
+			t.Fatalf("legacy energy columns bypassed the incomplete explicit envelope: %+v", field)
+		}
+	}
+	selected, err := ExpandPreparationSelection(t.Context(), database, db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, nil)
+	if err != nil || len(selected) != 1 || selected[0] != ids[0] {
+		t.Fatalf("incomplete explicit local energy was not selected: %v %v", selected, err)
+	}
+
+	opens := 0
+	options := RunOptions{ResolveSource: func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
+		source, err := analysis.ResolveLocalSource(database, id)
+		open := source.Open
+		source.OpenStream = func() (io.ReadCloser, error) { opens++; return open() }
+		return source, err
+	}}
+	if progress, err := Run(t.Context(), database, registry, selected, options); err != nil || progress.Analyzed != 1 || opens != 1 {
+		t.Fatalf("local energy repair: %+v %v opens=%d", progress, err, opens)
+	}
+	repaired, err := database.GetTrackAnalysis(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	energyFound := false
+	for _, field := range db.ResolveAnalysisScalarFields(repaired, db.TrackAnalysisOverride{}, repaired.SourceFingerprint, nil) {
+		if field.Key == "local_energy_level" && field.Selected != nil && field.Selected.Source == "local" {
+			energyFound = true
+		}
+	}
+	if !energyFound {
+		t.Fatal("repaired local energy was not available from the explicit envelope")
+	}
+	selected, err = ExpandPreparationSelection(t.Context(), database, db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, nil)
+	if err != nil || len(selected) != 0 {
+		t.Fatalf("repaired local energy repeated: %v %v", selected, err)
+	}
+}
+
 func TestProviderScalarsDoNotCauseRepeatedFailedLocalPreparation(t *testing.T) {
 	database, ids := runnerCatalog(t, 1)
 	opens := 0

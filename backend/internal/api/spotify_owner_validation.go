@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 	"io"
 	"math/rand/v2"
 	"net/http"
 	"time"
+
+	"github.com/ajbergh/viib-mediahub/internal/db"
+	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 )
 
 type spotifyOwnerFlight struct {
@@ -66,6 +68,9 @@ func (s *spotifyAuthRuntime) ensureMetadataOwner(ctx context.Context) error {
 					s.ownerFailures = 0
 					s.ownerRetryAt = time.Time{}
 					s.ownerRetryErr = nil
+					if s.database != nil {
+						_ = s.database.ClearSpotifyOwnerValidationRetry(s.metadataEpoch)
+					}
 				} else {
 					if s.ownerRetryLifetime != lifetime {
 						s.ownerFailures = 0
@@ -91,6 +96,11 @@ func (s *spotifyAuthRuntime) ensureMetadataOwner(ctx context.Context) error {
 					s.ownerRetryErr = err
 					if errors.Is(err, spotifyauth.ErrAuthenticationRequired) {
 						s.invalid.Store(true)
+						if s.database != nil {
+							_ = s.database.ClearSpotifyOwnerValidationRetry(s.metadataEpoch)
+						}
+					} else {
+						s.persistOwnerRetryLocked(s.ownerClock())
 					}
 				}
 			}
@@ -157,6 +167,34 @@ func (s *spotifyAuthRuntime) ownerClock() time.Time {
 	return time.Now()
 }
 
+func (s *spotifyAuthRuntime) persistOwnerRetryLocked(checkedAt time.Time) {
+	if s.database == nil || s.ownerRetryProvider == "" || s.ownerRetryKey == "" || s.ownerRetryAt.IsZero() {
+		return
+	}
+	outcome, status := "network", 0
+	var limited *spotifyauth.WebPlayerHTTPError
+	if errors.As(s.ownerRetryErr, &limited) {
+		outcome, status = "http", limited.Status
+	} else if errors.Is(s.ownerRetryErr, context.DeadlineExceeded) {
+		outcome = "network"
+	}
+	_ = s.database.SaveSpotifyOwnerValidationRetry(s.metadataEpoch, db.SpotifyOwnerValidationRetry{
+		Provider: s.ownerRetryProvider, RetryKey: s.ownerRetryKey, Failures: s.ownerFailures,
+		CheckedAt: checkedAt, RetryAt: s.ownerRetryAt, Outcome: outcome, HTTPStatus: status,
+	})
+}
+
+func ownerRetryErrorFromRecord(retry db.SpotifyOwnerValidationRetry) error {
+	if retry.Outcome == "http" {
+		delay := time.Until(retry.RetryAt)
+		if delay < 0 {
+			delay = 0
+		}
+		return &spotifyauth.WebPlayerHTTPError{Status: retry.HTTPStatus, RetryAfter: delay}
+	}
+	return errors.New("Spotify owner validation temporarily unavailable")
+}
+
 func (s *spotifyAuthRuntime) ownerRateLimit(ctx context.Context) error {
 	s.ownerMu.Lock()
 	defer s.ownerMu.Unlock()
@@ -182,5 +220,6 @@ func (s *spotifyAuthRuntime) recordOwnerRateLimit(ctx context.Context, delay tim
 		s.ownerRetryLifetime = lifetime
 		s.ownerRetryAt = until
 		s.ownerRetryErr = &spotifyauth.WebPlayerHTTPError{Status: 429, RetryAfter: delay}
+		s.persistOwnerRetryLocked(s.ownerClock())
 	}
 }

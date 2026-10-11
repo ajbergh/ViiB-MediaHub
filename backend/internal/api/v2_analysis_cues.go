@@ -213,5 +213,12 @@ func (a *API) analysisCueList(songID string) (AnalysisCueListResponse, error) {
 	if response.Suppressions == nil {
 		response.Suppressions = []db.DJHotCueSuppression{}
 	}
+	current, err := a.analysisSourceMatchesCurrent(songID, response.SourceFingerprint)
+	if err != nil {
+		return AnalysisCueListResponse{}, err
+	}
+	if !current {
+		return AnalysisCueListResponse{}, errStaleAnalysisCueSource
+	}
 	return response, nil
 }

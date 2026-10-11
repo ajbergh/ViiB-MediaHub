@@ -12,7 +12,7 @@ export interface CatalogRelation {
 export interface ImportedCatalog {
  recordingId: string; sourceFingerprint: string; provenance: 'spotify_download_import';
  snapshots: CatalogSnapshot[]; relations: CatalogRelation[]; origins: SpotifyDownloadOrigin[];
- catalogStatus?: { state: 'available' | 'incomplete' | 'oversized' | 'not_available'; reason: string; scope: string; checkedAt: string };
+ catalogStatus?: { state: 'available' | 'incomplete' | 'oversized' | 'not_available'; reason: string; scope: 'track_and_direct_relations_v1' | 'track_album_artist_graph_v2' | 'track_album_artist_graph_v3'; checkedAt: string };
  collectionStatus?: { state: 'available' | 'incomplete' | 'oversized' | 'not_available'; reason: string; scope: 'requested_collection_observations_v1'; checkedAt: string };
  lineageStatus?: { state: 'available' | 'oversized' | 'no_active_request_lineage'; checkedAt: string };
 }
@@ -39,12 +39,12 @@ export async function loadImportedCatalog(songId: string, fingerprint?: string, 
   parents.add(JSON.stringify([s.entityType,s.spotifyId,s.resource]));
  }
  for (const r of data.relations) {
-  if (!object(r) || !parents.has(JSON.stringify([r.parentType,r.parentId,r.resource])) || !text(r.kind,128) || !Number.isInteger(r.position) || r.position < 0 || typeof r.childType !== 'string' || r.childType.length > 128 || (r.childId !== '' && !id(r.childId)) || typeof r.unavailable !== 'boolean') throw new Error('Invalid catalog relation');
+  if (!object(r) || !parents.has(JSON.stringify([r.parentType,r.parentId,r.resource])) || !text(r.kind,128) || !Number.isInteger(r.position) || r.position < 0 || typeof r.childType !== 'string' || r.childType.length > 128 || typeof r.unavailable !== 'boolean' || (r.unavailable ? (r.childId !== '' && !id(r.childId)) : (!text(r.childType,128) || !id(r.childId)))) throw new Error('Invalid catalog relation');
  }
  for (const o of data.origins) {
   if (!object(o) || (o.entityId != null && (!id(o.entityId) || o.kind !== 'library')) || !['album','playlist','library'].includes(o.kind) || (o.kind === 'library' ? !['saved_tracks','saved_albums','saved_playlists'].includes(o.id) : !id(o.id)) || !Number.isInteger(o.position) || o.position < -1 || o.position > 1000000 || (o.revision != null && (typeof o.revision !== 'string' || o.revision.length > 256))) throw new Error('Invalid request origin');
  }
- if (data.catalogStatus && (!object(data.catalogStatus) || !['available','incomplete','oversized','not_available'].includes(data.catalogStatus.state) || !text(data.catalogStatus.reason) || !['track_and_direct_relations_v1','track_album_artist_graph_v2'].includes(data.catalogStatus.scope) || !date(data.catalogStatus.checkedAt))) throw new Error('Invalid catalog outcome');
+ if (data.catalogStatus && (!object(data.catalogStatus) || !['available','incomplete','oversized','not_available'].includes(data.catalogStatus.state) || !text(data.catalogStatus.reason) || !['track_and_direct_relations_v1','track_album_artist_graph_v2','track_album_artist_graph_v3'].includes(data.catalogStatus.scope) || !date(data.catalogStatus.checkedAt))) throw new Error('Invalid catalog outcome');
  if (data.collectionStatus && (!object(data.collectionStatus) || !['available','incomplete','oversized','not_available'].includes(data.collectionStatus.state) || !text(data.collectionStatus.reason) || data.collectionStatus.scope !== 'requested_collection_observations_v1' || !date(data.collectionStatus.checkedAt))) throw new Error('Invalid collection outcome');
  if (data.lineageStatus && (!object(data.lineageStatus) || !['available','oversized','no_active_request_lineage'].includes(data.lineageStatus.state) || !date(data.lineageStatus.checkedAt))) throw new Error('Invalid origin outcome');
  return data;

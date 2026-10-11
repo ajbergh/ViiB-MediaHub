@@ -89,7 +89,7 @@ func TestDownloadCatalogOutcomesIndependentAndSourceBound(t *testing.T) {
 			}
 			defer d.Close()
 			got, err := d.GetDownloadedSpotifyCatalog(t.Context(), "song", fp)
-			if err != nil || got == nil || got.CatalogStatus == nil || got.CatalogStatus.State != expected || got.CatalogStatus.Reason != reason || got.CatalogStatus.Scope != "track_album_artist_graph_v2" || got.CatalogStatus.CheckedAt.IsZero() {
+			if err != nil || got == nil || got.CatalogStatus == nil || got.CatalogStatus.State != expected || got.CatalogStatus.Reason != reason || got.CatalogStatus.Scope != downloadedCatalogGraphScope || got.CatalogStatus.CheckedAt.IsZero() {
 				t.Fatalf("%s outcome: %+v %v", mode, got, err)
 			}
 			var audio string

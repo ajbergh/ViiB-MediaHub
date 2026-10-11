@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -26,6 +27,14 @@ type SpotifyEntityRelation struct {
 	Unavailable bool   `json:"unavailable"`
 	Metadata    []byte `json:"-"`
 }
+
+func validSpotifyRelationIdentity(childType, childID string, unavailable bool) bool {
+	if unavailable {
+		return childID == "" || ValidSpotifyRecordingID(childID)
+	}
+	return childType != "" && ValidSpotifyRecordingID(childID)
+}
+
 type SpotifyEntitySnapshot struct {
 	CaptureRevision string `json:"captureRevision,omitempty"`
 	SpotifySnapshotKey
@@ -134,7 +143,7 @@ func putSpotifyEntitySnapshotTx(tx *sql.Tx, snapshot SpotifyEntitySnapshot) erro
 	relationBytes := 0
 	for i := range relations {
 		relation := &relations[i]
-		if relation.Kind == "" || len(relation.Kind) > 128 || relation.Position < 0 || len(relation.ChildType) > 128 || (relation.ChildID != "" && !ValidSpotifyRecordingID(relation.ChildID)) {
+		if relation.Kind == "" || len(relation.Kind) > 128 || relation.Position < 0 || len(relation.ChildType) > 128 || !validSpotifyRelationIdentity(relation.ChildType, relation.ChildID, relation.Unavailable) {
 			return errors.New("invalid Spotify relation")
 		}
 		if seen[relation.Kind] == nil {
@@ -154,6 +163,12 @@ func putSpotifyEntitySnapshotTx(tx *sql.Tx, snapshot SpotifyEntitySnapshot) erro
 		relationBytes += len(relation.Metadata)
 		if relationBytes > metadata.CatalogLimit {
 			return errors.New("Spotify relation metadata exceeds limit")
+		}
+	}
+	if strings.HasPrefix(snapshot.Resource, "rest:") {
+		relations, err = mergePersistedRESTRelationsTx(tx, snapshot, relations)
+		if err != nil {
+			return err
 		}
 	}
 	sum := sha256.Sum256(payload)
@@ -192,6 +207,107 @@ func putSpotifyEntitySnapshotTx(tx *sql.Tx, snapshot SpotifyEntitySnapshot) erro
 	}
 	return nil
 }
+func mergePersistedRESTRelationsTx(tx *sql.Tx, snapshot SpotifyEntitySnapshot, incoming []SpotifyEntityRelation) ([]SpotifyEntityRelation, error) {
+	var priorRetrieved int64
+	err := tx.QueryRow(`SELECT retrieved_at FROM spotify_entity_snapshots WHERE entity_type=? AND spotify_id=? AND resource=? AND context_key=?`, snapshot.EntityType, snapshot.SpotifyID, snapshot.Resource, snapshot.ContextKey).Scan(&priorRetrieved)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && priorRetrieved > snapshot.RetrievedAt.UnixMilli()) {
+		return incoming, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(`SELECT relation_kind,position,child_type,child_id,unavailable,metadata_json FROM spotify_entity_relations WHERE entity_type=? AND spotify_id=? AND resource=? AND context_key=?`, snapshot.EntityType, snapshot.SpotifyID, snapshot.Resource, snapshot.ContextKey)
+	if err != nil {
+		return nil, err
+	}
+	prior := make([]SpotifyEntityRelation, 0)
+	for rows.Next() {
+		var relation SpotifyEntityRelation
+		if err := rows.Scan(&relation.Kind, &relation.Position, &relation.ChildType, &relation.ChildID, &relation.Unavailable, &relation.Metadata); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		prior = append(prior, relation)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if len(prior) == 0 {
+		return incoming, nil
+	}
+	merged := make([]SpotifyEntityRelation, 0, len(prior)+len(incoming))
+	for _, relation := range prior {
+		if !restRelationFieldPresent(snapshot.Payload, snapshot.EntityType, relation.Kind) {
+			relation.Metadata = append([]byte(nil), relation.Metadata...)
+			merged = append(merged, relation)
+		}
+	}
+	merged = append(merged, incoming...)
+	if len(merged) > 20000 {
+		return nil, errors.New("merged Spotify relations exceed limit")
+	}
+	bytes := 0
+	for _, relation := range merged {
+		if relation.Kind == "" || len(relation.Kind) > 128 || relation.Position < 0 || len(relation.ChildType) > 128 || !validSpotifyRelationIdentity(relation.ChildType, relation.ChildID, relation.Unavailable) {
+			return nil, errors.New("invalid persisted Spotify relation")
+		}
+		bytes += len(relation.Metadata)
+		if bytes > metadata.CatalogLimit {
+			return nil, errors.New("merged Spotify relation metadata exceeds limit")
+		}
+	}
+	return merged, nil
+}
+
+func restRelationFieldPresent(payload []byte, entityType, kind string) bool {
+	var object map[string]json.RawMessage
+	if json.Unmarshal(payload, &object) != nil || object == nil {
+		return false
+	}
+	field := ""
+	switch kind {
+	case "album":
+		field = "album"
+	case "artists":
+		field = "artists"
+	case "tracks":
+		field = "tracks"
+		if entityType == "album" || entityType == "playlist" {
+			field = "items"
+		}
+	case "library_items":
+		field = "items"
+	default:
+		return false
+	}
+	raw, exists := object[field]
+	if !exists || strings.TrimSpace(string(raw)) == "null" {
+		return false
+	}
+	switch kind {
+	case "album":
+		return true
+	case "artists", "library_items":
+		var items []json.RawMessage
+		return json.Unmarshal(raw, &items) == nil
+	case "tracks":
+		if entityType == "album" || entityType == "playlist" {
+			var items []json.RawMessage
+			return json.Unmarshal(raw, &items) == nil
+		}
+		var page map[string]json.RawMessage
+		if json.Unmarshal(raw, &page) != nil || page == nil {
+			return false
+		}
+		var items []json.RawMessage
+		return json.Unmarshal(page["items"], &items) == nil
+	}
+	return false
+}
 func (d *DB) GetSpotifyEntitySnapshot(key SpotifySnapshotKey) (*SpotifyEntitySnapshot, error) {
 	if !validSnapshotKey(key) {
 		return nil, errors.New("invalid Spotify snapshot key")
@@ -228,6 +344,9 @@ func (d *DB) GetSpotifyEntitySnapshot(key SpotifySnapshotKey) (*SpotifyEntitySna
 		if err = rows.Scan(&relation.Kind, &relation.Position, &relation.ChildType, &relation.ChildID, &relation.Unavailable, &relation.Metadata); err != nil {
 			return nil, err
 		}
+		if relation.Kind == "" || len(relation.Kind) > 128 || relation.Position < 0 || len(relation.ChildType) > 128 || !validSpotifyRelationIdentity(relation.ChildType, relation.ChildID, relation.Unavailable) {
+			return nil, errors.New("invalid persisted Spotify relation")
+		}
 		value.Relations = append(value.Relations, relation)
 	}
 	return &value, rows.Err()
@@ -248,6 +367,9 @@ func (d *DB) RetireSpotifyMetadataContext(contextKey string) error {
 		if _, err = tx.Exec("DELETE FROM "+table+" WHERE context_key=?", contextKey); err != nil {
 			return err
 		}
+	}
+	if _, err = tx.Exec(`DELETE FROM spotify_owner_validation_retry WHERE retry_key=?`, contextKey); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -324,6 +446,9 @@ func (d *DB) PurgeSpotifyMetadata() error {
 		if _, err = tx.Exec("DELETE FROM " + table); err != nil {
 			return err
 		}
+	}
+	if _, err = tx.Exec(`DELETE FROM spotify_owner_validation_retry`); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

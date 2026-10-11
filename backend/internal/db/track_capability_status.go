@@ -91,3 +91,24 @@ func (d *DB) GetTrackCapabilityStatuses(songID, fingerprint string) (map[string]
 	}
 	return result, rows.Err()
 }
+
+// ClearProviderThreeBandCapabilityStatuses removes the account-scoped claim
+// that Spotify currently supplies three-band data. It does not touch local
+// artifacts or source-bound downloaded audio imports.
+func (d *DB) ClearProviderThreeBandCapabilityStatuses(songID, fingerprint string) error {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	query := `DELETE FROM track_metadata_capability_status
+ WHERE capability='local_three_band_estimate' AND state='available' AND reason='provider_three_band'`
+	args := []any{}
+	if songID != "" || fingerprint != "" {
+		if songID == "" || fingerprint == "" {
+			return errors.New("song and source fingerprint are both required")
+		}
+		query += ` AND song_id=? AND source_fingerprint=?`
+		args = append(args, songID, fingerprint)
+	}
+	_, err := d.conn.Exec(query, args...)
+	return err
+}

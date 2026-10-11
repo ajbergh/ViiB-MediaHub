@@ -66,6 +66,9 @@ func (d *DB) ConfirmSpotifyMetadataOwner(epoch, provider, accountID, newContext 
 	if epoch != activeEpoch {
 		return "", ErrSpotifyMetadataRuntimeSuperseded
 	}
+	if _, err := tx.Exec(`DELETE FROM spotify_owner_validation_retry`); err != nil {
+		return "", err
+	}
 	var previous SpotifyMetadataOwner
 	err = tx.QueryRow(`SELECT provider,account_id,context_key FROM spotify_metadata_owner WHERE singleton=1`).Scan(&previous.Provider, &previous.AccountID, &previous.ContextKey)
 	if err != nil && err != sql.ErrNoRows {

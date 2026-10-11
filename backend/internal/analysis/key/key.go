@@ -6,9 +6,10 @@ import (
 	"math"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
 )
 
-const AlgorithmVersion = "key-v2-hpcp-ks"
+const AlgorithmVersion = localcontract.KeyAlgorithmVersion
 
 // maxTonalChromaFlatness is the flattest a chromagram may be before a key is
 // refused.

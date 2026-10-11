@@ -185,6 +185,9 @@ func TestCookieRuntimeRetirementCancelsColdToken(t *testing.T) {
 	if err := a.spotifyAuth.connect(context.Background(), "fixture-cookie"); err != nil {
 		t.Fatal(err)
 	}
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"data":{"me":{"profile":{"username":"cookie-owner","uri":"spotify:user:cookie-owner","name":"Cookie"}}}}`))}, nil
+	})}
 	options := a.spotifyAuth.options
 	base := options.Client.Transport
 	entered := make(chan struct{})
@@ -197,6 +200,8 @@ func TestCookieRuntimeRetirementCancelsColdToken(t *testing.T) {
 		return base.RoundTrip(r)
 	})}
 	s := newSpotifyAuthRuntime(a.db, options)
+	a.spotifyAuth = s
+	s = a.spotifyTokens()
 	defer s.close()
 	done := make(chan error, 1)
 	go func() { _, err := s.Token(context.Background(), spotifyauth.WebAPI); done <- err }()
@@ -210,7 +215,7 @@ func TestCookieRuntimeRetirementCancelsColdToken(t *testing.T) {
 	if err := latencyResult(t, changed); err != nil {
 		t.Fatal(err)
 	}
-	if err := latencyResult(t, done); !errors.Is(err, spotifyauth.ErrAuthenticationRequired) {
+	if err := latencyResult(t, done); !errors.Is(err, spotifyauth.ErrAuthenticationRequired) && !errors.Is(err, context.Canceled) {
 		t.Fatalf("retired cold token succeeded: %v", err)
 	}
 }

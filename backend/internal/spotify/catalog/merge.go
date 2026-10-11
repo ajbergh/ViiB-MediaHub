@@ -48,7 +48,8 @@ func DeduplicateCapturedEntities(entities []CapturedEntity) []CapturedEntity {
 			candidateValid := capturedRelationValid(candidate)
 			switch {
 			case priorValid && candidateValid && (prior.ChildType != candidate.ChildType || prior.ChildID != candidate.ChildID):
-				prior.ChildType, prior.ChildID, prior.Unavailable = "", "", true
+				prior.ChildType = mergeUnavailableChildType(prior.ChildType, candidate.ChildType)
+				prior.ChildID, prior.Unavailable = "", true
 				prior.Metadata = longerBytes(prior.Metadata, candidate.Metadata)
 				if conflicts[index] == nil {
 					conflicts[index] = make(map[relationKey]bool)
@@ -59,13 +60,24 @@ func DeduplicateCapturedEntities(entities []CapturedEntity) []CapturedEntity {
 			case !priorValid && candidateValid:
 				prior = cloneCapturedRelation(candidate)
 			case !priorValid && !candidateValid:
-				prior.ChildType, prior.ChildID, prior.Unavailable = "", "", true
+				prior.ChildType = mergeUnavailableChildType(prior.ChildType, candidate.ChildType)
+				prior.ChildID, prior.Unavailable = "", true
 				prior.Metadata = longerBytes(prior.Metadata, candidate.Metadata)
 			}
 			current.Relations[currentIndex] = prior
 		}
 	}
 	return unique
+}
+
+func mergeUnavailableChildType(prior, candidate string) string {
+	if prior == "" {
+		return candidate
+	}
+	if candidate == "" || prior == candidate {
+		return prior
+	}
+	return ""
 }
 
 func cloneCapturedEntity(entity CapturedEntity) CapturedEntity {

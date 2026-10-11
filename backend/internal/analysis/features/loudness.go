@@ -53,6 +53,9 @@ func EncodeBS1770(result BS1770Result) ([]byte, error) {
 }
 
 func DecodeBS1770(data []byte) (BS1770Result, error) {
+	if len(data) == 0 || len(data) > MaxBS1770ArtifactBytes {
+		return BS1770Result{}, errors.New("invalid BS.1770 artifact size")
+	}
 	reader, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return BS1770Result{}, err

@@ -313,6 +313,17 @@ func (c *SourceHashCache) SHA256(path string) (string, error) {
 
 // SHA256Context hashes a source file with cancellation checks between reads.
 func (c *SourceHashCache) SHA256Context(ctx context.Context, path string) (string, error) {
+	return c.sha256Context(ctx, path, true)
+}
+
+// SHA256FreshContext always reads the file bytes, even when path, size and
+// modification time match a cached entry. Use it when identity must reflect
+// the current bytes at a publication boundary.
+func (c *SourceHashCache) SHA256FreshContext(ctx context.Context, path string) (string, error) {
+	return c.sha256Context(ctx, path, false)
+}
+
+func (c *SourceHashCache) sha256Context(ctx context.Context, path string, allowCache bool) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -336,7 +347,7 @@ func (c *SourceHashCache) SHA256Context(ctx context.Context, path string) (strin
 	if c.entries == nil {
 		c.entries = make(map[string]sourceHashEntry)
 	}
-	if cached, ok := c.entries[key]; ok && cached.size == size && cached.modTime == modTime {
+	if cached, ok := c.entries[key]; allowCache && ok && cached.size == size && cached.modTime == modTime {
 		c.mu.Unlock()
 		return cached.hash, nil
 	}
@@ -346,11 +357,24 @@ func (c *SourceHashCache) SHA256Context(ctx context.Context, path string) (strin
 	if err != nil {
 		return "", err
 	}
+	opened, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return "", err
+	}
+	if opened.Size() != size || !opened.ModTime().Equal(info.ModTime()) || !os.SameFile(info, opened) {
+		_ = f.Close()
+		return "", errors.New("source audio changed before hashing")
+	}
 	h := sha256.New()
 	_, copyErr := copyContext(ctx, h, f)
+	openedAfter, statErr := f.Stat()
 	closeErr := f.Close()
 	if copyErr != nil {
 		return "", fmt.Errorf("read source audio: %w", copyErr)
+	}
+	if statErr != nil {
+		return "", statErr
 	}
 	if closeErr != nil {
 		return "", fmt.Errorf("close source audio: %w", closeErr)
@@ -362,7 +386,7 @@ func (c *SourceHashCache) SHA256Context(ctx context.Context, path string) (strin
 	if err != nil {
 		return "", err
 	}
-	if after.Size() != size || after.ModTime().UnixNano() != modTime {
+	if openedAfter.Size() != size || openedAfter.ModTime().UnixNano() != modTime || !os.SameFile(info, openedAfter) || after.Size() != size || after.ModTime().UnixNano() != modTime || !os.SameFile(info, after) {
 		return "", errors.New("source audio changed while hashing")
 	}
 	c.mu.Lock()

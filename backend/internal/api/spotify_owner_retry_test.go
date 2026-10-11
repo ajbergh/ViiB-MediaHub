@@ -100,9 +100,7 @@ func TestOAuthOwnerValidationPropagatesRateLimitWithoutInlineRetry(t *testing.T)
 		t.Fatal(err)
 	}
 	old := a.spotifyTokens()
-	if err := a.db.BindSpotifyMetadataOwner(old.metadataEpoch, "oauth", "account", old.metadataContext); err != nil {
-		t.Fatal(err)
-	}
+	confirmTestSpotifyMetadataOwner(t, old, "account")
 	a.spotifyAuth = newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
 	s := a.spotifyTokens()
 	now := time.Now()

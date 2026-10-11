@@ -405,12 +405,6 @@ func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.
 	default:
 		return outcomeSkipped
 	}
-	if record.BPMSource != nil && *record.BPMSource == db.EffectiveBPMSpotify && record.KeySource != nil && *record.KeySource == db.EffectiveKeySpotify {
-		if _, bandErr := database.GetTrackAnalysisArtifact(source.SongID, threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion); bandErr != nil {
-			logScanRecord(record, "already_current", "skipped")
-			return outcomeSkipped
-		}
-	}
 	token, claimed, err := claimPreparation(ctx, database, source.SongID, source.Fingerprint)
 	if err != nil {
 		return outcomeFailed
@@ -430,6 +424,9 @@ func enrichCurrentScalars(ctx context.Context, database *db.DB, source analysis.
 			_ = database.ReleaseTrackAnalysisLease(source.SongID, token)
 			return outcomeFailed
 		}
+	} else if err := database.ClearProviderThreeBandCapabilityStatuses(source.SongID, source.Fingerprint); err != nil {
+		_ = database.ReleaseTrackAnalysisLease(source.SongID, token)
+		return outcomeFailed
 	}
 	if observation == nil {
 		if err := database.PublishTrackPreparation(db.TrackPreparationPublication{Analysis: record, ClaimToken: token}); err != nil {

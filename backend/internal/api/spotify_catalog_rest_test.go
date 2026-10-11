@@ -35,6 +35,9 @@ func TestOAuthCatalogResponseCapturedAndReplayed(t *testing.T) {
 	rawBytes, _ := json.Marshal(map[string]any{"id": id, "type": "track", "uri": "spotify:track:" + id, "name": "Song", "duration_ms": 180000, "future_domain": 0, "token": "secret", "album": album, "artists": []any{artist}})
 	raw := string(rawBytes)
 	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"catalog-owner"}`))}, nil
+		}
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
 	})}}
 	response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/tracks/"+id, nil, "")
@@ -92,6 +95,9 @@ func TestOAuthBatchCatalogResponseCapturedAndReplayed(t *testing.T) {
 	}
 	raw := string(rawBytes)
 	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"catalog-owner"}`))}, nil
+		}
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
 	})}}
 	requestURL := "https://api.spotify.com/v1/tracks?ids=" + url.QueryEscape(strings.Join(trackIDs, ","))
@@ -124,6 +130,72 @@ func TestOAuthBatchCatalogResponseCapturedAndReplayed(t *testing.T) {
 		if err != nil || albumSnapshot == nil {
 			t.Fatalf("batch nested album %s: %+v %v", albumIDs[i], albumSnapshot, err)
 		}
+	}
+}
+
+func TestOAuthSequentialSparseBatchRetainsEarlierTrackRelations(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	trackID, otherID := strings.Repeat("T", 22), strings.Repeat("S", 22)
+	albumID, artistID := strings.Repeat("A", 22), strings.Repeat("B", 22)
+	album := map[string]any{"id": albumID, "type": "album", "uri": "spotify:album:" + albumID, "name": "Album", "artists": []any{map[string]any{"id": artistID, "type": "artist", "uri": "spotify:artist:" + artistID, "name": "Artist"}}}
+	rich, err := json.Marshal(map[string]any{"tracks": []any{map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "name": "Track", "album": album, "artists": album["artists"]}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sparse, err := json.Marshal(map[string]any{"tracks": []any{map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "name": "Track"}, map[string]any{"id": otherID, "type": "track", "uri": "spotify:track:" + otherID, "name": "Other"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	responses := []string{string(rich), string(sparse)}
+	requestIndex := 0
+	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"catalog-owner"}`))}, nil
+		}
+		if requestIndex >= len(responses) {
+			return nil, fmt.Errorf("unexpected request %s", r.URL)
+		}
+		body := responses[requestIndex]
+		requestIndex++
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}}
+	for _, ids := range []string{trackID, trackID + "," + otherID} {
+		response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/tracks?ids="+url.QueryEscape(ids), nil, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.Copy(io.Discard, response.Body); err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+	}
+	if requestIndex != 2 {
+		t.Fatalf("captured %d responses, want 2", requestIndex)
+	}
+	runtime := a.spotifyTokens()
+	snapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "track", SpotifyID: trackID, Resource: "rest:/v1/tracks:page:::related", ContextKey: runtime.metadataContext})
+	if err != nil || snapshot == nil {
+		t.Fatalf("track snapshot: %+v %v", snapshot, err)
+	}
+	foundAlbum, foundArtist := false, false
+	for _, relation := range snapshot.Relations {
+		if relation.Kind == "album" && relation.ChildType == "album" && relation.ChildID == albumID && !relation.Unavailable {
+			foundAlbum = true
+		}
+		if relation.Kind == "artists" && relation.ChildType == "artist" && relation.ChildID == artistID && !relation.Unavailable {
+			foundArtist = true
+		}
+	}
+	if !foundAlbum || !foundArtist {
+		t.Fatalf("later sparse batch erased earlier relation coverage: album=%v artist=%v relations=%+v", foundAlbum, foundArtist, snapshot.Relations)
 	}
 }
 
@@ -212,6 +284,9 @@ func TestOAuthSavedLibraryPageCapturedAndReplayed(t *testing.T) {
 	id := strings.Repeat("T", 22)
 	raw := `{"offset":4,"total":5,"items":[{"track":{"type":"track","id":"` + id + `","future_domain":0,"token":"secret"}}]}`
 	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"library-owner"}`))}, nil
+		}
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
 	})}}
 	response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/tracks?offset=4&limit=1", nil, "")
@@ -242,6 +317,9 @@ func TestOAuthPlaylistFinalRevisionFence(t *testing.T) {
 			id := strings.Repeat("P", 22)
 			rootCalls := 0
 			a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/v1/me" {
+					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"playlist-owner"}`))}, nil
+				}
 				raw := `{"offset":1,"limit":1,"items":[null],"next":null}`
 				if !strings.HasSuffix(r.URL.Path, "/tracks") {
 					rootCalls++
@@ -283,6 +361,9 @@ func TestOAuthPlaylistRejectsOverlappingOrSkippedPage(t *testing.T) {
 			id := strings.Repeat("P", 22)
 			rootCalls := 0
 			a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/v1/me" {
+					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"playlist-owner"}`))}, nil
+				}
 				raw := `{"offset":` + revision + `,"limit":1,"items":[null],"next":null}`
 				if !strings.HasSuffix(r.URL.Path, "/tracks") {
 					rootCalls++
@@ -385,9 +466,12 @@ func TestOAuthPlaylistSupersededTraversalDiscardsResult(t *testing.T) {
 	id := strings.Repeat("P", 22)
 	runtime := a.spotifyTokens()
 	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
-		// Simulate another owner starting while this root request is in flight.
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"playlist-owner"}`))}, nil
+		}
+		// Simulate another owner starting while the playlist root request is in flight.
 		if _, err := a.db.BeginSpotifyPlaylistTraversal(runtime.metadataContext, id); err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		raw := `{"type":"playlist","id":"` + id + `","snapshot_id":"revision","tracks":{"offset":0,"items":[null],"next":null}}`
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil

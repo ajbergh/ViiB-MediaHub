@@ -30,6 +30,15 @@ func (a *API) getSongImportedCatalog(w http.ResponseWriter, r *http.Request) {
 		respondError(w, 404, "no retained catalog for current file")
 		return
 	}
+	current, err := a.analysisSourceMatchesCurrent(id, fp)
+	if err != nil {
+		respondError(w, 500, "source unavailable")
+		return
+	}
+	if !current {
+		respondError(w, 412, "source changed while reading retained catalog")
+		return
+	}
 	w.Header().Set("ETag", strconv.Quote(fp))
 	w.Header().Set("Cache-Control", "no-store")
 	respondJSON(w, catalog)

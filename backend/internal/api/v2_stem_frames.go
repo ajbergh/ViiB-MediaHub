@@ -147,6 +147,16 @@ func (a *API) getStemFramesV2(w http.ResponseWriter, r *http.Request) {
 		stemError(w, r, http.StatusConflict, "stem_frames_unavailable", "Unable to pack aligned stem frames", false)
 		return
 	}
+	current, err := validatedStemPackage(root)
+	if err != nil || !registeredPackageMatches(*set, current.Manifest) {
+		stemError(w, r, http.StatusConflict, "stem_package_changed", "Stem package changed before frame publication", false)
+		return
+	}
+	sourceMatches, err := stemSourceMatchesFreshContext(r.Context(), song, current.Manifest)
+	if err != nil || !sourceMatches {
+		stemError(w, r, http.StatusConflict, "stem_source_stale", "Stem package no longer matches the current local source audio", false)
+		return
+	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Start-Frame", strconv.FormatInt(start, 10))

@@ -5,12 +5,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
 )
 
 const (
 	Kind             = "local_amplitude"
 	FormatVersion    = 1
-	AlgorithmVersion = "amplitude-peaks-v1-bounded"
+	AlgorithmVersion = localcontract.AmplitudeAlgorithmVersion
 	Encoding         = "amplitude-f32-le-v1"
 	MaxPeaks         = 1000000
 	HeaderBytes      = 24

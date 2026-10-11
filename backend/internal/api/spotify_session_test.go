@@ -25,6 +25,15 @@ type sessionTransport func(*http.Request) (*http.Response, error)
 
 func (f sessionTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+func confirmTestSpotifyMetadataOwner(t *testing.T, runtime *spotifyAuthRuntime, accountID string) {
+	t.Helper()
+	ctx, cancel := runtime.requestContext(t.Context())
+	defer cancel()
+	if err := runtime.confirmProfileOwner(ctx, accountID); err != nil {
+		t.Fatalf("confirm test Spotify owner %q: %v", accountID, err)
+	}
+}
+
 func fixtureCookieRuntime(t *testing.T) (*API, string, *atomic.Int32) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "session.db")
@@ -90,6 +99,15 @@ func TestCookieRuntimeStorageRestoreAndLogoutWithoutFallback(t *testing.T) {
 		t.Fatal("session exposed through generic settings")
 	}
 	restored := newSpotifyAuthRuntime(a.db, a.spotifyAuth.options)
+	a.spotifyAuth = restored
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		body := `{"granted_token":{"token":"restored-client","expires_after_seconds":600}}`
+		if r.URL.Host == "api-partner.spotify.com" {
+			body = `{"data":{"me":{"profile":{"username":"restored-owner","uri":"spotify:user:restored-owner","name":"Restored"}}}}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	restored = a.spotifyTokens()
 	defer restored.close()
 	token, err := restored.Token(context.Background(), spotifyauth.Playback)
 	if err != nil || token.Kind != spotifyauth.WebPlayer || calls.Load() != 2 {

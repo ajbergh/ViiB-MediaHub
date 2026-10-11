@@ -13,11 +13,25 @@ func TestCapabilitySemanticsAndCoverage(t *testing.T) {
 		}
 		seen[d.Key] = d
 	}
-	if seen["provider_loudness_db"].Units == seen["integrated_lufs"].Units {
+	if seen["provider_loudness_db"].Units == seen["integrated_lufs_bs1770"].Units {
 		t.Fatal("provider dB conflated with LUFS")
+	}
+	for key, want := range map[string]struct{ metric, units string }{
+		"local_duration_seconds": {"decoded_file_duration", "seconds"},
+		"integrated_lufs_bs1770": {"bs1770_integrated_loudness", "LUFS"},
+		"true_peak_dbtp":         {"bs1770_true_peak", "dBTP"},
+	} {
+		definition, ok := seen[key]
+		if !ok || definition.SemanticMetric != want.metric || definition.Units != want.units || len(definition.SpotifyResources) != 0 {
+			t.Errorf("local scalar capability %s = %+v, want metric=%q units=%q and no Spotify resource", key, definition, want.metric, want.units)
+		}
 	}
 	if seen["spotify_energy_score"].LocalEstimator != "" || seen["spotify_energy_score"].RequiredForPreparation {
 		t.Fatal("unqualified energy estimator claimed")
+	}
+	durationMS, ok := seen["duration_milliseconds"]
+	if !ok || durationMS.SemanticMetric != "recording_duration" || durationMS.Units != "milliseconds" || durationMS.LocalEstimator != "" {
+		t.Fatalf("catalog duration units or semantic distinction omitted: %+v", durationMS)
 	}
 	if !seen["local_energy_level"].RequiredForPreparation || !seen["dj_cue_candidates"].RequiredForPreparation {
 		t.Fatal("local preparation omitted")

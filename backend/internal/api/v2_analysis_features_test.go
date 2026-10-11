@@ -75,6 +75,75 @@ func saveAnalysisTestSong(t *testing.T, database *db.DB, id, title string, genre
 	return source.Fingerprint
 }
 
+func TestV2SingleTrackAnalysisFeatureIncludesCurrentBS1770Measurements(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	fingerprint := saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprint}); err != nil {
+		t.Fatal(err)
+	}
+	lufs, peak := -14.25, -0.42
+	result := features.BS1770Result{
+		IntegratedLUFS: &lufs, TruePeakDBTP: &peak, Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion,
+		LoudnessAlgorithm: features.BS1770LoudnessAlgorithm, TruePeakAlgorithm: features.BS1770TruePeakAlgorithm,
+		Layout: "stereo", Weighting: "L=1;R=1", LoudnessStatus: "available", TruePeakStatus: "available",
+	}
+	payload, err := features.EncodeBS1770(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+		ID: "song:bs1770", SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion,
+		AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured",
+		SourceFingerprint: fingerprint, Data: payload,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/song", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /analysis/song = %d, want %d: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.IntegratedLUFSBS1770 == nil || math.Abs(*response.IntegratedLUFSBS1770-lufs) > 1e-9 || response.TruePeakDBTP == nil || math.Abs(*response.TruePeakDBTP-peak) > 1e-9 {
+		t.Fatalf("single-track BS.1770 projection = LUFS %v, true peak %v", response.IntegratedLUFSBS1770, response.TruePeakDBTP)
+	}
+}
+
+func TestSingleTrackAnalysisPublicationRejectsReplacedSource(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	fingerprint := saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
+	song, err := database.GetSongByID("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(song.FilePath, []byte("replacement source has a different size"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldValue := -14.25
+	response := TrackAnalysisFeatureResponse{SongID: "song", SourceFingerprint: fingerprint, IntegratedLUFSBS1770: &oldValue}
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).respondCurrentTrackAnalysisFeature(recorder, "song", fingerprint, response)
+	if recorder.Code != http.StatusPreconditionFailed {
+		t.Fatalf("publication status = %d, want %d: %s", recorder.Code, http.StatusPreconditionFailed, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), `"integratedLufsBs1770":-14.25`) {
+		t.Fatalf("stale local measurement was published: %s", recorder.Body.String())
+	}
+}
+
 func TestV2TrackAnalysisExposesOnlyCurrentSettledEnergyLevel(t *testing.T) {
 	level, confidence, version := 8, .8, features.EnergyLevelAlgorithmVersion
 	analysis := db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisPartial, SourceFingerprint: "source-v1", EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
@@ -927,6 +996,96 @@ func TestProviderPrecedenceMatchesDetailListAndMixNextOffline(t *testing.T) {
 	}
 	if recommendations.CandidatesBeforeFilters != 1 || recommendations.CandidatesAfterFilters != 0 || len(recommendations.Recommendations) != 0 {
 		t.Fatalf("Mix Next did not filter with the same imported tempo: %+v", recommendations)
+	}
+}
+
+func TestMixNextUsesScorelessDownloadedTempoForFilters(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	const owner = "scoreless-mix-next-owner"
+	if err := database.ActivateSpotifyMetadataContext(owner); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{"source": "CCCCCCCCCCCCCCCCCCCCCC", "candidate": "DDDDDDDDDDDDDDDDDDDDDD"}
+	for _, songID := range []string{"source", "candidate"} {
+		fingerprint := saveAnalysisTestSong(t, database, songID, songID, nil, 1, 0)
+		if err := database.RefreshTrackAnalysisSourceRevision(songID, fingerprint); err != nil {
+			t.Fatal(err)
+		}
+		localBPM, localTonic := 128.0, 2
+		providerBPM, providerTonic := 128.0, 0
+		if songID == "candidate" {
+			localBPM, providerBPM = 130, 125
+		}
+		mode := "major"
+		local := &db.LocalScalarObservation{SourceFingerprint: fingerprint, AlgorithmVersion: "local-v1", MeasuredAt: time.Now().UnixMilli(), BPM: &localBPM, KeyTonic: &localTonic, KeyMode: &mode}
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: songID, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "local-v1", SourceFingerprint: fingerprint, Local: local}); err != nil {
+			t.Fatal(err)
+		}
+		curve, err := (features.Result{Energy: []features.EnergyPoint{{Time: 0, Value: .5}, {Time: 30, Value: .6}}, Sections: []features.Section{{Start: 0, End: 30, Label: features.StructureIntro, Confidence: .8}, {Start: 30, End: 60, Label: features.StructureOutro, Confidence: .8}}}).Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: songID + ":energy", SongID: songID, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: curve}); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := database.ConfirmSpotifyRecording(songID, ids[songID], fingerprint, true); err != nil || !ok {
+			t.Fatalf("confirm %s: %v %v", songID, ok, err)
+		}
+		providerMode := 0
+		providerCamelot := "5A"
+		observation := spotifyanalysis.Observation{TrackID: ids[songID], AccountContext: owner, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: time.Now(), BPM: &providerBPM, Key: &providerTonic, Mode: &providerMode, Camelot: &providerCamelot}
+		if err := database.PutExternalAnalysis(observation, "fixture", time.Now().Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		songs, err := database.GetAllSongs()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var filePath string
+		for _, song := range songs {
+			if song.ID == songID {
+				filePath = song.FilePath
+				break
+			}
+		}
+		if filePath == "" {
+			t.Fatalf("missing saved song %s", songID)
+		}
+		jobID := "scoreless-" + songID
+		if err := database.AddDownload(&db.SpotifyDownload{ID: jobID, SpotifyID: ids[songID], Type: "track", Title: songID, Status: "queued", FilePath: filePath, AddedAt: time.Now().UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+		if changed, err := database.MarkDownloadStarted(jobID); err != nil || !changed {
+			t.Fatalf("start %s: %v %v", songID, changed, err)
+		}
+		if changed, err := database.MarkDownloadConverting(jobID, filePath); err != nil || !changed {
+			t.Fatalf("convert %s: %v %v", songID, changed, err)
+		}
+		if changed, err := database.MarkDownloadCompletedWithEvidence(t.Context(), jobID, filePath); err != nil || !changed {
+			t.Fatalf("complete %s: %v %v", songID, changed, err)
+		}
+	}
+	if err := database.SetSetting("spotify_metadata_active_context", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RetireSpotifyMetadataContext(owner); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations?minBpm=124&maxBpm=126", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET Mix Next = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response TransitionRecommendationsResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.CandidatesAfterFilters != 1 || len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "candidate" || response.Recommendations[0].FilterEvidence.BPM == nil || *response.Recommendations[0].FilterEvidence.BPM != 125 {
+		t.Fatalf("Mix Next did not use verified scoreless durable tempo: %+v", response)
 	}
 }
 

@@ -19,7 +19,8 @@ const downloadedCatalogGraphCTE = `WITH RECURSIVE
  eligible AS (SELECT s.* FROM fresh s JOIN reachable p ON p.entity_type=s.entity_type AND p.spotify_id=s.spotify_id),
  relations AS (SELECT r.* FROM spotify_entity_relations r JOIN eligible p
  ON p.entity_type=r.entity_type AND p.spotify_id=r.spotify_id AND p.resource=r.resource AND p.context_key=r.context_key
- WHERE r.child_type IN ('track','album','artist') OR (r.unavailable=1 AND r.child_type=''))
+ WHERE r.child_type IN ('track','album','artist') OR r.unavailable=1)
 `
 
-const downloadedCatalogGraphScope = "track_album_artist_graph_v2"
+const downloadedCatalogGraphPreviousScope = "track_album_artist_graph_v2"
+const downloadedCatalogGraphScope = "track_album_artist_graph_v3"

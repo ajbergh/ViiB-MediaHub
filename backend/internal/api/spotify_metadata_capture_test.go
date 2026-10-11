@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -87,21 +89,99 @@ func TestOAuthCredentialSaveRetiresSnapshotsAndSurvivesRestart(t *testing.T) {
 	if err != nil || got != nil {
 		t.Fatal("old snapshot survived or late request wrote", err)
 	}
+	if runtime.pendingOwner == nil || runtime.pendingOwner.Provider != "oauth" {
+		t.Fatal("replacement credentials were not left pending profile confirmation")
+	}
 	fresh, stop := runtime.requestContext(t.Context())
-	defer stop()
 	runtime.persistCatalogDomain(fresh, []catalog.CapturedEntity{entity})
 	key.ContextKey = runtime.metadataContext
 	got, err = a.db.GetSpotifyEntitySnapshot(key)
+	if err != nil || got != nil {
+		t.Fatal("unconfirmed replacement published private metadata", err)
+	}
+	stop()
+	verifyOwner := runtime.ownerVerifier
+	runtime.ownerVerifier = func(context.Context) error { return errors.New("profile confirmation unavailable") }
+	if _, err := runtime.Token(t.Context(), spotifyauth.WebAPI); err == nil || runtime.pendingOwner == nil {
+		t.Fatal("provider token was admitted before owner confirmation", err)
+	}
+	runtime.ownerVerifier = verifyOwner
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"new-account"}`))}, nil
+	})}
+	profile := httptest.NewRecorder()
+	a.spotifyGetUserProfile(profile, httptest.NewRequest("GET", "/spotify/me", nil))
+	if profile.Code != http.StatusOK || runtime.pendingOwner != nil {
+		t.Fatalf("profile did not confirm replacement owner: status=%d body=%s", profile.Code, profile.Body.String())
+	}
+	fresh, stop = runtime.requestContext(t.Context())
+	defer stop()
+	runtime.persistCatalogDomain(fresh, []catalog.CapturedEntity{entity})
+	got, err = a.db.GetSpotifyEntitySnapshot(key)
 	if err != nil || got == nil {
-		t.Fatal("new context could not persist", err)
+		t.Fatal("confirmed context could not persist", err)
 	}
 	restarted := newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
+	a.spotifyAuth = restarted
+	a.spotifyTokens()
 	token, err := restarted.Token(t.Context(), spotifyauth.WebAPI)
 	if err != nil || restarted.cookieMode || token.Bearer() != "new-token" {
 		t.Fatal("restart did not select replacement OAuth", err)
 	}
 }
 
+func TestSavedOAuthCredentialsWithoutOwnerRequireProfileBeforeToken(t *testing.T) {
+	a, _ := newBPMRouteTestAPI(t, false)
+	raw, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "startup-token", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := a.db.SetSetting("spotify_credentials", string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	runtime := newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
+	a.spotifyAuth = runtime
+	t.Cleanup(runtime.close)
+	if runtime.pendingOwner == nil || runtime.pendingOwner.Provider != "oauth" {
+		t.Fatal("saved credentials without a verified owner were not fenced")
+	}
+	active, err := a.db.GetSetting("spotify_metadata_active_context")
+	if err != nil || active != "" {
+		t.Fatalf("unverified context was activated: %q %v", active, err)
+	}
+	var routes []string
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		routes = append(routes, r.URL.Path)
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"startup-account"}`))}, nil
+	})}
+	runtime.ownerVerifier = func(ctx context.Context) error { return a.revalidateSpotifyOwner(ctx, runtime) }
+	token, err := runtime.Token(t.Context(), spotifyauth.WebAPI)
+	if err != nil || token.Bearer() != "startup-token" || runtime.pendingOwner != nil {
+		t.Fatalf("confirmed startup credentials were not admitted: token=%q pending=%+v err=%v", token.Bearer(), runtime.pendingOwner, err)
+	}
+	if len(routes) != 1 || routes[0] != "/v1/me" {
+		t.Fatalf("provider work escaped before profile confirmation: %v", routes)
+	}
+}
+func TestOAuthCredentialReplacementProfileReturnsAfterConfirmation(t *testing.T) {
+	a, _ := newBPMRouteTestAPI(t, false)
+	runtime := a.spotifyTokens()
+	oldContext := runtime.metadataContext
+	confirmTestSpotifyMetadataOwner(t, runtime, "same-account")
+	raw, _ := json.Marshal(SpotifyCredentials{ClientId: "new-client", AccessToken: "new-token", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := runtime.replaceOAuthCredentials(string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	provisionalContext := runtime.metadataContext
+	if runtime.pendingOwner == nil || provisionalContext == oldContext {
+		t.Fatal("replacement was not held in a provisional context")
+	}
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"same-account"}`))}, nil
+	})}
+	w := httptest.NewRecorder()
+	a.spotifyGetUserProfile(w, httptest.NewRequest("GET", "/spotify/me", nil))
+	if w.Code != http.StatusOK || runtime.pendingOwner != nil || runtime.metadataContext != provisionalContext {
+		t.Fatalf("profile confirmation should complete the response and activate the provisional context: status=%d context=%q body=%s", w.Code, runtime.metadataContext, w.Body.String())
+	}
+}
 func TestOAuthReplacementRetirementFailureStaysFenced(t *testing.T) {
 	a, _ := newBPMRouteTestAPI(t, false)
 	runtime := a.spotifyTokens()

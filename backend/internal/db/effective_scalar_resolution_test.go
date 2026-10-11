@@ -95,6 +95,25 @@ func TestAnalysisScalarAdapterPreservesCoupledZeroKey(t *testing.T) {
 	t.Fatal("missing key result")
 }
 
+func TestEffectiveFieldsKeepCatalogMillisecondsSeparateFromLocalSeconds(t *testing.T) {
+	provider := SpotifyScalarField{
+		Key: "duration_milliseconds", Metric: "recording_duration", Units: "milliseconds",
+		Value: json.RawMessage("180000"), Endpoint: "audio_features", RetrievedAt: time.Now(),
+	}
+	fields := ResolveAnalysisScalarFields(TrackAnalysis{}, TrackAnalysisOverride{}, "fp", []SpotifyScalarField{provider})
+	byKey := make(map[string]EffectiveScalar, len(fields))
+	for _, field := range fields {
+		byKey[field.Key] = field
+	}
+	selected := byKey["duration_milliseconds"].Selected
+	if selected == nil || selected.Units != "milliseconds" || string(selected.Value) != "180000" || selected.Source != "spotify_private" {
+		t.Fatalf("catalog duration was not preserved with its original units: %+v", selected)
+	}
+	if byKey["duration_seconds"].Selected != nil || byKey["local_duration_seconds"].Selected != nil {
+		t.Fatal("catalog duration fabricated a separate seconds or decoded-file measurement")
+	}
+}
+
 func TestLocalMetricRegistryRejectsNullAndWrongDefinitions(t *testing.T) {
 	base := SpotifyScalarField{Key: "integrated_lufs_bs1770", Metric: "bs1770_integrated_loudness", Units: "LUFS", Value: json.RawMessage("0"), AdapterRevision: "bs1770-v1", RetrievedAt: time.Now()}
 	if !validLocalScalarField(base) {

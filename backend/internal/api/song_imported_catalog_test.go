@@ -53,7 +53,7 @@ func TestImportedCatalogAvailableOfflineAfterQueueAndPrivateCleanup(t *testing.T
 	if err := json.Unmarshal(w.Body.Bytes(), &value); err != nil {
 		t.Fatal(err)
 	}
-	if len(value.Snapshots) != 1 || value.Provenance != "spotify_download_import" || value.CatalogStatus == nil || value.CatalogStatus.Scope != "track_album_artist_graph_v2" {
+	if len(value.Snapshots) != 1 || value.Provenance != "spotify_download_import" || value.CatalogStatus == nil || value.CatalogStatus.Scope != "track_album_artist_graph_v3" {
 		t.Fatalf("catalog: %+v", value)
 	}
 	var payload map[string]any
@@ -82,7 +82,7 @@ func TestImportedCatalogEmptyOutcomeIsAvailableOffline(t *testing.T) {
 	w := httptest.NewRecorder()
 	a.V2Routes().ServeHTTP(w, httptest.NewRequest("GET", "/analysis/song/imported-catalog", nil))
 	var value db.DownloadedSpotifyCatalog
-	if err := json.Unmarshal(w.Body.Bytes(), &value); err != nil || w.Code != 200 || value.CatalogStatus == nil || value.CatalogStatus.State != "not_available" || value.CatalogStatus.Scope != "track_album_artist_graph_v2" || len(value.Snapshots) != 0 || len(value.Relations) != 0 || w.Header().Get("ETag") == "" || w.Header().Get("Cache-Control") != "no-store" {
+	if err := json.Unmarshal(w.Body.Bytes(), &value); err != nil || w.Code != 200 || value.CatalogStatus == nil || value.CatalogStatus.State != "not_available" || value.CatalogStatus.Scope != "track_album_artist_graph_v3" || len(value.Snapshots) != 0 || len(value.Relations) != 0 || w.Header().Get("ETag") == "" || w.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("empty outcome: %d %s %v", w.Code, w.Body.String(), err)
 	}
 }

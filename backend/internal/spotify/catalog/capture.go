@@ -270,13 +270,18 @@ func captureRelations(raw json.RawMessage, offset int) ([]CapturedRelation, erro
 		var object map[string]json.RawMessage
 		_ = json.Unmarshal(album, &object)
 		kind, id, unavailable := captureIdentity(object, "")
-		if id != "" {
-			safe, err := metadata.Sanitize(album, metadata.ScalarLimit)
-			if err != nil {
-				return nil, err
-			}
-			relations = append(relations, CapturedRelation{Kind: "album", ChildType: kind, ChildID: id, Unavailable: unavailable, Metadata: safe})
+		if kind == "" {
+			kind = captureString(object["__typename"])
 		}
+		relationPayload := album
+		if string(album) == "null" {
+			relationPayload = json.RawMessage("{}")
+		}
+		safe, err := metadata.Sanitize(relationPayload, metadata.ScalarLimit)
+		if err != nil {
+			return nil, err
+		}
+		relations = append(relations, CapturedRelation{Kind: "album", ChildType: kind, ChildID: id, Unavailable: unavailable || id == "", Metadata: safe})
 	}
 	return relations, captureErr
 }

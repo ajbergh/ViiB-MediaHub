@@ -163,6 +163,15 @@ func (a *API) getSpotifyRecordingLink(w http.ResponseWriter, r *http.Request) {
 		respondError(w, 500, "Cannot read recording identity")
 		return
 	}
+	current, err := a.analysisSourceMatchesCurrent(songID, fingerprint)
+	if err != nil {
+		respondError(w, 500, "Cannot resolve song source")
+		return
+	}
+	if !current {
+		respondError(w, 409, "Song source changed while reading recording identity")
+		return
+	}
 	respondJSON(w, map[string]interface{}{"songId": songID, "sourceFingerprint": fingerprint, "link": link})
 }
 func (a *API) putSpotifyRecordingLink(w http.ResponseWriter, r *http.Request) {

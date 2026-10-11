@@ -134,9 +134,15 @@ func CurrentLocalScalars(a *TrackAnalysis) *LocalScalarObservation {
 	}
 	l := a.Local
 	if l == nil {
+		if a.LocalScalarEnvelopePresent {
+			return nil
+		}
 		l = legacyLocalScalars(*a)
 	}
 	if l == nil || l.SourceFingerprint != a.SourceFingerprint {
+		return nil
+	}
+	if len(l.Fields) > 32 {
 		return nil
 	}
 	qualified := qualifyLocalScalarFields(*l)
@@ -144,6 +150,17 @@ func CurrentLocalScalars(a *TrackAnalysis) *LocalScalarObservation {
 		return nil
 	}
 	return &qualified
+}
+
+// ValidLocalScalarObservation checks persisted scalar-envelope provenance and
+// values without requiring the analysis row to be in a consumer-visible state.
+// Preparation discovery also calls it while a live claim marks the row running.
+func ValidLocalScalarObservation(local *LocalScalarObservation, fingerprint string) bool {
+	if local == nil || fingerprint == "" || local.SourceFingerprint != fingerprint || len(local.Fields) > 32 {
+		return false
+	}
+	qualified := qualifyLocalScalarFields(*local)
+	return validateLocalScalars(&qualified) == nil
 }
 
 // Local metrics have their own registry: provider definitions cannot substitute.
@@ -201,7 +218,7 @@ func qualifyLocalScalarFields(local LocalScalarObservation) LocalScalarObservati
 }
 
 // Decoded duration measures PCM frames, independently of musical estimators.
-const LocalDurationAlgorithmVersion = "decoded-pcm-duration-v1"
+const LocalDurationAlgorithmVersion = featurecontract.LocalDurationAlgorithmVersion
 
 func currentLocalScalarField(f SpotifyScalarField) bool {
 	if !validLocalScalarField(f) {

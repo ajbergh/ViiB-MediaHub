@@ -7,6 +7,7 @@ const (
 	FormatVersion                   = 1
 	AlgorithmVersion                = "energy-structure-v1"
 	EnergyLevelAlgorithmVersion     = "energy-level-v1-fixed-reference"
+	LocalDurationAlgorithmVersion   = "decoded-pcm-duration-v1"
 	Encoding                        = "gzip-json-v1"
 	MaxStructureStatusArtifactBytes = 16 << 20
 	BS1770ArtifactKind              = "loudness-bs1770"

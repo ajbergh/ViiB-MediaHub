@@ -88,6 +88,14 @@ func (a *API) getDJWaveform(w http.ResponseWriter, r *http.Request) {
 		artifact, artifactErr := a.db.GetTrackAnalysisArtifact(trackID, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion)
 		if artifactErr == nil && artifact.SourceFingerprint == source.Fingerprint && source.Fingerprint != "" && artifact.Encoding == waveformartifact.Encoding && artifact.Provenance == "measured" {
 			if overview, err := waveformartifact.Decode(artifact.Data); err == nil {
+				current, resolveErr := a.resolveAnalysisSource(r.Context(), trackID)
+				if resolveErr != nil || current.Fingerprint != source.Fingerprint {
+					if token != "" {
+						_ = a.db.ReleaseWaveformLease(trackID, token)
+					}
+					respondError(w, 409, "Track source changed while reading waveform")
+					return
+				}
 				if token != "" {
 					_ = a.db.ReleaseWaveformLease(trackID, token)
 				}
@@ -146,6 +154,11 @@ func (a *API) getDJWaveform(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	current, err = a.resolveAnalysisSource(ctx, trackID)
+	if err != nil || current.Fingerprint != source.Fingerprint || ctx.Err() != nil {
+		respondError(w, 409, "Track source changed during waveform generation")
+		return
+	}
 	respondJSON(w, WaveformResponse{
 		TrackID:    trackID,
 		Duration:   waveform.Duration,

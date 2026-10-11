@@ -169,9 +169,7 @@ func TestBackgroundPreparationValidatesOwnerBeforeServiceLookup(t *testing.T) {
 			if _, err := a.db.ConfirmSpotifyRecording("song", cachedSpotifyID, source.Fingerprint, true); err != nil {
 				t.Fatal(err)
 			}
-			if err := a.db.BindSpotifyMetadataOwner(runtime.metadataEpoch, "oauth", "account", runtime.metadataContext); err != nil {
-				t.Fatal(err)
-			}
+			confirmTestSpotifyMetadataOwner(t, runtime, "account")
 			owner, err := a.db.ReserveSpotifyMetadataRuntime(runtime.metadataEpoch)
 			if err != nil {
 				t.Fatal(err)

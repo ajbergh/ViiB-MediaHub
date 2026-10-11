@@ -83,9 +83,7 @@ func TestRestartOwnerRequiresProfileBeforeCheckpointReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := a.spotifyTokens()
-	if err := a.db.BindSpotifyMetadataOwner(old.metadataEpoch, "oauth", "account", old.metadataContext); err != nil {
-		t.Fatal(err)
-	}
+	confirmTestSpotifyMetadataOwner(t, old, "account")
 	id := strings.Repeat("P", 22)
 	checkpoint := completedPlaylistCapture(id, "revision", []spotifyPlaylistItem{{}, {}})[0]
 	now := time.Now()
@@ -132,9 +130,7 @@ func TestRestartOwnerMismatchCancelsProvisionalLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := a.spotifyTokens()
-	if err := a.db.BindSpotifyMetadataOwner(old.metadataEpoch, "oauth", "old-account", old.metadataContext); err != nil {
-		t.Fatal(err)
-	}
+	confirmTestSpotifyMetadataOwner(t, old, "old-account")
 	a.spotifyAuth = newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
 	current := a.spotifyAuth
 	ctx, cancel := current.requestContext(t.Context())
@@ -144,7 +140,7 @@ func TestRestartOwnerMismatchCancelsProvisionalLifetime(t *testing.T) {
 	})}
 	w := httptest.NewRecorder()
 	a.spotifyGetUserProfile(w, httptest.NewRequest("GET", "/spotify/me", nil))
-	if w.Code != 503 || current.pendingOwner != nil || current.metadataContext == old.metadataContext || ctx.Err() == nil {
+	if w.Code != 200 || current.pendingOwner != nil || current.metadataContext == old.metadataContext || ctx.Err() == nil {
 		t.Fatal("mismatch did not replace/cancel provisional owner", w.Code, ctx.Err())
 	}
 	w = httptest.NewRecorder()
@@ -161,9 +157,7 @@ func TestAutomaticOwnerValidationSharesWorkAndIndependentCancellation(t *testing
 		t.Fatal(err)
 	}
 	old := a.spotifyTokens()
-	if err := a.db.BindSpotifyMetadataOwner(old.metadataEpoch, "oauth", "account", old.metadataContext); err != nil {
-		t.Fatal(err)
-	}
+	confirmTestSpotifyMetadataOwner(t, old, "account")
 	a.spotifyAuth = newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
 	current := a.spotifyTokens()
 	var calls atomic.Int32
@@ -233,9 +227,7 @@ func TestAutomaticOwnerValidationCancellationStopsProfile(t *testing.T) {
 				t.Fatal(err)
 			}
 			old := a.spotifyTokens()
-			if err := a.db.BindSpotifyMetadataOwner(old.metadataEpoch, "oauth", "account", old.metadataContext); err != nil {
-				t.Fatal(err)
-			}
+			confirmTestSpotifyMetadataOwner(t, old, "account")
 			a.spotifyAuth = newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
 			current := a.spotifyTokens()
 			started, stopped := make(chan struct{}), make(chan struct{})
@@ -281,9 +273,7 @@ func TestAutomaticOwnerValidationPrecedesPlaylistGeneration(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := a.spotifyTokens()
-	if err := a.db.BindSpotifyMetadataOwner(old.metadataEpoch, "oauth", "account", old.metadataContext); err != nil {
-		t.Fatal(err)
-	}
+	confirmTestSpotifyMetadataOwner(t, old, "account")
 	a.spotifyAuth = newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
 	id := strings.Repeat("P", 22)
 	profiles := 0

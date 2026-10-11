@@ -90,9 +90,7 @@ func TestSongProviderWaveformRequiresCurrentLink(t *testing.T) {
 		}
 	}
 	detailedCall(false)
-	if err := a.db.BindSpotifyMetadataOwner(runtime.metadataEpoch, "webplayer", "account", runtime.metadataContext); err != nil {
-		t.Fatal(err)
-	}
+	confirmTestSpotifyMetadataOwner(t, runtime, "account")
 	owner, err := a.db.ReserveSpotifyMetadataRuntime(runtime.metadataEpoch)
 	if err != nil {
 		t.Fatal(err)

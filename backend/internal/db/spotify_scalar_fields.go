@@ -120,7 +120,10 @@ func getSpotifyScalarFields(query interface {
 	if !ValidSpotifyRecordingID(id) {
 		return nil, errors.New("invalid Spotify recording")
 	}
-	rows, err := query.Query(`SELECT field_key,metric,units,value_json,confidence,endpoint,schema_version,adapter_revision,retrieved_at,expires_at FROM spotify_audio_observations WHERE spotify_id=? AND context_key<>'' AND context_key=COALESCE(?,(SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'') ORDER BY field_key,endpoint`, id, contextKey)
+	rows, err := query.Query(`SELECT o.field_key,o.metric,o.units,o.value_json,o.confidence,o.endpoint,o.schema_version,o.adapter_revision,o.retrieved_at,o.expires_at,COALESCE(a.checked_at,0),COALESCE(a.state,'')
+ FROM spotify_audio_observations o LEFT JOIN spotify_audio_field_attempts a
+ ON a.spotify_id=o.spotify_id AND a.endpoint=o.endpoint AND a.context_key=o.context_key AND a.field_key=o.field_key
+ WHERE o.spotify_id=? AND o.context_key<>'' AND o.context_key=COALESCE(?,(SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'') ORDER BY o.field_key,o.endpoint`, id, contextKey)
 	if err != nil {
 		return nil, err
 	}
@@ -129,14 +132,15 @@ func getSpotifyScalarFields(query interface {
 	for rows.Next() {
 		var f SpotifyScalarField
 		var value string
-		var retrieved, expires int64
-		if err := rows.Scan(&f.Key, &f.Metric, &f.Units, &value, &f.Confidence, &f.Endpoint, &f.SchemaVersion, &f.AdapterRevision, &retrieved, &expires); err != nil {
+		var retrieved, expires, checked int64
+		var attemptState string
+		if err := rows.Scan(&f.Key, &f.Metric, &f.Units, &value, &f.Confidence, &f.Endpoint, &f.SchemaVersion, &f.AdapterRevision, &retrieved, &expires, &checked, &attemptState); err != nil {
 			return nil, err
 		}
 		f.Value = json.RawMessage(value)
 		f.RetrievedAt = time.UnixMilli(retrieved).UTC()
 		f.ExpiresAt = time.UnixMilli(expires).UTC()
-		f.Stale = !now.Before(f.ExpiresAt)
+		f.Stale = !now.Before(f.ExpiresAt) || checked > retrieved || (checked == retrieved && attemptState != "" && attemptState != "available")
 		result = append(result, f)
 	}
 	return result, rows.Err()
