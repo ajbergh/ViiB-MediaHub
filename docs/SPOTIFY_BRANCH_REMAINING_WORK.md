@@ -2,10 +2,10 @@
 
 **Reviewed:** 2026-10-12  
 **Branch:** `feature/spotify-metadata-foundation`  
-**Last verified HEAD:** `359ec3e` (2026-10-11; local upstream reference 0 ahead / 0 behind, without fetching)  
+**Last verified HEAD:** `f83f938` (2026-10-12; local upstream reference 0 ahead / 0 behind, without fetching)  
 **Acceptance:** **2/12 checked; 10/12 partial.** Do not mark a gate complete until its full acceptance criteria and evidence are met.
 
-This file is a closeout handoff, not a scope reduction. It consolidates the open acceptance work from [the implementation plan](SPOTIFY_METADATA_AND_LOCAL_FALLBACK_IMPLEMENTATION_PLAN.md) and [the branch closeout checklist](SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md). The branch checklist has detailed implementation history through Milestone 269; consult it before repeating completed sub-work.
+This file is a closeout handoff, not a scope reduction. It consolidates the open acceptance work from [the implementation plan](SPOTIFY_METADATA_AND_LOCAL_FALLBACK_IMPLEMENTATION_PLAN.md) and [the branch closeout checklist](SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md). The branch checklist has detailed implementation history through Milestone 270; consult it before repeating completed sub-work.
 
 ## Owner decisions and current boundaries
 

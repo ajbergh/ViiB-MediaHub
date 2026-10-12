@@ -1,0 +1,866 @@
+{
+  "subset": [
+    {
+      "id": "fsld-245757",
+      "expectedBpm": 120.0,
+      "durationSeconds": 2,
+      "split": "tuning"
+    },
+    {
+      "id": "fsld-477309",
+      "expectedBpm": 174.0,
+      "durationSeconds": 5.517278911564626,
+      "split": "tuning"
+    },
+    {
+      "id": "fsld-166069",
+      "expectedBpm": 80.0,
+      "durationSeconds": 24.000000000000025,
+      "split": "tuning"
+    },
+    {
+      "id": "fsld-43204",
+      "expectedBpm": 80.0,
+      "durationSeconds": 3.001179138321995,
+      "split": "tuning"
+    },
+    {
+      "id": "fsld-78742",
+      "expectedBpm": 60.0,
+      "durationSeconds": 79.99999999999979,
+      "split": "tuning"
+    },
+    {
+      "id": "fsld-150114",
+      "expectedBpm": 140.0,
+      "durationSeconds": 1.7142857142857144,
+      "split": "tuning"
+    },
+    {
+      "id": "fsld-222461",
+      "expectedBpm": 120.0,
+      "durationSeconds": 65.9999999999995,
+      "split": "tuning"
+    },
+    {
+      "id": "fsld-113625",
+      "expectedBpm": 124.0,
+      "durationSeconds": 0.48383219954648526,
+      "split": "tuning"
+    },
+    {
+      "id": "fsld-132860",
+      "expectedBpm": 140.0,
+      "durationSeconds": 48.01340136054397,
+      "split": "tuning"
+    }
+  ],
+  "configs": {
+    "default": {
+      "configuration": {
+        "Tempo": {
+          "Range": "auto",
+          "Method": "multifeature-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "sha256": "53dacee740534ce1c6d1fa3e51c90739faaafd6dd92507ef1acbe6ee4fcce051",
+      "results": [
+        {
+          "id": "fsld-245757",
+          "bpm": 121,
+          "alternateBpm": 120,
+          "tempoCrestFactor": 22.572420264560762,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-477309",
+          "bpm": 175,
+          "alternateBpm": 173.5,
+          "tempoCrestFactor": 22.33130484753622,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-166069",
+          "bpm": 160,
+          "alternateBpm": 161,
+          "tempoCrestFactor": 40.52888901552416,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-43204",
+          "bpm": 160,
+          "alternateBpm": 161,
+          "tempoCrestFactor": 41.53166538472961,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-78742",
+          "bpm": 120,
+          "alternateBpm": 120.5,
+          "tempoCrestFactor": 245.60206971661947,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-150114",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 9.583105663895534,
+          "status": "unknown"
+        },
+        {
+          "id": "fsld-222461",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 10.93581776918161,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-113625",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 91.2100768477696,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-132860",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 22.107623438058532,
+          "status": "unknown"
+        }
+      ]
+    },
+    "crest10": {
+      "configuration": {
+        "Tempo": {
+          "Range": "auto",
+          "Method": "multifeature-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 10
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "sha256": "742dfbb2887064e47cdaa745d7781fb27fb413ad451680782f28273386ae37e9",
+      "results": [
+        {
+          "id": "fsld-245757",
+          "bpm": 121,
+          "alternateBpm": 120,
+          "tempoCrestFactor": 22.572420264560762,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-477309",
+          "bpm": 175,
+          "alternateBpm": 173.5,
+          "tempoCrestFactor": 22.33130484753622,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-166069",
+          "bpm": 160,
+          "alternateBpm": 161,
+          "tempoCrestFactor": 40.52888901552416,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-43204",
+          "bpm": 160,
+          "alternateBpm": 161,
+          "tempoCrestFactor": 41.53166538472961,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-78742",
+          "bpm": 120,
+          "alternateBpm": 120.5,
+          "tempoCrestFactor": 245.60206971661947,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-150114",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 9.583105663895534,
+          "status": "unknown"
+        },
+        {
+          "id": "fsld-222461",
+          "bpm": 120,
+          "alternateBpm": 160.5,
+          "tempoCrestFactor": 10.93581776918161,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-113625",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 91.2100768477696,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-132860",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 22.107623438058532,
+          "status": "unknown"
+        }
+      ]
+    },
+    "crest12": {
+      "configuration": {
+        "Tempo": {
+          "Range": "auto",
+          "Method": "multifeature-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 12
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "sha256": "6367484c7f5fc7c09a950b1ee3bd07e4e5ec7a09e4799892cfaffb3d9bd2cd6b",
+      "results": [
+        {
+          "id": "fsld-245757",
+          "bpm": 121,
+          "alternateBpm": 120,
+          "tempoCrestFactor": 22.572420264560762,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-477309",
+          "bpm": 175,
+          "alternateBpm": 173.5,
+          "tempoCrestFactor": 22.33130484753622,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-166069",
+          "bpm": 160,
+          "alternateBpm": 161,
+          "tempoCrestFactor": 40.52888901552416,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-43204",
+          "bpm": 160,
+          "alternateBpm": 161,
+          "tempoCrestFactor": 41.53166538472961,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-78742",
+          "bpm": 120,
+          "alternateBpm": 120.5,
+          "tempoCrestFactor": 245.60206971661947,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-150114",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 9.583105663895534,
+          "status": "unknown"
+        },
+        {
+          "id": "fsld-222461",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 10.93581776918161,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-113625",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 91.2100768477696,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-132860",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 22.107623438058532,
+          "status": "unknown"
+        }
+      ]
+    },
+    "refined": {
+      "configuration": {
+        "Tempo": {
+          "Range": "auto",
+          "Method": "multifeature-refined-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "sha256": "4e3bcdb85a2bfeafd939f218490458b60a96c333ea5db5294ad6f3abe489283c",
+      "results": [
+        {
+          "id": "fsld-245757",
+          "bpm": 120.5,
+          "alternateBpm": 121.5,
+          "tempoCrestFactor": 22.572420264560762,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-477309",
+          "bpm": 175.5,
+          "alternateBpm": 174,
+          "tempoCrestFactor": 22.33130484753622,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-166069",
+          "bpm": 160,
+          "alternateBpm": 106.5,
+          "tempoCrestFactor": 40.52888901552416,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-43204",
+          "bpm": 160,
+          "alternateBpm": 151,
+          "tempoCrestFactor": 41.53166538472961,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-78742",
+          "bpm": 120,
+          "alternateBpm": 160.5,
+          "tempoCrestFactor": 245.60206971661947,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-150114",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 9.583105663895534,
+          "status": "unknown"
+        },
+        {
+          "id": "fsld-222461",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 10.93581776918161,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-113625",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 91.2100768477696,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-132860",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 22.107623438058532,
+          "status": "unknown"
+        }
+      ]
+    },
+    "range60-120": {
+      "configuration": {
+        "Tempo": {
+          "Range": "60-120",
+          "Method": "multifeature-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "sha256": "52c116ce8613c61117759206679967cde0c7f7701a2325b500f50177dd5318b2",
+      "results": [
+        {
+          "id": "fsld-245757",
+          "bpm": 80.5,
+          "alternateBpm": 60.5,
+          "tempoCrestFactor": 22.572420264560762,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-477309",
+          "bpm": 87,
+          "alternateBpm": 69.5,
+          "tempoCrestFactor": 22.33130484753622,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-166069",
+          "bpm": 80,
+          "alternateBpm": 64,
+          "tempoCrestFactor": 40.52888901552416,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-43204",
+          "bpm": 80,
+          "alternateBpm": 63.5,
+          "tempoCrestFactor": 41.53166538472961,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-78742",
+          "bpm": 80,
+          "alternateBpm": 96,
+          "tempoCrestFactor": 245.60206971661947,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-150114",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 9.583105663895534,
+          "status": "unknown"
+        },
+        {
+          "id": "fsld-222461",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 10.93581776918161,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-113625",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 91.2100768477696,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-132860",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 22.107623438058532,
+          "status": "unknown"
+        }
+      ]
+    },
+    "range70-140": {
+      "configuration": {
+        "Tempo": {
+          "Range": "70-140",
+          "Method": "multifeature-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "sha256": "401b87a51b0675584f8f51b8b512bb62ad710290eb292468d9c225b2a68299b9",
+      "results": [
+        {
+          "id": "fsld-245757",
+          "bpm": 121,
+          "alternateBpm": 120,
+          "tempoCrestFactor": 22.572420264560762,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-477309",
+          "bpm": 87,
+          "alternateBpm": 116.5,
+          "tempoCrestFactor": 22.33130484753622,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-166069",
+          "bpm": 80,
+          "alternateBpm": 107,
+          "tempoCrestFactor": 40.52888901552416,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-43204",
+          "bpm": 80,
+          "alternateBpm": 107,
+          "tempoCrestFactor": 41.53166538472961,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-78742",
+          "bpm": 120,
+          "alternateBpm": 80,
+          "tempoCrestFactor": 245.60206971661947,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-150114",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 9.583105663895534,
+          "status": "unknown"
+        },
+        {
+          "id": "fsld-222461",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 10.93581776918161,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-113625",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 91.2100768477696,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-132860",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 22.107623438058532,
+          "status": "unknown"
+        }
+      ]
+    },
+    "range80-160": {
+      "configuration": {
+        "Tempo": {
+          "Range": "80-160",
+          "Method": "multifeature-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "sha256": "5f7b32f0db8104fc3fea364af390bf1eb14364921cef90e17b3bf48dfb091394",
+      "results": [
+        {
+          "id": "fsld-245757",
+          "bpm": 121,
+          "alternateBpm": 120,
+          "tempoCrestFactor": 22.572420264560762,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-477309",
+          "bpm": 87,
+          "alternateBpm": 116.5,
+          "tempoCrestFactor": 22.33130484753622,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-166069",
+          "bpm": 138,
+          "alternateBpm": 107,
+          "tempoCrestFactor": 40.52888901552416,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-43204",
+          "bpm": 151.5,
+          "alternateBpm": 107,
+          "tempoCrestFactor": 41.53166538472961,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-78742",
+          "bpm": 120,
+          "alternateBpm": 120.5,
+          "tempoCrestFactor": 245.60206971661947,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-150114",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 9.583105663895534,
+          "status": "unknown"
+        },
+        {
+          "id": "fsld-222461",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 10.93581776918161,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-113625",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 91.2100768477696,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-132860",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 22.107623438058532,
+          "status": "unknown"
+        }
+      ]
+    },
+    "range100-200": {
+      "configuration": {
+        "Tempo": {
+          "Range": "100-200",
+          "Method": "multifeature-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "sha256": "85d6fcfc236fdbb18434cb7474c591319945a15e02bc0d00ddc08e9ef99505d6",
+      "results": [
+        {
+          "id": "fsld-245757",
+          "bpm": 121,
+          "alternateBpm": 120,
+          "tempoCrestFactor": 22.572420264560762,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-477309",
+          "bpm": 175,
+          "alternateBpm": 173.5,
+          "tempoCrestFactor": 22.33130484753622,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-166069",
+          "bpm": 160,
+          "alternateBpm": 161,
+          "tempoCrestFactor": 40.52888901552416,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-43204",
+          "bpm": 160,
+          "alternateBpm": 161,
+          "tempoCrestFactor": 41.53166538472961,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-78742",
+          "bpm": 120,
+          "alternateBpm": 120.5,
+          "tempoCrestFactor": 245.60206971661947,
+          "status": "complete"
+        },
+        {
+          "id": "fsld-150114",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 9.583105663895534,
+          "status": "unknown"
+        },
+        {
+          "id": "fsld-222461",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 10.93581776918161,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-113625",
+          "bpm": null,
+          "alternateBpm": null,
+          "tempoCrestFactor": 91.2100768477696,
+          "status": "partial"
+        },
+        {
+          "id": "fsld-132860",
+          "bpm": 188,
+          "alternateBpm": 140.5,
+          "tempoCrestFactor": 22.107623438058532,
+          "status": "partial"
+        }
+      ]
+    }
+  },
+  "selection": "Nine recordings selected from default tuning failures to diagnose near-miss, half/double and refusal cases. This selected subset is not population accuracy evidence.",
+  "split": "tuning",
+  "subsetManifestSHA256": "11f443cb37ff6cdf6acdadb96b83c7f7d8e36dceff5a32285f9ed39115dd6e90",
+  "comparisons": {
+    "default": {
+      "labeled": 9,
+      "reported": 5,
+      "strictWithinHalfBpm": 0,
+      "acceptedMetricLevelMatch": 0,
+      "halfDoubleErrors": 3,
+      "unknown": 4,
+      "strictAccuracy": 0,
+      "acceptedMetricLevelAccuracy": 0,
+      "halfDoubleErrorRate": 0.3333333333333333,
+      "unknownRate": 0.4444444444444444
+    },
+    "crest10": {
+      "labeled": 9,
+      "reported": 6,
+      "strictWithinHalfBpm": 1,
+      "acceptedMetricLevelMatch": 1,
+      "halfDoubleErrors": 3,
+      "unknown": 3,
+      "strictAccuracy": 0.1111111111111111,
+      "acceptedMetricLevelAccuracy": 0.1111111111111111,
+      "halfDoubleErrorRate": 0.3333333333333333,
+      "unknownRate": 0.3333333333333333
+    },
+    "crest12": {
+      "labeled": 9,
+      "reported": 5,
+      "strictWithinHalfBpm": 0,
+      "acceptedMetricLevelMatch": 0,
+      "halfDoubleErrors": 3,
+      "unknown": 4,
+      "strictAccuracy": 0,
+      "acceptedMetricLevelAccuracy": 0,
+      "halfDoubleErrorRate": 0.3333333333333333,
+      "unknownRate": 0.4444444444444444
+    },
+    "refined": {
+      "labeled": 9,
+      "reported": 5,
+      "strictWithinHalfBpm": 1,
+      "acceptedMetricLevelMatch": 1,
+      "halfDoubleErrors": 3,
+      "unknown": 4,
+      "strictAccuracy": 0.1111111111111111,
+      "acceptedMetricLevelAccuracy": 0.1111111111111111,
+      "halfDoubleErrorRate": 0.3333333333333333,
+      "unknownRate": 0.4444444444444444
+    },
+    "range60-120": {
+      "labeled": 9,
+      "reported": 5,
+      "strictWithinHalfBpm": 2,
+      "acceptedMetricLevelMatch": 2,
+      "halfDoubleErrors": 1,
+      "unknown": 4,
+      "strictAccuracy": 0.2222222222222222,
+      "acceptedMetricLevelAccuracy": 0.2222222222222222,
+      "halfDoubleErrorRate": 0.1111111111111111,
+      "unknownRate": 0.4444444444444444
+    },
+    "range70-140": {
+      "labeled": 9,
+      "reported": 5,
+      "strictWithinHalfBpm": 2,
+      "acceptedMetricLevelMatch": 2,
+      "halfDoubleErrors": 2,
+      "unknown": 4,
+      "strictAccuracy": 0.2222222222222222,
+      "acceptedMetricLevelAccuracy": 0.2222222222222222,
+      "halfDoubleErrorRate": 0.2222222222222222,
+      "unknownRate": 0.4444444444444444
+    },
+    "range80-160": {
+      "labeled": 9,
+      "reported": 5,
+      "strictWithinHalfBpm": 0,
+      "acceptedMetricLevelMatch": 0,
+      "halfDoubleErrors": 2,
+      "unknown": 4,
+      "strictAccuracy": 0,
+      "acceptedMetricLevelAccuracy": 0,
+      "halfDoubleErrorRate": 0.2222222222222222,
+      "unknownRate": 0.4444444444444444
+    },
+    "range100-200": {
+      "labeled": 9,
+      "reported": 6,
+      "strictWithinHalfBpm": 0,
+      "acceptedMetricLevelMatch": 0,
+      "halfDoubleErrors": 3,
+      "unknown": 3,
+      "strictAccuracy": 0,
+      "acceptedMetricLevelAccuracy": 0,
+      "halfDoubleErrorRate": 0.3333333333333333,
+      "unknownRate": 0.3333333333333333
+    }
+  },
+  "decision": "No range preset promoted. Full 308-recording tuning run of refined periodicity with crest 10 is the next independent test of the combined options."
+}

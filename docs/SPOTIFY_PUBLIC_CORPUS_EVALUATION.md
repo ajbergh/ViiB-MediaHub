@@ -115,3 +115,20 @@ On the separate GuitarSet tuning population, the same candidate gives 135/238 ex
 ## Windows/Linux determinism
 
 An actual Debian/WSL run of the Linux amd64 benchmark matches Windows on all 24 frozen HU33 recordings, including scalar/key/status/error/configuration, beat positions, structure availability, duration and boundaries at the comparator's 1e-6 tolerance. All input hashes still match the reference captured before the original Windows evaluation. [Execution evidence](spotify-winterreise-windows-linux-determinism-2026-10-12.json) records source/result/executable hashes and environments. The Linux executable was cross-compiled with CGO disabled and then executed on Linux; this establishes decoder/DSP agreement on these inputs, without qualifying SQLite, desktop workflows or native Linux installation. The determinism gate remains unproven because macOS execution is missing. Acceptance remains 2/12 checked and 10/12 partial.
+
+## Tempo refusal and refinement ablations
+
+The [nine-recording diagnostic](spotify-fsld-tempo-diagnostic-2026-10-12.json) selects default tuning failures to investigate near misses, half/double errors and abstentions. Its selected-case results are not population accuracy evidence. Eight existing-option ablations show that lowering onset crest to 10 recovers one correct long-loop tempo, and refined periodicity corrects one near miss. Range presets force some answers into the expected band but introduce other folds and errors; no preset was selected. Range runs used a temporary package-local producer with explicit options; the retained public result configurations are authoritative, and no production source/default was retained from the diagnostic.
+
+The two positive signals were then tested across all 308 tuning recordings, followed by separate full-population ablations:
+
+| Configuration | Strict BPM | Half/double errors | Unknown |
+| --- | --- | --- | --- |
+| Default | 87/308 (28.25%) | 14/308 (4.55%) | 88 |
+| Refined periodicity, crest 15 | 106/308 (34.42%) | 19/308 (6.17%) | 87 |
+| Default periodicity, crest 10 | 100/308 (32.47%) | 17/308 (5.52%) | 38 |
+| Refined periodicity, crest 10 | 123/308 (39.94%) | 22/308 (7.14%) | 37 |
+
+[Full ablation evidence](spotify-fsld-tempo-tuning-ablations-2026-10-12.json) retains configurations, source/result hashes and complete comparisons. All runs have zero source errors and unchanged key outputs. All 487 input hashes were reverified afterward, and no reserved ID appears in any candidate output. The combined candidate has monotonic tempo confidence buckets, but every candidate exceeds the 5% half/double ceiling and remains far below broad tempo accuracy requirements. None was promoted. The single-factor runs overlapped, so their timing is not comparative performance evidence.
+
+Temporary component diagnostics further distinguish honest refusal causes. A 66-second loop with crest 10.936 has candidates in both onset representations and is recovered at crest 10. A 48-second loop with crest 22.108 has no amplitude-onset candidates and only weak flux candidates (maximum recorded score 0.0137); removing the two-representation guard is not justified by that case. A 0.484-second loop yields no candidates from either representation and contains about one labeled beat period; it cannot establish repeated periodicity from a single pass. The raw diagnostic has 480 energy and 40 flux envelope samples, so the generic fewer-than-eight-samples guard is not a demonstrated cause for this recording. Detailed component output is retained in ignored evaluation storage; temporary source files were removed. Missing BPM is not universally a scan failure, and these cases do not justify fabricating a tempo or weakening retry settlement.
