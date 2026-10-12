@@ -97,6 +97,64 @@ func TestSongProviderFieldsRequireLiveSourceLinkAndOwner(t *testing.T) {
 	}
 }
 
+func TestActiveProviderDetailBeforeProfileCaptureMatchesList(t *testing.T) {
+	a, _ := newBPMRouteTestAPI(t, true)
+	source, err := analysis.ResolveLocalSource(a.db, "song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := a.spotifyTokens()
+	runtime.mu.Lock()
+	runtime.metadataContext = "fresh"
+	runtime.mu.Unlock()
+	if err := a.db.ActivateSpotifyMetadataContext("fresh"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.RefreshTrackAnalysisSourceRevision("song", source.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := a.db.ConfirmSpotifyRecording("song", cachedSpotifyID, source.Fingerprint, true); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	tempo := 123.0
+	now := time.Now()
+	if err := a.db.PutExternalAnalysis(spotifyanalysis.Observation{TrackID: cachedSpotifyID, AccountContext: "fresh", Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now, BPM: &tempo}, "fixture", now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	router.Get("/analysis", a.listTrackAnalysisFeaturesV2)
+	router.Get("/analysis/{songID}", a.getTrackAnalysisFeatureV2)
+	get := func() TrackAnalysisFeatureResponse {
+		t.Helper()
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/analysis/song", nil))
+		var result TrackAnalysisFeatureResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String(), err)
+		}
+		return result
+	}
+	detail := get()
+	if detail.ProviderScalars == nil || detail.BPMSource != "spotify" || detail.BPM == nil || *detail.BPM != tempo || detail.SyncAllowed {
+		t.Fatalf("active detail lost provider: %+v", detail)
+	}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/analysis", nil))
+	var list []TrackAnalysisFeatureResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil || w.Code != 200 || len(list) != 1 || list[0].BPMSource != detail.BPMSource || list[0].BPM == nil || *list[0].BPM != *detail.BPM {
+		t.Fatal(w.Code, w.Body.String(), err)
+	}
+	if _, err := a.db.ReserveSpotifyMetadataRuntime("replacement"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.ActivateSpotifyMetadataContext("fresh"); err != nil {
+		t.Fatal(err)
+	}
+	if result := get(); result.ProviderScalars != nil || result.BPMSource == "spotify" {
+		t.Fatal("superseded epoch admitted provider", result)
+	}
+}
+
 func TestProviderScalarSelectionUsesIndependentFreshness(t *testing.T) {
 	at := time.Now()
 	fresh := db.SpotifyScalarField{Key: "tempo_bpm", Metric: "tempo", Units: "bpm", Value: json.RawMessage(`120`), Endpoint: "audio_features", RetrievedAt: at}

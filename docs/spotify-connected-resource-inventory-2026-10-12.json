@@ -1,0 +1,1689 @@
+{
+  "capturedAt": "2026-10-12T14:35:59.500Z",
+  "completedAt": "2026-10-12T14:47:03.683Z",
+  "sampledLinkedTracks": 1,
+  "selection": "First source-linked row among first 40 library rows; nonrandom and recording link not independently reviewed.",
+  "build": "Milestone259 preparation plus Milestone261 login diagnostics, restored credential-bound executable",
+  "method": "Three explicit production refreshes populate private cache; immediate repeated refreshes require fromCache true; bounded GET artifacts provide sanitized stored-domain schema; list/detail/BPM are then compared. No scan/download/link edit/audio mutation.",
+  "resources": [
+    {
+      "endpoint": "audio_features",
+      "fresh": {
+        "endpoint": "audio_features",
+        "httpStatus": 200,
+        "fromCache": false,
+        "cachePresent": true
+      },
+      "warm": {
+        "httpStatus": 200,
+        "fromCache": true,
+        "seconds": 0.006184200000000033
+      },
+      "artifact": {
+        "httpStatus": 200,
+        "responseBytes": 760,
+        "schema": {
+          "truncated": false,
+          "fields": [
+            {
+              "path": "",
+              "types": [
+                "object"
+              ],
+              "classification": "container"
+            },
+            {
+              "path": "acousticness",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_score"
+            },
+            {
+              "path": "analysis_url",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_identity_or_link"
+            },
+            {
+              "path": "danceability",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_score"
+            },
+            {
+              "path": "duration_ms",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "energy",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_score"
+            },
+            {
+              "path": "id",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_identity_or_link"
+            },
+            {
+              "path": "instrumentalness",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_score"
+            },
+            {
+              "path": "key",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "liveness",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_score"
+            },
+            {
+              "path": "loudness",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "mode",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "speechiness",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_score"
+            },
+            {
+              "path": "tempo",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "time_signature",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track_href",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_identity_or_link"
+            },
+            {
+              "path": "type",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_identity_or_link"
+            },
+            {
+              "path": "uri",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_identity_or_link"
+            },
+            {
+              "path": "valence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_score"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "endpoint": "audio_analysis",
+      "fresh": {
+        "endpoint": "audio_analysis",
+        "httpStatus": 200,
+        "fromCache": false,
+        "cachePresent": true
+      },
+      "warm": {
+        "httpStatus": 200,
+        "fromCache": true,
+        "seconds": 0.006544500000000085
+      },
+      "artifact": {
+        "httpStatus": 200,
+        "responseBytes": 542764,
+        "schema": {
+          "truncated": false,
+          "fields": [
+            {
+              "path": "",
+              "types": [
+                "object"
+              ],
+              "classification": "container"
+            },
+            {
+              "path": "bars",
+              "types": [
+                "array"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "bars[]",
+              "types": [
+                "object"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "bars[].confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "bars[].duration",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "bars[].start",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "beats",
+              "types": [
+                "array"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "beats[]",
+              "types": [
+                "object"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "beats[].confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "beats[].duration",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "beats[].start",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "meta",
+              "types": [
+                "object"
+              ],
+              "classification": "provider_analysis_provenance"
+            },
+            {
+              "path": "meta.analysis_time",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_analysis_provenance"
+            },
+            {
+              "path": "meta.analyzer_version",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_analysis_provenance"
+            },
+            {
+              "path": "meta.detailed_status",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_analysis_provenance"
+            },
+            {
+              "path": "meta.input_process",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_analysis_provenance"
+            },
+            {
+              "path": "meta.platform",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_analysis_provenance"
+            },
+            {
+              "path": "meta.status_code",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_analysis_provenance"
+            },
+            {
+              "path": "meta.timestamp",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_analysis_provenance"
+            },
+            {
+              "path": "sections",
+              "types": [
+                "array"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[]",
+              "types": [
+                "object"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].duration",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].key",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].key_confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].loudness",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].mode",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].mode_confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].start",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].tempo",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].tempo_confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].time_signature",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "sections[].time_signature_confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "segments",
+              "types": [
+                "array"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[]",
+              "types": [
+                "object"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].duration",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].loudness_end",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].loudness_max",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].loudness_max_time",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].loudness_start",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].pitches",
+              "types": [
+                "array"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].pitches[]",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].start",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].timbre",
+              "types": [
+                "array"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "segments[].timbre[]",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_segment_spectral_or_loudness_evidence"
+            },
+            {
+              "path": "tatums",
+              "types": [
+                "array"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "tatums[]",
+              "types": [
+                "object"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "tatums[].confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "tatums[].duration",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "tatums[].start",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_detailed_timing_or_section_evidence"
+            },
+            {
+              "path": "track",
+              "types": [
+                "object"
+              ],
+              "classification": "container"
+            },
+            {
+              "path": "track.analysis_channels",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_analysis_descriptor"
+            },
+            {
+              "path": "track.analysis_sample_rate",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_analysis_descriptor"
+            },
+            {
+              "path": "track.code_version",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_identity_or_signature"
+            },
+            {
+              "path": "track.codestring",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_audio_identity_or_signature"
+            },
+            {
+              "path": "track.duration",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.echoprint_version",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_identity_or_signature"
+            },
+            {
+              "path": "track.echoprintstring",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_audio_identity_or_signature"
+            },
+            {
+              "path": "track.end_of_fade_in",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_analysis_descriptor"
+            },
+            {
+              "path": "track.key",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.key_confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.loudness",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.mode",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.mode_confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.num_samples",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_analysis_descriptor"
+            },
+            {
+              "path": "track.offset_seconds",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_analysis_descriptor"
+            },
+            {
+              "path": "track.rhythm_version",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_identity_or_signature"
+            },
+            {
+              "path": "track.rhythmstring",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_audio_identity_or_signature"
+            },
+            {
+              "path": "track.sample_md5",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_audio_identity_or_signature"
+            },
+            {
+              "path": "track.start_of_fade_out",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_analysis_descriptor"
+            },
+            {
+              "path": "track.synch_version",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_identity_or_signature"
+            },
+            {
+              "path": "track.synchstring",
+              "types": [
+                "string"
+              ],
+              "classification": "provider_audio_identity_or_signature"
+            },
+            {
+              "path": "track.tempo",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.tempo_confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.time_signature",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.time_signature_confidence",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_scalar_original_units"
+            },
+            {
+              "path": "track.window_seconds",
+              "types": [
+                "number"
+              ],
+              "classification": "provider_audio_analysis_descriptor"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "endpoint": "three_band_waveform",
+      "fresh": {
+        "endpoint": "three_band_waveform",
+        "httpStatus": 200,
+        "fromCache": false,
+        "cachePresent": false,
+        "state": "available"
+      },
+      "warm": {
+        "httpStatus": 200,
+        "fromCache": true,
+        "seconds": 0.007913499999999999
+      },
+      "artifact": {
+        "httpStatus": 200,
+        "responseBytes": 562,
+        "schema": {
+          "truncated": false,
+          "fields": [
+            {
+              "path": "",
+              "types": [
+                "object"
+              ],
+              "classification": "container"
+            },
+            {
+              "path": "durationSeconds",
+              "types": [
+                "number"
+              ],
+              "classification": "adapter_sample_geometry_or_scale"
+            },
+            {
+              "path": "highs",
+              "types": [
+                "array"
+              ],
+              "classification": "adapter_native_band_samples"
+            },
+            {
+              "path": "highs[]",
+              "types": [
+                "number"
+              ],
+              "classification": "adapter_native_band_samples"
+            },
+            {
+              "path": "lows",
+              "types": [
+                "array"
+              ],
+              "classification": "adapter_native_band_samples"
+            },
+            {
+              "path": "lows[]",
+              "types": [
+                "number"
+              ],
+              "classification": "adapter_native_band_samples"
+            },
+            {
+              "path": "mids",
+              "types": [
+                "array"
+              ],
+              "classification": "adapter_native_band_samples"
+            },
+            {
+              "path": "mids[]",
+              "types": [
+                "number"
+              ],
+              "classification": "adapter_native_band_samples"
+            },
+            {
+              "path": "normalization",
+              "types": [
+                "string"
+              ],
+              "classification": "adapter_sample_geometry_or_scale"
+            },
+            {
+              "path": "offset",
+              "types": [
+                "number"
+              ],
+              "classification": "adapter_sample_geometry_or_scale"
+            },
+            {
+              "path": "provenance",
+              "types": [
+                "string"
+              ],
+              "classification": "api_cache_provenance_or_identity"
+            },
+            {
+              "path": "readOnly",
+              "types": [
+                "boolean"
+              ],
+              "classification": "api_cache_provenance_or_identity"
+            },
+            {
+              "path": "representation",
+              "types": [
+                "string"
+              ],
+              "classification": "api_cache_provenance_or_identity"
+            },
+            {
+              "path": "retrievedAt",
+              "types": [
+                "string"
+              ],
+              "classification": "api_cache_provenance_or_identity"
+            },
+            {
+              "path": "sampleRate",
+              "types": [
+                "number"
+              ],
+              "classification": "adapter_sample_geometry_or_scale"
+            },
+            {
+              "path": "stale",
+              "types": [
+                "boolean"
+              ],
+              "classification": "api_cache_provenance_or_identity"
+            },
+            {
+              "path": "totalSamples",
+              "types": [
+                "number"
+              ],
+              "classification": "adapter_sample_geometry_or_scale"
+            },
+            {
+              "path": "trackId",
+              "types": [
+                "string"
+              ],
+              "classification": "api_cache_provenance_or_identity"
+            },
+            {
+              "path": "unverified",
+              "types": [
+                "boolean"
+              ],
+              "classification": "api_cache_provenance_or_identity"
+            },
+            {
+              "path": "windowMilliseconds",
+              "types": [
+                "number"
+              ],
+              "classification": "adapter_sample_geometry_or_scale"
+            }
+          ]
+        },
+        "waveform": {
+          "sampleRate": 44100,
+          "windowMilliseconds": 20,
+          "totalSamples": 14748,
+          "normalization": "provider_native_int32"
+        }
+      }
+    }
+  ],
+  "effectiveFieldParity": [
+    {
+      "key": "duration_milliseconds",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "duration_seconds",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "integrated_lufs_bs1770",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "key_mode",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "local_duration_seconds",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "local_energy_level",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "provider_loudness_db",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "spotify_acousticness_score",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "spotify_danceability_score",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "spotify_energy_score",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "spotify_instrumentalness_score",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "spotify_liveness_score",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "spotify_speechiness_score",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "spotify_valence_score",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "tempo_bpm",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "time_signature",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    },
+    {
+      "key": "true_peak_dbtp",
+      "listSelected": true,
+      "detailSelected": true,
+      "selectedProjectionAgrees": true
+    }
+  ],
+  "scalarProjectionParity": [
+    {
+      "key": "bpm",
+      "agrees": true
+    },
+    {
+      "key": "bpmSource",
+      "agrees": true
+    },
+    {
+      "key": "key",
+      "agrees": true
+    },
+    {
+      "key": "keySource",
+      "agrees": true
+    },
+    {
+      "key": "structureAvailable",
+      "agrees": true
+    },
+    {
+      "key": "energyLevel",
+      "agrees": true
+    },
+    {
+      "key": "energyLevelSource",
+      "agrees": true
+    },
+    {
+      "key": "integratedLufsBs1770",
+      "agrees": true
+    },
+    {
+      "key": "truePeakDbtp",
+      "agrees": true
+    }
+  ],
+  "bpmHttpStatus": 200,
+  "bpmResponseSchema": {
+    "truncated": false,
+    "fields": [
+      {
+        "path": "",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "analyzedAt",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "bpm",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "bpmConfidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "bpmSource",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "camelotKey",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields",
+        "types": [
+          "array"
+        ]
+      },
+      {
+        "path": "effectiveFields[]",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "effectiveFields[].key",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.adapterRevision",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.confidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.endpoint",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.expiresAt",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.key",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.metric",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.retrievedAt",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.schemaVersion",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.source",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.sourceFingerprint",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.stale",
+        "types": [
+          "boolean"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.units",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.value",
+        "types": [
+          "number",
+          "object"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.value.mode",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.value.modeConfidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "effectiveFields[].selected.value.tonic",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "effectiveFields[].state",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "energyAlgorithmVersion",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "energyLevel",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "energyLevelConfidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "energyLevelSource",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "key",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "keyConfidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "keyMode",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "keySource",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "keyTonic",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "localAlgorithmVersion",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "measuredBpm",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "measuredBpmConfidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "measuredEnergyLevel",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "measuredKeyConfidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "measuredKeyMode",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "measuredKeyTonic",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "openKey",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "providerScalars.attempts",
+        "types": [
+          "array"
+        ]
+      },
+      {
+        "path": "providerScalars.attempts[]",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "providerScalars.attempts[].adapterRevision",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.attempts[].checkedAt",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.attempts[].endpoint",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.attempts[].key",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.attempts[].state",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.fields",
+        "types": [
+          "array"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[]",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].adapterRevision",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].confidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].endpoint",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].expiresAt",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].key",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].metric",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].retrievedAt",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].schemaVersion",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].stale",
+        "types": [
+          "boolean"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].units",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].value",
+        "types": [
+          "number",
+          "object"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].value.mode",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].value.modeConfidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.fields[].value.tonic",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.provenance",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.readOnly",
+        "types": [
+          "boolean"
+        ]
+      },
+      {
+        "path": "providerScalars.recordingId",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.selected",
+        "types": [
+          "array"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[]",
+        "types": [
+          "object"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].adapterRevision",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].confidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].endpoint",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].expiresAt",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].key",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].metric",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].retrievedAt",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].schemaVersion",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].stale",
+        "types": [
+          "boolean"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].units",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].value",
+        "types": [
+          "number",
+          "object"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].value.mode",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].value.modeConfidence",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.selected[].value.tonic",
+        "types": [
+          "number"
+        ]
+      },
+      {
+        "path": "providerScalars.selectionPolicy",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.sourceFingerprint",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "providerScalars.unverified",
+        "types": [
+          "boolean"
+        ]
+      },
+      {
+        "path": "songId",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "sourceFingerprint",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "status",
+        "types": [
+          "string"
+        ]
+      },
+      {
+        "path": "structureAvailable",
+        "types": [
+          "boolean"
+        ]
+      },
+      {
+        "path": "syncAllowed",
+        "types": [
+          "boolean"
+        ]
+      }
+    ]
+  },
+  "detailHttpStatus": 200,
+  "limitations": [
+    "Stored sanitized domain schemas, not raw provider-wire contracts; dropped/rejected/private wire fields are not inventoried.",
+    "One linked recording and successful responses only; no error/partial/malformed live coverage.",
+    "Warm fromCache flags establish production cache reuse; provider HTTP request counts and decoder opens are not instrumented by this audit.",
+    "Waveform int32 representation is an adapter label, not proof of frequency boundaries or perceptual semantics.",
+    "No independent accuracy, browser/native rendering, accessibility, platform or 105-track connected qualification."
+  ],
+  "classificationScope": "Every observed stored-domain/API field path is classified. This does not classify fields dropped before storage or establish unverified provider units/band semantics.",
+  "songBoundProviderWaveform": {
+    "httpStatus": 200,
+    "responseBytes": 5995,
+    "sourceFingerprintMatches": true,
+    "representation": "spotify_three_band",
+    "stale": false,
+    "fieldNames": [
+      "alignment",
+      "displayAggregation",
+      "displayStride",
+      "durationSeconds",
+      "highs",
+      "localDurationSeconds",
+      "lows",
+      "mids",
+      "provenance",
+      "readOnly",
+      "recordingId",
+      "representation",
+      "retrievedAt",
+      "sampleRate",
+      "songId",
+      "sourceFingerprint",
+      "stale",
+      "totalSamples",
+      "unverified",
+      "windowMilliseconds"
+    ],
+    "alignment": "duration_compatible",
+    "durationDifferenceSeconds": 0.037551020408159275,
+    "uiTimelineCompatible": true
+  },
+  "bpmRouteParity": [
+    {
+      "key": "bpm",
+      "agrees": true
+    },
+    {
+      "key": "bpmSource",
+      "agrees": true
+    },
+    {
+      "key": "key",
+      "agrees": true
+    },
+    {
+      "key": "keySource",
+      "agrees": true
+    },
+    {
+      "key": "syncAllowed",
+      "agrees": true
+    }
+  ]
+}

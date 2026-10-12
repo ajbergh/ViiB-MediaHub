@@ -1648,11 +1648,13 @@ func (a *API) fetchPlaylistTracks(ctx context.Context, playlistID string, playli
 	var traversal db.SpotifyPlaylistTraversal
 	// Metadata persistence remains optional for the consumer, but a failed owner
 	// acquisition must never permit unguarded checkpoint/page writes.
-	_ = runtime.withAccount(ctx, func() error {
+	if err := runtime.withAccount(ctx, func() error {
 		var err error
 		traversal, err = a.db.BeginSpotifyPlaylistTraversalForRuntime(db.SpotifyMetadataFence{Epoch: runtime.metadataEpoch, ContextKey: runtime.metadataContext}, playlistID)
 		return err
-	})
+	}); err != nil {
+		return nil, "", "", err
+	}
 	ctx = context.WithValue(ctx, playlistTraversalContextKey{}, traversal)
 	publicationCtx := ctx
 	capture := &catalogCaptureBuffer{}

@@ -297,12 +297,64 @@ func (d *DB) ClaimTrackAnalysisLease(songID, fingerprint string, version int, al
 	return token, true, nil
 }
 
+// ClaimTrackAnalysisLeaseWithSnapshot captures the prior projection under the
+// same writer reservation as the claim. A worker must plan repairs from this
+// snapshot: its earlier selection may predate another worker's publication.
+func (d *DB) ClaimTrackAnalysisLeaseWithSnapshot(songID, fingerprint string, version int, algorithm string) (string, *TrackAnalysis, bool, error) {
+	return d.claimTrackAnalysisLeaseWithSnapshot(songID, fingerprint, version, algorithm, false, nil)
+}
+
+// ClaimTrackAnalysisLeaseIfUnchanged rejects a selection whose observed source
+// row has since been replaced. nil expects no prior row. A requested new source
+// is allowed when the previously observed row still matches, so replacement
+// files can be prepared without trusting a stale worker's source identity.
+func (d *DB) ClaimTrackAnalysisLeaseIfUnchanged(songID, fingerprint string, version int, algorithm string, expectedFingerprint *string) (string, *TrackAnalysis, bool, error) {
+	return d.claimTrackAnalysisLeaseWithSnapshot(songID, fingerprint, version, algorithm, true, expectedFingerprint)
+}
+
+func (d *DB) claimTrackAnalysisLeaseWithSnapshot(songID, fingerprint string, version int, algorithm string, compare bool, expectedFingerprint *string) (string, *TrackAnalysis, bool, error) {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return "", nil, false, err
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return "", nil, false, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE track_analysis SET claim_token=claim_token WHERE song_id=?`, songID); err != nil {
+		return "", nil, false, err
+	}
+	var previous *TrackAnalysis
+	record, err := getTrackAnalysis(tx, songID)
+	if err == nil {
+		previous = &record
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", nil, false, err
+	}
+	if compare && ((previous == nil) != (expectedFingerprint == nil) || previous != nil && previous.SourceFingerprint != *expectedFingerprint) {
+		return "", nil, false, nil
+	}
+	token := uuid.NewString()
+	claimed, err := claimTrackAnalysis(tx, songID, fingerprint, version, algorithm, token)
+	if err != nil || !claimed {
+		return "", nil, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", nil, false, err
+	}
+	return token, previous, true, nil
+}
+
 func (d *DB) claimTrackAnalysis(songID, sourceFingerprint string, analysisVersion int, algorithmVersion, token string) (bool, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return false, err
 	}
+	return claimTrackAnalysis(d.conn, songID, sourceFingerprint, analysisVersion, algorithmVersion, token)
+}
+
+func claimTrackAnalysis(executor preparationExecutor, songID, sourceFingerprint string, analysisVersion int, algorithmVersion, token string) (bool, error) {
 	now := time.Now().UnixMilli()
-	result, err := d.conn.Exec(`
+	result, err := executor.Exec(`
  INSERT INTO track_analysis(song_id,status,analysis_version,algorithm_version,source_fingerprint,analyzed_at,claim_token)
  SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM track_waveform_leases WHERE song_id=? AND renewed_at>?) ON CONFLICT(song_id) DO UPDATE SET
  status=excluded.status,analysis_version=excluded.analysis_version,algorithm_version=excluded.algorithm_version,
@@ -315,7 +367,7 @@ func (d *DB) claimTrackAnalysis(songID, sourceFingerprint string, analysisVersio
 	n, err := result.RowsAffected()
 	if err == nil && n == 0 {
 		var busy bool
-		if e := d.conn.QueryRow(`SELECT EXISTS(SELECT 1 FROM track_waveform_leases WHERE song_id=? AND renewed_at>?)`, songID, now-TrackAnalysisLeaseMillis).Scan(&busy); e != nil {
+		if e := executor.QueryRow(`SELECT EXISTS(SELECT 1 FROM track_waveform_leases WHERE song_id=? AND renewed_at>?)`, songID, now-TrackAnalysisLeaseMillis).Scan(&busy); e != nil {
 			return false, e
 		} else if busy {
 			return false, ErrWaveformLeaseBusy
@@ -392,19 +444,24 @@ func (d *DB) TrackAnalysisValid(songID, sourceFingerprint string, analysisVersio
 		}
 		return false, err
 	}
+	return analysis.ValidFor(sourceFingerprint, analysisVersion, algorithmVersion), nil
+}
+
+// ValidFor checks a captured projection without reading the mutable claim row.
+func (analysis TrackAnalysis) ValidFor(sourceFingerprint string, analysisVersion int, algorithmVersion string) bool {
 	if analysis.AnalysisVersion != analysisVersion || analysis.AlgorithmVersion != algorithmVersion {
-		return false, nil
+		return false
 	}
 	if analysis.SourceFingerprint != sourceFingerprint {
-		return false, nil
+		return false
 	}
 	if analysis.Status == TrackAnalysisFailed && analysis.ErrorCode != nil && *analysis.ErrorCode == "source_unavailable" {
-		return false, nil
+		return false
 	}
 	switch analysis.Status {
 	case TrackAnalysisComplete, TrackAnalysisPartial, TrackAnalysisFailed, TrackAnalysisUnsupported:
-		return true, nil
+		return true
 	default:
-		return false, nil
+		return false
 	}
 }

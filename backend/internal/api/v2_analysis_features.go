@@ -230,8 +230,8 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 			providerScalars = nil
 		}
 		response := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint)
-		measurement, measurementErr := a.db.GetTrackAnalysisArtifact(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
-		if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) {
+		measurement, measurementErr := a.db.GetTrackAnalysisArtifactBounded(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, features.MaxBS1770ArtifactBytes)
+		if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) && !errors.Is(measurementErr, db.ErrTrackAnalysisArtifactTooLarge) {
 			respondError(w, http.StatusInternalServerError, "local loudness unavailable")
 			return
 		}
@@ -262,6 +262,28 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 // source-bound local artifacts may be read after the provider callback's
 // earlier check, and the file can be replaced during that read.
 func (a *API) respondCurrentTrackAnalysisFeature(w http.ResponseWriter, songID, expectedFingerprint string, response TrackAnalysisFeatureResponse) {
+	// Detail and edit responses report the same source-qualified readiness as
+	// library rows. Check payload size in SQLite before materializing the BLOB.
+	response.StructureAvailable = false
+	artifact, artifactErr := a.db.GetTrackAnalysisArtifactBounded(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes)
+	if artifactErr != nil && !errors.Is(artifactErr, sql.ErrNoRows) && !errors.Is(artifactErr, db.ErrTrackAnalysisArtifactTooLarge) {
+		respondError(w, http.StatusInternalServerError, "local structure unavailable")
+		return
+	}
+	if artifactErr == nil {
+		analysis, err := a.db.GetTrackAnalysis(songID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			respondError(w, http.StatusInternalServerError, "local structure unavailable")
+			return
+		}
+		if err == nil {
+			response.StructureAvailable = trackStructureAvailable(analysis, expectedFingerprint, db.TrackAnalysisArtifactMetadata{
+				SongID: artifact.SongID, Kind: artifact.Kind, FormatVersion: artifact.FormatVersion,
+				AlgorithmVersion: artifact.AlgorithmVersion, Encoding: artifact.Encoding,
+				Provenance: artifact.Provenance, SourceFingerprint: artifact.SourceFingerprint,
+			}, artifact.SourceFingerprint, artifact.Data)
+		}
+	}
 	current, err := a.analysisSourceMatchesCurrent(songID, expectedFingerprint)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "source unavailable")
@@ -361,7 +383,7 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 			end = len(candidateIDs)
 		}
 		chunk := candidateIDs[start:end]
-		if err := a.db.VisitTrackAnalysisArtifactPayloads(chunk, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion,
+		if err := a.db.VisitTrackAnalysisArtifactPayloadsBounded(chunk, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes,
 			func(songID, payloadFingerprint string, data []byte) error {
 				analysis, exists := analysisBySongID[songID]
 				metadata, hasMetadata := metadataBySongID[songID]
@@ -383,7 +405,7 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 			end = len(loudnessCandidateIDs)
 		}
 		chunk := loudnessCandidateIDs[start:end]
-		if err := a.db.VisitTrackAnalysisArtifactPayloads(chunk, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion,
+		if err := a.db.VisitTrackAnalysisArtifactPayloadsBounded(chunk, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, features.MaxBS1770ArtifactBytes,
 			func(songID, payloadFingerprint string, data []byte) error {
 				analysis, exists := analysisBySongID[songID]
 				metadata, hasMetadata := loudnessMetadataBySongID[songID]
@@ -1316,8 +1338,8 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		cueSuggestions = []features.CueSuggestion{}
 	}
 	response := EnergyFeaturesResponse{SongID: songID, LoudnessKind: result.LoudnessKind, PeakKind: result.PeakKind, ChannelScope: result.ChannelScope, Standard: result.Standard, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: energy, Sections: sections, CueSuggestions: cueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion}
-	measurement, measurementErr := a.db.GetTrackAnalysisArtifact(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
-	if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) {
+	measurement, measurementErr := a.db.GetTrackAnalysisArtifactBounded(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, features.MaxBS1770ArtifactBytes)
+	if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) && !errors.Is(measurementErr, db.ErrTrackAnalysisArtifactTooLarge) {
 		respondError(w, http.StatusInternalServerError, measurementErr.Error())
 		return
 	}

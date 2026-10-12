@@ -1,0 +1,640 @@
+{
+  "capturedAt": "2026-10-11T21:38:41.999Z",
+  "completedAt": "2026-10-11T21:38:42.567Z",
+  "base": "http://localhost:3000",
+  "method": "GET-only cache/local projection audit; no provider dispatch or library mutations",
+  "limitations": [
+    "Point-in-time snapshot; background audio analysis may continue after file discovery.",
+    "Running backend may predate uncommitted source changes; this is not a post-fix verification.",
+    "Provider/local values are evidence, not independently reviewed accuracy labels.",
+    "No browser, native rendering, offline/fresh-run or supported-platform qualification."
+  ],
+  "librarySongs": 386,
+  "analysisRows": 288,
+  "scan": {
+    "progress": "",
+    "scanning": false
+  },
+  "statuses": {
+    "complete": 278,
+    "running": 1,
+    "partial": 7,
+    "failed": 2
+  },
+  "bpmSources": {
+    "spotify": 206,
+    "measured": 76,
+    "unknown": 5,
+    "manual": 1
+  },
+  "keySources": {
+    "spotify": 207,
+    "measured": 75,
+    "unknown": 6
+  },
+  "legacyAiTaggedSongs": 386,
+  "sameTrackMeasuredBpmAndProviderScores": 0,
+  "durationComparison": {
+    "matchedRows": 197,
+    "maximumAbsoluteDifferenceSeconds": 0.6233399999978531,
+    "medianAbsoluteDifferenceSeconds": 0.006261836743703952,
+    "rowsDifferingByMoreThanTwoSeconds": 0,
+    "interpretation": "Decoded-file duration and provider recording duration remain separate. A difference is a review cue, not proof of a bad link. Local LUFS/energy and provider dB/0–1 energy are distinct metrics and are not numerically equated."
+  },
+  "sampledSelectionDisagreements": 3,
+  "sampledStructureDisagreements": 6,
+  "readMilliseconds": {
+    "inventory": 94,
+    "analysis": 447
+  },
+  "comparisons": [
+    {
+      "title": "Do It Strong",
+      "artist": "LTJ & Chris",
+      "list": {
+        "bpm": 102.976,
+        "bpmSource": "spotify",
+        "key": "G# major",
+        "keySource": "spotify",
+        "syncAllowed": false,
+        "structureAvailable": true,
+        "fields": {
+          "local_duration_seconds": {
+            "value": 371.591836734681,
+            "units": "seconds",
+            "source": "local",
+            "stale": false
+          },
+          "local_energy_level": {
+            "value": 8,
+            "units": "level_1_10",
+            "source": "local",
+            "stale": false
+          },
+          "integrated_lufs_bs1770": {
+            "value": -10.13572333466752,
+            "units": "LUFS",
+            "source": "local",
+            "stale": false
+          },
+          "true_peak_dbtp": {
+            "value": 1.1838471199746012,
+            "units": "dBTP",
+            "source": "local",
+            "stale": false
+          },
+          "tempo_bpm": {
+            "value": 102.976,
+            "units": "bpm",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "key_mode": {
+            "value": {
+              "tonic": 8,
+              "mode": 1,
+              "modeConfidence": 0.553
+            },
+            "units": "pitch_class_and_mode",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "provider_loudness_db": {
+            "value": -7.937,
+            "units": "dB",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "time_signature": {
+            "value": 4,
+            "units": "beats_per_bar",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "duration_seconds": {
+            "value": 371.6128,
+            "units": "seconds",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "duration_milliseconds": {
+            "value": 371613,
+            "units": "milliseconds",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_energy_score": {
+            "value": 0.675,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_danceability_score": {
+            "value": 0.835,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_acousticness_score": {
+            "value": 0.000644,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_instrumentalness_score": {
+            "value": 0.764,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_liveness_score": {
+            "value": 0.0676,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_speechiness_score": {
+            "value": 0.0477,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_valence_score": {
+            "value": 0.747,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          }
+        }
+      },
+      "detail": {
+        "bpmSource": "unknown",
+        "keySource": "unknown",
+        "syncAllowed": false,
+        "structureAvailable": false
+      },
+      "detailListTimingSelectionAgrees": false,
+      "structureReadinessAgrees": false,
+      "detailReadMilliseconds": 17
+    },
+    {
+      "title": "The King Of Soul",
+      "artist": "Duzzy",
+      "list": {
+        "bpm": 95.058,
+        "bpmSource": "spotify",
+        "key": "C# major",
+        "keySource": "spotify",
+        "syncAllowed": false,
+        "structureAvailable": true,
+        "fields": {
+          "local_duration_seconds": {
+            "value": 199.57551020407843,
+            "units": "seconds",
+            "source": "local",
+            "stale": false
+          },
+          "local_energy_level": {
+            "value": 8,
+            "units": "level_1_10",
+            "source": "local",
+            "stale": false
+          },
+          "integrated_lufs_bs1770": {
+            "value": -7.677493180450005,
+            "units": "LUFS",
+            "source": "local",
+            "stale": false
+          },
+          "true_peak_dbtp": {
+            "value": 2.9098916592459516,
+            "units": "dBTP",
+            "source": "local",
+            "stale": false
+          },
+          "tempo_bpm": {
+            "value": 95.058,
+            "units": "bpm",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "key_mode": {
+            "value": {
+              "tonic": 1,
+              "mode": 1,
+              "modeConfidence": 0.379
+            },
+            "units": "pitch_class_and_mode",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "provider_loudness_db": {
+            "value": -7.894,
+            "units": "dB",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "time_signature": {
+            "value": 4,
+            "units": "beats_per_bar",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "duration_seconds": {
+            "value": 199.57896,
+            "units": "seconds",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "duration_milliseconds": {
+            "value": 199579,
+            "units": "milliseconds",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_energy_score": {
+            "value": 0.766,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_danceability_score": {
+            "value": 0.761,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_acousticness_score": {
+            "value": 0.256,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_instrumentalness_score": {
+            "value": 0.0787,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_liveness_score": {
+            "value": 0.29,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_speechiness_score": {
+            "value": 0.0529,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_valence_score": {
+            "value": 0.772,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          }
+        }
+      },
+      "detail": {
+        "bpmSource": "unknown",
+        "keySource": "unknown",
+        "syncAllowed": false,
+        "structureAvailable": false
+      },
+      "detailListTimingSelectionAgrees": false,
+      "structureReadinessAgrees": false,
+      "detailReadMilliseconds": 11
+    },
+    {
+      "title": "You & Me - Flume Remix",
+      "artist": "Disclosure",
+      "list": {
+        "bpm": 75.066,
+        "bpmSource": "spotify",
+        "key": "Bb minor",
+        "keySource": "spotify",
+        "syncAllowed": false,
+        "structureAvailable": true,
+        "fields": {
+          "local_duration_seconds": {
+            "value": 282.81269841269454,
+            "units": "seconds",
+            "source": "local",
+            "stale": false
+          },
+          "local_energy_level": {
+            "value": 8,
+            "units": "level_1_10",
+            "source": "local",
+            "stale": false
+          },
+          "integrated_lufs_bs1770": {
+            "value": -10.37488926576002,
+            "units": "LUFS",
+            "source": "local",
+            "stale": false
+          },
+          "true_peak_dbtp": {
+            "value": 1.8166489590662016,
+            "units": "dBTP",
+            "source": "local",
+            "stale": false
+          },
+          "tempo_bpm": {
+            "value": 75.066,
+            "units": "bpm",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "key_mode": {
+            "value": {
+              "tonic": 10,
+              "mode": 0,
+              "modeConfidence": 0.516
+            },
+            "units": "pitch_class_and_mode",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "provider_loudness_db": {
+            "value": -6.869,
+            "units": "dB",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "time_signature": {
+            "value": 4,
+            "units": "beats_per_bar",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "duration_seconds": {
+            "value": 282.8127,
+            "units": "seconds",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "duration_milliseconds": {
+            "value": 282813,
+            "units": "milliseconds",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_energy_score": {
+            "value": 0.392,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_danceability_score": {
+            "value": 0.599,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_acousticness_score": {
+            "value": 0.378,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_instrumentalness_score": {
+            "value": 0.000107,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_liveness_score": {
+            "value": 0.131,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_speechiness_score": {
+            "value": 0.0257,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          },
+          "spotify_valence_score": {
+            "value": 0.26,
+            "units": "unit_interval",
+            "source": "spotify_private",
+            "stale": false
+          }
+        }
+      },
+      "detail": {
+        "bpmSource": "unknown",
+        "keySource": "unknown",
+        "syncAllowed": false,
+        "structureAvailable": false
+      },
+      "detailListTimingSelectionAgrees": false,
+      "structureReadinessAgrees": false,
+      "detailReadMilliseconds": 11
+    },
+    {
+      "title": "Sandstorm - Radio Edit",
+      "artist": "Darude",
+      "list": {
+        "bpm": 136,
+        "bpmSource": "measured",
+        "key": "E minor",
+        "keySource": "measured",
+        "measuredBpm": 136,
+        "measuredKeyTonic": 4,
+        "measuredKeyMode": "minor",
+        "syncAllowed": true,
+        "structureAvailable": true,
+        "fields": {
+          "local_duration_seconds": {
+            "value": 225.6666666666698,
+            "units": "seconds",
+            "source": "local",
+            "stale": false
+          },
+          "local_energy_level": {
+            "value": 8,
+            "units": "level_1_10",
+            "source": "local",
+            "stale": false
+          },
+          "integrated_lufs_bs1770": {
+            "value": -9.577364893303484,
+            "units": "LUFS",
+            "source": "local",
+            "stale": false
+          },
+          "true_peak_dbtp": {
+            "value": 0.08104125607805046,
+            "units": "dBTP",
+            "source": "local",
+            "stale": false
+          },
+          "tempo_bpm": {
+            "value": 136,
+            "units": "bpm",
+            "source": "local",
+            "stale": false
+          },
+          "key_mode": {
+            "value": {
+              "tonic": 4,
+              "mode": 0
+            },
+            "units": "pitch_class_and_mode",
+            "source": "local",
+            "stale": false
+          }
+        }
+      },
+      "detail": {
+        "bpm": 136,
+        "bpmSource": "measured",
+        "key": "E minor",
+        "keySource": "measured",
+        "syncAllowed": true,
+        "structureAvailable": false
+      },
+      "detailListTimingSelectionAgrees": true,
+      "structureReadinessAgrees": false,
+      "detailReadMilliseconds": 8
+    },
+    {
+      "title": "Spaceman - Edit",
+      "artist": "Hardwell",
+      "list": {
+        "bpm": 127.5,
+        "bpmSource": "measured",
+        "key": "D# major",
+        "keySource": "measured",
+        "measuredBpm": 127.5,
+        "measuredKeyTonic": 3,
+        "measuredKeyMode": "major",
+        "syncAllowed": true,
+        "structureAvailable": true,
+        "fields": {
+          "local_duration_seconds": {
+            "value": 183.64816326530794,
+            "units": "seconds",
+            "source": "local",
+            "stale": false
+          },
+          "local_energy_level": {
+            "value": 8,
+            "units": "level_1_10",
+            "source": "local",
+            "stale": false
+          },
+          "integrated_lufs_bs1770": {
+            "value": -6.292859386673974,
+            "units": "LUFS",
+            "source": "local",
+            "stale": false
+          },
+          "true_peak_dbtp": {
+            "value": 4.403914149018898,
+            "units": "dBTP",
+            "source": "local",
+            "stale": false
+          },
+          "tempo_bpm": {
+            "value": 127.5,
+            "units": "bpm",
+            "source": "local",
+            "stale": false
+          },
+          "key_mode": {
+            "value": {
+              "tonic": 3,
+              "mode": 1
+            },
+            "units": "pitch_class_and_mode",
+            "source": "local",
+            "stale": false
+          }
+        }
+      },
+      "detail": {
+        "bpm": 127.5,
+        "bpmSource": "measured",
+        "key": "D# major",
+        "keySource": "measured",
+        "syncAllowed": true,
+        "structureAvailable": false
+      },
+      "detailListTimingSelectionAgrees": true,
+      "structureReadinessAgrees": false,
+      "detailReadMilliseconds": 9
+    },
+    {
+      "title": "I'm So Hood",
+      "artist": "G-Unit",
+      "list": {
+        "bpm": 173,
+        "bpmSource": "measured",
+        "key": "F minor",
+        "keySource": "measured",
+        "measuredBpm": 173,
+        "measuredKeyTonic": 5,
+        "measuredKeyMode": "minor",
+        "syncAllowed": true,
+        "structureAvailable": true,
+        "fields": {
+          "local_duration_seconds": {
+            "value": 145.2133333333341,
+            "units": "seconds",
+            "source": "local",
+            "stale": false
+          },
+          "local_energy_level": {
+            "value": 8,
+            "units": "level_1_10",
+            "source": "local",
+            "stale": false
+          },
+          "integrated_lufs_bs1770": {
+            "value": -8.987580162530037,
+            "units": "LUFS",
+            "source": "local",
+            "stale": false
+          },
+          "true_peak_dbtp": {
+            "value": 1.065286633845303,
+            "units": "dBTP",
+            "source": "local",
+            "stale": false
+          },
+          "tempo_bpm": {
+            "value": 173,
+            "units": "bpm",
+            "source": "local",
+            "stale": false
+          },
+          "key_mode": {
+            "value": {
+              "tonic": 5,
+              "mode": 0
+            },
+            "units": "pitch_class_and_mode",
+            "source": "local",
+            "stale": false
+          }
+        }
+      },
+      "detail": {
+        "bpm": 173,
+        "bpmSource": "measured",
+        "key": "F minor",
+        "keySource": "measured",
+        "syncAllowed": true,
+        "structureAvailable": false
+      },
+      "detailListTimingSelectionAgrees": true,
+      "structureReadinessAgrees": false,
+      "detailReadMilliseconds": 7
+    }
+  ]
+}

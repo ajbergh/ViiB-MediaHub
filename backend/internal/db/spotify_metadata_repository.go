@@ -101,7 +101,7 @@ func (d *DB) putSpotifyEntitySnapshots(snapshots []SpotifyEntitySnapshot, traver
 		}
 	}
 	if traversal != nil {
-		result, err := tx.Exec(`UPDATE spotify_playlist_traversals SET complete=? WHERE context_key=? AND spotify_id=? AND generation=? AND complete=0 AND context_key=COALESCE((SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'')`, complete, traversal.ContextKey, traversal.SpotifyID, traversal.Generation)
+		result, err := tx.Exec(`UPDATE spotify_playlist_traversals SET complete=?,last_touched_at=? WHERE context_key=? AND spotify_id=? AND generation=? AND complete=0 AND lease_expired=0 AND context_key=COALESCE((SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'')`, complete, time.Now().UnixMilli(), traversal.ContextKey, traversal.SpotifyID, traversal.Generation)
 		if err != nil {
 			return err
 		}

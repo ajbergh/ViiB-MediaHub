@@ -1,0 +1,2525 @@
+{
+  "dataset": "https://doi.org/10.5281/zenodo.3371780",
+  "citation": "Q. Xi, R. Bittner, J. Pauwels, X. Ye, J. P. Bello, GuitarSet: A Dataset for Guitar Transcription, ISMIR 2018.",
+  "license": "CC BY 4.0",
+  "archiveMD5": {
+    "annotation": "b39b78e63d3446f2e54ddb7a54df9b10",
+    "audio": "275966d6610ac34999b58426beb119c3"
+  },
+  "splitPolicy": "Reserve lead-sheet index 3 across all styles/tempi/players/parts; index 1/2 tuning. Declared before analysis.",
+  "splitCounts": {
+    "tuning": 238,
+    "held_out": 119
+  },
+  "excluded": {
+    "04_BN3-154-E_comp": "upstream timing offset +0.409 seconds (issue 5)",
+    "04_Jazz1-200-B_comp": "upstream timing offset +0.309 seconds (issue 5)",
+    "02_Funk2-119-G_comp": "upstream duplicated MIDI note (issue 4)"
+  },
+  "limitations": [
+    "Short solo acoustic guitar excerpts do not cover required electronic/live-drum strata.",
+    "Global tempo/key and backing-track-derived grids are independent of Spotify but not manually performed onset annotations.",
+    "Shared harmonic vocabulary may remain across lead-sheet groups; no composition-independence claim."
+  ],
+  "recordings": [
+    {
+      "id": "guitarset-00_BN1-129-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "59e1e3c9bebdabd48afe28050a2c031e6cf36e5697268301cdf2e74bc66b71f1"
+    },
+    {
+      "id": "guitarset-00_BN1-129-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "2a6057d0485d8ee2f4a04175ee085d610c0f7a13194e083b13ce803bec091d43"
+    },
+    {
+      "id": "guitarset-00_BN1-147-Gb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "699b80b22b903b0ed58529fa0d68eb843ad1693430baf10f0c5bd882229b3e9d"
+    },
+    {
+      "id": "guitarset-00_BN1-147-Gb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "07bb305f064e77312319aada10b1acf7c326b1ec7506f5a456748f04c8c06e9e"
+    },
+    {
+      "id": "guitarset-00_BN2-131-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "eff298aea64674e2976d1d80ab73612375fc7b59819867435fa295357de51146"
+    },
+    {
+      "id": "guitarset-00_BN2-131-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "fbc13c6efdd05455b4812bc855ed1d22f8cb2cfeeefe2fa09e2b3bf85ed8ff71"
+    },
+    {
+      "id": "guitarset-00_BN2-166-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "96f8d2baad5be003dd901c2048917a4dc8cacc7dca1ec3fea607900f201a3a55"
+    },
+    {
+      "id": "guitarset-00_BN2-166-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "d55cb5f934c763a94383a25c7d6fd6fd35a534cf73ce4582f69228c6d17a4cbe"
+    },
+    {
+      "id": "guitarset-00_BN3-119-G_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "56b5650341df8455f93e86ea7beb1b422e04f0ff412cae344b122144a23bf359"
+    },
+    {
+      "id": "guitarset-00_BN3-119-G_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "5593591eb81e6ef7a922b2286536cc444461eb02eec64825a909d5b26ca283da"
+    },
+    {
+      "id": "guitarset-00_BN3-154-E_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "6ee12efff4f1d7958b6a2baee5d9added45633c708053f7bef585f1e2862f929"
+    },
+    {
+      "id": "guitarset-00_BN3-154-E_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "dc7a848d1ec7e995c0379eb93ce4933c0c9d97903a6431e10e718b98c5dd13e8"
+    },
+    {
+      "id": "guitarset-00_Funk1-114-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "15eb54c1249e69e75c69d6611bd332c51735199c8ced22a35b87d662a81e5ba9"
+    },
+    {
+      "id": "guitarset-00_Funk1-114-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "a3de6523399ff052aa54479b72a5584f757f7efdff53f7993c66cfe679e831a0"
+    },
+    {
+      "id": "guitarset-00_Funk1-97-C_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "ba5c2a1ef5a14cfcd6e8a018fcea13aed94054c5df2b0bd3b2d5cbedcbd3a235"
+    },
+    {
+      "id": "guitarset-00_Funk1-97-C_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "8e0d08e0e2c8b1a66ff50cb7e0a7433d87068620d9c607394412ca4248238ee3"
+    },
+    {
+      "id": "guitarset-00_Funk2-108-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "8e6a1c38db071723f91444c597e39adf8ced5e980ecf21bf9f61f2c1464e9010"
+    },
+    {
+      "id": "guitarset-00_Funk2-108-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "87bf9ef1a8ba9809cd4831c47ddd34bcca180c7c1226d36c0ae42ee871cc5717"
+    },
+    {
+      "id": "guitarset-00_Funk2-119-G_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "94b32bcaeb915add436a971355b4cf467e2d5eeabad05856d0462e24abe6e3e1"
+    },
+    {
+      "id": "guitarset-00_Funk2-119-G_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "4cb571f05512f8f1bf3f655b1ed6f31ea08045fd6c90a5bdf83a79c1a7ce3b67"
+    },
+    {
+      "id": "guitarset-00_Funk3-112-C#_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "88f2e5f66f62a87bc99f7679b38752ec24f6bb19e0ee68be3f1ab73f5bf1f471"
+    },
+    {
+      "id": "guitarset-00_Funk3-112-C#_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "42251765d19c8da0faa5f098f1a963310b149435cf21da420035eaa8e0a5e1d1"
+    },
+    {
+      "id": "guitarset-00_Funk3-98-A_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "ca88d2b7b0717f6978aaa3bf972220e8c3778505b50ad40095833d897dfc6225"
+    },
+    {
+      "id": "guitarset-00_Funk3-98-A_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "58910fd5ea0073347fb6e09e805d51556f4b38a3385dd8ca20d8c895a1ec5546"
+    },
+    {
+      "id": "guitarset-00_Jazz1-130-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "b686a47b0a0a58dbdd818d2ebc9c31da87e4bed1af889dd62b1ffd1d1496f827"
+    },
+    {
+      "id": "guitarset-00_Jazz1-130-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "275623936a0f6cf7cb959a7e81ff801c6fcc4d3128a939e1ba7ef89b8dbb413d"
+    },
+    {
+      "id": "guitarset-00_Jazz1-200-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "eb4be0b56d1100fc0b168a11c2f4dc6c7e5090a11847b3967e8b21ac2cd05252"
+    },
+    {
+      "id": "guitarset-00_Jazz1-200-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "d8df477ac8d17da5df76bbfafe94449b9f1c398e120db99d5765deeab59fbfb6"
+    },
+    {
+      "id": "guitarset-00_Jazz2-110-Bb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "47f1d3da58af0239febcbe1fb8d27da9d17a21b403f5011d01f011eda4406764"
+    },
+    {
+      "id": "guitarset-00_Jazz2-110-Bb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "77884729ebc69b5441508254d16292f4f46c78d38d4f3840945a6fa696536d8e"
+    },
+    {
+      "id": "guitarset-00_Jazz2-187-F#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "80a465e983eb70dcce01f94e055a41cf0ac7d91a1241afce24cc7cc764cfba81"
+    },
+    {
+      "id": "guitarset-00_Jazz2-187-F#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "746aefd895490a408a36e4f1932ba3badfd4e98e30da2a4fe560b0a867f9607d"
+    },
+    {
+      "id": "guitarset-00_Jazz3-137-Eb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "fd427e112544d6a2c193bdc7e461f226b9a4cefa8ff6a8a14c226029fa90a11b"
+    },
+    {
+      "id": "guitarset-00_Jazz3-137-Eb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "763f20dbe21e478a09f4a5634fb476cd58ab7f724d6a60ed16c47f9a304356b1"
+    },
+    {
+      "id": "guitarset-00_Jazz3-150-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "c98aeec857a65e4b25b97431558a894f4dad84e1f5104efc799846df91ca50a4"
+    },
+    {
+      "id": "guitarset-00_Jazz3-150-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "4556e8e41539a067771113e196a8818bc1eecf26b5ed0702f2e8c55d824397bd"
+    },
+    {
+      "id": "guitarset-00_Rock1-130-A_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "deb5aa62bc4ba99e394574a44bbfb95c22c789f8a4c4b4d8d5eccc0aa5e8392d"
+    },
+    {
+      "id": "guitarset-00_Rock1-130-A_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "f8811017bcb62a3b08db1a27f3745219c0116abb7e80189445280b578bd2d995"
+    },
+    {
+      "id": "guitarset-00_Rock1-90-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "be6ed27920c0d83fa13f519c6b5cc4ef6a39fcc5d5972ed4de56ce2e9f8b2949"
+    },
+    {
+      "id": "guitarset-00_Rock1-90-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "7027f166d92969ef4e442a998ffbffdb6a9d78ba1c77bfdde1c73f3b3193b083"
+    },
+    {
+      "id": "guitarset-00_Rock2-142-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "1f15351a6df0e47aa7b7aa82816317ca0921fcecc75189ec8f5d0ffb1606b159"
+    },
+    {
+      "id": "guitarset-00_Rock2-142-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "a85fbf8dec3090f8521b5d2878ee9e96229b11e2516c9adf9e188eddea810667"
+    },
+    {
+      "id": "guitarset-00_Rock2-85-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "5d5882f6fcdcb7f87fec383be08fed1fe69e650a855d4bea6481c092454a5181"
+    },
+    {
+      "id": "guitarset-00_Rock2-85-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "e3036161fa5c14533e0431276f84c00927b4b79efca08a1c336ad276e30c2697"
+    },
+    {
+      "id": "guitarset-00_Rock3-117-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "fd88ab632cc5f7717ca9e500f674886f80e0224c42abebde1b01a604a7affebb"
+    },
+    {
+      "id": "guitarset-00_Rock3-117-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "ebb841a89a3681e276cc6a1a77d17aca6d7c56f8fae4593bb6b37c025b2450ab"
+    },
+    {
+      "id": "guitarset-00_Rock3-148-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "de26d924d9a1dc9931f9a9ea9b2fa9d71a639b51b25a7e76dcfc9680049685d3"
+    },
+    {
+      "id": "guitarset-00_Rock3-148-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "158a42a533aca9d89d6e8999fd747f1f166e795e5efbd2bc7ce1c9be7c0a515a"
+    },
+    {
+      "id": "guitarset-00_SS1-100-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "4180689b2d372b7588253f3bf6782e904af04feef4d80726160965387d443662"
+    },
+    {
+      "id": "guitarset-00_SS1-100-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "41a3bf8c5cacf65a601b1171e5cbc36787170bcae6d0d1d970a31a5d4e231e0d"
+    },
+    {
+      "id": "guitarset-00_SS1-68-E_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "f301b36c16e3a4e7646905f1f8da82f539afbacccdbf33928dc77a0a4f55b7b7"
+    },
+    {
+      "id": "guitarset-00_SS1-68-E_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "9ed56c43f64845e87fc19796317f46fbe62c1895054868f00fa672aa88aadfe7"
+    },
+    {
+      "id": "guitarset-00_SS2-107-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "a38692e129bb3291c73ce82eece5655cfeed81e6c139726e82e0e30b1176f88e"
+    },
+    {
+      "id": "guitarset-00_SS2-107-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "71fc3ccc8b5eba4ad5cc7dd0896c0fc50f284d297d2673869a58d0062e52d70e"
+    },
+    {
+      "id": "guitarset-00_SS2-88-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "2f2c5c65d86fd135a15c47d38e9d61e3748c0c31a5ca163632b36eba239811f4"
+    },
+    {
+      "id": "guitarset-00_SS2-88-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "229eeb552e688aa30fdc248073d659cfec1e9110c188108636c677c1957e0e0b"
+    },
+    {
+      "id": "guitarset-00_SS3-84-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "ece4c3e67d8ab31ca6665ef8cd143a61aedeeb6145e45fa4b74120630024039b"
+    },
+    {
+      "id": "guitarset-00_SS3-84-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "80a49927a646455d974c70e6358874b84f5ae7a6fa556826e71a6605d9bcab19"
+    },
+    {
+      "id": "guitarset-00_SS3-98-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "7c039c4f555c6d8a8f277244db89213026f05fb8e3f50dace4ef1512a7c68d85"
+    },
+    {
+      "id": "guitarset-00_SS3-98-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "57574b363a2a277e1b8cfa43325b31867a443eafe3addf0e6bc99bc8f982393b"
+    },
+    {
+      "id": "guitarset-01_BN1-129-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "4f7f2359cc26d32307c8cc6793579d9d5ce602f483194ca079efd719a870b671"
+    },
+    {
+      "id": "guitarset-01_BN1-129-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "76330537c6a88df56c7e338da9dd81d84cbf7f3a5ae7cd1b32a663bded6b76b4"
+    },
+    {
+      "id": "guitarset-01_BN1-147-Gb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "dff0776bdba3e9ed3c7d8fb313f5c775cc66d2f9607a9dc16433722be0ceb89e"
+    },
+    {
+      "id": "guitarset-01_BN1-147-Gb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "781fe30fb282f037cf234a1c04e5e8d735f341cd4899826dfc89d59fd47eb90f"
+    },
+    {
+      "id": "guitarset-01_BN2-131-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "bc9f4e89b043a68e9bc5512d7376e9cd356505464e20712bda0bd2f0ac140acd"
+    },
+    {
+      "id": "guitarset-01_BN2-131-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "26793be902c9a3d7b957c3903fa24c1c649cc45a12a24ea923f21df73e27b04b"
+    },
+    {
+      "id": "guitarset-01_BN2-166-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "6aa9debf130ca3e27ed5fe30d4986ad4dcd2620a21760a1984e548cc0231b62c"
+    },
+    {
+      "id": "guitarset-01_BN2-166-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "6e92a265dc0e22d9cf640f2fad5affbb80163fb85223ad9dda8152de9517db36"
+    },
+    {
+      "id": "guitarset-01_BN3-119-G_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "fea30c0096900151e49c1593db6aa6cb7c4da1f71d5e5d2f040db34a87856889"
+    },
+    {
+      "id": "guitarset-01_BN3-119-G_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "3116e397759c82cb4cd3301553de826acb7d549a820a376afe78edb4e1766feb"
+    },
+    {
+      "id": "guitarset-01_BN3-154-E_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "e7cd59dc3006ed366f8e30eebc129768542b308a38047f95808f0dca7a6b6b17"
+    },
+    {
+      "id": "guitarset-01_BN3-154-E_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "577d510d0afb383b58b76d01b17f2fe39fbef630c9421855c85dcd7abd005e78"
+    },
+    {
+      "id": "guitarset-01_Funk1-114-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "9ee4888317faba89ba1a9929d6e3b044a3363eb925e6c432b2b30e4f3c83ab22"
+    },
+    {
+      "id": "guitarset-01_Funk1-114-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "8e301305985cf6d26bfe0abfb76b60adb29df962d91071985b5dc65eba0cdd4e"
+    },
+    {
+      "id": "guitarset-01_Funk1-97-C_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "c6dc6620cbd1a1c5e1bb4c24beca3f5c7176ce7a8685bc56f067dfea1b2ae289"
+    },
+    {
+      "id": "guitarset-01_Funk1-97-C_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "00ae184307da8f9d36667546bd5fe543f46f7f03d9f8fa1c432ff52982b1b384"
+    },
+    {
+      "id": "guitarset-01_Funk2-108-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "ed6170345637448e9d75996da516cfe7f7d5286d5a490eb333f576fc905b2918"
+    },
+    {
+      "id": "guitarset-01_Funk2-108-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "fb2b6044f99b615c89b4f6b1093c54ac6c7f5e71a89d49fbf0f7e95d4bde5056"
+    },
+    {
+      "id": "guitarset-01_Funk2-119-G_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "4112ba7fb59f847ee302d49db9bc7c0cc1f246bf98cccbcb7d443c9df61499a6"
+    },
+    {
+      "id": "guitarset-01_Funk2-119-G_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "5ab14d6e9d5ab560862fc6f29ccd5aa2194a784e67450cbed6ae31ed28fcfb04"
+    },
+    {
+      "id": "guitarset-01_Funk3-112-C#_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "1279e6cce685a8bdff6d4a185a5b12637d75a52c3e6539ff7ac6048a460a735a"
+    },
+    {
+      "id": "guitarset-01_Funk3-112-C#_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "0499a36847ede38ff76dc540d9904e4070859a9f7352b4b3fb9c342e2418d8a5"
+    },
+    {
+      "id": "guitarset-01_Funk3-98-A_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "ef267891e9fc18679c8a5339b2c55096d971736061f8dc40a02cee3cde2ddce3"
+    },
+    {
+      "id": "guitarset-01_Funk3-98-A_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "3f05bc4e8e0dc1bdb379dc1917d6bdbef1fc2fbeb2194b6b9d9fa34f038b9cfa"
+    },
+    {
+      "id": "guitarset-01_Jazz1-130-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "d45184fa42482eefc1d21d5cef3777bf85e772bf9d8ba7508ff441b77a8ee199"
+    },
+    {
+      "id": "guitarset-01_Jazz1-130-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "726991869569d7b76fe69b36fbefb3571f030556f020a7e3d599f0728d60f3ef"
+    },
+    {
+      "id": "guitarset-01_Jazz1-200-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "19a0eeb68e488b3cfe320bdba37d166079baaa2e1790f91d7e7864ca64648514"
+    },
+    {
+      "id": "guitarset-01_Jazz1-200-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "a738c0a3a2934d40a8e162795c8fc8d5fc59a8ef99aad41bcc96494229ecda54"
+    },
+    {
+      "id": "guitarset-01_Jazz2-110-Bb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "58f53e19e2420391afba687c7a10f2d1c80a89cf0392821729549e629b9ba55a"
+    },
+    {
+      "id": "guitarset-01_Jazz2-110-Bb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "8d3bdfd4befab11e2dab11fe4c778feeb5799946dbc2d313c0c5648bfc0ac362"
+    },
+    {
+      "id": "guitarset-01_Jazz2-187-F#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "f91bc905f7554d25497d1585a054683799bc5e5c91d97b16f871785460b3a146"
+    },
+    {
+      "id": "guitarset-01_Jazz2-187-F#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "1709e23d524e05e5b5e7c344b722b8c6826426feaf3eb97bd9bd7242611e3f0e"
+    },
+    {
+      "id": "guitarset-01_Jazz3-137-Eb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "d4c9a0439ec37dc0dd0f4741a00ae40fd70458787dab89ebb459ba85758b6456"
+    },
+    {
+      "id": "guitarset-01_Jazz3-137-Eb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "b0caf1c81ca1e9785d85fbdb47689c2bb3d4185f2c8cc701d7a756bfe1ab6399"
+    },
+    {
+      "id": "guitarset-01_Jazz3-150-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "052c25a49deb385d8a2cbc5a1834aad079eed0fd3686c6e83ceea561674286d9"
+    },
+    {
+      "id": "guitarset-01_Jazz3-150-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "d62d0d52ac51b0e65eb37a9d9e4fc15db975ade0b146524dbe0a7ba9ba010933"
+    },
+    {
+      "id": "guitarset-01_Rock1-130-A_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "1ead2a124768727b6ee3ddcfec2df7ad5f7087fa74ac0a49822d0028685f8731"
+    },
+    {
+      "id": "guitarset-01_Rock1-130-A_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "650a35f45d80be91e46859568fbb1a85392bcd7a8a5116dbf02b8ac9cba47fb1"
+    },
+    {
+      "id": "guitarset-01_Rock1-90-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "2dc712e3457bcde208ae59bf8fab8d7f0d7335368271dd211856a13323b50bee"
+    },
+    {
+      "id": "guitarset-01_Rock1-90-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "978ac8c3e925704f8c7f1ef592bd0819ae2ec4fba961b25aaa713baefe01a243"
+    },
+    {
+      "id": "guitarset-01_Rock2-142-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "93df9d80cbba876d6fb0ff45c92b9978ae072d205436a738b3bd813cfdf05973"
+    },
+    {
+      "id": "guitarset-01_Rock2-142-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "b984aa0034aee4859199433d261c66974478045fccf5d22351d9046a5d4daa24"
+    },
+    {
+      "id": "guitarset-01_Rock2-85-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "be67838b6159a088a3559a5f9971d60c31b5d99220edbcde0c73738786514db4"
+    },
+    {
+      "id": "guitarset-01_Rock2-85-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "1719050da2c618b30fb469d04303ab89ab6970f7e8ed7bad2cbf011a43261376"
+    },
+    {
+      "id": "guitarset-01_Rock3-117-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "bf445156f5cfeaa54968c4933ea5d95f62e9d74f0f8bea36c95fe52312ebe320"
+    },
+    {
+      "id": "guitarset-01_Rock3-117-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "40c9a226f326c603970b68ee85c795d91a2bc276f780fa5a0b85f57920492b68"
+    },
+    {
+      "id": "guitarset-01_Rock3-148-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "4c873326c1cafddb484cc0b25ee36217eeb443ce3ca39b32db008175b19cef4d"
+    },
+    {
+      "id": "guitarset-01_Rock3-148-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "0ba930e658dba87c77c7cd9e5572a4c2010db550532a4fb6e70ad9e3170ed03e"
+    },
+    {
+      "id": "guitarset-01_SS1-100-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "c8b3cb71fa42be463da53bc2114f42741366a9b1e5b80a158a38402961a3c5a2"
+    },
+    {
+      "id": "guitarset-01_SS1-100-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "2b9c9eda652c2ebf9dab32d906f757973427c00c3df9f945e357a54156e47069"
+    },
+    {
+      "id": "guitarset-01_SS1-68-E_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "278b9058cde0102ad19c58e22415fc73788a85a074b765250fea1370a0ed25d5"
+    },
+    {
+      "id": "guitarset-01_SS1-68-E_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "2ed5d98c2380c3d367f2ee4d782c1255d2532d038a6d663fa3b063c320350e88"
+    },
+    {
+      "id": "guitarset-01_SS2-107-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "36bbde7f7a6f952786fb1aee2e69aab5538668c8016993a3cd0a0570c3544f58"
+    },
+    {
+      "id": "guitarset-01_SS2-107-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "874905a621edb1bf38ddf76d5a865fb806b575e84874806d63f43f961bacffed"
+    },
+    {
+      "id": "guitarset-01_SS2-88-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "0e2f0a2b957f8a9224d06bfe5c446f7488266c7fb4cc82f3264fa1e5c1105a86"
+    },
+    {
+      "id": "guitarset-01_SS2-88-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "eed2e966799068762bf6db5b0fabb0360e5a909334978651702533f0d60fddcb"
+    },
+    {
+      "id": "guitarset-01_SS3-84-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "67fe454c6afc1ecc59ffeb47932ebf4a2c3ecff00c1340fe26a5b95484be0201"
+    },
+    {
+      "id": "guitarset-01_SS3-84-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "70e2c1ff002f8189dbdb8e19429c4affd24aa356012fc865b82fb15dd100d170"
+    },
+    {
+      "id": "guitarset-01_SS3-98-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "325cdcbb3adfac8c68f1b98b6c3e15a6746f063d3043d04af5dcbcb63925fedc"
+    },
+    {
+      "id": "guitarset-01_SS3-98-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "3a1c3c0af24807ebbd63963d607d05e25f3f0b0ca078e1dadbd7dd034e536985"
+    },
+    {
+      "id": "guitarset-02_BN1-129-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "54d0b5d30a727ddbf3f9dbe18663063d6c55c979627ab6993fdede63f0a54cc0"
+    },
+    {
+      "id": "guitarset-02_BN1-129-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "9a99f25ef470da34b6a85189d2895f64b59c20b653114b59b24cf7efa3239f13"
+    },
+    {
+      "id": "guitarset-02_BN1-147-Gb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "8ec470a71b945327761f7a9001a0195ad32c29ec012c16ec86914f14ba60e05d"
+    },
+    {
+      "id": "guitarset-02_BN1-147-Gb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "99c71715b672f4271f4eccb7b6193a6f2947f093ea8191e22feca3f156cf82e4"
+    },
+    {
+      "id": "guitarset-02_BN2-131-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "6478e7ade863d3b84ec26b443499979ee8db10a726d60ad0836e805f5349af83"
+    },
+    {
+      "id": "guitarset-02_BN2-131-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "5fbec1a2812360183811773320e7ad05016be2ab5af1dbcab09dd5f540511081"
+    },
+    {
+      "id": "guitarset-02_BN2-166-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "4e3b4f683b1bb9dc106570e56189ec1c555b644aefaf1c13ca510cd04479908e"
+    },
+    {
+      "id": "guitarset-02_BN2-166-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "355011d9d666875b5472601dc589f402b671c853a44a3ca4d3fab9132c6de596"
+    },
+    {
+      "id": "guitarset-02_BN3-119-G_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "b72774cb9f5aeadf66ecd12124604c4d45b95721283f868db0e6abb5a2f62bb7"
+    },
+    {
+      "id": "guitarset-02_BN3-119-G_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "d222e019f95dcc47380a6a5577dac4bb00de8573fafd2efc5f5bbf5e08183f58"
+    },
+    {
+      "id": "guitarset-02_BN3-154-E_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "52ae768bd2a1deda7bc3889cc7438f821d2ca915e5fc7e84e4f168e55891e604"
+    },
+    {
+      "id": "guitarset-02_BN3-154-E_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "77efacd7c3378e0c95fe246ceadbb7ce4b766206a871958092d584b7f59eaff8"
+    },
+    {
+      "id": "guitarset-02_Funk1-114-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "cbe0eac7ebf0f5f0c38642d56b5317187a9fbc406bc8ab1425452d88b56420cf"
+    },
+    {
+      "id": "guitarset-02_Funk1-114-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "7c10e95b9d378a4bae8b3d5a6ce11841a3fdfa4e65059df0e6fe3526eb31b7a2"
+    },
+    {
+      "id": "guitarset-02_Funk1-97-C_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "297b0e0cda8e9e7018801b6adba68f19cfeccd5df48377285a204411648a4f81"
+    },
+    {
+      "id": "guitarset-02_Funk1-97-C_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "49cdbffc10ee8b7a3f1d45d3cd0e3751df9e41a0198fee9f045ad1240f2905cd"
+    },
+    {
+      "id": "guitarset-02_Funk2-108-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "18fb8ba717efeaaa5b1c9180cd97801107d2ad6c5677499d1522970a7117b63e"
+    },
+    {
+      "id": "guitarset-02_Funk2-108-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "1cede35cfc35f708a64d166342809aee6e545a9833a218d8b51d89db02b0e2c5"
+    },
+    {
+      "id": "guitarset-02_Funk2-119-G_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "deb59f119b5b762656ad20fa1a15dbbf87e5d02bf7fbd88e324bc34422ea99d4"
+    },
+    {
+      "id": "guitarset-02_Funk3-112-C#_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "b85381638984aafa8aff67691ccdd839c2fa4fb10bdc6f18a52810059b0a44f7"
+    },
+    {
+      "id": "guitarset-02_Funk3-112-C#_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "02fa4e4d3d42a7469ea34f5f95582dc66e17285a3b46e117aca5870c401717d3"
+    },
+    {
+      "id": "guitarset-02_Funk3-98-A_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "9fced33aa426bd1622a70f66d173c1689c0d5198e5664265c8e26c24cafa5d64"
+    },
+    {
+      "id": "guitarset-02_Funk3-98-A_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "17816ba0df63878efd655b7807c3f114b7b2c03fe242e925c846fa428446aad0"
+    },
+    {
+      "id": "guitarset-02_Jazz1-130-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "7b769c278bb3d44440420a79cba1e486119f823a33f78465aa9acdcdef277df5"
+    },
+    {
+      "id": "guitarset-02_Jazz1-130-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "178728e013d354d2dd8c0818df8dc03cf553d81e6bb43d45a996fc6df5652433"
+    },
+    {
+      "id": "guitarset-02_Jazz1-200-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "429c8a7c7585691285d3699b2036177f1514ff7523dd3d21bfd004ec39e1797a"
+    },
+    {
+      "id": "guitarset-02_Jazz1-200-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "f17cdd6926e198487041238f1539d0fd695189ae8b6d28604ab0717c6fcff70e"
+    },
+    {
+      "id": "guitarset-02_Jazz2-110-Bb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "4740b6cb39c681728776d9b8350797ad00eb2a0d1974c0be2c259c62e70f9f48"
+    },
+    {
+      "id": "guitarset-02_Jazz2-110-Bb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "bcd85839107291baa56521bff5988a53e142504d873833e2be8268497d5bdae0"
+    },
+    {
+      "id": "guitarset-02_Jazz2-187-F#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "8c8f612a0a9f52bab9b8c10d490d10edfffa40fff86f09e4ff5e1b9faf766aae"
+    },
+    {
+      "id": "guitarset-02_Jazz2-187-F#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "218d77c69150fd0bf4dd05cd21df88920dea4d25dddefddc4b7f00f22f097894"
+    },
+    {
+      "id": "guitarset-02_Jazz3-137-Eb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "eb728567600f39832053569b7fd369a28b6fb8c1715d4498b88bde9bc21908b3"
+    },
+    {
+      "id": "guitarset-02_Jazz3-137-Eb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "80be5dc8887231d3f4bf021b66b78b3383735406d699d2ed9f9b526251ede8df"
+    },
+    {
+      "id": "guitarset-02_Jazz3-150-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "5ef9f8b09a777aebeead918428a939679c8c1cd952d0418d8082b4fc544f9ea7"
+    },
+    {
+      "id": "guitarset-02_Jazz3-150-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "a8fd7b466fed6838802ce6afdd1df2b8b990738b548005164a8a1b396ac52476"
+    },
+    {
+      "id": "guitarset-02_Rock1-130-A_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "4fc7ab1c7da41459abe8c30d9ae70c944affdc5398dba171d08197add4b0e608"
+    },
+    {
+      "id": "guitarset-02_Rock1-130-A_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "567cb38a651c2ea950e155a9d31a9d93305983b20573e3fe88723d8d8f66afd2"
+    },
+    {
+      "id": "guitarset-02_Rock1-90-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "9147eaf49e538d10e877229d550b4703323680ed9e8d6978bfbbf4bd62c1e908"
+    },
+    {
+      "id": "guitarset-02_Rock1-90-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "a49c56e71e5fc71f15a7f5fc80452de627b23931074adb40f767306cc845407f"
+    },
+    {
+      "id": "guitarset-02_Rock2-142-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "7dc2d6867e3fe588a3b595be64cf4787ae2d14610a45c1fdc493d5c78aef5f96"
+    },
+    {
+      "id": "guitarset-02_Rock2-142-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "ed462f1a9f9566aa8568150aa712e5cf3d2aed5758080fdd01979d2617ff0f55"
+    },
+    {
+      "id": "guitarset-02_Rock2-85-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "bfefc125bb731a159d26bfbed90aa583a5f20602aa1021a042d43119cb9d85ea"
+    },
+    {
+      "id": "guitarset-02_Rock2-85-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "df9c2ec90012c08a067f5d03ed76fcf209337a4325fb94d06dd238476a38acc4"
+    },
+    {
+      "id": "guitarset-02_Rock3-117-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "31016348798736b434d542efa0b036daf5b56d9bd7b93a1f69cac0d4157fe52f"
+    },
+    {
+      "id": "guitarset-02_Rock3-117-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "2401b959b0398d01a560f57649663a0ebb893f9dfbfc334bd815fa7106ccb8c4"
+    },
+    {
+      "id": "guitarset-02_Rock3-148-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "0ce12b6c42e79f6d02e82577b7128de77c2c02d79f4b6600833df2afdbdfa5ff"
+    },
+    {
+      "id": "guitarset-02_Rock3-148-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "fad305d82f5ec985e80ce775e667707ad4a20a97de6c9a5f246af20295dc9ad4"
+    },
+    {
+      "id": "guitarset-02_SS1-100-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "2010d893d0ee8c5aa8ed64eb9890f52c2bacb46d74878936002ae6d93a5c082a"
+    },
+    {
+      "id": "guitarset-02_SS1-100-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "1866e928ccc36ab697754b30bbfc293e603deb445362372472e5b01f320f9623"
+    },
+    {
+      "id": "guitarset-02_SS1-68-E_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "57ea3c4905aeb0dbf2aaac4fb10c57008a4a0e21220718b0d7b0e74c13cf4187"
+    },
+    {
+      "id": "guitarset-02_SS1-68-E_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "ecef11904f658c226b2c46eb5b9bfb8d068f635f2c3f3bb660d9192882ec2dce"
+    },
+    {
+      "id": "guitarset-02_SS2-107-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "41c3ba125a614a46b9b5cb146ff9d5c267abaa993beaef40a5b04178489bcf9a"
+    },
+    {
+      "id": "guitarset-02_SS2-107-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "62dd76b1551d81484981161808a281eb5785027110b6ace56c701edd04320685"
+    },
+    {
+      "id": "guitarset-02_SS2-88-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "f68b2f066e6d512c901ea58423b05dcb14faeb2dfbd239aea36589797a93a3d3"
+    },
+    {
+      "id": "guitarset-02_SS2-88-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "ba204ea5373cd0aa9ccb2d27aac54f9d1d2f20b06fd964fbb6019bf12c44f600"
+    },
+    {
+      "id": "guitarset-02_SS3-84-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "85de753f245d0dc14bf3ba1cb9285631f4a973b6e67d8872c581f773332cbe97"
+    },
+    {
+      "id": "guitarset-02_SS3-84-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "7a0ff415b0dbcd81307a7b418af827c9079cbec31c85cee4775933dbe73d515a"
+    },
+    {
+      "id": "guitarset-02_SS3-98-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "9306563753b3a65de235608a8c09032a7761bfdf137196be11c4f7af33d6c4c0"
+    },
+    {
+      "id": "guitarset-02_SS3-98-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "e8601f8b9145170436ada516c332044c20b76027ddc3c754db8ed64bed7b76ae"
+    },
+    {
+      "id": "guitarset-03_BN1-129-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "8fef5aa0807d145e57c5a4befdc729cf3f185cfcc41c64fee7ead7cb1876b629"
+    },
+    {
+      "id": "guitarset-03_BN1-129-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "51ec6f1d43b4866a02ca5ff43bb5cfcb7f2b8069fe12b078385e091a8f8d78f4"
+    },
+    {
+      "id": "guitarset-03_BN1-147-Gb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "3e5c46c368cd02ba7add7864e4f938e01f757dfea30b7cb6dc4457703a33bafa"
+    },
+    {
+      "id": "guitarset-03_BN1-147-Gb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "576511de7739a4709b3dccbebab6d9387129ed2b8abf45fd4bd5e5917de4eeee"
+    },
+    {
+      "id": "guitarset-03_BN2-131-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "4f42243d2e201711b3aa55c9fd265306d08260589f00e7c19043b6a99e49cd48"
+    },
+    {
+      "id": "guitarset-03_BN2-131-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "8dd9e582228f0433cb22a571cc8f72add4b2901ce0f2ecbf536e955447c32c9c"
+    },
+    {
+      "id": "guitarset-03_BN2-166-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "8187c43a481b77f345ed6eb8c657bb854d048886a8cceaad468f27f4bc098b3c"
+    },
+    {
+      "id": "guitarset-03_BN2-166-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "f902e9e99de4fe987146351c0b0d1f568f081d2efe296dbbf25a12aee0936a9d"
+    },
+    {
+      "id": "guitarset-03_BN3-119-G_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "51ab913544b8ec0d01b9b2e5249612197d338367ada41851b679969684f25bce"
+    },
+    {
+      "id": "guitarset-03_BN3-119-G_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "363ecc7d9a3817fb48e20a81889021734f6c1070a106131a8c132868a37be057"
+    },
+    {
+      "id": "guitarset-03_BN3-154-E_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "641614acb515ca353d65d2efd138dc238e019f1c0cfcd6cff60ab1dc5b3630a2"
+    },
+    {
+      "id": "guitarset-03_BN3-154-E_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "4bc9e2591fb13b6cffba5687af0e132c4436a3718c908337de20e007c6ac4931"
+    },
+    {
+      "id": "guitarset-03_Funk1-114-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "796ccebfb5265044b6f8b33b84d2b2004f7dfa9b2b44b28dd0de65e45c257f0d"
+    },
+    {
+      "id": "guitarset-03_Funk1-114-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "f69c5fb997091ffb63e265c1a99bf7f1b5bc39dcb1d53b9879f747d0b5d17ebb"
+    },
+    {
+      "id": "guitarset-03_Funk1-97-C_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "239ff130c2a0cddc995d581d19088c2e755065c197f8e7d4e1ea995893d857fd"
+    },
+    {
+      "id": "guitarset-03_Funk1-97-C_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "efbe697c928f77cddb8ee612919c86f9ee04ff1490f89c6dd16284f8ded3c5c8"
+    },
+    {
+      "id": "guitarset-03_Funk2-108-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "ec620fee25a9a0717488cb8d098e02a87a2ecc38bacd955e918e40658c801b8a"
+    },
+    {
+      "id": "guitarset-03_Funk2-108-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "563e2299cffc695c0f5bd7ad29ba405414fb7b449c99e676398c28ac2ef640e5"
+    },
+    {
+      "id": "guitarset-03_Funk2-119-G_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "4983a9a6ab867425273b9348d301754b96a445f59907cb9c59d6a99dd74410f4"
+    },
+    {
+      "id": "guitarset-03_Funk2-119-G_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "08df5e87b8450b2cd49a9cc9111f2b0f572cee5b0871333db38912f2699f91c8"
+    },
+    {
+      "id": "guitarset-03_Funk3-112-C#_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "9c72d7e513bfa196bf0d885f024dbc42c1e65aeec55da372d6f92b1bffc4141c"
+    },
+    {
+      "id": "guitarset-03_Funk3-112-C#_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "c375ae8564920ad603a73f04c44a777dba7af50a64ad1281f4006d332725139b"
+    },
+    {
+      "id": "guitarset-03_Funk3-98-A_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "947c8659277d30ebe602f836fa937db3c592f4a6d38ea9f8d6a050419933856b"
+    },
+    {
+      "id": "guitarset-03_Funk3-98-A_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "5609564bd31d9908e4ba77b561b14b0d9db1c22f18a6dae06441103d99022c6b"
+    },
+    {
+      "id": "guitarset-03_Jazz1-130-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "c02e73454f0cfcc2fb7c1a3eba799627ee3787964385041fb1ccd847c735903c"
+    },
+    {
+      "id": "guitarset-03_Jazz1-130-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "088c1afa042e7b860228b1a74015cdd7f6bb59c44cc25e8cc70c17047c32a802"
+    },
+    {
+      "id": "guitarset-03_Jazz1-200-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "2bcc479599713e00c934cdfd382e7f217438369cbf36ff6125ef0049a6761373"
+    },
+    {
+      "id": "guitarset-03_Jazz1-200-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "8b217d43c99a8fbb000b8296848b03038d95df5bf8a4140c7f99eb8001c250c3"
+    },
+    {
+      "id": "guitarset-03_Jazz2-110-Bb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "d1797bfc302378d05a38df6d8a43993b85587f7b793e55a77d72fa57cb3e2221"
+    },
+    {
+      "id": "guitarset-03_Jazz2-110-Bb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "44b1d87dfda1833356b380b87520bd3b3548e2ab67d3498a63bb3fdc01de856c"
+    },
+    {
+      "id": "guitarset-03_Jazz2-187-F#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "96592fcfddeddd03ef3aecee798032c44aada53f4c3e56008ff52000b89c5b06"
+    },
+    {
+      "id": "guitarset-03_Jazz2-187-F#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "7d39e6e441440806d9427506ecc26da23d9e0b72fbf703b006795a2a761f85d6"
+    },
+    {
+      "id": "guitarset-03_Jazz3-137-Eb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "92dd4fe5a53feddd66b219e83e893065f6cdcd5edbad7a02b24931992e0b6d3e"
+    },
+    {
+      "id": "guitarset-03_Jazz3-137-Eb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "5beca829247e8af93d9c0a58e8a7ca3cf16209761ee4684fbdb534548cd803f7"
+    },
+    {
+      "id": "guitarset-03_Jazz3-150-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "f6640808cd13b2f0a0f7ed4c4f6ae460ee9d05aaa7ce6ca0f9edc3ff0bfdf000"
+    },
+    {
+      "id": "guitarset-03_Jazz3-150-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "4befbd57d5b92011f56b76fe03f6f8dec86bc546ed2b905c627fbcde316330cd"
+    },
+    {
+      "id": "guitarset-03_Rock1-130-A_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "5e71387daf08213651f8b8f0d9b1db7d589cbc6b9fefd8e052e13a1f8f7286ca"
+    },
+    {
+      "id": "guitarset-03_Rock1-130-A_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "eb0175a92ae22478d64060e5c72043ad8fa58d7c75ee519d1558746db3c1d5b1"
+    },
+    {
+      "id": "guitarset-03_Rock1-90-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "27c60c30fb65808a75e7137844254df91c7acf1c0a34f02b7902764a3e34b01a"
+    },
+    {
+      "id": "guitarset-03_Rock1-90-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "9e56cd2f1659e4a3f619594b9c6c3f15f8022addf8ffdae7f75718215d4c5bc3"
+    },
+    {
+      "id": "guitarset-03_Rock2-142-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "0e5f71ad66419d6ba9bc3caafd4e7c2aab0573e40d6136459344c286e9abe80e"
+    },
+    {
+      "id": "guitarset-03_Rock2-142-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "c3a26f324d5e5f1c466fd4644d38c44d567627a01a02f9fe15e8b1c17ce6405d"
+    },
+    {
+      "id": "guitarset-03_Rock2-85-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "92c14ad5a2fbb49de78acf2aaaa3e961a3459292ca0daf2cf8c35370253b0515"
+    },
+    {
+      "id": "guitarset-03_Rock2-85-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "6cef0f0edd3f3edfe0096280e68834024b5f35a754a6f075982daaf774f14b2a"
+    },
+    {
+      "id": "guitarset-03_Rock3-117-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "75d81c0b546d9dea445f81b448d3956c065f7d9f302780951287b6494a9c9030"
+    },
+    {
+      "id": "guitarset-03_Rock3-117-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "8234aca0cd57810a93c684faac40cce4f71c323c98a3fee2e0c1c6a882794a8e"
+    },
+    {
+      "id": "guitarset-03_Rock3-148-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "f427266c83e2cd89bfbe76ba99172457537357bc14e83c1ee7cd556dbd576775"
+    },
+    {
+      "id": "guitarset-03_Rock3-148-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "688898f2eb793127b89e3bf38b90b9af14ad3d2745bf459ed0ec8a9c3524ce6c"
+    },
+    {
+      "id": "guitarset-03_SS1-100-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "8cfa48ee4515f40d1ac1329b532e4421f56b471d592b5c7d0acc1b173e633876"
+    },
+    {
+      "id": "guitarset-03_SS1-100-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "26913110e0daa319160ed395eda4fe77ee3cd589c335b0da59449c97114c410d"
+    },
+    {
+      "id": "guitarset-03_SS1-68-E_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "b5bac89b11bc785121bf6a071c3003615646165ffc0c3d81297f091f6763e37b"
+    },
+    {
+      "id": "guitarset-03_SS1-68-E_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "7b195fa71448d467ec14d665be30b65b68f7b3e1e6ba753bbd53bab6b7fcd402"
+    },
+    {
+      "id": "guitarset-03_SS2-107-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "dffd9da81133d1f9556e1e21e32d4151688db00cd8abbfc178c182af0a2c9300"
+    },
+    {
+      "id": "guitarset-03_SS2-107-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "120d5955fae86806d16875b70b8dbbd6118ae78494c5f88aa8c45e615731c22b"
+    },
+    {
+      "id": "guitarset-03_SS2-88-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "6b4c895403809d2a53032c2eaecf1cdd94146a41c0fd1ff5acd419b0f920cf94"
+    },
+    {
+      "id": "guitarset-03_SS2-88-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "4b7e9683441a607f9dff46cca7abb8e39dc1d3377162fd6419aaea30102ab29a"
+    },
+    {
+      "id": "guitarset-03_SS3-84-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "dcd3b1855030c613ea05b2469225ce2ce31587a6d50d7bd287a2989d0754f332"
+    },
+    {
+      "id": "guitarset-03_SS3-84-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "ed3e18f2b4990404f613fc16c40677eb4ebab1bdf4f236c49e72d8da877001d3"
+    },
+    {
+      "id": "guitarset-03_SS3-98-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "541e936a3a2375572e325684dd448bc69f609518ba667f40cac14def634c2aff"
+    },
+    {
+      "id": "guitarset-03_SS3-98-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "32e3ffb4de68f197c1304471974ff4ac813076f8888022435d958a7235ef578b"
+    },
+    {
+      "id": "guitarset-04_BN1-129-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "ca4b487760400edabb87ed478a523ad0587c020b8463f97429af4009789f4ebd"
+    },
+    {
+      "id": "guitarset-04_BN1-129-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "3003186fc9122d51d761c1b2ef2591d528c51aaaf991fa2a885f500b4c97bcaf"
+    },
+    {
+      "id": "guitarset-04_BN1-147-Gb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "1a7a63967927554cc21a6ae0ab02bdb08cb79c0b8eff984e8cbccfece7694bdf"
+    },
+    {
+      "id": "guitarset-04_BN1-147-Gb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "83df41f9ae3f9c46dcf84b32c65b4ca8803e6c34bdb927409f812a4baf6413ff"
+    },
+    {
+      "id": "guitarset-04_BN2-131-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "43f6a70622e8ff66237307768c38578e0d8cd5fdd16d48ac97733673965f863e"
+    },
+    {
+      "id": "guitarset-04_BN2-131-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "745ef123db4c7bc1cd092cf98fdecc7bc51331cfbbc76487d3a496d68af59fe8"
+    },
+    {
+      "id": "guitarset-04_BN2-166-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "dbb14cb99fff84d5daddf9354faa71cb823b67beef61b9cf7b640c74362723a8"
+    },
+    {
+      "id": "guitarset-04_BN2-166-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "973969ded4b4787856fb0863b83d8ad9fde18d0b79e624b5127e7440806473ff"
+    },
+    {
+      "id": "guitarset-04_BN3-119-G_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "465c8e5cf72fdfa2cb03e55999020b5368d6e508f2bff74340959a94d9a926d9"
+    },
+    {
+      "id": "guitarset-04_BN3-119-G_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "9d572fbf8c4432afd6e18e82a0d99ef1f24d01331a6cc33760b660cf6ed751f3"
+    },
+    {
+      "id": "guitarset-04_BN3-154-E_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "ee1c59c05cc97c214f780c2b43e2ffb83f711c10093944ac1260f9cdc3f732d5"
+    },
+    {
+      "id": "guitarset-04_Funk1-114-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "6e2a6fc4fdce9b250ab11a090a8f5c4efcc12f83a60b17c8ca206ffeda07a8f0"
+    },
+    {
+      "id": "guitarset-04_Funk1-114-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "baf346f568302a185484de83a2ec0a273b560eed501c16fed3f633e02c12dc4c"
+    },
+    {
+      "id": "guitarset-04_Funk1-97-C_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "4a452551a41e6770920f0b30c73ef4d356f4a9b5ef4e65babe674654e4082228"
+    },
+    {
+      "id": "guitarset-04_Funk1-97-C_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "b670a20f31c1b52855325193bfb79f1067c87ddf7ccc4f35e91a0fe8697b590c"
+    },
+    {
+      "id": "guitarset-04_Funk2-108-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "5d111f9bf109a875d4775e2db980e43e4385dbb775580432a375e9ebd5f8b266"
+    },
+    {
+      "id": "guitarset-04_Funk2-108-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "f1d2b786faabbf6330ee3e78edb1f107e29320d233053b1daedcfe058830c499"
+    },
+    {
+      "id": "guitarset-04_Funk2-119-G_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "a1241d1af68f1bad6b3eceb491d8bf9ccf91a14ab822ff5ee88d5ff170d53669"
+    },
+    {
+      "id": "guitarset-04_Funk2-119-G_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "444e5dfa0eba17e8a4c6ec3b45a2fc2a5973a098558c31024674bf199f3c42a6"
+    },
+    {
+      "id": "guitarset-04_Funk3-112-C#_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "9004ab458e0a0f0509f0deb10fd788d1a94f6eb76da93d6f2d0aacf11a3e575a"
+    },
+    {
+      "id": "guitarset-04_Funk3-112-C#_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "607c7ab4221495ed2fb74fabe3528000bb9e9588695e26037bc08666dc464701"
+    },
+    {
+      "id": "guitarset-04_Funk3-98-A_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "3d7fb64713873bc9fdaeb30b2e126ecdc45bbf210e77df40c9aad16a894c44cc"
+    },
+    {
+      "id": "guitarset-04_Funk3-98-A_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "17ff2f41141a7b6c01ef546b64bdc08e0f245fdaf879a7bc21da67e35e2f4ffd"
+    },
+    {
+      "id": "guitarset-04_Jazz1-130-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "69a9b13b9b4206c7b05ababa7dc4f63027212596aa9d255cac9301487099c899"
+    },
+    {
+      "id": "guitarset-04_Jazz1-130-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "71243666f41a2f1f0c68da42733348891f20677e0624a77bf01d9554bd2d2afb"
+    },
+    {
+      "id": "guitarset-04_Jazz1-200-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "4f567c6c6501ae25086ed7423eb3f9d3c653c002d3fb75373d17bf3136730bda"
+    },
+    {
+      "id": "guitarset-04_Jazz2-110-Bb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "5f028fbe1bde26d30494b2075a7c967812e866a33f5554a00078887336b14668"
+    },
+    {
+      "id": "guitarset-04_Jazz2-110-Bb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "302fa1c23166565ee9197d481a8bd05c763ceaf14c67cf1ac8b4f905364a124b"
+    },
+    {
+      "id": "guitarset-04_Jazz2-187-F#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "eaf2a0047227569c8b8c2359242ba6fdafdceca116f991cca17884d2808ad9c1"
+    },
+    {
+      "id": "guitarset-04_Jazz2-187-F#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "051334190a0f57bc6004e9ad8cad00e2e7e3694a88d09f76077436c11d6a53b3"
+    },
+    {
+      "id": "guitarset-04_Jazz3-137-Eb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "2df1a8cbad149591e1d6cd3cf4504f2bd199f8005aff98638d34a6fd20280b88"
+    },
+    {
+      "id": "guitarset-04_Jazz3-137-Eb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "bd0ee85baf2aa03e4479fccb5930db0ce5338c0788af02d2bc1ca12a6a5ae08b"
+    },
+    {
+      "id": "guitarset-04_Jazz3-150-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "2c6f27f7b7511f419dee0a1746822e8c72770004a8f32942bd6b1a353010d7cf"
+    },
+    {
+      "id": "guitarset-04_Jazz3-150-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "3b8c788685428fc31a9579735d5e85d87d6bfe35c59ead8220299d169f2df1d0"
+    },
+    {
+      "id": "guitarset-04_Rock1-130-A_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "139d6293709a89d256105fc65850129754de98b8d076e4eb1da8f706af80a26a"
+    },
+    {
+      "id": "guitarset-04_Rock1-130-A_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "ae20b3c54b9c5b2b001eb6acf07efeab26faee270cdbec238d62bc4055d51a2e"
+    },
+    {
+      "id": "guitarset-04_Rock1-90-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "db3c7aeac0d3e956c3a63ac35d7f9693df67558e6c29dbf65db543d92b8a2b59"
+    },
+    {
+      "id": "guitarset-04_Rock1-90-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "2de4774b7b3005e91fc9d571ac322b44190cc4a2a2a040f0d5ca8d2c510e8848"
+    },
+    {
+      "id": "guitarset-04_Rock2-142-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "77589eeda2dfd7a8e8652b9b0c8a002529d911786e4be29c7bafda31fa32ba99"
+    },
+    {
+      "id": "guitarset-04_Rock2-142-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "0cb70571359b36a52e5b0aa77e40e68737b4c4e9726a529a03c639890a1afea9"
+    },
+    {
+      "id": "guitarset-04_Rock2-85-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "922c7bf773689e55e059c86fd7055fcdc5b3dc33bda75d2ecc4a97ac1f5f431b"
+    },
+    {
+      "id": "guitarset-04_Rock2-85-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "0bc0cc32d83302843b391a8e50db4f997034dd4dfbbbe9efe519957b5c531cfb"
+    },
+    {
+      "id": "guitarset-04_Rock3-117-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "f0a11df45ec4c378edbea38007e95367ed07b90d6c13c5a0b306b4c7fceeacec"
+    },
+    {
+      "id": "guitarset-04_Rock3-117-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "989dd1959423d4a4538ac6765626525c01884059dead39ea7e2044f6f49f2ef6"
+    },
+    {
+      "id": "guitarset-04_Rock3-148-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "d391bc4f59ce53effcad6b2ad9d1efa8025b26b15bfb012469230a1d40d69fc2"
+    },
+    {
+      "id": "guitarset-04_Rock3-148-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "fdcf68211a04118e309bacbad70ce6aa513e5cbb04434ff42649420dd56f5046"
+    },
+    {
+      "id": "guitarset-04_SS1-100-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "39b592e5ab79e457a7901e865b4320e04014903465acdebd64235b4f44416650"
+    },
+    {
+      "id": "guitarset-04_SS1-100-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "753a0b4d27b68ed362a1c509bb14300dd23f2c5bf2a8513c76c28006aa408543"
+    },
+    {
+      "id": "guitarset-04_SS1-68-E_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "d0e64f7be9b5dfc99f7ff0e1a43971c0533aae2d8b800dcfc3c1ae704aea4e58"
+    },
+    {
+      "id": "guitarset-04_SS1-68-E_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "028856ae012f90a830a576a1679326b651b076376c25e0633c203c58c4c8d6e3"
+    },
+    {
+      "id": "guitarset-04_SS2-107-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "6222641015ef25c1423453949988509353c7bd6cae2b16032a3c64b9d990cd7b"
+    },
+    {
+      "id": "guitarset-04_SS2-107-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "e4edcc321fc3540d5c5b532e1b149e816a2a3d6ac46eda2ccd6299c28032b6f7"
+    },
+    {
+      "id": "guitarset-04_SS2-88-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "1c1c5351e498a64ec226e06a114c846ee2c6eaf575083339b534ad911aa56f12"
+    },
+    {
+      "id": "guitarset-04_SS2-88-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "6fb6e7ebc19e516eb5e11609e29563784b5abb02cc40161ffb3f04c31be02503"
+    },
+    {
+      "id": "guitarset-04_SS3-84-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "5b2ad5e596fd060fa98c03528b3fdbc8d8f652c48a3b39919f85c9617b6a8981"
+    },
+    {
+      "id": "guitarset-04_SS3-84-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "b561865c4b8d541d80e3183ba43cc0fa096fbbe426cd0e21b4b4c807577d34e9"
+    },
+    {
+      "id": "guitarset-04_SS3-98-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "ffd315c2999a31d800ac707d330e661aa58cc2d4b6d3dd99230326860d11ca68"
+    },
+    {
+      "id": "guitarset-04_SS3-98-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "b7a8821cbf4bc1d18d3528d5cf181c31e9d9a0c9c04e28307daaaa0570e3e99a"
+    },
+    {
+      "id": "guitarset-05_BN1-129-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "a55c99690ece8135baa9b05ffc42ee13ee408bcd3c2b0ef01fe373f69e844c3a"
+    },
+    {
+      "id": "guitarset-05_BN1-129-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "ccf801f3a6e7b1ab38dd9bf1ae917d13c51ef93c977af41cdabcb0548f55a261"
+    },
+    {
+      "id": "guitarset-05_BN1-147-Gb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "1aa76dccb9c3a6f05410349c90ddff1a32223ff8337dc77bed13a4ee8220f7a6"
+    },
+    {
+      "id": "guitarset-05_BN1-147-Gb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN1",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "9ef036a812e17dd4966a29ab08b928ffc88f6d76900def3902f1fcdac576de66"
+    },
+    {
+      "id": "guitarset-05_BN2-131-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "33171facce77240e81474bb0ea1e023a3892af2448bc03feebe4b193f1ad967e"
+    },
+    {
+      "id": "guitarset-05_BN2-131-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "322c58673a25a8cfd9a3362502d0b274509b9e6013b94f2b3f06205881198220"
+    },
+    {
+      "id": "guitarset-05_BN2-166-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "58e771edbaedf69eb0216b8e77c82f468e8f0dd6045bfdcda585a0f346f86213"
+    },
+    {
+      "id": "guitarset-05_BN2-166-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-BN2",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "8768a9309b9b7265c92b2b4bd816bebd3f09ee1ba4c7a5a9f1bcdab7a207e926"
+    },
+    {
+      "id": "guitarset-05_BN3-119-G_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "2638b52a15bd12acfa5ffefacf0fa8bff4d37c8b11294151f3ce54a4bb874ab1"
+    },
+    {
+      "id": "guitarset-05_BN3-119-G_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "38f4482cf1e54ae2d4e029960b8fccdd896c2385a17fcd29f6565c06fa74129d"
+    },
+    {
+      "id": "guitarset-05_BN3-154-E_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "38f7e0b04c64c4b99dff7daad70120906b17754fb14dad217cc37bb25351287b"
+    },
+    {
+      "id": "guitarset-05_BN3-154-E_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-BN3",
+      "genre": "acoustic-guitar-bossa-nova",
+      "sha256": "cfec129fc9b4bd5e08aa3a380f0b363efd8e9868de94e971ed4bab8005429373"
+    },
+    {
+      "id": "guitarset-05_Funk1-114-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "63300b35df98320564fda1505df27b55bc519707728c1185e5b34da0e478b097"
+    },
+    {
+      "id": "guitarset-05_Funk1-114-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "1bc53f0d2132e1d40efe3db88ae7c74ef53d256ed60a98dbed77270537307a1f"
+    },
+    {
+      "id": "guitarset-05_Funk1-97-C_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "ccdfe2d39d72c08b7213455631abb7d4783de9eca386b6ad230d0152b02c0660"
+    },
+    {
+      "id": "guitarset-05_Funk1-97-C_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk1",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "8bb79cdf439a8d9188fe5607e41c0924bc2e0431c74f1ec8e3159796fad27df6"
+    },
+    {
+      "id": "guitarset-05_Funk2-108-Eb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "39bd4f7812fa252c6ef89d1d14004436cb3d1ef43cbe422332ccf1712def513b"
+    },
+    {
+      "id": "guitarset-05_Funk2-108-Eb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "07ef5b704e9c23d438391b3e756e600c95b592061d7e090bc730b8c8bd58efd5"
+    },
+    {
+      "id": "guitarset-05_Funk2-119-G_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "d8056eeace67f5451907b7a1d779e1ea576fee79f2df73e68909c7e944ac43a2"
+    },
+    {
+      "id": "guitarset-05_Funk2-119-G_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Funk2",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "45eb1e51b7ad43445996e5a7a882830cb572ed043a54199711107e61d97c8ffa"
+    },
+    {
+      "id": "guitarset-05_Funk3-112-C#_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "982934136c3e882b42c20995a3d96d523810137c5605f9bfe4e748d75ab2f392"
+    },
+    {
+      "id": "guitarset-05_Funk3-112-C#_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "32862cde85f0a3f1d9b22e1c734a5b1433f4149a268edf9cc578b122f66ba00b"
+    },
+    {
+      "id": "guitarset-05_Funk3-98-A_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "d11f873ad8b1cfd5c44a4714d2c0ab81893b49d948efa62f32a3ca95d041ab68"
+    },
+    {
+      "id": "guitarset-05_Funk3-98-A_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Funk3",
+      "genre": "acoustic-guitar-funk",
+      "sha256": "62b9db961f832c0b893f64363b9963bd46c5cef0128fad31236d6aee4c9ef4e2"
+    },
+    {
+      "id": "guitarset-05_Jazz1-130-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "dc0d6d6351c1bf82ec4d186d93306b4f0bef6189ed691ec0ba1b57a74e6365a7"
+    },
+    {
+      "id": "guitarset-05_Jazz1-130-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "957fd5a4a98c8b9f804b44a664e521dd6268c4e892cce1a0eeb5364dec52afa9"
+    },
+    {
+      "id": "guitarset-05_Jazz1-200-B_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "00cdf3460ef31be49312fb7f3c520045a85b83b6b1b70b9efd9a986431490281"
+    },
+    {
+      "id": "guitarset-05_Jazz1-200-B_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz1",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "ba093583329bf60c8fc1ffb79c2be919b8a58f4ac8831b7bfe3e276c2d62ae67"
+    },
+    {
+      "id": "guitarset-05_Jazz2-110-Bb_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "0ff82f67a72707cfa4f263aac890baeb9a11f50d0e1487c8f187a2e614b6bd9d"
+    },
+    {
+      "id": "guitarset-05_Jazz2-110-Bb_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "03004020bbfea35d518742a621e30c00f753f5f033d199b2f75d43eaf459fa56"
+    },
+    {
+      "id": "guitarset-05_Jazz2-187-F#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "06a01d0db47078e587b29399c5445e7cbd90665a1da278cb0614f28523e2fe01"
+    },
+    {
+      "id": "guitarset-05_Jazz2-187-F#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Jazz2",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "6e41c6d76dc0cdcd516741ba7d668f8f3ced93585fb6fae50ba13311315f4e95"
+    },
+    {
+      "id": "guitarset-05_Jazz3-137-Eb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "2f010d90386e492d04f9d4b28a9ae367cb7819e5ce7140f85ec587e90b6ebf3b"
+    },
+    {
+      "id": "guitarset-05_Jazz3-137-Eb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "12f5257558ebe95fe32b99f13ba52ff9f45905c11c67950397d1488188ec311a"
+    },
+    {
+      "id": "guitarset-05_Jazz3-150-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "665e9a0968ec0d81e8cab504d39a4ffbf4249099cf87700c122607be000f508c"
+    },
+    {
+      "id": "guitarset-05_Jazz3-150-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Jazz3",
+      "genre": "acoustic-guitar-jazz",
+      "sha256": "15f4560bd2d28f70950561880ae944d86ce290c5e647c37cbd7b824c3e291913"
+    },
+    {
+      "id": "guitarset-05_Rock1-130-A_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "711b2cc0a44a3890bf028c282e8edbc3f8ebfc2ec35a3806524abe7537c3db19"
+    },
+    {
+      "id": "guitarset-05_Rock1-130-A_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "9d66f4912edf54047b3753d4b14c217accf8868944c426d9aaf33e465bab0c8c"
+    },
+    {
+      "id": "guitarset-05_Rock1-90-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "f8410ac3049cc8564487b1a83f921a068ad3dd919efc6fb34f8869151ac03046"
+    },
+    {
+      "id": "guitarset-05_Rock1-90-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock1",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "2e969753898c731a7e4e46935ff5f315d31acdaddf0a4ab9afa855a96307a9d8"
+    },
+    {
+      "id": "guitarset-05_Rock2-142-D_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "5f5b02aa23a36c31f59e56ccec16212d60549d15d60f7f0f61f516c02ee0fa7c"
+    },
+    {
+      "id": "guitarset-05_Rock2-142-D_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "2869d66963c0661aeceda104666680274e1c52ffdfa6c6990187b296d9effa99"
+    },
+    {
+      "id": "guitarset-05_Rock2-85-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "4be5240ae9037dd577544dc456bf73d4ff64c60e24f2cf678888d44338e02d3e"
+    },
+    {
+      "id": "guitarset-05_Rock2-85-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-Rock2",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "44203ba40a1bc5675c1991666e7a780b8cd4f3af566b2c8addca7b699616aa03"
+    },
+    {
+      "id": "guitarset-05_Rock3-117-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "83c65847d6cc0a8b2a2a291ace59a2c97b7c91bc51d1295ba6acf51240de087d"
+    },
+    {
+      "id": "guitarset-05_Rock3-117-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "ea17f0ee41d4b2fd8a78f5d925bb5f734f8a8250d41ad4b1dcf70008c8faad87"
+    },
+    {
+      "id": "guitarset-05_Rock3-148-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "a0211d30e8d71283ff9974dce06e39fba8b93ce364316aecf425817492afd312"
+    },
+    {
+      "id": "guitarset-05_Rock3-148-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-Rock3",
+      "genre": "acoustic-guitar-rock",
+      "sha256": "fe4d7483648c925cae59b4133ec6f7a00784ed5ec8c8d920278c586a48430a19"
+    },
+    {
+      "id": "guitarset-05_SS1-100-C#_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "a8299b8c499cc67eb2e81e9e3afcc8382680d8a51150ce928407bb492e39c5fd"
+    },
+    {
+      "id": "guitarset-05_SS1-100-C#_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "7e1f99d1d851130cc9c8be6890afcf2ab5d09849240a242de2d90d99b1f7ed9b"
+    },
+    {
+      "id": "guitarset-05_SS1-68-E_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "665b982fb9221b5c91b0ed0c3d2c271f3fab569e8a1f397f0e5f46fde8a298d5"
+    },
+    {
+      "id": "guitarset-05_SS1-68-E_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS1",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "d677c4074249807a49910f252d9d80c3bf31dbc5790a56ce188bd313d3ec0575"
+    },
+    {
+      "id": "guitarset-05_SS2-107-Ab_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "c892d100e7ba04f50c4a112da2e9e41633241384b5de14c346e55110d89d626f"
+    },
+    {
+      "id": "guitarset-05_SS2-107-Ab_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "5194998c80ed74606757b45f4fa1dd334118a6e2dfa7b297599d94a7c765f648"
+    },
+    {
+      "id": "guitarset-05_SS2-88-F_comp",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "c6e469ea28ec2b3def19d17c9498db09fd9a7b095ea44cea3313cf424e323220"
+    },
+    {
+      "id": "guitarset-05_SS2-88-F_solo",
+      "split": "tuning",
+      "recordingGroup": "guitarset-leadsheet-SS2",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "5ec8758016f8f3eb02b83907db981533b773594e3aeb44f313150a8d51a17cc0"
+    },
+    {
+      "id": "guitarset-05_SS3-84-Bb_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "a687478848bc80c8d0441856fd251df72c048bc856820653ca2b0106717f87dd"
+    },
+    {
+      "id": "guitarset-05_SS3-84-Bb_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "e9fe7406baef0c2e548f77d07da157fb09c635a3608237c75b9d11d67091e187"
+    },
+    {
+      "id": "guitarset-05_SS3-98-C_comp",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "919aa9e32250c87a943a96284bdd60b8b1c9ec31219c2eda98fc7d701bd717d9"
+    },
+    {
+      "id": "guitarset-05_SS3-98-C_solo",
+      "split": "held_out",
+      "recordingGroup": "guitarset-leadsheet-SS3",
+      "genre": "acoustic-guitar-singer-songwriter",
+      "sha256": "b89fb546ac6e2327d4791e242e71be321936ac305563641401f099dccadea5ce"
+    }
+  ]
+}

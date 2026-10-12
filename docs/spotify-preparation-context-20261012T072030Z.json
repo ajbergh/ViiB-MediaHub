@@ -1,0 +1,110 @@
+{
+  "observedAt": "2026-10-12T07:20:30.8213830Z",
+  "repairJob": {
+    "id": "82cdb622-edf2-484c-960a-01ea1f87c67b",
+    "status": "succeeded",
+    "progressCurrent": 275,
+    "progressTotal": 275,
+    "result": {
+      "analyzed": 275,
+      "autoCueMode": "fill-empty",
+      "failed": 0,
+      "mode": "missing",
+      "skipped": 0,
+      "source": "local",
+      "total": 275
+    }
+  },
+  "mediaHubQueuedOrRunningJobs": 0,
+  "fileDiscoveryScanning": false,
+  "limitations": [
+    "Other host workloads/CPU load are not controlled.",
+    "Provider clients are disabled inside the benchmark.",
+    "OS audio file caches are not flushed.",
+    "The benchmark owns a scratch DB; live library/audio are not changed."
+  ],
+  "reports": [
+    "spotify-preparation-one-track-offline-20261012T072030Z.json",
+    "spotify-preparation-105-track-offline-20261012T072030Z.json"
+  ],
+  "completedAt": "2026-10-12T07:33:47.1071265Z",
+  "sourceVerification": {
+    "milestone": 259,
+    "manifestObservedAt": "2026-10-12T07:23:47.727551+00:00",
+    "verifiedAt": "2026-10-12T13:03:25.320959+00:00",
+    "unchangedAtVerification": true,
+    "method": "Source hashes observed after benchmark start; all recorded source modification times preceded report capturedAt. This is not a compile-time manifest.",
+    "files": [
+      {
+        "path": "backend/internal/analysis/track/runner.go",
+        "sha256": "1783fedf5846ed5d68af6677f067a2c63661315ae3356ad8f6617813995a0763",
+        "lastWriteAt": "2026-10-12T07:14:51.232517+00:00"
+      },
+      {
+        "path": "backend/internal/analysis/track/lease.go",
+        "sha256": "708964ace420dcec5b5a97f274d3ec52d5f3b00ff0ef56215c19337aa72ba780",
+        "lastWriteAt": "2026-10-12T07:14:48.369416+00:00"
+      },
+      {
+        "path": "backend/internal/analysis/track/preparation.go",
+        "sha256": "bed90005b8084a272522bd866a14e08149f213b10378ee9a3c2680110f90a999",
+        "lastWriteAt": "2026-10-12T06:47:53.235754+00:00"
+      },
+      {
+        "path": "backend/internal/analysis/track/track.go",
+        "sha256": "239546a76cb5e58f0298f8d4169d78f29f356103d3d1e1c17eaaca42625f6f1a",
+        "lastWriteAt": "2026-10-12T05:28:27.247366+00:00"
+      },
+      {
+        "path": "backend/internal/analysis/track/waveform.go",
+        "sha256": "d7e8ae27835e4b47a162703e8f3b508f8fe2223343c4b48e9a4dcaaf3a0b40b9",
+        "lastWriteAt": "2026-10-12T07:14:51.231517+00:00"
+      },
+      {
+        "path": "backend/internal/db/track_analysis_selection.go",
+        "sha256": "3f265ef0849838ae9e73085871efdb37efcb60014d30917eb555035b1bbdf024",
+        "lastWriteAt": "2026-10-12T07:14:19.247852+00:00"
+      },
+      {
+        "path": "backend/internal/db/track_analysis_repository.go",
+        "sha256": "513e746a30ac09fa627da179b02eb27910f3107be232da3267fcf6a57ebc7297",
+        "lastWriteAt": "2026-10-11T19:38:59.684011+00:00"
+      },
+      {
+        "path": "backend/internal/db/track_preparation_publication.go",
+        "sha256": "4960be0bff29cc3e204e9d4ea1b280c064541ba4946378fd40b549aa9c185eb0",
+        "lastWriteAt": "2026-10-12T06:25:18.815396+00:00"
+      },
+      {
+        "path": "backend/internal/db/local_scalar_observations.go",
+        "sha256": "955602ebb28e7fb6f603803011146bdb78381a6ceffe86151db99933d500a9cd",
+        "lastWriteAt": "2026-10-12T05:19:23.829251+00:00"
+      },
+      {
+        "path": "backend/internal/api/preparation_qualification_test.go",
+        "sha256": "de3bfe617e68a118eb4e40b14c551e3e6714ef7b18f0aab5dd78485f23ce03a3",
+        "lastWriteAt": "2026-10-12T07:01:53.113663+00:00"
+      },
+      {
+        "path": "backend/internal/api/preparation_qualification_windows_test.go",
+        "sha256": "808a4d61e13215806399eb19b43ba28688fdfbb586bfb8a6786ce351e4c83ff7",
+        "lastWriteAt": "2026-10-12T05:46:27.688568+00:00"
+      },
+      {
+        "path": "backend/internal/api/preparation_qualification_other_test.go",
+        "sha256": "d52a5455d7f4e82d670237fe10a63a933aef18a787b4333d9cc8b6f4d587be1f",
+        "lastWriteAt": "2026-10-12T05:46:24.966601+00:00"
+      },
+      {
+        "path": "backend/go.mod",
+        "sha256": "f76fd96281f1c7181071eaab34e5b7f5468cb830a6d8214015c631e28684afe7",
+        "lastWriteAt": "2026-10-05T15:18:44.328017+00:00"
+      },
+      {
+        "path": "backend/go.sum",
+        "sha256": "7561a670147ec131fdecc8698cb07c429e261a45e1148af95c282d05d5bcceec",
+        "lastWriteAt": "2026-09-27T17:20:19.031152+00:00"
+      }
+    ]
+  }
+}

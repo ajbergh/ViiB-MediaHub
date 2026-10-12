@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis/threeband"
 )
 
 type preparationExecutor interface {
@@ -12,13 +14,16 @@ type preparationExecutor interface {
 }
 
 type TrackPreparationPublication struct {
-	ClaimToken   string
-	Analysis     TrackAnalysis
-	Artifacts    []TrackAnalysisArtifact
-	Cues         []DJHotCue
-	CueMode      GeneratedCueMode
-	ApplyCues    bool
-	Capabilities []TrackCapabilityStatus
+	// Retire only historical provider claims for this source, preserving local
+	// capability status. The retirement shares publication ownership/rollback.
+	ClearProviderThreeBand bool
+	ClaimToken             string
+	Analysis               TrackAnalysis
+	Artifacts              []TrackAnalysisArtifact
+	Cues                   []DJHotCue
+	CueMode                GeneratedCueMode
+	ApplyCues              bool
+	Capabilities           []TrackCapabilityStatus
 }
 
 // PublishTrackPreparation commits one source-bound result and its completion
@@ -108,9 +113,34 @@ func (d *DB) PublishTrackPreparation(p TrackPreparationPublication) error {
 			p.Capabilities = append(p.Capabilities, *lockedState)
 		}
 	}
+	providerBands := false
 	for _, s := range p.Capabilities {
 		if s.SongID != p.Analysis.SongID || s.SourceFingerprint != p.Analysis.SourceFingerprint {
 			return errors.New("preparation capability source mismatch")
+		}
+		if s.Capability == threeband.Kind && s.Version == threeband.AlgorithmVersion && s.State == "available" && s.Reason == "provider_three_band" {
+			providerBands = true
+		}
+	}
+	if providerBands {
+		if p.ClearProviderThreeBand {
+			return errors.New("conflicting provider three-band decisions")
+		}
+		for _, artifact := range p.Artifacts {
+			if artifact.Kind == threeband.Kind && artifact.FormatVersion == threeband.FormatVersion && artifact.AlgorithmVersion == threeband.AlgorithmVersion {
+				return errors.New("provider preparation cannot also publish local three-band output")
+			}
+		}
+		// Provider selection and removal of redundant local output are one
+		// publication. A late/lost claimant or a later SQL failure must never
+		// delete a current worker's fallback artifact.
+		if _, err := tx.Exec(`DELETE FROM track_analysis_artifacts WHERE song_id=? AND source_fingerprint=? AND kind=? AND format_version=? AND algorithm_version=?`, p.Analysis.SongID, p.Analysis.SourceFingerprint, threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion); err != nil {
+			return err
+		}
+	}
+	if p.ClearProviderThreeBand {
+		if _, err := tx.Exec(`DELETE FROM track_metadata_capability_status WHERE song_id=? AND source_fingerprint=? AND capability=? AND reason='provider_three_band'`, p.Analysis.SongID, p.Analysis.SourceFingerprint, threeband.Kind); err != nil {
+			return err
 		}
 	}
 	if err := putTrackCapabilityStatusesTx(tx, p.Capabilities); err != nil {

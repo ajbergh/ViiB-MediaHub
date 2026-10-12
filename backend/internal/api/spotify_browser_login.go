@@ -117,6 +117,10 @@ func (s *spotifyAuthRuntime) runBrowserLogin(ctx context.Context, op *spotifyBro
 		return
 	case errors.Is(err, spotifyauth.ErrAuthenticationRequired):
 		category = "authentication_required"
+	case errors.Is(err, errSpotifySessionRead):
+		category = "session_read"
+	case errors.Is(err, errSpotifySessionStore):
+		category = "session_store"
 	case errors.Is(err, spotifyauth.ErrLoginProfileCleanup):
 		category = "profile_cleanup"
 	case errors.Is(err, spotifyauth.ErrProviderChanged):
@@ -150,8 +154,10 @@ func (s *spotifyAuthRuntime) runBrowserLogin(ctx context.Context, op *spotifyBro
 		op.status.Message = "Spotify is temporarily unavailable. Try again later."
 	case errors.Is(err, spotifyauth.ErrLoginBrowserClosed):
 		op.status.Message = "The sign-in window closed. Try again."
+	case errors.Is(err, errSpotifySessionRead), errors.Is(err, errSpotifySessionStore):
+		op.status.Message = "Could not access the saved Spotify session. Restart ViiB and try again."
 	default:
-		op.status.Message = "Could not connect to Spotify. Try again after any rate limit clears."
+		op.status.Message = "Could not connect to Spotify. Try again."
 	}
 }
 func (s *spotifyAuthRuntime) browserLoginStatus(id string) (spotifyBrowserLoginStatus, bool) {

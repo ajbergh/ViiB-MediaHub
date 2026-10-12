@@ -24,6 +24,28 @@ type DownloadedLineageStatus struct {
 	CheckedAt time.Time `json:"checkedAt"`
 }
 
+// Queue-owned lineage is retained for every retry/force-restart state. Only
+// parentless legacy/corrupt rows become age-eligible for private maintenance.
+const SpotifyLineageOrphanGrace = 30 * 24 * time.Hour
+
+func migrateDownloadLineageRetention(tx *sql.Tx) error {
+	var exists int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('spotify_download_lineage_staging') WHERE name='staged_at'`).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		if _, err := tx.Exec(`ALTER TABLE spotify_download_lineage_staging ADD COLUMN staged_at INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+		// Give legacy rows a full grace window once, without guessing their age.
+		if _, err := tx.Exec(`UPDATE spotify_download_lineage_staging SET staged_at=?`, time.Now().UnixMilli()); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_spotify_lineage_staged_at ON spotify_download_lineage_staging(context_key,staged_at)`)
+	return err
+}
+
 func validDownloadOrigin(o SpotifyDownloadOrigin) bool {
 	if o.Position < -1 || o.Position > 1000000 || len(o.Revision) > 256 || strings.IndexFunc(o.Revision, unicode.IsControl) >= 0 {
 		return false
@@ -55,7 +77,8 @@ func stageDownloadOrigins(tx *sql.Tx, id string, origins []SpotifyDownloadOrigin
 		if !validDownloadOrigin(origin) {
 			return errors.New("invalid download origin")
 		}
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO spotify_download_lineage_staging(download_id,context_key,origin_kind,origin_id,origin_revision,position,entity_id) VALUES(?,?,?,?,?,?,?)`, id, account, origin.Kind, origin.ID, origin.Revision, origin.Position, origin.EntityID); err != nil {
+		if _, err := tx.Exec(`INSERT INTO spotify_download_lineage_staging(download_id,context_key,origin_kind,origin_id,origin_revision,position,entity_id,staged_at) VALUES(?,?,?,?,?,?,?,?)
+ ON CONFLICT(download_id,context_key,origin_kind,origin_id,origin_revision,position,entity_id) DO UPDATE SET staged_at=excluded.staged_at`, id, account, origin.Kind, origin.ID, origin.Revision, origin.Position, origin.EntityID, time.Now().UnixMilli()); err != nil {
 			return err
 		}
 	}

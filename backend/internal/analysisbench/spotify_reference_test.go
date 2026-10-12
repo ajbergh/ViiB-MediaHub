@@ -81,6 +81,26 @@ func TestSpotifyReferenceSeparatesCoverageAndFrozenMetrics(t *testing.T) {
 	}
 }
 
+func TestSpotifyReferenceDoesNotCarryHumanDimensionRefusals(t *testing.T) {
+	manifest, results, snapshot := referenceFixture(t)
+	manifest.Tracks[0].ExpectedKey = ""
+	manifest.Tracks[0].ExpectedKeyUnknown = true
+	manifest.Tracks[1].ExpectedBPM = nil
+	manifest.Tracks[1].ExpectedBPMUnknown = true
+	before, _ := json.Marshal(manifest)
+	report, err := CompareSpotifyReference(manifest, results, snapshot, SplitHeldOut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Comparison == nil || report.Comparison.KeyRefusal.Labeled != 0 || report.Comparison.TempoRefusal.Labeled != 0 || report.Comparison.Tempo.Labeled != 3 || report.Comparison.Key.Labeled != 3 {
+		t.Fatalf("human refusals contaminated independent provider comparison: %+v", report.Comparison)
+	}
+	after, _ := json.Marshal(manifest)
+	if string(before) != string(after) {
+		t.Fatal("provider comparison changed human labels")
+	}
+}
+
 func TestSpotifyReferenceRejectsTamperingAndWrongRecording(t *testing.T) {
 	for _, kind := range []string{"hash", "recording", "fingerprint", "version", "duplicate", "foreign", "mode", "confidence", "provenance", "evidence"} {
 		t.Run(kind, func(t *testing.T) {

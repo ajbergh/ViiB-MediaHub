@@ -22,7 +22,7 @@ func persistWaveform(database artifactWriter, result Result) error {
 	return database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: result.SongID + ":" + waveformartifact.AlgorithmVersion, SongID: result.SongID, Kind: waveformartifact.Kind, FormatVersion: waveformartifact.FormatVersion, AlgorithmVersion: waveformartifact.AlgorithmVersion, Encoding: waveformartifact.Encoding, Provenance: "measured", SourceFingerprint: result.Source.Fingerprint, Data: encoded})
 }
 func currentWaveform(database *db.DB, source analysis.ResolvedSource) bool {
-	artifact, err := database.GetTrackAnalysisArtifact(source.SongID, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion)
+	artifact, err := database.GetTrackAnalysisArtifactBounded(source.SongID, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion, waveformartifact.MaxBytes)
 	if err != nil || artifact.Encoding != waveformartifact.Encoding || artifact.Provenance != "measured" || source.Fingerprint == "" || artifact.SourceFingerprint != source.Fingerprint {
 		return false
 	}
@@ -33,7 +33,7 @@ func currentWaveform(database *db.DB, source analysis.ResolvedSource) bool {
 // Repair only the missing waveform; current scalars, other DSP artifacts, cues
 // and their timestamps are preserved. The existing claim fences overlapping jobs.
 func repairCurrentWaveform(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, source analysis.ResolvedSource, record db.TrackAnalysis, resolve func(context.Context, string) (analysis.ResolvedSource, error)) (result outcome) {
-	token, claimed, err := claimPreparation(ctx, database, source.SongID, source.Fingerprint)
+	token, snapshot, claimed, err := claimResolvedPreparation(ctx, database, source, resolve)
 	if err != nil {
 		return outcomeFailed
 	}
@@ -42,6 +42,13 @@ func repairCurrentWaveform(ctx context.Context, database *db.DB, registry *analy
 	}
 	ctx, stopLease := maintainTrackAnalysisLease(ctx, database, source.SongID, source.Fingerprint, token, claimHeartbeatInterval)
 	defer func() { stopLease(); _ = database.ReleaseTrackAnalysisLease(source.SongID, token) }()
+	if snapshot == nil || !snapshot.ValidFor(source.Fingerprint, AnalysisVersion, AlgorithmVersion) {
+		return outcomeSkipped
+	}
+	return repairClaimedWaveform(ctx, database, registry, source, *snapshot, token, resolve)
+}
+
+func repairClaimedWaveform(ctx context.Context, database *db.DB, registry *analysis.DecoderRegistry, source analysis.ResolvedSource, record db.TrackAnalysis, token string, resolve func(context.Context, string) (analysis.ResolvedSource, error)) outcome {
 	if currentWaveform(database, source) {
 		current, err := resolve(ctx, source.SongID)
 		if err != nil || ctx.Err() != nil || current.Fingerprint != source.Fingerprint {

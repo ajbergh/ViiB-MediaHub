@@ -19,10 +19,16 @@ func TestDownloadOggMetadataRoundTripsSpotifyScalars(t *testing.T) {
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := validateOggPages(t.Context(), path); err != nil {
+		t.Fatalf("input fixture integrity: %v", err)
+	}
 	bpm := 109.724
 	d := &Downloader{}
 	if err := d.writeOggMetadata(path, "Artist", "Title", "Album", &DownloadMetadata{BPM: &bpm, InitialKey: "Am"}); err != nil {
 		t.Fatal(err)
+	}
+	if err := validateOggPages(t.Context(), path); err != nil {
+		t.Fatalf("metadata write damaged Ogg pages: %v", err)
 	}
 	tags, err := taglib.ReadTags(path)
 	if err != nil {

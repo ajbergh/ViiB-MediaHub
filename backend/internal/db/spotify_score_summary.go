@@ -195,10 +195,11 @@ func (d *DB) getDownloadedSpotifyScalarCandidateBatchMode(sources map[string]str
 			args = append(args, songID)
 		}
 		query := `SELECT b.song_id,b.source_fingerprint,b.spotify_id,b.file_path,b.content_sha256,b.file_size,b.mtime_ns,COALESCE(s.file_hash,''),
- i.field_key,i.metric,i.units,i.value_json,i.confidence,i.resource,i.schema_version,i.adapter_revision,i.retrieved_at,i.expires_at
+ i.field_key,i.metric,i.units,i.value_json,i.confidence,i.resource,i.schema_version,i.adapter_revision,i.retrieved_at,i.expires_at,COALESCE(a.checked_at,0),COALESCE(a.state,'')
  FROM spotify_download_import_bindings b JOIN songs s ON s.id=b.song_id AND s.file_path=b.file_path
  JOIN track_external_identity l ON l.song_id=b.song_id AND l.provider='spotify' AND l.external_id=b.spotify_id AND l.source_fingerprint=b.source_fingerprint
  JOIN spotify_download_scalar_imports i ON i.file_path=b.file_path AND i.content_sha256=b.content_sha256 AND i.file_size=b.file_size AND i.mtime_ns=b.mtime_ns AND i.spotify_id=b.spotify_id
+ LEFT JOIN spotify_download_field_attempt_imports a ON a.file_path=i.file_path AND a.content_sha256=i.content_sha256 AND a.file_size=i.file_size AND a.mtime_ns=i.mtime_ns AND a.spotify_id=i.spotify_id AND a.field_key=i.field_key AND a.endpoint=i.resource
  WHERE b.song_id IN (` + string(placeholders) + `)
  AND i.schema_version=1 AND NOT EXISTS(SELECT 1 FROM track_external_identity_suppression x WHERE x.song_id=b.song_id AND x.source_fingerprint=b.source_fingerprint)
  ORDER BY b.song_id,i.field_key,i.resource`
@@ -210,9 +211,10 @@ func (d *DB) getDownloadedSpotifyScalarCandidateBatchMode(sources map[string]str
 			var item importedSpotifyScoreCandidate
 			var raw string
 			var confidence sql.NullFloat64
-			var retrieved, expires int64
+			var retrieved, expires, checked int64
+			var attemptState string
 			if err := rows.Scan(&item.songID, &item.fingerprint, &item.recording, &item.revision.path, &item.revision.digest, &item.revision.size, &item.revision.mtime, &item.fileHash,
-				&item.field.Key, &item.field.Metric, &item.field.Units, &raw, &confidence, &item.field.Endpoint, &item.field.SchemaVersion, &item.field.AdapterRevision, &retrieved, &expires); err != nil {
+				&item.field.Key, &item.field.Metric, &item.field.Units, &raw, &confidence, &item.field.Endpoint, &item.field.SchemaVersion, &item.field.AdapterRevision, &retrieved, &expires, &checked, &attemptState); err != nil {
 				rows.Close()
 				return nil, err
 			}
@@ -233,7 +235,7 @@ func (d *DB) getDownloadedSpotifyScalarCandidateBatchMode(sources map[string]str
 			}
 			item.field.RetrievedAt = time.UnixMilli(retrieved).UTC()
 			item.field.ExpiresAt = time.UnixMilli(expires).UTC()
-			item.field.Stale = !now.Before(item.field.ExpiresAt)
+			item.field.Stale = !now.Before(item.field.ExpiresAt) || checked > retrieved || (checked == retrieved && attemptState != "" && attemptState != "available")
 			item.field.DurableImport = true
 			item.field.RecordingID = item.recording
 			candidates[item.songID] = append(candidates[item.songID], item)

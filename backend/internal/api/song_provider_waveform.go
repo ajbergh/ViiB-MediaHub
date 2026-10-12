@@ -31,7 +31,7 @@ func (a *API) getSongProviderWaveform(w http.ResponseWriter, r *http.Request) {
 			return e
 		}
 		localDuration := 0.0
-		if local, e := a.db.GetTrackAnalysisArtifact(id, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion); e == nil && local.SourceFingerprint == fp && local.Encoding == waveformartifact.Encoding && local.Provenance == "measured" {
+		if local, e := a.db.GetTrackAnalysisArtifactBounded(id, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion, waveformartifact.MaxBytes); e == nil && local.SourceFingerprint == fp && local.Encoding == waveformartifact.Encoding && local.Provenance == "measured" {
 			if o, e := waveformartifact.Decode(local.Data); e == nil {
 				localDuration = o.Duration()
 			}

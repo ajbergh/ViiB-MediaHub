@@ -1,0 +1,31 @@
+{
+  "observedAt": "2026-10-12T06:40:59.4494265Z",
+  "repairJob": {
+    "id": "82cdb622-edf2-484c-960a-01ea1f87c67b",
+    "status": "succeeded",
+    "progressCurrent": 275,
+    "progressTotal": 275,
+    "result": {
+      "analyzed": 275,
+      "autoCueMode": "fill-empty",
+      "failed": 0,
+      "mode": "missing",
+      "skipped": 0,
+      "source": "local",
+      "total": 275
+    }
+  },
+  "mediaHubQueuedOrRunningJobs": 0,
+  "fileDiscoveryScanning": false,
+  "limitations": [
+    "Other host workloads/CPU load are not controlled.",
+    "Provider clients are disabled inside the benchmark.",
+    "OS audio file caches are not flushed.",
+    "The benchmark owns a scratch DB; live library/audio are not changed."
+  ],
+  "reports": [
+    "spotify-preparation-one-track-offline-20261012T064059Z.json",
+    "spotify-preparation-105-track-offline-20261012T064059Z.json"
+  ],
+  "completedAt": "2026-10-12T06:54:21.3765000Z"
+}

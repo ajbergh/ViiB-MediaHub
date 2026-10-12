@@ -22,6 +22,8 @@ import (
 const spotifyCookieSetting = "spotify_webplayer_session"
 
 var errSpotifyAccountChanged = errors.New("spotify account changed")
+var errSpotifySessionRead = errors.New("could not read Spotify session")
+var errSpotifySessionStore = errors.New("could not store Spotify session")
 
 type spotifyTokenSource interface {
 	Token(context.Context, spotifyauth.Purpose) (spotifyauth.Token, error)
@@ -388,10 +390,10 @@ func (s *spotifyAuthRuntime) connectGuarded(ctx context.Context, cookie string, 
 	// Storage failure must leave the current account and media usable.
 	previous, err := s.database.GetSetting(spotifyCookieSetting)
 	if err != nil {
-		return errors.New("could not read Spotify session")
+		return errSpotifySessionRead
 	}
 	if err := s.storeSession(string(raw)); err != nil {
-		return errors.New("could not store Spotify session")
+		return errSpotifySessionStore
 	}
 	defer func() {
 		if !committed {

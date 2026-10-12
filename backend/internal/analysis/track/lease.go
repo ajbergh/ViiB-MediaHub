@@ -2,7 +2,9 @@ package track
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"sync"
 	"time"
@@ -38,14 +40,60 @@ const claimHeartbeatInterval = time.Duration(db.TrackAnalysisLeaseMillis/3) * ti
 // A waveform owner must not cause a durable preparation job to count unfinished
 // scalar work as skipped. Wait with cancellation, then claim normally.
 func claimPreparation(ctx context.Context, database *db.DB, song, fp string) (string, bool, error) {
+	token, _, claimed, err := claimPreparationWithSnapshot(ctx, database, song, fp)
+	return token, claimed, err
+}
+
+func claimPreparationWithSnapshot(ctx context.Context, database *db.DB, song, fp string) (string, *db.TrackAnalysis, bool, error) {
+	return claimPreparationSnapshot(ctx, database, song, fp, false, nil)
+}
+
+func observedPreparationFingerprint(database *db.DB, song string) (*string, error) {
+	record, err := database.GetTrackAnalysis(song)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &record.SourceFingerprint, nil
+}
+
+func claimResolvedPreparation(ctx context.Context, database *db.DB, source analysis.ResolvedSource, resolve func(context.Context, string) (analysis.ResolvedSource, error)) (string, *db.TrackAnalysis, bool, error) {
+	expected, err := observedPreparationFingerprint(database, source.SongID)
+	if err != nil {
+		return "", nil, false, err
+	}
+	current, err := resolve(ctx, source.SongID)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if ctx.Err() != nil {
+		return "", nil, false, ctx.Err()
+	}
+	if current.Fingerprint != source.Fingerprint {
+		return "", nil, false, nil
+	}
+	return claimPreparationSnapshot(ctx, database, source.SongID, source.Fingerprint, true, expected)
+}
+
+func claimPreparationSnapshot(ctx context.Context, database *db.DB, song, fp string, compare bool, expected *string) (string, *db.TrackAnalysis, bool, error) {
 	for {
-		token, claimed, err := database.ClaimTrackAnalysisLease(song, fp, AnalysisVersion, AlgorithmVersion)
+		var token string
+		var previous *db.TrackAnalysis
+		var claimed bool
+		var err error
+		if compare {
+			token, previous, claimed, err = database.ClaimTrackAnalysisLeaseIfUnchanged(song, fp, AnalysisVersion, AlgorithmVersion, expected)
+		} else {
+			token, previous, claimed, err = database.ClaimTrackAnalysisLeaseWithSnapshot(song, fp, AnalysisVersion, AlgorithmVersion)
+		}
 		if !errors.Is(err, db.ErrWaveformLeaseBusy) {
-			return token, claimed, err
+			return token, previous, claimed, err
 		}
 		select {
 		case <-ctx.Done():
-			return "", false, ctx.Err()
+			return "", nil, false, ctx.Err()
 		case <-time.After(25 * time.Millisecond):
 		}
 	}

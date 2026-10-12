@@ -151,6 +151,9 @@ func (d *DB) EnsureSpotifyMetadataSchema() error {
 	if err = migrateDownloadLineageEntity(tx); err != nil {
 		return err
 	}
+	if err = migrateDownloadLineageRetention(tx); err != nil {
+		return err
+	}
 	if err = migrateSpotifyCaptureRevision(tx); err != nil {
 		return err
 	}
@@ -161,6 +164,9 @@ func (d *DB) EnsureSpotifyMetadataSchema() error {
 		return err
 	}
 	if err = migrateDownloadRetention(tx); err != nil {
+		return err
+	}
+	if err = migrateSpotifyPlaylistTraversalLease(tx); err != nil {
 		return err
 	}
 	return tx.Commit()

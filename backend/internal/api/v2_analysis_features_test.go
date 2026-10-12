@@ -312,6 +312,7 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentSettledStructure(t *testing
 		{id: "unsupported", status: db.TrackAnalysisUnsupported, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1},
 		{id: "missing", status: db.TrackAnalysisComplete},
 		{id: "corrupt", status: db.TrackAnalysisComplete, artifact: []byte("not gzip"), withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "oversized", status: db.TrackAnalysisComplete, artifact: []byte(strings.Repeat("x", features.MaxStructureStatusArtifactBytes+1)), withArtifact: true, artifactAt: analyzedAt + 1},
 		{id: "stale-source", status: db.TrackAnalysisComplete, artifact: base, artifactFingerprint: "old-source", withArtifact: true, artifactAt: analyzedAt + 1},
 		{id: "source-changed-before-reanalysis", status: db.TrackAnalysisComplete, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, changeSource: true},
 		{id: "source-unavailable", status: db.TrackAnalysisComplete, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, removeSource: true},
@@ -386,6 +387,14 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentSettledStructure(t *testing
 		if got[test.id] != test.wantAvailable {
 			t.Errorf("structureAvailable[%s] = %v, want %v", test.id, got[test.id], test.wantAvailable)
 		}
+		for _, suffix := range []string{"", "/bpm"} {
+			detailRecorder := httptest.NewRecorder()
+			(&API{db: database}).V2Routes().ServeHTTP(detailRecorder, httptest.NewRequest(http.MethodGet, "/analysis/"+test.id+suffix, nil))
+			var detail TrackAnalysisFeatureResponse
+			if err := json.Unmarshal(detailRecorder.Body.Bytes(), &detail); err != nil || detailRecorder.Code != http.StatusOK || detail.StructureAvailable != test.wantAvailable {
+				t.Errorf("detail structure[%s%s]: %d %s (%v)", test.id, suffix, detailRecorder.Code, detailRecorder.Body.String(), err)
+			}
+		}
 	}
 }
 
@@ -432,6 +441,7 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770Measurements(
 		result            features.BS1770Result
 		withArtifact      bool
 		corrupt           bool
+		oversized         bool
 		staleFingerprint  bool
 		legacyFingerprint bool
 		formatVersion     int
@@ -454,6 +464,7 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770Measurements(
 		{id: "unsupported-analysis", status: db.TrackAnalysisUnsupported, result: valid, withArtifact: true},
 		{id: "missing", status: db.TrackAnalysisComplete},
 		{id: "corrupt", status: db.TrackAnalysisComplete, withArtifact: true, corrupt: true},
+		{id: "oversized", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, oversized: true},
 		{id: "unsupported-payload-metadata", status: db.TrackAnalysisComplete, result: badMetadata, withArtifact: true},
 		{id: "silent", status: db.TrackAnalysisComplete, result: silent, withArtifact: true},
 		{id: "short", status: db.TrackAnalysisComplete, result: short, withArtifact: true},
@@ -499,6 +510,9 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770Measurements(
 			data := encode(test.result)
 			if test.corrupt {
 				data = []byte("not gzip")
+			}
+			if test.oversized {
+				data = make([]byte, features.MaxBS1770ArtifactBytes+1)
 			}
 			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
 				ID: test.id + ":bs1770", SongID: test.id, Kind: features.BS1770ArtifactKind,
@@ -694,6 +708,23 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	}
 	if response.LoudnessKind != features.LoudnessKind || response.PeakKind != features.PeakKind || response.ChannelScope != "mono" || response.Standard != "none" {
 		t.Fatalf("energy API did not expose qualified measurement metadata: %#v", response)
+	}
+	// Optional oversized loudness must not hide otherwise usable structure.
+	oversizedArtifact := db.TrackAnalysisArtifact{ID: "song:" + features.BS1770AlgorithmVersion, SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: make([]byte, features.MaxBS1770ArtifactBytes+1)}
+	if err := database.UpsertTrackAnalysisArtifact(oversizedArtifact); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/analysis/song/energy", "/analysis/song"} {
+		w := httptest.NewRecorder()
+		(&API{db: database}).V2Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		var body map[string]any
+		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &body) != nil || body["integratedLufsBs1770"] != nil || body["truePeakDbtp"] != nil {
+			t.Fatalf("oversized optional loudness at %s: %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	oversizedArtifact.Data = standardsEncoded
+	if err := database.UpsertTrackAnalysisArtifact(oversizedArtifact); err != nil {
+		t.Fatal(err)
 	}
 	if response.IntegratedLUFSBS1770 == nil || *response.IntegratedLUFSBS1770 != standardsLoudness || response.TruePeakDBTP == nil || *response.TruePeakDBTP != standardsPeak || response.LoudnessStandard == nil || *response.LoudnessStandard != features.BS1770Standard || response.LoudnessAlgorithm == nil || *response.LoudnessAlgorithm != features.BS1770LoudnessAlgorithm || response.TruePeakAlgorithm == nil || *response.TruePeakAlgorithm != features.BS1770TruePeakAlgorithm || response.LoudnessLayout == nil || *response.LoudnessLayout != "stereo" || response.LoudnessWeighting == nil || *response.LoudnessWeighting != "L=1;R=1" || response.LoudnessStatus == nil || *response.LoudnessStatus != "available" || response.TruePeakStatus == nil || *response.TruePeakStatus != "available" {
 		t.Fatalf("energy API did not expose the separately versioned BS.1770 artifact: %#v", response)

@@ -51,6 +51,13 @@ func TestLocalThreeBandReadFencesSourceAndPayload(t *testing.T) {
 	if call().Code != 500 {
 		t.Fatal("corrupt artifact returned")
 	}
+	artifact.Data = make([]byte, threeband.MaxBytes+1)
+	if err := a.db.UpsertTrackAnalysisArtifact(artifact); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(); w.Code != 500 || w.Body.Len() > 1024 {
+		t.Fatalf("oversized artifact did not fail closed: status=%d size=%d", w.Code, w.Body.Len())
+	}
 	artifact.Data = raw
 	artifact.SourceFingerprint = ""
 	if err := a.db.UpsertTrackAnalysisArtifact(artifact); err != nil {

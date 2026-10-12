@@ -485,3 +485,72 @@ func TestOAuthPlaylistSupersededTraversalDiscardsResult(t *testing.T) {
 		t.Fatal("superseded completion published", got, err)
 	}
 }
+
+func TestOAuthPlaylistExpiredTraversalDiscardsLateResponse(t *testing.T) {
+	for _, stage := range []string{"root", "page"} {
+		t.Run(stage, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "lease.db")
+			database, err := db.New(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			// Open both handles before runtime owner confirmation: opening a DB
+			// deliberately makes persisted owner data provisional.
+			maintenance, err := db.New(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer maintenance.Close()
+			a := &API{db: database}
+			credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+			if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+				t.Fatal(err)
+			}
+			id := strings.Repeat("P", 22)
+			expired := false
+			a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/v1/me" {
+					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"playlist-owner"}`))}, nil
+				}
+				isPage := strings.HasSuffix(r.URL.Path, "/tracks")
+				if !expired && ((stage == "root" && !isPage) || (stage == "page" && isPage)) {
+					// Simulate elapsed inactivity while the response is in flight.
+					got, err := maintenance.MaintainSpotifyPrivateCache(t.Context(), time.Now().Add(db.SpotifyPlaylistTraversalLease+time.Minute), 1)
+					if err != nil || got.TraversalsExpired != 1 {
+						t.Fatalf("independent maintenance failed to expire lease: %+v %v", got, err)
+					}
+					expired = true
+				}
+				raw := `{"type":"playlist","id":"` + id + `","snapshot_id":"revision","tracks":{"offset":0,"items":[null],"next":null}}`
+				if stage == "page" && !isPage {
+					raw = `{"type":"playlist","id":"` + id + `","snapshot_id":"revision","tracks":{"offset":0,"items":[null],"next":"https://api.spotify.com/v1/playlists/` + id + `/tracks?offset=1&limit=100"}}`
+				} else if isPage {
+					raw = `{"offset":1,"items":[null],"next":null}`
+				}
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+			})}
+			rows, _, _, err := a.fetchPlaylistTracks(t.Context(), id, nil)
+			if !expired || !errors.Is(err, db.ErrSpotifyTraversalSuperseded) || rows != nil {
+				t.Fatal("late response escaped expiry fence", expired, rows, err)
+			}
+			owner := a.spotifyTokens().metadataContext
+			for _, resource := range []string{playlistCompletedResource, "rest:/v1/playlists/" + id + ":page::"} {
+				got, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: resource, ContextKey: owner})
+				if err != nil || got != nil {
+					t.Fatal("expired response published catalog completion/domain", resource, got, err)
+				}
+			}
+			if stage == "page" {
+				got, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: playlistPartialResource, ContextKey: owner})
+				var partial struct {
+					Complete   bool `json:"complete"`
+					NextOffset int  `json:"nextOffset"`
+				}
+				if err != nil || got == nil || json.Unmarshal(got.Payload, &partial) != nil || partial.Complete || partial.NextOffset != 1 {
+					t.Fatal("late response changed saved prefix", got, err)
+				}
+			}
+		})
+	}
+}

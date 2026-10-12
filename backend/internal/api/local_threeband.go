@@ -21,7 +21,7 @@ func (a *API) getLocalThreeBand(w http.ResponseWriter, r *http.Request) {
 		respondError(w, 404, "local waveform source unavailable")
 		return
 	}
-	artifact, err := a.db.GetTrackAnalysisArtifact(id, threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion)
+	artifact, err := a.db.GetTrackAnalysisArtifactBounded(id, threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion, threeband.MaxBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		respondError(w, 404, "local three-band waveform not prepared")
 		return

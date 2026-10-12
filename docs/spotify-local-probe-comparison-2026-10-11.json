@@ -1,0 +1,108 @@
+{
+  "capturedAt": "2026-10-11T21:43:17.7304708Z",
+  "completedAt": "2026-10-11T21:43:42.4782920Z",
+  "method": "Standalone production Go analyzer probe of three existing local files; no live DB writes, scans or provider fetches",
+  "limitations": [
+    "Exploratory non-random sample, not reviewed independent accuracy labels or a held-out corpus",
+    "Provider links were automatic searches and need identity review",
+    "Provider/local key naming may differ enharmonically",
+    "Timing observed during background library analysis is not a qualified fresh/warm/offline benchmark"
+  ],
+  "comparisons": [
+    {
+      "title": "The King Of Soul",
+      "artist": "Duzzy",
+      "recordingLinkOrigin": "automatic_search",
+      "sourceUnchangedAcrossProbe": true,
+      "provider": {
+        "bpm": 95.058,
+        "key": "C# major",
+        "bpmConfidence": 0.896,
+        "keyConfidence": 0.325
+      },
+      "local": {
+        "bpm": 95,
+        "tempoConfidence": 0.7073170731707317,
+        "key": "F minor",
+        "keyConfidence": 0.08072837698341336,
+        "status": "complete",
+        "algorithm": "track-v3-spotify-local-artifacts;tempo-v3-multifeature-half-bpm;key-v2-hpcp-ks;energy-level-v1-fixed-reference;itu-r-bs1770-5-annex1-k-weight-gating-v1;itu-r-bs1770-5-annex2-4x-fir-v1",
+        "timing": {
+          "id": "",
+          "codec": "mp3",
+          "sampleRate": 44100,
+          "sourceChannels": 2,
+          "audioSeconds": 199.57551020407843,
+          "wallSeconds": 6.9042265,
+          "decodeAndStreamSeconds": 3.6921094000000068,
+          "dspSeconds": 3.2121170999999933
+        }
+      },
+      "absoluteBpmDifference": 0.058000000000006935
+    },
+    {
+      "title": "You & Me - Flume Remix",
+      "artist": "Disclosure",
+      "recordingLinkOrigin": "automatic_search",
+      "sourceUnchangedAcrossProbe": true,
+      "provider": {
+        "bpm": 75.066,
+        "key": "Bb minor",
+        "bpmConfidence": 0.279,
+        "keyConfidence": 0.427
+      },
+      "local": {
+        "bpm": 112.5,
+        "tempoConfidence": 0.40867714979088715,
+        "key": "Bb minor",
+        "keyConfidence": 0.2314236913061498,
+        "status": "complete",
+        "algorithm": "track-v3-spotify-local-artifacts;tempo-v3-multifeature-half-bpm;key-v2-hpcp-ks;energy-level-v1-fixed-reference;itu-r-bs1770-5-annex1-k-weight-gating-v1;itu-r-bs1770-5-annex2-4x-fir-v1",
+        "timing": {
+          "id": "",
+          "codec": "ogg",
+          "sampleRate": 44100,
+          "sourceChannels": 2,
+          "audioSeconds": 282.81269841269454,
+          "declaredAudioSeconds": 282.8126984126984,
+          "wallSeconds": 6.1205172,
+          "decodeAndStreamSeconds": 1.4229136000000056,
+          "dspSeconds": 4.6976035999999946
+        }
+      },
+      "absoluteBpmDifference": 37.434
+    },
+    {
+      "title": "Freaks - Radio Edit",
+      "artist": "Timmy Trumpet",
+      "recordingLinkOrigin": "automatic_search",
+      "sourceUnchangedAcrossProbe": true,
+      "provider": {
+        "bpm": 128.114,
+        "key": "E major",
+        "bpmConfidence": 0.969,
+        "keyConfidence": 0.025
+      },
+      "local": {
+        "bpm": 128.5,
+        "tempoConfidence": 0.04761904761904766,
+        "key": "E major",
+        "keyConfidence": 0.09357744177953645,
+        "status": "complete",
+        "algorithm": "track-v3-spotify-local-artifacts;tempo-v3-multifeature-half-bpm;key-v2-hpcp-ks;energy-level-v1-fixed-reference;itu-r-bs1770-5-annex1-k-weight-gating-v1;itu-r-bs1770-5-annex2-4x-fir-v1",
+        "timing": {
+          "id": "",
+          "codec": "ogg",
+          "sampleRate": 44100,
+          "sourceChannels": 2,
+          "audioSeconds": 168.75000000000216,
+          "declaredAudioSeconds": 168.75,
+          "wallSeconds": 3.742378,
+          "decodeAndStreamSeconds": 1.0336065999999984,
+          "dspSeconds": 2.7087714000000016
+        }
+      },
+      "absoluteBpmDifference": 0.3859999999999957
+    }
+  ]
+}

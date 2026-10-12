@@ -8,8 +8,11 @@ import (
 )
 
 // LocalScalarObservation retains local alternatives independently of the
-// provider-selected compatibility projection. Nil values mean abstention.
+// provider-selected compatibility projection. Attempt markers distinguish a
+// measured abstention from an estimator skipped because a provider supplied it.
 type LocalScalarObservation struct {
+	TempoAttempted    *bool                `json:"tempoAttempted,omitempty"`
+	KeyAttempted      *bool                `json:"keyAttempted,omitempty"`
 	Fields            []SpotifyScalarField `json:"fields,omitempty"`
 	SourceFingerprint string               `json:"sourceFingerprint"`
 	AlgorithmVersion  string               `json:"algorithmVersion"`

@@ -10,6 +10,72 @@ import (
 	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 )
 
+func TestDownloadedPartialAttemptPreservesLastGoodWithoutSuppressingLocal(t *testing.T) {
+	d, path := evidenceFixture(t)
+	o := referenceObservation()
+	o.AccountContext = "partial-import-owner"
+	o.RetrievedAt = time.Now().Add(-30 * time.Minute)
+	if err := d.ActivateSpotifyMetadataContext(o.AccountContext); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.PutExternalAnalysis(o, "features-v1", o.RetrievedAt.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	other := o
+	other.SourceEndpoint = "audio_analysis"
+	other.BPM = scalarPtr(124.0)
+	if err := d.PutExternalAnalysis(other, "analysis-v1", o.RetrievedAt.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	o.RetrievedAt = o.RetrievedAt.Add(10 * time.Minute)
+	o.BPM = nil
+	o.Energy = scalarPtr(.75)
+	if err := d.PutExternalAnalysis(o, "features-v2", o.RetrievedAt.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	finishEvidence(t, d, path, "partial-import-job", referenceID)
+	fingerprint := scanEvidence(t, d, path, "partial-import-song")
+	if err := d.RetireSpotifyMetadataContext(o.AccountContext); err != nil {
+		t.Fatal(err)
+	}
+	fields, _, _, _, err := d.GetDownloadedSpotifyScalarCandidates(t.Context(), "partial-import-song", fingerprint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := d.GetDownloadedSpotifyScalarCandidateBatchAll(map[string]string{"partial-import-song": fingerprint}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	scoreBatch, err := d.GetDownloadedSpotifyScalarCandidateBatch(map[string]string{"partial-import-song": fingerprint}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, candidates := range map[string][]SpotifyScalarField{"detail": fields, "mixing": batch["partial-import-song"], "score-gated list": scoreBatch["partial-import-song"]} {
+		t.Run(name, func(t *testing.T) {
+			byEndpoint := map[string]SpotifyScalarField{}
+			var energy SpotifyScalarField
+			for _, f := range candidates {
+				if f.Key == "tempo_bpm" {
+					byEndpoint[f.Endpoint] = f
+				}
+				if f.Key == "spotify_energy_score" && f.Endpoint == "audio_features" {
+					energy = f
+				}
+			}
+			stale, fresh := byEndpoint["audio_features"], byEndpoint["audio_analysis"]
+			if !stale.Stale || !stale.DurableImport || !stale.ExpiresAt.After(time.Now()) || fresh.Stale || string(fresh.Value) != "124" || energy.Stale || string(energy.Value) != "0.75" {
+				t.Fatalf("import freshness or endpoint isolation: %+v %+v %+v", stale, fresh, energy)
+			}
+			local := ScalarCandidate{SpotifyScalarField: SpotifyScalarField{Key: "tempo_bpm", Metric: "tempo", Units: "bpm", Value: []byte("119"), AdapterRevision: "local-tempo-v1", RetrievedAt: o.RetrievedAt}, Source: "local", SourceFingerprint: fingerprint}
+			provider := ScalarCandidate{SpotifyScalarField: stale, Source: "spotify_download_import", SourceFingerprint: fingerprint}
+			resolved := ResolveEffectiveScalar("tempo_bpm", fingerprint, []ScalarCandidate{provider, local})
+			if resolved.Selected == nil || resolved.Selected.Source != "local" || resolved.LastGood == nil || resolved.LastGood.Source != provider.Source {
+				t.Fatalf("stale imported field suppressed local fallback or lost last-good: %+v", resolved)
+			}
+		})
+	}
+}
+
 func TestDownloadAudioImportSurvivesPrivateRetirement(t *testing.T) {
 	d, path := evidenceFixture(t)
 	const owner = "download-owner"

@@ -79,6 +79,36 @@ func TestWritePhase0GateReportDoesNotOverwrite(t *testing.T) {
 	}
 }
 
+func TestDeterminismIncludesStructureAvailabilityDurationAndBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		field  string
+		change func(*DetectorResult)
+	}{
+		{"structureAvailable", func(row *DetectorResult) { row.StructureAvailable = false; row.StructureBoundaries = nil }},
+		{"audioDurationSeconds", func(row *DetectorResult) { row.AudioDurationSeconds = 4.1 }},
+		{"structureBoundaries[1]", func(row *DetectorResult) { row.StructureBoundaries[1] = 2.01 }},
+	} {
+		windows, mac, linux := deterministicResult("windows", 128), deterministicResult("darwin", 128), deterministicResult("linux", 128)
+		for _, results := range []*ResultSet{&windows, &mac, &linux} {
+			results.Results[0].StructureAvailable = true
+			results.Results[0].AudioDurationSeconds = 4
+			results.Results[0].StructureBoundaries = []float64{1, 2}
+		}
+		if report := EvaluateDeterminism([]ResultSet{windows, mac, linux}); report.Status != "pass" {
+			t.Fatalf("matching structure: %+v", report)
+		}
+		tc.change(&linux.Results[0])
+		report := EvaluateDeterminism([]ResultSet{windows, mac, linux})
+		found := false
+		for _, difference := range report.Differences {
+			found = found || difference.Field == tc.field
+		}
+		if report.Status != "fail" || !found {
+			t.Fatalf("missing structure difference %s: %+v", tc.field, report)
+		}
+	}
+}
+
 func deterministicResult(platform string, bpm float64) ResultSet {
 	return ResultSet{
 		Algorithm:  "go-track",

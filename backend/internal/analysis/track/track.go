@@ -52,6 +52,8 @@ const (
 // Result is the combined outcome of one analysis pass. Tempo and key carry
 // their own Known flags, so an unmeasured dimension is never mistaken for zero.
 type Result struct {
+	TempoAttempted          *bool
+	KeyAttempted            *bool
 	PreviousSpotifyBindings *db.SpotifyScalarBindings
 	PreparationError        string
 	RepairPrevious          *db.TrackAnalysis
@@ -213,7 +215,7 @@ func analyzeSource(ctx context.Context, registry *analysis.DecoderRegistry, name
 		return Result{SongID: songID}, timing, err
 	}
 
-	result := Result{SongID: songID, DurationSeconds: timing.AudioSeconds}
+	result := Result{SongID: songID, DurationSeconds: timing.AudioSeconds, TempoAttempted: ptr(!opts.SkipTempo), KeyAttempted: ptr(!opts.SkipKey)}
 	dspStarted := time.Now()
 	if onsets == nil {
 		// A decodable source that yielded no PCM at all.
@@ -382,6 +384,7 @@ func persistWithAutoCueModeClaimed(database *db.DB, result Result, autoCueMode d
 	}
 	if result.PreparationError == "" {
 		record.Local = &db.LocalScalarObservation{SourceFingerprint: record.SourceFingerprint, AlgorithmVersion: AlgorithmVersion, MeasuredAt: *record.AnalyzedAt,
+			TempoAttempted: result.TempoAttempted, KeyAttempted: result.KeyAttempted,
 			BPM: record.BPM, BPMConfidence: record.BPMConfidence, BPMAltCandidate: record.BPMAltCandidate, TempoStability: record.TempoStability, TempoKind: record.TempoKind,
 			KeyTonic: record.KeyTonic, KeyMode: record.KeyMode, KeyConfidence: record.KeyConfidence}
 	}

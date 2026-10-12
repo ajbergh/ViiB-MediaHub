@@ -167,8 +167,10 @@ func (d *DB) GetDownloadedSpotifyScalarCandidates(ctx context.Context, songID, f
 }
 
 func (d *DB) queryDownloadedSpotifyScalarFields(ctx context.Context, revision downloadFileRevision, recording string, now time.Time) ([]SpotifyScalarField, error) {
-	rows, err := d.conn.QueryContext(ctx, `SELECT field_key,metric,units,value_json,confidence,resource,schema_version,adapter_revision,retrieved_at,expires_at
-	FROM spotify_download_scalar_imports WHERE file_path=? AND content_sha256=? AND file_size=? AND mtime_ns=? AND spotify_id=? ORDER BY field_key,resource`, revision.path, revision.digest, revision.size, revision.mtime, recording)
+	rows, err := d.conn.QueryContext(ctx, `SELECT i.field_key,i.metric,i.units,i.value_json,i.confidence,i.resource,i.schema_version,i.adapter_revision,i.retrieved_at,i.expires_at,COALESCE(a.checked_at,0),COALESCE(a.state,'')
+	FROM spotify_download_scalar_imports i LEFT JOIN spotify_download_field_attempt_imports a
+	ON a.file_path=i.file_path AND a.content_sha256=i.content_sha256 AND a.file_size=i.file_size AND a.mtime_ns=i.mtime_ns AND a.spotify_id=i.spotify_id AND a.field_key=i.field_key AND a.endpoint=i.resource
+	WHERE i.file_path=? AND i.content_sha256=? AND i.file_size=? AND i.mtime_ns=? AND i.spotify_id=? ORDER BY i.field_key,i.resource`, revision.path, revision.digest, revision.size, revision.mtime, recording)
 	if err != nil {
 		return nil, err
 	}
@@ -181,8 +183,9 @@ func (d *DB) queryDownloadedSpotifyScalarFields(ctx context.Context, revision do
 		var field SpotifyScalarField
 		var raw string
 		var confidence sql.NullFloat64
-		var retrieved, expires int64
-		if err := rows.Scan(&field.Key, &field.Metric, &field.Units, &raw, &confidence, &field.Endpoint, &field.SchemaVersion, &field.AdapterRevision, &retrieved, &expires); err != nil {
+		var retrieved, expires, checked int64
+		var attemptState string
+		if err := rows.Scan(&field.Key, &field.Metric, &field.Units, &raw, &confidence, &field.Endpoint, &field.SchemaVersion, &field.AdapterRevision, &retrieved, &expires, &checked, &attemptState); err != nil {
 			return nil, err
 		}
 		if !json.Valid([]byte(raw)) || raw == "null" {
@@ -195,7 +198,7 @@ func (d *DB) queryDownloadedSpotifyScalarFields(ctx context.Context, revision do
 		}
 		field.RetrievedAt = time.UnixMilli(retrieved).UTC()
 		field.ExpiresAt = time.UnixMilli(expires).UTC()
-		field.Stale = !now.Before(field.ExpiresAt)
+		field.Stale = !now.Before(field.ExpiresAt) || checked > retrieved || (checked == retrieved && attemptState != "" && attemptState != "available")
 		field.DurableImport = true
 		result = append(result, field)
 	}

@@ -85,7 +85,7 @@ func (a *API) getDJWaveform(w http.ResponseWriter, r *http.Request) {
 	// between the initial miss and this claim. Waiters never open the audio.
 	var token string
 	for {
-		artifact, artifactErr := a.db.GetTrackAnalysisArtifact(trackID, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion)
+		artifact, artifactErr := a.db.GetTrackAnalysisArtifactBounded(trackID, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion, waveformartifact.MaxBytes)
 		if artifactErr == nil && artifact.SourceFingerprint == source.Fingerprint && source.Fingerprint != "" && artifact.Encoding == waveformartifact.Encoding && artifact.Provenance == "measured" {
 			if overview, err := waveformartifact.Decode(artifact.Data); err == nil {
 				current, resolveErr := a.resolveAnalysisSource(r.Context(), trackID)

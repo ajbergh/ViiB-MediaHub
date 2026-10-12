@@ -56,4 +56,16 @@ func (s *Scanner) maintainPrivateSpotifyCache() {
 	if result.Collected > 0 {
 		logger.Scanner("Collected %d expired private Spotify cache payload groups", result.Collected)
 	}
+	if result.StatusCollected > 0 {
+		logger.Scanner("Collected %d expired private Spotify cache orphan status rows", result.StatusCollected)
+	}
+	if result.TraversalsExpired > 0 {
+		logger.Scanner("Expired %d inactive Spotify playlist traversal leases", result.TraversalsExpired)
+	}
+	if result.TraversalsDeleted > 0 {
+		logger.Scanner("Collected %d inactive Spotify playlist traversal rows", result.TraversalsDeleted)
+	}
+	if result.StagingCollected > 0 {
+		logger.Scanner("Collected %d orphan Spotify download lineage rows", result.StagingCollected)
+	}
 }

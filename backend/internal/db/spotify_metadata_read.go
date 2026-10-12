@@ -125,14 +125,21 @@ func (d *DB) GetExternalAnalysisStatusForRuntime(fence SpotifyMetadataReadFence,
 	return status, nil
 }
 
-// ValidateSpotifyMetadataRead checks admission without inspecting provider data.
+// ValidateSpotifyMetadataRead rechecks the same admission used by scalar reads.
+// A fresh active login may precede profile capture; pending reads still require
+// the retained owner/provider row and cannot borrow active-session admission.
 func (d *DB) ValidateSpotifyMetadataRead(fence SpotifyMetadataReadFence) error {
 	tx, err := d.conn.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if err := checkSpotifyMetadataReadFenceTx(tx, fence); err != nil {
+	if fence.Pending {
+		err = checkSpotifyMetadataReadFenceTx(tx, fence)
+	} else {
+		err = checkSpotifyMetadataFenceTx(tx, SpotifyMetadataFence{Epoch: fence.Epoch, ContextKey: fence.ContextKey})
+	}
+	if err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -16,8 +16,7 @@ import (
 )
 
 // ProduceBenchmarkResults runs the backend-owned track analyzer over local
-// .mp3 and .ogg manifest entries. Other codecs remain deliberately outside
-// this focused Phase 0 slice.
+// manifest entries supported by the production decoder registry.
 func ProduceBenchmarkResults(ctx context.Context, manifest analysisbench.CorpusManifest) (analysisbench.ResultSet, error) {
 	return ProduceBenchmarkResultsWithOptions(ctx, manifest, DefaultOptions())
 }
@@ -28,18 +27,18 @@ func ProduceBenchmarkResultsWithOptions(ctx context.Context, manifest analysisbe
 	return ProduceBenchmarkResultsWithRegistryAndOptions(ctx, manifest, analysis.NewDefaultDecoderRegistry(), options)
 }
 
-// ProbeBenchmarkFile runs a focused MP3/Ogg decoder smoke measurement without
+// ProbeBenchmarkFile runs a production decoder smoke measurement without
 // claiming that unlabeled media contributes to any accuracy metric.
 func ProbeBenchmarkFile(ctx context.Context, path string) (analysisbench.CodecProbe, error) {
 	return ProbeBenchmarkFileWithRegistry(ctx, path, analysis.NewDefaultDecoderRegistry())
 }
 
 func ProbeBenchmarkFileWithRegistry(ctx context.Context, path string, registry *analysis.DecoderRegistry) (analysisbench.CodecProbe, error) {
-	if !isBenchmarkCodec(path) {
-		return analysisbench.CodecProbe{}, fmt.Errorf("probe %q uses %q; this Phase 0 runner currently supports only .mp3 and .ogg", filepath.Base(path), filepath.Ext(path))
-	}
 	if registry == nil {
 		return analysisbench.CodecProbe{}, fmt.Errorf("analysis benchmark requires a decoder registry")
+	}
+	if !registry.Supports(path) {
+		return analysisbench.CodecProbe{}, fmt.Errorf("probe %q uses an unsupported decoder extension %q", filepath.Base(path), filepath.Ext(path))
 	}
 	result, timing, err := AnalyzeFile(ctx, registry, path, DefaultOptions())
 	probe := analysisbench.CodecProbe{
@@ -78,7 +77,7 @@ func ProduceBenchmarkResultsWithRegistry(ctx context.Context, manifest analysisb
 // ProduceBenchmarkResultsWithRegistryAndOptions permits deterministic tests
 // and tuning-split benchmark sweeps without changing the production default.
 func ProduceBenchmarkResultsWithRegistryAndOptions(ctx context.Context, manifest analysisbench.CorpusManifest, registry *analysis.DecoderRegistry, options Options) (analysisbench.ResultSet, error) {
-	return produceBenchmarkResults(ctx, manifest, registry, options, false)
+	return produceBenchmarkResults(ctx, manifest, registry, options)
 }
 
 // ProduceSyntheticBenchmarkResults runs generated, labeled fixtures through the
@@ -101,10 +100,10 @@ func ProduceSyntheticBenchmarkResults(ctx context.Context) (analysisbench.Result
 	if err != nil {
 		return analysisbench.ResultSet{}, err
 	}
-	return produceBenchmarkResults(ctx, manifest, analysis.NewDefaultDecoderRegistry(), DefaultOptions(), true)
+	return produceBenchmarkResults(ctx, manifest, analysis.NewDefaultDecoderRegistry(), DefaultOptions())
 }
 
-func produceBenchmarkResults(ctx context.Context, manifest analysisbench.CorpusManifest, registry *analysis.DecoderRegistry, options Options, generatedFixtures bool) (analysisbench.ResultSet, error) {
+func produceBenchmarkResults(ctx context.Context, manifest analysisbench.CorpusManifest, registry *analysis.DecoderRegistry, options Options) (analysisbench.ResultSet, error) {
 	if err := manifest.Validate(); err != nil {
 		return analysisbench.ResultSet{}, err
 	}
@@ -112,9 +111,8 @@ func produceBenchmarkResults(ctx context.Context, manifest analysisbench.CorpusM
 		return analysisbench.ResultSet{}, fmt.Errorf("analysis benchmark requires a decoder registry")
 	}
 	for _, corpusTrack := range manifest.Tracks {
-		generatedWAV := generatedFixtures && manifest.EvidenceClass == analysisbench.EvidenceSyntheticCI && strings.EqualFold(filepath.Ext(corpusTrack.Path), ".wav")
-		if !isBenchmarkCodec(corpusTrack.Path) && !generatedWAV {
-			return analysisbench.ResultSet{}, fmt.Errorf("track %q uses %q; this Phase 0 runner currently supports only .mp3 and .ogg", corpusTrack.ID, filepath.Ext(corpusTrack.Path))
+		if !registry.Supports(corpusTrack.Path) {
+			return analysisbench.ResultSet{}, fmt.Errorf("track %q uses an unsupported decoder extension %q", corpusTrack.ID, filepath.Ext(corpusTrack.Path))
 		}
 	}
 
@@ -168,6 +166,15 @@ func produceBenchmarkResults(ctx context.Context, manifest analysisbench.CorpusM
 				detectorResult.Key = result.Key.Key
 				detectorResult.KeyConfidence = benchmarkFloat64Pointer(result.Key.Confidence)
 			}
+			if result.Features != nil && len(result.Features.Sections) > 0 && result.DurationSeconds > 0 {
+				detectorResult.StructureAvailable = true
+				detectorResult.AudioDurationSeconds = result.DurationSeconds
+				for _, section := range result.Features.Sections {
+					if section.Start > 0 && section.Start < result.DurationSeconds {
+						detectorResult.StructureBoundaries = append(detectorResult.StructureBoundaries, section.Start)
+					}
+				}
+			}
 		}
 		resultSet.Results = append(resultSet.Results, detectorResult)
 		throughput.Tracks = append(throughput.Tracks, measurement)
@@ -180,15 +187,6 @@ func produceBenchmarkResults(ctx context.Context, manifest analysisbench.CorpusM
 	throughput.DecodeRealtimeMultiple = benchmarkRealtimeMultiple(throughput.AudioSeconds, throughput.DecodeAndStreamSeconds)
 	throughput.DSPRealtimeMultiple = benchmarkRealtimeMultiple(throughput.AudioSeconds, throughput.DSPSeconds)
 	return resultSet, nil
-}
-
-func isBenchmarkCodec(path string) bool {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".mp3", ".ogg":
-		return true
-	default:
-		return false
-	}
 }
 
 func benchmarkEnvironment() analysisbench.BenchmarkEnvironment {

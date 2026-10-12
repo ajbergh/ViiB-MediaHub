@@ -1,0 +1,44 @@
+{
+  "capturedAt": "2026-10-12T13:02:31.201Z",
+  "completedAt": "2026-10-12T13:02:31.689Z",
+  "librarySongs": 386,
+  "analysisRows": 386,
+  "statuses": {
+    "complete": 335,
+    "partial": 39,
+    "failed": 12
+  },
+  "bpmSources": {
+    "measured": 365,
+    "unknown": 20,
+    "manual": 1
+  },
+  "keySources": {
+    "measured": 343,
+    "unknown": 43
+  },
+  "sampledSelectionDisagreements": 0,
+  "sampledStructureDisagreements": 0,
+  "durationComparison": {
+    "matchedRows": 0,
+    "rowsDifferingByMoreThanTwoSeconds": 0,
+    "interpretation": "Decoded-file duration and provider recording duration remain separate. A difference is a review cue, not proof of a bad link. Local LUFS/energy and provider dB/0\u20131 energy are distinct metrics and are not numerically equated."
+  },
+  "build": "Milestone 259 preparation plus session read/store error classification",
+  "authentication": {
+    "provider": "webplayer",
+    "connected": true,
+    "authRequired": false,
+    "profileHttpStatus": 200,
+    "profileIdentityPresent": true
+  },
+  "sampledRows": 3,
+  "method": "GET-only local projection audit after restored executable binding and authenticated profile read. No enrichment or scan requested.",
+  "credentialRecovery": "Existing Spotify session and LLM key were proven decryptable at the original Dev executable path without emitting plaintext. Tested backend restored there; no encrypted settings rewritten.",
+  "limitations": [
+    "Existing encryption depends on executable path; future restarts must retain this exact path until a separately designed migration.",
+    "This is not a new interactive browser-login verification.",
+    "Provider/local values are not independent accuracy labels.",
+    "No native/browser/accessibility or macOS/Linux runtime qualification."
+  ]
+}
