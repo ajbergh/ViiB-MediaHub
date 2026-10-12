@@ -9,6 +9,7 @@ The owner approved deferring further local scanning/DSP improvements to a future
 - Existing provider capture, source/account fencing, DJ scalar publication, retained evidence and reviewed-grid safeguards remain included.
 - Final review found an overlapping Smart Mix request race. Per-request generation now guards success/error publication and loading settlement, and unmount invalidates pending publication. Regression coverage exercises both completion orders within one Spotify session.
 - Beat-grid reset now explicitly clears the source fingerprint alongside the grid/lock. Existing late-source-change fencing remains tested.
+- Repeated validation reproduced missing catalog snapshots under concurrent download-resource writes. Catalog publication now retries only SQLite busy/locked errors with bounded backoff, releases the runtime read lock while waiting, and rechecks account/fence admission on each attempt. Cancellation, superseded runtime errors and other failures are not retried. The original HTTP response stays intact; no provider request is repeated by this fix.
 - The executable-path credential dependency is unchanged from `main`; the current handoff documents the development limitation. No credential migration or live settings change is made.
 - Benchmark experiments remain opt-in and unpromoted. No reserved corpus runs or further local-scanning improvements are undertaken.
 - Staticcheck findings were cleaned up: four unused private helpers, two overwritten test assignments, a redundant boolean comparison and error-message capitalization. No estimator behavior changes.
@@ -16,8 +17,12 @@ The owner approved deferring further local scanning/DSP improvements to a future
 
 ## Verification and publication
 
-Documentation validation passes: **67 Markdown files, 472 local targets, 37 documentation JSON files**, zero failures. The new check runs in CI. Public-evaluation tools pass all 12 acquisition and five rhythm-adapter regressions. Formatting and whitespace checks pass.
+Documentation validation passes: **67 Markdown files, 471 local targets, 37 documentation JSON files**, zero failures. The new check runs in CI and rejects ignored targets absent from a clean checkout. An old screenshot reference is now explicitly labelled local-only rather than presented as a repository link. Public-evaluation tools pass all 12 acquisition and five rhythm-adapter regressions. Formatting and whitespace checks pass.
 
-Before the dependency patch, full frontend checks passed **114 files / 491 tests**, types/boundaries/colors and production build. Full backend tests, vet/build and final Staticcheck passed. The Windows full race run reached its ten-minute per-package limit in API/DB; its log reports no data race. It is a timeout, not a pass. CI now allows 25 minutes for the full race suite, retaining all tests.
+After the dependency patch, full frontend checks pass **114 files / 491 tests**, types/boundaries/colors and production build; the shipped dependency audit reports zero vulnerabilities. Full backend tests pass on Go 1.26.9 after the catalog retry fix. Vet, both application builds and Staticcheck pass. Both built binaries report **zero affected vulnerabilities**; one non-called module advisory remains in the scanner's inventory. The catalog contention/cancellation/retirement checks and existing capture regression pass **200 repetitions**.
 
-Patched-toolchain/dependency results and PR CI state will be recorded after those checks finish. A new PR targets `main`; required hosted CI must pass before merge. Native/browser and independent corpus qualification gaps remain disclosed rather than treated as completed by tests.
+The earlier Windows full race run reached its ten-minute per-package limit in API/DB; its log reports no data race. It is a timeout, not a pass. CI and release validation now allow 25 minutes for the full race suite, retaining all tests. The required hosted race/native/platform checks must pass on the latest PR head before merge.
+
+Focused catalog retry/download-bundle/artist-page race regressions pass three repetitions (17.260s); affected vet and Staticcheck pass. This narrow result does not replace the full hosted race suite.
+
+[PR #117](https://github.com/ajbergh/ViiB-MediaHub/pull/117) targets `main` and was opened as a draft while validation ran. Inspect its current checks/review state for the merge decision. Native/browser and independent corpus qualification gaps remain disclosed rather than treated as completed by tests. No automatic merge or deployment is authorized.

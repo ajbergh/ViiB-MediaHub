@@ -9,6 +9,7 @@ The owner deferred further local scanning/DSP improvements to a future branch an
 - Updated twelve active provider/analysis roadmap, parity, validation, import, benchmark and performance references with explicit scope notices. Historical validation entries retain their original dates and conclusions.
 - Corrected user-facing architecture/Spotify docs that still called implemented metadata and three-band waveform selection merely proposed. Updated library/DJ/Smart Mix guides for deferred improvements, reviewed-grid behavior, transient source-labelled BPM and generation fencing.
 - Updated active/archive indexes and repaired relative links throughout repository Markdown, including links inside moved documents. Active reproducibility contracts and provider parity/validation records remain available.
+- Clean-checkout CI exposed one old link to an ignored screenshot. Its historical capture path is now labelled local-only; the checker also rejects ignored file targets instead of accepting files that happen to exist on a developer machine.
 - Documented the pre-existing executable-path credential limitation without claiming a new auth migration or touching live secrets.
 - Updated active toolchain/build/CI/release instructions to the patched Go 1.26.9 baseline after vulnerability scanning identified required release fixes. Historical compiler/measurement versions remain unchanged.
 

@@ -17,6 +17,7 @@ def main():
         ['git', '-c', f'safe.directory={root.as_posix()}', 'ls-files', '--cached', '--others', '--exclude-standard'],
         cwd=root, text=True,
     ).splitlines()
+    repository_files = {(root / name).resolve() for name in names if (root / name).is_file()}
     failures = []
     documents = links = artifacts = 0
     inline = re.compile(r'!?\[[^\]\n]*\]\((<[^>\n]*>|[^\s)]+)(?:\s+[\'\"][^\n]*?[\'\"])?\)')
@@ -38,6 +39,10 @@ def main():
                 destination = (root / unquote(parsed.path).lstrip('/')) if parsed.path.startswith('/') else path.parent / unquote(parsed.path)
                 if not destination.exists():
                     failures.append(f'{name}: missing target {target}')
+                elif destination.is_file() and destination.resolve() not in repository_files:
+                    failures.append(f'{name}: target is ignored/unavailable in a clean checkout: {target}')
+                elif destination.is_dir() and not any(p.is_relative_to(destination.resolve()) for p in repository_files):
+                    failures.append(f'{name}: directory has no repository files: {target}')
         elif name.startswith('docs/') and path.suffix == '.json':
             artifacts += 1
             try:
