@@ -17,7 +17,7 @@ The owner approved deferring further local scanning/DSP improvements to a future
 
 ## Verification and publication
 
-Documentation validation passes: **67 Markdown files, 471 local targets, 37 documentation JSON files**, zero failures. The new check runs in CI and rejects ignored targets absent from a clean checkout. An old screenshot reference is now explicitly labelled local-only rather than presented as a repository link. Public-evaluation tools pass all 12 acquisition and five rhythm-adapter regressions. Formatting and whitespace checks pass.
+Documentation validation passes: **67 Markdown files, 472 local targets, 37 documentation JSON files**, zero failures. The new check runs in CI and rejects ignored targets absent from a clean checkout. An old screenshot reference is now explicitly labelled local-only rather than presented as a repository link. Public-evaluation tools pass all 12 acquisition and five rhythm-adapter regressions. Formatting and whitespace checks pass.
 
 After the dependency patch, full frontend checks pass **114 files / 491 tests**, types/boundaries/colors and production build; the shipped dependency audit reports zero vulnerabilities. Full backend tests pass on Go 1.26.9 after the catalog retry fix. Vet, both application builds and Staticcheck pass. Both built binaries report **zero affected vulnerabilities**; one non-called module advisory remains in the scanner's inventory. The catalog contention/cancellation/retirement checks and existing capture regression pass **200 repetitions**.
 
