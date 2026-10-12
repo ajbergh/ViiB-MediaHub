@@ -52,7 +52,7 @@ func TestDJSmartPlaylistUsesCurrentProviderBPMThroughPublication(t *testing.T) {
 	if ok, err := database.ConfirmSpotifyRecording(songID, spotifyID, source.Fingerprint, true); err != nil || !ok {
 		t.Fatalf("confirm current recording: %v %v", ok, err)
 	}
-	providerBPM := 135.0
+	providerBPM := 135.25
 	now := time.Now()
 	if err := database.PutExternalAnalysis(spotifyanalysis.Observation{TrackID: spotifyID, AccountContext: owner, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now, BPM: &providerBPM}, "fixture", now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
@@ -75,7 +75,8 @@ func TestDJSmartPlaylistUsesCurrentProviderBPMThroughPublication(t *testing.T) {
 		t.Fatalf("DJ smart playlist = %d: %s", recorder.Code, recorder.Body.String())
 	}
 	var response struct {
-		DJ dj.DJResponse `json:"dj"`
+		DJ    dj.DJResponse `json:"dj"`
+		Songs []djQueueSong `json:"songs"`
 	}
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatal(err)
@@ -91,6 +92,50 @@ func TestDJSmartPlaylistUsesCurrentProviderBPMThroughPublication(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("DJ response selected no songs: %+v", response.DJ)
+	}
+	assertQueueAnalysis := func(songs []djQueueSong, want float64, wantSource string) {
+		t.Helper()
+		if len(songs) != 1 {
+			t.Fatalf("queue songs = %+v", songs)
+		}
+		feature := songs[0].Analysis
+		if songs[0].BPM != 0 || feature.SongID != songID || feature.BPM == nil || *feature.BPM != want || feature.BPMSource != wantSource || feature.SourceFingerprint != source.Fingerprint || feature.MeasuredBPM == nil || *feature.MeasuredBPM != 90 || feature.SyncAllowed != (wantSource != "spotify") {
+			t.Fatalf("queue metadata precedence/precision: %+v", songs[0])
+		}
+		found := false
+		for _, field := range feature.EffectiveFields {
+			if field.Key == "tempo_bpm" && field.Selected != nil {
+				found = true
+				if field.Selected.Units != "bpm" || field.Selected.SourceFingerprint != source.Fingerprint {
+					t.Fatalf("queue scalar provenance: %+v", field)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("queue is missing effective tempo evidence")
+		}
+	}
+	assertQueueAnalysis(response.Songs, providerBPM, "spotify")
+	if ok, err := database.SetTrackAnalysisBPMOverrideIfSourceCurrent(songID, 135.3, source.Fingerprint); err != nil || !ok {
+		t.Fatalf("same-rounded manual override: %v %v", ok, err)
+	}
+	if err := api.validateDJQueuePublication(map[string]string{songID: source.Fingerprint}, nil, map[string]TrackAnalysisFeatureResponse{songID: response.Songs[0].Analysis}, map[string]int{songID: 135}); err == nil {
+		t.Fatal("changed manual provenance/precision with identical integer scoring BPM was published")
+	}
+	if ok, err := database.SetTrackAnalysisBPMOverrideIfSourceCurrent(songID, 121.75, source.Fingerprint); err != nil || !ok {
+		t.Fatalf("manual override: %v %v", ok, err)
+	}
+	manualRecorder := httptest.NewRecorder()
+	api.Routes().ServeHTTP(manualRecorder, httptest.NewRequest(http.MethodPost, "/smart-playlist", strings.NewReader(`{"prompt":"party dance","mode":"dj","source":"local","targetDurationMinutes":2}`)))
+	var manual struct {
+		Songs []djQueueSong `json:"songs"`
+	}
+	if manualRecorder.Code != http.StatusOK || json.NewDecoder(manualRecorder.Body).Decode(&manual) != nil {
+		t.Fatalf("manual queue: %d %s", manualRecorder.Code, manualRecorder.Body.String())
+	}
+	assertQueueAnalysis(manual.Songs, 121.75, "manual")
+	if ok, err := database.ResetTrackAnalysisBPMOverrideIfSourceCurrent(songID, source.Fingerprint); err != nil || !ok {
+		t.Fatalf("reset manual: %v %v", ok, err)
 	}
 
 	auditStarted := make(chan struct{})
@@ -141,15 +186,31 @@ func TestDJSmartPlaylistUsesCurrentProviderBPMThroughPublication(t *testing.T) {
 		t.Fatalf("DJ route should retain local scoring after session retirement: %d: %s", fallbackRecorder.Code, fallbackRecorder.Body.String())
 	}
 	var fallback struct {
-		DJ dj.DJResponse `json:"dj"`
+		DJ    dj.DJResponse `json:"dj"`
+		Songs []djQueueSong `json:"songs"`
 	}
 	if err := json.NewDecoder(fallbackRecorder.Body).Decode(&fallback); err != nil {
 		t.Fatal(err)
 	}
+	assertQueueAnalysis(fallback.Songs, 90, "measured")
 	for _, phase := range fallback.DJ.Phases {
 		if phase.SongCount > 0 && (phase.AvgBPM != 90 || phase.MinBPM != 90 || phase.MaxBPM != 90) {
 			t.Fatalf("retired provider tempo was reused after session change: %+v", phase)
 		}
+	}
+	if err := os.Remove(mediaPath); err != nil {
+		t.Fatal(err)
+	}
+	unavailableRecorder := httptest.NewRecorder()
+	api.Routes().ServeHTTP(unavailableRecorder, httptest.NewRequest(http.MethodPost, "/smart-playlist", strings.NewReader(`{"prompt":"party dance","mode":"dj","source":"local","targetDurationMinutes":2}`)))
+	var unavailable struct {
+		Songs []djQueueSong `json:"songs"`
+	}
+	if unavailableRecorder.Code != http.StatusOK || json.NewDecoder(unavailableRecorder.Body).Decode(&unavailable) != nil || len(unavailable.Songs) != 1 {
+		t.Fatalf("unavailable source queue: %d %s", unavailableRecorder.Code, unavailableRecorder.Body.String())
+	}
+	if feature := unavailable.Songs[0].Analysis; feature.BPM != nil || feature.BPMSource != "unknown" || feature.MeasuredBPM != nil || feature.SourceFingerprint != "" || feature.SyncAllowed {
+		t.Fatalf("unavailable source leaked old analysis: %+v", feature)
 	}
 }
 

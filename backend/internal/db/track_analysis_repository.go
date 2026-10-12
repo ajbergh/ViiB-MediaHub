@@ -190,7 +190,7 @@ func ResolveEffectiveKeyForSource(inputs EffectiveKeyInputs, currentFingerprint 
 //
 // A `partial` record is as authoritative for tempo as a `complete` one: partial
 // means one dimension was not measured, and a track whose key could not be
-// determined — a drum loop, a percussion tool — still has a perfectly good
+// determined â€” a drum loop, a percussion tool â€” still has a perfectly good
 // measured BPM.
 //
 // `pending` and `running` are excluded because a claimed row keeps the previous
@@ -424,7 +424,7 @@ func upsertTrackAnalysisArtifact(executor preparationExecutor, artifact TrackAna
 	case "measured", "inferred-from-meter", "manual", "unknown":
 	case "spotify":
 		if artifact.Kind != "beatgrid" {
-			return errors.New("Spotify provenance is only valid for beat-grid artifacts")
+			return errors.New("spotify provenance is only valid for beat-grid artifacts")
 		}
 	default:
 		return errors.New("invalid track analysis artifact provenance")
@@ -874,14 +874,6 @@ func (d *DB) ListEffectiveBPMWithProvider(currentFingerprints map[string]string,
 		}
 	}
 	return results, nil
-}
-
-func ptrTrackAnalysisOverride(overrides map[string]TrackAnalysisOverride, songID string) *TrackAnalysisOverride {
-	override, ok := overrides[songID]
-	if !ok {
-		return nil
-	}
-	return &override
 }
 
 type trackAnalysisScanner interface{ Scan(dest ...any) error }

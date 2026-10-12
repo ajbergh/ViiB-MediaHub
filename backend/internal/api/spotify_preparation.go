@@ -181,7 +181,7 @@ func (a *API) spotifyPreparationForSource(parent context.Context, source analysi
 }
 
 func freshSpotifyAudioArtifact(artifact *db.SpotifyAudioArtifact, recordingID string, now time.Time) bool {
-	return artifact != nil && artifact.TrackID == recordingID && artifact.Resource == "audio_analysis" && artifact.RetrievedAt.IsZero() == false && artifact.ExpiresAt.After(artifact.RetrievedAt) && now.Before(artifact.ExpiresAt)
+	return artifact != nil && artifact.TrackID == recordingID && artifact.Resource == "audio_analysis" && !artifact.RetrievedAt.IsZero() && artifact.ExpiresAt.After(artifact.RetrievedAt) && now.Before(artifact.ExpiresAt)
 }
 
 func spotifyBeatGridFromArtifacts(beatsPayload, barsPayload []byte) *beatgrid.Grid {

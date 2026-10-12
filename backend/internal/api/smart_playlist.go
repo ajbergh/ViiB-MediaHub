@@ -2070,10 +2070,18 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		logger.API("DJ Mode: failed to resolve current candidate source identities; BPM remains unknown: %v", fingerprintErr)
 		currentFingerprints = map[string]string{}
 	}
-	localBPM, bpmErr := a.db.ListEffectiveBPM(currentFingerprints)
+	// Keep unavailable candidates explicit so they can still be sequenced with
+	// unknown analysis, and fence a source becoming available before publication.
+	for songID := range candidateIDs {
+		if _, exists := currentFingerprints[songID]; !exists {
+			currentFingerprints[songID] = ""
+		}
+	}
+	localAnalysis, localBPM, bpmErr := a.resolveDJQueueAnalysis(currentFingerprints, nil)
 	if bpmErr != nil {
 		logger.API("DJ Mode: failed to load local BPM; tracks without tempo remain unknown: %v", bpmErr)
 		localBPM = map[string]int{}
+		localAnalysis = map[string]TrackAnalysisFeatureResponse{}
 	}
 	scoreCtx := dj.NewScoreContext()
 	scoreCtx.DiscoverMode = discoverMode
@@ -2086,14 +2094,17 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		scoreCtx.EffectiveEnergy = measuredEnergy
 	}
 
+	var queueAnalysis map[string]TrackAnalysisFeatureResponse
 	assemble := func(providerFields map[string][]db.SpotifyScalarField) (map[string]interface{}, int, string) {
 		scoreCtx.EffectiveBPM = localBPM
+		resolvedAnalysis := localAnalysis
 		if len(providerFields) > 0 {
-			effectiveBPM, effectiveErr := a.db.ListEffectiveBPMWithProvider(currentFingerprints, providerFields)
+			features, effectiveBPM, effectiveErr := a.resolveDJQueueAnalysis(currentFingerprints, providerFields)
 			if effectiveErr != nil {
 				logger.API("DJ Mode: failed to resolve provider BPM; retaining local/manual tempo: %v", effectiveErr)
 			} else {
 				scoreCtx.EffectiveBPM = effectiveBPM
+				resolvedAnalysis = features
 			}
 		}
 		sequencer := dj.NewSequencer()
@@ -2138,10 +2149,16 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			}
 		}
 		songsAny := make([]any, len(queue))
+		queueAnalysis = make(map[string]TrackAnalysisFeatureResponse, len(queue))
 		for i, song := range queue {
-			songsAny[i] = song
+			transformLibrarySongForAPI(&song)
+			feature, exists := resolvedAnalysis[song.ID]
+			if !exists {
+				feature = TrackAnalysisFeatureResponse{SongID: song.ID, Status: db.TrackAnalysisPending, BPMSource: "unknown", KeySource: "unknown"}
+			}
+			queueAnalysis[song.ID] = feature
+			songsAny[i] = djQueueSong{Song: song, Analysis: feature}
 		}
-		songsAny = transformSongsForAPI(songsAny)
 		response := map[string]interface{}{
 			"filter": map[string]interface{}{
 				"mode": "dj", "persona": persona, "prompt": prompt, "genres": seedGenres,
@@ -2175,6 +2192,10 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			http.Error(w, message, status)
 			return
 		}
+		if err := a.validateDJQueuePublication(currentFingerprints, providerFields, queueAnalysis, scoreCtx.EffectiveBPM); err != nil {
+			http.Error(w, "DJ candidate sources or analysis changed during assembly; refresh the recommendation", http.StatusConflict)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(response)
 		return
@@ -2204,6 +2225,10 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			http.Error(w, message, status)
 			return
 		}
+		if err := a.validateDJQueuePublication(currentFingerprints, nil, queueAnalysis, scoreCtx.EffectiveBPM); err != nil {
+			http.Error(w, "DJ candidate sources or analysis changed during assembly; refresh the recommendation", http.StatusConflict)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(response)
 		return
@@ -2221,40 +2246,14 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		if err := readCtx.Err(); err != nil {
 			return err
 		}
-		latestFingerprints, err := a.currentAnalysisSourceFingerprints(sortedSongIDs(candidateIDs))
-		if err != nil {
+		if err := a.validateDJQueuePublication(currentFingerprints, providerFields, queueAnalysis, scoreCtx.EffectiveBPM); err != nil {
 			return err
-		}
-		for songID, fingerprint := range currentFingerprints {
-			if latestFingerprints[songID] != fingerprint {
-				return fmt.Errorf("DJ candidate source changed during assembly")
-			}
-		}
-		if len(providerFields) > 0 {
-			validatedFields, err := a.db.RevalidateSpotifyScalarCandidateBatch(currentFingerprints, providerFields)
-			if err != nil {
-				return err
-			}
-			validatedBPM, err := a.db.ListEffectiveBPMWithProvider(currentFingerprints, validatedFields)
-			if err != nil {
-				return err
-			}
-			for songID, bpm := range scoreCtx.EffectiveBPM {
-				if validatedBPM[songID] != bpm {
-					return fmt.Errorf("DJ provider recording changed during assembly")
-				}
-			}
-			for songID, bpm := range validatedBPM {
-				if scoreCtx.EffectiveBPM[songID] != bpm {
-					return fmt.Errorf("DJ provider recording changed during assembly")
-				}
-			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w).Encode(response)
 	}
 	var publicationErr error
-	if hasPrivateTempoCandidate(providerFields) {
+	if hasPrivateDJScalarCandidate(providerFields) {
 		publicationErr = runtime.withMetadataRead(readCtx, func(fence db.SpotifyMetadataReadFence) error {
 			if fence != capturedFence {
 				return spotifyauth.ErrAuthenticationRequired
@@ -2274,10 +2273,10 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 
 }
 
-func hasPrivateTempoCandidate(fields map[string][]db.SpotifyScalarField) bool {
+func hasPrivateDJScalarCandidate(fields map[string][]db.SpotifyScalarField) bool {
 	for _, candidates := range fields {
 		for _, field := range candidates {
-			if field.Key == "tempo_bpm" && !field.DurableImport {
+			if !field.DurableImport {
 				return true
 			}
 		}

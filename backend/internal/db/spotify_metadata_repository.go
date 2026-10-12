@@ -162,7 +162,7 @@ func putSpotifyEntitySnapshotTx(tx *sql.Tx, snapshot SpotifyEntitySnapshot) erro
 		}
 		relationBytes += len(relation.Metadata)
 		if relationBytes > metadata.CatalogLimit {
-			return errors.New("Spotify relation metadata exceeds limit")
+			return errors.New("spotify relation metadata exceeds limit")
 		}
 	}
 	if strings.HasPrefix(snapshot.Resource, "rest:") {
@@ -330,7 +330,7 @@ func (d *DB) GetSpotifyEntitySnapshot(key SpotifySnapshotKey) (*SpotifyEntitySna
 	}
 	sum := sha256.Sum256(sanitized)
 	if hex.EncodeToString(sum[:]) != value.PayloadHash {
-		return nil, errors.New("Spotify snapshot integrity mismatch")
+		return nil, errors.New("spotify snapshot integrity mismatch")
 	}
 	value.RetrievedAt = time.UnixMilli(retrieved).UTC()
 	value.ExpiresAt = time.UnixMilli(expires).UTC()

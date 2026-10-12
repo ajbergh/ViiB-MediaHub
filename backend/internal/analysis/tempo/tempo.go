@@ -43,6 +43,9 @@ const (
 	// observed onset intervals against periodicity hypotheses; it is never the
 	// production default until separately qualified.
 	MethodBeatIntervalConsistency Method = "beat-interval-consistency"
+	// MethodPhaseSupport is an experimental benchmark candidate. It requires
+	// independently observed amplitude and flux support; it is not a default.
+	MethodPhaseSupport Method = "phase-support"
 )
 
 // Options configure candidate bounds and metrical range priors.
@@ -232,6 +235,9 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
 	}
 	minBPM, maxBPM := resolveBounds(a.options)
+	if a.options.Method == MethodPhaseSupport {
+		return estimatePhaseSupport(onsets, a.fluxEnvelope, float64(a.sampleRate)/float64(a.hop), float64(a.sampleRate)/float64(a.fluxSTFT.HopSize), minBPM, maxBPM, crestFactor)
+	}
 	if a.options.Method == MethodBeatIntervalConsistency {
 		return estimateBeatIntervalConsistency(onsets, a.positions, a.fluxEnvelope, float64(a.sampleRate)/float64(a.hop), float64(a.sampleRate)/float64(a.fluxSTFT.HopSize), float64(a.sampleRate), minBPM, maxBPM, crestFactor)
 	}

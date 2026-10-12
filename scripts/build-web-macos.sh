@@ -10,7 +10,7 @@
 #   amd64    - Intel x86-64
 #
 # Prerequisites:
-#   - Go 1.26.8+ with CGO_ENABLED=1
+#   - Go 1.26.9+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
 #   - Xcode Command Line Tools: xcode-select --install
 #

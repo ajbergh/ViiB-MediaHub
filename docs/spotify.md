@@ -44,7 +44,7 @@ Use **Play**, **Play Next**, or **Add to Queue** on supported track results. Str
 
 Available Spotify BPM/key values are written to download tags and durable source-bound evidence. Manual locks retain precedence, and unavailable provider data does not fail the audio download. **Prepare library** can enrich existing linked/matched recordings while local analysis supplies energy, loudness, beatgrid, structure, and cues. See [BPM/key import](SPOTIFY_BPM_KEY_IMPORT.md) and [Library Operations](library-operations.md#track-analysis).
 
-Three-band Spotify waveform integration and expanded metadata persistence are still [proposed](SPOTIFY_METADATA_AND_LOCAL_FALLBACK_IMPLEMENTATION_PLAN.md). Spotify scalar BPM alone does not establish beat phase or authorize deck sync.
+Source-bound Spotify three-band waveform selection and expanded sanitized metadata persistence are implemented, with local waveform fallback when provider data is unusable. Provider field availability varies; missing information remains unknown. Spotify scalar BPM alone does not establish beat phase or authorize deck sync. See [current scope and limitations](SPOTIFY_BRANCH_REMAINING_WORK.md). Further local scanning/audio-analysis improvements are [deferred](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
 ## Troubleshooting
 

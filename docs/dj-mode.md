@@ -128,7 +128,9 @@ See [the remediation validation report](archive/completed/dj-overlay-validation.
 
 Persistent backend analysis, library display, beatgrid editing, energy/structure artifacts, advisory cues, and local transition recommendations are implemented. The professional accuracy, confidence-calibration, lawful-corpus, and release qualification gates remain open. Displayed measurements and suggestions are advisory; a result is not proof of professional accuracy.
 
-The [professional analysis roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) owns the detailed quality gates; the [concise context](DJV2_TRACK_ANALYSIS_CONCISE_CONTEXT.md) records dated measurement evidence and next actions. The [stems, cues, and mix planning roadmap](DJV2_PRO_STEMS_CUES_MIX_INTELLIGENCE_ROADMAP.md) distinguishes delivered capabilities from remaining work.
+Beat-grid phase sync, cue snapping and grid-quantized loops require a valid locked manual grid. Automatic Spotify and inferred-from-meter grids remain advisory until reviewed. Without reviewed timing, cue moves use the playhead and tempo-based loops retain their playhead-relative duration. Resetting a manual grid clears its grid source identity.
+
+Further local scanning/DSP improvements and accuracy qualification are [deferred to a future branch](LOCAL_ANALYSIS_FUTURE_BRANCH.md). The [professional analysis roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) retains the quality criteria; the [current context](DJV2_TRACK_ANALYSIS_CONCISE_CONTEXT.md) links to preserved evidence. The [stems, cues, and mix planning roadmap](DJV2_PRO_STEMS_CUES_MIX_INTELLIGENCE_ROADMAP.md) distinguishes delivered capabilities from future work.
 
 ## Stem packages
 

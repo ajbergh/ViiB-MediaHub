@@ -1,5 +1,7 @@
 # External BPM reference benchmark
 
+> Scope update — 2026-10-12: This remains the reproducibility contract. New local-analysis improvement and corpus qualification runs are deferred to a future branch; prior results are diagnostic and do not authorize promotion. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 This development-only harness compares established tempo tools with ViiB on
 the same locally authorized corpus. It never adds an analyzer to the desktop
 application, bundles a runtime, or copies source from a reference project.

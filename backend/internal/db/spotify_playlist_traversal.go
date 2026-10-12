@@ -70,8 +70,8 @@ func migrateSpotifyPlaylistTraversalLease(tx *sql.Tx) error {
 	return err
 }
 
-var ErrSpotifyTraversalSuperseded = errors.New("Spotify playlist traversal superseded")
-var ErrSpotifyTraversalGenerationExhausted = errors.New("Spotify playlist traversal generation exhausted")
+var ErrSpotifyTraversalSuperseded = errors.New("spotify playlist traversal superseded")
+var ErrSpotifyTraversalGenerationExhausted = errors.New("spotify playlist traversal generation exhausted")
 
 type SpotifyPlaylistTraversal struct {
 	ContextKey   string

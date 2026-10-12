@@ -11,7 +11,7 @@ import (
 func TestDownloadSuppressionSurvivesCanonicalRescan(t *testing.T) {
 	d, path := evidenceFixture(t)
 	finishEvidence(t, d, path, "job", referenceID)
-	fp := scanEvidence(t, d, path, "old")
+	scanEvidence(t, d, path, "old")
 	if err := d.DeleteSpotifyRecording("old"); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestDownloadSuppressionSurvivesCanonicalRescan(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	fp = scanEvidence(t, reopened, path, "new")
+	fp := scanEvidence(t, reopened, path, "new")
 	if link, err := reopened.GetSpotifyRecording("new", fp); err != nil || link != nil {
 		t.Fatal("removal reversed", link, err)
 	}

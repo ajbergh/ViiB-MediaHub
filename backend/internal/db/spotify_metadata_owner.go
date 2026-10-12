@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var ErrSpotifyMetadataRuntimeSuperseded = errors.New("Spotify metadata runtime superseded")
+var ErrSpotifyMetadataRuntimeSuperseded = errors.New("spotify metadata runtime superseded")
 
 type SpotifyMetadataOwner struct {
 	Provider   string

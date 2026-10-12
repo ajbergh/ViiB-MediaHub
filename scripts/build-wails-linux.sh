@@ -9,7 +9,7 @@
 #   arm64  - ARM64 / AArch64
 #
 # Prerequisites:
-#   - Go 1.26.8+ with CGO_ENABLED=1
+#   - Go 1.26.9+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
 #   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 #   - CGO toolchain:

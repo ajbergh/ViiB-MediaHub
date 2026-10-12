@@ -1,5 +1,7 @@
 # Spotify BPM/key import
 
+> Scope update — 2026-10-12: Provider import/provenance and existing local fallback remain in this branch. Further local scanning/DSP improvements and accuracy qualification are deferred to a future branch. Unknown BPM/key values remain valid outcomes. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 Spotify downloads request scalar `audio_features` through the connected Web Player session. The existing refresh service provides caching, coalescing, timeouts and rate-limit cooldowns. Missing credentials or unavailable provider data does not fail the audio download.
 
 Downloaded Ogg files receive `BPM` and `INITIALKEY` Vorbis tags. Automatic MP3 conversion retains them as `TBPM` and `TKEY` ID3 frames. BPM retains its fractional precision; key uses traditional notation such as `C` or `Am`. Spotify mode 1 means major, and mode 0 means minor. Unknown fields remain absent.

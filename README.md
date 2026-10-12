@@ -144,7 +144,7 @@ See [Spotify Integration](docs/spotify.md).
 | Requirement | Minimum | Notes |
 |---|---|---|
 | Node.js | 20 LTS | Frontend tooling |
-| Go | **1.26.8+** | Current security-patched Go 1.26 baseline |
+| Go | **1.26.9+** | Current security-patched Go 1.26 baseline |
 | GCC / Clang | — | Required for native Wails builds and packages that opt into CGO |
 | Wails CLI | v2 | Desktop builds |
 

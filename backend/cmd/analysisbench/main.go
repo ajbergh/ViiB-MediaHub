@@ -60,7 +60,9 @@ func main() {
 	syntheticResultsPath := flag.String("synthetic-results-out", "", "non-overwriting production-analyzer results for generated WAV fixtures; regression evidence only")
 	analyzeSplit := flag.String("analyze-split", "", "optional reserved corpus split to analyze: tuning or held_out; requires -analyze")
 	tempoMinOnsetCrest := flag.Float64("tempo-min-onset-crest", 0, "optional Phase 0 tempo refusal threshold; requires -analyze and must be tuned only on the tuning split")
-	tempoMethod := flag.String("tempo-method", "", "optional Phase 0 tempo candidate method: peak-interval, onset-autocorrelation, multifeature-consensus, multifeature-half-bpm, multifeature-clustered-half-bpm, multifeature-refined-half-bpm, or beat-interval-consistency; requires -analyze")
+	tempoMethod := flag.String("tempo-method", "", "optional Phase 0 tempo candidate method: peak-interval, onset-autocorrelation, multifeature-consensus, multifeature-half-bpm, multifeature-clustered-half-bpm, multifeature-refined-half-bpm, beat-interval-consistency, or phase-support; requires -analyze")
+	tempoMinBPM := flag.Float64("tempo-min-bpm", 0, "optional explicit candidate minimum BPM, paired with -tempo-max-bpm; requires -analyze")
+	tempoMaxBPM := flag.Float64("tempo-max-bpm", 0, "optional explicit candidate maximum BPM, paired with -tempo-min-bpm; requires -analyze")
 	keyMaxChromaFlatness := flag.Float64("key-max-chroma-flatness", 0, "optional Phase 0 key refusal threshold; requires -analyze and must be tuned only on the tuning split")
 	keyMaxFrequency := flag.Float64("key-max-frequency", 0, "optional Phase 0 chroma upper frequency in Hz; requires -analyze and must be tuned only on the tuning split")
 	keyExtraction := flag.String("key-extraction", "", "optional Phase 0 key extraction: direct-chroma or hpcp-peaks; requires -analyze")
@@ -122,7 +124,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "analysisbench: -analyze and -out must be provided together")
 		os.Exit(2)
 	}
-	if (*tempoMinOnsetCrest != 0 || *tempoMethod != "" || *keyMaxChromaFlatness != 0 || *keyMaxFrequency != 0 || *keyProfile != "" || *keyExtraction != "") && *analyzeManifestPath == "" {
+	if (*tempoMinOnsetCrest != 0 || *tempoMethod != "" || *tempoMinBPM != 0 || *tempoMaxBPM != 0 || *keyMaxChromaFlatness != 0 || *keyMaxFrequency != 0 || *keyProfile != "" || *keyExtraction != "") && *analyzeManifestPath == "" {
 		fmt.Fprintln(os.Stderr, "analysisbench: Phase 0 calibration flags require -analyze")
 		os.Exit(2)
 	}
@@ -134,7 +136,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 calibration threshold")
 		os.Exit(2)
 	}
-	if *tempoMethod != "" && *tempoMethod != string(tempo.MethodPeakInterval) && *tempoMethod != string(tempo.MethodOnsetAutocorrelation) && *tempoMethod != string(tempo.MethodMultiFeatureConsensus) && *tempoMethod != string(tempo.MethodMultiFeatureHalfBPM) && *tempoMethod != string(tempo.MethodMultiFeatureClustered) && *tempoMethod != string(tempo.MethodMultiFeatureRefined) && *tempoMethod != string(tempo.MethodBeatIntervalConsistency) {
+	if err := validateTempoBounds(*tempoMinBPM, *tempoMaxBPM); err != nil {
+		fmt.Fprintln(os.Stderr, "analysisbench:", err)
+		os.Exit(2)
+	}
+	if *tempoMethod != "" && *tempoMethod != string(tempo.MethodPeakInterval) && *tempoMethod != string(tempo.MethodOnsetAutocorrelation) && *tempoMethod != string(tempo.MethodMultiFeatureConsensus) && *tempoMethod != string(tempo.MethodMultiFeatureHalfBPM) && *tempoMethod != string(tempo.MethodMultiFeatureClustered) && *tempoMethod != string(tempo.MethodMultiFeatureRefined) && *tempoMethod != string(tempo.MethodBeatIntervalConsistency) && *tempoMethod != string(tempo.MethodPhaseSupport) {
 		fmt.Fprintln(os.Stderr, "analysisbench: invalid Phase 0 tempo method")
 		os.Exit(2)
 	}
@@ -254,6 +260,10 @@ func main() {
 			}
 		}
 		options := track.DefaultOptions()
+		if *tempoMinBPM != 0 {
+			options.Tempo.Range = tempo.RangeCustom
+			options.Tempo.MinBPM, options.Tempo.MaxBPM = *tempoMinBPM, *tempoMaxBPM
+		}
 		if *tempoMinOnsetCrest > 0 {
 			options.Tempo.MinOnsetCrestFactor = *tempoMinOnsetCrest
 		}

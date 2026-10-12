@@ -287,12 +287,6 @@ func (d *DB) getDownloadedSpotifyScalarCandidateBatchMode(sources map[string]str
 	return d.RevalidateSpotifyScalarCandidateBatch(sources, result)
 }
 
-func betterSpotifyScoreSummary(candidate, previous SpotifyScoreSummary) bool {
-	return betterProviderScalarCandidate(
-		SpotifyScalarField{Stale: candidate.Stale, RetrievedAt: candidate.RetrievedAt, Endpoint: candidate.Endpoint},
-		SpotifyScalarField{Stale: previous.Stale, RetrievedAt: previous.RetrievedAt, Endpoint: previous.Endpoint})
-}
-
 func isSpotifyScoreField(key string) bool {
 	switch key {
 	case "spotify_energy_score", "spotify_danceability_score", "spotify_acousticness_score", "spotify_instrumentalness_score", "spotify_liveness_score", "spotify_speechiness_score", "spotify_valence_score":
@@ -300,13 +294,6 @@ func isSpotifyScoreField(key string) bool {
 	default:
 		return false
 	}
-}
-
-func expectedSpotifyScoreMetric(key string) string {
-	if !isSpotifyScoreField(key) {
-		return ""
-	}
-	return "spotify_" + key[len("spotify_"):len(key)-len("_score")]
 }
 
 // SpotifyScoreSummariesFromFields preserves the score compatibility projection.

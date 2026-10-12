@@ -1,13 +1,15 @@
 # DJv2 Pro Stems, Cue Intelligence & Mix Planning Roadmap
 
+> Scope update — 2026-10-12: Further local scanning/DSP improvements, learned downbeats, Beat This integration and accuracy qualification are deferred to a future branch. Existing reviewed-grid safeguards remain in this branch. The roadmap below is future planning, not this PR's merge checklist. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 **Status:** In progress — roadmap reviewed on 2026-09-24; progress updated 2026-09-25<br>
 **Scope:** DJv2 only; extends, but does not replace, DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md<br>
 **Execution branch:** `codex/dj-analysis-payload-guards`<br>
 **Review PRs:** [#61 — DJv2 stem, cue and mix intelligence slices](https://github.com/ajbergh/ViiB-MediaHub/pull/61) (merged 2026-09-24); [#62 — energy proxy and cue provenance](https://github.com/ajbergh/ViiB-MediaHub/pull/62) (merged 2026-09-24); [#63 — hot cue quantization](https://github.com/ajbergh/ViiB-MediaHub/pull/63) (merged 2026-09-24); [#64 — compatible Camelot filter](https://github.com/ajbergh/ViiB-MediaHub/pull/64) (merged 2026-09-24); [#65 — stem transport qualification tests](https://github.com/ajbergh/ViiB-MediaHub/pull/65) (merged 2026-09-24); [#66 — playlist and exact genre filters](https://github.com/ajbergh/ViiB-MediaHub/pull/66) (merged 2026-09-24); [#67 — exact Test Mix off-air endpoint](https://github.com/ajbergh/ViiB-MediaHub/pull/67) (merged 2026-09-24); [#68 — Test Mix cleanup route ownership](https://github.com/ajbergh/ViiB-MediaHub/pull/68) (merged 2026-09-24); [#69 — cue editor actions and provenance-safe editing](https://github.com/ajbergh/ViiB-MediaHub/pull/69) (merged 2026-09-24); [#70 — completed-recently Mix Next exclusion](https://github.com/ajbergh/ViiB-MediaHub/pull/70) (merged 2026-09-24); [#71 — per-cue Regenerate action](https://github.com/ajbergh/ViiB-MediaHub/pull/71) (merged 2026-09-24); [#72 — roadmap status after PR #71](https://github.com/ajbergh/ViiB-MediaHub/pull/72) (merged 2026-09-24); [#73 — conservative structure hints](https://github.com/ajbergh/ViiB-MediaHub/pull/73) (merged 2026-09-24); [#74 — atomic occupied-deck Test Mix restoration](https://github.com/ajbergh/ViiB-MediaHub/pull/74) (merged 2026-09-24); [#75 — roadmap update after PR #74](https://github.com/ajbergh/ViiB-MediaHub/pull/75) (merged 2026-09-24); [#76 — isolated synchronized Test Mix audition](https://github.com/ajbergh/ViiB-MediaHub/pull/76) (merged 2026-09-24); [#77 — roadmap status after PR #76](https://github.com/ajbergh/ViiB-MediaHub/pull/77) (merged 2026-09-24); [#78 — guarded Mix Next candidate loading](https://github.com/ajbergh/ViiB-MediaHub/pull/78) (merged 2026-09-24); [#79 — roadmap update after PR #78](https://github.com/ajbergh/ViiB-MediaHub/pull/79) (merged 2026-09-24); [#80 — roadmap status after PR #79](https://github.com/ajbergh/ViiB-MediaHub/pull/80) (merged 2026-09-24); [#81 — roadmap documentation status](https://github.com/ajbergh/ViiB-MediaHub/pull/81) (merged 2026-09-24); [#82 — versioned BS.1770 loudness measurements](https://github.com/ajbergh/ViiB-MediaHub/pull/82) (merged 2026-09-25); [#83 — roadmap update after PR #82](https://github.com/ajbergh/ViiB-MediaHub/pull/83) (merged 2026-09-25); [#84 — Test Mix phase-readiness disclosure](https://github.com/ajbergh/ViiB-MediaHub/pull/84) (merged 2026-09-25); [#85 — roadmap update after PR #84](https://github.com/ajbergh/ViiB-MediaHub/pull/85) (merged 2026-09-25); [#86 — DJ key verification keyboard](https://github.com/ajbergh/ViiB-MediaHub/pull/86) (merged 2026-09-25); [#87 — Mix Next intro/outro compatibility](https://github.com/ajbergh/ViiB-MediaHub/pull/87) (merged 2026-09-25); [#88 — multi-playlist Mix Next filtering](https://github.com/ajbergh/ViiB-MediaHub/pull/88) (merged 2026-09-25); [#89 — DJ library Analysis readiness column](https://github.com/ajbergh/ViiB-MediaHub/pull/89) (merged 2026-09-25); [#90 — DJ library Date Analyzed column](https://github.com/ajbergh/ViiB-MediaHub/pull/90) (merged 2026-09-25); [#91 — grid-aware DJ Beat Jump](https://github.com/ajbergh/ViiB-MediaHub/pull/91) (merged 2026-09-25); [#92 — roadmap status after PR #91](https://github.com/ajbergh/ViiB-MediaHub/pull/92) (merged 2026-09-25); [#93 — DJ library Analysis Confidence evidence](https://github.com/ajbergh/ViiB-MediaHub/pull/93) (merged 2026-09-25); [#95 — DJ library Structure Status column](https://github.com/ajbergh/ViiB-MediaHub/pull/95) (merged 2026-09-25); [#98 — roadmap update after PR #95](https://github.com/ajbergh/ViiB-MediaHub/pull/98) (merged 2026-09-25); [#99 — DJ library LUFS column](https://github.com/ajbergh/ViiB-MediaHub/pull/99) (merged 2026-09-25); [#103 — DJ library True Peak column](https://github.com/ajbergh/ViiB-MediaHub/pull/103) (merged 2026-09-25); [#104 — dedicated Stem Library workflow](https://github.com/ajbergh/ViiB-MediaHub/pull/104) (merged 2026-09-25); [#106 — source-aware manual BPM correction](https://github.com/ajbergh/ViiB-MediaHub/pull/106) (merged 2026-09-25); [#107 — saved Mix Next recommendation ideas](https://github.com/ajbergh/ViiB-MediaHub/pull/107) (merged 2026-09-25); [#108 — current-source Smart DJ energy](https://github.com/ajbergh/ViiB-MediaHub/pull/108) (merged 2026-09-25); [#109 — analyzed-track DJ panel payload guards](https://github.com/ajbergh/ViiB-MediaHub/pull/109) (In Review)<br>
 **StemLab repository status:** Repository exists; generation work remains outside this MediaHub roadmap.<br>
 **Repository snapshot reviewed:** originally main at d02ad01 (v1.0.0-rc3); baseline claims re-verified at 956bf02 (includes 65cc49f DJ loop/waveform fixes); PR #61 merged to main at `bf05a12`, PR #62 at `f73a8d6`, PR #63 at `6f56e5c`, PR #64 at `baa4b64`, PR #65 at `f843e36`, PR #66 at `dcf80c6`, PR #67 at `b4d7a68`, PR #68 at `c42a08c`, PR #69 at `7a08ae3`, PR #70 at `e6e56f2`, PR #71 at `4ba8cb7`, PR #72 at `a9bcbed`, PR #73 at `be6a30a`, PR #74 at `d326ff8`, PR #75 at `b91efad`, PR #76 at `b3b3e8f`, PR #77 at `266ab3a`, PR #78 at `1e97663`, PR #79 at `b1993f5`, PR #80 at `abcad05`, PR #81 at `45155e0`, PR #82 at `d03d51b`, PR #84 at `919944c`, PR #85 at `1420f92`, PR #86 at `1ad8453`, PR #87 at `149d00e`, PR #88 at `2fa957b`, PR #89 at `44bc619`, and PR #90 at `a469d078`, PR #91 at `959a8b7e`, PR #92 at `3313e1f`, and PR #93 at `06d2fe0`, PR #95 at `486a62d`, and PR #98 at `72a9de8` and PR #99 at `2422046`, and PR #101 at `e974ce4` and PR #103 at `214ce52` and PR #104 at `4eb78e0` and PR #106 at `e1c5715` on 2026-09-25<br>
-**Research snapshot:** 2026-09-24 (external references re-checked the same day)  
-**Primary goals:** professional-grade stem playback, scan-time cue creation, Camelot-first library UX, 1-10 energy analysis, structure-aware transition planning, mashup auditioning, and high-quality DJ preparation workflows.  
+**Research snapshot:** 2026-09-24 (external references re-checked the same day)
+**Primary goals:** professional-grade stem playback, scan-time cue creation, Camelot-first library UX, 1-10 energy analysis, structure-aware transition planning, mashup auditioning, and high-quality DJ preparation workflows.
 **Stem-generation architecture decision:** stem generation is an ahead-of-time workflow owned by the separate **ViiB-StemLab** application/repository ([repository](https://github.com/ajbergh/ViiB-StemLab)). ViiB MediaHub detects, validates, indexes and plays pre-generated stem packages; it does not embed Demucs/PyTorch or perform neural stem separation during DJ playback. This roadmap covers MediaHub's consumer side; StemLab generation work is tracked separately and depends on stabilizing the package contract here.
 
 > This roadmap uses public behavior from Mixed In Key Pro (v11) as product inspiration and StemDeck as an open-source implementation reference. It does not attempt to reproduce proprietary Mixed In Key algorithms or visual trade dress. Where StemDeck code is reused directly, Apache-2.0 attribution and third-party notices must be preserved.
@@ -2172,36 +2174,36 @@ The fastest route is three parallel tracks.
 
 ### Workstream A — Preparation intelligence
 
-A0. Reference-adapter contract and overlap-audited rhythm/structure benchmark  
-A1. True beat/downbeat/meter provenance and rhythm-grid v2 semantics  
-A2. Camelot color system  
-A3. Standards-correct loudness upgrade + Scalar Energy Level 1-10  
-A4. Structure timeline V1  
-A5. Eight-cue generator  
-A6. Scan-time fill-empty cue policy  
+A0. Reference-adapter contract and overlap-audited rhythm/structure benchmark
+A1. True beat/downbeat/meter provenance and rhythm-grid v2 semantics
+A2. Camelot color system
+A3. Standards-correct loudness upgrade + Scalar Energy Level 1-10
+A4. Structure timeline V1
+A5. Eight-cue generator
+A6. Scan-time fill-empty cue policy
 A7. Cue editor and waveform markers
 
 ### Workstream B — Stem platform
 
-B1. ViiB Stem Package v1 specification (plus backend FLAC decoding if FLAC is an allowed encoding)  
-B2. Package discovery and resolver  
-B3. Manifest/source-hash validation  
-B4. Stem registry persistence and Stem Library locations  
-B5. Completed-package preview/audio serving  
-B6. DeckSource refactor  
-B7. Stem transport worklet  
-B8. Four-button DJ stem UI  
-B9. Scratch/loop/sync/key-lock parity  
+B1. ViiB Stem Package v1 specification (plus backend FLAC decoding if FLAC is an allowed encoding)
+B2. Package discovery and resolver
+B3. Manifest/source-hash validation
+B4. Stem registry persistence and Stem Library locations
+B5. Completed-package preview/audio serving
+B6. DeckSource refactor
+B7. Stem transport worklet
+B8. Four-button DJ stem UI
+B9. Scratch/loop/sync/key-lock parity
 B10. ViiB-StemLab: generator UI/CLI, htdemucs_6s, batch queue and package writer
 
 ### Workstream C — Mix intelligence
 
-C1. Recommendation vector v2  
-C2. Direction-aware Mix Next  
-C3. Mix audition  
-C4. Stem-aware vocal overlap  
-C5. Mashup Mode  
-C6. Pitch-shift-aware recommendations  
+C1. Recommendation vector v2
+C2. Direction-aware Mix Next
+C3. Mix audition
+C4. Stem-aware vocal overlap
+C5. Mashup Mode
+C6. Pitch-shift-aware recommendations
 C7. Saved mix/mashup ideas
 
 ---

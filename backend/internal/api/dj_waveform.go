@@ -296,11 +296,6 @@ func generateWaveformWith(ctx context.Context, registry *analysis.DecoderRegistr
 	return djWaveformFromOverview(overview, err, filePath)
 }
 
-func generateWaveformSource(ctx context.Context, source analysis.ResolvedSource) (*db.DJWaveform, error) {
-	overview, err := analysis.GenerateWaveformOverviewWithOpener(ctx, waveformDecoders(), source.Name, source.Open, analysis.DefaultWaveformResolution)
-	return djWaveformFromOverview(overview, err, source.Name)
-}
-
 func djWaveformFromOverview(overview analysis.WaveformOverview, err error, name string) (*db.DJWaveform, error) {
 	if err != nil {
 		if errors.Is(err, analysis.ErrUnsupportedCodec) {

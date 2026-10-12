@@ -181,7 +181,7 @@ func (d *DB) putSpotifyWaveform(id, contextKey string, w waveform.Waveform, revi
 		return err
 	}
 	if decoded.SampleRate != w.SampleRate || decoded.WindowMilliseconds != w.WindowMilliseconds || !slices.Equal(decoded.Lows, w.Lows) || !slices.Equal(decoded.Mids, w.Mids) || !slices.Equal(decoded.Highs, w.Highs) {
-		return errors.New("Spotify waveform projection mismatch")
+		return errors.New("spotify waveform projection mismatch")
 	}
 	var packed bytes.Buffer
 	writer := gzip.NewWriter(&packed)
@@ -192,7 +192,7 @@ func (d *DB) putSpotifyWaveform(id, contextKey string, w waveform.Waveform, revi
 		return err
 	}
 	if packed.Len() > waveform.MaxBody {
-		return errors.New("Spotify waveform exceeds storage limit")
+		return errors.New("spotify waveform exceeds storage limit")
 	}
 	sum := sha256.Sum256(w.Domain)
 	tx, err := d.conn.Begin()

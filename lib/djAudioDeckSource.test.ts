@@ -33,6 +33,29 @@ function fakeSource(position = 3.9) {
 describe('DJAudioEngine DeckSource integration', () => {
   afterEach(() => { vi.restoreAllMocks(); });
 
+  it.each(['spotify', 'inferred-from-meter', 'manual'])('only snaps loops to reviewed manual timing (%s)', provenance => {
+    const engine = new DJAudioEngine();
+    const { source } = fakeSource(0.3);
+    Object.assign(engine, { deckSourceA: source });
+    const previous = { ...state.djDeckA };
+    const previousQuantize = state.djMixer.quantize;
+    state.djMixer.quantize = true;
+    state.djDeckA.beatGridSource = provenance;
+    state.djDeckA.beatGridLocked = true;
+    state.setLoop.mockClear();
+    try {
+      engine.setLoopBeats('A', 1);
+      expect(state.setLoop).toHaveBeenCalledWith('A', provenance === 'manual' ? 0.5 : 0.3, provenance === 'manual' ? 1 : 0.8);
+      state.setLoop.mockClear();
+      state.djDeckA.beatGridLocked = false;
+      engine.setLoopBeats('A', 1);
+      expect(state.setLoop).toHaveBeenCalledWith('A', 0.3, 0.8);
+    } finally {
+      Object.assign(state.djDeckA, previous);
+      state.djMixer.quantize = previousQuantize;
+    }
+  });
+
   it('wraps an active loop using source position and seek', () => {
     const engine = new DJAudioEngine();
     const { source } = fakeSource(4.5);

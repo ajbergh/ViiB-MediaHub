@@ -1,5 +1,7 @@
 # Spotify authentication on macOS
 
+> Scope update — 2026-10-12: Historical compiler/fixture evidence is distinct from macOS host execution. Further local scanning/DSP improvements are deferred; unverified platform behavior is not newly qualified by this documentation review. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 Validation date: 2026-10-04. This covers the current worktree on `spotify/webplayer-auth-analysis-provider`, based on `fed2571`, including uncommitted artist and download changes. Backend toolchain: Go 1.26.8. Execution host: Windows.
 
 ## Result and prerequisites

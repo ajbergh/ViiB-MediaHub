@@ -663,7 +663,7 @@ func trackAnalysisFeatureResponseWithCurrentSource(analysis db.TrackAnalysis, ov
 		response.EnergyLevelSource = "local"
 	}
 	// The compatibility value drives library filters and Mix Next. Resolve only
-	// the local 1–10 metric; Spotify's native energy score is a different field.
+	// the local 1â€“10 metric; Spotify's native energy score is a different field.
 	energy := db.ResolveEffectiveScalar("local_energy_level", currentFingerprint, db.AnalysisScalarCandidates(analysis, override, currentFingerprint))
 	if energy.Selected != nil {
 		var level int
@@ -1710,7 +1710,7 @@ func parseTransitionRecommendationFilters(values url.Values) (TransitionRecommen
 			return filters, fmt.Errorf("%s must be between 0 and 1", name)
 		}
 		if filters.SpotifyScoreMetric == "" {
-			return filters, errors.New("Spotify score range requires spotifyScoreMetric")
+			return filters, errors.New("spotify score range requires spotifyScoreMetric")
 		}
 		if name == "minSpotifyScore" {
 			filters.MinSpotifyScore = &n

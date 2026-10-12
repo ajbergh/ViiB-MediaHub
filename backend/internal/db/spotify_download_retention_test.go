@@ -71,7 +71,7 @@ func TestDownloadRetentionPendingGraceAndWholeGroup(t *testing.T) {
 func TestDownloadRetentionOwnedAndUnlinkChoice(t *testing.T) {
 	d, path := evidenceFixture(t)
 	finishEvidence(t, d, path, "job", referenceID)
-	fp := scanEvidence(t, d, path, "song")
+	scanEvidence(t, d, path, "song")
 	if err := d.DeleteSpotifyRecording("song"); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestDownloadRetentionOwnedAndUnlinkChoice(t *testing.T) {
 	if n := retentionCount(t, d, "spotify_download_revision_suppression"); n != 1 {
 		t.Fatal("choice erased", n)
 	}
-	fp = scanEvidence(t, d, path, "new")
+	fp := scanEvidence(t, d, path, "new")
 	if allowed, err := d.SpotifySearchAllowed("new", fp); err != nil || allowed {
 		t.Fatal("choice bypassed after payload collection", allowed, err)
 	}

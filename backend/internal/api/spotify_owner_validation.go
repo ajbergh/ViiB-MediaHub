@@ -192,7 +192,7 @@ func ownerRetryErrorFromRecord(retry db.SpotifyOwnerValidationRetry) error {
 		}
 		return &spotifyauth.WebPlayerHTTPError{Status: retry.HTTPStatus, RetryAfter: delay}
 	}
-	return errors.New("Spotify owner validation temporarily unavailable")
+	return errors.New("spotify owner validation temporarily unavailable")
 }
 
 func (s *spotifyAuthRuntime) ownerRateLimit(ctx context.Context) error {

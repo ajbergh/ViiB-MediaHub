@@ -1,7 +1,9 @@
 package catalog
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -42,16 +44,36 @@ func CaptureREST(target *url.URL, raw []byte) ([]CapturedEntity, error) {
 	}
 	var entities []CapturedEntity
 	entityPage := len(parts) == 4 && (parts[1] == "albums" || parts[1] == "playlists") && parts[3] == "tracks"
-	if entityPage && !objectID.MatchString(parts[2]) {
+	artistAlbumsPage := len(parts) == 4 && parts[1] == "artists" && parts[3] == "albums"
+	if (entityPage || artistAlbumsPage) && !objectID.MatchString(parts[2]) {
 		return nil, ErrSchema
 	}
-	if library || entityPage {
+	if artistAlbumsPage {
+		// These documented filters select different membership projections. Hash
+		// only known query fields, never arbitrary URL parameters or credentials.
+		pageQuery := url.Values{
+			"offset": {target.Query().Get("offset")}, "limit": {target.Query().Get("limit")},
+			"include_groups": {target.Query().Get("include_groups")}, "market": {target.Query().Get("market")},
+		}
+		// Keep the complete digest within the repository's 128-byte resource key
+		// limit, even when the request contains long numeric page parameters.
+		resource = fmt.Sprintf("rest:%s:page:%x", target.Path, sha256.Sum256([]byte(pageQuery.Encode())))
+	}
+	if library || entityPage || artistAlbumsPage {
 		var page struct {
 			Offset int               `json:"offset"`
 			Items  []json.RawMessage `json:"items"`
 		}
 		if json.Unmarshal(safe, &page) != nil || page.Offset < 0 || page.Items == nil {
 			return nil, ErrSchema
+		}
+		if artistAlbumsPage {
+			var position struct {
+				Offset *int `json:"offset"`
+			}
+			if json.Unmarshal(safe, &position) != nil || position.Offset == nil || *position.Offset != offset {
+				return nil, ErrSchema
+			}
 		}
 		entity := CapturedEntity{EntityType: "library", ID: "rest_saved_" + parts[2], Resource: resource, Payload: safe}
 		relationKind := "library_items"
@@ -60,23 +82,34 @@ func CaptureREST(target *url.URL, raw []byte) ([]CapturedEntity, error) {
 			entity.ID = parts[2]
 			relationKind = "tracks"
 		}
+		if artistAlbumsPage {
+			entity.EntityType, entity.ID, relationKind = "artist", parts[2], "albums"
+		}
 		for i, row := range page.Items {
 			var object map[string]json.RawMessage
 			_ = json.Unmarshal(row, &object)
 			candidate := object
-			for _, field := range []string{"track", "album"} {
-				if child, ok := object[field]; ok {
-					_ = json.Unmarshal(child, &candidate)
-					break
+			if !artistAlbumsPage {
+				for _, field := range []string{"track", "album"} {
+					if child, ok := object[field]; ok {
+						_ = json.Unmarshal(child, &candidate)
+						break
+					}
 				}
 			}
 			kind, id, available, err := captureRESTIdentity(candidate)
 			if err != nil {
 				return nil, err
 			}
+			if artistAlbumsPage && available && kind != "album" {
+				return nil, ErrSchema
+			}
 			unavailable := !available
 			if unavailable {
 				kind, id = captureRESTUnavailableType(candidate), ""
+				if artistAlbumsPage {
+					kind = "album"
+				}
 			}
 			relationPayload := row
 			if string(row) == "null" {

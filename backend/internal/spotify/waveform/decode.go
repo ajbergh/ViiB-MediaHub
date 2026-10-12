@@ -18,7 +18,7 @@ const (
 )
 
 var validID = regexp.MustCompile(`^[A-Za-z0-9]{22}$`)
-var ErrMalformed = errors.New("Spotify waveform malformed payload")
+var ErrMalformed = errors.New("spotify waveform malformed payload")
 
 type EntityError struct{ Status int }
 

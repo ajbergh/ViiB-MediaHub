@@ -62,7 +62,7 @@ export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
       await api.resetTrackBeatGrid(deckState.track.id, deckState.beatGridSourceFingerprint);
       const current = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
       if (current.track?.id === deckState.track.id && current.beatGridSourceFingerprint === deckState.beatGridSourceFingerprint) {
-        setDeckAnalysis(deck, { beatGridSource: 'unknown', beatGrid: null, downbeatIndices: null, beatGridLocked: false });
+        setDeckAnalysis(deck, { beatGridSource: 'unknown', beatGrid: null, downbeatIndices: null, beatGridLocked: false, beatGridSourceFingerprint: null });
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not reset grid'); }
     finally { setSaving(false); }

@@ -1,5 +1,7 @@
 # Spotify WebPlayer Validation and Research Record
 
+> Scope update — 2026-10-12: Earlier entries retain their evidence dates and original limits. Further local scanning/DSP improvements are deferred; the current merge scope and final verification are tracked separately. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 **Record started:** 2026-10-02
 
 **Evidence through:** 2026-10-04

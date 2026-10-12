@@ -83,6 +83,8 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 // Song types matching backend
 export interface ApiSong {
+  /** Transient resolved metadata attached to a generated DJ queue. */
+  analysis?: TrackAnalysisFeature;
   id: string;
   title: string;
   artist: string;

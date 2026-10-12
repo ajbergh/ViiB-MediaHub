@@ -1,5 +1,7 @@
 # Rhythm and structure reference benchmark
 
+> Scope update — 2026-10-12: This remains the reproducibility contract. New beat/downbeat, structure, meter and cue qualification work is deferred to a future branch, including Beat This integration. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 This harness is development-only. It emits raw third-party rhythm/structure
 predictions and provenance as JSON; it does not add model code, weights, or ML
 runtime to MediaHub. Beat This and All-In-One remain isolated external

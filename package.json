@@ -20,7 +20,7 @@
     "butterchurn-presets": "^2.4.7",
     "idb": "8.0.0",
     "lucide-react": "^0.554.0",
-    "music-metadata": "11.14.0",
+    "music-metadata": "11.16.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router": "8.3.0",

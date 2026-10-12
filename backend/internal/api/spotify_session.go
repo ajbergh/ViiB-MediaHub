@@ -646,7 +646,7 @@ func (s *spotifyAuthRuntime) replaceOAuthCredentials(raw string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return errors.New("Spotify runtime closed")
+		return errors.New("spotify runtime closed")
 	}
 	nextContext := uuid.NewString()
 	retryKey := spotifyOwnerRetryDigest("oauth", raw)

@@ -29,12 +29,12 @@
  * and a metadata/full-catalog fallback, plus intelligent sequencing in DJ mode.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useStore } from '../store';
 import { Sparkles, Play, Save, RefreshCw, Music, Zap, Heart, Clock, Shuffle, User, Compass, Sun, Radio, Mic2, Timer, BarChart3, Server, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Song } from '../types';
-import { api, SemanticRetrievalDiagnostics, SemanticStatus } from '../services/api';
+import { api, SemanticRetrievalDiagnostics, SemanticStatus, TrackAnalysisFeature } from '../services/api';
 import { apiSongToSong } from '../services/backendService';
 import { formatTime } from '../utils';
 import { Button } from '../components/ui/Button';
@@ -55,6 +55,9 @@ export const SmartPlaylists: React.FC = () => {
   const navigate = useNavigate();
   const [semanticStatus, setSemanticStatus] = useState<SemanticStatus | null>(null);
   const [retrievalDiagnostics, setRetrievalDiagnostics] = useState<SemanticRetrievalDiagnostics | null>(null);
+  const [queueAnalysis, setQueueAnalysis] = useState<{ session: number; byId: Record<string, TrackAnalysisFeature> }>();
+  const generationRequest = useRef(0);
+
 
   useEffect(() => {
     let active = true;
@@ -97,6 +100,7 @@ export const SmartPlaylists: React.FC = () => {
   const semanticReason = semanticStatus?.reason || semanticStatus?.lastError;
 
   const { 
+    spotifySessionGeneration,
     playSong, 
     showToast, 
     createPlaylist,
@@ -140,6 +144,12 @@ export const SmartPlaylists: React.FC = () => {
     setAIDJDJResult,
   } = useStore();
 
+  useEffect(() => { setQueueAnalysis(undefined); }, [spotifySessionGeneration]);
+  useEffect(() => () => {
+    generationRequest.current++;
+    setAIDJIsLoading(false);
+  }, [setAIDJIsLoading]);
+
   // Available personas (could be fetched from API)
   const personas = Object.keys(PERSONA_DESCRIPTIONS);
 
@@ -151,6 +161,10 @@ export const SmartPlaylists: React.FC = () => {
 
   const handleGenerate = async () => {
     if (!aiDjPrompt.trim()) return;
+    const requestSession = useStore.getState().spotifySessionGeneration;
+    const requestId = ++generationRequest.current;
+    const isCurrentRequest = () => requestId === generationRequest.current && requestSession === useStore.getState().spotifySessionGeneration;
+    setQueueAnalysis(undefined);
 
     setAIDJIsLoading(true);
     setAIDJGeneratedSongs([]);
@@ -174,8 +188,10 @@ export const SmartPlaylists: React.FC = () => {
         flowStrictness: aiDjFlowStrictness,
         source: aiDjSource,
       });
+      if (!isCurrentRequest()) return;
       setRetrievalDiagnostics(result.retrieval || null);
       const apiSongs = result.songs || [];
+      setQueueAnalysis({ session: requestSession, byId: Object.fromEntries(apiSongs.filter(song => song.analysis?.songId === song.id).map(song => [song.id, song.analysis!])) });
       // Convert ApiSong[] to Song[] so they have the correct url field for playback
       const songs = apiSongs.map(apiSongToSong);
       const validation = result.validation || result.retrieval?.validation || null;
@@ -215,6 +231,7 @@ export const SmartPlaylists: React.FC = () => {
         });
       }
     } catch (error: any) {
+      if (!isCurrentRequest()) return;
       console.error('Failed to generate playlist:', error);
       
       // Provide more helpful error messages
@@ -229,7 +246,7 @@ export const SmartPlaylists: React.FC = () => {
       
       showToast({ type: 'error', message: errorMessage });
     } finally {
-      setAIDJIsLoading(false);
+      if (requestId === generationRequest.current) setAIDJIsLoading(false);
     }
   };
 
@@ -864,6 +881,7 @@ export const SmartPlaylists: React.FC = () => {
                     <th className="px-6 py-3">Title</th>
                     <th className="px-6 py-3">Artist</th>
                     <th className="px-6 py-3">Album</th>
+                    {aiDjMode && <th className="px-6 py-3 text-right">BPM</th>}
                     <th className="px-6 py-3 text-right">Duration</th>
                   </tr>
                 </thead>
@@ -886,6 +904,12 @@ export const SmartPlaylists: React.FC = () => {
                       </td>
                       <td className="px-6 py-3 text-text-secondary">{song.artist}</td>
                       <td className="px-6 py-3 text-text-secondary">{song.album}</td>
+                      {aiDjMode && <td className="px-6 py-3 text-right text-text-secondary" title="Tempo and source used when this DJ set was generated">
+                        {(() => {
+                          const feature = queueAnalysis?.session === spotifySessionGeneration ? queueAnalysis.byId[song.id] : undefined;
+                          return feature?.bpm == null ? 'Unknown' : `${feature.bpm} · ${feature.bpmSource === 'spotify' ? 'Spotify' : feature.bpmSource === 'manual' ? 'Manual' : 'Measured'}`;
+                        })()}
+                      </td>}
                       <td className="px-6 py-3 text-text-subtle text-right font-mono text-xs">
                         {formatTime(song.duration)}
                       </td>

@@ -15,7 +15,85 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/spotify/catalog"
 )
+
+func TestOAuthArtistAlbumPageGraphSurvivesReopenAndRetires(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "artist-page.db")
+	database, err := db.New(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if database != nil {
+			database.Close()
+		}
+	}()
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	artistID, albumID := strings.Repeat("R", 22), strings.Repeat("A", 22)
+	requestURL := "https://api.spotify.com/v1/artists/" + artistID + "/albums?offset=5&limit=3&include_groups=appears_on&market=US"
+	artist := map[string]any{"id": artistID, "type": "artist", "uri": "spotify:artist:" + artistID, "name": "Artist"}
+	album := map[string]any{"id": albumID, "type": "album", "uri": "spotify:album:" + albumID, "name": "Album", "album_group": "appears_on", "artists": []any{artist}}
+	raw, _ := json.Marshal(map[string]any{"offset": 5, "limit": 3, "next": nil, "total": 8, "items": []any{album, nil, album}, "token": "private-sentinel"})
+	target, _ := url.Parse(requestURL)
+	entities, err := catalog.CaptureREST(target, raw)
+	if err != nil || len(entities) < 3 || entities[0].EntityType != "artist" {
+		t.Fatalf("fixture projection: %+v %v", entities, err)
+	}
+	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		body := string(raw)
+		if r.URL.Path == "/v1/me" {
+			body = `{"id":"artist-page-owner"}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}}
+	response, err := a.doSpotifyRequest(t.Context(), http.MethodGet, requestURL, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || string(body) != string(raw) {
+		t.Fatal("consumer response changed", err)
+	}
+	owner := a.spotifyTokens().metadataContext
+	key := db.SpotifySnapshotKey{EntityType: "artist", SpotifyID: artistID, Resource: entities[0].Resource, ContextKey: owner}
+	assertGraph := func() {
+		t.Helper()
+		parent, err := database.GetSpotifyEntitySnapshot(key)
+		if err != nil || parent == nil || len(parent.Relations) != 3 || strings.Contains(string(parent.Payload), "private-sentinel") {
+			t.Fatalf("stored artist parent: %+v %v", parent, err)
+		}
+		if parent.Relations[0].Position != 5 || parent.Relations[0].ChildID != albumID || !parent.Relations[1].Unavailable || parent.Relations[2].Position != 7 || parent.Relations[2].ChildID != albumID {
+			t.Fatalf("stored duplicate/unavailable order: %+v", parent.Relations)
+		}
+		child, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "album", SpotifyID: albumID, Resource: key.Resource + ":related", ContextKey: owner})
+		if err != nil || child == nil || len(child.Relations) != 1 || child.Relations[0].ChildID != artistID {
+			t.Fatalf("stored album-to-artist graph: %+v %v", child, err)
+		}
+	}
+	assertGraph()
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err = db.New(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertGraph()
+	if err := database.RetireSpotifyMetadataContext(owner); err != nil {
+		t.Fatal(err)
+	}
+	for _, retired := range []db.SpotifySnapshotKey{key, {EntityType: "album", SpotifyID: albumID, Resource: key.Resource + ":related", ContextKey: owner}} {
+		snapshot, err := database.GetSpotifyEntitySnapshot(retired)
+		if err != nil || snapshot != nil {
+			t.Fatalf("retired private page remained: %+v %v", snapshot, err)
+		}
+	}
+}
 
 func TestOAuthCatalogResponseCapturedAndReplayed(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))

@@ -10,7 +10,7 @@
 #   universal - Fat binary (both arm64 + amd64 via lipo)
 #
 # Prerequisites:
-#   - Go 1.26.8+ with CGO_ENABLED=1
+#   - Go 1.26.9+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
 #   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 #   - Xcode Command Line Tools: xcode-select --install

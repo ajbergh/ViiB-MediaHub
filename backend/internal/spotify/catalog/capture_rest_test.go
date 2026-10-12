@@ -51,6 +51,59 @@ func TestCaptureRESTSavedLibraryPages(t *testing.T) {
 	}
 }
 
+// Shape follows the public Get Artist's Albums contract; identities and
+// unavailable/duplicate cases are synthetic, not captured account payloads.
+func TestCaptureRESTArtistAlbumsParentAndFilters(t *testing.T) {
+	artist, album := strings.Repeat("R", 22), strings.Repeat("A", 22)
+	base := "https://api.spotify.com/v1/artists/" + artist + "/albums?offset=5&limit=3"
+	raw := []byte(`{"offset":5,"limit":3,"next":null,"total":8,"items":[{"type":"album","id":"` + album + `","album_group":"appears_on","future":0},null,{"type":"album","id":"` + album + `"}]}`)
+	resources := map[string]bool{}
+	for _, filters := range []string{"", "&include_groups=album", "&include_groups=single", "&market=US", "&market=GB"} {
+		target, _ := url.Parse(base + filters)
+		entities, err := CaptureREST(target, raw)
+		if err != nil || len(entities) != 2 {
+			t.Fatalf("artist page capture: %+v %v", entities, err)
+		}
+		parent := entities[0]
+		if len(parent.Resource+":related") > 128 {
+			t.Fatal("artist page resource exceeds persistent snapshot key bound")
+		}
+		if parent.EntityType != "artist" || parent.ID != artist || len(parent.Relations) != 3 {
+			t.Fatalf("missing artist page: %+v", parent)
+		}
+		for i, relation := range parent.Relations {
+			if relation.Kind != "albums" || relation.Position != 5+i || relation.ChildType != "album" || relation.Unavailable != (i == 1) {
+				t.Fatalf("ordered album relation: %+v", relation)
+			}
+		}
+		if parent.Relations[0].ChildID != album || parent.Relations[2].ChildID != album || !strings.Contains(string(parent.Relations[0].Metadata), "appears_on") || !strings.Contains(string(parent.Payload), "future") {
+			t.Fatal("duplicate album identities or original fields lost")
+		}
+		if resources[parent.Resource] {
+			t.Fatal("different artist membership filters share a resource")
+		}
+		resources[parent.Resource] = true
+		withSecret, _ := url.Parse(base + filters + "&access_token=do-not-retain")
+		other, err := CaptureREST(withSecret, raw)
+		if err != nil || other[0].Resource != parent.Resource || strings.Contains(parent.Resource, "do-not-retain") {
+			t.Fatal("arbitrary query parameter entered catalog identity")
+		}
+	}
+	for _, body := range []string{
+		`{"offset":4,"items":[]}`, `{"items":[]}`, `{"offset":5,"items":null}`,
+		`{"offset":5,"items":[{"type":"track","id":"` + album + `"}]}`,
+	} {
+		target, _ := url.Parse(base)
+		if _, err := CaptureREST(target, []byte(body)); err == nil {
+			t.Fatalf("invalid artist page accepted: %s", body)
+		}
+	}
+	target, _ := url.Parse("https://api.spotify.com/v1/artists/invalid/albums")
+	if _, err := CaptureREST(target, []byte(`{"offset":0,"items":[]}`)); err == nil {
+		t.Fatal("invalid artist parent identity accepted")
+	}
+}
+
 func TestCaptureRESTStandaloneTrackPage(t *testing.T) {
 	id, track := strings.Repeat("A", 22), strings.Repeat("T", 22)
 	for _, kind := range []string{"albums", "playlists"} {
